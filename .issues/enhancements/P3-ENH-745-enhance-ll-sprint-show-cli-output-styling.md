@@ -21,6 +21,13 @@ The `ll-sprint show` command's CLI output lacks the rich styling, colors, and fo
 
 `ll-sprint show` uses the same CLI output styling conventions as `ll-issues list` and other commands: colored output, formatted tables, priority/status indicators with consistent visual treatment.
 
+## Success Metrics
+
+- `ll-sprint show` output contains ANSI escape codes (`\033[`) when `_USE_COLOR=True`
+- `ll-sprint show` output contains no ANSI escape codes when `_USE_COLOR=False`
+- All existing `test_sprint.py` tests pass without regression
+- New color-on and color-off tests pass in `test_sprint.py`
+
 ## Motivation
 
 Inconsistent CLI output degrades developer experience. Users context-switch between `ll-sprint show` and `ll-issues list` frequently during sprint work; visual inconsistency creates friction and makes the tool feel unpolished.
@@ -67,6 +74,14 @@ Audit the output helpers used by `ll-issues list` (and similar commands), then a
 - **Risk**: Low - Cosmetic/display change only
 - **Breaking Change**: No
 
+## Scope Boundaries
+
+- **In scope**: Colorizing output in `_render_execution_plan`, `_render_health_summary`, and `_cmd_sprint_show` using existing utilities (`colorize`, `PRIORITY_COLOR`, `TYPE_COLOR`) from `output.py`
+- **Out of scope**: Changes to `output.py` or the color system itself — reuse only, no new utilities
+- **Out of scope**: Other sprint subcommands (`create`, `edit`, `run`, `list`) — `show` only
+- **Out of scope**: Non-terminal output formats (markdown export, JSON) — terminal display only
+- **Out of scope**: New color schemes or palette changes — match existing `ll-issues list` styling exactly
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -82,6 +97,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-16T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e105a0a-8129-46b0-9889-ec4f193c35ed.jsonl`
 - `/ll:confidence-check` - 2026-03-15T22:44:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
 - `/ll:refine-issue` - 2026-03-15T22:43:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`

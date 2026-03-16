@@ -42,62 +42,28 @@ A user runs `/ll:init` on a new project. At the end of the flow, little-loops de
 
 ## Implementation Steps
 
-### Step 1: Determine Optimal Flag Patterns per Command
+### Step 1: Canonical Allow Entries
 
-Based on `-h` output, the recommended `permissions.allow` Bash patterns for agent use:
+One wildcard entry per binary — covers all subcommands and flags. Preferred for maintainability over subcommand-level granularity.
 
 ```json
-"Bash(ll-issues next-id:*)",
-"Bash(ll-issues list:*)",
-"Bash(ll-issues show:*)",
-"Bash(ll-issues count:*)",
-"Bash(ll-issues sequence:*)",
-"Bash(ll-issues search:*)",
-"Bash(ll-issues refine-status:*)",
-"Bash(ll-issues append-log:*)",
-"Bash(ll-issues impact-effort:*)",
-"Bash(ll-auto --dry-run:*)",
-"Bash(ll-auto --quiet:*)",
+"Bash(ll-issues:*)",
 "Bash(ll-auto:*)",
-"Bash(ll-parallel --dry-run:*)",
-"Bash(ll-parallel --cleanup:*)",
 "Bash(ll-parallel:*)",
-"Bash(ll-sprint create:*)",
-"Bash(ll-sprint run:*)",
-"Bash(ll-sprint list:*)",
-"Bash(ll-sprint show:*)",
-"Bash(ll-sprint edit:*)",
-"Bash(ll-sprint analyze:*)",
-"Bash(ll-loop run:*)",
-"Bash(ll-loop validate:*)",
-"Bash(ll-loop list:*)",
-"Bash(ll-loop status:*)",
-"Bash(ll-loop history:*)",
-"Bash(ll-loop show:*)",
-"Bash(ll-loop simulate:*)",
-"Bash(ll-loop test:*)",
+"Bash(ll-sprint:*)",
+"Bash(ll-loop:*)",
 "Bash(ll-workflows:*)",
 "Bash(ll-messages:*)",
-"Bash(ll-messages --stdout:*)",
-"Bash(ll-history summary:*)",
-"Bash(ll-history analyze:*)",
-"Bash(ll-history export:*)",
-"Bash(ll-deps analyze:*)",
-"Bash(ll-deps validate:*)",
-"Bash(ll-deps fix --dry-run:*)",
-"Bash(ll-sync status:*)",
-"Bash(ll-sync push:*)",
-"Bash(ll-sync pull:*)",
-"Bash(ll-sync diff:*)",
+"Bash(ll-history:*)",
+"Bash(ll-deps:*)",
+"Bash(ll-sync:*)",
 "Bash(ll-verify-docs:*)",
 "Bash(ll-check-links:*)"
 ```
 
-Note: Broad `Bash(ll-<cmd>:*)` patterns cover all subcommand/flag combinations. The list above uses subcommand-specific entries where the tool is commonly called with specific subcommands.
+### Step 2: Settings File Detection Logic (new Round 11 in `skills/init/interactive.md`, "Always shown")
 
-**Alternative (simpler)**: A single wildcard per binary: `Bash(ll-issues:*)`, `Bash(ll-auto:*)`, etc. — covers all usage with one entry each. Preferred for maintainability; subcommand-level granularity only if the project's security posture requires it.
-
-### Step 2: Settings File Detection Logic (in init skill, as new Step 10 in SKILL.md before current "Display Completion Message")
+Round 11 structure follows Round 10 pattern (`interactive.md:562–600`) — single `AskUserQuestion` call:
 
 ```
 1. Check .claude/settings.json exists
@@ -106,19 +72,27 @@ Note: Broad `Bash(ll-<cmd>:*)` patterns cover all subcommand/flag combinations. 
    a. Neither exists → AskUserQuestion: "Create settings.local.json, settings.json, or skip?"
    b. One exists → AskUserQuestion: "Add ll- commands to <file>? (y/n/skip)"
    c. Both exist → AskUserQuestion: "Add ll- commands to settings.local.json, settings.json, or skip?"
+4. Also update Round summary table at interactive.md:608–619 (add Row 11: "Always shown")
 ```
+
+Note: This must be "Always shown" (unconditional), unlike Rounds 8–10 which are gated by the Extended Config Gate in Round 7 and never shown during init.
 
 ### Step 3: Merge Logic
 
-- Read existing JSON (or start with `{"permissions": {"allow": [], "deny": []}}`)
-- Filter out any existing `ll-` entries (for idempotency)
-- Append the canonical `ll-` allow list
-- Write back with 2-space indent
+Merge is performed inline using the Read and Write tools (no Python utility) — the same approach as the Step 9 `.gitignore` update.
+
+Steps:
+1. **Read** the target settings file (or start with `{"permissions": {"allow": [], "deny": []}}` if absent)
+2. **Filter** `permissions.allow`: keep all entries that do not start with `Bash(ll-` (preserves non-ll entries and the deny list)
+3. **Append** the canonical list from Step 1
+4. **Write** the result back with 2-space indent, preserving any top-level keys (e.g., `$schema`, `env`)
+
+Idempotency: any existing `Bash(ll-` entries (including old subcommand-specific ones) are removed before appending, so re-running always converges to the canonical set.
 
 ### Step 4: Integration Points
 
-- **`/ll:init`**: Add as a final optional step after config file creation (similar to how `.gitignore` suggestions work)
-- **`/ll:configure`**: Add a new `configure allowed-tools` sub-option that can run standalone
+- **`/ll:init` `SKILL.md`**: Add Step 10 (allowed-tools detection + merge) following the Step 9 `.gitignore` structure at lines 301–323. Update dry-run preview block (lines 261–266) and completion message table (lines 333–334).
+- **`/ll:configure`**: Add `allowed-tools` area to `skills/configure/areas.md` (following existing area pattern) and update `skills/configure/SKILL.md` Area Mapping (lines 44–59), `--list` block (lines 70–88), and paginated selection (lines 139–203). This area writes to `.claude/settings.json` / `settings.local.json` rather than `ll-config.json` — note this in the area handler.
 
 ## API/Interface
 
@@ -129,9 +103,10 @@ Optional: add a `cli.allowed_tools_hint` boolean to `ll-config.json` to suppress
 ## Integration Map
 
 ### Files to Modify
-- `skills/init/SKILL.md` — add new final phase for allowed-tools
-- `skills/init/interactive.md` — new Round 11 for allowed-tools opt-in (Rounds 8–10 already exist for Project Advanced, Continuation, and Prompt Optimization)
-- `skills/configure/SKILL.md` — add `allowed-tools` configure option
+- `skills/init/SKILL.md` — add Step 10 for allowed-tools (before current Step 10 "Display Completion Message", following the Step 9 `.gitignore` pattern at lines 301–323); update dry-run preview block (lines 261–266) to include `[update] .claude/settings.local.json`; update completion message table (lines 333–334)
+- `skills/init/interactive.md` — add Round 11 for allowed-tools opt-in as an "Always shown" round (unlike Rounds 8–10 which are "Never shown"); update Round summary table at lines 608–619
+- `skills/configure/SKILL.md` — add `allowed-tools` area to: frontmatter argument hint (line 10), Area Mapping table (lines 44–59), `--list` output block (lines 70–88), paginated selection flow (lines 139–203)
+- `skills/configure/areas.md` — add `allowed-tools` area handler following existing area pattern
 
 ### Dependent Files (Callers/Importers)
 - N/A — init skill is invoked directly by user, no programmatic callers
@@ -140,7 +115,14 @@ Optional: add a `cli.allowed_tools_hint` boolean to `ll-config.json` to suppress
 - `skills/init/SKILL.md` Step 9 (`.gitignore` update step) — follow same detection-and-append pattern (check if entries exist, append only if absent)
 
 ### Tests
-- TBD — identify integration test for settings file detection and merge logic
+
+No unit tests — merge is inline (Read/Write tools), matching the `.gitignore` step precedent. Verification is by manual smoke test after implementation:
+
+- [ ] Fresh project (no settings files): init creates `settings.local.json` with correct structure
+- [ ] Existing file with non-ll entries: entries preserved, ll entries appended
+- [ ] Re-run init: ll entries not duplicated (idempotent)
+- [ ] Existing file with old subcommand-specific ll entries: replaced with canonical wildcards
+- [ ] Deny list untouched after merge
 
 ### Documentation
 - `docs/reference/API.md` — if `cli.allowed_tools_hint` config key is added, document it
@@ -187,7 +169,9 @@ _Verified 2026-03-15 by /ll:verify-issues_
 - Feature is not yet implemented; issue remains valid and actionable
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T01:26:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93df5671-2743-4b52-aada-babab544472e.jsonl`
 - `/ll:verify-issues` - 2026-03-15T18:54:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:format-issue` - 2026-03-15T18:51:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92f6d283-84cd-41ed-b8d5-c0319fe66f82.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/763473e1-42fe-4586-a7a6-6c4f070de693.jsonl`

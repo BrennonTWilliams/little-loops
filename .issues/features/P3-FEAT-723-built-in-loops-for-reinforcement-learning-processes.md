@@ -64,8 +64,8 @@ Extend `ll-loop` and `/ll:create-loop` with built-in RL loop templates by introd
 
 ### Files to Modify
 - `skills/create-loop/SKILL.md` — add 3 RL options to the Step 1 `AskUserQuestion` block (lines 52-77); extend type mapping section (lines 72-77)
-- `skills/create-loop/loop-types.md` — add one new H2 section per RL type (bandit, rlhf, policy), following the `## Harness Questions` section pattern (line 548+)
-- `skills/create-loop/reference.md` — add state structure diagrams for each RL type (following harness diagrams at lines 89-132)
+- `skills/create-loop/loop-types.md` — add one new H2 section per RL type (bandit, rlhf, policy), following the `## Harness Questions` section pattern (lines 548-912)
+- `skills/create-loop/reference.md` — add state structure diagrams for each RL type (following harness diagrams: multi-item variant at lines 89-124, single-shot variant at lines 148-174)
 - `loops/rl-bandit.yaml` — new built-in YAML: `explore → exploit → reward → update` using `convergence` evaluator
 - `loops/rl-rlhf.yaml` — new built-in YAML: `generate → evaluate → score → refine` using `llm_structured` evaluator
 - `loops/rl-policy.yaml` — new built-in YAML: `act → observe → score → improve` using `convergence` evaluator
@@ -74,7 +74,7 @@ Extend `ll-loop` and `/ll:create-loop` with built-in RL loop templates by introd
 - `scripts/tests/test_builtin_loops.py:46-64` — hardcoded `expected` set of built-in loop names **must** be updated to include `rl-bandit`, `rl-rlhf`, `rl-policy`; otherwise the test asserts equality and will fail
 
 ### Similar Patterns
-- `skills/create-loop/loop-types.md:548-878` — `## Harness Questions` section is the direct template to follow: question flow → YAML generation → two structural variants
+- `skills/create-loop/loop-types.md:548-912` — `## Harness Questions` section is the direct template to follow: question flow → YAML generation → two structural variants (Variant A single-shot 671-721, Variant B multi-item 723-813, stall detection 816-848, full example 851-912)
 - `skills/create-loop/SKILL.md:67-77` — how `harness` was added as option 5; add RL types as options 6-8 (or a grouped category)
 - `loops/backlog-flow-optimizer.yaml` — shows `context:` dict + `${context.<key>}` interpolation for shared RL parameters (reward target, learning rate, etc.)
 - `scripts/little_loops/fsm/evaluators.py:308-370` — `convergence` evaluator with `target/progress/stall` verdicts maps directly to RL reward tracking
@@ -95,7 +95,7 @@ Extend `ll-loop` and `/ll:create-loop` with built-in RL loop templates by introd
 
 ## Implementation Steps
 
-1. Read `skills/create-loop/loop-types.md:548-878` (harness section) and `skills/create-loop/SKILL.md:52-77` to understand the exact extension point format
+1. Read `skills/create-loop/loop-types.md:548-912` (harness section) and `skills/create-loop/SKILL.md:52-77` to understand the exact extension point format
 2. Add 3 RL options to the Step 1 `AskUserQuestion` in `skills/create-loop/SKILL.md:52-77` and type-mapping entries following the harness pattern at lines 72-77
 3. Add a `## RL Loops` question/YAML section in `skills/create-loop/loop-types.md` for each type:
    - `rl-bandit`: `context` dict for epsilon/reward, states `explore → exploit → reward → update`, `convergence` evaluator routing `target: done, progress: exploit, stall: explore`
@@ -103,7 +103,7 @@ Extend `ll-loop` and `/ll:create-loop` with built-in RL loop templates by introd
    - `rl-policy`: states `act → observe → score → improve`, `convergence` evaluator toward target reward
 4. Create `loops/rl-bandit.yaml`, `loops/rl-rlhf.yaml`, `loops/rl-policy.yaml` — valid YAML conforming to `fsm-loop-schema.json`; at minimum must have `name`, `initial`, `states` with one `terminal: true` state
 5. Update `scripts/tests/test_builtin_loops.py:46-64` — add `"rl-bandit"`, `"rl-rlhf"`, `"rl-policy"` to `expected` set
-6. Add state diagrams to `skills/create-loop/reference.md` following harness diagram pattern at lines 89-132
+6. Add state diagrams to `skills/create-loop/reference.md` following harness diagram pattern (multi-item at lines 89-124, single-shot at lines 148-174)
 7. Update `docs/guides/LOOPS_GUIDE.md` to list the new RL built-ins with `ll-loop install rl-bandit` etc.
 8. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` to verify all 3 new YAML files parse and validate
 
@@ -176,6 +176,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - No RL loop YAML files (`rl-bandit`, `rl-rlhf`, `rl-policy`, etc.) exist in `loops/`. `skills/create-loop/SKILL.md` lists only 4 loop types with no RL category. Feature not yet implemented.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T01:30:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/083c98f0-29d8-46f4-b688-ac4057f84518.jsonl`
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab9873-e77b-46a5-b50b-85782d3bc37c.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09173b5b-d72c-42cc-87ef-609e8e998bce.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
