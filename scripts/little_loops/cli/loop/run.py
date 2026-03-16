@@ -63,6 +63,11 @@ def cmd_run(
         key, _, value = kv.partition("=")
         fsm.context[key.strip()] = value.strip()
 
+    if getattr(args, "handoff_threshold", None) is not None:
+        if not (1 <= args.handoff_threshold <= 100):
+            raise SystemExit("--handoff-threshold must be between 1 and 100")
+        os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
+
     # Dry run
     if args.dry_run:
         print_execution_plan(fsm)

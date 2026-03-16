@@ -667,3 +667,88 @@ class TestCmdResumeExitCodes:
     def test_unknown_terminated_by_returns_1(self, tmp_path: Path) -> None:
         """Unknown terminated_by values fall back to exit code 1."""
         assert self._resume_with_terminated_by(tmp_path, "unexpected") == 1
+
+
+class TestCmdRunHandoffThreshold:
+    """Tests for --handoff-threshold handling in cmd_run (ENH-768)."""
+
+    def _make_args(self, handoff_threshold: int | None = None, **kwargs: object) -> argparse.Namespace:
+        defaults = dict(
+            input=None,
+            context=[],
+            max_iterations=None,
+            delay=None,
+            no_llm=False,
+            llm_model=None,
+            dry_run=True,
+            background=False,
+            foreground_internal=False,
+            quiet=False,
+            verbose=False,
+            show_diagrams=False,
+            clear=False,
+            queue=False,
+            handoff_threshold=handoff_threshold,
+        )
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def _make_loop(self, tmp_path: Path) -> Path:
+        """Create a minimal loop YAML in tmp_path."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_handoff_threshold_sets_env_var(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Setting --handoff-threshold writes LL_HANDOFF_THRESHOLD to env."""
+        import os
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        monkeypatch.delenv("LL_HANDOFF_THRESHOLD", raising=False)
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(handoff_threshold=40)
+        logger = Logger(use_color=False)
+
+        result = cmd_run("test-loop", args, loops_dir, logger)
+
+        assert result == 0
+        assert os.environ.get("LL_HANDOFF_THRESHOLD") == "40"
+
+    def test_handoff_threshold_none_does_not_set_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When --handoff-threshold is not set, LL_HANDOFF_THRESHOLD is left alone."""
+        import os
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        monkeypatch.delenv("LL_HANDOFF_THRESHOLD", raising=False)
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(handoff_threshold=None)
+        logger = Logger(use_color=False)
+
+        cmd_run("test-loop", args, loops_dir, logger)
+
+        assert "LL_HANDOFF_THRESHOLD" not in os.environ
+
+    def test_handoff_threshold_out_of_range_raises(
+        self, tmp_path: Path
+    ) -> None:
+        """--handoff-threshold outside 1-100 raises SystemExit."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        logger = Logger(use_color=False)
+
+        with pytest.raises(SystemExit):
+            cmd_run("test-loop", self._make_args(handoff_threshold=0), loops_dir, logger)
+
+        with pytest.raises(SystemExit):
+            cmd_run("test-loop", self._make_args(handoff_threshold=101), loops_dir, logger)

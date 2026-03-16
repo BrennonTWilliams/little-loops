@@ -354,6 +354,55 @@ class TestRunBackground:
         assert "ll-loop status my-loop" in captured.out
         assert "ll-loop stop my-loop" in captured.out
 
+    def test_forwards_handoff_threshold(self, tmp_path: Path) -> None:
+        """Forwards --handoff-threshold to child process."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            handoff_threshold=40,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--handoff-threshold" in cmd
+        assert "40" in cmd
+
+    def test_handoff_threshold_not_forwarded_when_none(self, tmp_path: Path) -> None:
+        """Does not add --handoff-threshold to child command when not set."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            handoff_threshold=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--handoff-threshold" not in cmd
+
 
 class TestCmdStopWithPid:
     """Tests for cmd_stop with PID-based process termination."""

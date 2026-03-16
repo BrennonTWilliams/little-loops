@@ -2,7 +2,7 @@
 id: ENH-768
 priority: P3
 type: ENH
-status: active
+status: completed
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
@@ -99,11 +99,20 @@ Use `add_handoff_threshold_arg` from `little_loops/cli_args.py` (already exporte
 
 ## Status
 
-Active — ready to implement.
+Completed.
+
+## Resolution
+
+- Added `add_handoff_threshold_arg(run_parser)` and `add_handoff_threshold_arg(resume_parser)` in `cli/loop/__init__.py`
+- Applied `os.environ["LL_HANDOFF_THRESHOLD"]` with range validation in `cmd_run()` in `cli/loop/run.py`
+- Forwarded `--handoff-threshold` in `run_background()` re-exec cmd list in `cli/loop/_helpers.py`
+- Added tests: parser registration checks in `test_ll_loop_parsing.py`, background forwarding checks in `test_cli_loop_background.py`, env var and validation tests in `test_cli_loop_lifecycle.py`
 
 ---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-16T04:29:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1db47b8-5abc-4e81-8c38-9ffef97c72b6.jsonl`
 - `/ll:refine-issue` - 2026-03-16T04:03:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b9d709-fa77-4b1c-ae7d-3c947f2ae388.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b9d709-fa77-4b1c-ae7d-3c947f2ae388.jsonl`

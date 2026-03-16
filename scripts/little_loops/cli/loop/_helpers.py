@@ -249,6 +249,9 @@ def run_background(
     delay = getattr(args, "delay", None)
     if delay is not None:
         cmd.extend(["--delay", str(delay)])
+    handoff_threshold = getattr(args, "handoff_threshold", None)
+    if handoff_threshold is not None:
+        cmd.extend(["--handoff-threshold", str(handoff_threshold)])
 
     with open(log_file, "w") as log_fh:
         process = subprocess.Popen(

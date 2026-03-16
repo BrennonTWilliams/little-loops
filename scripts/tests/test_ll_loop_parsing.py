@@ -25,6 +25,8 @@ class TestLoopArgumentParsing:
 
     def _create_run_parser(self) -> argparse.ArgumentParser:
         """Create parser for run subcommand tests."""
+        from little_loops.cli_args import add_handoff_threshold_arg
+
         parser = argparse.ArgumentParser(prog="ll-loop run")
         parser.add_argument("loop")
         parser.add_argument("input", nargs="?", default=None)
@@ -35,6 +37,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--no-llm", action="store_true")
         parser.add_argument("--llm-model", type=str)
         parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
+        add_handoff_threshold_arg(parser)
         return parser
 
     def _create_subparser_only(self) -> argparse.ArgumentParser:
@@ -238,6 +241,62 @@ class TestLoopArgumentParsing:
         args = parser.parse_args(["my-loop", "FEAT-719", "--context", "other=val"])
         assert args.input == "FEAT-719"
         assert args.context == ["other=val"]
+
+    def test_handoff_threshold_parsed(self) -> None:
+        """--handoff-threshold is registered on the run subparser."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "--handoff-threshold", "40"])
+        assert args.handoff_threshold == 40
+
+    def test_handoff_threshold_default_is_none(self) -> None:
+        """--handoff-threshold defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop"])
+        assert args.handoff_threshold is None
+
+    def test_handoff_threshold_registered_on_real_run_parser(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--handoff-threshold is accepted by the actual ll-loop run parser."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "my-loop", "--handoff-threshold", "55"]),
+            patch("little_loops.cli.loop.run.cmd_run", return_value=0) as mock_run,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_run.assert_called_once()
+        run_args = mock_run.call_args[0][1]
+        assert getattr(run_args, "handoff_threshold", None) == 55
+
+    def test_handoff_threshold_registered_on_real_resume_parser(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--handoff-threshold is accepted by the actual ll-loop resume parser."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(
+                sys, "argv", ["ll-loop", "resume", "my-loop", "--handoff-threshold", "30"]
+            ),
+            patch("little_loops.cli.loop.lifecycle.cmd_resume", return_value=0) as mock_resume,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_resume.assert_called_once()
+        resume_args = mock_resume.call_args[0][1]
+        assert getattr(resume_args, "handoff_threshold", None) == 30
 
 
 class TestResolveLoopPath:
