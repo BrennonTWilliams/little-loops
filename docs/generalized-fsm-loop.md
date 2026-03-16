@@ -353,6 +353,7 @@ scope: array[string]            # Paths this loop operates on (for concurrency)
 max_iterations: integer         # Safety limit (default: 50)
 backoff: number                 # Seconds between iterations
 timeout: number                 # Max total runtime in seconds (loop-level)
+default_timeout: number         # Default per-state action timeout in seconds (overridden by state-level timeout:)
 maintain: boolean               # Restart after completion
 
 # LLM Evaluation Settings
@@ -1220,20 +1221,24 @@ states:
 
 ## Timeouts
 
-Two levels of timeout protection:
+Three levels of timeout protection:
 
 ```yaml
 # Loop-level: max wall-clock time for entire loop
 timeout: 3600                   # 1 hour
 
+# Loop-level: default per-state action timeout (fallback for states without timeout:)
+default_timeout: 3600           # 1 hour for each prompt/action state
+
 states:
   build:
     action: "npm run build"
-    timeout: 300                # 5 min for this action
+    timeout: 300                # 5 min for this action (overrides default_timeout)
 ```
 
-- **Action timeout**: Catches hung processes
-- **Loop timeout**: Bounds total execution time
+- **Action timeout** (`state.timeout`): Per-state override; catches hung processes
+- **Default timeout** (`default_timeout`): Loop-level fallback applied to all states that don't set `timeout:`; hardcoded fallback is 3600s for prompt/LLM states and 30s for MCP tool calls when neither is set
+- **Loop timeout** (`timeout`): Bounds total wall-clock execution time (independent of per-state timeouts)
 
 LLM evaluation has its own timeout (default 30s) configured at loop level:
 

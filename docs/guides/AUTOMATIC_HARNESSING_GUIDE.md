@@ -117,11 +117,8 @@ Which evaluation phases should be included? (multi-select)
   ☑ Tool-based gates (Recommended)   — Shell checks using test/lint/type commands
   ☑ LLM-as-judge                     — Claude assesses output against skill description
   ☑ Diff invariants                  — git diff --stat line count < 50
-  ○ MCP tool gates (Optional)        — Deterministic check via a configured MCP server
   ○ Skill-based evaluation (Optional) — Invoke a skill to exercise and verify the feature as a user would
 ```
-
-> The wizard surfaces MCP tool gates only when `.mcp.json` contains at least one configured server. This phase is unselected by default — add it when an MCP server can verify something the other phases cannot. Prefer `check_skill` when a skill can actively exercise the feature end-to-end; prefer `check_mcp` when a single deterministic tool call is sufficient.
 
 **Tool-gate priority order** (highest-priority configured command wins):
 1. `test_cmd` — most comprehensive

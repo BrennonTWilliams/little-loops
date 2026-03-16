@@ -185,13 +185,13 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 
 | Evaluator | Verdicts | Default for | When to use |
 |-----------|----------|-------------|-------------|
-| `exit_code` | `success` / `failure` / `error` | shell commands | CLI tools that report pass/fail via exit code |
-| `output_numeric` | `success` / `failure` / `error` | — | Compare parsed numeric output to a target |
-| `output_json` | `success` / `failure` / `error` | — | Extract a JSON path value and compare |
-| `output_contains` | `success` / `failure` | — | Regex or substring match on stdout |
+| `exit_code` | `yes` / `no` / `error` | shell commands | CLI tools that report pass/fail via exit code |
+| `output_numeric` | `yes` / `no` / `error` | — | Compare parsed numeric output to a target |
+| `output_json` | `yes` / `no` / `error` | — | Extract a JSON path value and compare |
+| `output_contains` | `yes` / `no` | — | Regex or substring match on stdout |
 | `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
 | `diff_stall` | `stall` / `progress` | — | Detect when consecutive iterations produce no git diff changes |
-| `llm_structured` | `success` / `failure` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
+| `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 
 Override the default by adding an `evaluate:` block to a state:
 
@@ -519,6 +519,7 @@ The `simulate` command accepts `--scenario` to auto-select verdicts instead of p
 |----------|----------|
 | `all-pass` | Every evaluation returns success/target |
 | `all-fail` | Every evaluation returns failure/stall |
+| `all-error` | Every evaluation returns error |
 | `first-fail` | First evaluation fails, rest succeed |
 | `alternating` | Alternates between success and failure |
 
