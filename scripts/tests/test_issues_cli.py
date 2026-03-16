@@ -1564,6 +1564,142 @@ class TestIssuesAppendLog:
         assert issue_file.read_text() == original_content
 
 
+@pytest.fixture
+def list_sort_issues_dir(temp_project_dir: Path, sample_config: dict[str, Any]) -> Path:
+    """Create issue directories with varied frontmatter for list --sort tests."""
+    config_path = temp_project_dir / ".claude" / "ll-config.json"
+    config_path.write_text(json.dumps(sample_config, indent=2))
+
+    issues_base = temp_project_dir / ".issues"
+    bugs_dir = issues_base / "bugs"
+    features_dir = issues_base / "features"
+    for d in (bugs_dir, features_dir):
+        d.mkdir(parents=True, exist_ok=True)
+
+    # P0, confidence=90, outcome=80, 2 refinement commands, oldest date
+    (bugs_dir / "P0-BUG-001-critical.md").write_text(
+        "---\nid: BUG-001\ndiscovered_date: 2026-01-10\nconfidence_score: 90\noutcome_confidence: 80\n---\n"
+        "# BUG-001: Critical crash\n\n## Summary\nApp crashes.\n\n"
+        "## Session Log\n"
+        "- `/ll:refine-issue` - 2026-01-11T00:00:00Z\n"
+        "- `/ll:verify-issues` - 2026-01-12T00:00:00Z\n"
+    )
+    # P2, confidence=50, outcome=95, 0 refinements, newest date
+    (bugs_dir / "P2-BUG-002-caching.md").write_text(
+        "---\nid: BUG-002\ndiscovered_date: 2026-03-01\nconfidence_score: 50\noutcome_confidence: 95\n---\n"
+        "# BUG-002: Caching issue\n\n## Summary\nCache broken.\n"
+    )
+    # P1, confidence=70, outcome=60, 1 refinement, middle date
+    (features_dir / "P1-FEAT-010-dark-mode.md").write_text(
+        "---\nid: FEAT-010\ndiscovered_date: 2026-02-15\nconfidence_score: 70\noutcome_confidence: 60\n---\n"
+        "# FEAT-010: Dark mode\n\n## Summary\nDark theme.\n\n"
+        "## Session Log\n"
+        "- `/ll:refine-issue` - 2026-02-16T00:00:00Z\n"
+    )
+
+    return issues_base
+
+
+class TestListSorting:
+    """Tests for ll-issues list --sort argument."""
+
+    def test_sort_by_priority_default(
+        self,
+        temp_project_dir: Path,
+        list_sort_issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Default sort is priority ascending: P0 < P1 < P2."""
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--flat", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli.issues import main_issues
+
+            result = main_issues()
+
+        captured = capsys.readouterr()
+        assert result == 0
+        lines = [ln for ln in captured.out.splitlines() if ln.strip()]
+        p0_idx = next(i for i, ln in enumerate(lines) if "BUG-001" in ln)
+        p1_idx = next(i for i, ln in enumerate(lines) if "FEAT-010" in ln)
+        p2_idx = next(i for i, ln in enumerate(lines) if "BUG-002" in ln)
+        assert p0_idx < p1_idx < p2_idx
+
+    def test_sort_by_confidence_asc(
+        self,
+        temp_project_dir: Path,
+        list_sort_issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--sort confidence --asc orders by confidence_score ascending: 50 < 70 < 90."""
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--flat", "--sort", "confidence", "--asc", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli.issues import main_issues
+
+            result = main_issues()
+
+        captured = capsys.readouterr()
+        assert result == 0
+        lines = [ln for ln in captured.out.splitlines() if ln.strip()]
+        bug002_idx = next(i for i, ln in enumerate(lines) if "BUG-002" in ln)
+        feat010_idx = next(i for i, ln in enumerate(lines) if "FEAT-010" in ln)
+        bug001_idx = next(i for i, ln in enumerate(lines) if "BUG-001" in ln)
+        assert bug002_idx < feat010_idx < bug001_idx
+
+    def test_sort_by_created_default_desc(
+        self,
+        temp_project_dir: Path,
+        list_sort_issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--sort created defaults to descending (newest first): 2026-03-01 > 2026-02-15 > 2026-01-10."""
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--flat", "--sort", "created", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli.issues import main_issues
+
+            result = main_issues()
+
+        captured = capsys.readouterr()
+        assert result == 0
+        lines = [ln for ln in captured.out.splitlines() if ln.strip()]
+        bug002_idx = next(i for i, ln in enumerate(lines) if "BUG-002" in ln)
+        feat010_idx = next(i for i, ln in enumerate(lines) if "FEAT-010" in ln)
+        bug001_idx = next(i for i, ln in enumerate(lines) if "BUG-001" in ln)
+        assert bug002_idx < feat010_idx < bug001_idx
+
+    def test_sort_desc_flag(
+        self,
+        temp_project_dir: Path,
+        list_sort_issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--sort priority --desc reverses priority order: P2 > P1 > P0."""
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--flat", "--sort", "priority", "--desc", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli.issues import main_issues
+
+            result = main_issues()
+
+        captured = capsys.readouterr()
+        assert result == 0
+        lines = [ln for ln in captured.out.splitlines() if ln.strip()]
+        p0_idx = next(i for i, ln in enumerate(lines) if "BUG-001" in ln)
+        p1_idx = next(i for i, ln in enumerate(lines) if "FEAT-010" in ln)
+        p2_idx = next(i for i, ln in enumerate(lines) if "BUG-002" in ln)
+        assert p2_idx < p1_idx < p0_idx
+
+
 class TestIssuesCLIHelp:
     """Tests for ll-issues help and no-command behavior."""
 

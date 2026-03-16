@@ -90,6 +90,14 @@ Examples:
     )
     ls.add_argument("--json", action="store_true", help="Output as JSON array")
     ls.add_argument("--limit", "-n", type=int, metavar="N", default=None, help="Cap output at N issues (must be ≥ 1)")
+    ls.add_argument(
+        "--sort",
+        choices=["priority", "id", "type", "title", "created", "completed", "confidence", "outcome", "refinement"],
+        default="priority",
+        help="Sort field (default: priority)",
+    )
+    ls.add_argument("--asc", action="store_true", default=False, help="Sort ascending")
+    ls.add_argument("--desc", action="store_true", default=False, help="Sort descending")
     add_config_arg(ls)
 
     sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")
@@ -146,7 +154,7 @@ Examples:
     )
     sr.add_argument(
         "--sort",
-        choices=["priority", "id", "date", "type", "title"],
+        choices=["priority", "id", "date", "type", "title", "created", "completed", "confidence", "outcome", "refinement"],
         default="priority",
         help="Sort field (default: priority)",
     )

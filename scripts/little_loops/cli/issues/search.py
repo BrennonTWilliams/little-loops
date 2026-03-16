@@ -101,28 +101,43 @@ def _load_issues_with_status(
 
 
 def _sort_issues(
-    items: list[tuple[IssueInfo, str, date | None]],
+    items: list[tuple[IssueInfo, str, date | None, date | None]],
     sort_field: str,
     descending: bool,
-) -> list[tuple[IssueInfo, str, date | None]]:
+) -> list[tuple[IssueInfo, str, date | None, date | None]]:
     """Sort issues by the requested field."""
+    sentinel = date(9999, 12, 31)
 
     def key(item: tuple) -> tuple:
-        issue, _status, disc_date = item
+        issue, _status, disc_date, comp_date = item
         if sort_field == "priority":
             return (issue.priority_int, issue.issue_id)
         if sort_field == "id":
             m = re.search(r"-(\d+)$", issue.issue_id)
             num = int(m.group(1)) if m else 0
             return (issue.issue_id.split("-", 1)[0], num)
-        if sort_field == "date":
-            # None dates sort last; use a far-future sentinel
-            sentinel = date(9999, 12, 31)
+        if sort_field in ("date", "created"):
             return (disc_date or sentinel,)
+        if sort_field == "completed":
+            return (comp_date or sentinel,)
         if sort_field == "type":
             return (issue.issue_id.split("-", 1)[0], issue.priority_int, issue.issue_id)
         if sort_field == "title":
             return (issue.title.lower(),)
+        if sort_field == "confidence":
+            score = issue.confidence_score if issue.confidence_score is not None else 9999
+            return (score,)
+        if sort_field == "outcome":
+            score = issue.outcome_confidence if issue.outcome_confidence is not None else 9999
+            return (score,)
+        if sort_field == "refinement":
+            refinement_commands = {
+                "/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues",
+                "/ll:map-dependencies", "/ll:ready-issue",
+            }
+            counts: dict[str, int] = getattr(issue, "session_command_counts", {}) or {}
+            total = sum(counts.get(cmd, 0) for cmd in refinement_commands)
+            return (total,)
         return (issue.priority_int, issue.issue_id)
 
     return sorted(items, key=key, reverse=descending)
@@ -169,10 +184,14 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
             print(f"Invalid --until date: {raw_until!r}. Use YYYY-MM-DD.")
             return 1
 
-    need_content = bool(query or since_date or until_date or getattr(args, "label", None))
+    sort_field = getattr(args, "sort", "priority") or "priority"
+    need_content = bool(
+        query or since_date or until_date or getattr(args, "label", None)
+        or sort_field in {"date", "created", "completed"}
+    )
 
-    # Build enriched list: (IssueInfo, status, discovered_date, labels, content)
-    enriched: list[tuple[IssueInfo, str, date | None]] = []
+    # Build enriched list: (IssueInfo, status, discovered_date, completed_date)
+    enriched: list[tuple[IssueInfo, str, date | None, date | None]] = []
     for issue, stat in raw:
         if need_content:
             try:
@@ -225,17 +244,21 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
         if until_date and (ref_date is None or ref_date > until_date):
             continue
 
-        enriched.append((issue, stat, disc_date))
+        comp_date: date | None = None
+        if sort_field == "completed" and need_content:
+            from little_loops.issue_history.parsing import _parse_completion_date
+
+            comp_date = _parse_completion_date(content, issue.path)
+        enriched.append((issue, stat, disc_date, comp_date))
 
     # --- Sort ---
-    sort_field = getattr(args, "sort", "priority") or "priority"
-    # Default direction: desc for date, asc for everything else
+    # Default direction: desc for date/created/completed (newest first), asc for everything else
     if getattr(args, "desc", False):
         descending = True
     elif getattr(args, "asc", False):
         descending = False
     else:
-        descending = sort_field == "date"
+        descending = sort_field in {"date", "created", "completed"}
 
     enriched = _sort_issues(enriched, sort_field, descending)
 

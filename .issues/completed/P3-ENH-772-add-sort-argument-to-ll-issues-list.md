@@ -2,7 +2,7 @@
 id: ENH-772
 type: ENH
 priority: P3
-status: active
+status: completed
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
@@ -50,7 +50,7 @@ Also extend `ll-issues search --sort` choices with: `created`, `completed`, `con
 
 ### Files to Modify
 
-**`scripts/little_loops/cli/issues/__init__.py`** (lines 73–91)
+**`scripts/little_loops/cli/issues/__init__.py`** (lines 72–93)
 - Add `--sort`, `--asc`, `--desc` arguments to the `list` subparser (currently missing)
 - Extend `search` subparser `--sort` choices from `["priority", "id", "date", "type", "title"]` to include `["created", "completed", "confidence", "outcome", "refinement"]`
 
@@ -78,7 +78,7 @@ Also extend `ll-issues search --sort` choices with: `created`, `completed`, `con
 - `need_content` flag pattern — `search.py:172`; set `True` when sort key requires file content reads
 
 ### Grouped Rendering Caveat (Critical)
-`cmd_list` in non-flat mode re-buckets issues into `{"BUG": [], "FEAT": [], "ENH": []}` at `list_cmd.py:69-73` before rendering. This means sort keys other than `type` will only have visible effect with `--flat` output. Two implementation options:
+`cmd_list` in non-flat mode re-buckets issues into `{"BUG": [], "FEAT": [], "ENH": []}` at `list_cmd.py:78-82` before rendering. This means sort keys other than `type` will only have visible effect with `--flat` output. Two implementation options:
 1. **Simplest**: Apply sort within each type bucket (sort happens before the re-bucket, output is sorted within each group)
 2. **Alternative**: Document that `--sort` is only meaningful with `--flat` in list mode
 
@@ -92,7 +92,15 @@ Option 1 is recommended for consistency with user expectations.
 4. **Update `cmd_search` in `search.py`** — expand enriched tuples from 3-tuple to 4-tuple, populating `comp_date` when `sort_field == "completed"` via `_parse_completion_date()` from `issue_history/parsing.py:80`; update default-descending logic to include `"created"` alongside existing `"date"` check
 5. **Tests** — add `TestListSorting` class in `scripts/tests/test_issues_cli.py` following `TestSearchSorting` pattern at `test_issues_search.py:534-619`; use `--flat --sort <key> --format ids` (or check output order); extend `search_issues_dir` fixture or create `list_sort_issues_dir` with frontmatter fields `confidence_score`, `outcome_confidence`, session log entries; use `lines.index("ID-NNN") < lines.index("ID-NNN")` assertion idiom
 
+## Resolution
+
+**Completed**: 2026-03-16
+
+Implemented `--sort`, `--asc`, and `--desc` arguments for `ll-issues list`. Extended `_sort_issues()` in `search.py` to a 4-tuple with `comp_date` and added branches for `created`, `completed`, `confidence`, `outcome`, and `refinement` sort keys. Updated `cmd_search` to resolve `sort_field` early and populate `comp_date` for `completed` sort. Extended `search --sort` choices with all new keys. Added `TestListSorting` with 4 tests.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - current session
+- `/ll:ready-issue` - 2026-03-16T17:45:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/215bd8fd-d4ba-434a-81e8-f9dcc6feb4a9.jsonl`
 - `/ll:verify-issues` - 2026-03-16T17:27:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
 - `/ll:refine-issue` - 2026-03-16T17:21:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04f3d100-af21-43e6-8a78-b678385890bf.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef26d0b4-df23-48b7-b46f-a500ba15fda8.jsonl`

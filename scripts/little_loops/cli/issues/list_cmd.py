@@ -21,7 +21,13 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success)
     """
-    from little_loops.cli.issues.search import _load_issues_with_status
+    from datetime import date
+
+    from little_loops.cli.issues.search import (
+        _load_issues_with_status,
+        _parse_discovered_date,
+        _sort_issues,
+    )
 
     status = getattr(args, "status", "active") or "active"
     include_active = status in ("active", "all")
@@ -33,12 +39,41 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     type_filter = getattr(args, "type", None)
     priority_filter = getattr(args, "priority", None)
 
-    issues_with_status = [
+    filtered = [
         (issue, stat)
         for issue, stat in raw
         if (not type_filter or issue.issue_id.split("-", 1)[0] == type_filter)
         and (not priority_filter or issue.priority == priority_filter)
     ]
+
+    # Sort
+    sort_field = getattr(args, "sort", "priority") or "priority"
+    need_content = sort_field in {"created", "completed"}
+    enriched: list[tuple] = []
+    for issue, stat in filtered:
+        disc_date: date | None = None
+        comp_date: date | None = None
+        if need_content:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                content = ""
+            if sort_field == "created":
+                disc_date = _parse_discovered_date(content)
+            elif sort_field == "completed":
+                from little_loops.issue_history.parsing import _parse_completion_date
+
+                comp_date = _parse_completion_date(content, issue.path)
+        enriched.append((issue, stat, disc_date, comp_date))
+
+    if getattr(args, "desc", False):
+        descending = True
+    elif getattr(args, "asc", False):
+        descending = False
+    else:
+        descending = sort_field in {"created", "completed"}
+
+    enriched = _sort_issues(enriched, sort_field, descending)
 
     limit = getattr(args, "limit", None)
     if limit is not None and limit < 1:
@@ -47,7 +82,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         return 1
 
     if limit is not None:
-        issues_with_status = issues_with_status[:limit]
+        enriched = enriched[:limit]
+
+    issues_with_status = [(item[0], item[1]) for item in enriched]
 
     if not issues_with_status:
         print("No issues found.")
@@ -63,8 +100,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     "title": issue.title,
                     "path": str(issue.path),
                     "status": stat,
+                    "discovered_date": str(disc_date) if disc_date else None,
                 }
-                for issue, stat in issues_with_status
+                for issue, stat, disc_date, _comp_date in enriched
             ]
         )
         return 0
