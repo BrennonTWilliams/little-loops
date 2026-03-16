@@ -129,10 +129,12 @@ states:
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py:28-43` — auto-covers new YAML; no additional test code needed beyond `expected` set update
-- `scripts/tests/test_builtin_loops.py:254-284` — `apo-textgrad` uses `output_contains` (not `llm_structured`), so not in the enforced `on_blocked` set; include `on_blocked` as best practice
+- `scripts/tests/test_builtin_loops.py:46-64` — `test_expected_loops_exist` uses strict two-way equality (`expected == actual` at line 64); adding `apo-textgrad.yaml` without adding `"apo-textgrad"` to the set will fail the test
+- `scripts/tests/test_builtin_loops.py:257-287` — `REQUIRED_ON_BLOCKED` (lines 261-266) enforces `on_blocked` only for `llm_structured` evaluate states; `apo-textgrad` uses `output_contains` routing, so no entry needed in this list; `on_blocked: done` on the three prompt states is best practice only
 
 ### Documentation
-- `docs/guides/LOOPS_GUIDE.md` — explain text gradient concept, `examples_file` expected format (JSON array of `{input, expected}` objects), when to use vs `apo-feedback-refinement` (example-driven vs holistic)
+- `docs/guides/LOOPS_GUIDE.md:171` — insert new table row after the `rl-policy` row (end of built-in loops table); format: `| \`apo-textgrad\` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |`
+- No per-loop extended sections exist in LOOPS_GUIDE.md (table rows only); `examples_file` format guidance and when-to-use explanation belong in a new `### APO Loops` subsection added below the table (before line 173 `## Beyond the Basics`)
 
 ### Configuration
 - N/A — no schema changes needed
@@ -195,4 +197,5 @@ ll-loop show apo-textgrad
 **Open** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T02:10:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation

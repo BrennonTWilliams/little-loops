@@ -15,7 +15,7 @@ Add a built-in FSM loop `apo-beam` that implements beam search for prompt optimi
 
 ## Current Behavior
 
-`ll-loop` has no built-in loop implementing beam search over the prompt space. Users who want to explore multiple prompt variants simultaneously and select the strongest must design a custom FSM from scratch. The existing `apo-feedback-refinement` loop (FEAT-722) only refines one candidate per iteration — it cannot explore multiple directions simultaneously.
+`ll-loop` has no built-in loop implementing beam search over the prompt space. Users who want to explore multiple prompt variants simultaneously and select the strongest must design a custom FSM from scratch. FEAT-722 (the parent APO initiative) plans a single-path refinement loop (`apo-feedback-refinement`) that only refines one candidate per iteration — it cannot explore multiple directions simultaneously. Neither `apo-beam.yaml` nor `apo-feedback-refinement.yaml` exist yet; both are planned deliverables from FEAT-722. As of 2026-03-15, `loops/` contains no `apo-*.yaml` files.
 
 ## Expected Behavior
 
@@ -47,7 +47,7 @@ Single-path refinement loops can get stuck in local optima. Beam search explores
 - [ ] Loop scores all variants and selects the highest-scoring one
 - [ ] Loop terminates on convergence (emits `CONVERGED` token) or `max_iterations`
 - [ ] `scripts/tests/test_builtin_loops.py` `expected` set updated to include `apo-beam`
-- [ ] `on_blocked` defined for any prompt-driven states
+- [ ] `on_blocked` omitted from `action_type: prompt` states (see Integration Map — `on_blocked` is only valid on `llm_structured` evaluate states)
 - [ ] `docs/guides/LOOPS_GUIDE.md` documents the loop with usage example
 
 ## Proposed Solution
@@ -73,7 +73,6 @@ states:
       Vary structure, phrasing, examples, and persona — not just minor wording.
       Output each variant numbered 1 through ${context.beam_width}, separated by "---VARIANT---".
     capture: variants
-    on_blocked: done
     next: score_variants
   score_variants:
     action_type: prompt
@@ -84,7 +83,6 @@ states:
       For each variant output: "Variant N: <score 0-100> — <one-line rationale>"
       On the final line output: BEST_VARIANT=N (the number of the highest-scoring variant)
     capture: scores
-    on_blocked: done
     next: select_best
   select_best:
     action_type: prompt
@@ -96,7 +94,6 @@ states:
       Otherwise output the variant text followed by CONTINUE on its own line.
       Also overwrite ${context.prompt_file} with the winning variant text.
     capture: best_candidate
-    on_blocked: done
     next: route_convergence
   route_convergence:
     evaluate:
@@ -129,7 +126,8 @@ states:
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py:28-43` — auto-covers new YAML; no additional test code needed beyond `expected` set update
-- `scripts/tests/test_builtin_loops.py:254-284` — `TestBuiltinLoopOnBlockedCoverage`: `apo-beam` uses `output_contains` (not `llm_structured`), so not in the enforced set; include `on_blocked` as best practice anyway
+- `scripts/tests/test_builtin_loops.py:48-62` — `expected` set currently has 13 stems; adding `"apo-beam"` makes 14; bidirectional equality check means both the YAML and the set entry must be added together
+- `scripts/tests/test_builtin_loops.py:254-284` — `TestBuiltinLoopOnBlockedCoverage`: enforces `on_blocked` only for `llm_structured` evaluate states; `apo-beam` uses only `output_contains` routing, so it is NOT in the enforced set and must NOT add `on_blocked` to action states (research confirms `on_blocked` appears exclusively on `llm_structured` evaluate states across all existing loops)
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — explain beam search concept, when to use vs `apo-feedback-refinement` (exploration vs exploitation), `beam_width` parameter guidance
@@ -143,7 +141,7 @@ states:
 2. Author `loops/apo-beam.yaml` following the YAML shape in Proposed Solution above
 3. Add `"apo-beam"` to `expected` set in `scripts/tests/test_builtin_loops.py:48-61`
 4. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` — all 3 auto-tests must pass
-5. Add `apo-beam` entry to `docs/guides/LOOPS_GUIDE.md`
+5. Add `apo-beam` entry to `docs/guides/LOOPS_GUIDE.md:157-171` built-in loops table: `| \`apo-beam\` | Beam search prompt optimization — generate N variants, score all, advance the winner |`
 
 ## API/Interface
 
@@ -184,4 +182,5 @@ ll-loop install apo-beam
 **Open** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T02:11:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b918c53-10e7-4c18-8f65-7a0fdd85cd04.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
