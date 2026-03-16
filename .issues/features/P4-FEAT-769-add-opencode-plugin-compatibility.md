@@ -1,7 +1,7 @@
 ---
 id: FEAT-769
 type: FEAT
-priority: P3
+priority: P4
 status: open
 discovered_date: 2026-03-15
 discovered_by: capture-issue
@@ -132,7 +132,7 @@ Formalize a platform abstraction layer: a `PlatformAdapter` interface with `Clau
 
 ## Impact
 
-- **Priority**: P3 — High value for audience expansion, not blocking any current users
+- **Priority**: P4 — High value for audience expansion, not blocking any current users
 - **Effort**: Medium — Hook logic is already written in bash; porting to JS is translation work. Config path abstraction is small. No architectural changes to the Python core.
 - **Risk**: Low — Additive change, no modifications to Claude Code path. OpenCode plugin can be opt-in.
 - **Breaking Change**: No
@@ -151,4 +151,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Open** | Created: 2026-03-15 | Priority: P4
