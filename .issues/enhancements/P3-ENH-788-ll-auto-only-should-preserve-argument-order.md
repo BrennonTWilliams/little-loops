@@ -53,5 +53,49 @@ When `--only` is not provided, the existing priority sort is preserved.
 - `ll-auto` without `--only` continues to sort by priority — no regression
 - Existing tests pass
 
+## Scope Boundaries
+
+- **In scope**: Preserving `--only` argument order in `ll-auto`; changing `parse_issue_ids` to return an ordered list; reordering results in `find_issues()` when `only_ids` is a list
+- **Out of scope**: Changing priority-based sort for non-`--only` invocations; modifying `ll-sprint` or `ll-parallel` ordering behavior; adding new sort modes
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli_args.py` — add `parse_issue_ids_ordered()` returning `list[str]`
+- `scripts/little_loops/issue_parser.py` — update `find_issues()` to accept `list[str] | set[str] | None` for `only_ids`; skip sort and reorder by list when `only_ids` is a list
+- `scripts/little_loops/cli/auto.py` — call `parse_issue_ids_ordered` instead of `parse_issue_ids` for `--only`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/auto.py` — primary caller of `find_issues()` and `parse_issue_ids`
+- Any other CLI entry points that pass `only_ids` to `find_issues()`
+
+### Similar Patterns
+- `find_highest_priority_issue` also threads `only_ids` through — leave as set (order doesn't apply)
+
+### Tests
+- `scripts/tests/` — add/update tests for ordered execution via `--only`; verify priority sort still applies without `--only`
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Impact
+
+- **Priority**: P3 — Improves `--only` ergonomics; not blocking
+- **Effort**: Small — Localized changes to `cli_args.py`, `issue_parser.py`, `cli/auto.py`; no new dependencies
+- **Risk**: Low — Priority sort path unchanged; list-vs-set distinction isolates the behavior change
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `cli`, `ll-auto`, `argument-order`
+
+## Status
+
+**Open** | Created: 2026-03-16 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

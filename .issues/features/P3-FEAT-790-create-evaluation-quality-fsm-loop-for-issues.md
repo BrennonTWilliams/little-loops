@@ -2,6 +2,7 @@
 id: FEAT-790
 type: FEAT
 priority: P3
+status: active
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 ---
@@ -11,6 +12,10 @@ discovered_by: capture-issue
 ## Summary
 
 Add a `loops/evaluation-quality.yaml` FSM loop that performs a multi-dimensional quality health check across issue quality (confidence scores, format status), code quality (test/lint), and backlog health (size, velocity), produces a scored report, routes to targeted remediation loops when thresholds are breached, and terminates with a persisted quality snapshot. Designed to run periodically (before sprint planning or weekly).
+
+## Current Behavior
+
+No unified quality health check loop exists. Developers must run individual remediation tools (`/ll:confidence-check --all`, `fix-quality-and-tests`, `backlog-flow-optimizer`) independently and interpret the results themselves. There is no consolidated health report, no cross-dimension scoring, and no automated routing to the appropriate remediation loop based on the primary concern.
 
 ## Context
 
@@ -124,4 +129,5 @@ Reads (no changes): `.claude/ll-config.json` (for `test_cmd`), `.issues/` (via `
 - [ ] Not started
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

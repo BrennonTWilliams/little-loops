@@ -2,6 +2,7 @@
 id: FEAT-789
 type: FEAT
 priority: P3
+status: active
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 ---
@@ -11,6 +12,10 @@ discovered_by: capture-issue
 ## Summary
 
 Add a `loops/context-health-monitor.yaml` FSM loop that monitors context health using scratch file accumulation and session log size as observable proxies for context pressure, then applies targeted strategies (scratch compaction, output archival) when pressure is detected. Builds on the existing `hooks/scripts/context-monitor.sh` and `.claude/ll-context-state.json` infrastructure.
+
+## Current Behavior
+
+No `context-health-monitor` loop exists. Developers must manually inspect `.loops/tmp/` for large scratch files and remove or summarize them by hand. The existing `hooks/scripts/context-monitor.sh` tracks token estimates in `.claude/ll-context-state.json` but takes no remediation action — it only observes. There is no automated mechanism to compact scratch files or archive stale outputs before they inflate context pressure.
 
 ## Context
 
@@ -115,4 +120,5 @@ No changes to existing hooks or scripts required. Optionally reads `.claude/ll-c
 - [ ] Not started
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
