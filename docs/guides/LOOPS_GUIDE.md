@@ -41,8 +41,11 @@ What are you trying to do?
 ├─ Reduce/increase a metric ────────▶ Drive a metric
 │   "Measure, if not at target, fix, measure again"
 │
-└─ Run ordered steps ───────────────▶ Run a sequence
-    "Do step 1, do step 2, check if done, repeat"
+├─ Run ordered steps ───────────────▶ Run a sequence
+│   "Do step 1, do step 2, check if done, repeat"
+│
+└─ Apply a skill to many items ─────▶ Harness a skill
+    "Discover items, run skill, pass evaluation pipeline, advance"
 ```
 
 | Loop type | States | Branching | Best for |
@@ -51,6 +54,7 @@ What are you trying to do?
 | Drive a metric | measure, apply, done | Three-way (target/progress/stall) | Metric optimization |
 | Maintain constraints | 2 per constraint + 1 | Binary per constraint | Multi-gate quality |
 | Run a sequence | 1 per step + 2 | Binary exit check | Ordered workflows |
+| Harness a skill | discover, execute, check_*, advance, done | Multi-phase evaluation (exit code → MCP → skill → LLM → diff) | Batch processing with layered quality gates |
 
 Use `/ll:create-loop` to build any of these interactively. The wizard generates FSM YAML ready to run.
 
@@ -247,15 +251,93 @@ Use `$current` as a target to retry the current state. Use `_` for a default rou
 
 ### Action Types
 
-Each state's action is executed in one of three modes:
+Each state's action is executed in one of four modes:
 
-| Type | Syntax hint | Behavior |
-|------|-------------|----------|
-| `shell` | No `/` prefix | Run as shell command, capture stdout/stderr/exit code |
-| `slash_command` | Starts with `/` | Execute a Claude Code slash command |
-| `prompt` | Natural language | Send text to Claude as a prompt |
+| Type | Syntax hint | Default evaluator | Behavior |
+|------|-------------|-------------------|----------|
+| `shell` | No `/` prefix | `exit_code` | Run as shell command, capture stdout/stderr/exit code |
+| `slash_command` | Starts with `/` | `llm_structured` | Execute a Claude Code slash command |
+| `prompt` | Natural language | `llm_structured` | Send text to Claude as a prompt |
+| `mcp_tool` | Must be set explicitly | `mcp_result` | Call an MCP server tool with structured params |
 
 The engine auto-detects type: `/` prefix → `slash_command`, otherwise → `shell`. Set `action_type: prompt` explicitly for natural-language fix instructions.
+
+#### Skills as Actions
+
+Skills (invoked via `/ll:`) are auto-detected as `slash_command` actions. Their default evaluator is `llm_structured`, which uses an LLM to judge whether the skill's output meets the expected quality criteria.
+
+For deterministic routing — when the skill supports `--check` — override the evaluator to `exit_code` so the FSM routes on pass/fail without an LLM call:
+
+```yaml
+check-format:
+  action: "/ll:format-issue --all --check"
+  action_type: slash_command
+  evaluate:
+    type: exit_code
+  on_yes: next-step
+  on_no: fix-format
+```
+
+To compose multiple skill calls in a single state (e.g., run format then verify in sequence), use `action_type: prompt`:
+
+```yaml
+refine-and-score:
+  action: "Run /ll:refine-issue on ${captured.current_item.output}, then run /ll:format-issue --check on the same file."
+  action_type: prompt
+  next: advance
+```
+
+See [Pattern: Using `--check` with Exit Code Evaluators](#pattern-using---check-with-exit-code-evaluators) for a worked multi-skill loop example.
+
+#### MCP Tool Actions
+
+MCP tool actions call a registered MCP server tool directly from a loop state. Unlike shell and slash commands, the type is **not** auto-detected — you must set `action_type: mcp_tool` explicitly.
+
+```yaml
+get-issue-details:
+  action: "github/get_issue"
+  action_type: mcp_tool
+  params:
+    owner: "${context.repo_owner}"
+    repo: "${context.repo_name}"
+    issue_number: "${captured.current_item.output}"
+  capture: issue_data
+  next: process-issue
+```
+
+Key fields:
+- `action`: `"server_name/tool_name"` — must match a tool registered in `.mcp.json`
+- `params`: JSON object passed to the tool; supports `${variable}` interpolation
+- `capture`: optional — stores the tool's response for use in later states
+
+The default evaluator for `mcp_tool` states is `mcp_result` (no need to specify it). Verdict table:
+
+| Verdict | Meaning | Exit code analogue |
+|---------|---------|-------------------|
+| `success` | Tool returned a result | 0 |
+| `tool_error` | Tool ran but returned an error response | 1 |
+| `not_found` | Server or tool not registered in `.mcp.json` | 127 |
+| `timeout` | Transport-level timeout (default 30 s) | 124 |
+
+Route on these verdicts using a route table:
+
+```yaml
+get-issue-details:
+  action: "github/get_issue"
+  action_type: mcp_tool
+  params:
+    owner: "${context.repo_owner}"
+    repo: "${context.repo_name}"
+    issue_number: "${captured.current_item.output}"
+  capture: issue_data
+  route:
+    success: process-issue
+    tool_error: log-error
+    not_found: abort
+    timeout: retry-fetch
+```
+
+MCP tools also appear as `check_mcp` evaluation gates in harness loops — a deterministic external-state check that runs before the more expensive LLM phases. See [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) for details.
 
 ### Handoff Behavior
 
@@ -266,6 +348,41 @@ When a loop detects that Claude's context window is approaching its limit, it tr
 | Pause | `pause` (default) | Save state to disk, resume later with `ll-loop resume` |
 | Spawn | `spawn` | Save state and launch a fresh Claude session to continue |
 | Terminate | `terminate` | Stop the loop immediately (state is not saved) |
+
+Set `on_handoff` at the **loop level** (not per state):
+
+```yaml
+name: issue-refinement
+on_handoff: spawn        # loop-level field
+max_iterations: 20
+states:
+  discover:
+    action: "ll-issues list --status active"
+    capture: active_issues
+    next: refine
+  refine:
+    action: "/ll:refine-issue ${captured.active_issues.output}"
+    action_type: slash_command
+    next: discover
+  done:
+    terminal: true
+```
+
+**Choosing a mode:**
+
+- **`spawn`** — best for long-running automated loops that should continue without human intervention: issue processing pipelines, APO loops, sprint workflows. A fresh session picks up exactly where the previous one left off.
+- **`pause`** (default) — best for metric-tracking or monitoring loops where reviewing state between sessions is desirable: RL loops, worktree health checks. Requires manual `ll-loop resume <name>` to continue.
+- **`terminate`** — use when partial execution is worse than none. For example, if the loop rewrites a file atomically and a partial run would leave it in a corrupt intermediate state.
+
+**What is preserved** across a pause or spawn handoff:
+
+- Current state name and iteration count
+- All `captured` variable values from completed states
+- Loop-level `context` variables
+
+On resume (manual or automatic), the engine re-enters the state where the handoff occurred and re-runs its action with full variable context restored.
+
+For interactive session handoff details see [Session Handoff](SESSION_HANDOFF.md).
 
 ### Scope-Based Concurrency
 
@@ -468,6 +585,85 @@ test_on_examples → compute_gradient → route_convergence
 - **Check the prompt file after each run**: the loop writes back to the file in-place. Use `git diff` to review the evolution across iterations.
 - **Install to customize**: run `ll-loop install apo-feedback-refinement` to copy the YAML to `.loops/` and edit state actions or add custom evaluation logic.
 
+## Harness Loops
+
+A **harness loop** is a pre-structured FSM pattern that wraps a skill or prompt in a layered quality evaluation pipeline, then repeats over a list of work items — or runs once in single-shot mode. The `/ll:create-loop` wizard auto-derives the evaluation framework from your project config so you don't write it by hand.
+
+The core idea: running a skill is easy; knowing the output is actually good is hard. A harness solves this by passing each result through up to five evaluation phases before advancing.
+
+### The Evaluation Pipeline
+
+Each harness applies phases in sequence, cheapest first:
+
+| Phase | What it checks | Evaluator | Approx. latency |
+|-------|----------------|-----------|-----------------|
+| `check_concrete` | Exit code from test/lint/type command — objective, fast | `exit_code` | < 1s |
+| `check_mcp` | MCP server tool call — deterministic external state | `mcp_result` | ~500ms |
+| `check_skill` | Full agentic user simulation — did it work as a real user would? | `llm_structured` | 30–300s |
+| `check_semantic` | LLM judges output quality — semantic correctness | `llm_structured` | 3–10s |
+| `check_invariants` | Diff line count — catches runaway changes | `output_numeric` | < 1s |
+
+All phases are optional; the wizard pre-selects based on your project config and what tools are registered. Running cheapest first means expensive LLM calls only happen when objective gates already pass.
+
+### Creating a Harness
+
+Run `/ll:create-loop` and select **"Harness a skill or prompt"**. The 4-step wizard asks:
+
+1. **Target** — pick a discovered skill or enter a custom prompt (plus a "done looks like" criterion for the LLM judge)
+2. **Work items** — single-shot, active issues list, file glob, or manual list
+3. **Evaluation phases** — which of the five phases to include (pre-selected from config)
+4. **Iteration budget** — retries per item and total `max_iterations`
+
+### FSM Structure
+
+**Single-shot** (no discovery): starts directly at `execute`, runs the evaluation chain once, reaches `done`.
+
+**Multi-item** (issues list / glob / manual): adds `discover` and `advance` states around the evaluation chain:
+
+```
+discover ──→ execute ──→ check_concrete ──→ check_semantic ──→ check_invariants ──→ advance ──→ discover
+               ↑              │ on_no              │ on_no              │ on_no
+               └──────────────┴────────────────────┘
+no items remaining ──→ done
+```
+
+The critical safeguard in multi-item loops is `max_retries` + `on_retry_exhausted: advance` on the `execute` state — without it, one item that never passes evaluation consumes the entire `max_iterations` budget:
+
+```yaml
+execute:
+  action: /ll:refine-issue ${captured.current_item.output} --auto
+  action_type: prompt
+  max_retries: 3
+  on_retry_exhausted: advance
+  next: check_concrete
+```
+
+### Stall Detection
+
+For prompt-based skills that may produce no-ops ("already done"), add a `check_stall` state using the `diff_stall` evaluator between `execute` and the first check state. Without it, idempotent skills silently exhaust `max_iterations` without progress:
+
+```yaml
+check_stall:
+  action: "echo 'checking stall'"
+  action_type: shell
+  evaluate:
+    type: diff_stall
+    max_stall: 2
+  on_yes: check_concrete    # progress detected — continue evaluation
+  on_no: advance            # stalled — skip this item
+```
+
+### When to Use a Harness vs. Hand-Authored Loop
+
+| Approach | Effort | Best for |
+|----------|--------|----------|
+| Harness wizard | ~2 min | Wrapping a skill in quality gates; batch processing with standard evaluation |
+| Hand-authored YAML | 30–60 min | Multi-branch routing, complex captured-variable logic, non-standard evaluation |
+
+For full details on evaluation phases, MCP gates, skill-as-judge, stall detection, and worked examples, see the **[Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md)**.
+
+---
+
 ## CLI Quick Reference
 
 ### Subcommands
@@ -610,7 +806,8 @@ Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's ex
 ## Further Reading
 
 - [FSM Loop System Design](../generalized-fsm-loop.md) — FSM schema, evaluators, variable interpolation, and full YAML reference
+- [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) — Harness evaluation pipeline deep-dive, MCP gates, skill-as-judge, stall detection, and worked examples
 - [Configuration Reference](../reference/CONFIGURATION.md) — Project-wide settings (test commands, paths, etc.) used by loop actions
-- `/ll:create-loop` — Interactive loop creation wizard
+- `/ll:create-loop` — Interactive loop creation wizard (includes harness mode)
 - `/ll:review-loop` — Audit an existing loop for quality, correctness, and best practices
 - `ll-loop --help` — Full CLI reference for all loop subcommands
