@@ -730,3 +730,62 @@ questions:
         description: "Yes, also close completed"
     multiSelect: false
 ```
+
+---
+
+## Area: allowed-tools
+
+**Note**: This area writes to `.claude/settings.json` or `.claude/settings.local.json` (Claude Code native settings files), not to `ll-config.json`. The `--reset` mode removes all `Bash(ll-` entries from the chosen file rather than resetting a config section.
+
+### Current Values
+
+First, detect and display current state:
+
+```bash
+SETTINGS_JSON_EXISTS=false
+SETTINGS_LOCAL_EXISTS=false
+[ -f ".claude/settings.json" ] && SETTINGS_JSON_EXISTS=true
+[ -f ".claude/settings.local.json" ] && SETTINGS_LOCAL_EXISTS=true
+```
+
+```
+Current Allowed Tools Configuration
+------------------------------------
+  settings.json:        [EXISTS / not found]
+  settings.local.json:  [EXISTS / not found]
+  ll- entries in settings.json:        [count, e.g. "12 entries" or "none"]
+  ll- entries in settings.local.json:  [count, e.g. "12 entries" or "none"]
+```
+
+### Round 1 (2 questions)
+
+```yaml
+questions:
+  - header: "Target File"
+    question: "Which settings file should hold the ll- allowed tool entries?"
+    options:
+      - label: "settings.local.json (Recommended)"
+        description: "Gitignored by default — keeps ll- permissions out of version control"
+      - label: "settings.json"
+        description: "Tracked in version control — shared with all project contributors"
+      - label: "Skip / Remove entries"
+        description: "Remove all ll- entries from both files (or skip if none exist)"
+    multiSelect: false
+
+  - header: "Entries"
+    question: "Which ll- CLI commands should be allowed?"
+    options:
+      - label: "All ll- commands (Recommended)"
+        description: "Authorize all 12 ll- CLI tools: ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links"
+      - label: "Keep current"
+        description: "Keep existing entries without changes"
+    multiSelect: false
+```
+
+**Configuration result**: Perform the merge on the chosen target file using the same logic as SKILL.md Step 10:
+1. Read target file (or start with `{"permissions": {"allow": [], "deny": []}}` if absent)
+2. Remove all existing `Bash(ll-` entries from `permissions.allow`
+3. Append the canonical allow entries (if "All ll- commands" selected)
+4. Write result back with 2-space indent, preserving all top-level keys
+
+If "Skip / Remove entries" selected, remove all `Bash(ll-` entries from both files (if they exist) and skip writing.

@@ -10,7 +10,7 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 4     # Working total (mandatory rounds: 1, 2, 3a, 6)
+TOTAL = 5     # Working total (mandatory rounds: 1, 2, 3a, 6, 11)
               # Round 3b is silent (automation always enabled, no user prompt)
               # Round 5a is conditional (only if parallel processing selected)
               # Round 7 is silent (advanced settings always skipped)
@@ -224,6 +224,7 @@ Count active conditions for Round 5:
 
   if ACTIVE > 0: TOTAL += 1   # Round 5a only runs if parallel processing selected; max ACTIVE = 2
   # Round 5b and 5c are never shown (max ACTIVE never exceeds 2)
+  # Round 11 (Allowed Tools) is always shown — already counted in TOTAL = 5
 ```
 
 ## Round 5: Advanced Settings (Dynamic)
@@ -437,7 +438,7 @@ If "Skip" selected or no documents found, omit the `documents` section entirely 
 Advanced settings are always skipped during init — no user input required. Do NOT increment STEP or prompt the user.
 
 # Always skip advanced settings — configurable via /ll:configure
-Proceed directly to the Display Summary step. Rounds 8–10 are never shown during init.
+Proceed to Round 11 (Allowed Tools). Rounds 8–10 are never shown during init.
 Users can access test directory, build command, continuation, and prompt optimization settings via `/ll:configure`.
 
 ## Round 8: Project Advanced (Optional)
@@ -599,11 +600,78 @@ questions:
 
 **Configuration:** Only include `prompt_optimization` section if any value differs from schema defaults.
 
+## Round 11: Allowed Tools — ALWAYS RUNS
+
+**CRITICAL**: You MUST execute this round. This is the final interactive round. The wizard is NOT complete until you have asked the user about allowed tools.
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Allowed Tools
+
+**First, detect existing settings files:**
+
+```bash
+SETTINGS_JSON_EXISTS=false
+SETTINGS_LOCAL_EXISTS=false
+[ -f ".claude/settings.json" ] && SETTINGS_JSON_EXISTS=true
+[ -f ".claude/settings.local.json" ] && SETTINGS_LOCAL_EXISTS=true
+```
+
+**Build options based on detected files and present a SINGLE AskUserQuestion call:**
+
+If **neither** file exists:
+
+```yaml
+questions:
+  - header: "Allowed Tools"
+    question: "Add ll- CLI commands to Claude Code's allowed tools list? (Recommended for agent workflows)"
+    options:
+      - label: "Yes, create settings.local.json (Recommended)"
+        description: "Create .claude/settings.local.json with ll- command entries (gitignored by default)"
+      - label: "Yes, create settings.json"
+        description: "Create .claude/settings.json with ll- command entries (tracked in version control)"
+      - label: "Skip"
+        description: "Don't add allowed tools entries"
+    multiSelect: false
+```
+
+If **settings.local.json** exists (whether or not settings.json also exists):
+
+```yaml
+questions:
+  - header: "Allowed Tools"
+    question: "Add ll- CLI commands to Claude Code's allowed tools list?"
+    options:
+      - label: "Yes, update settings.local.json (Recommended)"
+        description: "Update .claude/settings.local.json with ll- command entries"
+      - label: "Yes, update settings.json"
+        description: "Update .claude/settings.json with ll- command entries"
+      - label: "Skip"
+        description: "Don't add allowed tools entries"
+    multiSelect: false
+```
+
+If **only settings.json** exists:
+
+```yaml
+questions:
+  - header: "Allowed Tools"
+    question: "Add ll- CLI commands to Claude Code's allowed tools list?"
+    options:
+      - label: "Yes, update settings.json"
+        description: "Update .claude/settings.json with ll- command entries"
+      - label: "Yes, create settings.local.json (Recommended)"
+        description: "Create .claude/settings.local.json with ll- command entries (gitignored by default)"
+      - label: "Skip"
+        description: "Don't add allowed tools entries"
+    multiSelect: false
+```
+
+**Record the result** (chosen target file or "skip") — used by SKILL.md Step 10 to perform the actual merge.
+
 ---
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 4–5 (5 only if parallel processing selected)**
+**Total interaction rounds: 5–6 (6 only if parallel processing selected)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -617,6 +685,7 @@ questions:
 | 8 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
 | 9 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
 | 10 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
+| **11** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next

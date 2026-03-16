@@ -7,7 +7,7 @@ allowed-tools:
   - Bash(mkdir:*)
 arguments:
   - name: area
-    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync (optional - prompts if omitted)"
+    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -56,6 +56,7 @@ Map argument names to config sections:
 | `commands` | `commands` | Command hooks, confidence gate |
 | `scan` | `scan` | Focus dirs, exclude patterns |
 | `sync` | `sync` | GitHub Issues sync: enabled, label mapping, priorities |
+| `allowed-tools` | `permissions.allow` in `.claude/settings.json` or `.claude/settings.local.json` | ll- CLI tool allow entries (Note: writes to Claude Code settings files, not ll-config.json) |
 
 ---
 
@@ -81,6 +82,7 @@ Configuration Areas
   prompt        [DEFAULT]     Prompt optimization: mode, confirm, bypass
   scan          [CONFIGURED]  Focus dirs, exclude patterns
   sync          [DEFAULT]     GitHub Issues sync: enabled, label mapping, priorities
+  allowed-tools [DEFAULT]     ll- CLI tool allow entries in settings.json/settings.local.json
 
 Configure: /ll:configure <area>
 Show:      /ll:configure <area> --show
@@ -200,6 +202,8 @@ questions:
         description: "Context monitoring: threshold, limits"
       - label: "prompt"
         description: "Prompt optimization: mode, confirm, bypass"
+      - label: "allowed-tools"
+        description: "ll- CLI tool allow entries in settings.json/settings.local.json"
 ```
 
 ### Step 2: Interactive Configuration
@@ -266,6 +270,7 @@ $ARGUMENTS
   - `prompt` - Prompt optimization: mode, confirm, bypass
   - `scan` - Focus dirs, exclude patterns
   - `sync` - GitHub Issues sync: enabled, label mapping, priorities
+  - `allowed-tools` - ll- CLI tool allow entries in settings.json/settings.local.json
 
 - **flags** (optional): Command behavior flags
   - `--list` - Display all configuration areas with status

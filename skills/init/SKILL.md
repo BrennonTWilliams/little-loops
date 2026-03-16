@@ -114,7 +114,7 @@ Strip the `_meta`, `$schema`, and `product` sections (product is configured sepa
 
 ### 5. Interactive Mode (if --interactive)
 
-If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 7-13 rounds of configuration questions, with a progress indicator shown at each step.
+If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 5–6 rounds of configuration questions, with a progress indicator shown at each step.
 
 ### 6. Display Summary
 
@@ -261,11 +261,12 @@ After the user confirms, check whether the configured tool commands are availabl
   [write]  .claude/ll-config.json
   [mkdir]  {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
   [update] .gitignore (add state file exclusions)
+  [update] .claude/settings.local.json (add ll- CLI tool permissions)  # Only if user opts in
 
 === END DRY RUN (no changes made) ===
 ```
 
-Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9 and 10 — the dry-run output above replaces them.
+Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, and 11 — the dry-run output above replaces them.
 
 **Otherwise**, proceed with normal file writes:
 
@@ -321,7 +322,54 @@ Add little-loops state files to `.gitignore` to prevent committing runtime state
 - Add a blank line before the comment header if appending to existing content
 - Track whether the file was created or updated for the completion message
 
-### 10. Display Completion Message
+### 10. Update Allowed Tools
+
+Add ll- CLI command allow entries to Claude Code's settings file to pre-authorize them for agent use.
+
+**If `--dry-run` is set, skip this step** (already shown in dry-run preview).
+
+1. Check which settings files exist:
+
+   ```bash
+   SETTINGS_JSON_EXISTS=false
+   SETTINGS_LOCAL_EXISTS=false
+   [ -f ".claude/settings.json" ] && SETTINGS_JSON_EXISTS=true
+   [ -f ".claude/settings.local.json" ] && SETTINGS_LOCAL_EXISTS=true
+   ```
+
+2. Determine target file:
+   - **`--yes` mode**: use `.claude/settings.local.json` (create if absent) without prompting
+   - **`--interactive` mode**: use the choice recorded in Round 11 of the wizard
+   - **Otherwise**, use `AskUserQuestion` inline:
+     - If *neither* exists → ask: "Create `.claude/settings.local.json` (Recommended), `.claude/settings.json`, or Skip?"
+     - If only `settings.local.json` exists → ask: "Update `.claude/settings.local.json` with ll- entries? (y/Skip)"
+     - If only `settings.json` exists → ask: "Update `.claude/settings.json` with ll- entries, create `settings.local.json`, or Skip?"
+     - If *both* exist → ask: "Update `settings.local.json` (Recommended), `settings.json`, or Skip?"
+
+3. If user chose "Skip", proceed to Step 11 without changes.
+
+4. Perform merge into the chosen target file:
+   - Read target file, or start with `{"permissions": {"allow": [], "deny": []}}` if absent
+   - Remove all existing entries starting with `Bash(ll-` from `permissions.allow` (idempotency)
+   - Append the canonical allow entries:
+     ```json
+     "Bash(ll-issues:*)",
+     "Bash(ll-auto:*)",
+     "Bash(ll-parallel:*)",
+     "Bash(ll-sprint:*)",
+     "Bash(ll-loop:*)",
+     "Bash(ll-workflows:*)",
+     "Bash(ll-messages:*)",
+     "Bash(ll-history:*)",
+     "Bash(ll-deps:*)",
+     "Bash(ll-sync:*)",
+     "Bash(ll-verify-docs:*)",
+     "Bash(ll-check-links:*)"
+     ```
+   - Create `.claude/` directory first if needed
+   - Write result back with 2-space indent, preserving all top-level keys (`$schema`, `env`, etc.)
+
+### 11. Display Completion Message
 
 ```
 ================================================================================
@@ -332,6 +380,7 @@ Created: .claude/ll-config.json
 Created: .claude/ll-goals.md (product goals template)  # Only show if product enabled
 Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
 Updated: .gitignore (added state file exclusions)
+Updated: .claude/settings.local.json (added ll- CLI tool permissions)  # Only show if user opted in
 
 Next steps:
   1. Review and customize: .claude/ll-config.json
