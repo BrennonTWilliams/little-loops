@@ -58,53 +58,61 @@ When a prompt state is SIGKILL'd or otherwise errors, the loop should route to a
 
 ## Proposed Fix
 
-In `loops/issue-refinement.yaml`, add `timeout:` and `on_error:` to all three prompt states:
+### Independent fix (no dependency) — do now
+
+Add `on_error: check_commit` to all three prompt states (`format_issues`, `score_issues`, `refine_issues`) in `loops/issue-refinement.yaml`. Routing to `check_commit` mirrors the `next:` behavior of successful states and ensures SIGKILL'd prompts count toward the periodic commit cadence before re-evaluating.
+
+### Preferred fix (depends on ENH-776)
+
+Once ENH-776 lands (`default_timeout` support in the FSM schema), add `default_timeout: 3600` at the loop level. No per-state `timeout:` overrides needed — 1 hour is generous enough for all three states. Remove any existing per-state `timeout:` values.
 
 ```yaml
+# After ENH-776:
+default_timeout: 3600   # 1 hour; applies to all prompt states
+
 format_issues:
   action_type: prompt
-  timeout: 360
   on_error: check_commit
   action: |
-    Run these commands in order for issue ${captured.issue_id.output}:
-    1. /ll:format-issue ${captured.issue_id.output} --auto
-    2. /ll:verify-issues ${captured.issue_id.output} --auto
-  next: check_commit
+    ...
 
 score_issues:
   action_type: prompt
-  timeout: 360
   on_error: check_commit
   action: |
-    Run this command for issue ${captured.issue_id.output}:
-    /ll:confidence-check ${captured.issue_id.output} --auto
-  next: check_commit
+    ...
 
 refine_issues:
   action_type: prompt
-  timeout: 600      # already present; keep as-is
   on_error: check_commit
   action: |
-    Run these commands in order for issue ${captured.issue_id.output}:
-    1. /ll:refine-issue ${captured.issue_id.output} --auto
-    2. /ll:confidence-check ${captured.issue_id.output} --auto
-  next: check_commit
+    ...
 ```
 
-Routing `on_error` to `check_commit` (instead of `evaluate`) means the iteration still counts toward the periodic commit cadence before the loop re-evaluates. This mirrors the `next:` behavior of successful prompt states.
+### Interim fix (before ENH-776 lands)
+
+Add per-state `timeout: 3600` to `format_issues`, `score_issues`, and `refine_issues` in addition to `on_error: check_commit`.
 
 ## Files to Modify
 
-- `loops/issue-refinement.yaml` — add `timeout: 360` to `format_issues` and `score_issues`; add `on_error: check_commit` to all three prompt states
-- `scripts/little_loops/fsm/executor.py:580-585` — reference only (SIGKILL routing logic; no change needed)
+- `loops/issue-refinement.yaml` — add `on_error: check_commit` to all three prompt states (now); add `default_timeout: 3600` and remove per-state timeouts (after ENH-776)
+- `scripts/little_loops/fsm/schema.py` — add `default_timeout` field (via ENH-776)
+- `scripts/little_loops/fsm/executor.py` — update timeout fallback chain (via ENH-776)
 
 ## Acceptance Criteria
 
-- [ ] `format_issues` has `timeout: 360` (or higher) set in `loops/issue-refinement.yaml`
-- [ ] `score_issues` has `timeout: 360` (or higher) set in `loops/issue-refinement.yaml`
-- [ ] All three prompt states (`format_issues`, `score_issues`, `refine_issues`) have `on_error: check_commit`
+### Immediate (no dependency)
+
+- [ ] `format_issues` has `on_error: check_commit` in `loops/issue-refinement.yaml`
+- [ ] `score_issues` has `on_error: check_commit` in `loops/issue-refinement.yaml`
+- [ ] `refine_issues` has `on_error: check_commit` in `loops/issue-refinement.yaml`
 - [ ] A SIGKILL'd prompt state routes to `check_commit` rather than terminating the loop
-- [ ] Loop survives a simulated SIGKILL on a prompt state and continues to the next iteration
+
+### Once ENH-776 lands
+
+- [ ] `loops/issue-refinement.yaml` has `default_timeout: 3600` at the loop level
+- [ ] No per-state `timeout:` overrides needed; per-state timeouts removed
+- [ ] All prompt states effectively timeout at 3600s via the loop-level default
 
 ## Labels
 
