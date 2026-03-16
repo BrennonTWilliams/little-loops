@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-15
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # BUG-759: FSM Diagram Shifts Horizontally When State Is Highlighted
@@ -109,6 +111,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `fsm-diagram`, `ansi`, `rendering`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:47:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:47:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T19:45:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 
 - `/ll:capture-issue` - 2026-03-15T22:49:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 

@@ -28,6 +28,13 @@ outcome_confidence: 86
 
 Consistency across subcommands reduces cognitive overhead. A user who knows `list` works for active issues should be able to reach completed issues through the same command without learning a different subcommand.
 
+## Success Metrics
+
+- Users can list completed issues via `ll-issues list --status completed` without falling back to `search`
+- `ll-issues list` (no flag) continues returning active issues only — no regression
+- `--status all` surfaces issues across every status in a single command
+- Combined flags (`--status deferred --type BUG`) filter correctly
+
 ## Proposed Solution
 
 Add `--status {active,completed,deferred,all}` to `ll-issues list`, defaulting to `active` to preserve current behavior.
@@ -111,6 +118,7 @@ ll-issues list [--status {active,completed,deferred,all}]
 Active
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-16T19:51:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/572c06b0-8862-4ca1-9271-48db4a4d0d0b.jsonl`
 - `/ll:format-issue` - 2026-03-16T00:58:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88954013-7439-4bde-96ee-7533696b0537.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/675e308f-c7e8-4625-a4df-553d19df9f24.jsonl`
