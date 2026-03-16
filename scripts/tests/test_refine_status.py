@@ -1336,3 +1336,311 @@ class TestRefineStatusJsonFlag:
         # --json takes precedence: output is a JSON array, not NDJSON
         data = json.loads(out)
         assert isinstance(data, list)
+
+
+class TestColumnElision:
+    """Tests for dynamic column elision when the table overflows the terminal."""
+
+    def _setup_issues_dir(self, temp_project_dir: Path) -> Path:
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+        return bugs_dir
+
+    def _run_refine_status(
+        self,
+        temp_project_dir: Path,
+        terminal_cols: int,
+        extra_args: list[str] | None = None,
+    ) -> str:
+        """Run refine-status with a mocked terminal width and return stdout."""
+        import os
+
+        fake_size = os.terminal_size((terminal_cols, 40))
+        argv = [
+            "ll-issues",
+            "refine-status",
+            "--no-key",
+            "--config",
+            str(temp_project_dir),
+        ] + (extra_args or [])
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(sys, "argv", argv),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        return ""  # capsys used by caller
+
+    def test_narrow_terminal_elides_columns(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """At 60 cols, lower-priority columns are elided so the table fits."""
+        import os
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = self._setup_issues_dir(temp_project_dir)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-801-narrow-test.md",
+            "A moderately long title for the narrow test",
+            session_commands=["/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues"],
+        )
+
+        terminal_cols = 60
+        fake_size = os.terminal_size((terminal_cols, 40))
+
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        table_lines = [ln for ln in out.splitlines() if ln.strip() and not ln.startswith("\n")]
+        for line in table_lines:
+            assert len(line) <= terminal_cols, (
+                f"Line width {len(line)} exceeds terminal {terminal_cols}: {line!r}"
+            )
+
+    def test_wide_terminal_shows_all_columns(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """At 160 cols, no columns are elided and the full header is present."""
+        import os
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = self._setup_issues_dir(temp_project_dir)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-802-wide-test.md",
+            "Wide terminal test issue",
+            session_commands=["/ll:verify-issues", "/ll:refine-issue"],
+        )
+
+        terminal_cols = 160
+        fake_size = os.terminal_size((terminal_cols, 40))
+
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        header = out.splitlines()[0]
+        # Default columns: all of these should appear at 160 cols
+        for col_header in ("ID", "Pri", "Title", "source", "norm", "fmt"):
+            assert col_header in header, f"Expected '{col_header}' in wide-terminal header: {header!r}"
+
+    def test_medium_terminal_fits(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """At 80 cols, the table must still fit (rows <= 80 chars)."""
+        import os
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = self._setup_issues_dir(temp_project_dir)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-803-medium-test.md",
+            "Medium terminal test issue",
+            session_commands=["/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues"],
+        )
+
+        terminal_cols = 80
+        fake_size = os.terminal_size((terminal_cols, 40))
+
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        table_lines = [ln for ln in out.splitlines() if ln.strip() and not ln.startswith("\n")]
+        for line in table_lines:
+            assert len(line) <= terminal_cols, (
+                f"Line width {len(line)} exceeds terminal {terminal_cols}: {line!r}"
+            )
+
+    def test_pinned_columns_never_elided(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """id, priority, and title are never elided even at very narrow terminals."""
+        import os
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = self._setup_issues_dir(temp_project_dir)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-804-pinned-test.md",
+            "Pinned column test",
+            session_commands=[
+                "/ll:verify-issues",
+                "/ll:refine-issue",
+                "/ll:tradeoff-review-issues",
+                "/ll:map-dependencies",
+            ],
+        )
+
+        # Extremely narrow terminal: only pinned columns can fit
+        terminal_cols = 40
+        fake_size = os.terminal_size((terminal_cols, 40))
+
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        header = out.splitlines()[0]
+        # Pinned columns must always be present
+        assert "ID" in header, f"'ID' column must be pinned: {header!r}"
+        assert "Pri" in header, f"'Pri' column must be pinned: {header!r}"
+        assert "Title" in header, f"'Title' column must be pinned: {header!r}"
+
+    def test_json_mode_unaffected_by_narrow_terminal(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json output is never affected by terminal width or column elision."""
+        import os
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = self._setup_issues_dir(temp_project_dir)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-805-json-narrow.md",
+            "JSON mode narrow terminal test",
+            confidence_score=80,
+            outcome_confidence=70,
+            session_commands=["/ll:verify-issues", "/ll:refine-issue"],
+        )
+
+        # Very narrow terminal — elision would strip most columns in table mode
+        terminal_cols = 40
+        fake_size = os.terminal_size((terminal_cols, 40))
+
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--json", "--config", str(temp_project_dir)],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        records = json.loads(out)
+        assert isinstance(records, list)
+        assert len(records) == 1
+        record = records[0]
+        # All standard fields must be present regardless of terminal width
+        for field in ("id", "priority", "title", "source", "commands", "confidence_score", "total"):
+            assert field in record, f"JSON field '{field}' missing in narrow-terminal output"
+
+    def test_custom_elide_order_respected(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Custom elide_order config pins columns absent from the list."""
+        import os
+
+        # Configure elide_order that does NOT include "norm" — it should be pinned
+        config = {**sample_config, "refine_status": {"elide_order": ["source", "fmt"]}}
+        _write_config(temp_project_dir, config)
+        bugs_dir = self._setup_issues_dir(temp_project_dir)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-806-custom-elide.md",
+            "Custom elide order test",
+            session_commands=["/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues"],
+        )
+
+        # Narrow enough to trigger elision
+        terminal_cols = 70
+        fake_size = os.terminal_size((terminal_cols, 40))
+
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        header = out.splitlines()[0]
+        # "norm" is not in elide_order so it is pinned — must be present
+        assert "norm" in header, f"'norm' should be pinned (not in elide_order): {header!r}"
+        # Table must still fit
+        table_lines = [ln for ln in out.splitlines() if ln.strip()]
+        for line in table_lines:
+            assert len(line) <= terminal_cols, (
+                f"Line width {len(line)} exceeds terminal {terminal_cols}: {line!r}"
+            )

@@ -112,14 +112,27 @@ Key files:
 
 ## Status
 
-- [ ] Implementation (`_elide_columns` helper + render loop integration)
-- [ ] JSON mode guard (elision bypassed when `--json` active)
-- [ ] Config schema update (`refine_status.elide_order` in `config-schema.json`)
-- [ ] Tests (narrow/medium/wide, pinned columns, JSON mode unaffected)
+- [x] Implementation (`_elide_columns` helper + render loop integration)
+- [x] JSON mode guard (elision bypassed when `--json` active)
+- [x] Config schema update (`refine_status.elide_order` in `config-schema.json`)
+- [x] Tests (narrow/medium/wide, pinned columns, JSON mode unaffected)
+
+## Resolution
+
+Implemented column elision in `scripts/little_loops/cli/issues/refine_status.py`:
+
+- Added `_PINNED_COLUMNS` frozenset (`id`, `priority`, `title`) and `_DEFAULT_ELIDE_ORDER` constant (`source`, `norm`, `fmt`, `confidence`, `ready`, `total`).
+- Added `_compute_min_total_width()` to compute minimum table width with `title` at `_MIN_TITLE_WIDTH`.
+- Added `_elide_columns()` that drops columns per `elide_order`, skips pinned columns, and drops remaining command columns rightmost-first.
+- Integrated `_elide_columns()` into `cmd_refine_status` after computing `pre_cmd`/`post_cmd`, gated to table mode only (JSON exits early).
+- Added `elide_order: list[str]` to `RefineStatusConfig` in `scripts/little_loops/config/cli.py`.
+- Added `elide_order` field to `config-schema.json` under `refine_status`.
+- Extended `scripts/tests/test_refine_status.py` with 6 new tests in `TestColumnElision`: narrow (60), medium (80), wide (160) terminals, pinned-column invariant, JSON-mode invariant, and custom `elide_order` config.
 
 ---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:ready-issue` - 2026-03-16T01:17:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f07d141f-c10b-4237-8f07-e0a5d89864ca.jsonl`
 - `/ll:format-issue` - 2026-03-16T00:56:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bc41a61-b249-4f82-b1e4-50bab87ac931.jsonl`
 - `/ll:capture-issue` - 2026-03-15T04:11:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e4ff8a-9271-4c55-a606-a120317ccfad.jsonl`

@@ -624,6 +624,12 @@
           "items": {"type": "string"},
           "description": "Ordered list of columns to display in refine-status table output. Valid names: id, priority, title, source, norm, fmt, ready, confidence, total. Unknown names render as \u2014. Omit or leave empty to use the default column set.",
           "default": []
+        },
+        "elide_order": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Ordered list of columns to drop (first to last) when the table exceeds terminal width. Columns absent from this list are treated as pinned and never elided. id, priority, and title are always pinned by the implementation. Command columns not listed are dropped rightmost-first after this list is exhausted. Omit or leave empty to use the default elision order.",
+          "default": []
         }
       },
       "additionalProperties": false

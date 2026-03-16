@@ -87,6 +87,14 @@ _DEFAULT_STATIC_COLUMNS: list[str] = [
 # Columns that belong after the dynamic command block (all others go before)
 _POST_CMD_STATIC: frozenset[str] = frozenset(["ready", "confidence", "total"])
 
+# Columns that are always pinned — never elided regardless of terminal width
+_PINNED_COLUMNS: frozenset[str] = frozenset(["id", "priority", "title"])
+
+# Default column elision order: columns dropped first when table overflows.
+# Command columns not listed here are dropped rightmost-first after this list
+# is exhausted.
+_DEFAULT_ELIDE_ORDER: list[str] = ["source", "norm", "fmt", "confidence", "ready", "total"]
+
 
 def _cmd_label(cmd: str) -> str:
     """Return display label for a command column header."""
@@ -150,6 +158,73 @@ def _apply_cell_color(col: str, padded: str, plain: str) -> str:
     content = lstripped.rstrip()
     trailing = lstripped[len(content) :]
     return leading + colorize(content, code) + trailing
+
+
+def _compute_min_total_width(
+    pre_cmd: list[str], all_cmds: list[str], post_cmd: list[str], id_width: int
+) -> int:
+    """Compute the minimum table width with the title column at _MIN_TITLE_WIDTH."""
+    n_parts = len(pre_cmd) + len(all_cmds) + len(post_cmd)
+    if n_parts == 0:
+        return 0
+    col_sum = 0
+    for c in pre_cmd:
+        if c == "title":
+            col_sum += _MIN_TITLE_WIDTH
+        elif c == "id":
+            col_sum += id_width
+        elif c in _STATIC_COLUMN_SPECS:
+            col_sum += _STATIC_COLUMN_SPECS[c][0]
+        else:
+            col_sum += _CMD_WIDTH
+    col_sum += len(all_cmds) * _CMD_WIDTH
+    for c in post_cmd:
+        col_sum += _STATIC_COLUMN_SPECS[c][0] if c in _STATIC_COLUMN_SPECS else _CMD_WIDTH
+    return col_sum + 2 * (n_parts - 1)
+
+
+def _elide_columns(
+    pre_cmd: list[str],
+    all_cmds: list[str],
+    post_cmd: list[str],
+    term_cols: int,
+    id_width: int,
+    elide_order: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """Drop columns until the table fits within term_cols.
+
+    Columns in *elide_order* are dropped first (in listed order).  Pinned
+    columns (id, priority, title) are silently skipped even if they appear in
+    the list.  After the list is exhausted, remaining command columns are
+    dropped rightmost-first.
+    """
+    pre = list(pre_cmd)
+    cmds = list(all_cmds)
+    post = list(post_cmd)
+
+    def fits() -> bool:
+        return _compute_min_total_width(pre, cmds, post, id_width) <= term_cols
+
+    if fits():
+        return pre, cmds, post
+
+    for col in elide_order:
+        if fits():
+            break
+        if col in _PINNED_COLUMNS:
+            continue
+        if col in pre:
+            pre.remove(col)
+        elif col in post:
+            post.remove(col)
+        elif col in cmds:
+            cmds.remove(col)
+
+    # Drop remaining command columns rightmost-first
+    while not fits() and cmds:
+        cmds.pop()
+
+    return pre, cmds, post
 
 
 def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
@@ -252,6 +327,13 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     # Split active columns: pre-cmd (before dynamic command block) and post-cmd (after)
     pre_cmd = [c for c in active_static if c not in _POST_CMD_STATIC]
     post_cmd = [c for c in active_static if c in _POST_CMD_STATIC]
+
+    # Elide columns when the table would overflow the terminal.
+    # JSON modes exit early above, so this path is table-only.
+    elide_order = config.refine_status.elide_order or _DEFAULT_ELIDE_ORDER
+    pre_cmd, all_cmds, post_cmd = _elide_columns(
+        pre_cmd, all_cmds, post_cmd, term_cols, id_width, elide_order
+    )
 
     # Compute title column width based on active columns and terminal size
     has_title = "title" in pre_cmd

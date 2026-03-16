@@ -97,11 +97,15 @@ class RefineStatusConfig:
     """refine-status display configuration."""
 
     columns: list[str] = field(default_factory=list)
+    elide_order: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RefineStatusConfig:
         """Create RefineStatusConfig from dictionary."""
-        return cls(columns=data.get("columns", []))
+        return cls(
+            columns=data.get("columns", []),
+            elide_order=data.get("elide_order", []),
+        )
 
 
 @dataclass
