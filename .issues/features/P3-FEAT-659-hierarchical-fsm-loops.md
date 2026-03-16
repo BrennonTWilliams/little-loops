@@ -66,7 +66,7 @@ Without this feature, this requires a monolithic loop YAML duplicating all state
 
 1. **Schema** (`schema.py:191-203`, `fsm-loop-schema.json:69-131`): Add `loop: str | None = None` and `context_passthrough: bool = False` to `StateConfig`; update `from_dict()` at line 238-263 to read these keys; add `loop`, `context_passthrough` to `stateConfig` in JSON schema and enforce `oneOf` mutual exclusion with `action`/`action_type`
 2. **Executor — `loops_dir` threading** (`executor.py:341-378`): Add `loops_dir: Path | None = None` to `FSMExecutor.__init__`; update `PersistentExecutor.__init__` at `persistence.py:238-271` (already has `loops_dir`) to pass it through to the inner `FSMExecutor`
-3. **Executor — dispatch** (`executor.py:491-536`): Add `_is_sub_loop_state()` helper (model: `_is_prompt_action()` at line 747-751); in `_execute_state()`, before the `_run_action()` branch, add sub-loop check: call `resolve_loop_path(state.loop, self.loops_dir)` → `load_and_validate()` (`validation.py:336-386`) → instantiate child `FSMExecutor` → call `child.run()` → map `"terminal"` verdict to `on_success`/`on_failure`
+3. **Executor — dispatch** (`executor.py:551-602`): Add `_is_sub_loop_state(state)` helper (returns `state.loop is not None`; model: `_action_mode()` at `executor.py:885-896`); in `_execute_state()`, insert a sub-loop check before the `_run_action()` call in both dispatch paths (lines 568 and 584): call `resolve_loop_path(state.loop, self.loops_dir)` → `load_and_validate()` (`validation.py:336-386`) → instantiate child `FSMExecutor` → call `child.run()` → map `"terminal"` verdict to `on_success`/`on_failure`
 4. **Context passthrough**: Before child `FSMExecutor` instantiation, if `state.context_passthrough`: merge parent `self.fsm.context` (`schema.py:365`) and parent `self.captured` (`executor.py:367`) into child `FSMLoop.context`; after child completes, merge `child_executor.captured` back into `self.captured`
 5. **Validation — cycle detection** (`validation.py:194-303`): Extend `validate_fsm()` to collect all `state.loop` refs, load each referenced loop file, and perform DFS cycle check; adapt the 3-color DFS pattern from `dependency_graph.py:278-321`; also extend `_find_reachable_states()` at line 306-333 for cross-loop reachability if needed
 6. **Persistence** (`persistence.py:46-83`): Add `active_sub_loop: str | None = None` to `LoopState` dataclass; set it in `_handle_event()` at line 285-313 when a sub-loop state is entered; restore it in `resume()` at line 379-426
@@ -128,7 +128,7 @@ class StateConfig:
 - Any test files that construct `StateConfig` directly will need the new optional fields
 
 ### Similar Patterns
-- `scripts/little_loops/fsm/executor.py:747-751` — `_is_prompt_action()`: structural model for a new `_is_sub_loop_state(state)` dispatch helper (`state.loop is not None`)
+- `scripts/little_loops/fsm/executor.py:885-896` — `_action_mode(state)`: structural model for a new `_is_sub_loop_state(state)` dispatch helper (returns `state.loop is not None`; note: `_is_prompt_action()` referenced in earlier drafts does not exist)
 - `scripts/little_loops/fsm/executor.py:556-568` — `_run_action()` dispatch gate: model for the new `_execute_sub_loop()` branch (emit event, call child, return verdict)
 - `scripts/little_loops/dependency_graph.py:278-321` — 3-color DFS cycle detection (WHITE/GRAY/BLACK marking): adapt for cross-loop cycle detection in `validate_fsm()`; Kahn's topo sort at lines 224-276 is an alternative
 - `scripts/little_loops/cli/loop/_helpers.py:110-132` — `load_loop()` + `load_and_validate()` at `validation.py:336-386`: reuse for loading child FSMLoop by name inside the executor
@@ -157,6 +157,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Context passthrough mechanics**: Parent `context` lives in `FSMLoop.context` dict at `schema.py:365` (static, from YAML). Parent runtime captures live in `FSMExecutor.captured` at `executor.py:367` (dynamic). For `context_passthrough: true`, seed the child `FSMLoop.context` with parent `self.fsm.context` merged with parent `self.captured`, before instantiating the child `FSMExecutor`. After child completes, merge `child_executor.captured` back into `self.captured` (prefixed or namespaced to avoid collision).
 
 **`InterpolationContext` threading**: Built in `_build_context()` at `executor.py:753-769`; maps `captured` namespace to `self.captured` dict. Child captures prefixed with the state name (e.g., `captured["run_refinement"]`) would be available to parent interpolation without naming conflicts.
+
+_Updated by `/ll:refine-issue` 2026-03-15 — corrections from codebase re-analysis:_
+
+**CORRECTION — `_is_prompt_action()` does not exist**: The issue references this method as a model at `executor.py:747-751`, but it does not exist in the codebase. The actual dispatch mechanism is `_action_mode(state)` at `executor.py:885-896`, which returns `"mcp_tool"`, `"prompt"`, or `"shell"` based on `state.action_type`. The new `_is_sub_loop_state()` helper should be modeled after `_action_mode()` (or simply check `state.loop is not None` inline).
+
+**CORRECTION — `_execute_state()` line range has drifted**: Currently at `executor.py:551-602` (not 491-536 as issue states). The dispatch structure has two paths: unconditional (`state.next` set, lines 564-578) and conditional (lines 581-602). The sub-loop branch should be inserted before the `_run_action()` call in both paths.
+
+**CORRECTION — `FSMExecutor.__init__` line range**: Currently at `executor.py:349-398` (not 341-378). `self.captured` is initialized at line 375. Key instance attrs: `self.current_state` (373), `self.iteration` (374), `self.captured` (375), `self.prev_result` (376).
+
+**CORRECTION — `PersistentExecutor` does not retain `loops_dir` as instance attr**: `PersistentExecutor.__init__` (at `persistence.py:288-321`) accepts `loops_dir` but uses it only to construct `StatePersistence` (line 307) — it is NOT stored as `self.loops_dir`. For the sub-loop executor to resolve child loop paths, either: (a) `PersistentExecutor` must store `self.loops_dir = loops_dir` and pass it to `FSMExecutor`, or (b) `FSMExecutor` reads it from the `FSMLoop` object itself. Option (a) requires a one-line fix to `PersistentExecutor.__init__`.
+
+**CONFIRMED — `on_success`/`on_failure` routing**: `StateConfig.from_dict()` at `schema.py:286-287` aliases `on_success` → `on_yes` and `on_failure` → `on_no`. The YAML example in the issue using `on_success:` and `on_failure:` is valid and will work without additional changes.
+
+**CONFIRMED — `_build_context()` at `executor.py:898-914`**: Populates `InterpolationContext` with `context` (from `self.fsm.context`), `captured` (from `self.captured`), `prev`, `result`, `state_name`, `iteration`, `loop_name`, `started_at`, `elapsed_ms`. No parent/child context mechanism exists yet.
 
 ## Impact
 
@@ -194,6 +208,7 @@ Minor line drift (non-blocking):
 - `conftest.py loops_dir` fixture: issue says 225-305, actually at line 271
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T00:29:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961c4d46-e6e4-4045-b778-27f4dac0fb62.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/676e5b84-4af9-4667-8d7e-99c72a1adfe0.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39efb4b0-1abf-4d76-b4be-ab46e1cf469e.jsonl`
