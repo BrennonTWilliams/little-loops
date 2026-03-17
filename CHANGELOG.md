@@ -12,6 +12,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.51.0] - 2026-03-16
+
+### Added
+
+- **Enhance `ll-sprint show` CLI Output Styling** — Colorized output and improved visual formatting for sprint status (ENH-745)
+- **`plan_call` Action Type for FSM States** — New FSM action type that invokes plan mode during state execution (ENH-778)
+- **`rl-coding-agent` Policy+RLHF composite loop** — New built-in loop combining policy gradient and RLHF for coding agent workflows (a124f8e)
+- **`ll-gitignore` CLI command** — New command to expose the built-in gitignore suggestion library (d24aaf2)
+- **`--sort`/`--asc`/`--desc` flags for `ll-issues list`** — Sort issue list output by any field in ascending or descending order (e8dcf75)
+- **`--limit`/`-n` flag for `ll-issues list`** — Cap list output to N issues (3cb3013)
+- **Confidence-check Phase 4.5 findings write-back** — Confidence check now persists Phase 4.5 evaluation findings back to issue files (64e650d)
+- **Error states and `on_handoff` pause in RL loop configs** — RL loops handle error states and support pausing on handoff events (a04e5b3)
+- **`EntityCluster.span` and `inferred_workflow` in workflow-analyzer** — Enriched entity cluster data with temporal span and inferred workflow context (8bfef3e)
+
+### Changed
+
+- **Init validates hook script dependencies and version alignment** — Step 9.5 hook dependency validation added to the init wizard (ENH-705)
+- **Preserve `--only` argument order in `ll-auto`** — Issue processing order now matches the order arguments were provided (2e16ae0)
+- **Type misclassification detection in `normalize-issues`** — Detects and flags issues filed under an incorrect type (1ca7753)
+
+### Fixed
+
+- **`analyze-loop` no longer treats exit_code=1 as failure when `on_no` is defined** — Prevents false failure signals when a no-branch is configured (d695b62)
+- **Loop evaluate classifier splits `NEEDS_FORMAT` from `NEEDS_VERIFY`** — Cleaner evaluation state distinction avoids conflating format and verify signals (483ab8d)
+- **Session log skips fake `## Session Log` headings in code blocks** — Uses last-match strategy to avoid false positives from headings inside fenced code (d6386c8)
+- **`ll-issues list` display text normalization** — Fixed inconsistent output text in the list subcommand (9fdfdff)
+
 ## [1.50.0] - 2026-03-16
 
 ### Added
@@ -1365,6 +1392,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.51.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.50.0...v1.51.0
 [1.50.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.49.0...v1.50.0
 [1.49.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.48.0...v1.49.0
 [1.48.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.47.0...v1.48.0
