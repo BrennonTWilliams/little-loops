@@ -560,9 +560,7 @@ def evaluate_llm_structured(
 
     user_prompt = (
         f"{effective_prompt}\n\n"
-        f"<action_output>\n{truncated}\n</action_output>\n\n"
-        f"Respond with ONLY valid JSON (no markdown fences, no explanation) "
-        f"matching this schema:\n{json.dumps(effective_schema)}"
+        f"<action_output>\n{truncated}\n</action_output>"
     )
 
     cmd = [
@@ -571,6 +569,8 @@ def evaluate_llm_structured(
         user_prompt,
         "--output-format",
         "json",
+        "--json-schema",
+        json.dumps(effective_schema),
         "--model",
         model,
         "--dangerously-skip-permissions",
@@ -613,8 +613,9 @@ def evaluate_llm_structured(
         )
 
     # Parse the CLI JSON envelope and extract structured result.
-    # The envelope format is {"result": "<json-string>", "is_error": false, ...}.
-    # Some CLI versions set is_error=true with exit 0, or return result as a dict.
+    # With --json-schema the envelope is:
+    #   success: {"type":"result","subtype":"success","structured_output":{...},...}
+    #   failure: {"type":"result","subtype":"error_max_structured_output_retries",...}
     # If stdout is JSONL (multiple JSON objects), use the last non-empty line.
     try:
         stdout = proc.stdout.strip()
@@ -627,7 +628,14 @@ def evaluate_llm_structured(
                 raise
             envelope = json.loads(lines[-1])
 
-        # Check is_error flag (some CLI versions exit 0 but report error in envelope)
+        # Check structured-output retry exhaustion (--json-schema failure mode)
+        if envelope.get("subtype") == "error_max_structured_output_retries":
+            return EvaluationResult(
+                verdict="error",
+                details={"error": "Claude CLI could not produce valid structured output after retries", "api_error": True},
+            )
+
+        # Check legacy is_error flag (some CLI versions exit 0 but report error in envelope)
         if envelope.get("is_error", False):
             err_text = str(envelope.get("result", "") or "")[:200]
             return EvaluationResult(
@@ -635,16 +643,16 @@ def evaluate_llm_structured(
                 details={"error": f"Claude CLI reported error: {err_text}", "api_error": True},
             )
 
-        raw_result = envelope.get("result", "")
-        if isinstance(raw_result, dict):
-            # Some CLI versions embed the structured object directly
-            llm_result: dict[str, Any] = raw_result
-        elif raw_result:
-            llm_result = json.loads(raw_result)
+        # --json-schema mode returns validated dict in "structured_output"
+        if isinstance(envelope.get("structured_output"), dict):
+            llm_result: dict[str, Any] = envelope["structured_output"]
         else:
-            # Fallback: some CLI versions return the structured JSON directly at
-            # the top level without a "result" wrapper.
-            if "verdict" in envelope:
+            raw_result = envelope.get("result", "")
+            if isinstance(raw_result, dict):
+                llm_result = raw_result
+            elif raw_result:
+                llm_result = json.loads(raw_result)
+            elif "verdict" in envelope:
                 llm_result = envelope
             else:
                 raw_preview = proc.stdout[:300]
