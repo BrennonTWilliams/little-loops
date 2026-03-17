@@ -188,7 +188,6 @@ def find_existing_issue(
         path_matches = search_issues_by_file_path(config, file_path)
         for issue_path, is_completed in path_matches:
             try:
-                content = issue_path.read_text(encoding="utf-8")
                 # Check if same type of finding (uses configured categories)
                 issue_type_match = _matches_issue_type(
                     finding_type, issue_path, config, is_completed
