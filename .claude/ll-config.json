@@ -39,7 +39,8 @@
       "enabled": false,
       "readiness_threshold": 85,
       "outcome_threshold": 70
-    }
+    },
+    "tdd_mode": true
   },
   "parallel": {
     "worktree_copy_files": [".claude/settings.local.json", ".env"]
