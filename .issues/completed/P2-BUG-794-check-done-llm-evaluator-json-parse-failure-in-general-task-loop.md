@@ -13,6 +13,10 @@ outcome_confidence: 100
 
 The `check_done` state uses an `llm_structured` evaluator to determine if the task is complete. The LLM returned a text preamble before the JSON verdict object, causing the JSON parser to fail with `"Expecting value: line 1 column 1 (char 0)"`. The loop routed to `failed` and terminated at iteration 3 instead of completing normally.
 
+## Current Behavior
+
+The `check_done` state in the `general-task` loop uses an `llm_structured` evaluator. When the LLM returns a natural-language preamble before the JSON verdict object (e.g. `"The task is complete.\n\n{\"verdict\": \"yes\"...}`), the JSON parser fails with `"Expecting value: line 1 column 1 (char 0)"`. The loop routes to `failed` and terminates prematurely instead of completing normally.
+
 ## Loop Context
 
 - **Loop**: `general-task`
@@ -20,6 +24,13 @@ The `check_done` state uses an `llm_structured` evaluator to determine if the ta
 - **Signal type**: eval_failure
 - **Occurrences**: 1
 - **Last observed**: 2026-03-17T21:34:32.219467+00:00
+
+## Steps to Reproduce
+
+1. Run `ll-loop run general-task` with a task that produces multi-sentence narrative output (e.g. an action that writes a report and returns a summary).
+2. Observe the `check_done` state invoke the `llm_structured` evaluator.
+3. The LLM returns a response with a natural-language preamble before the JSON object (e.g. `"The report is complete.\n\n{\"verdict\": \"yes\"}`).
+4. Observe: The evaluator fails with `json.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`, routes to `on_error: failed`, and the loop terminates at iteration 3.
 
 ## History Excerpt
 
@@ -61,20 +72,20 @@ The user prompt is also simplified to remove the redundant "Respond with ONLY va
 
 - [x] `llm_structured` evaluator passes `--json-schema` to `claude` CLI so model output is schema-validated
 - [x] User prompt no longer embeds schema or JSON-only instruction (schema enforcement is at CLI level)
-- [ ] Test coverage updated to reflect `--json-schema` flag in mocked CLI invocations
+- [x] Test coverage updated to reflect `--json-schema` flag in mocked CLI invocations
 
 ## Root Cause
 
 - **File**: `scripts/little_loops/fsm/evaluators.py`
-- **Anchor**: in `evaluate_llm_structured()` at line 643
-- **Cause**: `llm_result = json.loads(raw_result)` where `raw_result` is the `"result"` field from the Claude CLI JSON envelope. When the model prepends natural-language text before the JSON object (e.g. `"The task is complete.\n\n{\"verdict\": \"yes\"...}`), `json.loads` fails because the string does not start with `{`. The `json.JSONDecodeError` is caught at line 658 and returned as `EvaluationResult(verdict="error", ...)`. Because `check_done` in `.loops/general-task.yaml:53` routes `on_error: failed`, the loop terminates immediately.
+- **Anchor**: in `evaluate_llm_structured()` at line 526
+- **Cause**: `llm_result = json.loads(raw_result)` where `raw_result` is the `"result"` field from the Claude CLI JSON envelope. When the model prepends natural-language text before the JSON object (e.g. `"The task is complete.\n\n{\"verdict\": \"yes\"...}`), `json.loads` fails because the string does not start with `{`. The `json.JSONDecodeError` is caught at line 666 and returned as `EvaluationResult(verdict="error", ...)`. Because `check_done` in `.loops/general-task.yaml:53` routes `on_error: failed`, the loop terminates immediately.
 
 The user prompt at lines 561-566 already instructs `"Respond with ONLY valid JSON (no markdown fences, no explanation)"` but this does not reliably suppress preamble — especially when the shell action output fed to the evaluator contains multi-sentence narrative (as in the failing run).
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/evaluators.py` — primary fix at lines 638-663; specifically the `elif raw_result:` branch (line 642) that calls `json.loads(raw_result)` without fallback extraction
+- `scripts/little_loops/fsm/evaluators.py` — primary fix at lines 646-665; specifically the `elif raw_result:` branch (line 650) that calls `json.loads(raw_result)` without fallback extraction
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — calls `evaluate()` dispatcher which calls `evaluate_llm_structured()`
@@ -101,7 +112,7 @@ All loops using `llm_structured` evaluators are vulnerable to this same failure:
 ## Implementation Steps
 
 1. **Fix `evaluate_llm_structured()` in `evaluators.py`** *(done)*:
-   - Simplify `user_prompt` to remove the inline schema and JSON-only instruction (lines 561-566)
+   - Simplify `user_prompt` to remove the inline schema and JSON-only instruction (lines 561-563)
    - Add `"--json-schema", json.dumps(effective_schema)` to the `cmd` list after `--output-format json`
 
 2. **Update tests** in `scripts/tests/test_fsm_evaluators.py` *(partially done)*:
@@ -113,16 +124,28 @@ All loops using `llm_structured` evaluators are vulnerable to this same failure:
 
 3. **Run tests**: `python -m pytest scripts/tests/test_fsm_evaluators.py -v`
 
+## Impact
+
+- **Priority**: P2 - All loops using `llm_structured` evaluators (8+ built-in loops) are vulnerable; causes premature loop termination and data loss of in-progress work.
+- **Effort**: Small - Fix is implemented; remaining work is test updates only.
+- **Risk**: Low - Fix uses CLI-level schema enforcement (`--json-schema`) which eliminates the root cause; no logic changes to evaluation routing.
+- **Breaking Change**: No
+
 ## Labels
 
 `bug`, `loops`, `captured`
 
 ## Status
 
-**Open** | Created: 2026-03-17 | Priority: P2
+**Resolved** | Created: 2026-03-17 | Completed: 2026-03-17 | Priority: P2
+
+## Resolution
+
+Updated `TestEvaluateDispatcherLLM._cli_stdout()` and `TestLLMStructuredEvaluator.test_custom_schema` in `scripts/tests/test_fsm_evaluators.py` to use the `structured_output` envelope format (matching the `--json-schema` CLI path) instead of the old `result: json.dumps(...)` format. All 131 tests pass.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T22:15:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72c3a8c0-bd26-4f7f-a2c3-fb10c63e244f.jsonl`
 - `/ll:refine-issue` - 2026-03-17T22:06:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afa67fca-1937-4256-ac87-131272065740.jsonl`
 - `/ll:refine-issue` - 2026-03-17T21:45:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34031d6c-5edf-4e1a-8019-bb589774481d.jsonl`
 - `/ll:confidence-check` - 2026-03-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66a5e83c-4e85-42e9-944b-a6509b83a605.jsonl`
