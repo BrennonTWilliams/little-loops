@@ -49,6 +49,9 @@ pip install -e "./scripts[dev]"
 | `little_loops.fsm` | FSM loop system subpackage |
 | `little_loops.cli_args` | CLI argument parsing utilities |
 | `little_loops.sprint` | Sprint planning and execution |
+| `little_loops.issue_template` | Issue template assembly for sync pull (v2.0-compliant markdown from per-type section files) |
+| `little_loops.output_parsing` | Claude CLI output parsing utilities used by `issue_manager` and `parallel` |
+| `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
 
 ---
 

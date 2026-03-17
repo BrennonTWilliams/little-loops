@@ -713,6 +713,27 @@ ll-messages --commands-only               # Extract only CLI commands
 
 ---
 
+### ll-gitignore
+
+Suggest and apply `.gitignore` patterns based on untracked files.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-n` | Preview suggestions without modifying `.gitignore` |
+| `--quiet` | `-q` | Suppress non-essential output |
+| `--config` | | Path to project root (default: current directory) |
+
+**Examples:**
+```bash
+ll-gitignore                  # Show suggestions and apply approved patterns
+ll-gitignore --dry-run        # Preview suggestions without modifying .gitignore
+ll-gitignore --quiet          # Suppress non-essential output
+```
+
+---
+
 ### ll-verify-docs
 
 Verify that documented counts (commands, agents, skills) match actual file counts.

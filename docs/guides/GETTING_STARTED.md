@@ -207,7 +207,7 @@ Root cause is at line 1847 in sprint.py.
 
 ## Discovering Issues You Didn't Know Existed
 
-Two commands for finding problems and gaps proactively, without waiting for them to surface in production.
+Three commands for finding problems and gaps proactively, without waiting for them to surface in production.
 
 ### Scan the Codebase
 
@@ -226,6 +226,15 @@ Creates issue files for anything it finds. Run this periodically or after major 
 ```
 
 Requires a product goals file (configured in `ll-config.json`). Useful for identifying what the codebase is missing relative to what you said you wanted to build.
+
+### Audit Architecture
+
+```bash
+/ll:audit-architecture
+#    → Identifies structural problems: coupling, missing abstractions, consistency issues
+```
+
+Analyzes code organization and design patterns rather than individual bugs. Good for understanding systemic issues in an unfamiliar codebase.
 
 ### After Scanning
 

@@ -471,7 +471,7 @@ check_stall:
 skip_item:
   action: echo "Skipping ${current_item} after stall detection"
   action_type: shell
-  next: done
+  next: discover
 ```
 
 **`diff_stall` field reference:**
@@ -522,6 +522,8 @@ states:
   execute:                        # invoke the skill with the captured issue ID
     action: /ll:refine-issue ${captured.current_item.output} --auto
     action_type: prompt
+    max_retries: 3                # prevents a stuck issue from exhausting max_iterations
+    on_retry_exhausted: advance
     next: check_concrete
 
   check_concrete:                 # run tests to confirm no regressions
