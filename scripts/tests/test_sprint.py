@@ -988,6 +988,54 @@ class TestSprintDependencyAnalysis:
         assert "Sprint: overlap-test" in captured.out
         assert "Dependency Analysis" not in captured.out
 
+    def test_show_color_output(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
+        """Sprint show output contains ANSI codes when _USE_COLOR is True."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\033[" in captured.out
+
+    def test_show_no_color_output(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
+        """Sprint show output contains no ANSI codes when _USE_COLOR is False."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+
 
 class TestSprintEdit:
     """Tests for _cmd_sprint_edit (ENH-393)."""

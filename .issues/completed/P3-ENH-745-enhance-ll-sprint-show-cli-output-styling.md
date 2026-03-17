@@ -60,14 +60,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/sprint/__init__.py:220-221` — dispatches `args.command == "show"` to `_cmd_sprint_show`; already calls `configure_output(config.cli)` at line 215 so `_USE_COLOR` and color dicts are initialized before `show` runs
 
 ### Similar Patterns
-- `scripts/little_loops/cli/issues/list_cmd.py:63-76` — reference for colorized issue lines: `colorize(issue.priority, PRIORITY_COLOR[priority])` + `colorize(issue.issue_id, TYPE_COLOR[type_prefix])` — apply same pattern to execution plan issue rows in `_render_execution_plan`
+- `scripts/little_loops/cli/issues/list_cmd.py:127-134` — reference for colorized issue lines: `colorize(issue.priority, PRIORITY_COLOR[priority])` + `colorize(issue.issue_id, TYPE_COLOR[type_prefix])` — apply same pattern to execution plan issue rows in `_render_execution_plan`
 - `scripts/little_loops/cli/issues/sequence.py:67-70` — minimal single-line pattern: `f"  [{colored_pri}, ...] {colored_id}: {issue.title}"` — closest match to sprint's `"  ├── FEAT-001: Title (P2)"` format
-- `scripts/little_loops/cli/issues/show.py:324-330` — inline color map for status/risk strings (e.g., `{"High": "38;5;208", ...}.get(risk, "0")`) — apply same pattern to health summary prefix (`"OK"`, `"REVIEW"`, `"WARNING"`, `"BLOCKED"`)
+- `scripts/little_loops/cli/issues/show.py:323-324` — inline color map for status/risk strings (e.g., `{"High": "38;5;208", ...}.get(risk, "0")`) — apply same pattern to health summary prefix (`"OK"`, `"REVIEW"`, `"WARNING"`, `"BLOCKED"`)
 
 ### Tests
-- `scripts/tests/test_sprint.py` — existing `test_show_includes_dependency_analysis` (line 946) and `TestSprintShowDependencyVisualization` (line 882) use plain-text assertions only — no ANSI coverage; add color assertions following `test_cli_output.py:251-292` patch pattern
+- `scripts/tests/test_sprint.py` — existing `test_show_includes_dependency_analysis` (line 946) uses plain-text assertions only — no ANSI coverage; add color assertions following `test_cli_output.py:251-292` patch pattern
 - `scripts/tests/test_cli_output.py:251-292` — `TestIssueListNoColor` test class shows the pattern for `_USE_COLOR=False` no-color assertions: `patch.object(output_mod, "_USE_COLOR", False)` then assert `"\033[" not in captured.out`
-- `scripts/tests/test_cli.py:882-1054` — render-function unit tests for `_render_execution_plan` — add parallel tests asserting `colorize()` was applied to issue IDs and priorities
+- `scripts/tests/test_cli.py:882-1277` (`TestSprintShowDependencyVisualization`) — render-function unit tests for `_render_execution_plan` — add parallel tests asserting `colorize()` was applied to issue IDs and priorities
 
 ### Documentation
 - `docs/reference/OUTPUT_STYLING.md` — documents the output styling system; may need a line noting `ll-sprint show` now participates in the color system
@@ -108,11 +108,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-03-14 | Priority: P3
+**Completed** | Created: 2026-03-14 | Priority: P3
 
 ---
 
+## Resolution
+
+Applied color styling to `ll-sprint show` output using existing `colorize`, `PRIORITY_COLOR`, and `TYPE_COLOR` utilities from `output.py`:
+
+- **`_helpers.py`**: Added color imports; colorized issue IDs (by type) and priority labels in both execution plan rendering paths (contention and normal)
+- **`show.py`**: Added color imports; colorized health summary status prefix (OK/REVIEW/WARNING/BLOCKED) with distinct colors; colorized "Sprint:" header with bold
+- **Tests**: Added 4 new tests — `test_render_execution_plan_color_on/no_color` in `test_cli.py` and `test_show_color_output/no_color_output` in `test_sprint.py`
+
+All 3591 tests pass.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T03:43:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bc601fe-3133-4658-ac80-94621748a79b.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:35:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/532865b2-afcc-4542-a851-1511b776f7cd.jsonl`
 - `/ll:format-issue` - 2026-03-16T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e105a0a-8129-46b0-9889-ec4f193c35ed.jsonl`
 - `/ll:confidence-check` - 2026-03-15T22:44:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`

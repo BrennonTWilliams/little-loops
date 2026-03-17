@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from little_loops.cli.output import terminal_width
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, terminal_width
 from little_loops.cli.sprint._helpers import (
     _build_issue_contents,
     _render_dependency_analysis,
@@ -107,11 +107,13 @@ def _render_health_summary(
     """
     total_issues = sum(len(w) for w in waves)
 
+    _STATUS_COLOR = {"OK": "32", "REVIEW": "33", "WARNING": "38;5;208", "BLOCKED": "31"}
+
     if has_cycles:
-        return "BLOCKED -- dependency cycles detected"
+        return f"{colorize('BLOCKED', _STATUS_COLOR['BLOCKED'])} -- dependency cycles detected"
 
     if invalid:
-        return f"WARNING -- {len(invalid)} issue(s) not found on disk"
+        return f"{colorize('WARNING', _STATUS_COLOR['WARNING'])} -- {len(invalid)} issue(s) not found on disk"
 
     # Check for novel (unsatisfied) high-confidence proposals
     if dep_report and dep_report.proposals and issue_to_wave is not None:
@@ -123,7 +125,7 @@ def _render_health_summary(
                 if p.confidence >= 0.5:
                     novel_count += 1
         if novel_count > 0:
-            return f"REVIEW -- {novel_count} potential dependency(ies) to review"
+            return f"{colorize('REVIEW', _STATUS_COLOR['REVIEW'])} -- {novel_count} potential dependency(ies) to review"
 
     # Count logical waves (group contention sub-waves)
     notes = contention_notes or [None] * len(waves)
@@ -146,7 +148,7 @@ def _render_health_summary(
     if logical_count == 1 and total_issues == 1:
         suffix = ""
 
-    return f"OK -- {total_issues} issues in {logical_count} {wave_word}{suffix}"
+    return f"{colorize('OK', _STATUS_COLOR['OK'])} -- {total_issues} issues in {logical_count} {wave_word}{suffix}"
 
 
 def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
@@ -184,7 +186,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
             dep_config = config.dependency_mapping if config else None
             waves, contention_notes = refine_waves_for_contention(waves, config=dep_config)
 
-    print(f"Sprint: {sprint.name}")
+    print(f"{colorize('Sprint:', '1')} {sprint.name}")
     print(f"Description: {sprint.description or '(none)'}")
     print(f"Created: {sprint.created}")
 

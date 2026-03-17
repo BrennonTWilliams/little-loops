@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from little_loops.cli.output import terminal_width
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, terminal_width
 
 if TYPE_CHECKING:
     from little_loops.config import DependencyMappingConfig
@@ -83,8 +83,11 @@ def _render_execution_plan(
                     if len(title) > 45:
                         title = title[:42] + "..."
 
+                    issue_type = issue.issue_id.split("-", 1)[0]
+                    colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
+                    colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
                     lines.append(
-                        f"    \u2514\u2500\u2500 {issue.issue_id}: {title} ({issue.priority})"
+                        f"    \u2514\u2500\u2500 {colored_id}: {title} ({colored_priority})"
                     )
 
                     # Show blockers for this issue
@@ -123,7 +126,10 @@ def _render_execution_plan(
                 if len(title) > 45:
                     title = title[:42] + "..."
 
-                lines.append(f"{prefix}{issue.issue_id}: {title} ({issue.priority})")
+                issue_type = issue.issue_id.split("-", 1)[0]
+                colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
+                colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
+                lines.append(f"{prefix}{colored_id}: {title} ({colored_priority})")
 
                 # Show blockers for this issue
                 blockers = dep_graph.blocked_by.get(issue.issue_id, set())

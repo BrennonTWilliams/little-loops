@@ -1269,6 +1269,46 @@ class TestSprintShowDependencyVisualization:
         result = _render_health_summary(waves, None, False, {"ENH-999"})
         assert result.startswith("WARNING")
 
+    def test_render_execution_plan_color_on(self) -> None:
+        """Execution plan output contains ANSI codes when _USE_COLOR is True."""
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph
+
+        issue1 = self._make_issue("FEAT-001", priority="P2", title="Feature one")
+        issue2 = self._make_issue("ENH-002", priority="P3", title="Enhancement")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = graph.get_execution_waves()
+
+        with patch.object(output_mod, "_USE_COLOR", True):
+            output = _render_execution_plan(waves, graph)
+
+        assert "\033[" in output
+
+    def test_render_execution_plan_no_color(self) -> None:
+        """Execution plan output contains no ANSI codes when _USE_COLOR is False."""
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph
+
+        issue1 = self._make_issue("FEAT-001", priority="P2", title="Feature one")
+        issue2 = self._make_issue("ENH-002", priority="P3", title="Enhancement")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = graph.get_execution_waves()
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            output = _render_execution_plan(waves, graph)
+
+        assert "\033[" not in output
+        assert "FEAT-001" in output
+        assert "ENH-002" in output
+
 
 # =============================================================================
 # ENH-206: Additional Coverage Tests
