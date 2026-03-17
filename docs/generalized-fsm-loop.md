@@ -40,6 +40,7 @@ All loops are authored as FSM YAML in `.loops/`. Use `/ll:create-loop` to genera
 | **Drive a metric** | Metric optimization | "Drive metric toward target" |
 | **Maintain constraints** | Continuous compliance | "Keep these constraints true" |
 | **Run a sequence** | Sequential workflows | "Do X, then Y, until Z" |
+| **Sub-loop composition** | Multi-step pipelines | "Chain existing loops into a pipeline" |
 
 ---
 
@@ -184,6 +185,37 @@ max_iterations: 10
 ```
 
 No compilation needed - this is the native format.
+
+---
+
+### 6. Sub-Loop Composition
+
+Invoke another loop as a child FSM from a parent state. The child runs to completion; its terminal verdict (`success` / `failure`) drives the parent's transition.
+
+```yaml
+name: "quality-then-commit"
+initial: "run_quality"
+max_iterations: 5
+states:
+  run_quality:
+    loop: "fix-quality-and-tests"    # Invokes .loops/fix-quality-and-tests.yaml
+    context_passthrough: true        # Share parent context vars; merge child captures back
+    on_success: "run_git"            # Alias for on_yes
+    on_failure: "done"               # Alias for on_no
+  run_git:
+    loop: "issue-refinement-git"     # No context_passthrough — child runs isolated
+    on_success: "done"
+    on_failure: "done"
+  done:
+    terminal: true
+```
+
+**Key fields:**
+- `loop: <name>` — resolves to `.loops/<name>.yaml` (project) or the built-in catalog.
+- `context_passthrough: true` — passes all parent `context` and `captured` variables into the child loop; the child's captured values are merged back into the parent's `captured` namespace on completion.
+- `on_success` / `on_failure` — aliases for `on_yes` / `on_no` accepted in all states (not just sub-loop states).
+
+**Without `context_passthrough`** the child loop runs with its own isolated context and its captured values are not available to the parent after it completes.
 
 ---
 

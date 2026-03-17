@@ -57,3 +57,18 @@ Install a loop into your project for customization: `ll-loop install <name>`
 See `ll-loop --help` and the [FSM Loop documentation](../docs/ARCHITECTURE.md) for loop authoring guidance.
 
 To start from a built-in template: `ll-loop install <name>` copies it to `.loops/<name>.yaml` for local customization.
+
+### Composing Loops
+
+Any built-in loop can be used as a **sub-loop** inside another loop via the `loop:` field on a state. This lets you chain existing loops into multi-step pipelines without duplicating their logic:
+
+```yaml
+states:
+  run_quality:
+    loop: "fix-quality-and-tests"   # references .loops/fix-quality-and-tests.yaml
+    context_passthrough: true       # optional: share parent context & merge child captures
+    on_success: "next_step"
+    on_failure: "done"
+```
+
+For full sub-loop documentation — including `context_passthrough`, verdict aliases (`on_success`/`on_failure`), and worked examples — see [`skills/create-loop/reference.md`](../skills/create-loop/reference.md).

@@ -44,8 +44,11 @@ What are you trying to do?
 ├─ Run ordered steps ───────────────▶ Run a sequence
 │   "Do step 1, do step 2, check if done, repeat"
 │
-└─ Apply a skill to many items ─────▶ Harness a skill
-    "Discover items, run skill, pass evaluation pipeline, advance"
+├─ Apply a skill to many items ─────▶ Harness a skill
+│   "Discover items, run skill, pass evaluation pipeline, advance"
+│
+└─ Chain existing loops together ───▶ Composable sub-loops
+    "Run loop A, then loop B, using the same context"
 ```
 
 | Loop type | States | Branching | Best for |
@@ -55,6 +58,7 @@ What are you trying to do?
 | Maintain constraints | 2 per constraint + 1 | Binary per constraint | Multi-gate quality |
 | Run a sequence | 1 per step + 2 | Binary exit check | Ordered workflows |
 | Harness a skill | discover, execute, check_*, advance, done | Multi-phase evaluation (exit code → MCP → skill → LLM → diff) | Batch processing with layered quality gates |
+| Composable sub-loops | 1 per child loop + done | Binary (success/failure) per child | Multi-stage pipelines from existing loops |
 
 Use `/ll:create-loop` to build any of these interactively. The wizard generates FSM YAML ready to run.
 
@@ -849,6 +853,59 @@ Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's ex
 - **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
 - **Loop run state and event logs are automatically archived** to `.loops/.history/<loop-name>/<timestamp>/` when a new run starts. Use `ll-loop history <name>` without a `run_id` to list archived runs, or `ll-loop history <name> <run_id>` to inspect a specific one.
+
+## Composable Sub-Loops
+
+Any loop can invoke another loop as a **child FSM** using the `loop:` field on a state. The child runs to completion; its result (`success` or `failure`) drives the parent's transition. This lets you build multi-stage pipelines from loops that already exist — without duplicating logic.
+
+### Minimal Example
+
+```yaml
+name: "quality-then-ship"
+initial: "run_quality"
+max_iterations: 3
+states:
+  run_quality:
+    loop: "fix-quality-and-tests"   # runs the built-in loop as a child
+    on_success: "run_git"
+    on_failure: "done"
+  run_git:
+    loop: "issue-refinement-git"
+    on_success: "done"
+    on_failure: "done"
+  done:
+    terminal: true
+```
+
+### Sharing Context Between Parent and Child
+
+Add `context_passthrough: true` to share the parent's `context` and `captured` variables with the child loop, and merge the child's captures back into the parent when it completes:
+
+```yaml
+states:
+  run_quality:
+    loop: "fix-quality-and-tests"
+    context_passthrough: true       # child sees parent context; parent gets child captures
+    on_success: "run_git"
+    on_failure: "done"
+```
+
+Without `context_passthrough`, the child runs with its own isolated context and its captured values are discarded after it exits.
+
+### Routing Aliases
+
+`on_success` and `on_failure` are accepted as aliases for `on_yes` and `on_no` in all states (not just sub-loop states). Use whichever reads more clearly for your use case.
+
+### When to Use Sub-Loops vs. Inline States
+
+| Approach | Best for |
+|----------|----------|
+| Sub-loop (`loop:`) | Reusing an existing, well-tested loop as a pipeline stage |
+| Inline states | Custom logic that doesn't map cleanly to any existing loop |
+
+For full sub-loop schema details — `context_passthrough`, verdict handling, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md#6-sub-loop-composition) and [`skills/create-loop/reference.md`](../../skills/create-loop/reference.md).
+
+---
 
 ## Troubleshooting
 

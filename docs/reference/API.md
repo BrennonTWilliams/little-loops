@@ -3518,6 +3518,32 @@ fsm = FSMLoop(
 )
 ```
 
+**Sub-loop composition example** — a parent loop that sequences two child loops:
+```python
+from little_loops.fsm import FSMLoop, StateConfig
+
+# Parent loop: run quality gate, then commit changes
+fsm = FSMLoop(
+    name="quality-then-commit",
+    initial="run_quality",
+    states={
+        "run_quality": StateConfig(
+            loop="fix-quality-and-tests",   # Invokes .loops/fix-quality-and-tests.yaml
+            context_passthrough=True,       # Share parent context; merge child captures back
+            on_success="run_git",           # Alias for on_yes
+            on_failure="done",              # Alias for on_no
+        ),
+        "run_git": StateConfig(
+            loop="issue-refinement-git",
+            on_success="done",
+            on_failure="done",
+        ),
+        "done": StateConfig(terminal=True),
+    },
+    max_iterations=5,
+)
+```
+
 #### StateConfig
 
 Configuration for a single FSM state.
@@ -3536,7 +3562,11 @@ class StateConfig:
     capture: str | None = None         # Variable name to store output
     timeout: int | None = None         # Action timeout in seconds
     on_maintain: str | None = None     # State for maintain mode restart
+    loop: str | None = None            # Sub-loop to invoke (name from .loops/<name>.yaml)
+    context_passthrough: bool = False  # Pass parent context vars to child; merge child captures back
 ```
+
+> **Alias note:** `on_success` and `on_failure` are accepted as aliases for `on_yes` and `on_no` in all states (including sub-loop states).
 
 #### EvaluateConfig
 
