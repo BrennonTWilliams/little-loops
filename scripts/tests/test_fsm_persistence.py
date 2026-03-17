@@ -85,7 +85,6 @@ class TestLoopState:
         assert state.last_result is None
         assert state.updated_at == ""
 
-
     def test_active_sub_loop_field_roundtrip(self) -> None:
         """active_sub_loop round-trips through to_dict/from_dict (FEAT-659)."""
         state = LoopState(
