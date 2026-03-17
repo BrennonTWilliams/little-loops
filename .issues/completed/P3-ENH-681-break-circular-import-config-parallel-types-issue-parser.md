@@ -17,6 +17,14 @@ Architectural issue found by `/ll:audit-architecture`.
 Circular dependency detected on a critical import path:
 `config` -> `parallel.types` -> `issue_parser` -> `config`
 
+## Current Behavior
+
+The `create_parallel_config()` method in `config/core.py` uses a deferred runtime import (`from little_loops.parallel.types import ParallelConfig` at line 298 inside the method body). Combined with TYPE_CHECKING-guarded cross-imports across the three modules, this creates a circular import triangle: `config` → `parallel.types` → `issue_parser` → `config`. The cycle is latent — no runtime `ImportError` today — but the hidden dependency in `create_parallel_config` is a code smell.
+
+## Expected Behavior
+
+The runtime deferred import at `config/core.py:298` is eliminated. All cross-references between the three modules are handled via the existing `TYPE_CHECKING` guards (already in place for the other two legs). The circular dependency is fully resolved with no hidden runtime imports.
+
 ## Motivation
 
 Circular imports on a path involving the central `config` module are the most dangerous kind: any new code touching these three modules risks triggering an `ImportError` depending on import order. The cycle also prevents `issue_parser` and `parallel.types` from being used in isolation (e.g., in tests or tools) without dragging in the full config graph.
@@ -41,7 +49,7 @@ Three core modules form a circular import triangle. All three legs are already g
 
 All three files have `from __future__ import annotations` (config.py:7, parallel/types.py:7, issue_parser.py:6), which makes annotation evaluation lazy — the `TYPE_CHECKING` guards are effective.
 
-**The one genuine runtime concern:** `config.py:841` has a function-body `from little_loops.parallel.types import ParallelConfig` inside `create_parallel_config()`. This is the deferred/lazy import pattern — it works today because by the time this method is called, both modules are already loaded, but it is a code smell (hidden dependency, not visible at module top level).
+**The one genuine runtime concern:** `config/core.py:298` has a function-body `from little_loops.parallel.types import ParallelConfig` inside `create_parallel_config()`. This is the deferred/lazy import pattern — it works today because by the time this method is called, both modules are already loaded, but it is a code smell (hidden dependency, not visible at module top level).
 
 ### Impact
 
@@ -114,6 +122,7 @@ Option A is the minimum fix: make the one runtime import in `config/core.py:298`
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T01:37:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c399e5bd-6472-4e06-8720-32dfae8e3918.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/448e425d-1d33-4ffb-af9e-6a174dd68514.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
@@ -129,6 +138,16 @@ Option A is the minimum fix: make the one runtime import in `config/core.py:298`
 - **Verdict**: UPDATED
 - `config.py` was split into a subpackage as part of ENH-684. All line references updated to `config/core.py` — runtime deferred import at `config/core.py:298`, TYPE_CHECKING guard at `config/core.py:30`, `create_parallel_config` definition at `config/core.py:255`. Issue body is now accurate.
 
+## Resolution
+
+- **Date**: 2026-03-16
+- **Action**: Promoted `ParallelConfig` import from deferred runtime import inside `create_parallel_config` to a top-level module import in `config/core.py`. Removed `TYPE_CHECKING` guard (no longer needed) and removed `TYPE_CHECKING` from the `typing` import. The runtime cycle is broken: `parallel/types.py` and `issue_parser.py` both guard their back-references with `TYPE_CHECKING` only, so no runtime cycle exists.
+- **Files changed**: `scripts/little_loops/config/core.py`
+- **Verification**: `python -c "import little_loops.config; import little_loops.parallel.types; import little_loops.issue_parser"` passed; 221 tests passed.
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Completed** | Created: 2026-03-12 | Completed: 2026-03-16 | Priority: P3

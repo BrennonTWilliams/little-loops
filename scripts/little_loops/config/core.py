@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from little_loops.config.automation import (
     AutomationConfig,
@@ -25,9 +25,7 @@ from little_loops.config.features import (
     SprintsConfig,
     SyncConfig,
 )
-
-if TYPE_CHECKING:
-    from little_loops.parallel.types import ParallelConfig
+from little_loops.parallel.types import ParallelConfig
 
 
 @dataclass
@@ -295,8 +293,6 @@ class BRConfig:
         Returns:
             ParallelConfig configured from BRConfig
         """
-        from little_loops.parallel.types import ParallelConfig
-
         return ParallelConfig(
             max_workers=max_workers or self._parallel.base.max_workers,
             p0_sequential=self._parallel.p0_sequential,
