@@ -128,7 +128,7 @@ Both commands can generate many issues at once. Run them when onboarding to a ne
 
 ### Quick vs. Full Templates
 
-Newly captured issues use the **minimal template** — Summary, Current Behavior, Expected Behavior, Impact, and Status. This is intentional: capture fast, refine deliberately. The `/ll:format-issue` command (Phase 2) promotes a minimal issue to the full v2.0 template.
+`/ll:capture-issue` uses the template style set in `ll-config.json` (`issues.capture_template`, default: `"full"`). Pass `--quick` to force the minimal template (Summary, Current Behavior, Expected Behavior, Impact, and Status) regardless of config. The `/ll:format-issue` command (Phase 2) promotes a minimal issue to the full v2.0 template.
 
 ---
 

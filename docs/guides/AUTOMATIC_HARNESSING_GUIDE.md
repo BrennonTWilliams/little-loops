@@ -485,8 +485,8 @@ skip_item:
 
 | Verdict | Meaning |
 |---------|---------|
-| `success` | Progress detected (diff changed) |
-| `failure` | Stalled — no changes for `max_stall` consecutive iterations |
+| `yes` | Progress detected (diff changed) |
+| `no` | Stalled — no changes for `max_stall` consecutive iterations |
 | `error` | git unavailable or command failed |
 
 ---

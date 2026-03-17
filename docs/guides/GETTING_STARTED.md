@@ -201,7 +201,7 @@ Root cause is at line 1847 in sprint.py.
 
 ### Minimal vs. Full Template
 
-`/ll:capture-issue` creates a minimal template by default — Summary, Current Behavior, Expected Behavior, Impact, and Status. For quick capture without filling in every section, use the issue file directly — run `/ll:format-issue` later to fill in missing sections when you're ready to implement.
+`/ll:capture-issue` uses the template style set in `ll-config.json` (`issues.capture_template`, default: `"full"`). The full template includes all v2.0 sections; the minimal template has only Summary, Current Behavior, Expected Behavior, Impact, and Status. Pass `--quick` to force minimal regardless of config. Run `/ll:format-issue` later to promote a minimal issue to the full template when you're ready to implement.
 
 ---
 

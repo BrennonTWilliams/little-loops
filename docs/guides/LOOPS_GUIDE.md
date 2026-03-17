@@ -178,6 +178,8 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 | `apo-beam` | Beam search prompt optimization — generate N variants, score all, advance the winner |
 | `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
+| `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
+| `rl-coding-agent` | Policy+RLHF composite loop for agentic coding — outer policy loop adapts coding strategy while inner RLHF loop polishes each artifact to a quality threshold |
 
 ## Beyond the Basics
 
@@ -194,7 +196,7 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `output_json` | `yes` / `no` / `error` | — | Extract a JSON path value and compare |
 | `output_contains` | `yes` / `no` | — | Regex or substring match on stdout |
 | `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
-| `diff_stall` | `stall` / `progress` | — | Detect when consecutive iterations produce no git diff changes |
+| `diff_stall` | `yes` / `no` / `error` | — | Detect when consecutive iterations produce no git diff changes |
 | `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 
 Override the default by adding an `evaluate:` block to a state:
