@@ -657,7 +657,9 @@ class TestLLMStructuredEvaluator:
         mock_run, mock_result = mock_cli
         mock_result.stdout = json.dumps(
             {
-                "result": json.dumps({"verdict": "found", "confidence": 0.95}),
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {"verdict": "found", "confidence": 0.95},
             }
         )
 
@@ -889,13 +891,9 @@ class TestEvaluateDispatcherLLM:
         """Helper to create mock CLI JSON output."""
         return json.dumps(
             {
-                "result": json.dumps(
-                    {
-                        "verdict": verdict,
-                        "confidence": confidence,
-                        "reason": reason,
-                    }
-                ),
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {"verdict": verdict, "confidence": confidence, "reason": reason},
             }
         )
 
