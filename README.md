@@ -388,6 +388,7 @@ ll-issues impact-effort --type FEAT           # Filter matrix to a specific issu
 ll-issues refine-status                       # Refinement depth table sorted by commands touched
 ll-issues refine-status --type BUG            # Filter to bugs only
 ll-issues refine-status --format json         # JSONL output for scripting
+ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
 ```
 
 ### ll-verify-docs / ll-check-links
