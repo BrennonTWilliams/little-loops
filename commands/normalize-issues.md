@@ -62,10 +62,11 @@ if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 
 ### -0.5. Check Mode Behavior (--check)
 
-**When `CHECK_MODE` is true**: Scan for directory structure violations (step 0), invalid filenames (step 1), and duplicate IDs (step 1b) without applying fixes. For each violation, print one line:
+**When `CHECK_MODE` is true**: Scan for directory structure violations (step 0), invalid filenames (step 1), duplicate IDs (step 1b), and type misclassifications (step 1c) without applying fixes. For each violation, print one line:
 - `[dir] structure: [violation description]` for directory violations
 - `[filename] normalize: missing valid ID` for missing IDs
 - `[ID] normalize: duplicate across [types]` for duplicate IDs
+- `[ID] normalize: type mismatch ([current-type] → [inferred-type])` for type misclassifications
 
 After scanning, if any violations found: print `N normalization issues found`, then `exit 1`. If clean: print `All issues normalized`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
 
@@ -176,6 +177,51 @@ done
 
 **Duplicate IDs** — whether cross-type (BUG-007 vs FEAT-007) or active-vs-completed (active ENH-310 vs completed ENH-310) — violate global uniqueness and must be renumbered. The completed/older file keeps its ID; active duplicates get reassigned.
 
+### 1c. Detect Type Misclassifications
+
+For each active issue file (skip `completed/` and `deferred/`), read its content and check whether the type prefix in the filename matches the actual nature of the issue.
+
+**Pattern**: Follows the content-reading approach from Step 7b — use the `Read` tool on each issue file, then apply heuristics inline.
+
+**Heuristics** — extract signals from the issue's Summary, Motivation/Current Behavior, and Root Cause sections:
+
+| Signal keywords | Suggests type |
+|-----------------|---------------|
+| "broken", "regression", "error", "crash", "fails", "wrong behavior", "should not", "defect", "incorrect", "unexpected" | BUG |
+| "new capability", "users can't currently", "add support for", "implement", "missing feature", "not yet possible" | FEAT |
+| "improve", "optimize", "enhance", "refactor", "better UX", "reduce", "increase performance", "simplify" | ENH |
+
+**For each issue file:**
+
+1. Use the `Read` tool to read the file content
+2. Extract the current type prefix from the filename (BUG, FEAT, or ENH)
+3. Also read the `type:` field from YAML frontmatter — if the frontmatter type disagrees with the filename prefix, that is a secondary signal of misclassification
+4. Count signal keywords in Summary, Motivation/Current Behavior, and Root Cause sections for each candidate type (BUG, FEAT, ENH)
+5. Compute a confidence score: `(signals_for_top_type) / (total_signals + 1)` (add 1 to avoid division by zero)
+6. If the top-inferred type differs from the filename prefix AND confidence ≥ **0.7**: flag as a type mismatch
+
+**Confidence threshold note**: The 0.7 default is conservative to avoid false positives on issues with ambiguous signals. If signals are mixed or weak, do not flag.
+
+**Build the mismatch list:**
+```
+TYPE_MISMATCHES=[]
+for each issue file:
+    current_type = extract prefix from filename (BUG|FEAT|ENH)
+    inferred_type = top-scoring type from heuristics
+    confidence = score for inferred_type
+    frontmatter_type = read from YAML 'type:' field
+
+    if inferred_type != current_type AND confidence >= 0.7:
+        add to TYPE_MISMATCHES:
+            file: path
+            current_type: current_type
+            inferred_type: inferred_type
+            confidence: confidence
+            # also note: target_dir changes (e.g., enhancements/ → bugs/)
+```
+
+**In `--check` mode**: For each mismatch, print `[ID] normalize: type mismatch ([current-type] → [inferred-type])` and count toward violation total. Do not apply fixes.
+
 ### 2. Determine Category Mapping
 
 Map directories to category prefixes based on configuration:
@@ -245,26 +291,43 @@ Before making any changes, present the rename plan:
 | `P2-FEAT-007-user-message.md` | `P2-FEAT-015-user-message.md` | Reassigned 007→015 |
 | `P2-ENH-007-high-auto.md` | `P2-ENH-016-high-auto.md` | Reassigned 007→016 |
 
+### Type Mismatch Fixes
+
+| Current Filename | New Filename | Change |
+|-----------------|-------------|--------|
+| `P3-ENH-NNN-foo.md` (enhancements/) | `P3-BUG-NNN-foo.md` (bugs/) | ENH → BUG (0.82 confidence) |
+
 ### Summary
 - Files missing IDs: N
 - Cross-type duplicate IDs found: M
-- Total files to rename: X
+- Type misclassifications detected: T
+- Total files to rename/move: X
 - New IDs to assign: BUG: [list], FEAT: [list], ENH: [list]
 
 Proceed with renaming? (y/n)
 ```
 
-**IMPORTANT**: Wait for user confirmation before proceeding.
+**IMPORTANT**: Wait for user confirmation before proceeding. In `--auto` mode, apply all reclassifications without prompting.
 
 ### 6. Rename Files
 
 Use `git mv` to preserve history:
 
 ```bash
-# Rename each file
+# Rename within same directory (missing ID and duplicate ID fixes)
 git mv "{{config.issues.base_dir}}/[dir]/[old-name].md" \
        "{{config.issues.base_dir}}/[dir]/[new-name].md"
+
+# Cross-directory move for type reclassifications
+# (e.g., enhancements/P3-ENH-NNN-foo.md → bugs/P3-BUG-NNN-foo.md)
+git mv "{{config.issues.base_dir}}/[source-dir]/[old-name].md" \
+       "{{config.issues.base_dir}}/[target-dir]/[new-name].md"
 ```
+
+**Type reclassification moves**: For each entry in `TYPE_MISMATCHES`, rename the file with the new type prefix AND move it to the corresponding directory:
+- BUG → `bugs/`
+- FEAT → `features/`
+- ENH → `enhancements/`
 
 ### 7. Update Internal References (Optional)
 
@@ -336,7 +399,8 @@ For each issue file:
 - **Files missing IDs**: Y
 - **Cross-type duplicate IDs found**: Z
 - **Directory structure violations**: N
-- **Total files renamed**: W
+- **Type misclassifications detected/fixed**: T
+- **Total files renamed/moved**: W
 
 ## Directory Structure
 
@@ -359,6 +423,12 @@ For each issue file:
 |----------|--------------|--------|
 | `P2-FEAT-007-user-message.md` | `P2-FEAT-015-user-message.md` | 007→015 |
 | `P2-ENH-007-high-auto.md` | `P2-ENH-016-high-auto.md` | 007→016 |
+
+## Type Mismatch Fixes
+
+| Original | New Filename | Inferred Type | Confidence |
+|----------|-------------|---------------|-----------|
+| `P3-ENH-NNN-foo.md` (enhancements/) | `P3-BUG-NNN-foo.md` (bugs/) | BUG | 0.82 |
 
 ## ID Ranges Used
 - BUG: 012-014

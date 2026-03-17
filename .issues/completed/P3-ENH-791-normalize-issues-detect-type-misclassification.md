@@ -3,7 +3,7 @@ id: ENH-791
 title: "normalize-issues: detect and fix type misclassifications"
 type: ENH
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-17
 discovered_by: capture-issue
 confidence_score: 100
@@ -158,7 +158,26 @@ enhancement, issue-management, normalize-issues
 
 ---
 
+## Resolution
+
+**Completed**: 2026-03-16
+
+**Changes made**:
+- `commands/normalize-issues.md`: Inserted Step 1c (detect type misclassifications via keyword heuristics with 0.7 confidence threshold); extended Step -0.5 `--check` mode with `[ID] normalize: type mismatch ([old] → [new])` line format; added "Type Mismatch Fixes" sub-table to Step 5 rename plan; added cross-directory `git mv` variant to Step 6; added "Type Mismatch Fixes" table and `type misclassifications detected/fixed: T` count to Step 8 report.
+
+**Acceptance criteria met**:
+- [x] `normalize-issues` detects ENH/FEAT/BUG issues whose content signals a different type
+- [x] Detected issues are shown in the rename plan with `[old-type] → [inferred-type]` reason and confidence score
+- [x] Files are moved to the correct directory via cross-directory `git mv`
+- [x] `--check` mode includes type mismatches in violation count and exit code
+- [x] Report includes a "Type Mismatch Fixes" section with updated summary counts
+- [x] Confidence threshold (0.7) prevents spurious reclassifications of ambiguous issues
+- [x] `--auto` mode applies reclassifications without prompting
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-03-17T03:54:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/112cf93b-8dec-4f77-973b-60efdcd93689.jsonl`
+- `/ll:ready-issue` - 2026-03-17T03:54:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/112cf93b-8dec-4f77-973b-60efdcd93689.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d69eb77-324d-4fd6-bf7c-1a2adec7fe53.jsonl`
 - `/ll:format-issue` - 2026-03-17T03:28:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/087addd7-5cf0-461a-b862-113d6f2a30cd.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:07:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bf31b0a-cfc9-42ad-a35f-c71298680f5c.jsonl`
