@@ -598,7 +598,7 @@ def find_issues(
     config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
-    only_ids: set[str] | None = None,
+    only_ids: list[str] | set[str] | None = None,
     type_prefixes: set[str] | None = None,
 ) -> list[IssueInfo]:
     """Find all issues matching criteria.
@@ -607,12 +607,15 @@ def find_issues(
         config: Project configuration
         category: Optional category to filter (e.g., "bugs")
         skip_ids: Issue IDs to skip
-        only_ids: If provided, only include these issue IDs
+        only_ids: If provided, only include these issue IDs. When a list,
+            results are returned in list order (input sequence preserved).
+            When a set, results are sorted by priority as usual.
         type_prefixes: If provided, only include issues whose ID starts with
             one of these prefixes (e.g., {"BUG", "ENH"})
 
     Returns:
-        List of IssueInfo sorted by priority
+        List of IssueInfo sorted by priority, or in only_ids list order when
+        only_ids is a list
     """
     skip_ids = skip_ids or set()
     parser = IssueParser(config)
@@ -656,8 +659,12 @@ def find_issues(
                     continue
             issues.append(info)
 
-    # Sort by priority (lower int = higher priority)
-    issues.sort(key=lambda x: (x.priority_int, x.issue_id))
+    # When only_ids is a list, preserve input order; otherwise sort by priority
+    if isinstance(only_ids, list):
+        order = {issue_id: i for i, issue_id in enumerate(only_ids)}
+        issues.sort(key=lambda x: order.get(x.issue_id, len(only_ids)))
+    else:
+        issues.sort(key=lambda x: (x.priority_int, x.issue_id))
     return issues
 
 

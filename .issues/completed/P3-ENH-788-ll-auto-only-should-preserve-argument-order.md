@@ -120,11 +120,26 @@ return candidates[0]  ← order determined by dep_graph, not --only arg
 
 `enhancement`, `cli`, `ll-auto`, `argument-order`
 
+## Resolution
+
+**Completed** | 2026-03-16
+
+### Changes Made
+
+1. **`scripts/little_loops/cli_args.py`**: Added `parse_issue_ids_ordered()` returning `list[str] | None`, preserving input order via list comprehension instead of set comprehension.
+2. **`scripts/little_loops/issue_parser.py`**: Updated `find_issues()` signature to `only_ids: list[str] | set[str] | None`. When `only_ids` is a list, issues are sorted by their position in the list instead of by priority.
+3. **`scripts/little_loops/issue_manager.py`**: Updated `AutoManager.__init__` signature and `_get_next_issue()` to sort candidates by list order when `self.only_ids` is a list. Fixed set intersection to work with both list and set types.
+4. **`scripts/little_loops/cli/auto.py`**: Changed `parse_issue_ids` → `parse_issue_ids_ordered` for `--only` argument so `ll-auto` preserves argument order.
+5. **Tests**: Added `TestParseIssueIdsOrdered` in `test_cli_args.py`; added `test_find_issues_only_ids_ordered` and `test_find_issues_only_ids_set_uses_priority_sort` in `test_issue_parser.py`; updated `test_only_and_skip_parsed_to_sets` in `test_cli.py` to expect list instead of set.
+
+Note: `ll-parallel` was intentionally left using `parse_issue_ids` (set) as parallel ordering behavior is out of scope per issue boundaries. `ll-sprint` unchanged as it already preserves order via list iteration.
+
 ## Status
 
-**Open** | Created: 2026-03-16 | Priority: P3
+**Completed** | Created: 2026-03-16 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T00:09:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bb09ebe-c7cc-4096-90dd-091384e81465.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
 - `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

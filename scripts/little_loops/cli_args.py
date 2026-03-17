@@ -196,6 +196,29 @@ def parse_issue_ids(value: str | None) -> set[str] | None:
     return {i.strip().upper() for i in value.split(",")}
 
 
+def parse_issue_ids_ordered(value: str | None) -> list[str] | None:
+    """Parse comma-separated issue IDs into an ordered list.
+
+    Like parse_issue_ids but preserves input order, enabling callers to
+    honor the sequence in which IDs were specified.
+
+    Args:
+        value: Comma-separated string like "BUG-001,FEAT-002" or None
+
+    Returns:
+        List of uppercase issue IDs in input order, or None if value is None
+
+    Example:
+        >>> parse_issue_ids_ordered("BUG-010,FEAT-005,ENH-020")
+        ['BUG-010', 'FEAT-005', 'ENH-020']
+        >>> parse_issue_ids_ordered(None)
+        None
+    """
+    if value is None:
+        return None
+    return [i.strip().upper() for i in value.split(",")]
+
+
 VALID_ISSUE_TYPES = {"BUG", "FEAT", "ENH"}
 
 

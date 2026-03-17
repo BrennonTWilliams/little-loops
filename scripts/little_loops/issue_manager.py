@@ -685,7 +685,7 @@ class AutoManager:
         max_issues: int = 0,
         resume: bool = False,
         category: str | None = None,
-        only_ids: set[str] | None = None,
+        only_ids: list[str] | set[str] | None = None,
         skip_ids: set[str] | None = None,
         type_prefixes: set[str] | None = None,
         verbose: bool = True,
@@ -698,7 +698,8 @@ class AutoManager:
             max_issues: Maximum issues to process (0 = unlimited)
             resume: Whether to resume from previous state
             category: Optional category to filter (e.g., "bugs")
-            only_ids: If provided, only process these issue IDs
+            only_ids: If provided, only process these issue IDs. When a list,
+                issues are processed in list order (input sequence preserved).
             skip_ids: Issue IDs to skip (in addition to attempted issues)
             type_prefixes: If provided, only process issues with these type prefixes
             verbose: Whether to output progress messages
@@ -775,13 +776,18 @@ class AutoManager:
         ]
 
         if candidates:
-            return candidates[0]  # Already sorted by priority in get_ready_issues()
+            # When only_ids is a list, respect input order; otherwise use priority order
+            only_ids = self.only_ids
+            if isinstance(only_ids, list):
+                order = {issue_id: i for i, issue_id in enumerate(only_ids)}
+                candidates.sort(key=lambda x: order.get(x.issue_id, len(only_ids)))
+            return candidates[0]
 
         # No ready candidates - check if there are blocked issues remaining
         all_in_graph = set(self.dep_graph.issues.keys())
         remaining = all_in_graph - completed - skip_ids
         if self.only_ids is not None:
-            remaining = remaining & self.only_ids
+            remaining = remaining & set(self.only_ids)
         if self.type_prefixes is not None:
             remaining = {r for r in remaining if r.split("-", 1)[0] in self.type_prefixes}
 

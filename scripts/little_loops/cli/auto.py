@@ -7,7 +7,12 @@ import os
 from pathlib import Path
 
 from little_loops.cli.output import configure_output
-from little_loops.cli_args import add_common_auto_args, parse_issue_ids, parse_issue_types
+from little_loops.cli_args import (
+    add_common_auto_args,
+    parse_issue_ids,
+    parse_issue_ids_ordered,
+    parse_issue_types,
+)
 from little_loops.config import BRConfig
 from little_loops.issue_manager import AutoManager
 
@@ -64,7 +69,7 @@ Examples:
         os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
 
     # Parse issue ID filters
-    only_ids = parse_issue_ids(args.only)
+    only_ids = parse_issue_ids_ordered(args.only)
     skip_ids = parse_issue_ids(args.skip)
     type_prefixes = parse_issue_types(args.type)
 

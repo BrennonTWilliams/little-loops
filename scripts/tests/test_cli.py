@@ -1323,7 +1323,7 @@ class TestMainAutoAdditionalCoverage:
             assert call_kwargs["category"] == "bugs"
 
     def test_only_and_skip_parsed_to_sets(self, temp_project: Path) -> None:
-        """main_auto parses --only and --skip to sets."""
+        """main_auto parses --only to list (ordered) and --skip to set."""
         with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
@@ -1348,7 +1348,7 @@ class TestMainAutoAdditionalCoverage:
 
             assert result == 0
             call_kwargs = mock_manager_cls.call_args.kwargs
-            assert call_kwargs["only_ids"] == {"BUG-001", "BUG-002"}
+            assert call_kwargs["only_ids"] == ["BUG-001", "BUG-002"]
             assert call_kwargs["skip_ids"] == {"BUG-003"}
 
     def test_project_root_fallback_to_cwd(self, temp_project: Path) -> None:

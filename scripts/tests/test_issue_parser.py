@@ -935,6 +935,49 @@ class TestFindIssues:
         assert len(issues) == 1
 
 
+    def test_find_issues_only_ids_ordered(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """When only_ids is a list, results are returned in list order."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create issues with different priorities so priority sort would give a different order
+        (bugs_dir / "P3-BUG-010-low.md").write_text("# BUG-010: Low\n\nContent.")
+        (bugs_dir / "P1-BUG-020-high.md").write_text("# BUG-020: High\n\nContent.")
+        (bugs_dir / "P2-BUG-030-mid.md").write_text("# BUG-030: Mid\n\nContent.")
+
+        # Request in caller-specified order: BUG-010, BUG-030, BUG-020
+        issues = find_issues(config, only_ids=["BUG-010", "BUG-030", "BUG-020"])
+
+        issue_ids = [i.issue_id for i in issues]
+        assert issue_ids == ["BUG-010", "BUG-030", "BUG-020"]
+
+    def test_find_issues_only_ids_set_uses_priority_sort(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """When only_ids is a set, results are sorted by priority as usual."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P3-BUG-010-low.md").write_text("# BUG-010: Low\n\nContent.")
+        (bugs_dir / "P1-BUG-020-high.md").write_text("# BUG-020: High\n\nContent.")
+
+        issues = find_issues(config, only_ids={"BUG-010", "BUG-020"})
+
+        issue_ids = [i.issue_id for i in issues]
+        # Priority sort: BUG-020 (P1) before BUG-010 (P3)
+        assert issue_ids == ["BUG-020", "BUG-010"]
+
+
 class TestFindHighestPriorityIssue:
     """Tests for find_highest_priority_issue function."""
 

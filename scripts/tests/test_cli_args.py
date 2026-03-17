@@ -22,6 +22,7 @@ from little_loops.cli_args import (
     add_timeout_arg,
     add_type_arg,
     parse_issue_ids,
+    parse_issue_ids_ordered,
     parse_issue_types,
 )
 
@@ -58,6 +59,35 @@ class TestParseIssueIds:
         """
         result = parse_issue_ids("")
         assert result == {""}
+
+
+class TestParseIssueIdsOrdered:
+    """Tests for parse_issue_ids_ordered() function."""
+
+    def test_none_returns_none(self) -> None:
+        """None input returns None."""
+        result = parse_issue_ids_ordered(None)
+        assert result is None
+
+    def test_single_issue(self) -> None:
+        """Single issue ID is uppercased."""
+        result = parse_issue_ids_ordered("bug-001")
+        assert result == ["BUG-001"]
+
+    def test_multiple_issues_preserves_order(self) -> None:
+        """Multiple comma-separated issues are uppercased and order is preserved."""
+        result = parse_issue_ids_ordered("BUG-010,FEAT-005,ENH-020")
+        assert result == ["BUG-010", "FEAT-005", "ENH-020"]
+
+    def test_whitespace_handling(self) -> None:
+        """Whitespace around IDs is stripped."""
+        result = parse_issue_ids_ordered(" BUG-001 , feat-002 , ENH-003 ")
+        assert result == ["BUG-001", "FEAT-002", "ENH-003"]
+
+    def test_returns_list_not_set(self) -> None:
+        """Returns a list, not a set."""
+        result = parse_issue_ids_ordered("BUG-001,FEAT-002")
+        assert isinstance(result, list)
 
 
 class TestParseIssueTypes:
