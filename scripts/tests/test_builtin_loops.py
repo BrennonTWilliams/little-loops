@@ -48,6 +48,7 @@ class TestBuiltinLoopFiles:
         expected = {
             "dead-code-cleanup",
             "docs-sync",
+            "evaluation-quality",
             "fix-quality-and-tests",
             "issue-discovery-triage",
             "issue-refinement",
@@ -258,6 +259,109 @@ class TestBuiltinLoopScratchIsolation:
             assert not re.search(bare_pattern, combined), (
                 f"{loop_name}.yaml still references global tmp path: {forbidden!r}"
             )
+
+
+class TestEvaluationQualityLoop:
+    """Structural tests for the evaluation-quality FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "evaluation-quality.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "evaluation-quality"
+        assert data.get("initial") == "sample"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "sample",
+            "evaluate_code",
+            "score",
+            "route_action",
+            "route_issues",
+            "route_code",
+            "remediate_issues",
+            "remediate_code",
+            "remediate_backlog",
+            "prepare_report",
+            "report",
+            "done",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_score_state_has_capture(self, data: dict) -> None:
+        """score state must define capture: scores so route states can interpolate it."""
+        score_state = data["states"].get("score", {})
+        assert score_state.get("capture") == "scores"
+
+    def test_route_states_have_on_error(self, data: dict) -> None:
+        """All route/evaluate states must define on_error to prevent hangs."""
+        route_states = ["route_action", "route_issues", "route_code"]
+        for state_name in route_states:
+            state = data["states"].get(state_name, {})
+            assert "on_error" in state, f"Route state '{state_name}' missing on_error"
+
+    def test_context_thresholds_defined(self, data: dict) -> None:
+        """context block must define the three quality thresholds."""
+        ctx = data.get("context", {})
+        assert "issue_quality_threshold" in ctx
+        assert "code_health_threshold" in ctx
+        assert "backlog_health_threshold" in ctx
+
+    def test_evaluate_code_uses_loops_tmp(self, data: dict) -> None:
+        """evaluate_code state must use .loops/tmp/ paths, not bare /tmp/."""
+        action = data["states"].get("evaluate_code", {}).get("action", "")
+        assert ".loops/tmp/" in action, "evaluate_code must use .loops/tmp/ for output files"
+        # Bare /tmp/... references are forbidden; .loops/tmp/... is fine.
+        # Use negative lookbehind to avoid false positives on ".loops/tmp/eval-..."
+        assert not re.search(r"(?<!\.loops)/tmp/eval-", action), (
+            "evaluate_code must not use bare /tmp/ paths"
+        )
+
+    def test_prepare_report_is_shell_state(self, data: dict) -> None:
+        """prepare_report must be a shell state (date expansion needs shell context)."""
+        state = data["states"].get("prepare_report", {})
+        assert state.get("action_type") == "shell"
+
+    def test_report_references_captured_report_path(self, data: dict) -> None:
+        """report state must reference ${captured.report_path.output} for dated filename."""
+        action = data["states"].get("report", {}).get("action", "")
+        assert "${captured.report_path.output}" in action
+
+    def test_score_state_emits_primary_concern(self, data: dict) -> None:
+        """score state prompt must instruct output of PRIMARY_CONCERN tag."""
+        action = data["states"].get("score", {}).get("action", "")
+        assert "PRIMARY_CONCERN" in action
+
+    def test_route_action_routes_on_none(self, data: dict) -> None:
+        """route_action must route to prepare_report when PRIMARY_CONCERN: NONE.
+
+        prepare_report is required in all paths (including the healthy/NONE path)
+        because $(date +%Y-%m-%d) does not expand in prompt states — a shell state
+        must compute the dated report path before the report prompt state runs.
+        """
+        state = data["states"].get("route_action", {})
+        assert state.get("on_yes") == "prepare_report"
+        evaluate = state.get("evaluate", {})
+        assert "NONE" in evaluate.get("pattern", "")
+
+    def test_max_iterations_and_timeout(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
 
 
 class TestBuiltinLoopOnBlockedCoverage:

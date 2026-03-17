@@ -1,0 +1,197 @@
+name: evaluation-quality
+description: |
+  Multi-dimensional quality health check across issue quality (confidence scores,
+  format status), code quality (test/lint), and backlog health (size, velocity).
+  Produces a scored report, routes to targeted remediation loops when thresholds
+  are breached, and terminates with a persisted quality snapshot. Designed to
+  run periodically — before sprint planning or weekly.
+initial: sample
+max_iterations: 5
+timeout: 3600
+on_handoff: spawn
+context:
+  issue_quality_threshold: 70
+  code_health_threshold: 80
+  backlog_health_threshold: 75
+states:
+  sample:
+    action_type: shell
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      total = len(issues)
+      scored = sum(1 for i in issues if i.get('confidence_score'))
+      unscored = total - scored
+      unformatted = sum(1 for i in issues if not i.get('formatted', False))
+      avg_conf = sum(i.get('confidence_score', 0) for i in issues if i.get('confidence_score')) / max(scored, 1)
+      below_threshold = sum(1 for i in issues if i.get('confidence_score', 0) < 70)
+      print(f'total_active: {total}')
+      print(f'scored: {scored}')
+      print(f'unscored: {unscored}')
+      print(f'unformatted: {unformatted}')
+      print(f'avg_confidence_score: {avg_conf:.1f}')
+      print(f'below_threshold: {below_threshold}')
+      "
+      ll-history summary 2>/dev/null || echo "(no history available)"
+    capture: metrics
+    next: evaluate_code
+
+  evaluate_code:
+    action_type: shell
+    timeout: 600
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.claude/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      mkdir -p .loops/tmp
+      set -o pipefail
+      eval "$CMD" 2>&1 | tee .loops/tmp/eval-test-results.txt
+      ruff check scripts/ 2>&1 | tee .loops/tmp/eval-lint-results.txt || true
+    capture: code_results
+    next: score
+
+  score:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Synthesize the following metrics into a quality health report.
+
+      Issue metrics:
+      ${captured.metrics.output}
+
+      Code quality results:
+      ${captured.code_results.output}
+
+      Thresholds:
+      - Issue quality threshold: ${context.issue_quality_threshold}
+      - Code health threshold: ${context.code_health_threshold}
+      - Backlog health threshold: ${context.backlog_health_threshold}
+
+      Score each dimension from 0-100 based on the data above:
+      - issue_quality: based on avg_confidence_score, unscored count, and unformatted count
+      - code_health: based on test pass/fail and lint clean/dirty
+      - backlog_health: based on total_active count, priority distribution, and velocity
+      - overall: weighted average (issue_quality 40%, code_health 40%, backlog_health 20%)
+
+      Output exactly this block followed by a PRIMARY_CONCERN tag:
+
+      SCORES:
+      issue_quality: <0-100>
+      code_health: <0-100>
+      backlog_health: <0-100>
+      overall: <0-100>
+
+      PRIMARY_CONCERN: <NONE|ISSUES|CODE|BACKLOG>
+
+      Choose PRIMARY_CONCERN as the dimension furthest below its threshold.
+      Use NONE if all dimensions meet their thresholds.
+    capture: scores
+    next: route_action
+
+  route_action:
+    evaluate:
+      type: output_contains
+      source: "${captured.scores.output}"
+      pattern: "PRIMARY_CONCERN: NONE"
+    on_yes: prepare_report
+    on_no: route_issues
+    on_error: done
+
+  route_issues:
+    evaluate:
+      type: output_contains
+      source: "${captured.scores.output}"
+      pattern: "PRIMARY_CONCERN: ISSUES"
+    on_yes: remediate_issues
+    on_no: route_code
+    on_error: done
+
+  route_code:
+    evaluate:
+      type: output_contains
+      source: "${captured.scores.output}"
+      pattern: "PRIMARY_CONCERN: CODE"
+    on_yes: remediate_code
+    on_no: remediate_backlog
+    on_error: done
+
+  remediate_issues:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Issue quality is below threshold. Run the issue-refinement loop to address
+      low-confidence and unformatted issues:
+      ```
+      ll-loop run issue-refinement
+      ```
+      Wait for completion before proceeding.
+    next: prepare_report
+
+  remediate_code:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Code quality is below threshold. Run the fix-quality-and-tests loop to
+      resolve lint, type, and test failures:
+      ```
+      ll-loop run fix-quality-and-tests
+      ```
+      Wait for completion before proceeding.
+    next: prepare_report
+
+  remediate_backlog:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Backlog health is below threshold. Run the backlog-flow-optimizer loop to
+      address throughput bottlenecks:
+      ```
+      ll-loop run backlog-flow-optimizer
+      ```
+      Wait for completion before proceeding.
+    next: prepare_report
+
+  prepare_report:
+    action_type: shell
+    action: |
+      mkdir -p .loops
+      echo ".loops/quality-report-$(date +%Y-%m-%d).md"
+    capture: report_path
+    next: report
+
+  report:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Write a quality health report to `${captured.report_path.output}`.
+
+      Include the following sections:
+
+      ## Quality Health Report — $(date)
+
+      ### Scores
+      ${captured.scores.output}
+
+      ### Trend Analysis
+      Check if prior reports exist in `.loops/quality-report-*.md`.
+      If they do, compare current overall score to the most recent prior report
+      and note whether quality is improving, stable, or declining.
+      If no prior reports exist, note this is the baseline measurement.
+
+      ### Top 3 Action Items
+      Based on the scores, list the three highest-impact actions the team should
+      take to improve quality. Be specific — reference the metrics from the
+      issue/code/backlog data gathered in this run.
+
+      ### Summary
+      One sentence summarizing the project's current quality state.
+
+      Write the report now using the Write tool or bash redirection.
+    next: done
+
+  done:
+    terminal: true

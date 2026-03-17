@@ -298,7 +298,22 @@ Pattern: `sprint-build-and-validate.yaml:7-10` uses `${context.readiness_thresho
 
 ## Status
 
-- [ ] Not started
+- [x] Completed 2026-03-17
+
+## Resolution
+
+Implemented `loops/evaluation-quality.yaml` — a 12-state FSM loop providing multi-dimensional quality health checks across issues, code, and backlog. The loop:
+
+- **sample**: Collects issue metrics via `ll-issues list --json` + Python3 classifier; includes `ll-history summary` for velocity data
+- **evaluate_code**: Extracts `test_cmd` from `.claude/ll-config.json` (exact pattern from `fix-quality-and-tests.yaml`); runs tests + lint into `.loops/tmp/`
+- **score**: LLM synthesizes signals into per-dimension scores (0-100) with a `SCORES:` block and `PRIMARY_CONCERN` tag; `capture: scores` required for route state interpolation
+- **route_action/route_issues/route_code**: `output_contains` chain with `on_error: done` on all route states
+- **remediate_***: Delegates to `issue-refinement`, `fix-quality-and-tests`, and `backlog-flow-optimizer` loops
+- **prepare_report**: Shell state computes dated report path (required because `$(date)` doesn't expand in prompt states)
+- **report**: Writes `.loops/quality-report-YYYY-MM-DD.md` with scores, trend analysis, and top 3 action items
+- **done**: `terminal: true`
+
+Added `TestEvaluationQualityLoop` test class (12 tests) and updated `test_expected_loops_exist`. Loop validates cleanly with `ll-loop validate evaluation-quality`.
 
 ## Verification Notes
 
@@ -309,6 +324,8 @@ Verified 2026-03-16 against codebase. Core guidance confirmed valid. Two line re
 - `fix-quality-and-tests.yaml:64-81` test_cmd pattern confirmed accurate (state is named `check-tests`, not `evaluate_code`, but the pattern is valid).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/517833c8-6318-463b-9597-71891b51a893.jsonl`
+- `/ll:ready-issue` - 2026-03-17T05:04:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7de2fae-6b8b-47e7-b6a5-7af641dded1b.jsonl`
 - `/ll:verify-issues` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
 - `/ll:verify-issues` - 2026-03-17T03:55:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5cd3087-827b-4f96-b97c-87f26d20ce04.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:44:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bff4ea7-c43c-4570-a757-562d16159166.jsonl`
