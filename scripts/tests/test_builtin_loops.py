@@ -364,6 +364,42 @@ class TestEvaluationQualityLoop:
         assert data.get("timeout", 0) > 0
 
 
+class TestIssueRefinementLoopOnError:
+    """Tests that prompt states in issue-refinement.yaml define on_error handlers."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "issue-refinement.yaml"
+    PROMPT_STATES_REQUIRING_ON_ERROR = ["format_issues", "score_issues", "refine_issues"]
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.mark.parametrize("state_name", PROMPT_STATES_REQUIRING_ON_ERROR)
+    def test_prompt_state_has_on_error(self, data: dict, state_name: str) -> None:
+        """Each prompt state must define on_error to prevent loop termination on SIGKILL."""
+        state = data["states"].get(state_name)
+        assert state is not None, f"State '{state_name}' not found"
+        assert state.get("action_type") == "prompt", (
+            f"State '{state_name}' is not a prompt state"
+        )
+        assert "on_error" in state, (
+            f"Prompt state '{state_name}' missing on_error handler — "
+            f"SIGKILL will terminate the loop instead of recovering"
+        )
+
+    @pytest.mark.parametrize("state_name", PROMPT_STATES_REQUIRING_ON_ERROR)
+    def test_prompt_state_on_error_routes_to_check_commit(
+        self, data: dict, state_name: str
+    ) -> None:
+        """on_error for each prompt state must route to check_commit."""
+        state = data["states"].get(state_name, {})
+        assert state.get("on_error") == "check_commit", (
+            f"Prompt state '{state_name}' on_error should be 'check_commit', "
+            f"got {state.get('on_error')!r}"
+        )
+
+
 class TestBuiltinLoopOnBlockedCoverage:
     """Tests that llm_structured evaluate states in built-in loops define on_blocked handlers."""
 

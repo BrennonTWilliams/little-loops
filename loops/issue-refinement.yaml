@@ -86,6 +86,7 @@ states:
     next: check_commit
   format_issues:
     action_type: prompt
+    on_error: check_commit
     action: |
       Run these commands in order for issue ${captured.issue_id.output}:
       1. /ll:format-issue ${captured.issue_id.output} --auto
@@ -93,12 +94,14 @@ states:
     next: check_commit
   score_issues:
     action_type: prompt
+    on_error: check_commit
     action: |
       Run this command for issue ${captured.issue_id.output}:
       /ll:confidence-check ${captured.issue_id.output} --auto
     next: check_commit
   refine_issues:
     action_type: prompt
+    on_error: check_commit
     action: |
       Run these commands in order for issue ${captured.issue_id.output}:
       1. /ll:refine-issue ${captured.issue_id.output} --auto
