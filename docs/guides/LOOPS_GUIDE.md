@@ -491,6 +491,47 @@ generate_variants → score_and_select → route_convergence
 
 ---
 
+### `apo-opro` — OPRO-Style History-Guided Optimization
+
+**Technique**: Maintain a running history of scored candidates → propose a new candidate informed by past successes and failures → evaluate and score it → append to history → repeat until convergence. Inspired by the OPRO (Optimization by PROmpting) approach: the accumulated score history acts as in-context gradient information, steering each new proposal away from previously observed weaknesses.
+
+**When to use**: You want the optimizer to learn from its own history across iterations. Each proposal is explicitly conditioned on what was tried before and how it scored, so the loop avoids re-proposing variants with known weaknesses. This makes it better than `apo-feedback-refinement` (single candidate, no memory) for runs where early proposals reveal recurring failure patterns that need to be systematically avoided.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `prompt_file` | `system.md` | Path to the prompt file to improve |
+| `eval_criteria` | `"clarity, specificity, and effectiveness"` | Criteria the evaluator uses to score candidates |
+| `target_score` | `90` | Score (0–100) at which the loop considers the prompt converged |
+
+**Invocation**:
+
+```bash
+# Run with defaults (improves system.md in the current directory)
+ll-loop apo-opro
+
+# Customize prompt file and criteria
+ll-loop apo-opro \
+  --context prompt_file=prompts/classifier.md \
+  --context eval_criteria="accuracy and conciseness" \
+  --context target_score=85
+
+# Install to project for customization
+ll-loop install apo-opro
+```
+
+**FSM flow**:
+```
+init_history → propose_candidate → evaluate_candidate → update_history → route_convergence
+                    ↑                                                              │
+                    └──────────────────── CONTINUE ─────────────────────────────────┘
+                                                                                   │
+                                                                  CONVERGED → done
+```
+
+---
+
 ### `apo-beam` — Beam Search Optimization
 
 **Technique**: Generate N variants in parallel → score all → advance the highest-scoring winner → repeat until convergence.

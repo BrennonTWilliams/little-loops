@@ -185,7 +185,7 @@ The entire diagram is center-indented: `indent = (terminal_width - total_diagram
 
 ### State overview table
 
-`_print_state_overview_table(fsm)` renders a compact aligned table below the diagram:
+`_print_state_overview_table(fsm)` (`cli/loop/info.py`) renders a compact aligned table below the diagram:
 
 ```
   State          Type    Action Preview                   Transitions

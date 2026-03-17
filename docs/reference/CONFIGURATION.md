@@ -79,6 +79,17 @@ For interactive editing, use `/ll:configure`.
     "custom_agents": []
   },
 
+  "product": {
+    "enabled": false,
+    "goals_file": ".claude/ll-goals.md",
+    "analyze_user_impact": true,
+    "analyze_business_value": true,
+    "goals_discovery": {
+      "max_files": 5,
+      "required_files": ["README.md"]
+    }
+  },
+
   "prompt_optimization": {
     "enabled": true,
     "mode": "quick",

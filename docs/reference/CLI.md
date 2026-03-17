@@ -761,7 +761,7 @@ Check markdown documentation for broken links.
 ll-check-links                            # Check all markdown files
 ll-check-links --json                     # Output as JSON
 ll-check-links --format markdown          # Markdown report
-ll-check-links docs/                      # Check specific directory
+ll-check-links -C docs/                   # Check specific directory
 ll-check-links --ignore 'http://localhost.*'  # Ignore pattern
 ll-check-links --timeout 30 --workers 5   # Custom timeout and concurrency
 ```
