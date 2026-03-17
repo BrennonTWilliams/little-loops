@@ -1,11 +1,38 @@
 name: "general-task"
-initial: execute
+initial: plan
 max_iterations: 100
 on_handoff: spawn
 
 states:
+  plan:
+    action: >
+      Your task is: ${context.input}
+
+      Before starting, decompose this task into a numbered list of discrete,
+      independently completable steps. Each step should be small enough to
+      complete in a single focused session.
+
+      Write the step list to /tmp/ll-general-task-plan.md in this format:
+      ```
+      # Task Plan
+      - [ ] Step 1: ...
+      - [ ] Step 2: ...
+      ```
+
+      Do NOT start executing any steps yet. Only write the plan file.
+    action_type: prompt
+    next: execute
+    on_error: failed
+
   execute:
-    action: "${context.input}"
+    action: >
+      Your task is: ${context.input}
+
+      A step-by-step plan exists at /tmp/ll-general-task-plan.md.
+      Read it, find the FIRST unchecked step (- [ ]), complete ONLY that step,
+      then mark it done (- [x]) in the file.
+
+      Do not work on multiple steps. Complete one step, update the plan file, stop.
     action_type: prompt
     next: check_done
     on_error: failed
@@ -27,10 +54,13 @@ states:
 
   continue_work:
     action: >
-      The original task is: ${context.input}
+      Your task is: ${context.input}
 
-      Continue working on this task. Pick up where the previous work left off
-      and complete any remaining steps. Be thorough and finish completely.
+      A step-by-step plan exists at /tmp/ll-general-task-plan.md.
+      Read it, find the FIRST unchecked step (- [ ]), complete ONLY that step,
+      then mark it done (- [x]) in the file.
+
+      Do not work on multiple steps. Complete one step, update the plan file, stop.
     action_type: prompt
     next: check_done
     on_error: failed
