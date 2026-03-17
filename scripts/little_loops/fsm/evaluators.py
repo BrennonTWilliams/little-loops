@@ -558,10 +558,7 @@ def evaluate_llm_structured(
     # Truncate output to avoid context limits (keep last 4000 chars)
     truncated = output[-4000:] if len(output) > 4000 else output
 
-    user_prompt = (
-        f"{effective_prompt}\n\n"
-        f"<action_output>\n{truncated}\n</action_output>"
-    )
+    user_prompt = f"{effective_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
 
     cmd = [
         "claude",
@@ -632,7 +629,10 @@ def evaluate_llm_structured(
         if envelope.get("subtype") == "error_max_structured_output_retries":
             return EvaluationResult(
                 verdict="error",
-                details={"error": "Claude CLI could not produce valid structured output after retries", "api_error": True},
+                details={
+                    "error": "Claude CLI could not produce valid structured output after retries",
+                    "api_error": True,
+                },
             )
 
         # Check legacy is_error flag (some CLI versions exit 0 but report error in envelope)

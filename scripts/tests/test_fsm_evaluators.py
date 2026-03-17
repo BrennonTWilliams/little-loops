@@ -558,7 +558,11 @@ class TestLLMStructuredEvaluator:
             {
                 "type": "result",
                 "subtype": "success",
-                "structured_output": {"verdict": verdict, "confidence": confidence, "reason": reason},
+                "structured_output": {
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "reason": reason,
+                },
             }
         )
 
@@ -744,11 +748,13 @@ class TestLLMStructuredEvaluator:
     def test_structured_output_retry_exhaustion(self, mock_cli) -> None:
         """CLI reports error_max_structured_output_retries when schema validation fails after retries."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = json.dumps({
-            "type": "result",
-            "subtype": "error_max_structured_output_retries",
-            "is_error": True,
-        })
+        mock_result.stdout = json.dumps(
+            {
+                "type": "result",
+                "subtype": "error_max_structured_output_retries",
+                "is_error": True,
+            }
+        )
         result = evaluate_llm_structured("some output")
         assert result.verdict == "error"
         assert "structured output" in result.details["error"].lower()
@@ -847,7 +853,7 @@ class TestLLMStructuredEvaluator:
         call_args = mock_run.call_args[0][0]
         prompt_idx = call_args.index("-p")
         prompt_content = call_args[prompt_idx + 1]
-        assert DEFAULT_LLM_PROMPT in prompt_content        # prompt still present
+        assert DEFAULT_LLM_PROMPT in prompt_content  # prompt still present
         assert json.dumps(DEFAULT_LLM_SCHEMA) not in prompt_content  # schema no longer in prompt
         assert "--json-schema" in call_args
         schema_idx = call_args.index("--json-schema")
@@ -893,7 +899,11 @@ class TestEvaluateDispatcherLLM:
             {
                 "type": "result",
                 "subtype": "success",
-                "structured_output": {"verdict": verdict, "confidence": confidence, "reason": reason},
+                "structured_output": {
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "reason": reason,
+                },
             }
         )
 
