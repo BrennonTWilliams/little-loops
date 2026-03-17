@@ -158,6 +158,16 @@ refine_issues:
 - Simplified Implementation Steps (removed timeout-related step, removed ENH-776 deferral)
 - Simplified Acceptance Criteria (removed "Once ENH-776 lands" section)
 
+**Verified 2026-03-16 (second pass)** — Verdict: VALID
+
+**All core claims confirmed accurate:**
+- `format_issues` (line 87), `score_issues` (line 94), `refine_issues` (line 100) confirmed no `on_error:` field
+- `executor.py` SIGKILL path at lines 580–584 matches quoted code exactly
+- `default_timeout: 3600` confirmed at loop level; `schema.py:407` and `executor.py:642,648` support it
+
+**Stale line number updated:**
+- `default_timeout: 3600` is at `loops/issue-refinement.yaml:129` (not line 112 as previously noted — file grew)
+
 ## Labels
 
 `bug`, `loops`, `captured`
@@ -168,6 +178,7 @@ refine_issues:
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-17T04:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/983dc391-e19c-4ee6-8d7a-e750bfb2e72b.jsonl`
 - `/ll:verify-issues` - 2026-03-16T18:57:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:format-issue` - 2026-03-16T18:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
