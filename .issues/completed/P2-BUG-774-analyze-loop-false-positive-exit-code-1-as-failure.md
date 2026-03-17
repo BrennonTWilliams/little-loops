@@ -119,12 +119,21 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "BUG — Action failure (ex
 
 `bug`, `loops`, `analyze-loop`, `captured`
 
+## Resolution
+
+**Fixed** in `skills/analyze-loop/SKILL.md`:
+
+1. **Step 2** now also loads the loop config via `ll-loop show <loop_name> --json` to build a state config map (including `evaluate.type` and `on_no` for each state).
+2. **BUG — Action failure signal rule** updated: `exit_code=1` is excluded from the failure count when the state has `evaluate.type == "exit_code"` AND `on_no` is defined — treating it as intentional `on_no` routing. `exit_code >= 2` always counts as failure. If state config is unavailable, falls back to conservative (flag all non-zero).
+
 ## Status
 
-**Open** | Created: 2026-03-16 | Priority: P2
+**Closed** | Created: 2026-03-16 | Resolved: 2026-03-16 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T00:01:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c108eca6-a84b-4ace-9850-a9485ab9bdfb.jsonl`
+- `/ll:ready-issue` - 2026-03-17T00:01:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c108eca6-a84b-4ace-9850-a9485ab9bdfb.jsonl`
 - `/ll:confidence-check` - 2026-03-16T18:49:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:refine-issue` - 2026-03-16T18:47:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:verify-issues` - 2026-03-16T18:40:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

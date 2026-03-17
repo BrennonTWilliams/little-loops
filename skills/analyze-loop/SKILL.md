@@ -59,7 +59,7 @@ This outputs a JSON array of `LoopState` objects. Each object contains:
 
 ---
 
-## Step 2: Load Event History
+## Step 2: Load Event History and Loop Config
 
 Load the full event history for the selected loop:
 
@@ -70,6 +70,14 @@ ll-loop history <loop_name> --json --tail <tail_arg_or_200>
 This outputs a JSON array of event dicts. Each event has `"event"` (the type) and `"ts"` (ISO 8601 timestamp) plus type-specific fields. Events are chronological oldest-first.
 
 If the command fails (loop not found), report the error and stop.
+
+Also load the loop configuration to understand state routing:
+
+```bash
+ll-loop show <loop_name> --json 2>/dev/null
+```
+
+This outputs a JSON object with a `"states"` key mapping state names to their config (including `evaluate.type` and `on_no`). Parse it into a state config map for use in signal classification. If the command fails, proceed without state config (treat all states as having no config).
 
 **Parse the events** into a structured list for classification. Key fields by event type:
 
@@ -92,6 +100,11 @@ Scan the event list and classify signals using the rules below. Group events by 
 
 #### BUG — Action failure (exit_code ≠ 0)
 - Trigger: `action_complete` events where `exit_code != 0` AND `is_prompt == false`, grouped by state — **3 or more occurrences** on the same state
+- **Exception — intentional `on_no` routing (exit_code=1 only)**: Before counting an `exit_code=1` event as a failure, check the state config loaded in Step 2:
+  - If the state has `evaluate.type == "exit_code"` AND `on_no` is defined: **skip** — `exit_code=1` is the expected `on_no` routing signal, not a failure. Do not count these toward the 3-occurrence threshold.
+  - If the state has `evaluate.type == "exit_code"` but **no `on_no`**: count `exit_code=1` as a failure (unhandled "no" outcome).
+  - If state config is unavailable: count `exit_code=1` as a failure (conservative fallback).
+  - `exit_code >= 2` always counts as a failure regardless of evaluator type or routing.
 - Priority: P2
 - Title: `"<state> action failed <N>x (exit_code=<code>) in <loop_name> loop"`
 - Include: timestamps of failures, exit codes
