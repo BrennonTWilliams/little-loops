@@ -261,10 +261,10 @@ Evaluator: output_numeric [operator: eq, target: 0]
 
 | Template | Loop Type | Best For |
 |----------|-----------|----------|
-| Python quality | Maintain constraints | Python projects with ruff + mypy |
-| JavaScript quality | Maintain constraints | JS/TS projects with eslint + tsc |
-| Tests until passing | Fix until clean | Any project with test suite |
-| Full quality gate | Maintain constraints | CI-like multi-check validation |
+| Fix until clean | Fix until clean | Any check+fix cycle: tests, lint, type errors |
+| Maintain constraints | Maintain constraints | CI-like multi-check validation |
+| Run a sequence of steps | Run a sequence | Multi-stage pipelines and ordered workflows |
+| Harness a skill or prompt | Harness | Recurring quality improvements with a skill |
 
 **When to use templates:**
 - You want a working loop quickly

@@ -115,7 +115,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ---
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Completed** | Created: 2026-03-15 | Priority: P3
+
+## Resolution
+
+**Completed**: 2026-03-17
+
+All four files updated to use structural pattern language throughout:
+
+- `skills/create-loop/templates.md`: Replaced "Python quality", "JavaScript quality", "Tests until passing", "Full quality gate" with "Fix until clean", "Maintain constraints", "Run a sequence of steps", "Harness a skill or prompt". Updated all template YAML starters and added template-specific customization questions per pattern.
+- `skills/create-loop/SKILL.md`: Renamed "Fix errors until clean" → "Fix until clean" and "Maintain code quality continuously" → "Maintain constraints" in Step 1 options and Type Mapping. Updated intro text.
+- `skills/create-loop/loop-types.md`: Updated routing labels for "Fix until clean" and "Maintain constraints" to match SKILL.md.
+- `skills/create-loop/reference.md`: Updated Template Quick Reference table rows to reflect renamed structural patterns.
+- `docs/demo/scenarios.md` and `docs/generalized-fsm-loop.md`: Updated stale references to old option labels.
+
+Both wizard paths (template and scratch) now present consistent structural vocabulary with no use-case phrasing.
 
 
 ## Verification Notes
@@ -128,6 +142,8 @@ Verified 2026-03-16 (re-verified, still accurate). All core claims confirmed acc
 **Correction applied**: Integration Map listed `skills/loop-suggester/SKILL.md` — this path does not exist. `loop-suggester` is a command at `commands/loop-suggester.md` and does not reference create-loop template names directly.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6456b659-c5ad-4cbd-b4bb-654a02c3ae00.jsonl`
+- `/ll:ready-issue` - 2026-03-17T05:13:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5fa8754-d7aa-4cec-9784-96236a9573da.jsonl`
 - `/ll:verify-issues` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
 - `/ll:verify-issues` - 2026-03-17T03:55:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5cd3087-827b-4f96-b97c-87f26d20ce04.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:49:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df1153d7-c8ab-4322-adaa-43294b1e0618.jsonl`

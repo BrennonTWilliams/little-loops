@@ -7,7 +7,7 @@ allowed-tools:
 # Create Loop
 
 Interactive command for creating new automation loop configurations. This command guides you through:
-1. Choosing a loop type (fix-until-clean, maintain constraints, drive a metric, run a sequence, or harness a skill/prompt)
+1. Choosing a structural loop pattern (fix until clean, maintain constraints, drive a metric, run a sequence, or harness a skill/prompt)
 2. Gathering type-specific parameters
 3. Naming the loop
 4. Generating and previewing FSM YAML
@@ -57,10 +57,10 @@ questions:
     header: "Loop type"
     multiSelect: false
     options:
-      - label: "Fix errors until clean (Recommended)"
-        description: "Run checks and fix issues until all pass. Best for: type errors, lint issues, test failures"
-      - label: "Maintain code quality continuously"
-        description: "Keep multiple constraints true, restart after all pass. Best for: CI-like quality gates"
+      - label: "Fix until clean (Recommended)"
+        description: "Run a check and fix issues until it passes. Pattern: evaluate → fix → done"
+      - label: "Maintain constraints"
+        description: "Keep multiple conditions true in a chain. Pattern: check-fix pairs chained to terminal"
       - label: "Drive a metric toward a target"
         description: "Measure a value and apply fixes until it reaches goal. Best for: reducing error counts, coverage"
       - label: "Run a sequence of steps"
@@ -76,8 +76,8 @@ questions:
 ```
 
 **Type Mapping:**
-- "Fix errors until clean" -> `fix-until-clean` type (states: evaluate, fix, done)
-- "Maintain code quality continuously" -> `maintain-constraints` type (check/fix pairs + terminal)
+- "Fix until clean" -> `fix-until-clean` type (states: evaluate, fix, done)
+- "Maintain constraints" -> `maintain-constraints` type (check/fix pairs + terminal)
 - "Drive a metric toward a target" -> `drive-metric` type (states: measure, apply, done)
 - "Run a sequence of steps" -> `run-sequence` type (step_0...step_N, check_done, done)
 - "Harness a skill or prompt" -> `harness` type (states: discover, execute, check_concrete, check_semantic, check_invariants, advance, done)

@@ -6,7 +6,7 @@ Based on the selected loop type, ask follow-up questions.
 
 ## Fix Until Clean Questions
 
-If user selected "Fix errors until clean":
+If user selected "Fix until clean":
 
 **Question Set 1** (single AskUserQuestion call):
 
@@ -199,7 +199,7 @@ states:
 
 ## Maintain Constraints Questions
 
-If user selected "Maintain code quality continuously":
+If user selected "Maintain constraints":
 
 **Question Set 1:**
 

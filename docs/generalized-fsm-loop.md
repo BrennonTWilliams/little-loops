@@ -1737,13 +1737,13 @@ Loop saved to .loops/<name>.yaml
 > /ll:create-loop
 
 What kind of automation loop do you want to create?
-  ○ Fix errors until clean (Recommended)
-  ○ Maintain code quality continuously
+  ○ Fix until clean (Recommended)
+  ○ Maintain constraints
   ○ Drive a metric toward a target
   ○ Run a sequence of steps
   ○ Other...
 
-> Fix errors until clean
+> Fix until clean
 
 What should the loop fix?
   ☑ Type errors (mypy)
