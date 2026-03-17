@@ -172,9 +172,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `enhancement`, `loops`, `analyze-loop`, `captured`
 
+## Resolution
+
+**Completed**: 2026-03-17
+
+### Changes Made
+
+1. **`skills/analyze-loop/SKILL.md`** — Added `retry_exhausted` event type to the event parsing table (fields: `state`, `retries`, `next`).
+2. **`skills/analyze-loop/SKILL.md`** — Replaced "ENH — Retry flood" signal rule with two distinct rules:
+   - **ENH — Retry flood (true retries only)**: Only fires when the state config (from loop YAML already loaded in Step 2) has `on_retry` or `max_retries` fields, OR a `retry_exhausted` event is present. Title updated from "retried Nx" to "retry flood".
+   - **NOTE — Intentional cycling (informational only)**: States without retry config that appear 5+ times are noted in output without generating an issue signal. Exception: 20+ consecutive re-entries with no intervening state → ENH P4 "cycling without progress" signal.
+3. **`docs/reference/COMMANDS.md`** — Updated signal detection summary line to reflect the retry vs. cycling disambiguation.
+
+### Acceptance Criteria Verification
+
+- [x] `analyze-loop` does not flag states that use `on_no` cycling as "retry floods" when they have no `on_retry`/`max_retries` configuration — cycling states are now informational only
+- [x] `analyze-loop` still correctly flags states with `on_retry` that are approaching `max_retries` — true retry flood rule preserved
+- [x] `analyze-loop` flags cycling states only if >20 consecutive re-entries with no intervening state — stuck-loop escalation added
+- [x] Re-running `analyze-loop` over `issue-refinement` history would not produce false positive signals on `check_commit` or `route_format` — neither state has `on_retry`/`max_retries` config, so both are classified as intentional cycling
+- [x] Analysis output notes high-frequency cycling states as informational — NOTE rule adds `"<state> cycled <N>x (intentional on_no/on_yes routing — no issue signal)"`
+
 ## Status
 
-**Open** | Created: 2026-03-16 | Priority: P3
+**Completed** | Created: 2026-03-16 | Completed: 2026-03-17 | Priority: P3
 
 
 ## Verification Notes
@@ -189,6 +209,8 @@ Verified 2026-03-16. Core bug claims confirmed accurate:
 - Step 4 says event table at `SKILL.md:76-83` → actual location is **84-91** (matches Integration Map)
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-17T00:00:00 - improve ENH-775
+- `/ll:ready-issue` - 2026-03-17T05:23:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/264c7eb5-eeca-4747-b693-1c7447fa1867.jsonl`
 - `/ll:verify-issues` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:54:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5188477-e8ba-44da-8d95-f92aeaf36e0b.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:41:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0364dd7-6557-4614-a167-51d913f25bbc.jsonl`

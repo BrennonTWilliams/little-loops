@@ -377,7 +377,7 @@ Analyze loop execution history to synthesize actionable issues from failure patt
 - Action `exit_code ≠ 0` repeated 3+ times on same state → BUG P2
 - `loop_complete.terminated_by == "signal"` (SIGKILL) → BUG P2
 - `loop_complete.terminated_by == "error"` (FATAL_ERROR) → BUG P2
-- Same state entered 5+ times (retry flood) → ENH P3
+- True retry state (has `on_retry`/`max_retries`) entered 5+ times, or `retry_exhausted` event present → ENH P3; intentional cycling state (no retry config) noted informally unless >20 consecutive re-entries → ENH P4
 - Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
 - `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
 

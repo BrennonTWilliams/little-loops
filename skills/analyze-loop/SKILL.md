@@ -87,6 +87,7 @@ This outputs a JSON object with a `"states"` key mapping state names to their co
 | `action_complete` | `exit_code` (int), `duration_ms` (int), `is_prompt` (bool) |
 | `evaluate` | `verdict` (str: pass/fail/continue/retry/error), `reason` (str, optional) |
 | `route` | `from` (str), `to` (str) |
+| `retry_exhausted` | `state` (str), `retries` (int), `next` (str) |
 | `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
 
@@ -121,11 +122,21 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Title: `"<loop_name> loop terminated with error in <final_state> state"`
 - Include: `final_state`, `iterations`, last 5 events before termination
 
-#### ENH — Retry flood
-- Trigger: the same state appears in `state_enter` events **5 or more times** (i.e., the loop re-entered the same state repeatedly)
+#### ENH — Retry flood (true retries only)
+- **Classification**: Before emitting this signal, check the loop config (loaded in Step 2) for the flagged state. A state is a **true retry state** if its config has `on_retry` or `max_retries` fields. A state is an **intentional cycling state** if it has neither (uses `on_no`/`on_yes` routing only).
+- Trigger: `retry_exhausted` event is present for a state **OR** a true retry state appears in `state_enter` events **5 or more times**
 - Priority: P3
-- Title: `"<state> state retried <N>x in <loop_name> loop; consider raising retry limit or adding guard"`
-- Include: iteration numbers when state was re-entered
+- Title: `"<state> retry flood (<N> re-entries) in <loop_name> loop; consider raising retry limit or adding guard"`
+- Include: iteration numbers when state was re-entered; include `retry_exhausted` event details if present
+
+#### NOTE — Intentional cycling (informational only)
+- When an intentional cycling state (no `on_retry`/`max_retries` config) appears in `state_enter` events **5 or more times**, **do not generate an issue signal**.
+- Include a brief informational note in the analysis output: `"<state> cycled <N>x (intentional on_no/on_yes routing — no issue signal)"`
+- **Exception — stuck loop**: If the same state appears in **20 or more consecutive** `state_enter` events with no intervening different state, emit a signal:
+  - Detect by scanning the ordered `state_enter` sequence for runs of identical state names ≥ 20
+  - Priority: P4
+  - Title: `"<state> cycling without progress (>20 consecutive re-entries) in <loop_name> loop"`
+  - Include: timestamp range, iteration numbers of the consecutive run
 
 #### ENH — Consistently slow state
 - Trigger: `action_complete` events for a single state where the **average `duration_ms`** is ≥ 30 000 ms and there are **3 or more samples**
