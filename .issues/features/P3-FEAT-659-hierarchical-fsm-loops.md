@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-03-09
 discovered_by: capture-issue
-confidence_score: 95
-outcome_confidence: 78
+confidence_score: 100
+outcome_confidence: 70
 ---
 
 # FEAT-659: Hierarchical FSM Loops (Sub-Loop States)
@@ -172,6 +172,56 @@ _Updated by `/ll:refine-issue` 2026-03-15 — corrections from codebase re-analy
 
 **CONFIRMED — `_build_context()` at `executor.py:898-914`**: Populates `InterpolationContext` with `context` (from `self.fsm.context`), `captured` (from `self.captured`), `prev`, `result`, `state_name`, `iteration`, `loop_name`, `started_at`, `elapsed_ms`. No parent/child context mechanism exists yet.
 
+_Updated by `/ll:refine-issue` 2026-03-17 — additional research findings:_
+
+**CORRECTION — `_execute_state()` line range**: Currently at `executor.py:559-610` (not 551-602 as the 2026-03-16 correction states). Path A (unconditional `next`) runs lines 572-586; Path B (evaluated transition) runs lines 589-610. Sub-loop branch should be inserted before the `_run_action()` call at line 574 (Path A) and line 591 (Path B).
+
+**CORRECTION — `load_and_validate()` line range**: Actually at `validation.py:419-482` (not 336-386). Returns `tuple[FSMLoop, list[ValidationError]]` — the `list[ValidationError]` contains only WARNING-severity items; ERROR-severity items are raised as `ValueError`. Callers: `_helpers.py:120`, `run.py:41` (both discard warnings with `fsm, _ = ...`).
+
+**CORRECTION — Schema mutual exclusion pattern**: The schema does NOT currently use `oneOf` or `anyOf` at the `stateConfig` level. The existing mutual-exclusion pattern in the schema is `allOf` + `if`/`then` blocks at `fsm-loop-schema.json:245-278` (inside `evaluateConfig`). For `loop`/`action` mutual exclusion, use the same `allOf` + `if`/`then` approach rather than `oneOf`. Example: wrap in `allOf` with an `if: { required: ["loop"] }` → `then: { not: { required: ["action"] } }` block (and the inverse).
+
+**NEW — `_execute_sub_loop()` return semantics**: `_execute_state()` returns `str | None` — the next state name, or `None` to stop. The new `_execute_sub_loop()` method must return the same type. Implementation:
+```python
+def _execute_sub_loop(self, state: StateConfig, ctx: InterpolationContext) -> str | None:
+    child_fsm = _load_child_loop(state.loop, self.loops_dir)  # resolve_loop_path + load_and_validate
+    if state.context_passthrough:
+        child_fsm.context = {**self.fsm.context, **self.captured}
+    child_executor = FSMExecutor(child_fsm, action_runner=self.action_runner)
+    try:
+        child_result = child_executor.run()
+    except Exception as exc:
+        if state.on_error:
+            return interpolate(state.on_error, ctx)
+        raise
+    if child_result.verdict == "success" and state.on_success:
+        if state.context_passthrough:
+            self.captured.update(child_executor.captured)
+        return interpolate(state.on_success, ctx)  # aliases: on_yes
+    if child_result.verdict in ("failure", "error") and state.on_failure:
+        return interpolate(state.on_failure, ctx)  # aliases: on_no
+    if state.on_error:
+        return interpolate(state.on_error, ctx)
+    return None  # no valid transition → _finish("error")
+```
+Note: `on_success`/`on_failure` aliases to `on_yes`/`on_no` via `StateConfig.from_dict()` at `schema.py:286-287` — store in `on_yes`/`on_no` internally, use those fields in `_execute_sub_loop()`.
+
+**NEW — Test approach: `MockActionRunner` is bypassed for sub-loop states**: Sub-loop execution never calls `self.action_runner.run()` — it instantiates a child `FSMExecutor` directly. Therefore, `MockActionRunner` cannot mock sub-loop behavior. Tests must use real YAML files on disk. Use the `loops_dir` fixture at `conftest.py:271-281` (creates `loop1.yaml` and `loop2.yaml` as minimal single-state terminal loops) and extend it with success/failure outcome loops. Pattern:
+```python
+def test_sub_loop_success_routes_to_on_success(loops_dir: Path) -> None:
+    # Write a child loop that always succeeds
+    (loops_dir / "child.yaml").write_text(
+        "name: child\ninitial: done\nstates:\n  done:\n    terminal: true\n    verdict: success"
+    )
+    parent_fsm = make_test_fsm({"run_child": {"loop": "child", "on_success": "done"}, "done": {"terminal": True}})
+    executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+    result = executor.run()
+    assert result.verdict == "success"
+```
+
+**NEW — Error routing for sub-loop exceptions**: Two failure modes need `on_error` routing: (a) `FileNotFoundError` from `resolve_loop_path()` when the child loop YAML doesn't exist, and (b) `ValueError` from `load_and_validate()` when the child YAML is invalid. Both should be caught in `_execute_sub_loop()` and routed to `state.on_error` if set, otherwise re-raised (which will be caught by the outer `except Exception` in `run()` at `executor.py:556`).
+
+**NEW — `PersistentExecutor` resume and `active_sub_loop`**: `resume()` at `persistence.py:430-478` restores state by writing `LoopState` fields directly onto `self._executor`. When the executor crashes mid-sub-loop, `current_state` will be the sub-loop state name (the state that launched the child). On resume, the executor re-enters that state and re-invokes the child loop from scratch — there is no mechanism to resume the child from where it left off. This is the correct MVP behavior (child loops should be idempotent or resumable themselves). The `active_sub_loop: str | None` field on `LoopState` is for observability (monitoring can show "currently running sub-loop X") rather than for enabling child-level resume. Set it in `_handle_event()` or directly after emitting a `state_enter` event for a sub-loop state.
+
 ## Impact
 
 - **Priority**: P3 — Useful composability improvement; not blocking any current workflows
@@ -193,21 +243,30 @@ _Updated by `/ll:refine-issue` 2026-03-15 — corrections from codebase re-analy
 
 **Verdict**: VALID — Issue accurately describes the current codebase state.
 
-All referenced files exist and core claims are confirmed:
-- `fsm-loop-schema.json:131` — `additionalProperties: false` in `stateConfig` ✓
-- `StateConfig.action: str | None` at `schema.py:191` ✓
-- `FSMExecutor.__init__` (lines 341-378) has no `loops_dir` param ✓
-- `PersistentExecutor.__init__` (lines 238-271) already has `loops_dir` ✓
-- `_execute_state()` at `executor.py:491-536`, `_is_prompt_action()` at 747-751 ✓
-- `LoopState` dataclass at `persistence.py:46-83` ✓
+All referenced files exist and core architectural claims are confirmed:
+- `fsm-loop-schema.json` stateConfig `additionalProperties: false` at line **157** (block 69-158)
+- `StateConfig.action: str | None` at `schema.py:210` ✓
+- `FSMExecutor.__init__` at `executor.py:349`, no `loops_dir` param ✓
+- `self.captured` initialized at `executor.py:375` ✓
+- `_execute_state()` at `executor.py:559-610`; Path A lines 572-586, Path B lines 589-610 ✓
+- `_run_action()` call at line 574 (Path A) and 591 (Path B) ✓
+- `PersistentExecutor.__init__` at `persistence.py:288-321`; `loops_dir` not stored as instance attr ✓
+- `LoopState` dataclass `@dataclass` at `persistence.py:52`, fields to ~line 90
+- `load_and_validate()` at `validation.py:419-482` ✓
+- `conftest.py loops_dir` fixture at line **271** ✓
 - `resolve_loop_path()` at `_helpers.py:86`, DFS cycle detection at `dependency_graph.py:278-321` ✓
-- `FSMLoop.context` at `schema.py:365`, `self.captured` at `executor.py:367` ✓
+- `FSMLoop.context` at `schema.py:365`, `self.captured` at `executor.py:375` ✓
 
-Minor line drift (non-blocking):
-- `_find_reachable_states()`: issue says 306-333, actually starts at line 324 in `validation.py`
-- `conftest.py loops_dir` fixture: issue says 225-305, actually at line 271
+Minor line drift (non-blocking, updated 2026-03-17):
+- `_action_mode()`: multiple references say 885-896, actual is **897-908**
+- `_find_reachable_states()`: prior correction said 324, actual is **389** in `validation.py`
+- `fsm-loop-schema.json` stateConfig block: ends at line **158** (not 132)
+- `LoopState` dataclass: `@dataclass` at line **52** (not 46)
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-17T19:45:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc11ec3f-4b71-416b-8963-f0733a58292b.jsonl`
+- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb534bc2-8eec-461a-a01b-1b47c95c56b3.jsonl`
+- `/ll:refine-issue` - 2026-03-17T19:27:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04b0cb69-e6dd-4800-983c-6c18d715a1e5.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:29:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961c4d46-e6e4-4045-b778-27f4dac0fb62.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/676e5b84-4af9-4667-8d7e-99c72a1adfe0.jsonl`
