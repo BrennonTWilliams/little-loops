@@ -934,7 +934,6 @@ class TestFindIssues:
         assert "BUG-201" in issue_ids
         assert len(issues) == 1
 
-
     def test_find_issues_only_ids_ordered(
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:

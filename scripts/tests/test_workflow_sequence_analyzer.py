@@ -1304,8 +1304,16 @@ class TestClusterByEntities:
     def test_span_populated_from_timestamps(self) -> None:
         """Cluster with timestamped messages has non-null span with start/end ISO strings."""
         messages = [
-            {"content": "Fix checkout.py bug", "uuid": "msg-1", "timestamp": "2026-03-01T09:00:00Z"},
-            {"content": "Test checkout.py changes", "uuid": "msg-2", "timestamp": "2026-03-01T17:00:00Z"},
+            {
+                "content": "Fix checkout.py bug",
+                "uuid": "msg-1",
+                "timestamp": "2026-03-01T09:00:00Z",
+            },
+            {
+                "content": "Test checkout.py changes",
+                "uuid": "msg-2",
+                "timestamp": "2026-03-01T17:00:00Z",
+            },
         ]
         result = _cluster_by_entities(messages)
         assert len(result) == 1
