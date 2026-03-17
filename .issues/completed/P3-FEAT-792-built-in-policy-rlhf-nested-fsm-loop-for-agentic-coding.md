@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-16
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # FEAT-792: Built-in Policy+RLHF Nested FSM Loop for Agentic Coding
@@ -14,6 +16,10 @@ Add a built-in FSM loop (`loops/rl-coding-agent.yaml`) that composes `rl-policy`
 The existing `rl-policy.yaml` and `rl-rlhf.yaml` loops in `loops/` are template stubs with placeholder actions. During a design session exploring RL loop use cases in agentic coding, a natural composition emerged: an outer policy loop that adapts the *strategy* (what to fix, which files to target, which approach to use) while an inner RLHF loop polishes each *artifact* (individual code change, docstring, test file) to a quality threshold before the outer loop observes it and updates its strategy.
 
 Current workaround: running them as separate `ll-loop` invocations with no context sharing. The loops directory has no ready-to-use agentic coding loop combining both patterns.
+
+## Current Behavior
+
+No ready-to-use composite Policy+RLHF coding loop exists in `loops/`. The `rl-policy.yaml` and `rl-rlhf.yaml` stubs must be run as separate `ll-loop` invocations with no context sharing between the outer strategy loop and inner artifact-polishing loop.
 
 ## Expected Behavior
 
@@ -209,8 +215,19 @@ refine:
 
 ## Status
 
-- [ ] Not started
+- [x] Completed
+
+## Resolution
+
+Implemented `loops/rl-coding-agent.yaml` — a Policy+RLHF composite FSM loop for agentic coding. The outer policy loop (`act → refine → observe → score → improve`) adapts the coding strategy while the inner RLHF loop (`rl-rlhf` subprocess) polishes each artifact to a quality threshold before the outer loop observes results. Reward is a weighted composite: test pass rate × 0.5 + lint score × 0.3 + LLM constant × 0.2.
+
+Also created `loops/README.md` — a new index of all 19 built-in loops organized by category (Issue Management, Sprint & Worktree, Code Quality, RL, APO).
+
+Updated `scripts/tests/test_builtin_loops.py` to include `rl-coding-agent` in the `test_expected_loops_exist` set. All 18 tests pass.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T03:28:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2732ce04-38e1-4516-9a18-f6584833f46c.jsonl`
+- `/ll:format-issue` - 2026-03-17T03:26:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2732ce04-38e1-4516-9a18-f6584833f46c.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:11:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bf31b0a-cfc9-42ad-a35f-c71298680f5c.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/732dcab7-eba9-4078-8001-cb11dc975881.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4cbf2733-f9ad-407c-a562-95dd47cb1a51.jsonl`

@@ -59,6 +59,7 @@ class TestBuiltinLoopFiles:
             "rl-bandit",
             "rl-rlhf",
             "rl-policy",
+            "rl-coding-agent",
             "apo-feedback-refinement",
             "apo-contrastive",
             "apo-opro",
