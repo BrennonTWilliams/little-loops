@@ -39,8 +39,22 @@ Audit the output helpers used by `ll-issues list` (and similar commands), then a
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/sprint/show.py` — `_cmd_sprint_show` (lines 187–255), `_render_health_summary` (lines 95–149), `_render_dependency_graph` (lines 23–92); currently only imports `terminal_width` from `output.py` — needs `colorize`, `PRIORITY_COLOR`, `TYPE_COLOR` added
-- `scripts/little_loops/cli/sprint/_helpers.py` — `_render_execution_plan` (lines 15–137); issue line at line 126 formats `f"{prefix}{issue.issue_id}: {title} ({issue.priority})"` with no color wrapping; needs `colorize`, `PRIORITY_COLOR`, `TYPE_COLOR` imported
+- `scripts/little_loops/cli/sprint/show.py` — `_cmd_sprint_show` (lines 152–256), `_render_health_summary` (lines 95–149), `_render_dependency_graph` (lines 23–92); currently only imports `terminal_width` from `output.py` — needs `colorize`, `PRIORITY_COLOR`, `TYPE_COLOR` added
+- `scripts/little_loops/cli/sprint/_helpers.py` — `_render_execution_plan` (lines 15–137); **two** issue-line formatting sites both need colorizing:
+  - `_helpers.py:87` — contention/serialized path: `f"    └── {issue.issue_id}: {title} ({issue.priority})"`
+  - `_helpers.py:126` — normal/parallel path: `f"{prefix}{issue.issue_id}: {title} ({issue.priority})"`
+  - Currently imports only `terminal_width`; needs `colorize`, `PRIORITY_COLOR`, `TYPE_COLOR` added
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `_helpers.py:87` (contention path) and `_helpers.py:126` (parallel path) are both plain f-strings with no color — both must be updated
+- `_cmd_sprint_show` function declaration is at `show.py:152` (display logic begins around line 187)
+- `colorize()` signature: `def colorize(text: str, code: str) -> str` — returns text unchanged when `_USE_COLOR=False`, otherwise `f"\033[{code}m{text}\033[0m"`
+- `PRIORITY_COLOR` keys: `"P0"→"38;5;208;1"`, `"P1"→"38;5;208"`, `"P2"→"33"`, `"P3"→"0"`, `"P4"→"2"`, `"P5"→"2"`
+- `TYPE_COLOR` keys: `"BUG"→"38;5;208"`, `"FEAT"→"32"`, `"ENH"→"34"`
+- Type prefix extracted via `issue.issue_id.split("-", 1)[0]` (confirmed pattern from `list_cmd.py:130`, `sequence.py:67`)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/sprint/__init__.py:220-221` — dispatches `args.command == "show"` to `_cmd_sprint_show`; already calls `configure_output(config.cli)` at line 215 so `_USE_COLOR` and color dicts are initialized before `show` runs
@@ -61,7 +75,9 @@ Audit the output helpers used by `ll-issues list` (and similar commands), then a
 ## Implementation Steps
 
 1. **Add color imports to `_helpers.py`** — update `scripts/little_loops/cli/sprint/_helpers.py:7` to import `colorize`, `PRIORITY_COLOR`, `TYPE_COLOR` alongside `terminal_width`
-2. **Colorize execution plan issue lines** — in `_render_execution_plan` at `_helpers.py:126`, wrap `issue.issue_id` with `colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))` and `issue.priority` with `colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))`; extract `issue_type = issue.issue_id.split("-", 1)[0]` before the format string
+2. **Colorize execution plan issue lines** — update **both** issue-line sites in `_render_execution_plan`; extract `issue_type = issue.issue_id.split("-", 1)[0]` before each, then wrap `issue.issue_id` with `colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))` and `issue.priority` with `colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))`:
+   - `_helpers.py:87` — contention/serialized path: `f"    └── {issue.issue_id}: {title} ({issue.priority})"`
+   - `_helpers.py:126` — normal/parallel path: `f"{prefix}{issue.issue_id}: {title} ({issue.priority})"`
 3. **Add color imports to `show.py`** — update `scripts/little_loops/cli/sprint/show.py:9` to import `colorize`, `PRIORITY_COLOR`, `TYPE_COLOR` alongside `terminal_width`
 4. **Colorize health summary prefix** — in `_render_health_summary` add an inline color map `{"OK": "32", "REVIEW": "33", "WARNING": "38;5;208", "BLOCKED": "31"}` and wrap the leading word with `colorize()`; follow pattern at `show.py:329-330`
 5. **Colorize sprint metadata header** — in `_cmd_sprint_show` at lines 187–197, apply a dim or bold style to the "Sprint:" label line using `colorize("Sprint:", "1")` for consistency with other command headers
@@ -97,6 +113,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-17T03:35:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/532865b2-afcc-4542-a851-1511b776f7cd.jsonl`
 - `/ll:format-issue` - 2026-03-16T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e105a0a-8129-46b0-9889-ec4f193c35ed.jsonl`
 - `/ll:confidence-check` - 2026-03-15T22:44:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
 - `/ll:refine-issue` - 2026-03-15T22:43:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
