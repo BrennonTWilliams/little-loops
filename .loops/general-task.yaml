@@ -33,6 +33,7 @@ states:
       and complete any remaining steps. Be thorough and finish completely.
     action_type: prompt
     next: check_done
+    on_error: failed
 
   done:
     terminal: true
