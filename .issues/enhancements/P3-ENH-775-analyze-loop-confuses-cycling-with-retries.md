@@ -177,7 +177,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-03-16 | Priority: P3
 
 
+## Verification Notes
+
+Verified 2026-03-16. Core bug claims confirmed accurate:
+- `skills/analyze-loop/SKILL.md:124-128` — "ENH — Retry flood" heuristic triggers on raw 5+ `state_enter` count with no retry vs. cycling distinction ✓
+- `skills/analyze-loop/SKILL.md:84-91` — event parsing table confirmed; `retry_exhausted` event is absent ✓
+- `docs/reference/COMMANDS.md:380` — retry flood summary line confirmed accurate ✓
+
+**Line reference corrections in Implementation Steps** (Integration Map references are correct; steps have wrong line numbers):
+- Step 3 says `SKILL.md:111-115` → actual location is **124-128** (matches Integration Map)
+- Step 4 says event table at `SKILL.md:76-83` → actual location is **84-91** (matches Integration Map)
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:54:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5188477-e8ba-44da-8d95-f92aeaf36e0b.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:41:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0364dd7-6557-4614-a167-51d913f25bbc.jsonl`
 - `/ll:verify-issues` - 2026-03-16T19:31:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
