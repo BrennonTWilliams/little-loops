@@ -57,6 +57,7 @@ ll-verify-docs = "little_loops.cli:main_verify_docs"
 ll-check-links = "little_loops.cli:main_check_links"
 ll-issues = "little_loops.cli:main_issues"
 ll-deps = "little_loops.cli:main_deps"
+ll-gitignore = "little_loops.cli:main_gitignore"
 mcp-call = "little_loops.mcp_call:main"
 
 [project.optional-dependencies]
