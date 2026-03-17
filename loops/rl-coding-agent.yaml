@@ -3,7 +3,7 @@ description: |
   Policy+RLHF composite loop for agentic coding. An outer policy loop adapts the
   coding strategy (which files, which approach) while an inner RLHF loop polishes
   each artifact to a quality threshold before the outer loop observes results.
-  Reward = weighted composite of test pass rate, lint score, and LLM-as-judge weight.
+  Reward = weighted composite of test pass rate, lint score, and live LLM-as-judge score.
   Upgrade path: when FEAT-659 (Hierarchical FSM Loops) lands, replace the refine
   state's shell subprocess with a native `loop: rl-rlhf` sub-loop state.
 initial: act
@@ -43,11 +43,8 @@ states:
     capture: refine_result
     next: observe
 
-  # POLICY OUTER: Compute composite reward from test pass rate + lint score + LLM weight.
-  # Composite formula: TEST_SCORE * 0.5 + LINT_SCORE * 0.3 + 0.2
-  # Note: the LLM-as-judge component (weight 0.2) is a fixed constant rather than
-  # a live LLM call, reflecting the cost/complexity trade-off for a shell-based loop.
-  # To add a real LLM score, replace the `+ 0.2` constant with a scored subprocess call.
+  # POLICY OUTER: Compute composite reward from test pass rate + lint score + LLM judge score.
+  # Composite formula: TEST_SCORE * 0.5 + LINT_SCORE * 0.3 + LLM_SCORE * 0.2
   observe:
     action: |
       # Load test_cmd: ll-config.json > context override > default
@@ -76,8 +73,16 @@ states:
       LINT_ERRORS=$(eval "$LINT_CMD" --select E,W 2>/dev/null | grep -c '^' || echo 0)
       LINT_SCORE=$(python3 -c "print(round(max(0, 1 - $LINT_ERRORS / 10), 3))")
 
-      # Composite reward: tests 50% + lint 30% + LLM constant 20%
-      REWARD=$(python3 -c "print(round($TEST_SCORE * 0.5 + $LINT_SCORE * 0.3 + 0.2, 3))")
+      # LLM quality score (0.0–1.0): live judge via Claude
+      TARGETS="${context.target_files}"
+      [ -z "$TARGETS" ] && TARGETS=$(git diff --name-only HEAD 2>/dev/null | tr '\n' ' ' || echo ".")
+      LLM_SCORE=$(claude -p "Review $TARGETS for code quality. Rate overall quality (correctness, clarity, test coverage) as a decimal 0.0–1.0. Output ONLY the number." \
+        --output-format text --no-session-persistence --dangerously-skip-permissions 2>/dev/null | \
+        grep -oE '(0?\.[0-9]+|1\.0)' | head -1 || echo "0.5")
+      LLM_SCORE=$(python3 -c "print(round(max(0.0, min(1.0, float('$LLM_SCORE' or '0.5'))), 3))")
+
+      # Composite reward: tests 50% + lint 30% + LLM judge 20%
+      REWARD=$(python3 -c "print(round($TEST_SCORE * 0.5 + $LINT_SCORE * 0.3 + $LLM_SCORE * 0.2, 3))")
       echo "test=$TEST_SCORE lint=$LINT_SCORE composite=$REWARD"
       echo "$REWARD"
     action_type: shell
@@ -86,9 +91,6 @@ states:
 
   # POLICY OUTER: Extract numeric reward and route via convergence evaluator.
   # Routes: target → done, progress → improve, stall → act, error → failed.
-  # Note: stall detection requires a `previous:` field in `evaluate`; without it
-  # `previous` is always None and stall never fires. Add `previous: "${captured.action_result.output}"`
-  # to enable stall routing if needed.
   score:
     action: |
       echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
@@ -98,6 +100,7 @@ states:
       target: "${context.reward_target}"
       direction: maximize
       tolerance: 0.05
+      previous: "${captured.prev_reward.output}"
     route:
       target: done
       progress: improve
@@ -114,6 +117,15 @@ states:
       # Replace: update strategy file, adjust prompt, change target files, etc.
       echo "Strategy updated based on observations."
     action_type: shell
+    next: persist_reward
+
+  # POLICY OUTER: Persist current reward for stall detection on the next iteration.
+  # Emits only the numeric reward so the convergence evaluator can parse it cleanly.
+  persist_reward:
+    action: |
+      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
+    action_type: shell
+    capture: prev_reward
     next: act
 
   done:
