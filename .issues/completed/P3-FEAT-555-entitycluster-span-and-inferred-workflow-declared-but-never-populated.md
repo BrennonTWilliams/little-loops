@@ -16,7 +16,7 @@ The `EntityCluster` dataclass declares two output fields — `span` (intended to
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 107–119 (`EntityCluster` dataclass), 521–538 (`_cluster_by_entities` new-cluster construction) (at scan commit: a574ea0)
+- **Line(s)**: 101–120 (`EntityCluster` dataclass), 529–560 (`_cluster_by_entities` new-cluster construction) (at scan commit: a574ea0)
 - **Anchor**: `class EntityCluster`, `in function _cluster_by_entities`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L107-L119)
 - **Code**:
@@ -51,11 +51,11 @@ A developer runs `ll-workflows analyze` after a busy week. In the output, they s
 
 ## Acceptance Criteria
 
-- [ ] After analysis, each `EntityCluster` with at least 2 messages has a non-null `span` with `start` and `end` ISO timestamps
-- [ ] Each cluster with entity overlap ≥ 0.3 against a `WORKFLOW_TEMPLATES` entry has `inferred_workflow` set to the template name
-- [ ] Clusters with no timestamp data have `span: null`
-- [ ] Clusters with no matching template have `inferred_workflow: null`
-- [ ] Output YAML schema is backward compatible (fields were already present, just always null)
+- [x] After analysis, each `EntityCluster` with at least 2 messages has a non-null `span` with `start` and `end` ISO timestamps
+- [x] Each cluster with entity overlap ≥ 0.3 against a `WORKFLOW_TEMPLATES` entry has `inferred_workflow` set to the template name
+- [x] Clusters with no timestamp data have `span: null`
+- [x] Clusters with no matching template have `inferred_workflow: null`
+- [x] Output YAML schema is backward compatible (fields were already present, just always null)
 
 ## Proposed Solution
 
@@ -86,22 +86,11 @@ messages=[{
 }],
 ```
 
-**Step 2 — Compute span after cluster construction** (inline the `_link_sessions` pattern from lines 443-460):
+**Step 2 — Compute span after cluster construction** using `_parse_timestamps` (line 396, added by ENH-549):
 
 ```python
 for cluster in clusters:
-    # Compute span (inline pattern from _link_sessions:443-460)
-    timestamps = []
-    for m in cluster.messages:
-        ts_str = m.get("timestamp") or ""
-        if ts_str:
-            try:
-                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                if ts.tzinfo is not None:
-                    ts = ts.replace(tzinfo=None)
-                timestamps.append(ts)
-            except (ValueError, TypeError):
-                pass
+    timestamps = _parse_timestamps(cluster.messages)
     if len(timestamps) >= 2:
         cluster.span = {
             "start": min(timestamps).isoformat(),
@@ -109,19 +98,33 @@ for cluster in clusters:
         }
 ```
 
-**Step 3 — Infer workflow using `_get_message_category`** (correct iteration of `WORKFLOW_TEMPLATES`).
+**Step 3 — Infer workflow against `WORKFLOW_TEMPLATES`** (line 677 iteration pattern).
 
-`WORKFLOW_TEMPLATES` is `dict[str, list[str]]` where values are category strings (`"file_search"`, `"code_modification"`). `cluster.all_entities` contains file paths and command strings — a different vocabulary. Direct set overlap is always 0. Use `_get_message_category` to convert message contents to categories, then match against template sequences:
+`WORKFLOW_TEMPLATES` is `dict[str, list[str]]` where values are category strings (`"file_search"`, `"code_modification"`). `_get_message_category(msg_uuid, patterns)` (line 618) requires a patterns dict from Step 1 output — not available in `_cluster_by_entities`. Use a direct keyword-based category mapping instead, or pass `patterns` as a parameter:
 
 ```python
-# Collect categories for messages in this cluster
-cluster_cats = []
-for m in cluster.messages:
-    cat = _get_message_category(m.get("content", ""))
-    if cat and cat != "unknown":
-        cluster_cats.append(cat)
+# Simple approach: derive category from content keywords
+_CONTENT_CATEGORY_MAP = {
+    "file_search": ["search", "find", "glob", "grep"],
+    "code_modification": ["edit", "write", "fix", "refactor"],
+    "testing": ["test", "pytest", "assert"],
+    "git": ["commit", "push", "branch", "pr"],
+}
 
-cluster_cat_set = set(cluster_cats)
+def _category_from_content(content: str) -> str | None:
+    lower = content.lower()
+    for category, keywords in _CONTENT_CATEGORY_MAP.items():
+        if any(kw in lower for kw in keywords):
+            return category
+    return None
+
+# In the cluster post-processing loop:
+cluster_cat_set = set()
+for m in cluster.messages:
+    cat = _category_from_content(m.get("content", ""))
+    if cat:
+        cluster_cat_set.add(cat)
+
 best_name, best_score = None, 0.0
 for template_name, template_cats in WORKFLOW_TEMPLATES.items():
     template_set = set(template_cats)
@@ -132,6 +135,8 @@ for template_name, template_cats in WORKFLOW_TEMPLATES.items():
 if best_score >= 0.3:
     cluster.inferred_workflow = best_name
 ```
+
+**Note**: `_get_message_category(msg_uuid, patterns)` (line 618) looks up UUID in a patterns dict — it cannot be used here without threading `patterns` through `_cluster_by_entities`. The content-keyword approach above is simpler and self-contained. If `patterns` is available at the call site, passing it as a parameter is cleaner.
 
 ## API/Interface
 
@@ -165,21 +170,21 @@ No schema breaking change — the fields already existed in the YAML output.
 
 ## Implementation Steps
 
-1. In `_cluster_by_entities` (line 490), add `"timestamp": msg.get("timestamp")` to both the new-cluster message dict (line ~537) and the matched-cluster append (line ~517)
-2. After the cluster-building loop (before the final filter at line 547), iterate all clusters and compute `span` by inlining the `_link_sessions` timestamp pattern (lines 443-460); requires `datetime` import already present at top of file
-3. Compute `inferred_workflow` by collecting message categories via `_get_message_category` and matching against `WORKFLOW_TEMPLATES.items()` (iteration pattern at lines 670-683)
-4. Add tests to `TestClusterByEntities` (`test_workflow_sequence_analyzer.py:832`) asserting `span` is non-null for clusters with timestamped messages and `inferred_workflow` is set when category overlap ≥ 0.3
+1. In `_cluster_by_entities` (line 505), add `"timestamp": msg.get("timestamp")` to both the new-cluster message dict (line ~551) and the matched-cluster append (line ~532)
+2. After the cluster-building loop (before the final filter at line 562), iterate all clusters and compute `span` using `_parse_timestamps(cluster.messages)` (line 396, already imported); guard with `len(timestamps) >= 2`
+3. Compute `inferred_workflow` using content-keyword category matching against `WORKFLOW_TEMPLATES.items()` (iteration pattern at line 677); see Step 3 in Proposed Solution for the self-contained approach
+4. Add tests to `TestClusterByEntities` (`test_workflow_sequence_analyzer.py:1215`) asserting `span` is non-null for clusters with timestamped messages and `inferred_workflow` is set when category overlap ≥ 0.3
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Timestamp key**: `msg.get("timestamp", "")` — raw messages have this key; `_cluster_by_entities` does not currently read it (lines 497-542 only access `"content"` and `"uuid"`)
-- **Timestamp parsing pattern** (`workflow_sequence_analyzer.py:443-460`): `datetime.fromisoformat(ts_str.replace("Z", "+00:00"))` with `ts.replace(tzinfo=None)` for naive comparison; guards `len(timestamps) >= 2` before computing delta
+- **Timestamp parsing pattern**: `_parse_timestamps(messages)` at line 396 (added by ENH-549) — wraps `datetime.fromisoformat` with `tzinfo` stripping and error guards. Use directly.
 - **WORKFLOW_TEMPLATES iteration** (`workflow_sequence_analyzer.py:670-683`): `for template_name, template_cats in WORKFLOW_TEMPLATES.items()` — values are category strings like `"file_search"`, not entity strings
 - **Vocabulary mismatch**: `cluster.all_entities` contains file-path/command tokens (e.g., `"checkout.py"`, `"/ll:commit"`); template categories are semantic labels (`"code_modification"`, `"testing"`) — direct set overlap is always 0; use `_get_message_category` for proper matching
-- **`_get_message_category`**: categorizer function that maps message content to one of the WORKFLOW_TEMPLATES category strings — call as `_get_message_category(content_str)` per message
-- **Test pattern** (`test_workflow_sequence_analyzer.py:857-866`): message dicts use `{"content": "...", "uuid": "msg-N"}` — new tests for span will need `"timestamp"` key added
+- **`_get_message_category`**: `(msg_uuid: str, patterns: dict[str, Any]) -> str | None` at line 618 — looks up UUID in a patterns dict from Step 1 output; NOT callable with just content. Use the content-keyword approach in Step 3 instead.
+- **Test pattern** (`test_workflow_sequence_analyzer.py:1215`, `TestClusterByEntities`): message dicts use `{"content": "...", "uuid": "msg-N"}` — new tests for span will need `"timestamp"` key added
 
 ## Impact
 
@@ -196,9 +201,9 @@ Verified 2026-03-05 against commit `HEAD`.
 
 **NEEDS_UPDATE** (line numbers): `class EntityCluster` starts at **line 100**, not line 107. The scan commit referenced lines 107–119 for the dataclass, but the class header is at 100.
 
-**NEEDS_UPDATE** (proposed solution — `_parse_timestamps`): The helper `_parse_timestamps` referenced in the proposed solution does not exist. It is expected to be introduced by ENH-549. Implementation must either inline timestamp parsing or wait for ENH-549.
+**OK** (updated by `/ll:ready-issue` 2026-03-16): `_parse_timestamps` exists at line 396 — ENH-549 was completed and introduced this helper. Step 2 of the Proposed Solution updated to use it directly.
 
-**NEEDS_UPDATE** (proposed solution — `WORKFLOW_TEMPLATES` shape): `WORKFLOW_TEMPLATES` is typed as `dict[str, list[str]]` (name → list of category strings), not a list of dicts. The proposed solution's `template.get("entities", [])` and `template.get("name")` calls are incorrect for the actual structure. The correct approach is to iterate `WORKFLOW_TEMPLATES.items()` and match `cluster.all_entities` against the category lists (after converting to entity labels or rethinking the overlap metric).
+**OK** (updated by `/ll:ready-issue` 2026-03-16): `WORKFLOW_TEMPLATES` is `dict[str, list[str]]`. Step 3 of the Proposed Solution updated: `_get_message_category(msg_uuid, patterns)` (line 618) cannot be used directly without a patterns dict — updated to use a content-keyword approach that is self-contained within `_cluster_by_entities`.
 
 **OK** — `WORKFLOW_TEMPLATES` exists at line 66. `_cluster_by_entities` at line 490. `_link_sessions` span pattern at lines 455–460.
 
@@ -219,6 +224,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 _(FEAT-557 and ENH-552 removed from Blocks — both completed)_
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T01:05:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7084c6d0-5594-450c-ac22-eff538eb9c12.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: fields declared but always None
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `EntityCluster.span` and `inferred_workflow` still always None; removed stale Blocks: FEAT-557, ENH-552 (both completed)
 
@@ -232,6 +238,16 @@ _(FEAT-557 and ENH-552 removed from Blocks — both completed)_
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5880f51-7be9-45bd-acc9-e01380324f20.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 
+## Resolution
+
+**Completed** 2026-03-16 by `/ll:manage-issue`.
+
+- Added `"timestamp": msg.get("timestamp")` to both message dict builds in `_cluster_by_entities`
+- Added `_CONTENT_CATEGORY_MAP` module-level constant mapping content keywords to WORKFLOW_TEMPLATES category labels
+- Added post-processing loop after cluster construction to compute `span` via `_parse_timestamps` and infer workflow via keyword-category overlap against `WORKFLOW_TEMPLATES`
+- Added 4 tests to `TestClusterByEntities`: span populated from timestamps, span null without timestamps, inferred_workflow set on match, inferred_workflow null on no match
+- All 3586 tests pass, lint clean
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Completed** | Created: 2026-03-04 | Priority: P3

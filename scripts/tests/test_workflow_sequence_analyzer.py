@@ -1301,6 +1301,53 @@ class TestClusterByEntities:
         # config.json was not in the cluster before msg-2 joined — must be absent
         assert "config.json" not in second_msg["entities_matched"]
 
+    def test_span_populated_from_timestamps(self) -> None:
+        """Cluster with timestamped messages has non-null span with start/end ISO strings."""
+        messages = [
+            {"content": "Fix checkout.py bug", "uuid": "msg-1", "timestamp": "2026-03-01T09:00:00Z"},
+            {"content": "Test checkout.py changes", "uuid": "msg-2", "timestamp": "2026-03-01T17:00:00Z"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert len(result) == 1
+        cluster = result[0]
+        assert cluster.span is not None
+        assert "start" in cluster.span
+        assert "end" in cluster.span
+        assert cluster.span["start"] < cluster.span["end"]
+
+    def test_span_null_without_timestamps(self) -> None:
+        """Cluster messages without timestamps yield span=None."""
+        messages = [
+            {"content": "Fix checkout.py bug", "uuid": "msg-1"},
+            {"content": "Test checkout.py changes", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert len(result) == 1
+        assert result[0].span is None
+
+    def test_inferred_workflow_set_on_category_match(self) -> None:
+        """Cluster whose messages match a WORKFLOW_TEMPLATES entry gets inferred_workflow set."""
+        # "edit checkout.py" → code_modification; "test checkout.py" → testing
+        # matches "explore → modify → verify": [file_search, code_modification, testing] at 2/3 = 0.67 ≥ 0.3
+        messages = [
+            {"content": "edit checkout.py implementation", "uuid": "msg-1"},
+            {"content": "test checkout.py and assert results", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages, overlap_threshold=0.0)
+        assert len(result) == 1
+        assert result[0].inferred_workflow is not None
+
+    def test_inferred_workflow_null_on_no_match(self) -> None:
+        """Cluster with no recognizable content categories has inferred_workflow=None."""
+        # Use content with no keywords from _CONTENT_CATEGORY_MAP
+        messages = [
+            {"content": "foo.py bar baz", "uuid": "msg-1"},
+            {"content": "foo.py qux quux", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert len(result) == 1
+        assert result[0].inferred_workflow is None
+
 
 class TestComputeBoundaries:
     """Tests for _compute_boundaries internal function."""

@@ -72,6 +72,18 @@ WORKFLOW_TEMPLATES: dict[str, list[str]] = {
     "debug → fix → test": ["debugging", "code_modification", "testing"],
 }
 
+# Maps content keywords to workflow category labels used by WORKFLOW_TEMPLATES
+_CONTENT_CATEGORY_MAP: dict[str, list[str]] = {
+    "file_search": ["search", "find", "glob", "grep", "locate"],
+    "code_modification": ["edit", "write", "fix", "refactor", "update", "implement"],
+    "testing": ["test", "pytest", "assert", "verify", "check"],
+    "git_operation": ["commit", "push", "branch", "pr", "merge", "pull"],
+    "planning": ["plan", "design", "architect", "outline", "draft"],
+    "debugging": ["debug", "trace", "breakpoint", "error", "exception", "bug"],
+    "code_review": ["review", "inspect", "audit", "read", "examine"],
+    "file_write": ["create", "generate", "scaffold", "write", "add"],
+}
+
 
 # -----------------------------------------------------------------------------
 # Data Classes
@@ -534,6 +546,7 @@ def _cluster_by_entities(
                     "uuid": msg.get("uuid", ""),
                     "content": content[:80] + "..." if len(content) > 80 else content,
                     "entities_matched": entities_matched,
+                    "timestamp": msg.get("timestamp"),
                 }
             )
             # Update cohesion score (average overlap of messages)
@@ -553,11 +566,42 @@ def _cluster_by_entities(
                         "uuid": msg.get("uuid", ""),
                         "content": content[:80] + "..." if len(content) > 80 else content,
                         "entities_matched": sorted(msg_entities),
+                        "timestamp": msg.get("timestamp"),
                     }
                 ],
                 cohesion_score=1.0,
             )
             clusters.append(cluster)
+
+    # Populate span and inferred_workflow for each multi-message cluster
+    for cluster in clusters:
+        # Compute span from timestamps
+        timestamps = _parse_timestamps(cluster.messages)
+        if len(timestamps) >= 2:
+            cluster.span = {
+                "start": min(timestamps).isoformat(),
+                "end": max(timestamps).isoformat(),
+            }
+
+        # Infer workflow by matching cluster message content against WORKFLOW_TEMPLATES
+        cluster_categories: set[str] = set()
+        for m in cluster.messages:
+            lower = m.get("content", "").lower()
+            for category, keywords in _CONTENT_CATEGORY_MAP.items():
+                if any(kw in lower for kw in keywords):
+                    cluster_categories.add(category)
+
+        best_name: str | None = None
+        best_score = 0.0
+        for template_name, template_cats in WORKFLOW_TEMPLATES.items():
+            template_set = set(template_cats)
+            if template_set:
+                overlap = len(cluster_categories & template_set) / len(template_set)
+                if overlap > best_score:
+                    best_score = overlap
+                    best_name = template_name
+        if best_score >= 0.3:
+            cluster.inferred_workflow = best_name
 
     # Filter out single-message clusters
     return [c for c in clusters if len(c.messages) >= 2]
