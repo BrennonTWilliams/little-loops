@@ -556,13 +556,9 @@ class TestLLMStructuredEvaluator:
         """Helper to create mock CLI JSON output."""
         return json.dumps(
             {
-                "result": json.dumps(
-                    {
-                        "verdict": verdict,
-                        "confidence": confidence,
-                        "reason": reason,
-                    }
-                ),
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {"verdict": verdict, "confidence": confidence, "reason": reason},
             }
         )
 
@@ -669,11 +665,11 @@ class TestLLMStructuredEvaluator:
 
         assert result.verdict == "found"
         assert result.details["confidence"] == 0.95
-        # Verify custom schema was embedded in the prompt
+        # Verify custom schema was passed via --json-schema flag
         call_args = mock_run.call_args[0][0]
-        prompt_idx = call_args.index("-p")
-        assert json.dumps(custom_schema) in call_args[prompt_idx + 1]
-        assert "--json-schema" not in call_args
+        assert "--json-schema" in call_args
+        schema_idx = call_args.index("--json-schema")
+        assert call_args[schema_idx + 1] == json.dumps(custom_schema)
 
     def test_custom_prompt(self, mock_cli) -> None:
         """Custom prompt is passed to CLI."""
@@ -741,6 +737,19 @@ class TestLLMStructuredEvaluator:
         result = evaluate_llm_structured("...")
 
         assert result.verdict == "error"
+        assert result.details.get("api_error") is True
+
+    def test_structured_output_retry_exhaustion(self, mock_cli) -> None:
+        """CLI reports error_max_structured_output_retries when schema validation fails after retries."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = json.dumps({
+            "type": "result",
+            "subtype": "error_max_structured_output_retries",
+            "is_error": True,
+        })
+        result = evaluate_llm_structured("some output")
+        assert result.verdict == "error"
+        assert "structured output" in result.details["error"].lower()
         assert result.details.get("api_error") is True
 
     def test_result_as_dict_in_envelope(self, mock_cli) -> None:
@@ -834,12 +843,13 @@ class TestLLMStructuredEvaluator:
         evaluate_llm_structured("test output")
 
         call_args = mock_run.call_args[0][0]
-        # Check prompt and schema embedded together
         prompt_idx = call_args.index("-p")
         prompt_content = call_args[prompt_idx + 1]
-        assert DEFAULT_LLM_PROMPT in prompt_content
-        assert json.dumps(DEFAULT_LLM_SCHEMA) in prompt_content
-        assert "--json-schema" not in call_args
+        assert DEFAULT_LLM_PROMPT in prompt_content        # prompt still present
+        assert json.dumps(DEFAULT_LLM_SCHEMA) not in prompt_content  # schema no longer in prompt
+        assert "--json-schema" in call_args
+        schema_idx = call_args.index("--json-schema")
+        assert call_args[schema_idx + 1] == json.dumps(DEFAULT_LLM_SCHEMA)
 
     def test_envelope_as_direct_result(self, mock_cli) -> None:
         """Envelope itself is the structured result when result field is absent."""

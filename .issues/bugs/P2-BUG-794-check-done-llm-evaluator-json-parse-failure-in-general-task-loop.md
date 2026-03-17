@@ -3,6 +3,8 @@ discovered_date: 2026-03-17
 discovered_by: analyze-loop
 source_loop: general-task
 source_state: check_done
+confidence_score: 98
+outcome_confidence: 100
 ---
 
 # BUG-794: check_done LLM evaluator JSON parse failure in general-task loop
@@ -102,7 +104,12 @@ All loops using `llm_structured` evaluators are vulnerable to this same failure:
    - Simplify `user_prompt` to remove the inline schema and JSON-only instruction (lines 561-566)
    - Add `"--json-schema", json.dumps(effective_schema)` to the `cmd` list after `--output-format json`
 
-2. **Update tests** in `scripts/tests/test_fsm_evaluators.py`: mock CLI invocations should include `--json-schema` in the expected command args; preamble-handling test cases are no longer needed (the CLI prevents preamble).
+2. **Update tests** in `scripts/tests/test_fsm_evaluators.py` *(partially done)*:
+   - `TestLLMStructuredEvaluator._cli_stdout()` (line 555) already uses the correct `structured_output` key format
+   - `test_default_values_used` (line 838) and `test_custom_schema` (line 646) already assert `--json-schema` in CLI args
+   - **Remaining**: `TestEvaluateDispatcherLLM._cli_stdout()` (lines 888–900) still uses the old `result: json.dumps(...)` format — should use `structured_output: {...}` to match the `--json-schema` path
+   - **Remaining**: `TestLLMStructuredEvaluator.test_custom_schema` (lines 658–662) also uses old `result: json.dumps(...)` format inline instead of the class `_cli_stdout()` helper
+   - No preamble-handling test cases exist (nothing to remove — CLI prevents preamble at source)
 
 3. **Run tests**: `python -m pytest scripts/tests/test_fsm_evaluators.py -v`
 
@@ -116,4 +123,6 @@ All loops using `llm_structured` evaluators are vulnerable to this same failure:
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-17T22:06:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afa67fca-1937-4256-ac87-131272065740.jsonl`
 - `/ll:refine-issue` - 2026-03-17T21:45:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34031d6c-5edf-4e1a-8019-bb589774481d.jsonl`
+- `/ll:confidence-check` - 2026-03-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66a5e83c-4e85-42e9-944b-a6509b83a605.jsonl`
