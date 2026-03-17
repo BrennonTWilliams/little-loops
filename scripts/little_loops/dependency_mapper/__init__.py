@@ -83,15 +83,6 @@ __all__ = [
     "gather_all_issue_ids",
     # Utilities
     "extract_file_paths",
-    # CLI
-    "main",
     # Private functions re-exported for test access
     "_remove_from_section",
 ]
-
-
-def main() -> int:
-    """Entry point for ll-deps command (backward-compat alias for main_deps)."""
-    from little_loops.cli.deps import main_deps
-
-    return main_deps()

@@ -17,6 +17,14 @@ Architectural issue found by `/ll:audit-architecture`.
 Circular dependency between library and CLI layer:
 `dependency_mapper` -> `cli.deps` -> `dependency_mapper`
 
+## Current Behavior
+
+`dependency_mapper/__init__.py` contains a `main()` backward-compat function that performs a deferred import from `little_loops.cli.deps`, and `cli/deps.py` imports from `little_loops.dependency_mapper`. This creates a mutual dependency where a library module depends on a CLI module, violating the architectural boundary.
+
+## Expected Behavior
+
+`dependency_mapper` should have zero imports from CLI modules. Only `cli.deps` should import from `dependency_mapper`. The `main()` backward-compat alias in `dependency_mapper/__init__.py` should be removed or replaced with a non-CLI-dependent implementation.
+
 ## Motivation
 
 Library modules (`dependency_mapper`) should never depend on CLI modules (`cli.deps`). This violates the clean layering where CLI depends on library but not vice versa. The cycle prevents using `dependency_mapper` as a standalone library and makes the CLI/library boundary undefined.
@@ -79,6 +87,7 @@ Move any shared functionality from `cli.deps` into the `dependency_mapper` packa
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-17T01:43:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7f7c123-3ad1-4eb0-a435-1328b4b8fdaf.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
@@ -92,6 +101,15 @@ Move any shared functionality from `cli.deps` into the `dependency_mapper` packa
 - **Verdict**: VALID
 - Confirmed: `dependency_mapper/__init__.py` line 95 does `from little_loops.cli.deps import main_deps`, and `cli/deps.py` line 65 imports from `little_loops.dependency_mapper`. Mutual import is present. Runtime imports don't fail currently (Python resolves the cycle), but the architectural inversion (library depending on CLI) is confirmed as described.
 
+## Resolution
+
+- **Date**: 2026-03-16
+- **Status**: COMPLETE
+- Removed `main()` backward-compat function and `"main"` from `__all__` in `dependency_mapper/__init__.py`
+- Updated `scripts/tests/test_dependency_mapper.py` to import `main_deps as main` from `little_loops.cli.deps` directly
+- `dependency_mapper` now has zero imports from CLI modules; only `cli.deps` imports from `dependency_mapper`
+- Verified: importing `dependency_mapper` no longer loads `cli.deps`; all 100 tests pass
+
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Closed** | Created: 2026-03-12 | Closed: 2026-03-16 | Priority: P3

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+from little_loops.cli.deps import main_deps as main
 from little_loops.dependency_mapper import (
     DependencyProposal,
     DependencyReport,
@@ -21,7 +22,6 @@ from little_loops.dependency_mapper import (
     format_report,
     format_text_graph,
     gather_all_issue_ids,
-    main,
     validate_dependencies,
 )
 from little_loops.issue_parser import IssueInfo
