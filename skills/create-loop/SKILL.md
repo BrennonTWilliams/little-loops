@@ -81,6 +81,7 @@ questions:
 - "Drive a metric toward a target" -> `drive-metric` type (states: measure, apply, done)
 - "Run a sequence of steps" -> `run-sequence` type (step_0...step_N, check_done, done)
 - "Harness a skill or prompt" -> `harness` type (states: discover, execute, check_concrete, check_semantic, check_invariants, advance, done)
+- **Sub-loop composition** — not a wizard type; use `loop:` field in YAML to invoke other loops as child FSMs (see [reference.md](reference.md))
 - "RL: Bandit (explore vs exploit)" -> `rl-bandit` type (states: explore, exploit, reward, done)
 - "RL: RLHF-style (generate → score → refine)" -> `rl-rlhf` type (states: generate, score, refine, done)
 - "RL: Policy iteration (act → observe → improve)" -> `rl-policy` type (states: act, observe, score, improve, done)

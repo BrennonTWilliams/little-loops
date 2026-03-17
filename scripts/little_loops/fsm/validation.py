@@ -195,6 +195,16 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
             )
         )
 
+    # loop and action are mutually exclusive
+    if state.loop is not None and state.action is not None:
+        errors.append(
+            ValidationError(
+                message="'loop' and 'action' are mutually exclusive — "
+                "a sub-loop state cannot also have an action",
+                path=f"{path}",
+            )
+        )
+
     return errors
 
 
@@ -235,8 +245,9 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
     # Check for no valid transition definition
     has_next = state.next is not None
     has_terminal = state.terminal
+    has_loop = state.loop is not None
 
-    if not has_shorthand and not has_route and not has_next and not has_terminal:
+    if not has_shorthand and not has_route and not has_next and not has_terminal and not has_loop:
         errors.append(
             ValidationError(
                 message="State has no transition defined. Add routing, 'next', "

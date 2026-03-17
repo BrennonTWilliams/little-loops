@@ -89,6 +89,7 @@ class LoopState:
     continuation_prompt: str | None = None
     accumulated_ms: int = 0  # total elapsed ms across all segments (for resume offset)
     retry_counts: dict[str, int] = field(default_factory=dict)  # per-state retry tracking
+    active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -108,6 +109,8 @@ class LoopState:
             result["continuation_prompt"] = self.continuation_prompt
         if self.retry_counts:
             result["retry_counts"] = self.retry_counts
+        if self.active_sub_loop is not None:
+            result["active_sub_loop"] = self.active_sub_loop
         return result
 
     @classmethod
@@ -133,6 +136,7 @@ class LoopState:
             continuation_prompt=data.get("continuation_prompt"),
             accumulated_ms=data.get("accumulated_ms", 0),
             retry_counts=data.get("retry_counts", {}),
+            active_sub_loop=data.get("active_sub_loop"),
         )
 
 
@@ -304,6 +308,7 @@ class PersistentExecutor:
         from little_loops.fsm.signal_detector import SignalDetector
 
         self.fsm = fsm
+        self.loops_dir = loops_dir
         self.persistence = persistence or StatePersistence(fsm.name, loops_dir or Path(".loops"))
         self.persistence.initialize()
 
@@ -317,6 +322,7 @@ class PersistentExecutor:
             event_callback=self._handle_event,
             signal_detector=signal_detector,
             handoff_handler=handoff_handler,
+            loops_dir=self.loops_dir,
             **executor_kwargs,
         )
         self._last_result: dict[str, Any] | None = None

@@ -86,6 +86,55 @@ class TestLoopState:
         assert state.updated_at == ""
 
 
+    def test_active_sub_loop_field_roundtrip(self) -> None:
+        """active_sub_loop round-trips through to_dict/from_dict (FEAT-659)."""
+        state = LoopState(
+            loop_name="parent",
+            current_state="run_child",
+            iteration=2,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="2024-01-15T10:31:00Z",
+            status="running",
+            active_sub_loop="child-loop",
+        )
+        d = state.to_dict()
+        assert d["active_sub_loop"] == "child-loop"
+
+        restored = LoopState.from_dict(d)
+        assert restored.active_sub_loop == "child-loop"
+
+    def test_active_sub_loop_defaults_to_none(self) -> None:
+        """active_sub_loop defaults to None when not in data (FEAT-659)."""
+        data = {
+            "loop_name": "test",
+            "current_state": "check",
+            "iteration": 1,
+            "started_at": "2024-01-15T10:30:00Z",
+            "status": "running",
+        }
+        state = LoopState.from_dict(data)
+        assert state.active_sub_loop is None
+
+    def test_active_sub_loop_omitted_when_none(self) -> None:
+        """to_dict omits active_sub_loop when None (FEAT-659)."""
+        state = LoopState(
+            loop_name="test",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+        )
+        d = state.to_dict()
+        assert "active_sub_loop" not in d
+
+
 class TestStatePersistence:
     """Tests for StatePersistence class."""
 

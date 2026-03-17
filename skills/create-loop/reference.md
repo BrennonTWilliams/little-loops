@@ -567,6 +567,54 @@ states:
 
 **Most users can omit this field** — it is only needed when running loops in parallel via `ll-parallel`. Single-loop use cases do not require scope declaration.
 
+#### loop (Optional)
+
+The `loop` field declares a state as a **sub-loop invocation** — instead of running an action, the executor loads and runs another loop YAML as a child FSM. The parent routes based on the child's terminal outcome.
+
+**Type:** `str` — name of a loop YAML file (resolved via `.loops/<name>.yaml`)
+
+**Mutually exclusive with:** `action` — a state cannot have both `loop` and `action` set.
+
+**Related field:** `context_passthrough` (boolean, default `false`) — when `true`, parent context variables and captured data are passed to the child loop, and child captures are merged back into the parent under the state name.
+
+**When to use:**
+- You have well-tested sub-loops and want to compose them into a higher-level workflow
+- You want to avoid duplicating state logic across multiple loop YAMLs
+- You need shared context between parent and child loops
+
+**Example — Compose lint-fix and test-suite sub-loops:**
+```yaml
+name: "code-review"
+initial: fix_lint
+max_iterations: 10
+states:
+  fix_lint:
+    loop: lint-fix                # runs .loops/lint-fix.yaml
+    context_passthrough: true
+    on_success: run_tests
+    on_failure: escalate
+  run_tests:
+    loop: test-suite              # runs .loops/test-suite.yaml
+    on_success: done
+    on_failure: escalate
+  escalate:
+    action: "echo 'Sub-loop failed'"
+    action_type: shell
+    terminal: true
+    verdict: failure
+  done:
+    terminal: true
+```
+
+**Routing:**
+- `on_success` (alias for `on_yes`): child reached a terminal state with `terminated_by: "terminal"`
+- `on_failure` (alias for `on_no`): child terminated by max_iterations, timeout, signal, or error
+- `on_error`: child loop YAML not found or invalid
+
+**Context passthrough details:**
+- Parent `context` + `captured` are merged into child's `context` before execution
+- After child completes, child `captured` values are stored in parent's `captured[<state_name>]`
+
 #### on_partial (Optional)
 
 The `on_partial` field is a **state-level** shorthand for routing when an action returns a `partial` verdict. It works alongside `on_yes`, `on_no`, and `on_error` as a one-line alternative to a full `route:` block.
@@ -724,6 +772,38 @@ states:
 ```
 
 **Most users can omit these fields** — they are useful only when a state might loop indefinitely on bad input and you want automatic skip behavior instead of exhausting the global iteration budget.
+
+---
+
+### Sub-Loop Composition
+```
+States: <sub_loop_state_1>, <sub_loop_state_2>, ..., done
+Initial: <sub_loop_state_1>
+
+Transitions:
+  <sub_loop_state_1>:
+    - on_success -> <sub_loop_state_2> (or done if last)
+    - on_failure -> escalate (or error handler)
+  <sub_loop_state_2>:
+    - on_success -> done
+    - on_failure -> escalate
+  escalate: [terminal, verdict: failure]
+  done: [terminal]
+```
+
+Sub-loop composition summary example:
+```
+## Summary
+States: fix_lint -> run_tests -> done
+Transitions:
+  fix_lint: success->run_tests, failure->escalate
+  run_tests: success->done, failure->escalate
+  escalate: [terminal, verdict: failure]
+  done: [terminal]
+Initial: fix_lint
+Max iterations: 10
+Sub-loops: lint-fix, test-suite
+```
 
 ---
 

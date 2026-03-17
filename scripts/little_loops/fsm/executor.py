@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol
 
 from little_loops.fsm.evaluators import (
@@ -353,6 +354,7 @@ class FSMExecutor:
         action_runner: ActionRunner | None = None,
         signal_detector: SignalDetector | None = None,
         handoff_handler: HandoffHandler | None = None,
+        loops_dir: Path | None = None,
     ):
         """Initialize the executor.
 
@@ -362,12 +364,14 @@ class FSMExecutor:
             action_runner: Optional custom action runner (for testing)
             signal_detector: Optional signal detector for output parsing
             handoff_handler: Optional handler for handoff signals
+            loops_dir: Base directory for resolving sub-loop references
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
         self.action_runner: ActionRunner = action_runner or DefaultActionRunner()
         self.signal_detector = signal_detector
         self.handoff_handler = handoff_handler
+        self.loops_dir = loops_dir
 
         # Runtime state
         self.current_state = fsm.initial
@@ -556,6 +560,45 @@ class FSMExecutor:
         except Exception as exc:
             return self._finish("error", error=str(exc))
 
+    def _execute_sub_loop(self, state: StateConfig, ctx: InterpolationContext) -> str | None:
+        """Execute a sub-loop state by loading and running a child FSM.
+
+        Args:
+            state: The state configuration with loop field set
+            ctx: Interpolation context for routing
+
+        Returns:
+            Next state name based on child loop verdict, or None
+        """
+        from little_loops.cli.loop._helpers import resolve_loop_path
+        from little_loops.fsm.validation import load_and_validate
+
+        assert state.loop is not None  # guarded by caller
+        loop_path = resolve_loop_path(state.loop, self.loops_dir or Path(".loops"))
+        child_fsm, _ = load_and_validate(loop_path)
+
+        # Pass parent context to child if requested
+        if state.context_passthrough:
+            child_fsm.context = {**self.fsm.context, **self.captured, **child_fsm.context}
+
+        child_executor = FSMExecutor(
+            child_fsm,
+            action_runner=self.action_runner,
+            loops_dir=self.loops_dir,
+        )
+        child_result = child_executor.run()
+
+        # Merge child captures back into parent under the state name
+        if state.context_passthrough and child_executor.captured:
+            self.captured[self.current_state] = child_executor.captured
+
+        # Route based on child termination reason
+        if child_result.terminated_by == "terminal":
+            return interpolate(state.on_yes, ctx) if state.on_yes else None
+        else:
+            # error, max_iterations, timeout, signal — all are failure
+            return interpolate(state.on_no, ctx) if state.on_no else None
+
     def _execute_state(self, state: StateConfig) -> str | None:
         """Execute a single state and return next state name.
 
@@ -567,6 +610,15 @@ class FSMExecutor:
         """
         # Build interpolation context
         ctx = self._build_context()
+
+        # Dispatch to sub-loop handler if this is a sub-loop state
+        if state.loop is not None:
+            try:
+                return self._execute_sub_loop(state, ctx)
+            except (FileNotFoundError, ValueError):
+                if state.on_error:
+                    return interpolate(state.on_error, ctx)
+                raise
 
         # Handle unconditional transition
         if state.next:

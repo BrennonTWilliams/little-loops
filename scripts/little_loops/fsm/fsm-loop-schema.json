@@ -152,6 +152,15 @@
         "on_retry_exhausted": {
           "type": "string",
           "description": "State to transition to when max_retries consecutive re-entries are exceeded. Required when max_retries is set."
+        },
+        "loop": {
+          "type": "string",
+          "description": "Name of a loop YAML to execute as a sub-FSM. Mutually exclusive with action."
+        },
+        "context_passthrough": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pass parent context variables to child loop and merge child captures back into parent context."
         }
       },
       "additionalProperties": false

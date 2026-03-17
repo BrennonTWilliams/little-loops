@@ -205,6 +205,9 @@ class StateConfig:
             Requires on_retry_exhausted to also be set.
         on_retry_exhausted: State to transition to when max_retries consecutive re-entries
             are exceeded. Required when max_retries is set.
+        loop: Name of a loop YAML to execute as a sub-FSM. Mutually exclusive with action.
+        context_passthrough: When True, pass parent context variables to child loop and
+            merge child captures back into parent context.
     """
 
     action: str | None = None
@@ -224,6 +227,8 @@ class StateConfig:
     on_maintain: str | None = None
     max_retries: int | None = None
     on_retry_exhausted: str | None = None
+    loop: str | None = None
+    context_passthrough: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -263,6 +268,10 @@ class StateConfig:
             result["max_retries"] = self.max_retries
         if self.on_retry_exhausted is not None:
             result["on_retry_exhausted"] = self.on_retry_exhausted
+        if self.loop is not None:
+            result["loop"] = self.loop
+        if self.context_passthrough:
+            result["context_passthrough"] = self.context_passthrough
 
         return result
 
@@ -295,6 +304,8 @@ class StateConfig:
             on_maintain=data.get("on_maintain"),
             max_retries=data.get("max_retries"),
             on_retry_exhausted=data.get("on_retry_exhausted"),
+            loop=data.get("loop"),
+            context_passthrough=data.get("context_passthrough", False),
         )
 
     def get_referenced_states(self) -> set[str]:

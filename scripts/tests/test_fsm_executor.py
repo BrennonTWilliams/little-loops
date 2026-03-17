@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -3227,3 +3228,151 @@ class TestDefaultTimeout:
         runner = self.TimeoutCapturingRunner()
         FSMExecutor(fsm, action_runner=runner).run()
         assert runner.captured_timeouts == [3600]
+
+
+class TestSubLoopExecution:
+    """Tests for hierarchical FSM sub-loop execution (FEAT-659)."""
+
+    def test_sub_loop_success_routes_to_on_success(self, tmp_path: Path) -> None:
+        """Sub-loop that succeeds routes parent to on_yes state."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fail"),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        assert result.terminated_by == "terminal"
+
+    def test_sub_loop_failure_routes_to_on_failure(self, tmp_path: Path) -> None:
+        """Sub-loop that fails routes parent to on_no state."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child loop that always fails by hitting max_iterations
+        (loops_dir / "failing.yaml").write_text(
+            "name: failing\ninitial: loop\nmax_iterations: 1\nstates:\n"
+            "  loop:\n    action: 'false'\n    on_yes: done\n    on_no: loop\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="failing", on_yes="success", on_no="failed"),
+                "success": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "failed"
+
+    def test_sub_loop_context_passthrough(self, tmp_path: Path) -> None:
+        """Parent context is passed to child when context_passthrough is True."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child loop that captures a variable using parent's context
+        (loops_dir / "echo-child.yaml").write_text(
+            "name: echo-child\ninitial: step\nstates:\n"
+            "  step:\n"
+            "    action: 'echo ${context.greeting}'\n"
+            "    capture: child_out\n"
+            "    next: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            context={"greeting": "hello"},
+            states={
+                "run_child": StateConfig(
+                    loop="echo-child",
+                    context_passthrough=True,
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        # Child captures should be merged back under the state name
+        assert "run_child" in executor.captured
+
+    def test_sub_loop_missing_loop_with_on_error(self, tmp_path: Path) -> None:
+        """Missing child loop routes to on_error when set."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="nonexistent",
+                    on_yes="success",
+                    on_no="fail",
+                    on_error="error_state",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "error_state": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "error_state"
+
+    def test_sub_loop_missing_loop_without_on_error(self, tmp_path: Path) -> None:
+        """Missing child loop finishes with error when no on_error set."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="nonexistent",
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.terminated_by == "error"
+
+    def test_sub_loop_without_action_runs_child(self, tmp_path: Path) -> None:
+        """Sub-loop state without action runs the child loop directly."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "simple.yaml").write_text(
+            "name: simple\ninitial: done\nstates:\n  done:\n    terminal: true"
+        )
+        mock_runner = MockActionRunner()
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="simple", on_yes="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, action_runner=mock_runner, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "done"
+        # MockActionRunner should NOT have been called (sub-loop doesn't use action_runner)
+        assert len(mock_runner.calls) == 0

@@ -1620,3 +1620,90 @@ class TestMcpToolSchema:
         errors = validate_fsm(fsm)
         error_messages = [str(e) for e in errors]
         assert any("params" in m and "mcp_tool" in m for m in error_messages)
+
+
+class TestSubLoopStateConfig:
+    """Tests for sub-loop state configuration (FEAT-659)."""
+
+    def test_state_config_with_loop_field(self) -> None:
+        """StateConfig accepts loop field."""
+        state = StateConfig(loop="child-loop", on_yes="done", on_no="error")
+        assert state.loop == "child-loop"
+        assert state.context_passthrough is False
+
+    def test_state_config_context_passthrough(self) -> None:
+        """StateConfig accepts context_passthrough field."""
+        state = StateConfig(loop="child", context_passthrough=True, on_yes="done")
+        assert state.context_passthrough is True
+
+    def test_state_config_loop_defaults_to_none(self) -> None:
+        """Existing states without loop field still work."""
+        state = StateConfig(action="echo hi", on_yes="done")
+        assert state.loop is None
+        assert state.context_passthrough is False
+
+    def test_to_dict_includes_loop_when_set(self) -> None:
+        """to_dict includes loop and context_passthrough when set."""
+        state = StateConfig(loop="child", context_passthrough=True, on_yes="done")
+        d = state.to_dict()
+        assert d["loop"] == "child"
+        assert d["context_passthrough"] is True
+
+    def test_to_dict_excludes_loop_when_none(self) -> None:
+        """to_dict omits loop and context_passthrough when default."""
+        state = StateConfig(action="echo hi", on_yes="done")
+        d = state.to_dict()
+        assert "loop" not in d
+        assert "context_passthrough" not in d
+
+    def test_from_dict_with_loop(self) -> None:
+        """from_dict deserializes loop and context_passthrough."""
+        data = {"loop": "child", "context_passthrough": True, "on_success": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.loop == "child"
+        assert state.context_passthrough is True
+        assert state.on_yes == "done"  # on_success alias
+
+    def test_from_dict_without_loop(self) -> None:
+        """from_dict defaults loop to None."""
+        data = {"action": "echo hi", "on_yes": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.loop is None
+        assert state.context_passthrough is False
+
+    def test_loop_and_action_mutual_exclusion(self) -> None:
+        """Validation rejects state with both loop and action."""
+        fsm = FSMLoop(
+            name="test",
+            initial="bad",
+            states={
+                "bad": StateConfig(
+                    loop="child",
+                    action="echo hi",  # mutually exclusive with loop
+                    on_yes="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        error_messages = [str(e) for e in errors]
+        assert any("loop" in m and "action" in m for m in error_messages)
+
+    def test_sub_loop_state_no_transition_error(self) -> None:
+        """A state with loop: set should not trigger 'no transition' error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="child",
+                    on_yes="done",
+                    on_no="error",
+                ),
+                "done": StateConfig(terminal=True),
+                "error": StateConfig(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        error_messages = [str(e) for e in errors]
+        assert not any("no transition" in m.lower() for m in error_messages)

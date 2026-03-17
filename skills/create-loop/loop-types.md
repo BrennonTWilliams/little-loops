@@ -912,6 +912,48 @@ states:
 
 ---
 
+## Sub-Loop Composition
+
+Sub-loop composition uses the `loop:` state field to invoke other loop YAMLs as nested child FSMs. This is not a separate loop type in the wizard — it is an advanced state configuration that can be used in any manually authored loop YAML.
+
+**When to use:**
+- You have existing, well-tested loops and want to compose them into a higher-level workflow
+- You want to avoid duplicating state logic across multiple loop files
+- You need to sequence multiple sub-workflows with routing based on their outcomes
+
+**Key fields:**
+- `loop: "<name>"` — references `.loops/<name>.yaml` (mutually exclusive with `action`)
+- `context_passthrough: true` — pass parent context/captures to child, merge child captures back
+- `on_success` / `on_failure` — route based on child loop terminal outcome
+
+**Example — Compose sub-loops into a pipeline:**
+```yaml
+name: "code-review-pipeline"
+initial: fix_lint
+max_iterations: 10
+states:
+  fix_lint:
+    loop: lint-fix
+    context_passthrough: true
+    on_success: run_tests
+    on_failure: escalate
+  run_tests:
+    loop: test-suite
+    on_success: done
+    on_failure: escalate
+  escalate:
+    action: "echo 'Sub-loop failed, needs manual attention'"
+    action_type: shell
+    terminal: true
+    verdict: failure
+  done:
+    terminal: true
+```
+
+> **Note**: Sub-loop states cannot be created through the interactive wizard. Author them directly in YAML. See [reference.md](reference.md) for the full `loop:` field specification.
+
+---
+
 ## RL Loops
 
 If user selected any of the three RL loop types, follow the steps below for that type.
