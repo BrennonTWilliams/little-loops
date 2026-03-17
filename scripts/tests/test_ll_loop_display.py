@@ -1526,14 +1526,14 @@ class TestDisplayProgressEvents:
         """--show-diagrams flag causes state_enter events to print the FSM diagram."""
         from unittest.mock import patch
 
-        from little_loops.cli.loop import info as info_mod
+        from little_loops.cli.loop import layout as layout_mod
 
         events = [
             {"event": "state_enter", "state": "start", "iteration": 1},
         ]
         executor = MockExecutor(events)
         with patch.object(
-            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+            layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
         ) as mock_render:
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
             mock_render.assert_called_once_with(
@@ -1579,7 +1579,7 @@ class TestDisplayProgressEvents:
         """--verbose and --show-diagrams combined prints diagram and verbose output."""
         from unittest.mock import patch
 
-        from little_loops.cli.loop import info as info_mod
+        from little_loops.cli.loop import layout as layout_mod
 
         events = [
             {"event": "state_enter", "state": "start", "iteration": 1},
@@ -1587,7 +1587,7 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch.object(
-            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+            layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
         ) as mock_render:
             run_foreground(
                 executor, self._make_fsm(), self._make_args(verbose=True, show_diagrams=True)

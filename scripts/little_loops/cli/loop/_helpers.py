@@ -313,7 +313,7 @@ def run_foreground(
             if clear_screen and sys.stdout.isatty():
                 print("\033[2J\033[H", end="", flush=True)
             if show_diagrams:
-                from little_loops.cli.loop.info import _render_fsm_diagram
+                from little_loops.cli.loop.layout import _render_fsm_diagram
 
                 diagram = _render_fsm_diagram(
                     fsm, highlight_state=state, highlight_color=highlight_color
