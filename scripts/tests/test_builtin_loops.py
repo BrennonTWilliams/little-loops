@@ -380,9 +380,7 @@ class TestIssueRefinementLoopOnError:
         """Each prompt state must define on_error to prevent loop termination on SIGKILL."""
         state = data["states"].get(state_name)
         assert state is not None, f"State '{state_name}' not found"
-        assert state.get("action_type") == "prompt", (
-            f"State '{state_name}' is not a prompt state"
-        )
+        assert state.get("action_type") == "prompt", f"State '{state_name}' is not a prompt state"
         assert "on_error" in state, (
             f"Prompt state '{state_name}' missing on_error handler — "
             f"SIGKILL will terminate the loop instead of recovering"

@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, terminal_width
+from little_loops.cli.output import colorize, terminal_width
 from little_loops.cli.sprint._helpers import (
     _build_issue_contents,
     _render_dependency_analysis,

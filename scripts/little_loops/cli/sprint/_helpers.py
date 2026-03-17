@@ -85,7 +85,9 @@ def _render_execution_plan(
 
                     issue_type = issue.issue_id.split("-", 1)[0]
                     colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
-                    colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
+                    colored_priority = colorize(
+                        issue.priority, PRIORITY_COLOR.get(issue.priority, "0")
+                    )
                     lines.append(
                         f"    \u2514\u2500\u2500 {colored_id}: {title} ({colored_priority})"
                     )
