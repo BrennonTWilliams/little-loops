@@ -5,8 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-16
 discovered_by: capture-issue
-confidence_score: 96
-outcome_confidence: 78
+confidence_score: 100
+outcome_confidence: 88
 ---
 
 # FEAT-790: Create evaluation-quality FSM Loop for Issues
@@ -53,14 +53,16 @@ sample → evaluate_code → score → route_action → [remediate_issues | reme
 
 ## Implementation Steps
 
-1. Create `loops/evaluation-quality.yaml`.
-2. **sample state** (shell): Use `ll-issues list --format json` with inline Python to compute: `total_active`, `scored`, `unscored`, `unformatted`, `avg_confidence_score`, `avg_outcome_confidence`, `below_threshold` count. Also call `ll-history summary` for completion velocity.
-3. **evaluate_code state** (shell): Read `test_cmd` from `.claude/ll-config.json` (same pattern as `fix-quality-and-tests.yaml`). Run lint (`ruff check`) separately from tests to get independent signals.
-4. **score state** (prompt): Structured scoring prompt with exact output format — `SCORES:` block with `issue_quality`, `code_health`, `backlog_health`, `overall`, and `PRIMARY_CONCERN:` tag. Use `output_contains` on `PRIMARY_CONCERN: NONE` to route.
-5. **route_* states** (evaluate): Chain of `output_contains` checks on `captured.scores.output` — same pattern as `backlog-flow-optimizer.yaml`'s route chain.
-6. **remediate_* states** (prompt): Each delegates to an existing loop via subprocess (`ll-loop run <name>`) or prompt. Keep timeouts generous (600s) since sub-loops are long.
-7. **report state** (prompt): Writes markdown report to `.loops/quality-report-$(date +%Y-%m-%d).md`. If prior reports exist in `.loops/`, compute trend direction (↑↓→) per dimension.
-8. Set `max_iterations: 5` (diagnostic loop, not iterative fixer), `timeout: 3600`.
+1. Create `loops/evaluation-quality.yaml` with required top-level fields: `name: evaluation-quality`, `initial: sample`, `states:`, `max_iterations: 5`, `timeout: 3600`.
+2. **sample state** (shell, `capture: metrics`): Use `ll-issues list --json` (flag is `--json`, not `--format json` — confirmed in `loops/issue-discovery-triage.yaml:12`) with inline Python. Also call `ll-history summary 2>/dev/null || echo "(no history available)"` for velocity. Set `next: evaluate_code`.
+3. **evaluate_code state** (shell, `capture: code_results`): Read `test_cmd` from `.claude/ll-config.json` using exact pattern from `fix-quality-and-tests.yaml:64-81`. Run lint (`ruff check`) separately with `|| true`. Set `next: score`.
+4. **score state** (prompt, **must include `capture: scores`**): Structured scoring prompt referencing `${captured.metrics.output}`, `${captured.code_results.output}`, and `${context.*_threshold}` values. Output format: `SCORES:` block + `PRIMARY_CONCERN: <NONE|ISSUES|CODE|BACKLOG>`. Set `next: route_action`.
+5. **route_action / route_issues / route_code states** (evaluate, no `action:`): Chain of `output_contains` checks on `source: "${captured.scores.output}"`. Each needs `on_yes`, `on_no`, and **`on_error: done`** (required — bare route states hang without it; see `backlog-flow-optimizer.yaml:68`).
+6. **remediate_* states** (prompt, `timeout: 600`): Each delegates to an existing loop via `ll-loop run <name>`. Set `next: prepare_report`.
+7. **prepare_report state** (shell, `capture: report_path`): **Required intermediate state** — `$(date +%Y-%m-%d)` does NOT expand in prompt states (shell substitution is unavailable in prompt context). Compute path via: `echo ".loops/quality-report-$(date +%Y-%m-%d).md"`. Set `next: report`.
+8. **report state** (prompt): Reference `${captured.report_path.output}` for the filename. Include scores from `${captured.scores.output}` and trend analysis if prior reports exist. Set `next: done`.
+9. **done state**: Must have `terminal: true` — required by `ll-loop validate` (`validation.py:304-311`; hard error if absent).
+10. Add `context:` block at top level: `issue_quality_threshold: 70`, `code_health_threshold: 80`, `backlog_health_threshold: 75`.
 
 ## API/Interface
 
@@ -110,7 +112,7 @@ Reads (no changes): `.claude/ll-config.json` (for `test_cmd`), `.issues/` (via `
 
 ### Similar Patterns
 - `loops/backlog-flow-optimizer.yaml` — `output_contains` route chain (each `on_no` falls to next route state); prompt emits single tag line; route terminates at `done` when no match; `context:` block for thresholds
-- `loops/issue-refinement.yaml` — `ll-issues list --json` → Python3 inline classifier; `exit_code` evaluate with `sys.exit(1)` to signal "work remains"
+- `loops/issue-discovery-triage.yaml` — `ll-issues list --json` → Python3 inline classifier; `exit_code` evaluate with `sys.exit(1)` to signal "work remains"
 - `loops/fix-quality-and-tests.yaml:64-81` — exact `test_cmd` extraction pattern (Python3 reads `.claude/ll-config.json`); `tee .loops/tmp/ll-test-results.txt` for capturing output; `set -o pipefail`
 
 ### Codebase Research Findings
@@ -222,6 +224,65 @@ overall: <0-100>
 PRIMARY_CONCERN: <NONE|ISSUES|CODE|BACKLOG>
 ```
 
+**Critical: report file dated filename** — `$(date +%Y-%m-%d)` does NOT expand inside prompt state action text. Use a shell state to compute the path and capture it, then reference in the report prompt:
+```yaml
+prepare_report:
+  action_type: shell
+  action: |
+    mkdir -p .loops
+    echo ".loops/quality-report-$(date +%Y-%m-%d).md"
+  capture: report_path
+  next: report
+
+report:
+  action_type: prompt
+  timeout: 300
+  action: |
+    Write a quality health report to `${captured.report_path.output}`.
+    ...
+  next: done
+```
+Source: no existing loop uses `$(date ...)` in a prompt state — all dynamic paths use shell states or static `${context.X}` values.
+
+**Critical: `score` state must include `capture: scores`** — route states reference `${captured.scores.output}` (see `route_action` state). Without `capture: scores` on the `score` prompt state, interpolation will fail at runtime.
+
+**Critical: `done` state must have `terminal: true`** — `ll-loop validate` requires at least one terminal state (`validation.py:304-311`). Without it, validation fails with error: "No terminal state found."
+
+**Critical: route states need `on_error:` routing** — bare route states (no `action:`) that fail evaluation will hang without `on_error:`. Pattern from `backlog-flow-optimizer.yaml:66`: use `on_error: done` as fallback.
+
+**Required top-level YAML fields** (`validation.py:443-449` — hard errors if missing):
+- `name:` — loop identifier string
+- `initial:` — name of the first state
+- `states:` — dict of all states
+
+Optional but recommended for this loop:
+```yaml
+name: evaluation-quality
+description: "Multi-dimensional quality health check for issues, code, and backlog"
+initial: sample
+max_iterations: 5
+timeout: 3600
+on_handoff: spawn
+```
+
+**`context:` block for score thresholds** (referenced in `score` state prompt via `${context.X}`):
+```yaml
+context:
+  issue_quality_threshold: 70
+  code_health_threshold: 80
+  backlog_health_threshold: 75
+```
+Pattern: `sprint-build-and-validate.yaml:7-10` uses `${context.readiness_threshold}` and `${context.outcome_threshold}` in prompt action bodies.
+
+**`ll-loop validate` checks summary** — what must pass for acceptance criteria:
+- `name`, `initial`, `states` all present
+- `initial` value exists in `states` dict
+- At least one state has `terminal: true`
+- All `on_yes`/`on_no`/`on_error`/`next` targets exist in `states`
+- All `output_contains` evaluates have `pattern:`
+- No state missing all transitions (each needs `on_yes`/`on_no`/`next`/`terminal` or `route`)
+- `max_iterations > 0`, `timeout > 0`
+
 ## Impact
 
 - **Priority**: P3 — Useful sprint-hygiene loop; not blocking
@@ -239,8 +300,19 @@ PRIMARY_CONCERN: <NONE|ISSUES|CODE|BACKLOG>
 
 - [ ] Not started
 
+## Verification Notes
+
+Verified 2026-03-16 against codebase. Core guidance confirmed valid. Two line reference corrections applied:
+- Step 2 cited `loops/issue-refinement.yaml:14` for `ll-issues list --json` — corrected to `loops/issue-discovery-triage.yaml:12`. Line 14 of `issue-refinement.yaml` uses `ll-issues refine-status --json` (different subcommand). The `list --json` pattern is in `issue-discovery-triage.yaml`.
+- Step 5 cited `backlog-flow-optimizer.yaml:66` for `on_error: done` — corrected to line 68. Line 66 is `on_yes: close_dead_weight`; `on_error: done` is at line 68.
+- `validation.py:304-311` (terminal state check) and `validation.py:443-449` (required fields) confirmed accurate.
+- `fix-quality-and-tests.yaml:64-81` test_cmd pattern confirmed accurate (state is named `check-tests`, not `evaluate_code`, but the pattern is valid).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-17T03:55:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5cd3087-827b-4f96-b97c-87f26d20ce04.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:44:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bff4ea7-c43c-4570-a757-562d16159166.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
 - `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5d2a676-504a-430c-a0d5-b6a5a25cb87d.jsonl`

@@ -5,8 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-15
 discovered_by: capture-issue
-confidence_score: 100
-outcome_confidence: 68
+confidence_score: 98
+outcome_confidence: 71
 ---
 
 # ENH-756: Refactor create-loop wizard templates and questions to use patterns not use-cases
@@ -52,6 +52,7 @@ The wizard currently offers templates and questions phrased as use-cases (e.g., 
 - `skills/create-loop/SKILL.md` — wizard logic, loop-type question options, and template definitions
 - `skills/create-loop/templates.md` — all four pre-built template definitions (separate file, not inline in SKILL.md)
 - `skills/create-loop/loop-types.md` — label-dependent routing (`If user selected "Fix errors until clean":` at line 9, `"Maintain code quality continuously":` at line 202, `"Drive a metric toward a target":` at line 331, `"Run a sequence of steps":` at line 434, `"Harness a skill or prompt":` at line 550); any SKILL.md Step 1 label rename must be reflected here
+- `skills/create-loop/reference.md:260-267` — "Template Quick Reference" table lists old names ("Python quality", "JavaScript quality", "Tests until passing", "Full quality gate") with Loop Type and Best For columns; update table rows to reflect renamed structural patterns
 
 ### Dependent Files (Callers/Importers)
 - `commands/loop-suggester.md` — references `/ll:create-loop` in comparison docs; does not reference template names directly, so no update needed after rename
@@ -119,7 +120,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-Verified 2026-03-15 against codebase. All core claims confirmed accurate:
+Verified 2026-03-16 (re-verified, still accurate). All core claims confirmed accurate:
 - `skills/create-loop/templates.md` shows 4 use-case/language-specific templates ("Python quality", "JavaScript quality", "Tests until passing", "Full quality gate") — not structural patterns
 - `skills/create-loop/SKILL.md:60-66` confirms use-case-framed loop-type options in Step 1
 - `SKILL.md:67-69` confirms "Harness a skill or prompt" and "Run a sequence of steps" exist as the structural-pattern models cited in Notes
@@ -127,9 +128,12 @@ Verified 2026-03-15 against codebase. All core claims confirmed accurate:
 **Correction applied**: Integration Map listed `skills/loop-suggester/SKILL.md` — this path does not exist. `loop-suggester` is a command at `commands/loop-suggester.md` and does not reference create-loop template names directly.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-17T03:55:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5cd3087-827b-4f96-b97c-87f26d20ce04.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:49:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df1153d7-c8ab-4322-adaa-43294b1e0618.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:50:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a6f7f86-5e6a-45f1-a1df-d24d55c9a6fc.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:38:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46067e65-3dd1-4058-a36b-dc2c5cfbade9.jsonl`
 - `/ll:verify-issues` - 2026-03-15T19:32:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
 - `/ll:format-issue` - 2026-03-15T19:29:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
 - `/ll:confidence-check` - 2026-03-15T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a783bed6-ca14-454d-baf2-ee97b0cf2f33.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5d2a676-504a-430c-a0d5-b6a5a25cb87d.jsonl`

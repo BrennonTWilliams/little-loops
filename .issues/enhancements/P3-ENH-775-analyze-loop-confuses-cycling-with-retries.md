@@ -74,8 +74,8 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" secti
 ## Integration Map
 
 ### Files to Modify
-- `skills/analyze-loop/SKILL.md:111-115` — update "ENH — Retry flood" signal rule to distinguish true retries (via `on_retry`) from intentional cycling (via `on_no`/`on_yes`)
-- `skills/analyze-loop/SKILL.md:76-83` — add `retry_exhausted` event type to the event parsing table (currently missing; the event exists in the executor but the skill doesn't document or use it)
+- `skills/analyze-loop/SKILL.md:124-128` — update "ENH — Retry flood" signal rule to distinguish true retries (via `on_retry`) from intentional cycling (via `on_no`/`on_yes`)
+- `skills/analyze-loop/SKILL.md:84-92` — add `retry_exhausted` event type to the event parsing table (currently missing; the event exists in the executor but the skill doesn't document or use it)
 - `docs/reference/COMMANDS.md:380` — update the summary line "Same state entered 5+ times (retry flood) → ENH P3" to reflect the new disambiguation logic
 
 ### Dependent Files (Callers/Importers)
@@ -125,7 +125,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Read `skills/analyze-loop/SKILL.md:111-115` (retry flood signal rule) and `SKILL.md:76-83` (event parsing table)
+1. Read `skills/analyze-loop/SKILL.md:124-128` (retry flood signal rule) and `SKILL.md:84-92` (event parsing table)
 2. Choose detection approach (see Integration Map research findings for trade-offs):
    - **Recommended**: Event-stream-only — use `route` events to check if `from == to` (state routes to itself consecutively); also check for `retry_exhausted` events. Avoids adding a YAML-loading step.
    - **Alternative**: Load YAML via `ll-loop show <loop_name>` and check each flagged state for `max_retries` field presence
@@ -178,6 +178,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-17T03:54:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5188477-e8ba-44da-8d95-f92aeaf36e0b.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:41:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0364dd7-6557-4614-a167-51d913f25bbc.jsonl`
 - `/ll:verify-issues` - 2026-03-16T19:31:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:format-issue` - 2026-03-16T19:30:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
