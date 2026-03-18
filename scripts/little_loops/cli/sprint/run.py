@@ -11,7 +11,7 @@ from types import FrameType
 from typing import TYPE_CHECKING
 
 from little_loops.cli.sprint._helpers import _build_issue_contents, _render_dependency_analysis
-from little_loops.cli_args import parse_issue_ids, parse_issue_types
+from little_loops.cli_args import _id_matches, parse_issue_ids, parse_issue_types
 from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
@@ -120,13 +120,13 @@ def _cmd_sprint_run(
     # Apply only filter if provided
     only_ids = parse_issue_ids(getattr(args, "only", None))
     if only_ids:
-        invalid_only = only_ids - set(sprint.issues)
+        invalid_only = {p for p in only_ids if not any(_id_matches(i, p) for i in sprint.issues)}
         if invalid_only:
             logger.error(
                 f"Issue(s) not found in sprint definition: {', '.join(sorted(invalid_only))}"
             )
             return 1
-        issues_to_process = [i for i in issues_to_process if i in only_ids]
+        issues_to_process = [i for i in issues_to_process if any(_id_matches(i, p) for p in only_ids)]
         logger.info(
             f"Processing only {len(issues_to_process)} issue(s): {', '.join(sorted(only_ids))}"
         )

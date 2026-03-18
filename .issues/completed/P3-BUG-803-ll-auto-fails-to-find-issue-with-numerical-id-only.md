@@ -2,7 +2,7 @@
 id: BUG-803
 title: "ll-auto fails to find issue with numerical ID only"
 priority: P3
-status: open
+status: completed
 type: BUG
 discovered_date: 2026-03-18
 discovered_by: capture-issue
@@ -31,6 +31,13 @@ vs.
 $ ll-auto --only ENH-732
 [16:06:48] Processing: ENH-732 - Replace FSM State Box Badges with Unicode Compositions
 ```
+
+## Steps to Reproduce
+
+1. Have at least one issue file present (e.g., `.issues/enhancements/P3-ENH-732-*.md`)
+2. Run `ll-auto --only 732` (numeric-only ID, no type prefix)
+3. Observe: `Issues processed: 0` — the issue is silently skipped
+4. Compare: `ll-auto --only ENH-732` correctly finds and processes the same issue
 
 ## Root Cause
 
@@ -165,13 +172,29 @@ Then update each filter site:
 - `ll-parallel --only <number>`
 - `ll-sprint run --only <number>`
 
+## Impact
+
+- **Priority**: P3 - UX annoyance; workaround exists (`--only ENH-732` works), but numeric-only shortcuts are a natural expectation for CLI users
+- **Effort**: Small - add one `_id_matches` helper (~6 lines) and update 5 filter sites; no API or schema changes
+- **Risk**: Low - narrow change to filter logic in well-tested paths; all existing exact-match behavior preserved
+- **Breaking Change**: No
+
+## Labels
+
+`bug`, `cli`, `ll-auto`, `ll-parallel`, `ll-sprint`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T21:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca94f3f3-959e-43fd-ac13-c9e47fdec9ac.jsonl`
 - `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6efbf13e-9ad7-4b3c-b086-8e2cc5c01743.jsonl`
 - `/ll:refine-issue` - 2026-03-18T21:23:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4bef4a0-8ef2-4791-9ece-23a973e8fe9b.jsonl`
 - `/ll:capture-issue` - 2026-03-18T16:10:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
+## Resolution
+
+Added `_id_matches(candidate, pattern)` helper to `cli_args.py` that supports numeric-only patterns (e.g. `"732"` matches `"ENH-732"` by comparing the `-`-split suffix). Updated all five filter sites across `issue_manager.py`, `issue_parser.py`, and `cli/sprint/run.py` to use the new helper. Also fixed the `invalid_only` validation in `sprint/run.py` to correctly accept numeric patterns that resolve to sprint issues. 9 new tests added.
+
 ## Status
 
-Open
+Completed

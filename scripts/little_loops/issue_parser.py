@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.cli_args import _id_matches
 from little_loops.frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:
@@ -664,7 +665,7 @@ def find_issues(
             if info.issue_id in skip_ids:
                 continue
             # Apply only filter (if specified)
-            if only_ids is not None and info.issue_id not in only_ids:
+            if only_ids is not None and not any(_id_matches(info.issue_id, p) for p in only_ids):
                 continue
             # Apply type filter (if specified)
             if type_prefixes is not None:
@@ -675,8 +676,12 @@ def find_issues(
 
     # When only_ids is a list, preserve input order; otherwise sort by priority
     if isinstance(only_ids, list):
-        order = {issue_id: i for i, issue_id in enumerate(only_ids)}
-        issues.sort(key=lambda x: order.get(x.issue_id, len(only_ids)))
+        issues.sort(
+            key=lambda x: next(
+                (i for i, p in enumerate(only_ids) if _id_matches(x.issue_id, p)),
+                len(only_ids),
+            )
+        )
     else:
         issues.sort(key=lambda x: (x.priority_int, x.issue_id))
     return issues

@@ -1838,6 +1838,32 @@ class TestAutoManagerRun:
         # Should only process BUG-003
         mock_process.assert_called_once()
 
+    def test_run_with_numeric_only_id_filter(self, full_project: Path) -> None:
+        """Test that run() with a numeric-only --only filter (e.g. '003') matches full IDs."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-002-other.md").write_text("# BUG-002: Other\n\n## Summary\nOther")
+        (issues_dir / "P1-BUG-003-target.md").write_text("# BUG-003: Target\n\n## Summary\nTarget")
+
+        config = BRConfig(full_project)
+
+        with patch("little_loops.issue_manager.process_issue_inplace") as mock_process:
+            mock_process.return_value = MagicMock(
+                success=True,
+                duration=1.0,
+                issue_id="BUG-003",
+                corrections=[],
+            )
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                # Numeric-only ID "003" should match "BUG-003"
+                manager = AutoManager(config, dry_run=False, only_ids={"003"})
+                manager.run()
+
+        # Should only process BUG-003 via numeric-only match
+        mock_process.assert_called_once()
+
 
 class TestSignalHandler:
     """Tests for graceful shutdown signal handling (ENH-207)."""

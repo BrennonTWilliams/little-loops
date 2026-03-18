@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from types import FrameType
 
+from little_loops.cli_args import _id_matches
 from little_loops.config import BRConfig
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.git_operations import check_git_status, verify_work_was_done
@@ -771,7 +772,7 @@ class AutoManager:
             i
             for i in ready_issues
             if i.issue_id not in skip_ids
-            and (self.only_ids is None or i.issue_id in self.only_ids)
+            and (self.only_ids is None or any(_id_matches(i.issue_id, p) for p in self.only_ids))
             and (self.type_prefixes is None or i.issue_id.split("-", 1)[0] in self.type_prefixes)
         ]
 
@@ -779,15 +780,19 @@ class AutoManager:
             # When only_ids is a list, respect input order; otherwise use priority order
             only_ids = self.only_ids
             if isinstance(only_ids, list):
-                order = {issue_id: i for i, issue_id in enumerate(only_ids)}
-                candidates.sort(key=lambda x: order.get(x.issue_id, len(only_ids)))
+                candidates.sort(
+                    key=lambda x: next(
+                        (i for i, p in enumerate(only_ids) if _id_matches(x.issue_id, p)),
+                        len(only_ids),
+                    )
+                )
             return candidates[0]
 
         # No ready candidates - check if there are blocked issues remaining
         all_in_graph = set(self.dep_graph.issues.keys())
         remaining = all_in_graph - completed - skip_ids
         if self.only_ids is not None:
-            remaining = remaining & set(self.only_ids)
+            remaining = {r for r in remaining if any(_id_matches(r, p) for p in self.only_ids)}
         if self.type_prefixes is not None:
             remaining = {r for r in remaining if r.split("-", 1)[0] in self.type_prefixes}
 

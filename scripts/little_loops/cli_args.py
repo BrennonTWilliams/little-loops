@@ -8,6 +8,7 @@ and ll-sprint commands.
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 
@@ -217,6 +218,32 @@ def parse_issue_ids_ordered(value: str | None) -> list[str] | None:
     if value is None:
         return None
     return [i.strip().upper() for i in value.split(",")]
+
+
+_NUMERIC_RE = re.compile(r"^\d+$")
+
+
+def _id_matches(candidate: str, pattern: str) -> bool:
+    """Return True if candidate matches pattern, supporting numeric-only patterns.
+
+    Args:
+        candidate: Full issue ID like 'ENH-732'
+        pattern: Full ID like 'ENH-732' or numeric suffix like '732'
+
+    Returns:
+        True if candidate matches the pattern
+
+    Example:
+        >>> _id_matches("ENH-732", "732")
+        True
+        >>> _id_matches("ENH-732", "ENH-732")
+        True
+        >>> _id_matches("ENH-732", "BUG-732")
+        False
+    """
+    if _NUMERIC_RE.match(pattern):
+        return candidate.split("-")[-1] == pattern
+    return candidate == pattern
 
 
 VALID_ISSUE_TYPES = {"BUG", "FEAT", "ENH"}

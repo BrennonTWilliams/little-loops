@@ -11,6 +11,7 @@ from pathlib import Path
 
 from little_loops.cli_args import (
     VALID_ISSUE_TYPES,
+    _id_matches,
     add_common_auto_args,
     add_common_parallel_args,
     add_config_arg,
@@ -88,6 +89,43 @@ class TestParseIssueIdsOrdered:
         """Returns a list, not a set."""
         result = parse_issue_ids_ordered("BUG-001,FEAT-002")
         assert isinstance(result, list)
+
+
+class TestIdMatches:
+    """Tests for _id_matches() helper function."""
+
+    def test_numeric_pattern_matches_suffix(self) -> None:
+        """Numeric-only pattern matches a full ID with that suffix."""
+        assert _id_matches("ENH-732", "732") is True
+
+    def test_full_id_pattern_exact_match(self) -> None:
+        """Full ID pattern matches the same full ID."""
+        assert _id_matches("ENH-732", "ENH-732") is True
+
+    def test_full_id_pattern_wrong_type(self) -> None:
+        """Full ID pattern with different type prefix does not match."""
+        assert _id_matches("ENH-732", "BUG-732") is False
+
+    def test_numeric_pattern_wrong_number(self) -> None:
+        """Numeric-only pattern does not match a different numeric suffix."""
+        assert _id_matches("ENH-732", "731") is False
+
+    def test_numeric_pattern_does_not_partial_match(self) -> None:
+        """Numeric-only pattern '73' does not match '732'."""
+        assert _id_matches("ENH-732", "73") is False
+
+    def test_full_id_case_sensitive(self) -> None:
+        """Full ID comparison is case-sensitive (patterns are already uppercased)."""
+        assert _id_matches("ENH-732", "enh-732") is False
+
+    def test_bug_numeric_pattern(self) -> None:
+        """Numeric pattern matches BUG-type IDs when the suffix matches exactly."""
+        assert _id_matches("BUG-001", "001") is True
+        assert _id_matches("BUG-001", "1") is False
+
+    def test_bug_full_id(self) -> None:
+        """Full BUG ID matches exactly."""
+        assert _id_matches("BUG-001", "BUG-001") is True
 
 
 class TestParseIssueTypes:
