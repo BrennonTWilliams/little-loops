@@ -70,10 +70,10 @@ def _colorize_diagram_labels(diagram: str) -> str:
 # ---------------------------------------------------------------------------
 
 _ACTION_TYPE_BADGES: dict[str, str] = {
-    "prompt": "\u2726",      # ✦
+    "prompt": "\u2726",  # ✦
     "slash_command": "/\u2501\u25ba",  # /━►
-    "shell": "\u276f_",      # ❯_
-    "mcp_tool": "\u26a1",    # ⚡
+    "shell": "\u276f_",  # ❯_
+    "mcp_tool": "\u26a1",  # ⚡
 }
 
 _SUB_LOOP_BADGE = "\u21b3\u27f3"  # ↳⟳

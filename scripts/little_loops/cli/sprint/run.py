@@ -126,7 +126,9 @@ def _cmd_sprint_run(
                 f"Issue(s) not found in sprint definition: {', '.join(sorted(invalid_only))}"
             )
             return 1
-        issues_to_process = [i for i in issues_to_process if any(_id_matches(i, p) for p in only_ids)]
+        issues_to_process = [
+            i for i in issues_to_process if any(_id_matches(i, p) for p in only_ids)
+        ]
         logger.info(
             f"Processing only {len(issues_to_process)} issue(s): {', '.join(sorted(only_ids))}"
         )

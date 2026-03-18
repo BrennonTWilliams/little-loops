@@ -1685,11 +1685,11 @@ class TestStateBadges:
 
     def test_badge_constants_match_spec(self) -> None:
         """Badge strings match the spec values."""
-        assert _ACTION_TYPE_BADGES["prompt"] == "\u2726"        # ✦
+        assert _ACTION_TYPE_BADGES["prompt"] == "\u2726"  # ✦
         assert _ACTION_TYPE_BADGES["slash_command"] == "/\u2501\u25ba"  # /━►
-        assert _ACTION_TYPE_BADGES["shell"] == "\u276f_"        # ❯_
-        assert _ACTION_TYPE_BADGES["mcp_tool"] == "\u26a1"      # ⚡
-        assert _SUB_LOOP_BADGE == "\u21b3\u27f3"                # ↳⟳
+        assert _ACTION_TYPE_BADGES["shell"] == "\u276f_"  # ❯_
+        assert _ACTION_TYPE_BADGES["mcp_tool"] == "\u26a1"  # ⚡
+        assert _SUB_LOOP_BADGE == "\u21b3\u27f3"  # ↳⟳
 
     def test_get_state_badge_none_state(self) -> None:
         """No state → empty badge."""
@@ -1750,7 +1750,9 @@ class TestStateBadges:
             max_iterations=1,
         )
         result = _render_fsm_diagram(fsm)
-        top_border = next(ln for ln in result.split("\n") if "\u250c" in ln and _SUB_LOOP_BADGE[0] in ln)
+        top_border = next(
+            ln for ln in result.split("\n") if "\u250c" in ln and _SUB_LOOP_BADGE[0] in ln
+        )
         # Both padding spaces must appear alongside the badge
         assert " " + _SUB_LOOP_BADGE[0] in top_border  # leading space before badge
 
