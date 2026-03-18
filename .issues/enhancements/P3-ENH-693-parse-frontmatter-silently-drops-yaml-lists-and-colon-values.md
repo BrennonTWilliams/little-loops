@@ -40,16 +40,48 @@ PyYAML (Option A) is deferred — only warranted if a future frontmatter field n
 
 ## Implementation Steps
 
-1. In `parse_frontmatter` (`frontmatter.py:36-51`), add detection for list-item lines (`line.startswith("- ")`) and call `warnings.warn(f"Unsupported YAML list syntax in frontmatter: {line!r}", stacklevel=2)` — do not parse the line further
-2. Add detection for multi-line block scalars (`value.startswith("|")` or `value.startswith(">")`) and emit the same warning
-3. Split on first `:` is already correct via `split(":", 1)` (line 42) — verify edge cases in existing tests pass unchanged
-4. Add a docstring to `parse_frontmatter` stating: "Parses a subset of YAML: simple `key: value` pairs only. Lists, block scalars, and nested structures are not supported and will emit a warning."
-5. Run `python -m pytest scripts/tests/test_frontmatter.py -v` to verify all tests pass
+1. Add `import logging` and `logger = logging.getLogger(__name__)` at module level in `frontmatter.py` (no `warnings` import — codebase uses `logging.getLogger`, not `warnings.warn`)
+2. In the parse loop (`frontmatter.py:37-50`), add before the `if ":" in line` check:
+   ```python
+   if line.startswith("- "):
+       logger.warning("Unsupported YAML list syntax in frontmatter: %r", line)
+       continue
+   ```
+3. After splitting on `:` and obtaining the value string, add block-scalar detection:
+   ```python
+   if value.startswith("|") or value.startswith(">"):
+       logger.warning("Unsupported YAML block scalar in frontmatter: %r", line)
+       result[key] = None
+       continue
+   ```
+4. Update the `parse_frontmatter` docstring (currently lines 14-26) to add: "Parses a subset of YAML: simple `key: value` pairs only. Lists, block scalars, and nested structures are not supported and will emit a `logging.WARNING`."
+5. Add test cases to `scripts/tests/test_frontmatter.py` following the `caplog` pattern from `test_dependency_graph.py:82-116`:
+   - Test that a list-item line emits `logger.warning` (assert `"Unsupported YAML list syntax" in caplog.text`)
+   - Test that a block-scalar line emits `logger.warning` (assert `"Unsupported YAML block scalar" in caplog.text`)
+   - Use `caplog.at_level("WARNING", logger="little_loops.frontmatter")` to scope the capture
+6. Run `python -m pytest scripts/tests/test_frontmatter.py -v` to verify all tests pass
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/frontmatter.py` — `parse_frontmatter()` (lines 36-51)
-- **Consumers**: All modules importing `parse_frontmatter` (config, issue_parser, issue_history, etc.)
+### Files to Modify
+- `scripts/little_loops/frontmatter.py` — `parse_frontmatter()` (lines 36-51); add `logger = logging.getLogger(__name__)` at module level
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_parser.py` — calls `parse_frontmatter(content)` (no coerce); reads `discovered_by`, `effort`, `impact`, `confidence_score`, `outcome_confidence`, `product_area`
+- `scripts/little_loops/sync.py` — calls `parse_frontmatter(content, coerce_types=True)` at lines 391, 582, 779, 844, 917; reads `github_issue` int field
+- `scripts/little_loops/issue_history/parsing.py` — calls `parse_frontmatter(content)` at lines 49, 367 (line 367 wrapped in `except Exception: pass`)
+- `scripts/little_loops/cli/issues/show.py:98` — calls `parse_frontmatter(content, coerce_types=True)` for CLI card display
+
+### Similar Patterns
+- `scripts/little_loops/dependency_graph.py:102-104` — `logger.warning(f"Issue {issue.issue_id} blocked by unknown issue {blocker_id}")` followed by `continue` — model for warning-and-skip during parsing
+- `scripts/little_loops/sprint.py:372` — `logger.warning("Failed to parse issue file %s: %s", path, e)` — model for parse-loop warning
+
+### Tests
+- `scripts/tests/test_frontmatter.py` — existing test coverage (13 tests, no list/block-scalar/warning cases yet)
+- `scripts/tests/test_dependency_graph.py:82-116` — `caplog` warning assertion pattern to follow for new warning tests
+
+### Documentation
+- `docs/reference/API.md` — documents `little_loops.frontmatter` and `parse_frontmatter` signature; update docstring description there if docstring changes
 
 ## Scope Boundaries
 
@@ -76,6 +108,7 @@ PyYAML (Option A) is deferred — only warranted if a future frontmatter field n
 - Multi-line block scalar limitation is accurate
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-18T01:38:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ca63274-28df-4554-ae7c-5366e4614ee5.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl`

@@ -31,14 +31,32 @@ Delegate slope computation to `statistics.linear_regression(range(n), values).sl
 
 ## Implementation Steps
 
-1. In `summary.py`, replace the `sum_x/sum_y/sum_xy/sum_x2` computation in `_calculate_trend` with `statistics.linear_regression(range(n), values).slope`
-2. Handle the edge case where `n < 2` (stdlib requires at least 2 points) before calling
-3. Run `python -m pytest` to verify identical slope values
+1. In `summary.py:183-192`, replace the `sum_x/sum_y/sum_xy/sum_x2` OLS accumulation and `denominator` guard with `statistics.linear_regression(range(n), values).slope`
+2. Preserve the existing `len(values) < 3` guard at line 179 — the current code returns `"stable"` for fewer than 3 points (stricter than stdlib's minimum of 2), and both callers in `analysis.py` already pre-guard with `>= 3`. Do **not** relax to `< 2`.
+3. Preserve the normalization block at lines 196-199: `avg = sum_y / n`, clamp `avg` to `1` if zero, then `normalized_slope = slope / avg` — the stdlib only replaces the slope computation, not this scale-invariant normalization.
+4. Remove the now-unreachable `denominator == 0` guard (lines 189-191) — it guards against all-identical x-values which is structurally impossible for `range(n)` with `n >= 3`.
+5. Add `import statistics` at the top of `summary.py` (no other file in the codebase currently imports `statistics`).
+6. Run `python -m pytest scripts/tests/test_issue_history_summary.py scripts/tests/test_issue_history_analysis.py -v` to verify identical output.
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/issue_history/summary.py` — `_calculate_trend()` (lines 169-204)
-- **Stdlib used**: `statistics.linear_regression` (Python 3.11+, already minimum version)
+### Files to Modify
+- `scripts/little_loops/issue_history/summary.py` — `_calculate_trend()` (lines 170-205): replace OLS block with `statistics.linear_regression(range(n), values).slope`; add `import statistics`
+
+### Dependent Files (Callers)
+- `scripts/little_loops/issue_history/analysis.py:36` — imports `_calculate_trend` from `summary`
+- `scripts/little_loops/issue_history/analysis.py:99-103` — calls `_calculate_trend(velocities)` for velocity trend (pre-guarded with `len >= 3`)
+- `scripts/little_loops/issue_history/analysis.py:106-111` — calls `_calculate_trend(bug_ratios)` for bug ratio trend (pre-guarded with `len >= 3`)
+
+### Tests
+- `scripts/tests/test_issue_history_summary.py` — no direct tests for `_calculate_trend` (private function, tested indirectly via `calculate_summary`); see related ENH-696 for adding direct unit tests
+- `scripts/tests/test_issue_history_analysis.py` — integration coverage via `HistoryAnalysis` consumers
+
+### Related Issues
+- `ENH-696` — adds missing unit tests for `_calculate_trend` and related subsystem functions; consider implementing ENH-696 alongside or after this change
+
+### Stdlib Dependency
+- `statistics.linear_regression` — Python 3.11+, the project's minimum version; not currently imported anywhere in the codebase
 
 ## Scope Boundaries
 
@@ -56,6 +74,7 @@ Delegate slope computation to `statistics.linear_regression(range(n), values).sl
 `enhancement`, `code-quality`, `issue-history`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-18T01:39:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad925013-dacd-4dcc-85ed-4adc51ee8ed9.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`

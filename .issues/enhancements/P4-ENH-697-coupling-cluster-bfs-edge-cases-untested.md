@@ -36,17 +36,65 @@ Additional test cases in `TestAnalyzeCoupling` for:
 
 ## Implementation Steps
 
-1. In `test_issue_history_advanced_analytics.py`, add to `TestAnalyzeCoupling`:
-   - Two independent clusters (disconnected graph → two separate cluster lists)
-   - `coupling_strength` exactly 0.5 (boundary value — should be included)
-   - `coupling_strength` 0.49 (below threshold — should be excluded)
-   - Single-node component (filtered by `len(cluster) >= 2`)
-2. Run `python -m pytest scripts/tests/test_issue_history_advanced_analytics.py` to confirm all pass
+1. In `scripts/tests/test_issue_history_advanced_analytics.py`, append to `TestAnalyzeCoupling` (after line 531):
+
+   **`test_disconnected_clusters`** — two independent clusters:
+   - Build 3 issues with `src/a.py` + `src/b.py` only → Jaccard(a,b)=1.0
+   - Build 3 issues with `src/c.py` + `src/d.py` only → Jaccard(c,d)=1.0
+   - Assert: `len(result.clusters) == 2`; one cluster is `["src/a.py", "src/b.py"]`, the other is `["src/c.py", "src/d.py"]`
+
+   **`test_boundary_coupling_strength_included`** — strength exactly 0.5 is included:
+   - 2 issues with both `src/a.py` + `src/b.py`; 2 issues with only `src/a.py`
+   - Jaccard = 2/(2+2+0) = 2/4 = 0.5 → should pass cluster threshold
+   - Assert: `len(result.clusters) == 1`; `result.clusters[0] == ["src/a.py", "src/b.py"]`
+
+   **`test_below_threshold_excluded_from_clusters`** — strength < 0.5 not in clusters:
+   - 2 issues with both `src/a.py` + `src/b.py`; 2 solo `a.py` issues; 1 solo `b.py` issue
+   - Jaccard = 2/(2+2+1) = 2/5 = 0.4 → passes `analyze_coupling` (≥0.3) but fails cluster threshold (<0.5)
+   - Assert: `len(result.pairs) >= 1`; `result.clusters == []`
+
+   **`test_single_node_not_in_cluster`** — file below threshold forms no cluster:
+   - Same fixture as above (Jaccard=0.4) or any pair with strength < 0.5
+   - Assert: neither `src/a.py` nor `src/b.py` appears in any cluster entry
+
+2. Run `python -m pytest scripts/tests/test_issue_history_advanced_analytics.py::TestAnalyzeCoupling -v` to confirm all pass
 
 ## Integration Map
 
-- **Modified**: `scripts/tests/test_issue_history_advanced_analytics.py` — `TestAnalyzeCoupling` class
-- **Under test**: `scripts/little_loops/issue_history/coupling.py` — `_build_coupling_clusters()` (lines 99-145)
+- **Modified**: `scripts/tests/test_issue_history_advanced_analytics.py` — `TestAnalyzeCoupling` class (lines 357–572)
+- **Under test**: `scripts/little_loops/issue_history/coupling.py` — `_build_coupling_clusters()` (lines 96–142)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Key threshold facts** (relevant to test design):
+- `coupling.py:108` — cluster threshold is `>= 0.5` (inclusive), so exactly 0.5 is **included**
+- `coupling.py:136` — size filter is `>= 2` (inclusive), so 2-file clusters pass
+- `coupling.py:63` — upstream filter in `analyze_coupling()` is `>= 0.3`; pairs with 0.3 ≤ strength < 0.5 reach `_build_coupling_clusters` but are skipped there — use this to test the "below threshold excluded" case
+- `coupling_strength` is a **computed Jaccard output**, not a direct input — tests must engineer it via issue content (file co-occurrence counts)
+
+**Jaccard formula** (`coupling.py:61`): `len(co_occur) / len(union)`
+
+| Target strength | Co-occurring issues | Solo issues for a | Solo issues for b | Union | Jaccard |
+|---|---|---|---|---|---|
+| Exactly 0.5 | 2 | 2 | 0 | 4 | 2/4 = 0.5 ✓ |
+| Below 0.5 (≈0.4) | 2 | 2 | 1 | 5 | 2/5 = 0.4 ✓ |
+| High (1.0) | N | 0 | 0 | N | 1.0 ✓ |
+
+**Fixture pattern** (from `test_cluster_formation` at line 507 and `test_weak_coupling_filtered` at line 407):
+```python
+# Write file content to control which files co-occur
+issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+issue_file.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")  # both files
+issue_file.write_text("**File**: `src/a.py`")  # only a.py (solo issue)
+issues.append(CompletedIssue(path=issue_file, issue_type="BUG", priority="P1", issue_id=f"BUG-{i:03d}"))
+```
+Use distinct filename prefixes (e.g. `BUG-AB`, `BUG-A`, `BUG-C`) to avoid collisions in `tmp_path`.
+
+**Single-node note**: By construction, a file only enters `adjacency` (line 106) when it has a partner with strength ≥ 0.5 — so isolated single-node components cannot occur in normal flow. The `len(cluster) >= 2` filter (line 136) guards against it nonetheless. Test the intended behavior: a file whose only pairs have strength < 0.5 appears in **no** cluster (it never enters `adjacency`, so no single-node cluster is created). Assert `result.clusters == []`.
+
+**Existing test methods in `TestAnalyzeCoupling`**: `test_empty_issues` (360), `test_coupling_detected` (367), `test_no_coupling_single_occurrence` (390), `test_weak_coupling_filtered` (407), `test_coupling_hotspot_detection` (458), `test_cluster_formation` (507), `test_coupling_strength_calculation` (533)
 
 ## Scope Boundaries
 
@@ -64,6 +112,7 @@ Additional test cases in `TestAnalyzeCoupling` for:
 `enhancement`, `testing`, `issue-history`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-18T01:39:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b2aa1ab-7a2b-4015-8d5b-fef9b7dd4c2e.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
