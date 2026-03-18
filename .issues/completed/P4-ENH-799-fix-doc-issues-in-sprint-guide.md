@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
+testable: false
 ---
 
 # ENH-799: Fix documentation issues in SPRINT_GUIDE.md
@@ -66,10 +67,19 @@ The wave label format inconsistency is a small readability issue. The missing pr
 
 `documentation`, `captured`
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-03-17 | Priority: P4
+**Completed** | 2026-03-18 | Priority: P4
+
+All five issues fixed in `docs/guides/SPRINT_GUIDE.md`:
+1. Wave label format standardized: `Wave 2 (after Wave 1) parallel:` → `Wave 2 (parallel, after Wave 1):`
+2. Added prose explanation of "handoff threshold" concept below the `--handoff-threshold` CLI flag
+3. Added `options.max_iterations` to the Configuration section (both JSON example and table)
+4. Added link and brief explanation for `manage-issue` on first reference in Wave Execution section
+5. Replaced the "Full Plan a Feature Sprint Pipeline" recipe body with a cross-reference to `ISSUE_MANAGEMENT_GUIDE.md`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T16:28:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30af44e4-3cf2-42df-b1d5-93804fd2e2fa.jsonl`
 - `/ll:format-issue` - 2026-03-18T01:52:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0b5a688-4ca6-4171-a6bb-f5be121354ad.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

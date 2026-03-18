@@ -177,6 +177,8 @@ ll-sprint run sprint-name --quiet                         # suppress progress ou
 ll-sprint run sprint-name --handoff-threshold 80          # context window handoff threshold (1–100)
 ```
 
+The `--handoff-threshold` flag controls when Claude Code hands off to a fresh session mid-issue. During a long-running issue, Claude's context window fills up as it reads files, runs tools, and accumulates output. When context usage reaches the threshold (expressed as a percentage from 1 to 100), the runner writes a continuation prompt and starts a new session to complete the remaining work. Lower values trigger handoff earlier and more conservatively; higher values let sessions run longer before handing off. The default is 80 (hand off at 80% context usage).
+
 ### Pre-flight
 
 Before the first wave runs, `ll-sprint` validates the sprint:
@@ -197,7 +199,7 @@ Wave 1 (parallel):
   ├── FEAT-001: Add middleware layer (P2)
   └── BUG-010: Fix null check in parser (P1)
 
-Wave 2 (after Wave 1) parallel:
+Wave 2 (parallel, after Wave 1):
   ├── FEAT-002: Extend middleware config (P2)
   │   └── blocked by: FEAT-001
   └── FEAT-003: Update middleware tests (P2)
@@ -223,7 +225,7 @@ Use `--dry-run` to see this plan without executing anything.
 
 Each wave runs as follows:
 
-- **Single-issue wave**: `manage-issue` runs in-place (no worktree overhead)
+- **Single-issue wave**: [`manage-issue`](/ll:manage-issue) runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner
 - **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results
 
 After each wave completes:
@@ -325,7 +327,8 @@ Sprint behavior is configured in `.claude/ll-config.json` under the `sprints` ke
   "sprints": {
     "sprints_dir": ".sprints",
     "default_timeout": 3600,
-    "default_max_workers": 2
+    "default_max_workers": 2,
+    "default_max_iterations": 100
   }
 }
 ```
@@ -335,6 +338,7 @@ Sprint behavior is configured in `.claude/ll-config.json` under the `sprints` ke
 | `sprints_dir` | `.sprints` | Directory where sprint YAML files are stored |
 | `default_timeout` | `3600` | Per-issue timeout in seconds (1 hour) |
 | `default_max_workers` | `2` | Max parallel workers per wave |
+| `default_max_iterations` | `100` | Max Claude iterations per issue |
 
 Per-sprint options (in the YAML `options` block) override the project config for that sprint. CLI flags (`--max-workers`, `--timeout`) override both.
 
@@ -414,24 +418,7 @@ Run code quality loops before opening a PR, then address any issues found:
 
 ### Full "Plan a Feature Sprint" Pipeline
 
-The complete workflow from empty backlog to executed sprint (also in the Issue Management Guide):
-
-```
-1.  /ll:scan-codebase               ← find issues you didn't know existed
-    /ll:scan-product                ← find feature gaps against goals
-2.  /ll:normalize-issues            ← fix any naming problems
-3.  /ll:prioritize-issues           ← assign P0-P5 to all issues
-4.  /ll:tradeoff-review-issues      ← prune low-value issues
-5.  /ll:format-issue --auto         ← promote survivors to v2.0 template
-6.  /ll:refine-issue                ← enrich with codebase research
-7.  /ll:verify-issues               ← test claims against code
-8.  /ll:ready-issue                 ← validate quality gate
-9.  /ll:map-dependencies            ← identify ordering constraints
-10. /ll:issue-size-review           ← decompose anything too large
-11. /ll:create-sprint               ← curate and sequence the sprint
-    /ll:review-sprint <name>        ← health check
-    ll-sprint run <name>            ← execute
-```
+The complete workflow from empty backlog to executed sprint is documented in detail in the [Issue Management Guide](ISSUE_MANAGEMENT_GUIDE.md). That guide covers every refinement step — discovery, enrichment, quality gates, and dependency mapping — before handing off to `ll-sprint` for execution. Start there if you are setting up a sprint from scratch.
 
 ---
 
