@@ -28,6 +28,23 @@ Two P1 errors (a false heading claim and a broken anchor) will actively mislead 
 | 9 | Low | Worked example | Omits `check_mcp`/`check_skill` phases without explanation — add a note clarifying the omission |
 | 10 | Low | Document | No table of contents for a 603-line document — add TOC |
 
+## Success Metrics
+
+- All 10 documented issues resolved (2 High, 3 Medium, 5 Low severity)
+- Broken anchor (`#check_mcp`) corrected and navigable
+- Factual heading error ("6 phases" vs actual count) corrected
+- Table of contents present for the 603-line document
+- Variable interpolation example uses correct `${captured.current_item.output}` syntax
+
+## Scope Boundaries
+
+- **In scope**: The 10 specific issues enumerated in the Issues to Fix table
+- **Out of scope**: Restructuring document sections, adding new content beyond the TOC, rewriting existing correct prose, changing any YAML examples beyond the listed fixes
+
+## API/Interface
+
+N/A - No public API changes (documentation-only fix)
+
 ## Implementation Steps
 
 1. Add a table of contents at the top of the document
@@ -41,5 +58,26 @@ Two P1 errors (a false heading claim and a broken anchor) will actively mislead 
 9. State the unit for `timeout` field
 10. Add a note in the worked example explaining the simplified scope
 
+## Integration Map
+
+### Files to Modify
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
+
+### Dependent Files (Callers/Importers)
+- TBD - use grep to find references: `grep -r "AUTOMATIC_HARNESSING_GUIDE" docs/`
+
+### Similar Patterns
+- N/A
+
+### Tests
+- N/A - documentation-only change
+
+### Documentation
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (the file being fixed)
+
+### Configuration
+- N/A
+
 ## Session Log
+- `/ll:format-issue` - 2026-03-18T01:50:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b830ec36-9580-485f-8f7c-92ded037ca03.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`

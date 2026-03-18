@@ -27,6 +27,43 @@ The "Quick pattern check" recipe promises users they can stop after Step 1 of th
 | 8 | Low | ASCII pipeline diagram | Bottom row shows 3 output arrows while top row has 5 columns — fix visual mismatch |
 | 9 | Low | Document | No table of contents — add TOC |
 
+## Success Metrics
+
+- All 9 documented issues resolved (confirmed by review of the updated guide)
+- "Quick pattern check" recipe is accurate: claimed behavior matches actual command output
+- Priority formula variables (`frequency`, `workflow_count`, `friction_score`) have defined ranges in the guide
+- `type` field cross-referenced at first mention to the 9-type table
+- ASCII pipeline diagram rows are visually consistent
+
+## Scope Boundaries
+
+- **In scope**: Fix all 9 listed issues in `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` (recipes, variable definitions, cross-references, diagram, TOC)
+- **Out of scope**: Restructuring the guide beyond the listed fixes, changes to other documentation files, modifying underlying CLI behavior
+
+## API/Interface
+
+N/A - No public API changes (documentation-only fix)
+
+## Integration Map
+
+### Files to Modify
+- `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`
+
+### Dependent Files (Callers/Importers)
+- N/A - standalone documentation file
+
+### Similar Patterns
+- N/A
+
+### Tests
+- N/A - documentation-only change
+
+### Documentation
+- `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` is the file being corrected
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. Add a table of contents at the top of the document
@@ -40,4 +77,5 @@ The "Quick pattern check" recipe promises users they can stop after Step 1 of th
 9. Add recipe demonstrations for `--skip-cli` and `--commands-only` or remove them from the reference table
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-18T01:51:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b830ec36-9580-485f-8f7c-92ded037ca03.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`

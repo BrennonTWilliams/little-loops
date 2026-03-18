@@ -9,6 +9,14 @@ discovered_by: capture-issue
 
 Several omissions, inconsistencies, and navigation issues in `docs/guides/LOOPS_GUIDE.md` (927 lines) including a critical missing evaluator entry in the reference table.
 
+## Current Behavior
+
+`docs/guides/LOOPS_GUIDE.md` (927 lines) has 11 documented issues: the `mcp_result` evaluator is absent from the main Evaluators reference table despite appearing in the harness evaluation pipeline, the `backoff:` field is mentioned in Tips without prior introduction, `max_retries` and `on_retry_exhausted` are only documented in the harness section (not the core state reference), there is no table of contents, 21 built-in loops are listed ungrouped, arrow styles are inconsistent (`──▶` vs `──→` vs `▶`), and `ll-loop test`/`ll-loop simulate` are never demonstrated in the walkthrough.
+
+## Expected Behavior
+
+All 11 documented issues are resolved: `mcp_result` appears in the Evaluators reference table with a description, `backoff:`, `max_retries`, and `on_retry_exhausted` are introduced in the core state reference section, a TOC is present at the top, built-in loops are grouped by category, arrow styles are standardized across all diagrams, `---` separator usage is consistent in APO loop sections, and the walkthrough demonstrates `ll-loop test` and `ll-loop simulate`.
+
 ## Motivation
 
 The `mcp_result` evaluator appears in the harness evaluation pipeline table but is absent from the main Evaluators reference table — a critical omission that will cause users to miss this evaluator entirely when browsing the reference. The guide is 927 lines with no TOC, and 21 built-in loops are listed ungrouped, making it difficult to navigate and discover functionality.
@@ -42,5 +50,28 @@ The `mcp_result` evaluator appears in the harness evaluation pipeline table but 
 9. Add a forward reference near `diff_stall`'s first mention in the evaluators table
 10. Add `ll-loop test` and `ll-loop simulate` demonstrations to the walkthrough
 
+## Scope Boundaries
+
+- Only `docs/guides/LOOPS_GUIDE.md` is in scope — not restructuring other documentation files
+- Not adding new loop features or changing any runtime behavior
+- Not splitting the guide into multiple files; only improving navigation within the existing document
+- Not updating `ll-loop` CLI code — documentation fixes only
+
+## Impact
+
+- **Priority**: P1 — The missing `mcp_result` evaluator entry is a critical omission; users browsing the reference table will not know this evaluator exists
+- **Effort**: Small — All changes are documentation edits; no code changes required
+- **Risk**: Low — Documentation-only change with no runtime impact
+- **Breaking Change**: No
+
+## Labels
+
+`documentation`, `loops`, `captured`
+
+## Status
+
+**Open** | Created: 2026-03-17 | Priority: P1
+
 ## Session Log
+- `/ll:format-issue` - 2026-03-18T01:51:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6fe969a-a054-43aa-be89-f0f4d50aacab.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
