@@ -866,6 +866,36 @@ A: Both! "Location" = where (file/line/code from scan). "Root Cause" = why (expl
 
 ---
 
+## Frontmatter Fields
+
+Issue files may include a YAML frontmatter block at the top of the file. The following fields are recognized:
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `discovered_date` | ISO 8601 datetime | — | When the issue was identified |
+| `discovered_by` | string | — | Tool or person that created the issue |
+| `confidence_score` | int (0–100) | absent | Readiness score from `/ll:confidence-check` |
+| `outcome_confidence` | int (0–100) | absent | Outcome confidence score from `/ll:confidence-check` |
+| `testable` | bool | absent (= true) | Set to `false` to skip Phase 3a (Write Tests — Red) when `tdd_mode: true` |
+
+### `testable: false`
+
+When `tdd_mode: true` is enabled in `ll-config.json`, `manage-issue` normally writes failing tests (Phase 3a) before implementation. For issues where automated testing is not applicable — such as documentation-only changes, prompt-file edits, or configuration-only updates — set `testable: false` in the issue frontmatter to skip Phase 3a automatically.
+
+**Absence means testable**: only set `testable: false` explicitly for issues that opt out of the test phase. Do not set `testable: true` — it is the default.
+
+```yaml
+---
+discovered_date: 2026-03-17T00:00:00Z
+discovered_by: capture-issue
+testable: false
+---
+```
+
+`manage-issue` will log `"⏭ Phase 3a skipped: testable: false in issue frontmatter"` and proceed directly to implementation.
+
+---
+
 ## Related Documentation
 
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) - Issue creation workflow

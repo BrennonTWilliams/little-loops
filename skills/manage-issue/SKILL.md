@@ -189,9 +189,22 @@ ELSE:
 
 ## Phase 3a: Write Tests — Red (TDD Mode)
 
-**Skip this phase if**: `config.commands.tdd_mode` is `false` (default), or action is `verify` or `plan`.
+**Skip this phase if**: `config.commands.tdd_mode` is `false` (default), action is `verify` or `plan`, OR issue frontmatter `testable: false`.
 
-When `config.commands.tdd_mode` is `true`, write tests BEFORE implementation:
+When `config.commands.tdd_mode` is `true` and action is not `verify` or `plan`, check the issue's `testable` frontmatter field before writing tests:
+
+```
+READ testable from issue YAML frontmatter
+
+IF testable is false:
+  LOG: "⏭ Phase 3a skipped: testable: false in issue frontmatter"
+  SKIP to Phase 3b (Implementation)
+
+ELSE (testable is absent or true):
+  PROCEED with Phase 3a (Write Tests — Red)
+```
+
+When proceeding, write tests BEFORE implementation:
 
 1. **Read the plan's "Phase 0: Write Tests (Red)" section** for test specifications
 2. **Write test files** based on the issue's acceptance criteria and the plan's test specifications

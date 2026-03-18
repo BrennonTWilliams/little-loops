@@ -128,8 +128,9 @@ Write the plan using this structure (sections are recommended, skip if not appli
 ## Implementation Phases
 
 > **TDD Mode** (when `config.commands.tdd_mode` is `true`): Include "Phase 0: Write Tests (Red)" as the first implementation phase. This phase writes failing tests derived from the issue's acceptance criteria and the plan's success criteria. The tests must fail against the current codebase (Red). Subsequent phases then implement code to make these tests pass (Green).
+> **Skip Phase 0** if issue frontmatter contains `testable: false` — omit this phase entirely from the plan in that case.
 
-### Phase 0: Write Tests — Red *(TDD mode only, skip if `config.commands.tdd_mode` is `false`)*
+### Phase 0: Write Tests — Red *(TDD mode only, skip if `config.commands.tdd_mode` is `false` or `testable: false` in frontmatter)*
 
 #### Overview
 Write tests that encode the issue's acceptance criteria. These tests must FAIL against the current codebase.
