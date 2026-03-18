@@ -27,7 +27,7 @@ Add a `testable: false` frontmatter field to issue files that signals Phase 3a s
 
 1. Update `skills/manage-issue/SKILL.md:192` — extend the Phase 3a skip condition to: `config.commands.tdd_mode` is `false`, OR action is `verify` or `plan`, OR issue frontmatter `testable: false`. Add a pseudocode block (modeled after the confidence gate at lines 154-186) that reads `testable` from frontmatter and logs `"⏭ Phase 3a skipped: testable: false in issue frontmatter"`.
 2. Update `skills/manage-issue/templates.md:130-132` — add a note to the plan template's Phase 0 section: skip if `testable: false` in issue frontmatter.
-3. Update `skills/capture-issue/templates.md:134-138` — the minimal frontmatter template emitted by capture-issue; decide whether to include `testable: true` by default (only for non-doc issues) or leave it absent (absent = testable).
+3. Update `skills/capture-issue/templates.md:134-138` — the minimal frontmatter template emitted by capture-issue; do NOT add `testable` to the default frontmatter. Absence means testable — only `testable: false` needs to be set explicitly on issues that opt out.
 4. Update `docs/reference/ISSUE_TEMPLATE.md` — document `testable: false` as a recognized frontmatter field.
 5. Update `docs/reference/CONFIGURATION.md:278-282` — add to the `tdd_mode` description that per-issue `testable: false` overrides the phase for that issue.
 6. Confirm `config-schema.json` does not need changes — `testable` is an issue-file field, not a config field (same as `confidence_score`).
@@ -42,14 +42,22 @@ Add a `testable: false` frontmatter field to issue files that signals Phase 3a s
 ### Files to Modify
 - `skills/manage-issue/SKILL.md:192` — Phase 3a skip condition (add `testable: false` frontmatter check with pseudocode block)
 - `skills/manage-issue/templates.md:130-132` — plan template Phase 0 note (add `testable: false` skip signal)
-- `skills/capture-issue/templates.md:134-138` — minimal frontmatter template (decide `testable` default)
+- `skills/capture-issue/templates.md:134-138` — minimal frontmatter template (no change needed — absence means testable; verify no `testable` field is emitted by default)
 - `docs/reference/ISSUE_TEMPLATE.md` — document `testable: false` field
 - `docs/reference/CONFIGURATION.md:278-282` — `tdd_mode` entry (add per-issue override note)
 
 ### Dependent Files (Callers/Importers)
-- `skills/format-issue/SKILL.md` — already references `testable` field; no change needed but verify alignment
-- `skills/confidence-check/SKILL.md` — already references `testable` field; verify alignment
-- `skills/issue-size-review/SKILL.md` — already references `testable` field; verify alignment
+- `skills/format-issue/SKILL.md` — uses "testable" as an English adjective (testable criteria), NOT as a frontmatter field; no change needed
+- `skills/confidence-check/SKILL.md` — uses "testable" as an English adjective (testable acceptance criteria); no change needed
+- `skills/issue-size-review/SKILL.md` — uses "testable" as English adjective; no change needed
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Correction**: The dependent skills (`format-issue`, `confidence-check`, `issue-size-review`) do NOT reference `testable` as a frontmatter key — they use the word "testable" as an adjective. `testable: false` is a genuinely new frontmatter field.
+- `scripts/little_loops/issue_parser.py:201-236` — `IssueInfo` dataclass parses issue frontmatter fields into Python (e.g., `confidence_score: int | None = None` at line 233). If `testable` should be queryable by Python CLI tools (`ll-auto`, `ll-sprint`), add `testable: bool | None = None` here. **Scope decision**: this issue is skill-prompt-only; `manage-issue` reads frontmatter directly from the markdown without going through `IssueInfo`. No Python code change is required for the core fix.
+- `docs/reference/API.md:505-514` — documents `IssueInfo` fields including `confidence_score` and `outcome_confidence`. Add `testable: bool | None = None` here for completeness if `issue_parser.py` is updated; otherwise leave for a follow-up.
 
 ### Similar Patterns
 - **Canonical pattern**: Phase 2.5 confidence gate at `skills/manage-issue/SKILL.md:154-186` — exact model for "read frontmatter field → conditional skip + structured log message"
@@ -74,12 +82,13 @@ _Added by `/ll:confidence-check` on 2026-03-17_
 **Outcome Confidence**: 61/100 → MODERATE
 
 ### Concerns
-- One design decision deferred to implementation: whether `capture-issue/templates.md` should emit `testable: true` by default for non-doc issues, or treat absence as testable. Either is valid but the rule needs to be explicit.
+- ~~One design decision deferred to implementation: whether `capture-issue/templates.md` should emit `testable: true` by default for non-doc issues, or treat absence as testable.~~ **Resolved**: absence means testable; only `testable: false` is ever set explicitly.
 
 ### Outcome Risk Factors
 - Zero automated test coverage — all changes are markdown prompt files. Behavioral correctness requires a manual smoke test: invoke `manage-issue` with `tdd_mode: true` on a doc-only issue and verify Phase 3a is skipped.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-18T02:24:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8afbe716-0bb6-44ed-abbe-d48406e9d90f.jsonl`
 - `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73090a87-0698-4eeb-9d27-83936dec2511.jsonl`
 - `/ll:refine-issue` - 2026-03-18T02:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a56e6201-d603-4920-9c45-b18975f046e7.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b46a31d3-3cc1-4027-98da-b1787e431d19.jsonl`
