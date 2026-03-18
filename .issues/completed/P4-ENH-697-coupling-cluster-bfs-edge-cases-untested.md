@@ -18,7 +18,7 @@ Graph algorithms have well-known failure modes in edge cases (disconnected compo
 ## Location
 
 - **File**: `scripts/little_loops/issue_history/coupling.py`
-- **Line(s)**: 99-145 (at scan commit: 3e9beea)
+- **Line(s)**: 96-142
 - **Anchor**: `in function _build_coupling_clusters()`
 - **Test file**: `scripts/tests/test_issue_history_advanced_analytics.py`
 
@@ -111,7 +111,22 @@ Use distinct filename prefixes (e.g. `BUG-AB`, `BUG-A`, `BUG-C`) to avoid collis
 
 `enhancement`, `testing`, `issue-history`
 
+## Resolution
+
+**Status**: Completed
+**Date**: 2026-03-17
+**Action**: improve
+
+Added 4 test methods to `TestAnalyzeCoupling` in `scripts/tests/test_issue_history_advanced_analytics.py`:
+- `test_disconnected_clusters` — two independent file pairs form two separate BFS components
+- `test_boundary_coupling_strength_included` — Jaccard exactly 0.5 passes the cluster threshold
+- `test_below_threshold_excluded_from_clusters` — Jaccard 0.4 pair detected but not clustered
+- `test_single_node_not_in_cluster` — files with sub-threshold pairs appear in no cluster
+
+All 11 `TestAnalyzeCoupling` tests pass.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T02:01:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4be36514-c9dd-4c89-acc0-99b253f39cc2.jsonl`
 - `/ll:refine-issue` - 2026-03-18T01:39:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b2aa1ab-7a2b-4015-8d5b-fef9b7dd4c2e.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`

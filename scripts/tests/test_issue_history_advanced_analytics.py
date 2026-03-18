@@ -571,6 +571,95 @@ class TestAnalyzeCoupling:
         # Jaccard = 2/3 ~ 0.667
         assert abs(pair.coupling_strength - 0.667) < 0.01
 
+    def test_disconnected_clusters(self, tmp_path: Path) -> None:
+        """Test that two independent file pairs form two separate clusters (BFS disconnected components)."""
+        # Cluster 1: a.py + b.py co-occur in 3 issues (Jaccard=1.0)
+        # Cluster 2: c.py + d.py co-occur in 3 different issues (Jaccard=1.0)
+        # No overlap between the two groups → two disconnected components in the graph
+        issues = []
+        for i in range(3):
+            f = tmp_path / f"P1-BUG-AB{i}.md"
+            f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+
+        for i in range(3):
+            f = tmp_path / f"P1-BUG-CD{i}.md"
+            f.write_text("**File**: `src/c.py`\n**File**: `src/d.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-CD{i}"))
+
+        result = analyze_coupling(issues)
+        assert len(result.clusters) == 2
+        cluster_sets = [set(c) for c in result.clusters]
+        assert {"src/a.py", "src/b.py"} in cluster_sets
+        assert {"src/c.py", "src/d.py"} in cluster_sets
+
+    def test_boundary_coupling_strength_included(self, tmp_path: Path) -> None:
+        """Test that coupling_strength exactly 0.5 meets the cluster threshold (>= 0.5, inclusive)."""
+        # 2 issues with both a.py + b.py (co-occur=2), 2 issues with only a.py (solo)
+        # union = 4, Jaccard = 2/4 = 0.5 → must be included in cluster
+        issues = []
+        for i in range(2):
+            f = tmp_path / f"P1-BUG-AB{i}.md"
+            f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+
+        for i in range(2):
+            f = tmp_path / f"P1-BUG-A{i}.md"
+            f.write_text("**File**: `src/a.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}"))
+
+        result = analyze_coupling(issues)
+        assert len(result.clusters) == 1
+        assert set(result.clusters[0]) == {"src/a.py", "src/b.py"}
+
+    def test_below_threshold_excluded_from_clusters(self, tmp_path: Path) -> None:
+        """Test that pairs with coupling_strength < 0.5 are excluded from clusters."""
+        # 2 co-occur issues, 2 solo-a issues, 1 solo-b issue
+        # union = 5, Jaccard = 2/5 = 0.4 → passes analyze_coupling (>=0.3) but not cluster threshold (<0.5)
+        issues = []
+        for i in range(2):
+            f = tmp_path / f"P1-BUG-AB{i}.md"
+            f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+
+        for i in range(2):
+            f = tmp_path / f"P1-BUG-A{i}.md"
+            f.write_text("**File**: `src/a.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}"))
+
+        f = tmp_path / "P1-BUG-B0.md"
+        f.write_text("**File**: `src/b.py`")
+        issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id="BUG-B0"))
+
+        result = analyze_coupling(issues)
+        # Pair is detected (strength 0.4 >= 0.3) but forms no cluster
+        assert len(result.pairs) >= 1
+        assert result.clusters == []
+
+    def test_single_node_not_in_cluster(self, tmp_path: Path) -> None:
+        """Test that a file with only sub-threshold pairs never appears in any cluster."""
+        # Same 0.4-strength fixture: a.py and b.py are detected as a pair but
+        # never enter the adjacency graph (strength < 0.5), so no cluster is built
+        issues = []
+        for i in range(2):
+            f = tmp_path / f"P1-BUG-AB{i}.md"
+            f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+
+        for i in range(2):
+            f = tmp_path / f"P1-BUG-A{i}.md"
+            f.write_text("**File**: `src/a.py`")
+            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}"))
+
+        f = tmp_path / "P1-BUG-B0.md"
+        f.write_text("**File**: `src/b.py`")
+        issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id="BUG-B0"))
+
+        result = analyze_coupling(issues)
+        all_cluster_files = {file for cluster in result.clusters for file in cluster}
+        assert "src/a.py" not in all_cluster_files
+        assert "src/b.py" not in all_cluster_files
+
 
 class TestRegressionCluster:
     """Tests for RegressionCluster dataclass."""
