@@ -1,5 +1,32 @@
 # Workflow Analysis Guide
 
+## Table of Contents
+
+- [What Is Workflow Analysis?](#what-is-workflow-analysis)
+- [The Pipeline at a Glance](#the-pipeline-at-a-glance)
+- [Prerequisites: Extracting Messages (`ll-messages`)](#prerequisites-extracting-messages-ll-messages)
+- [Running the Full Pipeline: `/ll:analyze-workflows`](#running-the-full-pipeline-llanalyze-workflows)
+- [Understanding the Outputs](#understanding-the-outputs)
+  - [Key fields in `step1-patterns.yaml`](#key-fields-in-step1-patternsyaml)
+  - [Key fields in `step2-workflows.yaml`](#key-fields-in-step2-workflowsyaml)
+  - [Key fields in `step3-proposals.yaml`](#key-fields-in-step3-proposalsyaml)
+- [CLI Deep Dive: `ll-workflows`](#cli-deep-dive-ll-workflows)
+  - [Argument Reference](#argument-reference)
+  - [How the Analysis Works](#how-the-analysis-works)
+- [The Automation Proposer: `/ll:workflow-automation-proposer`](#the-automation-proposer-llworkflow-automation-proposer)
+  - [What It Looks For](#what-it-looks-for)
+  - [The 9 Automation Types](#the-9-automation-types)
+  - [Priority Scoring](#priority-scoring)
+  - [Effort Estimation](#effort-estimation)
+  - [The Implementation Roadmap](#the-implementation-roadmap)
+- [Common Recipes](#common-recipes)
+  - [Weekly automation review](#weekly-automation-review)
+  - [Quick pattern check (Step 1 only)](#quick-pattern-check-step-1-only)
+  - [Fresh proposals from existing data](#fresh-proposals-from-existing-data)
+  - [Extract only recent messages](#extract-only-recent-messages)
+  - [Filter messages by type (`--skip-cli` / `--commands-only`)](#filter-messages-by-type---skip-cli----commands-only)
+- [See Also](#see-also)
+
 ## What Is Workflow Analysis?
 
 LLMs are stateless. Each session starts fresh with no memory of what you did last week, which multi-step processes you repeat most, or where you waste time on manual steps. The workflow analysis system closes that gap by mining your message history for patterns and turning them into concrete automation proposals.
@@ -23,9 +50,9 @@ messages from         analyzer categorizes      links sessions,            propo
 Claude logs into      messages, detects         clusters entities,         patterns into proposals         patterns, detected
 .jsonl file           patterns, inventories     detects workflows           with priority + effort          workflows, and
                       tools                                                 estimates                       proposals
-                          │                          │                          │
-                          ▼                          ▼                          ▼
-                   step1-patterns.yaml       step2-workflows.yaml      step3-proposals.yaml
+        │                 │                          │                          │                               │
+        ▼                 ▼                          ▼                          ▼                               ▼
+msgs-*.jsonl      step1-patterns.yaml       step2-workflows.yaml      step3-proposals.yaml            summary-*.md
 ```
 
 Each step's output is the next step's input. Partial results are always preserved — if Step 2 fails, Step 1's output remains in `.claude/workflow-analysis/`.
@@ -121,13 +148,13 @@ All outputs are written to `.claude/workflow-analysis/`:
 
 **`pattern_confidence`** reflects how consistent the sequence is across observed instances. A score above 0.7 is strong; below 0.4 means the pattern is loosely structured and harder to automate reliably.
 
+**`cohesion_score`** appears on entity clusters. It measures how tightly the messages in a cluster relate to each other (0.0–1.0). High cohesion (≥ 0.7) means messages are clearly about one thing; low cohesion means the cluster is loosely connected.
+
 ### Key fields in `step3-proposals.yaml`
 
-- `proposals` — the main list; each entry has `id`, `type`, `priority`, `effort`, `rationale`, and `implementation_sketch`
+- `proposals` — the main list; each entry has `id`, `type` (see [The 9 Automation Types](#the-9-automation-types)), `priority`, `effort`, `rationale`, and `implementation_sketch`
 - `existing_command_suggestions` — patterns that already have a `/ll:*` command you may not be using
 - `implementation_roadmap` — proposals grouped into `immediate`, `short_term`, and `future` buckets
-
-**`cohesion_score`** appears on entity clusters in Step 2. It measures how tightly the messages in a cluster relate to each other (0.0–1.0). High cohesion (≥ 0.7) means messages are clearly about one thing; low cohesion means the cluster is loosely connected.
 
 ## CLI Deep Dive: `ll-workflows`
 
@@ -208,7 +235,17 @@ MEDIUM: score ≥ 4   →  3-4 occurrences, moderate friction
 LOW:    score < 4   →  1-2 occurrences, minor friction
 ```
 
+Variable definitions:
+
+| Variable | Range | Meaning |
+|----------|-------|---------|
+| `frequency` | 1–20+ (raw count) | Number of times the pattern appears in the message history |
+| `workflow_count` | 1–10 (raw count) | Number of distinct detected workflows that include this pattern |
+| `friction_score` | 0–10 (computed) | Friction intensity: debug/fix/test cycles, retry keywords, error context, multi-session spans |
+
 Friction indicators: debug/fix/test cycles, multiple session spans, retry keywords in messages, error keywords in context.
+
+> **Note on LOW priority proposals**: LOW priority items (score < 4) are generated for patterns with 1–2 occurrences that still show friction or workflow involvement. The "Frequency ≥ 5" target in [What It Looks For](#what-it-looks-for) is the threshold for emphasis during analysis — patterns below it may still appear as LOW priority proposals when friction or workflow signals are present.
 
 ### Effort Estimation
 
@@ -241,16 +278,17 @@ ll-messages -n 200                    # Extract recent messages
 # Review: .claude/workflow-analysis/summary-*.md
 ```
 
-### Quick pattern check
+### Quick pattern check (Step 1 only)
 
-Extract messages and review categories without running the full pipeline:
+Run only Step 1 to get a fast category breakdown without the full pipeline. Spawn the `workflow-pattern-analyzer` agent directly with the messages file as input:
 
 ```bash
-ll-messages --stdout | head -20       # Preview raw messages
-ll-messages --stdout                  # Or pipe to a viewer
+ll-messages                           # Extract messages to .claude/user-messages-{ts}.jsonl
+# Then in Claude: spawn workflow-pattern-analyzer with the JSONL file path
+# Review: .claude/workflow-analysis/step1-patterns.yaml
 ```
 
-Or extract to a file, then run just Step 1 by spawning the agent manually with `/ll:analyze-workflows` and stopping after reviewing `step1-patterns.yaml`.
+> **Note**: `/ll:analyze-workflows` always runs all three steps — there is no built-in mid-pipeline stop. To limit analysis to Step 1, invoke the `workflow-pattern-analyzer` agent directly or read `step1-patterns.yaml` before the remaining steps complete.
 
 ### Fresh proposals from existing data
 
@@ -273,6 +311,22 @@ ll-messages --since 2026-02-01 -n 500   # Since Feb 1, up to 500 messages
 ```
 
 Combine with `-n` to limit volume while keeping the date filter as the primary boundary.
+
+### Filter messages by type (`--skip-cli` / `--commands-only`)
+
+Use these flags to narrow the message set before running the pipeline:
+
+```bash
+# Exclude CLI commands — analyze only prose messages (questions, descriptions, requests)
+ll-messages --skip-cli
+/ll:analyze-workflows
+
+# Extract only CLI commands — useful for identifying repeated shell workflows
+ll-messages --commands-only
+/ll:analyze-workflows
+```
+
+`--skip-cli` is useful when your history is dominated by CLI invocations and you want to focus on conversational patterns. `--commands-only` is useful when you want to discover command-line workflow automation opportunities specifically.
 
 ## See Also
 
