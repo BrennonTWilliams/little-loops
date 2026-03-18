@@ -486,8 +486,9 @@ def _compute_box_sizes(
         badge_w = _badge_display_width(badge) if badge else 0
         box_badge[s] = badge
 
-        # Width must fit: name label on content row, badge on top border
-        base_w = max(len(display_label[s]), badge_w)
+        # Width must fit: name label on content row, badge on top border (with one space
+        # of padding on each side: " badge ")
+        base_w = max(len(display_label[s]), badge_w + 2 if badge_w else 0)
 
         inner_w = base_w
         if state_obj and state_obj.action and max_box_inner > 0:
@@ -524,8 +525,8 @@ def _draw_box(
 ) -> None:
     """Draw a state box onto a character grid at (row, col).
 
-    If *badge* is provided it is placed right-aligned in the top border row,
-    immediately before the ┐ corner character.
+    If *badge* is provided it is placed right-aligned in the top border row with
+    one space of padding on each side (``─ badge ┐``), colorized via ``_bc()``.
     """
     total_width = len(grid[0]) if grid else 0
 
@@ -541,16 +542,25 @@ def _draw_box(
     if col + width - 1 < total_width:
         grid[row][col + width - 1] = _bc("\u2510")
 
-    # Overlay badge in top-right corner (before ┐)
+    # Overlay badge in top-right corner with one space of padding on each side: " badge ┐"
     if badge:
         badge_w = _badge_display_width(badge)
-        pos = col + width - 1 - badge_w
+        # Trailing space between badge end and ┐
+        trail_pos = col + width - 2
+        if col + 1 <= trail_pos < col + width - 1 and trail_pos < total_width:
+            grid[row][trail_pos] = _bc(" ")
+        # Leading space before badge
+        lead_pos = col + width - badge_w - 3
+        if col + 1 <= lead_pos < col + width - 1 and lead_pos < total_width:
+            grid[row][lead_pos] = _bc(" ")
+        # Badge characters (shifted left by 1 compared to no-padding placement)
+        pos = col + width - 1 - badge_w - 1
         for ch in badge:
             ch_w = _wcwidth(ch)
             if ch_w < 1:
                 ch_w = 1
             if col + 1 <= pos < col + width - 1 and pos < total_width:
-                grid[row][pos] = ch
+                grid[row][pos] = _bc(ch)
                 if ch_w == 2 and pos + 1 < col + width - 1 and pos + 1 < total_width:
                     grid[row][pos + 1] = ""
             pos += ch_w

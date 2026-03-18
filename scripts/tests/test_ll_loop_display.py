@@ -1721,7 +1721,7 @@ class TestStateBadges:
         assert _get_state_badge(state) == _SUB_LOOP_BADGE
 
     def test_diagram_contains_prompt_badge(self) -> None:
-        """FSM diagram output contains ✦ for a prompt state."""
+        """FSM diagram output contains ✦ in top border with space padding on each side."""
         fsm = FSMLoop(
             name="test",
             initial="start",
@@ -1732,7 +1732,45 @@ class TestStateBadges:
             max_iterations=5,
         )
         result = _render_fsm_diagram(fsm)
-        assert "\u2726" in result  # ✦ prompt badge in top border
+        assert "\u2726" in result  # ✦ prompt badge present
+        top_border = next(ln for ln in result.split("\n") if "\u250c" in ln)
+        assert " \u2726 " in top_border  # space padding on each side
+
+    def test_badge_border_width_accounts_for_padding(self) -> None:
+        """Box width is large enough for badge + 2 padding spaces even when badge > label."""
+        # Use a sub-loop badge (↳⟳, display width 2) on a state with a very short name
+        # so badge_w + 2 > len(label). The box must still render without truncating the badge.
+        fsm = FSMLoop(
+            name="test",
+            initial="x",
+            states={
+                "x": StateConfig(loop="child.yaml", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=1,
+        )
+        result = _render_fsm_diagram(fsm)
+        top_border = next(ln for ln in result.split("\n") if "\u250c" in ln and _SUB_LOOP_BADGE[0] in ln)
+        # Both padding spaces must appear alongside the badge
+        assert " " + _SUB_LOOP_BADGE[0] in top_border  # leading space before badge
+
+    def test_highlighted_badge_is_colorized(self) -> None:
+        """Badge characters in top border use _bc() colorization when state is highlighted."""
+        import little_loops.cli.output as output_mod
+
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={
+                "start": StateConfig(action="do something", action_type="prompt", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm, highlight_state="start", highlight_color="36")
+        # The badge ✦ must appear wrapped in the highlight color
+        assert "\033[36m\u2726" in result
 
     def test_route_badge_constant(self) -> None:
         """_ROUTE_BADGE is the dedicated branching/routing unicode character."""
