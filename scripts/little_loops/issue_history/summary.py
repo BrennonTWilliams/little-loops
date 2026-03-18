@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import statistics
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -179,21 +180,11 @@ def _calculate_trend(values: list[float]) -> str:
     if len(values) < 3:
         return "stable"
 
-    # Simple linear regression slope
     n = len(values)
-    sum_x = sum(range(n))
-    sum_y = sum(values)
-    sum_xy = sum(i * v for i, v in enumerate(values))
-    sum_x2 = sum(i * i for i in range(n))
-
-    denominator = n * sum_x2 - sum_x * sum_x
-    if denominator == 0:
-        return "stable"
-
-    slope = (n * sum_xy - sum_x * sum_y) / denominator
+    slope = statistics.linear_regression(range(n), values).slope
 
     # Normalize slope by average value
-    avg = sum_y / n if n > 0 else 1
+    avg = sum(values) / n
     if avg == 0:
         avg = 1
     normalized_slope = slope / avg
