@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-18
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-807: FSM state box badge should appear in top border, not first content row
@@ -163,6 +165,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Session Log
 - `/ll:refine-issue` - 2026-03-18T22:36:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b466204-2c32-4956-a07d-e0d2c0840e7e.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9dd6b13-1607-4caf-b3d5-461e82aa833e.jsonl`
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
