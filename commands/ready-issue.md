@@ -242,8 +242,9 @@ If issues found, attempt to fix:
 3. **Add missing sections** with placeholder text
 4. **Update code snippets** to match current code
 5. **Add verification notes** documenting changes
-6. **Save the corrected issue file** with your changes
-7. **Append Session Log entry** to the issue file using the Bash tool:
+6. **Infer `testable: false`** if not already set — scan the issue title + description (case-insensitive) for doc-only signal keywords: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link". If 2+ keywords match and `testable` field is absent, add `testable: false` to frontmatter and record `[content_fix] Added testable: false (inferred: documentation-only issue)` in CORRECTIONS_MADE. Use verdict CORRECTED. Never overwrite an existing `testable` value.
+7. **Save the corrected issue file** with your changes
+8. **Append Session Log entry** to the issue file using the Bash tool:
 
 ```bash
 ll-issues append-log <path-to-issue-file> /ll:ready-issue

@@ -135,6 +135,7 @@ cat > "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
 ---
 discovered_date: [YYYY-MM-DD]
 discovered_by: capture-issue
+# testable: false  # Only emitted when doc-only heuristic fires (2+ signal keywords matched)
 ---
 
 # [TYPE]-[NNN]: [Title]

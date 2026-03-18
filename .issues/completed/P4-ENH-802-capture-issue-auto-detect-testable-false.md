@@ -129,11 +129,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Status**: Completed | Resolved: 2026-03-17
+
+### Changes Made
+- `skills/capture-issue/SKILL.md` — Added step 6 to Phase 4 build instructions: keyword-based `testable: false` inference (2+ signal matches required)
+- `skills/capture-issue/templates.md` — Added commented optional `testable: false` field to Issue File Template frontmatter
+- `skills/format-issue/SKILL.md` — Added new section `2.5a. Testable Inference (doc-only detection)` after the batch loop, before section 2.5
+- `skills/format-issue/templates.md` — Added `Frontmatter Inference` category to the CHANGES APPLIED output block
+- `commands/ready-issue.md` — Added item 6 to Auto-Correction steps for `testable: false` inference; save and session log pushed to items 7 and 8
+
+### Verification
+- All 3661 Python tests pass; no regressions introduced
+- Pre-existing lint warning (unused `timedelta` import) not caused by these changes
+
 ## Status
 
-**Open** | Created: 2026-03-17 | Priority: P4
+**Completed** | Created: 2026-03-17 | Priority: P4
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-18T03:55:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4223702f-6a02-469b-b635-90ae1dc5c7ba.jsonl`
 - `/ll:ready-issue` - 2026-03-18T03:49:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f3f1b7c-1a67-49db-8bab-4ef369788578.jsonl`
 - `/ll:refine-issue` - 2026-03-18T03:41:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/091e39b0-ea1d-46cf-bdb2-857825824d3b.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0873aba7-6e24-4b9d-bf58-565ee42ebe88.jsonl`

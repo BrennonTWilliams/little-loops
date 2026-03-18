@@ -327,6 +327,9 @@ AUTO-FORMAT: [ISSUE-ID]
 - **Integration Map**: Files to Modify populated from issue content
 - **Implementation Steps**: 3 phases extracted from Proposed Solution
 
+### Frontmatter Inference
+- **testable: false**: Added (doc-only keywords detected: [matched keywords]) — [or omitted if < 2 matches]
+
 ### Sections Preserved
 - **Proposed Solution**: Existing content preserved (non-empty)
 - **Acceptance Criteria**: Existing content preserved

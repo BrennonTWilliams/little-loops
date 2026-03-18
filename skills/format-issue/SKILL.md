@@ -169,6 +169,19 @@ for ISSUE_FILE in "${ISSUE_FILES[@]}"; do
 done
 ```
 
+### 2.5a. Testable Inference (doc-only detection)
+
+After the batch loop, for each processed issue that does **not** already have a `testable` field in its frontmatter:
+
+1. Scan the combined issue title + description text (case-insensitive) for doc-only signal keywords:
+   - **Signal keywords**: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link"
+2. Count the number of distinct keyword matches
+3. If 2+ keywords match:
+   - Add `testable: false` to the frontmatter
+   - Include in the gap report output: `Frontmatter — testable: false added (inferred: documentation-only issue)`
+4. If < 2 keywords match: take no action (absence means testable)
+5. If `testable` field is already present (any value): skip this check entirely — never overwrite
+
 ### 2.5. Template v2.0 Section Alignment
 
 See [templates.md](templates.md) for:

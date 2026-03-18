@@ -233,6 +233,12 @@ ELSE:
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
 4. If `include_type_sections` is true, also include sections from `type_sections` that have a `creation_template`
 5. Always include YAML frontmatter with `discovered_date` and `discovered_by: capture-issue`
+6. **Infer `testable: false`** — after building the frontmatter, scan the issue title and description for doc-only signal keywords:
+   - **Signal keywords**: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link"
+   - **Threshold**: 2+ keyword matches (case-insensitive) in the combined title + description text
+   - If threshold met: add `testable: false` to frontmatter and log `ℹ️ Set testable: false (inferred: documentation-only issue)`
+   - If threshold not met: omit `testable` from frontmatter (absence means testable)
+   - This field is never added when < 2 signals match, to avoid false positives on issues that merely mention a guide or doc in passing
 
 **New sections in v2.0** (auto-included based on template variant):
 - **Motivation**: Why this matters (replaces Current Pain Point for ENH)
