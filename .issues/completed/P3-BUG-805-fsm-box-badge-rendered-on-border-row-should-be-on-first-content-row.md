@@ -74,7 +74,7 @@ This approach keeps badge logic inside `_box_inner_lines()` and removes the need
 - `scripts/little_loops/cli/loop/layout.py` — `_draw_box()` (remove border overlay), `_box_inner_lines()` (add badge to name row)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/layout.py` — callers of `_draw_box()`: `_draw_diagram()` (~line 943), `_draw_linear_diagram()` (~line 1518)
+- `scripts/little_loops/cli/loop/layout.py` — callers of `_draw_box()`: `_render_layered_diagram()` (~line 934), `_render_horizontal_simple()` (~line 1509)
 - `scripts/little_loops/cli/loop/_helpers.py` — uses layout module
 
 ### Similar Patterns
@@ -107,15 +107,25 @@ This approach keeps badge logic inside `_box_inner_lines()` and removes the need
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+- Moved badge rendering from `_draw_box()` border overlay to `_box_inner_lines()` name row
+- `_box_inner_lines()` now accepts `badge` param and right-aligns it on the name line
+- `_compute_box_sizes()` updated `base_w` to `len(label) + 1 + badge_w` so box fits both
+- Removed `_draw_box()` border overlay block (lines 541-553) and unused `_wcwidth` import
+- Added 4 new tests: `test_box_inner_lines_*` and `test_badge_on_content_row_not_border_row`
+
 ## Labels
 
-`bug`, `rendering`, `fsm-diagram`, `captured`
+`bug`, `rendering`, `fsm-diagram`, `resolved`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T22:10:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed383bd6-0956-4dcb-8bad-a0f7df6066fc.jsonl`
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18f420b1-0c39-4794-9ebd-f0386a21c8dd.jsonl`
 - `/ll:confidence-check` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9957234-b252-4dee-a7f0-8db37b7c163b.jsonl`
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-18 | Priority: P3
+**Resolved** | Created: 2026-03-18 | Completed: 2026-03-18 | Priority: P3
