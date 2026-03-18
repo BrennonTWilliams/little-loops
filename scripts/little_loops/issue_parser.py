@@ -351,7 +351,11 @@ class IssueParser:
         )
         testable_raw = frontmatter.get("testable")
         if isinstance(testable_raw, str):
-            testable_value: bool | None = testable_raw.lower() == "true" if testable_raw.lower() in ("true", "false") else None
+            testable_value: bool | None = (
+                testable_raw.lower() == "true"
+                if testable_raw.lower() in ("true", "false")
+                else None
+            )
         else:
             testable_value = testable_raw
 

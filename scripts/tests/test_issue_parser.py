@@ -1356,9 +1356,7 @@ class TestIssueInfoTestable:
         info = IssueInfo.from_dict(data)
         assert info.testable is False
 
-    def test_parse_file_testable_false(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_file_testable_false(self, tmp_path: Path) -> None:
         """Integration: parse_file reads testable: false from frontmatter."""
         import json
 
@@ -1385,9 +1383,7 @@ class TestIssueInfoTestable:
 
         assert info.testable is False
 
-    def test_parse_file_testable_absent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_file_testable_absent(self, tmp_path: Path) -> None:
         """Integration: parse_file yields testable=None when frontmatter key absent."""
         import json
 

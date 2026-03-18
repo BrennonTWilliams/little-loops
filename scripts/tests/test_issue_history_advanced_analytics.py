@@ -580,12 +580,16 @@ class TestAnalyzeCoupling:
         for i in range(3):
             f = tmp_path / f"P1-BUG-AB{i}.md"
             f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}")
+            )
 
         for i in range(3):
             f = tmp_path / f"P1-BUG-CD{i}.md"
             f.write_text("**File**: `src/c.py`\n**File**: `src/d.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-CD{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-CD{i}")
+            )
 
         result = analyze_coupling(issues)
         assert len(result.clusters) == 2
@@ -601,12 +605,16 @@ class TestAnalyzeCoupling:
         for i in range(2):
             f = tmp_path / f"P1-BUG-AB{i}.md"
             f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}")
+            )
 
         for i in range(2):
             f = tmp_path / f"P1-BUG-A{i}.md"
             f.write_text("**File**: `src/a.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}")
+            )
 
         result = analyze_coupling(issues)
         assert len(result.clusters) == 1
@@ -620,12 +628,16 @@ class TestAnalyzeCoupling:
         for i in range(2):
             f = tmp_path / f"P1-BUG-AB{i}.md"
             f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}")
+            )
 
         for i in range(2):
             f = tmp_path / f"P1-BUG-A{i}.md"
             f.write_text("**File**: `src/a.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}")
+            )
 
         f = tmp_path / "P1-BUG-B0.md"
         f.write_text("**File**: `src/b.py`")
@@ -644,12 +656,16 @@ class TestAnalyzeCoupling:
         for i in range(2):
             f = tmp_path / f"P1-BUG-AB{i}.md"
             f.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-AB{i}")
+            )
 
         for i in range(2):
             f = tmp_path / f"P1-BUG-A{i}.md"
             f.write_text("**File**: `src/a.py`")
-            issues.append(CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}"))
+            issues.append(
+                CompletedIssue(path=f, issue_type="BUG", priority="P1", issue_id=f"BUG-A{i}")
+            )
 
         f = tmp_path / "P1-BUG-B0.md"
         f.write_text("**File**: `src/b.py`")

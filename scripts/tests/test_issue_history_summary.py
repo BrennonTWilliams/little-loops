@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from little_loops.issue_history import (
@@ -463,7 +463,9 @@ class TestAnalyzeSubsystems:
             self._make_issue("BUG-5", old),
             self._make_issue("BUG-6", old),
         ]
-        contents = {issue.path: self._subsystem_content("scripts/little_loops/") for issue in issues}
+        contents = {
+            issue.path: self._subsystem_content("scripts/little_loops/") for issue in issues
+        }
 
         result = _analyze_subsystems(issues, recent_days=30, contents=contents)
 
