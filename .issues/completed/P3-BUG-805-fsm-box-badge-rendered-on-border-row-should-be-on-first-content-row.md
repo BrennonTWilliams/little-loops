@@ -109,13 +109,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Labels
 
-`bug`, `rendering`, `fsm-diagram`, `captured`
+`bug`, `rendering`, `fsm-diagram`, `superseded`
 
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18f420b1-0c39-4794-9ebd-f0386a21c8dd.jsonl`
 - `/ll:confidence-check` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9957234-b252-4dee-a7f0-8db37b7c163b.jsonl`
+- Closed 2026-03-18 — superseded by ENH-807, which addresses the same visual bug via a better approach: embedding the badge in the top border with proper ` badge ` padding rather than moving it to the content row.
 
 ---
 
-**Open** | Created: 2026-03-18 | Priority: P3
+**Closed (Superseded by ENH-807)** | Created: 2026-03-18 | Priority: P3

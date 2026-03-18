@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-18
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 93
 ---
 
 # BUG-806: Route states missing unicode composition badge in FSM diagram
@@ -39,9 +41,9 @@ Route states render as plain boxes with no badge, indistinguishable from unlabel
 Route states should render with the dedicated badge `⑃` that signals branching/routing behavior:
 
 ```
-┌────────────────┐
-│ route_format ⑃ │
-└────────────────┘
+┌─────────── ⑃ ┐
+│ route_format │
+└──────────────┘
 ```
 
 ## Motivation
@@ -59,7 +61,7 @@ Without a badge, route states are visually identical to states that have no acti
 Add a `_ROUTE_BADGE` constant and add a route check in `_get_state_badge()`:
 
 ```python
-_ROUTE_BADGE = "\u21d2"  # ⇒  (or "\u2794" ➔, or "\u29f4" ⧴)
+_ROUTE_BADGE = "\u2443"
 
 def _get_state_badge(state: StateConfig | None) -> str:
     if state is None:
@@ -99,7 +101,7 @@ The specific character should be chosen to be visually distinct from the existin
 
 ## Implementation Steps
 
-1. Choose the route badge character (confirm with user or pick `⇒` as default)
+1. Choose the route badge character (confirm with user or pick `⑃` as default)
 2. Add `_ROUTE_BADGE` constant near `_SUB_LOOP_BADGE` in `layout.py`
 3. Add `if state.route: return _ROUTE_BADGE` branch in `_get_state_badge()`
 4. Verify box width computation for route state boxes automatically accounts for badge width
@@ -123,6 +125,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18f420b1-0c39-4794-9ebd-f0386a21c8dd.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4abc562-fb50-40ec-a485-5cf2c03ac148.jsonl`
 
 ---
 
