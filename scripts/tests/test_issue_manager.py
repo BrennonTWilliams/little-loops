@@ -628,6 +628,98 @@ class TestDependencyAwareSequencing:
         assert "Dependency cycle detected" in captured.out or "cycle" in captured.out.lower()
 
 
+class TestAutoManagerPriorityFilter:
+    """Tests for AutoManager priority_filter in _get_next_issue (ENH-804)."""
+
+    @pytest.fixture
+    def temp_project_with_priorities(self, temp_project_dir: Path) -> Path:
+        """Set up project with issues of mixed priorities."""
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        (issues_dir / "P1-BUG-001-high-priority.md").write_text(
+            "# BUG-001: High priority\n\n## Summary\nHigh\n"
+        )
+        (issues_dir / "P3-BUG-002-medium-priority.md").write_text(
+            "# BUG-002: Medium priority\n\n## Summary\nMedium\n"
+        )
+
+        return temp_project_dir
+
+    def test_priority_filter_none_returns_all_issues(
+        self, temp_project_with_priorities: Path
+    ) -> None:
+        """With priority_filter=None, all issues are candidates."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_priorities)
+        manager = AutoManager(config, dry_run=True, priority_filter=None)
+
+        issue = manager._get_next_issue()
+        assert issue is not None  # At least one issue returned
+
+    def test_priority_filter_matching_returns_issue(
+        self, temp_project_with_priorities: Path
+    ) -> None:
+        """priority_filter matching an issue's priority returns that issue."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_priorities)
+        manager = AutoManager(config, dry_run=True, priority_filter={"P1"})
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+        assert issue.issue_id == "BUG-001"
+        assert issue.priority == "P1"
+
+    def test_priority_filter_non_matching_returns_none(
+        self, temp_project_with_priorities: Path
+    ) -> None:
+        """priority_filter that matches no issues returns None."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_priorities)
+        manager = AutoManager(config, dry_run=True, priority_filter={"P0"})
+
+        issue = manager._get_next_issue()
+        assert issue is None
+
+    def test_priority_filter_multiple_levels(self, temp_project_with_priorities: Path) -> None:
+        """priority_filter with multiple levels returns issues matching any."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_priorities)
+        manager = AutoManager(config, dry_run=True, priority_filter={"P1", "P3"})
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+        assert issue.priority in {"P1", "P3"}
+
+
 class TestAutoManagerQuietMode:
     """Tests for AutoManager quiet/verbose mode (ENH-188)."""
 

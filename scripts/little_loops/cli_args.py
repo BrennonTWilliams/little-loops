@@ -248,6 +248,53 @@ def _id_matches(candidate: str, pattern: str) -> bool:
 
 VALID_ISSUE_TYPES = {"BUG", "FEAT", "ENH"}
 
+VALID_PRIORITIES: frozenset[str] = frozenset({"P0", "P1", "P2", "P3", "P4", "P5"})
+
+
+def parse_priorities(value: str | None) -> set[str] | None:
+    """Parse comma-separated priority levels into a validated set.
+
+    Args:
+        value: Comma-separated string like "P1,P2" or None
+
+    Returns:
+        Set of uppercase priority strings, or None if value is None
+
+    Raises:
+        SystemExit: If invalid priority levels are provided (exit code 2)
+
+    Example:
+        >>> parse_priorities("p1,P2")
+        {'P1', 'P2'}
+        >>> parse_priorities(None)
+        None
+    """
+    if value is None:
+        return None
+    priorities = {p.strip().upper() for p in value.split(",")}
+    invalid = priorities - VALID_PRIORITIES
+    if invalid:
+        import sys
+
+        print(
+            f"error: invalid priority level(s): {', '.join(sorted(invalid))}. "
+            f"Valid priorities: {', '.join(sorted(VALID_PRIORITIES))}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return priorities
+
+
+def add_priority_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --priority/-p argument for filtering issues by priority level."""
+    parser.add_argument(
+        "--priority",
+        "-p",
+        type=str,
+        default=None,
+        help="Comma-separated priority levels to process (e.g., P0, P1,P2)",
+    )
+
 
 def add_type_arg(parser: argparse.ArgumentParser) -> None:
     """Add --type argument for filtering issues by type prefix."""
@@ -296,8 +343,8 @@ def parse_issue_types(value: str | None) -> set[str] | None:
 def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
-    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --config,
-          --idle-timeout, --handoff-threshold
+    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --priority,
+          --config, --idle-timeout, --handoff-threshold
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
@@ -306,6 +353,7 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     add_only_arg(parser)
     add_skip_arg(parser)
     add_type_arg(parser)
+    add_priority_arg(parser)
     add_config_arg(parser)
     add_idle_timeout_arg(parser)
     add_handoff_threshold_arg(parser)
@@ -335,6 +383,7 @@ __all__ = [
     "add_only_arg",
     "add_skip_arg",
     "add_type_arg",
+    "add_priority_arg",
     "add_max_workers_arg",
     "add_timeout_arg",
     "add_idle_timeout_arg",
@@ -344,7 +393,9 @@ __all__ = [
     "add_max_issues_arg",
     "parse_issue_ids",
     "parse_issue_types",
+    "parse_priorities",
     "VALID_ISSUE_TYPES",
+    "VALID_PRIORITIES",
     "add_common_auto_args",
     "add_common_parallel_args",
 ]

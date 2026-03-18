@@ -21,6 +21,7 @@ from little_loops.cli_args import (
     add_type_arg,
     parse_issue_ids,
     parse_issue_types,
+    parse_priorities,
 )
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
@@ -153,10 +154,8 @@ Examples:
         logger.success("Cleanup complete")
         return 0
 
-    # Build priority filter
-    priority_filter = (
-        [p.strip().upper() for p in args.priority.split(",")] if args.priority else None
-    )
+    # Build priority filter (validates against VALID_PRIORITIES)
+    priority_filter = parse_priorities(args.priority)
 
     if args.handoff_threshold is not None:
         if not (1 <= args.handoff_threshold <= 100):
@@ -180,7 +179,7 @@ Examples:
     # Create parallel config with CLI overrides
     parallel_config = config.create_parallel_config(
         max_workers=args.workers,
-        priority_filter=priority_filter,
+        priority_filter=sorted(priority_filter) if priority_filter is not None else None,
         max_issues=args.max_issues,
         dry_run=args.dry_run,
         timeout_seconds=args.timeout,

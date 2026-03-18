@@ -1801,6 +1801,7 @@ AutoManager(
     only_ids: set[str] | None = None,
     skip_ids: set[str] | None = None,
     type_prefixes: set[str] | None = None,
+    priority_filter: set[str] | None = None,
     verbose: bool = True,
 )
 ```
@@ -1814,6 +1815,7 @@ AutoManager(
 - `only_ids` - If provided, only process these issue IDs
 - `skip_ids` - Issue IDs to skip (in addition to attempted issues)
 - `type_prefixes` - If provided, only process issues with these type prefixes
+- `priority_filter` - If provided, only process issues with these priority levels (e.g., `{"P0", "P1"}`)
 - `verbose` - Whether to output progress messages
 
 #### Methods

@@ -2,7 +2,7 @@
 id: ENH-804
 type: ENH
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 confidence_score: 95
@@ -155,6 +155,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `cli`, `ll-auto`, `ll-parallel`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T21:49:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f299283-a702-4c96-899f-663835d6448c.jsonl`
 - `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56e068a2-169f-4e14-b8ca-00caa619a741.jsonl`
 - `/ll:refine-issue` - 2026-03-18T21:38:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18f420b1-0c39-4794-9ebd-f0386a21c8dd.jsonl`
 - `/ll:refine-issue` - 2026-03-18T21:32:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3aa0fcd8-e52b-4672-b5cc-4af0e7f14784.jsonl`
@@ -163,4 +164,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-03-18 | Priority: P3
+## Resolution
+
+Implemented `--priority/-p` filter for `ll-auto`. `ll-parallel` already had the arg; fixed its validation by replacing bare `split(",")+upper()` with `parse_priorities()`.
+
+- Added `VALID_PRIORITIES`, `parse_priorities`, `add_priority_arg` to `cli_args.py`
+- Wired `add_priority_arg` into `add_common_auto_args`
+- Updated `auto.py` to parse `args.priority` and pass `priority_filter` to `AutoManager`
+- Added `priority_filter: set[str] | None = None` to `AutoManager.__init__` and applied in `_get_next_issue` candidates filter and remaining set
+- Updated `parallel.py` to use `parse_priorities()` (adds validation parity)
+- Added 20 new tests across `test_cli_args.py`, `test_cli.py`, `test_issue_manager.py`
+- Updated `docs/reference/API.md`
+
+**Completed** | Created: 2026-03-18 | Priority: P3

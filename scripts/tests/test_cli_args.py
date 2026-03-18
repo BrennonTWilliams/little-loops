@@ -11,6 +11,7 @@ from pathlib import Path
 
 from little_loops.cli_args import (
     VALID_ISSUE_TYPES,
+    VALID_PRIORITIES,
     _id_matches,
     add_common_auto_args,
     add_common_parallel_args,
@@ -18,6 +19,7 @@ from little_loops.cli_args import (
     add_dry_run_arg,
     add_idle_timeout_arg,
     add_max_workers_arg,
+    add_priority_arg,
     add_resume_arg,
     add_skip_arg,
     add_timeout_arg,
@@ -25,6 +27,7 @@ from little_loops.cli_args import (
     parse_issue_ids,
     parse_issue_ids_ordered,
     parse_issue_types,
+    parse_priorities,
 )
 
 
@@ -409,11 +412,96 @@ class TestAddSkipArg:
         assert "Custom help message" in help_text
 
 
+class TestParsePriorities:
+    """Tests for parse_priorities() function."""
+
+    def test_none_returns_none(self) -> None:
+        """None input returns None."""
+        result = parse_priorities(None)
+        assert result is None
+
+    def test_single_priority(self) -> None:
+        """Single priority is uppercased."""
+        result = parse_priorities("p1")
+        assert result == {"P1"}
+
+    def test_multiple_priorities(self) -> None:
+        """Multiple comma-separated priorities are uppercased and split."""
+        result = parse_priorities("P1,P2")
+        assert result == {"P1", "P2"}
+
+    def test_all_valid_priorities(self) -> None:
+        """All valid priorities are accepted."""
+        result = parse_priorities("P0,P1,P2,P3,P4,P5")
+        assert result == {"P0", "P1", "P2", "P3", "P4", "P5"}
+
+    def test_whitespace_handling(self) -> None:
+        """Whitespace around priorities is stripped."""
+        result = parse_priorities(" P1 , P2 ")
+        assert result == {"P1", "P2"}
+
+    def test_invalid_priority_exits(self) -> None:
+        """Invalid priority causes SystemExit with code 2."""
+        import pytest
+
+        with pytest.raises(SystemExit) as exc_info:
+            parse_priorities("P9")
+        assert exc_info.value.code == 2
+
+    def test_mixed_valid_invalid_exits(self) -> None:
+        """Mix of valid and invalid priorities causes SystemExit."""
+        import pytest
+
+        with pytest.raises(SystemExit) as exc_info:
+            parse_priorities("P1,INVALID")
+        assert exc_info.value.code == 2
+
+
+class TestValidPriorities:
+    """Tests for VALID_PRIORITIES constant."""
+
+    def test_contains_expected_priorities(self) -> None:
+        """Contains P0 through P5."""
+        assert VALID_PRIORITIES == {"P0", "P1", "P2", "P3", "P4", "P5"}
+
+
+class TestAddPriorityArg:
+    """Tests for add_priority_arg() function."""
+
+    def test_adds_priority_argument(self) -> None:
+        """Adds --priority argument that accepts string."""
+        parser = argparse.ArgumentParser()
+        add_priority_arg(parser)
+        args = parser.parse_args(["--priority", "P1"])
+        assert args.priority == "P1"
+
+    def test_short_flag(self) -> None:
+        """Short -p flag works."""
+        parser = argparse.ArgumentParser()
+        add_priority_arg(parser)
+        args = parser.parse_args(["-p", "P0,P1"])
+        assert args.priority == "P0,P1"
+
+    def test_default_is_none(self) -> None:
+        """Default value is None."""
+        parser = argparse.ArgumentParser()
+        add_priority_arg(parser)
+        args = parser.parse_args([])
+        assert args.priority is None
+
+    def test_accepts_multiple_priorities(self) -> None:
+        """Accepts comma-separated priorities as raw string."""
+        parser = argparse.ArgumentParser()
+        add_priority_arg(parser)
+        args = parser.parse_args(["--priority", "P1,P2,P3"])
+        assert args.priority == "P1,P2,P3"
+
+
 class TestAddCommonAutoArgs:
     """Tests for add_common_auto_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds resume, dry-run, max-issues, only, skip, type, config, idle-timeout, handoff-threshold."""
+        """Adds resume, dry-run, max-issues, only, skip, type, priority, config, idle-timeout, handoff-threshold."""
         parser = argparse.ArgumentParser()
         add_common_auto_args(parser)
         args = parser.parse_args(
@@ -428,6 +516,8 @@ class TestAddCommonAutoArgs:
                 "BUG-002",
                 "--type",
                 "BUG",
+                "--priority",
+                "P1,P2",
                 "--config",
                 "/path",
                 "--idle-timeout",
@@ -442,6 +532,7 @@ class TestAddCommonAutoArgs:
         assert args.only == "BUG-001"
         assert args.skip == "BUG-002"
         assert args.type == "BUG"
+        assert args.priority == "P1,P2"
         assert args.config is not None
         assert args.idle_timeout == 300
         assert args.handoff_threshold == 40

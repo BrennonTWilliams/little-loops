@@ -12,6 +12,7 @@ from little_loops.cli_args import (
     parse_issue_ids,
     parse_issue_ids_ordered,
     parse_issue_types,
+    parse_priorities,
 )
 from little_loops.config import BRConfig
 from little_loops.issue_manager import AutoManager
@@ -39,6 +40,7 @@ Examples:
   %(prog)s --skip BUG-003     # Skip specific issues
   %(prog)s --type BUG          # Process only bugs
   %(prog)s --type BUG,ENH      # Process bugs and enhancements
+  %(prog)s --priority P1,P2    # Only process P1 and P2 issues
 """,
     )
 
@@ -72,6 +74,7 @@ Examples:
     only_ids = parse_issue_ids_ordered(args.only)
     skip_ids = parse_issue_ids(args.skip)
     type_prefixes = parse_issue_types(args.type)
+    priority_filter = parse_priorities(args.priority)
 
     manager = AutoManager(
         config=config,
@@ -82,6 +85,7 @@ Examples:
         only_ids=only_ids,
         skip_ids=skip_ids,
         type_prefixes=type_prefixes,
+        priority_filter=priority_filter,
         verbose=not args.quiet,
     )
 

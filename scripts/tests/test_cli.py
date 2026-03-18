@@ -427,6 +427,59 @@ class TestMainAutoIntegration:
             call_kwargs = mock_manager_cls.call_args.kwargs
             assert call_kwargs["verbose"] is True  # default is verbose
 
+    def test_main_auto_priority_filter_passed_to_manager(self, temp_project: Path) -> None:
+        """main_auto passes parsed priority_filter to AutoManager."""
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
+            mock_manager = MagicMock()
+            mock_manager.run.return_value = 0
+            mock_manager_cls.return_value = mock_manager
+
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-auto", "--priority", "P1,P2", "--config", str(temp_project)],
+            ):
+                from little_loops.cli import main_auto
+
+                result = main_auto()
+
+            assert result == 0
+            call_kwargs = mock_manager_cls.call_args.kwargs
+            assert call_kwargs["priority_filter"] == {"P1", "P2"}
+
+    def test_main_auto_priority_filter_none_by_default(self, temp_project: Path) -> None:
+        """main_auto passes priority_filter=None when --priority not specified."""
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
+            mock_manager = MagicMock()
+            mock_manager.run.return_value = 0
+            mock_manager_cls.return_value = mock_manager
+
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-auto", "--config", str(temp_project)],
+            ):
+                from little_loops.cli import main_auto
+
+                result = main_auto()
+
+            assert result == 0
+            call_kwargs = mock_manager_cls.call_args.kwargs
+            assert call_kwargs["priority_filter"] is None
+
+    def test_main_auto_invalid_priority_exits(self, temp_project: Path) -> None:
+        """main_auto exits with code 2 on invalid priority value."""
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-auto", "--priority", "P9", "--config", str(temp_project)],
+        ):
+            from little_loops.cli import main_auto
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_auto()
+            assert exc_info.value.code == 2
+
 
 class TestMainParallelIntegration:
     """Integration tests for main_parallel entry point."""

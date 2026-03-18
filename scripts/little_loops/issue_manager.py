@@ -689,6 +689,7 @@ class AutoManager:
         only_ids: list[str] | set[str] | None = None,
         skip_ids: set[str] | None = None,
         type_prefixes: set[str] | None = None,
+        priority_filter: set[str] | None = None,
         verbose: bool = True,
     ) -> None:
         """Initialize the auto manager.
@@ -703,6 +704,7 @@ class AutoManager:
                 issues are processed in list order (input sequence preserved).
             skip_ids: Issue IDs to skip (in addition to attempted issues)
             type_prefixes: If provided, only process issues with these type prefixes
+            priority_filter: If provided, only process issues with these priority levels
             verbose: Whether to output progress messages
         """
         self.config = config
@@ -713,6 +715,7 @@ class AutoManager:
         self.only_ids = only_ids
         self.skip_ids = skip_ids or set()
         self.type_prefixes = type_prefixes
+        self.priority_filter = priority_filter
 
         self.logger = Logger(verbose=verbose)
         self.state_manager = StateManager(config.get_state_file(), self.logger)
@@ -767,13 +770,14 @@ class AutoManager:
         # Get issues that are ready (blockers satisfied)
         ready_issues = self.dep_graph.get_ready_issues(completed)
 
-        # Filter by skip_ids, only_ids, type_prefixes
+        # Filter by skip_ids, only_ids, type_prefixes, priority_filter
         candidates = [
             i
             for i in ready_issues
             if i.issue_id not in skip_ids
             and (self.only_ids is None or any(_id_matches(i.issue_id, p) for p in self.only_ids))
             and (self.type_prefixes is None or i.issue_id.split("-", 1)[0] in self.type_prefixes)
+            and (self.priority_filter is None or i.priority in self.priority_filter)
         ]
 
         if candidates:
@@ -795,6 +799,10 @@ class AutoManager:
             remaining = {r for r in remaining if any(_id_matches(r, p) for p in self.only_ids)}
         if self.type_prefixes is not None:
             remaining = {r for r in remaining if r.split("-", 1)[0] in self.type_prefixes}
+        if self.priority_filter is not None:
+            remaining = {
+                r for r in remaining if self.dep_graph.issues[r].priority in self.priority_filter
+            }
 
         if remaining:
             self._log_blocked_issues(remaining, completed)
