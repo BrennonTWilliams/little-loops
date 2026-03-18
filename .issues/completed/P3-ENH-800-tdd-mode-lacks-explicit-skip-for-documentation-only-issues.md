@@ -3,6 +3,7 @@ discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 61
+testable: false
 ---
 
 # ENH-800: TDD mode lacks explicit skip for documentation-only issues
@@ -10,6 +11,14 @@ outcome_confidence: 61
 ## Summary
 
 `manage-issue` Phase 3a (Write Tests — Red) has no documented escape hatch for issues where testing is not applicable, such as documentation-only changes. The skip condition only checks `action=verify` or `action=plan`, leaving issues with `Tests: N/A` relying on implicit LLM judgment rather than an explicit rule.
+
+## Current Behavior
+
+When `tdd_mode: true` is set, Phase 3a is only skipped if `action=verify` or `action=plan`. Issues with `Tests: N/A` in their Integration Map (documentation-only, prompt-only changes) have no explicit skip mechanism — the agent must infer that testing is inapplicable, which is unreliable and can produce trivial or meaningless tests (e.g., `grep` for anchor text).
+
+## Expected Behavior
+
+When `testable: false` is present in issue frontmatter and `tdd_mode: true` is enabled, Phase 3a should be skipped automatically with a structured log message: `"⏭ Phase 3a skipped: testable: false in issue frontmatter"`. No agent inference required.
 
 ## Motivation
 
@@ -74,6 +83,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Configuration
 - N/A — `testable` is an issue-file frontmatter field, not a config field (same as `confidence_score`)
 
+## Scope Boundaries
+
+- **In scope**: Skill prompt changes to `manage-issue`, `capture-issue`, and documentation files only
+- **Out of scope**: Adding `testable` to `issue_parser.py` `IssueInfo` dataclass (no Python CLI tools read this field; deferred to a follow-up if needed)
+- **Out of scope**: Emitting `testable: true` by default in `capture-issue` templates — absence means testable; only `testable: false` is ever set
+- **Out of scope**: Automated test coverage for this change (all modified files are markdown prompt files)
+
+## Impact
+
+- **Priority**: P3 — Low; does not block any current functionality, only improves reliability of TDD mode for edge-case issue types
+- **Effort**: Small — changes are limited to markdown skill prompt files and documentation; no Python code changes
+- **Risk**: Low — additive change to skip condition logic; existing TDD behavior unchanged for testable issues
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `tdd-mode`, `manage-issue`, `skill-prompt`, `documentation`
+
+## Status
+
+**Open** | Created: 2026-03-17 | Priority: P3
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-03-17_
@@ -87,7 +118,31 @@ _Added by `/ll:confidence-check` on 2026-03-17_
 ### Outcome Risk Factors
 - Zero automated test coverage — all changes are markdown prompt files. Behavioral correctness requires a manual smoke test: invoke `manage-issue` with `tdd_mode: true` on a doc-only issue and verify Phase 3a is skipped.
 
+## Resolution
+
+**Status**: Completed — 2026-03-17
+
+### Changes Made
+
+1. **`skills/manage-issue/SKILL.md`** — Extended Phase 3a skip condition to include `testable: false` frontmatter check. Added pseudocode block (modeled after Phase 2.5 confidence gate) that reads `testable` from frontmatter and logs `"⏭ Phase 3a skipped: testable: false in issue frontmatter"`.
+2. **`skills/manage-issue/templates.md`** — Added note to Phase 0 TDD callout: skip Phase 0 entirely if `testable: false` in frontmatter; updated phase title to reflect the condition.
+3. **`docs/reference/ISSUE_TEMPLATE.md`** — Added "Frontmatter Fields" section documenting all recognized frontmatter fields including `testable: false` with usage example.
+4. **`docs/reference/CONFIGURATION.md`** — Added per-issue override note to `tdd_mode` entry documenting `testable: false` and linking to ISSUE_TEMPLATE.md.
+5. **This issue file** — Added `testable: false` to frontmatter as the first use of the new mechanism.
+
+### Verification
+
+All changes are markdown skill-prompt and documentation files. No Python code was modified. No automated tests apply (by design — this is the exact issue being resolved).
+
+### Scope Boundary Confirmed
+
+- `skills/capture-issue/templates.md` unchanged — absence means testable; no default `testable` field emitted.
+- `scripts/little_loops/issue_parser.py` unchanged — out of scope per issue definition.
+- `config-schema.json` unchanged — `testable` is an issue-file field, not a config field.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d291ca8c-ece5-4433-b750-0c282dcfe485.jsonl`
+- `/ll:ready-issue` - 2026-03-18T02:37:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0594017-e79c-402c-b761-dc25efc2dbce.jsonl`
 - `/ll:refine-issue` - 2026-03-18T02:24:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8afbe716-0bb6-44ed-abbe-d48406e9d90f.jsonl`
 - `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73090a87-0698-4eeb-9d27-83936dec2511.jsonl`
 - `/ll:refine-issue` - 2026-03-18T02:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a56e6201-d603-4920-9c45-b18975f046e7.jsonl`

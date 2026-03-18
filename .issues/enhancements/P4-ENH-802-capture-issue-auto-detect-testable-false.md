@@ -3,6 +3,7 @@ discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 68
+testable: false
 ---
 
 # ENH-802: auto-detect and set `testable: false` for doc-only issues across the issue pipeline
@@ -133,6 +134,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-03-17 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T03:49:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f3f1b7c-1a67-49db-8bab-4ef369788578.jsonl`
 - `/ll:refine-issue` - 2026-03-18T03:41:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/091e39b0-ea1d-46cf-bdb2-857825824d3b.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0873aba7-6e24-4b9d-bf58-565ee42ebe88.jsonl`
 - `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc742b74-08bf-4de2-8645-d69303ab8e64.jsonl`
