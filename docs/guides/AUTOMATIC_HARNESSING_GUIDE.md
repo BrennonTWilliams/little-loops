@@ -4,6 +4,33 @@ The hard problem in automated iteration isn't running the skill — it's knowing
 
 ---
 
+## Table of Contents
+
+- [What Is a Harness Loop?](#what-is-a-harness-loop)
+  - [The Evaluation Pipeline](#the-evaluation-pipeline)
+- [Evaluation Phases Explained](#evaluation-phases-explained)
+  - [Tool-Based Gates (`check_concrete`)](#tool-based-gates-check_concrete)
+  - [MCP Tool Gates (`check_mcp`)](#mcp-tool-gates-check_mcp)
+  - [Skill-as-Judge (`check_skill`)](#skill-as-judge-check_skill)
+  - [LLM-as-Judge (`check_semantic`)](#llm-as-judge-check_semantic)
+  - [Diff Invariants (`check_invariants`)](#diff-invariants-check_invariants)
+- [When to Use a Harness](#when-to-use-a-harness)
+- [Creating a Harness: The 4-Step Wizard](#creating-a-harness-the-4-step-wizard)
+  - [Step H1: Choose a Target](#step-h1-choose-a-target)
+  - [Step H2: Work Item Discovery](#step-h2-work-item-discovery)
+  - [Step H3: Evaluation Phases](#step-h3-evaluation-phases)
+  - [Step H4: Iteration Budget](#step-h4-iteration-budget)
+- [Generated FSM Structure](#generated-fsm-structure)
+  - [Variant A: Single-Shot](#variant-a-single-shot)
+  - [Variant B: Multi-Item](#variant-b-multi-item)
+- [Stall Detection](#stall-detection)
+- [Worked Example: Harness `refine-issue`](#worked-example-harness-refine-issue)
+- [Tips](#tips)
+- [Troubleshooting](#troubleshooting)
+- [See Also](#see-also)
+
+---
+
 ## What Is a Harness Loop?
 
 A harness loop is a pre-structured FSM pattern that repeatedly applies a skill or prompt to a list of work items (or once in single-shot mode), evaluating success after each run through a layered quality pipeline.
@@ -25,27 +52,37 @@ Each phase is optional; the wizard pre-selects based on your project config. All
 **Conceptual cycle:**
 
 ```
-            ┌─────────────────────────────────────────────┐
-            │                                             │
-            ▼                                             │
-       ┌─────────┐     items      ┌─────────┐            │
-       │discover │───remaining───►│ execute │            │
-       └─────────┘                └────┬────┘            │
-            │                         │                  │
-         no items                   next                 │
-            │                         ▼             on_no (retry)
-            ▼                  ┌──────────────┐          │
-          done ◄── terminal    │check_concrete│──────────┤
-                               └──────┬───────┘          │
-                                   on_yes                 │
-                                      ▼                   │
-                               ┌──────────────┐           │
-                               │check_semantic│───────────┤
-                               └──────┬───────┘           │
-                                   on_yes                  │
-                                      ▼                    │
-                               ┌──────────────────┐        │
-                               │check_invariants  │────────┘
+            ┌──────────────────────────────────────────────────┐
+            │                                                  │
+            ▼                                                  │
+       ┌─────────┐     items      ┌─────────┐                 │
+       │discover │───remaining───►│ execute │                 │
+       └─────────┘                └────┬────┘                 │
+            │                         │                       │
+         no items                   next                      │
+            │                         ▼               on_no (retry)
+            ▼                  ┌──────────────┐               │
+          done ◄── terminal    │check_concrete│───────────────┤
+                               └──────┬───────┘               │
+                                   on_yes                      │
+                                      ▼                        │
+                               ┌──────────────┐               │
+                               │  check_mcp   │───────────────┤
+                               └──────┬───────┘               │
+                                   on_yes                      │
+                                      ▼                        │
+                               ┌──────────────┐               │
+                               │ check_skill  │───────────────┤
+                               └──────┬───────┘               │
+                                   on_yes                      │
+                                      ▼                        │
+                               ┌──────────────┐               │
+                               │check_semantic│───────────────┤
+                               └──────┬───────┘               │
+                                   on_yes                      │
+                                      ▼                        │
+                               ┌──────────────────┐           │
+                               │check_invariants  │───────────┘
                                └──────┬───────────┘
                                    on_yes
                                       ▼
@@ -151,6 +188,13 @@ check_skill:
   on_no: execute
 ```
 
+**`action_type` values for skill invocations:**
+
+| `action_type` | How it runs | When to use |
+|---|---|---|
+| `slash_command` | Executes the action string as a named slash command directly | Use when the action is a fixed `/ll:<name>` slash command |
+| `prompt` | Sends the action string as a free-form instruction to Claude | Use for natural-language prompts, or when the skill name is dynamic or constructed at runtime |
+
 For skills invoked as free-form prompts (no fixed slash command), use `action_type: prompt`:
 
 ```yaml
@@ -175,6 +219,8 @@ check_skill:
 
 Uses an `llm_structured` evaluator where Claude assesses whether the previous action achieved its intent. The evaluation prompt is auto-derived from the skill's description:
 
+> **Why `echo` as the action?** The `llm_structured` evaluator judges the *previous* state's output — not the current state's shell output. The `check_semantic` state still requires an `action` field, so a minimal `echo` satisfies the field while doing nothing meaningful. The echo output is ignored; only the `evaluate.prompt` and the captured context from the preceding state matter.
+
 ```yaml
 evaluate:
   type: llm_structured
@@ -193,7 +239,7 @@ Adjust the `target` value for skills that intentionally make large changes.
 
 ---
 
-**Full 6-phase ordering (with all phases active):**
+**Full 5-phase ordering (with all phases active):**
 
 ```
 check_concrete   → cheapest (exit code, <1s)
@@ -273,9 +319,9 @@ If you pick **Manual list**, you'll enter comma-separated items.
 
 | Mode | Discovery Command |
 |------|------------------|
-| Active issues list | `ll-issues list --json \| python3 -c "import json,sys; issues=[i for i in json.load(sys.stdin) if i.get('status')=='open']; print(issues[0]['id']) if issues else sys.exit(1)"` |
+| Active issues list | `ll-issues list --json \| python3 -c "..."` *(filters for `status == 'open'`, prints first issue ID, exits 1 when empty — see Variant B for full command)* |
 | File glob pattern | `find . -name '<pattern>' -not -path './.git/*' \| sort \| head -1` |
-| Manual list | `python3 -c "items='<item1>,<item2>,...'.split(','); [open('/tmp/harness-items.txt','w').write('\n'.join(items))]; print(items[0])"` |
+| Manual list | `python3 -c "items='<item1>,<item2>,...'.split(','); print(items[0])"` |
 
 ---
 
@@ -291,7 +337,7 @@ Which evaluation phases should be included? (multi-select)
   ○ Skill-based evaluation (Optional) — Invoke a skill to exercise and verify the feature as a user would
 ```
 
-> **Note**: `check_mcp` is not offered by the wizard. If your harness requires an MCP tool call for evaluation, add a `check_mcp` state manually to the generated YAML after wizard completion. See [`check_mcp`](#check_mcp) in the Evaluation Phases Explained section for the required fields.
+> **Note**: `check_mcp` is not offered by the wizard. If your harness requires an MCP tool call for evaluation, add a `check_mcp` state manually to the generated YAML after wizard completion. See [`check_mcp`](#mcp-tool-gates-check_mcp) in the Evaluation Phases Explained section for the required fields.
 
 **Tool-gate priority order** (highest-priority configured command wins):
 1. `test_cmd` — most comprehensive
@@ -469,7 +515,7 @@ check_stall:
   on_no: skip_item         # stalled — skip without consuming more iterations
 
 skip_item:
-  action: echo "Skipping ${current_item} after stall detection"
+  action: echo "Skipping ${captured.current_item.output} after stall detection"
   action_type: shell
   next: discover
 ```
@@ -495,11 +541,13 @@ skip_item:
 
 The following is a production-ready harness that refines all active issues. It is the canonical output of running the wizard with: target = `refine-issue`, discovery = active issues, all evaluation phases enabled, 3 retries, 200 iterations.
 
+> **Note**: This example includes `check_concrete` and `check_semantic` but omits `check_mcp` and `check_skill`. The `check_mcp` gate is not generated by the wizard (add it manually if needed — see [MCP Tool Gates](#mcp-tool-gates-check_mcp)). The `check_skill` gate is optional and only applies when a user-simulation skill is available for the workflow; it is omitted here to keep the example minimal.
+
 ```yaml
 name: "harness-refine-issue"
 initial: discover
 max_iterations: 200
-timeout: 14400                    # 4-hour wall clock limit
+timeout: 14400                    # 4-hour wall clock limit (seconds)
 states:
 
   discover:                       # pop the next open issue ID
