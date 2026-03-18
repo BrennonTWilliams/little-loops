@@ -12,6 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.52.0] - 2026-03-17
+
+### Added
+
+- **Hierarchical sub-loop states for composable FSM loops** — FSM loops can now delegate to specialized sub-loops as named states (930fd7e)
+- **Evaluation-quality FSM loop** — Built-in loop for multi-dimensional health checks across quality dimensions (d6dc7e4)
+- **`plan` state in `general-task` loop** — Decomposes tasks into steps before execution for improved planning (fc42348)
+- **`testable` field in `IssueInfo` dataclass** — Tracks whether an issue can be automatically validated (ENH-800)
+- **Auto-detect `testable: false` for doc-only issues** — Pipeline and `manage-issue` automatically mark documentation-only issues as non-testable (ENH-802)
+
+### Fixed
+
+- **LLM evaluator uses `--json-schema` flag** — Prevents LLM preamble from corrupting structured output in evaluators (BUG-794)
+- **`on_error` handlers in issue-refinement loop prompt states** — Prevents silent failures when prompt states encounter errors (BUG-773)
+- **RL coding agent stall detection and live LLM judge** — More accurate stall detection with live LLM judging prevents false stalls (ENH-793)
+
+### Changed
+
+- **`analyze-loop` distinguishes intentional cycling from stuck retries** — Retry flood detection no longer conflates on_no routing with true stuck retries (ENH-775)
+- **`create-loop` wizard uses structural patterns** — Templates and questions refactored to guide users toward pattern-based loop design (ENH-756)
+- **`parse_frontmatter` warns on unsupported YAML syntax** — Surfaces warnings when YAML lists or colon-containing values are silently dropped (ENH-693)
+- **`rl-coding-agent` reads `test_cmd`/`lint_cmd` from `ll-config.json`** — Agent uses project-configured commands instead of defaults (ENH-793)
+- **`issue-history` uses `statistics.linear_regression`** — Replaced manual OLS implementation with Python standard library (5aad93f)
+- **BFS edge case coverage for coupling cluster analysis** — Added tests for `_build_coupling_clusters` edge cases (ENH-697)
+
+### Documentation
+
+- **Sub-loop composition guide** — Architecture and guides updated to cover hierarchical sub-loop composition patterns (cee79f5)
+- **Claude Code structured outputs guide** — New guide covering structured output generation with `--json-schema` (b1bf58f)
+- **Docs accuracy fixes** — Corrected `diff_stall` verdicts, `capture_template` config, and loops catalog entries (9e2840b)
+
 ## [1.51.0] - 2026-03-16
 
 ### Added
@@ -1392,6 +1423,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.52.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.51.0...v1.52.0
 [1.51.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.50.0...v1.51.0
 [1.50.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.49.0...v1.50.0
 [1.49.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.48.0...v1.49.0
