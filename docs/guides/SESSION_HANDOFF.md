@@ -2,6 +2,31 @@
 
 Automatic context management and session continuation for long-running tasks.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+  - [Prerequisites](#prerequisites)
+  - [Enable Context Monitoring](#enable-context-monitoring)
+  - [Manual Handoff](#manual-handoff)
+  - [Resume in New Session](#resume-in-new-session)
+- [How It Works](#how-it-works)
+  - [Interactive Sessions](#interactive-sessions)
+  - [Automation Tools](#automation-tools-ll-auto-ll-parallel)
+- [Commands](#commands)
+  - [`/ll:handoff`](#llhandoff)
+  - [`/ll:resume`](#llresume)
+- [Configuration](#configuration)
+  - [Full Configuration Options](#full-configuration-options)
+  - [Configuration Reference](#configuration-reference)
+  - [Auto-Detect on Session Start](#auto-detect-on-session-start)
+  - [Token Estimation Weights](#token-estimation-weights)
+- [Files](#files)
+- [Troubleshooting](#troubleshooting)
+- [Best Practices](#best-practices)
+- [Integration](#integration)
+- [See Also](#see-also)
+
 ## Overview
 
 Claude Code sessions have a context window limit. When working on complex tasks, context can fill up, potentially losing progress. Session handoff solves this by:
@@ -12,6 +37,21 @@ Claude Code sessions have a context window limit. When working on complex tasks,
 4. **Resuming** seamlessly in a fresh session
 
 ## Quick Start
+
+### Prerequisites
+
+The context monitor hook requires [`jq`](https://jqlang.github.io/jq/) to parse the config file at runtime:
+
+```bash
+# macOS
+brew install jq
+
+# Debian/Ubuntu
+sudo apt-get install jq
+
+# Verify
+which jq
+```
 
 ### Enable Context Monitoring
 
@@ -172,7 +212,7 @@ Add the /auth/refresh endpoint with cookie handling
 
 **Deep Mode Output:** Includes all sections above, plus:
 
-```markdown
+~~~markdown
 ## Artifact Validation
 
 ### Current Git Status
@@ -194,7 +234,7 @@ No discrepancies detected between conversation and artifacts
 
 ### Plan Files
 - Active plan: `thoughts/shared/plans/2024-01-15-auth-refactor.md`
-```
+~~~
 
 ### `/ll:resume`
 
@@ -216,6 +256,17 @@ Resuming from previous session
 ─────────────────────────────────────────────────────────────────
 
 Ready to continue. What would you like to do next?
+```
+
+**Error — file not found:**
+
+If the specified path does not exist, `/ll:resume` reports an error and stops:
+
+```
+Error: No continuation prompt found at .claude/ll-continue-prompt.md
+
+Run /ll:handoff to generate one, or specify a custom path:
+  /ll:resume path/to/custom-prompt.md
 ```
 
 ## Configuration
@@ -253,7 +304,15 @@ Ready to continue. What would you like to do next?
 |---------|---------|-------------|
 | `context_monitor.enabled` | `false` | Enable automatic context monitoring |
 | `context_monitor.auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
-| `context_monitor.context_limit_estimate` | `150000` | Conservative token limit estimate |
+| `context_monitor.context_limit_estimate` | `150000` | Conservative token limit estimate used to calculate usage percentage |
+| `context_monitor.estimate_weights.read_per_line` | `10` | Token cost per line for Read tool calls |
+| `context_monitor.estimate_weights.tool_call_base` | `100` | Base token overhead per tool call |
+| `context_monitor.estimate_weights.bash_output_per_char` | `0.3` | Token cost per character for Bash output |
+| `continuation.enabled` | `true` | Enable session continuation features |
+| `continuation.auto_detect_on_session_start` | `true` | Automatically detect and offer to resume an existing continuation prompt when a new session starts |
+| `continuation.include_todos` | `true` | Include current todo list state in deep mode handoff output |
+| `continuation.include_git_status` | `true` | Include git status in deep mode handoff output |
+| `continuation.include_recent_files` | `true` | Include recently modified files in deep mode handoff output |
 | `continuation.max_continuations` | `3` | Max auto-continuations per issue (automation) |
 | `continuation.prompt_expiry_hours` | `24` | Hours before prompt marked stale |
 
@@ -264,6 +323,10 @@ ll-auto --handoff-threshold 90      # Trigger handoff at 90% for this run
 ll-parallel --handoff-threshold 70  # Earlier warnings for parallel runs
 ll-sprint run my-sprint --handoff-threshold 85
 ```
+
+### Auto-Detect on Session Start
+
+When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.claude/ll-continue-prompt.md` at the beginning of each session. If a prompt file is found that is not yet expired, a notice is printed prompting you to run `/ll:resume`. Set this to `false` to suppress automatic detection and only resume manually.
 
 ### Token Estimation Weights
 
@@ -404,7 +467,7 @@ The `/ll:handoff` command auto-generates prompts from conversation history. You 
 ### With Other Hooks
 
 - **PostToolUse hook**: Monitors context usage and triggers handoff reminders
-- **Stop hook**: Cleans up context state file when session ends
+- **Stop hook**: Cleans up context state when the session ends by deleting `.claude/ll-context-state.json` and `.claude/ll-session-state.json`; the continuation prompt `.claude/ll-continue-prompt.md` is preserved for use by `/ll:resume`
 
 ### With Automation Tools
 

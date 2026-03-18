@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
+testable: false
 ---
 
 # ENH-797: Fix documentation issues in SESSION_HANDOFF.md
@@ -97,10 +98,25 @@ The nested fenced code block bug actively breaks rendering in most Markdown rend
 
 `documentation`, `enhancement`, `captured`
 
+## Resolution
+
+All 8 issues resolved in `docs/guides/SESSION_HANDOFF.md`:
+
+1. Fixed nested fenced code block in `--deep` mode example by changing outer ` ```markdown ` fence to `~~~markdown`
+2. Added `continuation.enabled`, `auto_detect_on_session_start`, `include_todos`, `include_git_status`, `include_recent_files` to Configuration Reference table
+3. Added jq as a prerequisite in the Quick Start section with install instructions
+4. Added prose explanation for `auto_detect_on_session_start` in a new subsection
+5. Added `estimate_weights.*` fields to the Configuration Reference table
+6. Documented `/ll:resume` error case when the handoff file path does not exist
+7. Clarified which files the Stop hook deletes (`.claude/ll-context-state.json` and `.claude/ll-session-state.json`)
+8. Added table of contents at the top of the document
+
 ## Status
 
-**Open** | Created: 2026-03-17 | Priority: P1
+**Completed** | Created: 2026-03-17 | Resolved: 2026-03-18 | Priority: P1
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-03-18T16:10:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ead85031-58d8-47c0-8a15-a5566d00fe7b.jsonl`
 - `/ll:format-issue` - 2026-03-18T01:51:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6fe969a-a054-43aa-be89-f0f4d50aacab.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
