@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
+testable: false
 ---
 
 # ENH-796: Fix documentation issues in LOOPS_GUIDE.md
@@ -68,10 +69,27 @@ The `mcp_result` evaluator appears in the harness evaluation pipeline table but 
 
 `documentation`, `loops`, `captured`
 
+## Resolution
+
+All 10 documentation issues resolved in `docs/guides/LOOPS_GUIDE.md`:
+
+1. Added table of contents at the top of the document
+2. Added `mcp_result` to the main Evaluators reference table with verdict details and link to MCP Tool Actions
+3. Added forward reference in `diff_stall` table entry linking to [Stall Detection](#stall-detection)
+4. Added new **"Retry and Timing Fields"** subsection in Beyond the Basics introducing `backoff:`, `max_retries`, and `on_retry_exhausted` with example
+5. Added introductory sentence to "Beyond the Basics" listing all covered topics
+6. Fixed `apo-beam` `eval_criteria` default from `""` to `"clarity, specificity, and effectiveness"` — consistent with all other APO loops
+7. Standardized arrow styles in all 5 APO FSM flow diagrams from `→` to `──→` (matching harness diagrams)
+8. Removed `---` horizontal rule separators between APO subsections — rely on `###` headings consistently
+9. Grouped built-in loops table into 4 categories: Issue Management, Code Quality, Reinforcement Learning, Automatic Prompt Optimization
+10. Added steps 3 (Test) and 4 (Simulate) to the walkthrough with `ll-loop test` and `ll-loop simulate` examples; renumbered subsequent steps
+
 ## Status
 
-**Open** | Created: 2026-03-17 | Priority: P1
+**Completed** | Created: 2026-03-17 | Resolved: 2026-03-18 | Priority: P1
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a39b5c75-560c-4c69-82fb-496433339a86.jsonl`
+- `/ll:ready-issue` - 2026-03-18T15:56:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a39b5c75-560c-4c69-82fb-496433339a86.jsonl`
 - `/ll:format-issue` - 2026-03-18T01:51:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6fe969a-a054-43aa-be89-f0f4d50aacab.jsonl`
 - `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`

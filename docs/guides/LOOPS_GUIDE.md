@@ -1,5 +1,44 @@
 # Loops Guide
 
+## Contents
+
+- [What Is a Loop?](#what-is-a-loop)
+- [How Loops Work](#how-loops-work)
+- [Common Loop Patterns](#common-loop-patterns)
+- [Walkthrough: Creating and Running a Loop](#walkthrough-creating-and-running-a-loop)
+- [Built-in Loops](#built-in-loops)
+- [Beyond the Basics](#beyond-the-basics)
+  - [Evaluators](#evaluators)
+  - [Variable Interpolation](#variable-interpolation)
+  - [Capture](#capture)
+  - [Routing](#routing)
+  - [Action Types](#action-types)
+  - [Retry and Timing Fields](#retry-and-timing-fields)
+  - [Handoff Behavior](#handoff-behavior)
+  - [Scope-Based Concurrency](#scope-based-concurrency)
+- [Prompt Optimization Loops (APO)](#prompt-optimization-loops-apo)
+  - [apo-feedback-refinement](#apo-feedback-refinement--feedback-driven-refinement)
+  - [apo-contrastive](#apo-contrastive--contrastive-optimization)
+  - [apo-opro](#apo-opro--opro-style-history-guided-optimization)
+  - [apo-beam](#apo-beam--beam-search-optimization)
+  - [apo-textgrad](#apo-textgrad--textgrad-example-driven-gradient-descent)
+  - [Choosing Between APO Loops](#choosing-between-apo-loops)
+  - [Tips for APO Loops](#tips-for-apo-loops)
+- [Harness Loops](#harness-loops)
+  - [The Evaluation Pipeline](#the-evaluation-pipeline)
+  - [Creating a Harness](#creating-a-harness)
+  - [FSM Structure](#fsm-structure)
+  - [Stall Detection](#stall-detection)
+  - [When to Use a Harness vs. Hand-Authored Loop](#when-to-use-a-harness-vs-hand-authored-loop)
+- [CLI Quick Reference](#cli-quick-reference)
+- [Pattern: Using --check with Exit Code Evaluators](#pattern-using---check-with-exit-code-evaluators)
+- [Tips](#tips)
+- [Composable Sub-Loops](#composable-sub-loops)
+- [Troubleshooting](#troubleshooting)
+- [Further Reading](#further-reading)
+
+---
+
 ## What Is a Loop?
 
 A loop is a YAML-defined automation workflow that runs commands, evaluates results, and decides what to do next — without you prompting each step. Under the hood, each loop is a **Finite State Machine (FSM)**: a set of states connected by transitions, with a clear start and end.
@@ -98,7 +137,31 @@ ll-loop validate fix-tests
 
 The validator checks your YAML for schema errors, unreachable states, and missing transitions.
 
-### 3. Inspect
+### 3. Test (Dry Run)
+
+Run a single iteration to verify the loop configuration without a full execution:
+
+```bash
+ll-loop test fix-tests
+```
+
+This executes one iteration from the initial state, prints the action, result, and routing decision, then stops. Use it to confirm the YAML is wired correctly before committing to a full run.
+
+### 4. Simulate
+
+Step through the loop interactively without running any actions — useful for tracing paths through complex FSMs:
+
+```bash
+ll-loop simulate fix-tests
+```
+
+The simulator prompts you to choose a verdict at each state, then follows the transition and shows you the next state. Use `--scenario all-pass` or `--scenario all-fail` to auto-select verdicts and trace a path without interactive prompts:
+
+```bash
+ll-loop simulate fix-tests --scenario all-pass
+```
+
+### 5. Inspect
 
 ```bash
 ll-loop show fix-tests
@@ -139,7 +202,7 @@ Run command:
   ll-loop run fix-tests
 ```
 
-### 4. Run
+### 6. Run
 
 ```bash
 ll-loop run fix-tests
@@ -147,7 +210,7 @@ ll-loop run fix-tests
 
 The engine enters `evaluate`, runs `pytest tests/`, checks the exit code, and follows the transition. If tests fail, it enters `fix`, sends the fix prompt to Claude, then returns to `evaluate`. This continues until tests pass or `max_iterations` is reached.
 
-### 5. Monitor
+### 7. Monitor
 
 ```bash
 ll-loop status fix-tests     # Current state and iteration count
@@ -162,32 +225,49 @@ These loops ship with little-loops and cover common workflows. Install one to `.
 ll-loop install <name>       # Copies to .loops/ for editing
 ```
 
+**Issue Management**
+
 | Loop | Description |
 |------|-------------|
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
-| `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass |
-| `docs-sync` | Verify documentation matches the codebase and check for broken links |
-| `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
+| `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
 | `issue-refinement` | Progressively refine all active issues through format → score → refine pipeline |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
+
+**Code Quality**
+
+| Loop | Description |
+|------|-------------|
+| `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass |
+| `docs-sync` | Verify documentation matches the codebase and check for broken links |
+| `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
+
+**Reinforcement Learning (RL)**
+
+| Loop | Description |
+|------|-------------|
 | `rl-bandit` | Epsilon-greedy bandit loop — explore vs exploit rounds routing on reward convergence |
-| `rl-rlhf` | RLHF-style loop — generate candidate output, score quality, refine until target met |
-| `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
-| `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
-| `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat |
-| `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
-| `apo-beam` | Beam search prompt optimization — generate N variants, score all, advance the winner |
-| `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
-| `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `rl-coding-agent` | Policy+RLHF composite loop for agentic coding — outer policy loop adapts coding strategy while inner RLHF loop polishes each artifact to a quality threshold |
+| `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
+| `rl-rlhf` | RLHF-style loop — generate candidate output, score quality, refine until target met |
+
+**Automatic Prompt Optimization (APO)**
+
+| Loop | Description |
+|------|-------------|
+| `apo-beam` | Beam search prompt optimization — generate N variants, score all, advance the winner |
+| `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat |
+| `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
+| `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
+| `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
 
 ## Beyond the Basics
 
-The sections below cover features you'll encounter as you move past simple loops. For full technical details — schema definitions, compiler internals, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md).
+The sections below cover features you'll encounter as you move past simple loops: evaluators, variable interpolation, capture, routing, action types, retry and timing fields, handoff behavior, and scope-based concurrency. For full technical details — schema definitions, compiler internals, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md).
 
 ### Evaluators
 
@@ -200,8 +280,9 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `output_json` | `yes` / `no` / `error` | — | Extract a JSON path value and compare |
 | `output_contains` | `yes` / `no` | — | Regex or substring match on stdout |
 | `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
-| `diff_stall` | `yes` / `no` / `error` | — | Detect when consecutive iterations produce no git diff changes |
+| `diff_stall` | `yes` / `no` / `error` | — | Detect when consecutive iterations produce no git diff changes (see [Stall Detection](#stall-detection)) |
 | `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
+| `mcp_result` | `success` / `tool_error` / `not_found` / `timeout` | `mcp_tool` actions | Evaluate MCP server tool call results; see [MCP Tool Actions](#mcp-tool-actions) for verdict details |
 
 Override the default by adding an `evaluate:` block to a state:
 
@@ -358,6 +439,27 @@ get-issue-details:
 
 MCP tools also appear as `check_mcp` evaluation gates in harness loops — a deterministic external-state check that runs before the more expensive LLM phases. See [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) for details.
 
+### Retry and Timing Fields
+
+These optional fields can be added to any state:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `backoff:` | number (seconds) | Delay before executing this state's action. Useful for rate-limited APIs or CI systems. Overridden at runtime by `--delay <SECONDS>`. |
+| `max_retries:` | integer | Maximum number of times the engine re-enters this state before triggering `on_retry_exhausted`. |
+| `on_retry_exhausted:` | state name | Target state when `max_retries` is reached. Common pattern in harness loops: `on_retry_exhausted: advance` to skip a stuck item and continue processing. |
+
+Example — skip an item after 3 failed attempts:
+
+```yaml
+execute:
+  action: /ll:refine-issue ${captured.current_item.output} --auto
+  action_type: prompt
+  max_retries: 3
+  on_retry_exhausted: advance
+  next: check_concrete
+```
+
 ### Handoff Behavior
 
 When a loop detects that Claude's context window is approaching its limit, it triggers a **handoff**:
@@ -453,12 +555,10 @@ ll-loop run --builtin apo-feedback-refinement --context prompt_file=system.md
 
 **FSM flow**:
 ```
-generate_candidate → evaluate_candidate → route_convergence
-                                          ├─ CONVERGED → apply_candidate → done
-                                          └─ NEEDS_REFINE → refine → generate_candidate
+generate_candidate ──→ evaluate_candidate ──→ route_convergence
+                                               ├─ CONVERGED ──→ apply_candidate ──→ done
+                                               └─ NEEDS_REFINE ──→ refine ──→ generate_candidate
 ```
-
----
 
 ### `apo-contrastive` — Contrastive Optimization
 
@@ -490,12 +590,10 @@ ll-loop apo-contrastive \
 
 **FSM flow**:
 ```
-generate_variants → score_and_select → route_convergence
-                                       ├─ CONVERGED → done
-                                       └─ CONTINUE → generate_variants
+generate_variants ──→ score_and_select ──→ route_convergence
+                                           ├─ CONVERGED ──→ done
+                                           └─ CONTINUE ──→ generate_variants
 ```
-
----
 
 ### `apo-opro` — OPRO-Style History-Guided Optimization
 
@@ -529,14 +627,12 @@ ll-loop install apo-opro
 
 **FSM flow**:
 ```
-init_history → propose_candidate → evaluate_candidate → update_history → route_convergence
-                    ↑                                                              │
-                    └──────────────────── CONTINUE ─────────────────────────────────┘
-                                                                                   │
-                                                                  CONVERGED → done
+init_history ──→ propose_candidate ──→ evaluate_candidate ──→ update_history ──→ route_convergence
+                       ↑                                                                  │
+                       └────────────────────── CONTINUE ───────────────────────────────────┘
+                                                                                           │
+                                                                          CONVERGED ──→ done
 ```
-
----
 
 ### `apo-beam` — Beam Search Optimization
 
@@ -549,7 +645,7 @@ init_history → propose_candidate → evaluate_candidate → update_history →
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `prompt_file` | `system.md` | Path to the prompt file to improve |
-| `eval_criteria` | `""` | Criteria used to score each variant |
+| `eval_criteria` | `"clarity, specificity, and effectiveness"` | Criteria used to score each variant |
 | `beam_width` | `4` | Number of distinct variants generated per iteration |
 | `target_score` | `90` | Score (0–100) at which the loop emits `CONVERGED` and terminates |
 
@@ -572,12 +668,10 @@ ll-loop install apo-beam
 
 **FSM flow**:
 ```
-generate_variants → score_variants → select_best → route_convergence
-                                                    ├─ CONVERGED → done
-                                                    └─ CONTINUE → generate_variants
+generate_variants ──→ score_variants ──→ select_best ──→ route_convergence
+                                                          ├─ CONVERGED ──→ done
+                                                          └─ CONTINUE ──→ generate_variants
 ```
-
----
 
 ### `apo-textgrad` — TextGrad (Example-Driven Gradient Descent)
 
@@ -622,12 +716,10 @@ ll-loop install apo-textgrad
 
 **FSM flow**:
 ```
-test_on_examples → compute_gradient → route_convergence
-                                      ├─ CONVERGED → done
-                                      └─ CONTINUE → apply_gradient → test_on_examples
+test_on_examples ──→ compute_gradient ──→ route_convergence
+                                          ├─ CONVERGED ──→ done
+                                          └─ CONTINUE ──→ apply_gradient ──→ test_on_examples
 ```
-
----
 
 ### Choosing Between APO Loops
 
