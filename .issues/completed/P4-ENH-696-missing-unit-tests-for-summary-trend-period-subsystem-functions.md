@@ -99,6 +99,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `enhancement`, `testing`, `issue-history`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T01:55:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/563cdf30-9834-4792-8bfb-d565756ce86d.jsonl`
 - `/ll:refine-issue` - 2026-03-18T01:38:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad925013-dacd-4dcc-85ed-4adc51ee8ed9.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
@@ -106,7 +107,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P4
+**Completed** | Created: 2026-03-13 | Priority: P4
+
+## Resolution
+
+- Added `TestGroupByPeriod` (6 cases): empty list, undated issues, monthly period start, quarterly period start, Dec→Q4 quarterly wrap (period_end=Dec 31), Dec monthly wrap
+- Added `TestCalculateTrend` (7 cases): ascending/descending/flat values, short series (<3), single element, empty, near-zero normalized slope within ±0.05 threshold
+- Added `TestAnalyzeSubsystems` (4 cases): degrading trend (recent_ratio>0.5, ≥5 issues), improving trend (recent_ratio<0.2, ≥5 issues), below-minimum gate stays stable, missing content skips issue
+- All 41 tests in `test_issue_history_summary.py` pass
 
 ## Verification Notes
 

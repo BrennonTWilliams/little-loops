@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from little_loops.issue_history import (
@@ -13,6 +13,11 @@ from little_loops.issue_history import (
     calculate_summary,
     format_summary_json,
     format_summary_text,
+)
+from little_loops.issue_history.summary import (
+    _analyze_subsystems,
+    _calculate_trend,
+    _group_by_period,
 )
 
 
@@ -339,3 +344,163 @@ class TestTechnicalDebtMetrics:
         result = debt.to_dict()
         assert result["backlog_growth_rate"] == 1.57
         assert result["debt_paydown_ratio"] == 2.79
+
+
+class TestGroupByPeriod:
+    """Tests for _group_by_period function."""
+
+    def test_empty_list_returns_empty(self) -> None:
+        """No issues → empty result."""
+        result = _group_by_period([], period_type="monthly")
+        assert result == []
+
+    def test_issues_without_dates_returns_empty(self) -> None:
+        """Issues with no completed_date are excluded."""
+        issues = [CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1")]
+        result = _group_by_period(issues, period_type="monthly")
+        assert result == []
+
+    def test_monthly_period_start(self) -> None:
+        """Issue on July 15 groups into July 1 monthly period."""
+        issues = [
+            CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1", completed_date=date(2026, 7, 15))
+        ]
+        result = _group_by_period(issues, period_type="monthly")
+        assert len(result) == 1
+        assert result[0].period_start == date(2026, 7, 1)
+        assert result[0].period_end == date(2026, 7, 31)
+        assert result[0].total_completed == 1
+
+    def test_quarterly_period_start(self) -> None:
+        """Issue on July 15 groups into Q3 period starting July 1."""
+        issues = [
+            CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1", completed_date=date(2026, 7, 15))
+        ]
+        result = _group_by_period(issues, period_type="quarterly")
+        assert len(result) == 1
+        assert result[0].period_start == date(2026, 7, 1)
+        assert result[0].period_end == date(2026, 9, 30)
+
+    def test_quarterly_december_wrap(self) -> None:
+        """Issue in December falls in Q4 (Oct 1); period end wraps to Dec 31."""
+        issues = [
+            CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1", completed_date=date(2026, 12, 15))
+        ]
+        result = _group_by_period(issues, period_type="quarterly")
+        assert len(result) == 1
+        assert result[0].period_start == date(2026, 10, 1)
+        assert result[0].period_end == date(2026, 12, 31)
+
+    def test_monthly_december_wrap(self) -> None:
+        """December monthly period ends on Dec 31 (January wraps to next year)."""
+        issues = [
+            CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1", completed_date=date(2026, 12, 5))
+        ]
+        result = _group_by_period(issues, period_type="monthly")
+        assert len(result) == 1
+        assert result[0].period_start == date(2026, 12, 1)
+        assert result[0].period_end == date(2026, 12, 31)
+
+
+class TestCalculateTrend:
+    """Tests for _calculate_trend function."""
+
+    def test_ascending_returns_increasing(self) -> None:
+        """Clearly ascending values produce 'increasing'."""
+        assert _calculate_trend([1.0, 2.0, 3.0]) == "increasing"
+
+    def test_descending_returns_decreasing(self) -> None:
+        """Clearly descending values produce 'decreasing'."""
+        assert _calculate_trend([3.0, 2.0, 1.0]) == "decreasing"
+
+    def test_flat_returns_stable(self) -> None:
+        """All-equal values produce 'stable' (slope = 0)."""
+        assert _calculate_trend([2.0, 2.0, 2.0]) == "stable"
+
+    def test_two_elements_returns_stable(self) -> None:
+        """Short series (< 3 elements) returns 'stable' unconditionally."""
+        assert _calculate_trend([1.0, 2.0]) == "stable"
+
+    def test_one_element_returns_stable(self) -> None:
+        """Single-element series returns 'stable'."""
+        assert _calculate_trend([5.0]) == "stable"
+
+    def test_empty_returns_stable(self) -> None:
+        """Empty series returns 'stable'."""
+        assert _calculate_trend([]) == "stable"
+
+    def test_near_zero_normalized_slope_returns_stable(self) -> None:
+        """Normalized slope within ±0.05 threshold returns 'stable'."""
+        assert _calculate_trend([1.0, 1.02, 1.01]) == "stable"
+
+
+class TestAnalyzeSubsystems:
+    """Tests for _analyze_subsystems function."""
+
+    def _make_issue(self, issue_id: str, completed_date: date | None = None) -> CompletedIssue:
+        """Create a CompletedIssue with a path matching the issue_id."""
+        return CompletedIssue(
+            path=Path(f"/issues/{issue_id}.md"),
+            issue_type="BUG",
+            priority="P1",
+            issue_id=issue_id,
+            completed_date=completed_date,
+        )
+
+    def _subsystem_content(self, subsystem: str) -> str:
+        """Return issue content that extracts the given subsystem path."""
+        return f"**File**: `{subsystem}`\nSome issue description."
+
+    def test_degrading_trend(self) -> None:
+        """recent_ratio > 0.5 with total_issues >= 5 → trend='degrading'."""
+        today = date.today()
+        old = date(2020, 1, 1)
+        issues = [
+            self._make_issue("BUG-1", today),
+            self._make_issue("BUG-2", today),
+            self._make_issue("BUG-3", today),
+            self._make_issue("BUG-4", today),
+            self._make_issue("BUG-5", old),
+            self._make_issue("BUG-6", old),
+        ]
+        contents = {issue.path: self._subsystem_content("scripts/little_loops/") for issue in issues}
+
+        result = _analyze_subsystems(issues, recent_days=30, contents=contents)
+
+        assert len(result) == 1
+        assert result[0].total_issues == 6
+        assert result[0].recent_issues == 4
+        assert result[0].trend == "degrading"
+
+    def test_improving_trend(self) -> None:
+        """recent_ratio < 0.2 with total_issues >= 5 → trend='improving'."""
+        old = date(2020, 1, 1)
+        subsystem = "scripts/little_loops/"
+        issues = [self._make_issue(f"BUG-{i}", old) for i in range(1, 6)]
+        contents = {issue.path: self._subsystem_content(subsystem) for issue in issues}
+
+        result = _analyze_subsystems(issues, recent_days=30, contents=contents)
+
+        assert len(result) == 1
+        assert result[0].total_issues == 5
+        assert result[0].recent_issues == 0
+        assert result[0].trend == "improving"
+
+    def test_below_minimum_gate_stays_stable(self) -> None:
+        """Fewer than 5 total issues → trend stays 'stable' regardless of ratio."""
+        today = date.today()
+        subsystem = "scripts/little_loops/"
+        issues = [self._make_issue(f"BUG-{i}", today) for i in range(1, 5)]
+        contents = {issue.path: self._subsystem_content(subsystem) for issue in issues}
+
+        result = _analyze_subsystems(issues, recent_days=30, contents=contents)
+
+        assert len(result) == 1
+        assert result[0].total_issues == 4
+        assert result[0].trend == "stable"
+
+    def test_no_content_skips_issue(self) -> None:
+        """Issues without content in the dict are skipped."""
+        issues = [self._make_issue("BUG-1", date.today())]
+        result = _analyze_subsystems(issues, recent_days=30, contents={})
+        assert result == []
