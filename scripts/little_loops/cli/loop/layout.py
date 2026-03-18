@@ -13,6 +13,7 @@ import re
 from collections import deque
 
 from wcwidth import wcswidth as _wcswidth
+from wcwidth import wcwidth as _wcwidth
 
 from little_loops.cli.output import colorize, terminal_width
 from little_loops.fsm.schema import FSMLoop, StateConfig
@@ -107,23 +108,15 @@ def _box_inner_lines(
     display_label: str,
     verbose: bool,
     inner_width: int,
-    badge: str = "",
 ) -> list[str]:
     """Return interior lines for a state box (between top and bottom borders).
 
-    The first line is ``display_label`` with *badge* right-aligned (if provided).
+    The first line is always ``display_label`` + type badge (if any).
     Subsequent lines are action content lines.  All lines fit within
     ``inner_width`` characters (content is truncated or wrapped accordingly).
     """
-    if badge:
-        badge_w = _badge_display_width(badge)
-        available = inner_width - badge_w - 1  # 1 space separator
-        if available > 0:
-            name_line = display_label[:available].ljust(available) + " " + badge
-        else:
-            name_line = badge
-    else:
-        name_line = display_label[:inner_width]
+    # Badge is now rendered in the top-right corner by _draw_box; name row is label only
+    name_line = display_label[:inner_width]
 
     lines: list[str] = [name_line]
 
@@ -490,8 +483,8 @@ def _compute_box_sizes(
         badge_w = _badge_display_width(badge) if badge else 0
         box_badge[s] = badge
 
-        # Width must fit both: name label and badge on same content row
-        base_w = len(display_label[s]) + (1 + badge_w if badge else 0)
+        # Width must fit: name label on content row, badge on top border
+        base_w = max(len(display_label[s]), badge_w)
 
         inner_w = base_w
         if state_obj and state_obj.action and max_box_inner > 0:
@@ -505,7 +498,7 @@ def _compute_box_sizes(
                 first_action = next((ln.rstrip() for ln in action_lines if ln.rstrip()), "")
                 inner_w = max(base_w, min(len(first_action), max_box_inner))
 
-        content = _box_inner_lines(state_obj, display_label[s], verbose, inner_w, badge)
+        content = _box_inner_lines(state_obj, display_label[s], verbose, inner_w)
         actual_w = max(len(ln) for ln in content)
         inner_w = max(inner_w, actual_w)
         box_inner[s] = content
@@ -528,8 +521,8 @@ def _draw_box(
 ) -> None:
     """Draw a state box onto a character grid at (row, col).
 
-    The *badge* parameter is accepted for API compatibility but badge placement
-    is handled by ``_box_inner_lines`` (right-aligned on the first content row).
+    If *badge* is provided it is placed right-aligned in the top border row,
+    immediately before the ┐ corner character.
     """
     total_width = len(grid[0]) if grid else 0
 
@@ -544,6 +537,20 @@ def _draw_box(
             grid[row][col + j] = _bc("\u2500")
     if col + width - 1 < total_width:
         grid[row][col + width - 1] = _bc("\u2510")
+
+    # Overlay badge in top-right corner (before ┐)
+    if badge:
+        badge_w = _badge_display_width(badge)
+        pos = col + width - 1 - badge_w
+        for ch in badge:
+            ch_w = _wcwidth(ch)
+            if ch_w < 1:
+                ch_w = 1
+            if col + 1 <= pos < col + width - 1 and pos < total_width:
+                grid[row][pos] = ch
+                if ch_w == 2 and pos + 1 < col + width - 1 and pos + 1 < total_width:
+                    grid[row][pos + 1] = ""
+            pos += ch_w
 
     # Content rows
     for i, line in enumerate(content):

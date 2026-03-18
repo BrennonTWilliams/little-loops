@@ -15,7 +15,6 @@ from little_loops.cli.loop.info import _render_fsm_diagram
 from little_loops.cli.loop.layout import (
     _ACTION_TYPE_BADGES,
     _SUB_LOOP_BADGE,
-    _box_inner_lines,
     _get_state_badge,
 )
 from little_loops.fsm.executor import ExecutionResult
@@ -1732,58 +1731,4 @@ class TestStateBadges:
             max_iterations=5,
         )
         result = _render_fsm_diagram(fsm)
-        assert "\u2726" in result  # ✦ prompt badge present in diagram
-
-    def test_box_inner_lines_no_badge(self) -> None:
-        """_box_inner_lines without badge returns label as name line."""
-        lines = _box_inner_lines(None, "init", False, 10)
-        assert lines[0] == "init"
-
-    def test_box_inner_lines_with_badge_embeds_badge_in_name_row(self) -> None:
-        """_box_inner_lines with badge right-aligns badge on the name line."""
-        # inner_width=10, badge="❯_" (display width 2), available=10-2-1=7
-        lines = _box_inner_lines(None, "init", False, 10, "❯_")
-        name_line = lines[0]
-        # Badge must appear at the end of the name line
-        assert name_line.endswith("❯_"), f"Expected badge at end, got: {name_line!r}"
-        # Total display length must equal inner_width
-        assert len(name_line) == 10, f"Expected width 10, got: {len(name_line)}"
-        # Label portion is left-padded to fill available space
-        assert name_line.startswith("init"), f"Expected label at start, got: {name_line!r}"
-
-    def test_box_inner_lines_badge_no_label_truncation_when_room(self) -> None:
-        """Full label shows when inner_width fits label + space + badge."""
-        badge = "\u2726"  # ✦ display width 1
-        lines = _box_inner_lines(None, "run", False, 8, badge)
-        # available = 8 - 1 - 1 = 6; "run" (3) ljust(6) = "run   "; + " " + "✦"
-        assert lines[0].endswith(badge)
-        assert "run" in lines[0]
-
-    def test_badge_on_content_row_not_border_row(self) -> None:
-        """After fix, badge appears on a │-bordered content row, not on the ┌─…─┐ border."""
-        fsm = FSMLoop(
-            name="test",
-            initial="start",
-            states={
-                "start": StateConfig(action="do something", action_type="shell", next="done"),
-                "done": StateConfig(terminal=True),
-            },
-            max_iterations=5,
-        )
-        result = _render_fsm_diagram(fsm)
-        badge = _ACTION_TYPE_BADGES["shell"]  # ❯_
-        lines = result.split("\n")
-
-        # Badge must appear on a content row (line containing │)
-        content_lines_with_badge = [ln for ln in lines if badge in ln and "\u2502" in ln]
-        assert content_lines_with_badge, (
-            f"Badge {badge!r} should appear on a │-bordered content row.\n{result}"
-        )
-
-        # Badge must NOT appear on the top border row (line starting with ┌ or containing only ─)
-        border_lines_with_badge = [
-            ln for ln in lines if badge in ln and "\u250c" in ln
-        ]
-        assert not border_lines_with_badge, (
-            f"Badge {badge!r} should NOT appear on the ┌─…─┐ border row.\n{result}"
-        )
+        assert "\u2726" in result  # ✦ prompt badge in top border
