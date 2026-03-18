@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-18
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 86
 ---
 
 # BUG-805: FSM box badge rendered on border row should be on first content row
@@ -112,6 +114,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18f420b1-0c39-4794-9ebd-f0386a21c8dd.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9957234-b252-4dee-a7f0-8db37b7c163b.jsonl`
 
 ---
 

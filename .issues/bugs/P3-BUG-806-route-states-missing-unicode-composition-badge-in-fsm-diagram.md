@@ -36,11 +36,11 @@ Route states render as plain boxes with no badge, indistinguishable from unlabel
 
 ## Expected Behavior
 
-Route states should render with a dedicated badge (e.g., `⇒` or `⤳` or `⊕`) that signals branching/routing behavior:
+Route states should render with the dedicated badge `⑃` that signals branching/routing behavior:
 
 ```
 ┌────────────────┐
-│ route_format ⇒ │
+│ route_format ⑃ │
 └────────────────┘
 ```
 
