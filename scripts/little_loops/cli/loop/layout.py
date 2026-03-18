@@ -12,6 +12,9 @@ from __future__ import annotations
 import re
 from collections import deque
 
+from wcwidth import wcswidth as _wcswidth
+from wcwidth import wcwidth as _wcwidth
+
 from little_loops.cli.output import colorize, terminal_width
 from little_loops.fsm.schema import FSMLoop, StateConfig
 
@@ -63,6 +66,39 @@ def _colorize_diagram_labels(diagram: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# State box badge definitions
+# ---------------------------------------------------------------------------
+
+_ACTION_TYPE_BADGES: dict[str, str] = {
+    "prompt": "\u2726",      # ✦
+    "slash_command": "/\u2501\u25ba",  # /━►
+    "shell": "\u276f_",      # ❯_
+    "mcp_tool": "\u26a1",    # ⚡
+}
+
+_SUB_LOOP_BADGE = "\u21b3\u27f3"  # ↳⟳
+
+
+def _badge_display_width(badge: str) -> int:
+    """Compute terminal display width of a badge string using wcwidth."""
+    w = _wcswidth(badge)
+    return w if w >= 0 else len(badge)
+
+
+def _get_state_badge(state: StateConfig | None) -> str:
+    """Return the unicode badge string for a state, or '' if none."""
+    if state is None:
+        return ""
+    if state.loop is not None:
+        return _SUB_LOOP_BADGE
+    if state.action_type:
+        return _ACTION_TYPE_BADGES.get(state.action_type, f"[{state.action_type}]")
+    if state.action:
+        return _ACTION_TYPE_BADGES["shell"]
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Box content helpers for multi-row diagram boxes
 # ---------------------------------------------------------------------------
 
@@ -79,26 +115,8 @@ def _box_inner_lines(
     Subsequent lines are action content lines.  All lines fit within
     ``inner_width`` characters (content is truncated or wrapped accordingly).
     """
-    # Determine type badge
-    badge = ""
-    if state and state.action_type:
-        badge = f"[{state.action_type}]"
-    elif state and state.action:
-        badge = "[shell]"
-
-    # Name + badge on first line
-    if badge:
-        candidate = f"{display_label}  {badge}"
-        if len(candidate) <= inner_width:
-            name_line = candidate
-        else:
-            # Fit badge at the expense of name truncation
-            avail = inner_width - len(badge) - 2
-            name_line = (
-                (display_label[:avail] + "  " + badge) if avail > 0 else candidate[:inner_width]
-            )
-    else:
-        name_line = display_label[:inner_width]
+    # Badge is now rendered in the top-right corner by _draw_box; name row is label only
+    name_line = display_label[:inner_width]
 
     lines: list[str] = [name_line]
 
@@ -449,25 +467,24 @@ def _compute_box_sizes(
     fsm_states: dict[str, StateConfig] | None,
     verbose: bool,
     max_box_inner: int,
-) -> tuple[dict[str, list[str]], dict[str, int], dict[str, int]]:
+) -> tuple[dict[str, list[str]], dict[str, int], dict[str, int], dict[str, str]]:
     """Compute box content, widths, and heights for all states.
 
-    Returns (box_inner, box_width, box_height).
+    Returns (box_inner, box_width, box_height, box_badge).
     """
     box_inner: dict[str, list[str]] = {}
     box_width: dict[str, int] = {}
+    box_badge: dict[str, str] = {}
 
     for s in all_states:
         state_obj = fsm_states.get(s) if fsm_states else None
 
-        badge = ""
-        if state_obj and state_obj.action_type:
-            badge = f"[{state_obj.action_type}]"
-        elif state_obj and state_obj.action:
-            badge = "[shell]"
+        badge = _get_state_badge(state_obj)
+        badge_w = _badge_display_width(badge) if badge else 0
+        box_badge[s] = badge
 
-        base_w = len(f"{display_label[s]}  {badge}") if badge else len(display_label[s])
-        base_w = max(base_w, len(display_label[s]))
+        # Width must fit: name label on content row, badge on top border
+        base_w = max(len(display_label[s]), badge_w)
 
         inner_w = base_w
         if state_obj and state_obj.action and max_box_inner > 0:
@@ -488,7 +505,7 @@ def _compute_box_sizes(
         box_width[s] = inner_w + 4  # "│ " + content + " │"
 
     box_height: dict[str, int] = {s: len(box_inner[s]) + 2 for s in all_states}
-    return box_inner, box_width, box_height
+    return box_inner, box_width, box_height, box_badge
 
 
 def _draw_box(
@@ -500,14 +517,19 @@ def _draw_box(
     content: list[str],
     is_highlighted: bool,
     highlight_color: str,
+    badge: str = "",
 ) -> None:
-    """Draw a state box onto a character grid at (row, col)."""
+    """Draw a state box onto a character grid at (row, col).
+
+    If *badge* is provided it is placed right-aligned in the top border row,
+    immediately before the ┐ corner character.
+    """
     total_width = len(grid[0]) if grid else 0
 
     def _bc(ch: str) -> str:
         return colorize(ch, highlight_color) if is_highlighted else ch
 
-    # Top border
+    # Top border: ┌ ─ ─ … ─ ┐
     if col < total_width:
         grid[row][col] = _bc("\u250c")
     for j in range(1, width - 1):
@@ -515,6 +537,20 @@ def _draw_box(
             grid[row][col + j] = _bc("\u2500")
     if col + width - 1 < total_width:
         grid[row][col + width - 1] = _bc("\u2510")
+
+    # Overlay badge in top-right corner (before ┐)
+    if badge:
+        badge_w = _badge_display_width(badge)
+        pos = col + width - 1 - badge_w
+        for ch in badge:
+            ch_w = _wcwidth(ch)
+            if ch_w < 1:
+                ch_w = 1
+            if col + 1 <= pos < col + width - 1 and pos < total_width:
+                grid[row][pos] = ch
+                if ch_w == 2 and pos + 1 < col + width - 1 and pos + 1 < total_width:
+                    grid[row][pos + 1] = ""
+            pos += ch_w
 
     # Content rows
     for i, line in enumerate(content):
@@ -596,7 +632,7 @@ def _render_layered_diagram(
     else:
         max_box_inner = max(20, min(40, (tw - 4) // max(1, max_layer_size) - 6))
 
-    box_inner, box_width, box_height = _compute_box_sizes(
+    box_inner, box_width, box_height, box_badge = _compute_box_sizes(
         all_states, display_label, fsm_states, verbose, max_box_inner
     )
 
@@ -904,6 +940,7 @@ def _render_layered_diagram(
             box_inner[sname],
             is_highlighted,
             highlight_color,
+            badge=box_badge[sname],
         )
 
     # Precompute box-occupied (row, col) pairs so connector lines can avoid overwriting box cells
@@ -1380,21 +1417,18 @@ def _render_fsm_diagram(
         )
 
     # Compute max node width to determine width constraint
-    # Quick estimate: widest state name + badge + padding
+    # Quick estimate: widest state name or badge + padding
     max_node_w = 30  # reasonable default
     for s in all_states:
         st = fsm.states.get(s)
-        badge = ""
-        if st and st.action_type:
-            badge = f"[{st.action_type}]"
-        elif st and st.action:
-            badge = "[shell]"
+        badge = _get_state_badge(st)
+        badge_w = _badge_display_width(badge) if badge else 0
         label = s
         if s == fsm.initial:
             label = "\u2192 " + label
         if s in terminal_states:
             label = label + " \u25c9"
-        w = len(f"{label}  {badge}") if badge else len(label)
+        w = max(len(label), badge_w)
         max_node_w = max(max_node_w, w + 4 + 4)  # inner + borders + padding
 
     max_width_per_layer = max(1, (tw - 10) // (max_node_w + 4))
@@ -1450,7 +1484,7 @@ def _render_horizontal_simple(
     else:
         max_box_inner = max(20, min(40, (tw - 4) // num_main - 6))
 
-    box_inner, box_width, box_height = _compute_box_sizes(
+    box_inner, box_width, box_height, box_badge = _compute_box_sizes(
         all_states, display_label, fsm_states, verbose, max_box_inner
     )
 
@@ -1481,6 +1515,7 @@ def _render_horizontal_simple(
             box_inner[sname],
             is_highlighted,
             highlight_color,
+            badge=box_badge[sname],
         )
 
     # Self-loops

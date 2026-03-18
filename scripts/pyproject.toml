@@ -36,6 +36,7 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml>=6.0",
+    "wcwidth>=0.2",
 ]
 
 [project.urls]

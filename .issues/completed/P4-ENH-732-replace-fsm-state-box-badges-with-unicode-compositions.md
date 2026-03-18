@@ -2,7 +2,7 @@
 id: ENH-732
 priority: P4
 type: ENH
-status: active
+status: completed
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 96
@@ -121,9 +121,24 @@ Sub-loop states (introduced in FEAT-659) have `state.loop is not None` but no `a
 - **Verdict**: NEEDS_UPDATE
 - Feature not yet implemented; no `_ACTION_TYPE_BADGES` dict. Actual badge sites (verified 2026-03-15): `layout.py` lines 82–98, 463–469, and **1387–1397** (not 1367 as stated in prior notes). Fourth site: `_helpers.py:334` (hardcoded literal `[prompt]`). Action type for mcp is `mcp_tool` (per `schema.py:211`), not `mcp`.
 
+## Resolution
+
+Implemented 2026-03-18.
+
+- Added `_ACTION_TYPE_BADGES` dict and `_SUB_LOOP_BADGE` constant to `layout.py`
+- Added `_badge_display_width` (wcwidth), `_get_state_badge` helpers
+- Updated `_draw_box` to place badge in top-right corner of top border
+- Updated `_compute_box_sizes` to return `box_badge` dict and use `_badge_display_width` for width calculations
+- Updated both `_draw_box` call sites to pass `badge=box_badge[sname]`
+- Updated pre-layout width estimation to use `_get_state_badge` / `_badge_display_width`
+- Removed badge from `_box_inner_lines` name row (badge now lives in border)
+- Updated `_helpers.py` hardcoded `[prompt]` → `✦`
+- Added `wcwidth>=0.2` to `pyproject.toml` dependencies
+- Added `TestStateBadges` test class with 8 assertions; all 99 tests pass
+
 ## Status
 
-Active — not yet started.
+Completed.
 
 ## Confidence Check Notes
 
@@ -140,6 +155,8 @@ _Resolved 2026-03-18: sub-loop badge standardized to `↳⟳`; `wcwidth` require
 - No test validation of new badges: existing tests won't catch regressions in badge string values; consider adding a minimal assertion
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T21:08:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3fec43af-cec2-467f-a768-5983e0362e95.jsonl`
+- `/ll:ready-issue` - 2026-03-18T21:07:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3fec43af-cec2-467f-a768-5983e0362e95.jsonl`
 - `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99fb3108-5258-4dd7-a41c-e5235bf3351d.jsonl`
 - `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deac850f-4f1f-4d78-b685-fb9e12887a16.jsonl`
 - `/ll:refine-issue` - 2026-03-18T20:22:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deac850f-4f1f-4d78-b685-fb9e12887a16.jsonl`
@@ -151,3 +168,4 @@ _Resolved 2026-03-18: sub-loop badge standardized to `↳⟳`; `wcwidth` require
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa4d2baf-3524-4c44-a9ad-16fe76a5f6b8.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/542b29e8-0de5-4f06-8439-bc467dc3bdab.jsonl`
+- `/ll:ready-issue` - 2026-03-18T21:08:35Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

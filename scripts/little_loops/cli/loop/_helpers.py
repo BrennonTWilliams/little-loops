@@ -333,8 +333,9 @@ def run_foreground(
                 if is_prompt:
                     lines = action.strip().splitlines()
                     line_count = len(lines)
+                    prompt_badge = "\u2726"  # ✦
                     print(
-                        f" -> {colorize('[prompt]', '2')} {colorize(f'({line_count} lines)', '2')}",
+                        f" -> {colorize(prompt_badge, '2')} {colorize(f'({line_count} lines)', '2')}",
                         flush=True,
                     )
                     show_count = line_count if verbose else min(5, line_count)

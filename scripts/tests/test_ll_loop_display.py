@@ -12,6 +12,11 @@ import pytest
 
 from little_loops.cli.loop._helpers import EXIT_CODES, run_foreground
 from little_loops.cli.loop.info import _render_fsm_diagram
+from little_loops.cli.loop.layout import (
+    _ACTION_TYPE_BADGES,
+    _SUB_LOOP_BADGE,
+    _get_state_badge,
+)
 from little_loops.fsm.executor import ExecutionResult
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -1672,3 +1677,58 @@ class TestRunForegroundExitCodes:
         assert EXIT_CODES["handoff"] == 0
         assert EXIT_CODES["max_iterations"] == 1
         assert EXIT_CODES["timeout"] == 1
+
+
+class TestStateBadges:
+    """Tests for unicode badge constants and _get_state_badge helper."""
+
+    def test_badge_constants_match_spec(self) -> None:
+        """Badge strings match the spec values."""
+        assert _ACTION_TYPE_BADGES["prompt"] == "\u2726"        # ✦
+        assert _ACTION_TYPE_BADGES["slash_command"] == "/\u2501\u25ba"  # /━►
+        assert _ACTION_TYPE_BADGES["shell"] == "\u276f_"        # ❯_
+        assert _ACTION_TYPE_BADGES["mcp_tool"] == "\u26a1"      # ⚡
+        assert _SUB_LOOP_BADGE == "\u21b3\u27f3"                # ↳⟳
+
+    def test_get_state_badge_none_state(self) -> None:
+        """No state → empty badge."""
+        assert _get_state_badge(None) == ""
+
+    def test_get_state_badge_no_action(self) -> None:
+        """State with no action or action_type → empty badge."""
+        assert _get_state_badge(StateConfig()) == ""
+
+    def test_get_state_badge_action_types(self) -> None:
+        """Known action_types map to their unicode badges."""
+        for action_type, expected in _ACTION_TYPE_BADGES.items():
+            state = StateConfig(action="x", action_type=action_type)  # type: ignore[arg-type]
+            assert _get_state_badge(state) == expected, f"action_type={action_type!r}"
+
+    def test_get_state_badge_shell_fallback(self) -> None:
+        """State with action but no action_type falls back to shell badge."""
+        state = StateConfig(action="echo hi")
+        assert _get_state_badge(state) == _ACTION_TYPE_BADGES["shell"]
+
+    def test_get_state_badge_sub_loop(self) -> None:
+        """State with loop field returns sub-loop badge regardless of action_type."""
+        state = StateConfig(loop="child-loop.yaml")
+        assert _get_state_badge(state) == _SUB_LOOP_BADGE
+
+    def test_sub_loop_badge_takes_precedence_over_action_type(self) -> None:
+        """loop field checked before action_type for badge selection."""
+        state = StateConfig(action_type="prompt", loop="child.yaml")  # type: ignore[arg-type]
+        assert _get_state_badge(state) == _SUB_LOOP_BADGE
+
+    def test_diagram_contains_prompt_badge(self) -> None:
+        """FSM diagram output contains ✦ for a prompt state."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={
+                "start": StateConfig(action="do something", action_type="prompt", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+        result = _render_fsm_diagram(fsm)
+        assert "\u2726" in result  # ✦ prompt badge in top border
