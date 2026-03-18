@@ -77,6 +77,7 @@ _ACTION_TYPE_BADGES: dict[str, str] = {
 }
 
 _SUB_LOOP_BADGE = "\u21b3\u27f3"  # ↳⟳
+_ROUTE_BADGE = "\u2443"  # ⑃
 
 
 def _badge_display_width(badge: str) -> int:
@@ -95,6 +96,8 @@ def _get_state_badge(state: StateConfig | None) -> str:
         return _ACTION_TYPE_BADGES.get(state.action_type, f"[{state.action_type}]")
     if state.action:
         return _ACTION_TYPE_BADGES["shell"]
+    if state.route is not None:
+        return _ROUTE_BADGE
     return ""
 
 

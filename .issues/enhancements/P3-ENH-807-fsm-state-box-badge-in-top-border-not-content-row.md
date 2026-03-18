@@ -33,26 +33,35 @@ The current placement puts the badge inline with the state name, compressing the
 
 ## Current Behavior
 
-Badge is right-aligned on the first content row inside the box:
+Badge is rendered in the top border, right-aligned with **no space padding** — placed immediately before the `┐` corner:
 
 ```
-┌───────────────────┐
-│ commit          ✦ │
+┌──────────────────✦┐
+│ commit            │
 │ /ll:commit        │
 └───────────────────┘
 ```
 
-Implemented in `_box_inner_lines()` (~line 118):
+`_box_inner_lines()` at line 118–119 already renders the name at full width (badge-free):
 
 ```python
+# Badge is now rendered in the top-right corner by _draw_box; name row is label only
+name_line = display_label[:inner_width]
+```
+
+`_draw_box()` at lines 541–553 overlays the badge directly before `┐` with no space:
+
+```python
+# Overlay badge in top-right corner (before ┐)
 if badge:
     badge_w = _badge_display_width(badge)
-    available = inner_width - badge_w - 1  # 1 space separator
-    if available > 0:
-        name_line = display_label[:available].ljust(available) + " " + badge
-    else:
-        name_line = badge
+    pos = col + width - 1 - badge_w  # immediately before ┐ — no space
+    for ch in badge:
+        ...
+        grid[row][pos] = ch  # written without _bc() — not colorized on highlight
 ```
+
+> **Note**: The "badge on content row" layout described in early versions of this issue was the post-BUG-805 state, which was reverted in commit `9d5c4ce`. The current code (after revert) already has the badge on the top border; the remaining gap is the missing space padding and missing `_bc()` colorization.
 
 ## Expected Behavior
 
@@ -75,45 +84,67 @@ Where N = `inner_width - badge_display_width - 2` (the two spaces).
 
 ## Implementation Steps
 
-1. **Modify `_draw_box()`** to render the badge in the top border:
-   - Replace the plain `─` fill with: `─ × fill_count` + ` ` + badge + ` ` before the closing `┐`
-   - `fill_count = inner_width - badge_display_width(badge) - 2`
-   - The badge parameter is already passed to `_draw_box()` (currently unused beyond API compat)
+1. **Modify `_draw_box()` to add space padding** (`layout.py:541–553`):
+   - Shift badge position left by 1: `pos = col + width - 1 - badge_w - 1` (one space before `┐`)
+   - Write a space character at `col + width - 2` (the cell between badge end and `┐`) — or rely on the existing `─` cell; to get an actual space (not `─`), explicitly write `" "` there
+   - Wrap each badge character write with `_bc()` for highlighted colorization:
+     `grid[row][pos] = _bc(ch)` instead of `grid[row][pos] = ch`
+   - Update docstring: change "immediately before the ┐ corner character" to "with one space of padding on each side"
 
-2. **Modify `_box_inner_lines()`** to stop placing the badge:
-   - Remove the `if badge:` branch that right-aligns badge on the name line
-   - Always use `name_line = display_label[:inner_width]` (full width available)
+2. **Steps 2 already done** — `_box_inner_lines()` at line 118–119 already renders the full-width name with no badge. No change needed.
 
-3. **Update `_compute_box_sizes()`** to adjust minimum width accounting:
-   - Currently: `base_w = len(display_label) + (1 + badge_w if badge else 0)`
-   - New: `base_w = max(len(display_label), badge_w + 2)` — the border must be wide enough for `" badge "` but the content row no longer needs extra width for it
-   - The minimum box width must satisfy both: `len(display_label)` for content, and `badge_w + 4` for the border (2 spaces + 2 corner chars)
+3. **Update `_compute_box_sizes()` width accounting** (`layout.py:487`):
+   - Currently: `base_w = max(len(display_label[s]), badge_w)`
+   - Change to: `base_w = max(len(display_label[s]), badge_w + 2)`
+   - The `+2` reserves space for the two padding spaces (` badge `) in the top border
+   - Update comment on line 486 accordingly
 
-4. **Handle highlighted state coloring** in `_draw_box()`:
-   - The badge in the border should use the same `_bc()` colorization as the border characters when the state is highlighted
+4. **Apply `_bc()` to badge in border** — handled in step 1 above. Currently the badge characters bypass `_bc()` and are never colorized even when the state is highlighted.
 
-5. **Update/add tests** in `scripts/tests/` for:
-   - Badge appears in top border string, not in content row
-   - Box width is correct when badge is wider than state name
-   - Highlighted state colors the badge correctly
+5. **Update tests** in `scripts/tests/test_ll_loop_display.py`:
+   - `TestStateBadges.test_diagram_contains_prompt_badge` (line ~1730): currently only checks `"\u2726" in result` (presence). Add a check that the badge is surrounded by spaces on the top border row, e.g.:
+     ```python
+     top_border = next(ln for ln in result.split("\n") if "\u250c" in ln)
+     assert " \u2726 " in top_border  # space padding on each side
+     ```
+   - Add test: box width correct when badge is wider than state name (badge_w + 2 > label_w)
+   - Add test: highlighted state colorizes badge (use `patch.object(output_mod, "_USE_COLOR", True)` pattern from line ~1212)
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/layout.py`
-  - `_draw_box()` (~line 518) — top border rendering
-  - `_box_inner_lines()` (~line 105) — remove badge from content row
-  - `_compute_box_sizes()` (~line 471) — adjust minimum width logic
+  - `_draw_box()` (lines 511–595, badge overlay at 541–553) — add space padding + `_bc()` colorization
+  - `_compute_box_sizes()` (lines 464–508, width calc at 487) — change `badge_w` to `badge_w + 2`
+  - **`_box_inner_lines()` does NOT need changes** — badge already absent from content row (line 118–119)
 
-### Dependent Files
-- `scripts/little_loops/cli/loop/layout.py` — all callers of `_draw_box()` already pass `badge=box_badge[sname]`; no call-site changes needed
+### Dependent Files (Call Sites)
+- `layout.py:~934–944` (`_render_layered_diagram`) — calls `_draw_box(..., badge=box_badge[sname])`; no change needed
+- `layout.py:~1509–1519` (`_render_horizontal_simple`) — calls `_draw_box(..., badge=box_badge[sname])`; no change needed
 
 ### Similar Patterns
-- BUG-806: `_ROUTE_BADGE` addition — route badge will also benefit from this fix
-- ENH-732: original badge introduction (referenced in BUG-806)
+- `info.py:596–674` — uses `─ {label} ─` pattern (plain strings) for separator lines with embedded text; same visual convention, different implementation (no grid)
+- BUG-806: `_ROUTE_BADGE` addition — route badge will also benefit from this fix once badge is in the border with space padding
 
 ### Tests
-- `scripts/tests/test_ll_loop_display.py` — existing FSM layout tests; add/update snapshot expectations
+- `scripts/tests/test_ll_loop_display.py`
+  - `TestStateBadges` class (lines 1682–1734) — update `test_diagram_contains_prompt_badge` (line ~1730) to verify space-padded border placement
+  - Color test pattern: use `patch.object(output_mod, "_USE_COLOR", True)` (lines ~1212–1263 for reference)
+  - Box-line pattern: `next(ln for ln in result.split("\n") if "\u250c" in ln)` to get top border line
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verified line numbers and actual current code state:_
+
+- `_badge_display_width()`: `layout.py:82–85`
+- `_get_state_badge()`: `layout.py:88–98`
+- `_box_inner_lines()` (badge-absent name row): `layout.py:106–144`, specifically line 118–119
+- `_compute_box_sizes()` (badge-aware width): `layout.py:464–508`, specifically line 487
+- `_draw_box()` top border draw: `layout.py:532–539`
+- `_draw_box()` badge overlay (no spaces, no `_bc()`): `layout.py:541–553`
+- `_bc()` closure: `layout.py:529–530`
+- Both `_draw_box()` call sites already pass `badge=box_badge[sname]`; no call-site changes needed
+- `TestStateBadges.test_diagram_contains_prompt_badge`: `test_ll_loop_display.py:~1730` — only checks presence, not space-padded border placement
 
 ## Impact
 
@@ -131,6 +162,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `rendering`, `fsm-diagram`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-18T22:36:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b466204-2c32-4956-a07d-e0d2c0840e7e.jsonl`
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 

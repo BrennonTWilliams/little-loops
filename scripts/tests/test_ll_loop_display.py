@@ -14,6 +14,7 @@ from little_loops.cli.loop._helpers import EXIT_CODES, run_foreground
 from little_loops.cli.loop.info import _render_fsm_diagram
 from little_loops.cli.loop.layout import (
     _ACTION_TYPE_BADGES,
+    _ROUTE_BADGE,
     _SUB_LOOP_BADGE,
     _get_state_badge,
 )
@@ -1732,3 +1733,36 @@ class TestStateBadges:
         )
         result = _render_fsm_diagram(fsm)
         assert "\u2726" in result  # ✦ prompt badge in top border
+
+    def test_route_badge_constant(self) -> None:
+        """_ROUTE_BADGE is the dedicated branching/routing unicode character."""
+        assert _ROUTE_BADGE == "\u2443"  # ⑃
+
+    def test_get_state_badge_route_state(self) -> None:
+        """State with route field returns the route badge."""
+        state = StateConfig(route=RouteConfig(routes={"yes": "a", "no": "b"}))
+        assert _get_state_badge(state) == _ROUTE_BADGE
+
+    def test_route_badge_lower_priority_than_sub_loop(self) -> None:
+        """loop field takes precedence over route for badge selection."""
+        state = StateConfig(
+            loop="child.yaml",
+            route=RouteConfig(routes={"yes": "a"}),
+        )
+        assert _get_state_badge(state) == _SUB_LOOP_BADGE
+
+    def test_diagram_contains_route_badge(self) -> None:
+        """FSM diagram output contains ⑃ for a route state."""
+        fsm = FSMLoop(
+            name="test",
+            initial="route_format",
+            states={
+                "route_format": StateConfig(
+                    route=RouteConfig(routes={"pass": "done", "fail": "done"})
+                ),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+        result = _render_fsm_diagram(fsm)
+        assert "\u2443" in result  # ⑃ route badge in top border

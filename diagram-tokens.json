@@ -1,0 +1,63 @@
+{
+  "theme_name": "Little-Loops Developer Aesthetic",
+  "palette": {
+    "accents": [
+      {
+        "name": "Brand Orange/Amber",
+        "hex": "#D97736",
+        "site_context": "Logo, primary calls to action, active tabs, emphasized text.",
+        "diagram_usage": "Primary highlight color. Use for the most important path in a flowchart, active/current states, or highlighting key component outlines."
+      },
+      {
+        "name": "Muted Sage Green",
+        "hex": "#85B990",
+        "site_context": "Structured/working status indicators, window controls.",
+        "diagram_usage": "Semantic color for 'Success', 'Valid', 'Structured Data', or 'Output'. Use for successful process flows or nodes containing validated data."
+      },
+      {
+        "name": "Muted Rose/Pink",
+        "hex": "#E0989E",
+        "site_context": "Vague/error status indicators, window controls.",
+        "diagram_usage": "Semantic color for 'Error', 'Vague Inputs', 'Failed States', or 'Blocked Paths'."
+      },
+      {
+        "name": "Soft Mustard Yellow",
+        "hex": "#E8C868",
+        "site_context": "Window controls.",
+        "diagram_usage": "Tertiary accent. Use sparingly for 'Pending', 'Processing', or 'Warning' states."
+      }
+    ],
+    "neutrals": [
+      {
+        "name": "Dark Charcoal",
+        "hex": "#2A2A2A",
+        "site_context": "Main headings and primary body text.",
+        "diagram_usage": "Primary text, main node labels, and solid connecting arrows/lines."
+      },
+      {
+        "name": "Medium Gray",
+        "hex": "#6E6E6E",
+        "site_context": "Secondary text, code block text.",
+        "diagram_usage": "Secondary labels, descriptive text, subtle 1px borders, or dotted/dashed secondary relationship lines."
+      },
+      {
+        "name": "Warm Light Gray / Beige",
+        "hex": "#F5F5F3",
+        "site_context": "Code snippet backgrounds, inactive tabs, UI panels.",
+        "diagram_usage": "Primary fill color for standard boxes and nodes. Provides subtle contrast against the page background."
+      },
+      {
+        "name": "Off-White / Paper",
+        "hex": "#FCFCFA",
+        "site_context": "Main page background.",
+        "diagram_usage": "Use as the background canvas for the diagram itself to blend seamlessly with the site."
+      }
+    ]
+  },
+  "diagramming_guidelines": {
+    "visual_style": "Flat, minimalist, and editorial. Strictly avoid gradients, 3D effects, and drop shadows. Use solid fills and clean strokes.",
+    "typography": "Mix clean sans-serif for standard descriptions with monospaced fonts (e.g., JetBrains Mono, Fira Code, Roboto Mono) for component names, code references, and technical labels to match the developer-tool aesthetic.",
+    "borders_and_lines": "Keep lines delicate. Use 1px or 2px stroke widths. Avoid harsh, thick #000000 black lines; use Dark Charcoal (#2A2A2A) for primary lines and Medium Gray (#6E6E6E) for borders and secondary paths.",
+    "corners": "Avoid sharp 90-degree corners on main diagram shapes. Apply a subtle border-radius (approximately 6px to 8px) to boxes and nodes to mirror the website's UI panels and code blocks."
+  }
+}
