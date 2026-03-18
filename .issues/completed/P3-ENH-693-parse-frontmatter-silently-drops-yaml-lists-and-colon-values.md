@@ -77,7 +77,7 @@ PyYAML (Option A) is deferred — only warranted if a future frontmatter field n
 - `scripts/little_loops/sprint.py:372` — `logger.warning("Failed to parse issue file %s: %s", path, e)` — model for parse-loop warning
 
 ### Tests
-- `scripts/tests/test_frontmatter.py` — existing test coverage (13 tests, no list/block-scalar/warning cases yet)
+- `scripts/tests/test_frontmatter.py` — existing test coverage (20 tests: 14 in `ParseFrontmatter`, 6 in `StripFrontmatter`; no list/block-scalar/warning cases yet)
 - `scripts/tests/test_dependency_graph.py:82-116` — `caplog` warning assertion pattern to follow for new warning tests
 
 ### Documentation
@@ -107,7 +107,20 @@ PyYAML (Option A) is deferred — only warranted if a future frontmatter field n
 - YAML list items genuinely dropped (no `:` means `if ":" in line` fails) — this is the primary issue
 - Multi-line block scalar limitation is accurate
 
+## Resolution
+
+**Status**: Completed — 2026-03-17
+
+**Approach**: Option B (Validate and warn) as specified.
+
+- Added `import logging` and `logger = logging.getLogger(__name__)` to `frontmatter.py`
+- Added warning + skip for list-item lines (`- `)
+- Added warning + `None` store for block-scalar values (`|`, `>`)
+- Updated docstring to document the simple key:value limitation
+- Added 3 new test cases using `caplog` pattern; all 23 tests pass
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-18T01:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5c9b2e2-f90b-4762-b9b5-4c147e1ae30d.jsonl`
 - `/ll:refine-issue` - 2026-03-18T01:38:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ca63274-28df-4554-ae7c-5366e4614ee5.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`

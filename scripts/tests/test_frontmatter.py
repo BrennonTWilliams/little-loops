@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
 
 
@@ -83,6 +85,32 @@ class TestParseFrontmatter:
         content = "---\nkey: value\n---   \n\nBody\n"
         result = parse_frontmatter(content)
         assert result == {"key": "value"}
+
+    def test_list_item_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """List-item lines should emit a warning and be skipped."""
+        content = "---\nkey: value\n- item\n---\n\n"
+        with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
+            result = parse_frontmatter(content)
+        assert result == {"key": "value"}
+        assert "Unsupported YAML list syntax" in caplog.text
+
+    def test_block_scalar_pipe_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Block scalar '|' values should emit a warning and store None."""
+        content = "---\ndescription: |\n  line one\nkey: value\n---\n\n"
+        with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
+            result = parse_frontmatter(content)
+        assert result["description"] is None
+        assert result["key"] == "value"
+        assert "Unsupported YAML block scalar" in caplog.text
+
+    def test_block_scalar_folded_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Block scalar '>' values should emit a warning and store None."""
+        content = "---\ndescription: >\n  folded\nkey: value\n---\n\n"
+        with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
+            result = parse_frontmatter(content)
+        assert result["description"] is None
+        assert result["key"] == "value"
+        assert "Unsupported YAML block scalar" in caplog.text
 
 
 class TestStripFrontmatter:

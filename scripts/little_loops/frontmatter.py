@@ -6,16 +6,20 @@ issue_parser, sync, and issue_history modules.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, Any]:
     """Extract YAML frontmatter from content.
 
     Looks for content between opening and closing '---' markers.
-    Parses simple key: value pairs. Returns empty dict if no
-    frontmatter found.
+    Parses a subset of YAML: simple ``key: value`` pairs only. Lists,
+    block scalars, and nested structures are not supported and will emit
+    a ``logging.WARNING``. Returns empty dict if no frontmatter found.
 
     Args:
         content: File content to parse
@@ -38,10 +42,17 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        if line.startswith("- "):
+            logger.warning("Unsupported YAML list syntax in frontmatter: %r", line)
+            continue
         if ":" in line:
             key, value = line.split(":", 1)
             key = key.strip()
             value = value.strip()
+            if value.startswith("|") or value.startswith(">"):
+                logger.warning("Unsupported YAML block scalar in frontmatter: %r", line)
+                result[key] = None
+                continue
             if value.lower() in ("null", "~", ""):
                 result[key] = None
             elif coerce_types and value.isdigit():
