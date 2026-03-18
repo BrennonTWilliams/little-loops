@@ -215,6 +215,7 @@ class IssueInfo:
         impact: Impact estimate (1=low, 2=medium, 3=high), inferred from priority if absent
         confidence_score: Readiness score (0-100) written by /ll:confidence-check, or None
         outcome_confidence: Outcome confidence (0-100) written by /ll:confidence-check, or None
+        testable: Whether TDD phase should be applied; False skips TDD, None treated as testable
         session_commands: Distinct /ll:* commands found in the ## Session Log section
         session_command_counts: Per-command occurrence counts from the ## Session Log section
     """
@@ -232,6 +233,7 @@ class IssueInfo:
     impact: int | None = None
     confidence_score: int | None = None
     outcome_confidence: int | None = None
+    testable: bool | None = None
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
 
@@ -260,6 +262,7 @@ class IssueInfo:
             "impact": self.impact,
             "confidence_score": self.confidence_score,
             "outcome_confidence": self.outcome_confidence,
+            "testable": self.testable,
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
         }
@@ -281,6 +284,7 @@ class IssueInfo:
             impact=data.get("impact"),
             confidence_score=data.get("confidence_score"),
             outcome_confidence=data.get("outcome_confidence"),
+            testable=data.get("testable"),
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
         )
@@ -345,6 +349,11 @@ class IssueParser:
         outcome_confidence = (
             int(outcome_raw) if outcome_raw is not None and str(outcome_raw).isdigit() else None
         )
+        testable_raw = frontmatter.get("testable")
+        if isinstance(testable_raw, str):
+            testable_value: bool | None = testable_raw.lower() == "true" if testable_raw.lower() in ("true", "false") else None
+        else:
+            testable_value = testable_raw
 
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
@@ -371,6 +380,7 @@ class IssueParser:
             impact=impact,
             confidence_score=confidence_score,
             outcome_confidence=outcome_confidence,
+            testable=testable_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
         )

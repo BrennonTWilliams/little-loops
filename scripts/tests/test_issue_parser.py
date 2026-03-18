@@ -1278,3 +1278,138 @@ class TestDependencyParsing:
 
         assert info.blocked_by == []
         assert info.blocks == []
+
+
+class TestIssueInfoTestable:
+    """Tests for IssueInfo.testable field."""
+
+    def test_testable_default_none(self) -> None:
+        """Test testable defaults to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P4",
+            issue_id="ENH-801",
+            title="Test",
+        )
+        assert info.testable is None
+
+    def test_testable_false(self) -> None:
+        """Test testable can be set to False."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P4",
+            issue_id="ENH-801",
+            title="Test",
+            testable=False,
+        )
+        assert info.testable is False
+
+    def test_testable_true(self) -> None:
+        """Test testable can be set to True."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P4",
+            issue_id="ENH-801",
+            title="Test",
+            testable=True,
+        )
+        assert info.testable is True
+
+    def test_testable_in_to_dict(self) -> None:
+        """Test testable appears in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P4",
+            issue_id="ENH-801",
+            title="Test",
+            testable=False,
+        )
+        data = info.to_dict()
+        assert data["testable"] is False
+
+    def test_testable_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None when testable key is absent."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P4",
+            "issue_id": "ENH-801",
+            "title": "Test Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.testable is None
+
+    def test_testable_from_dict_false(self) -> None:
+        """Test from_dict restores testable=False."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P4",
+            "issue_id": "ENH-801",
+            "title": "Test Issue",
+            "testable": False,
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.testable is False
+
+    def test_parse_file_testable_false(
+        self, tmp_path: Path
+    ) -> None:
+        """Integration: parse_file reads testable: false from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".claude" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-999-no-test.md"
+        issue_file.write_text("---\ntestable: false\n---\n# BUG-999: No Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.testable is False
+
+    def test_parse_file_testable_absent(
+        self, tmp_path: Path
+    ) -> None:
+        """Integration: parse_file yields testable=None when frontmatter key absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".claude" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-998-normal.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# BUG-998: Normal\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.testable is None
