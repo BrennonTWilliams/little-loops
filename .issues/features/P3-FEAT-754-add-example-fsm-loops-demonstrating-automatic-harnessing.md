@@ -17,7 +17,7 @@ Add built-in and/or example FSM loop YAML files to the `loops/` directory that d
 
 ## Current Behavior
 
-The guide at `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` documents the harness loop pattern in detail but contains only inline YAML code blocks as illustrations. The existing `loops/` directory has 14 real-world operational loops (e.g., `issue-refinement.yaml`, `docs-sync.yaml`) but none are structured as canonical harness demonstrations.
+The guide at `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` documents the harness loop pattern in detail but contains only inline YAML code blocks as illustrations. The existing `loops/` directory has 21 real-world operational loops (e.g., `issue-refinement.yaml`, `docs-sync.yaml`) but none are structured as canonical harness demonstrations.
 
 ## Expected Behavior
 
@@ -77,16 +77,16 @@ Option A keeps examples isolated; Option B makes them immediately actionable. Bo
 - `loops/issue-refinement.yaml` — Existing real-world multi-skill loop (uses `capture`, chained routing, modulo commit counter)
 - `loops/fix-quality-and-tests.yaml:9-81` — Uses `llm_structured` + `exit_code` evaluators; `on_partial` routing variant
 - `loops/dead-code-cleanup.yaml:61-78` — Canonical `check_concrete` pattern reading `test_cmd` from `ll-config.json`
-- Guide's "Worked Example" section (`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:474-544`) — Canonical multi-item YAML to extract into a real file
+- Guide's "Worked Example" section (`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:540-614`) — Canonical multi-item YAML to extract into a real file
 
 ### Guide Reference Points
-- "See Also" section to update: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:575-579`
-- Phase ordering table: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:412-420`
-- Single-shot Variant A: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:165-207`
-- Multi-item Variant B with `max_retries`: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:211-273`
-- `check_mcp` pattern: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:320-352`
-- `check_skill` pattern: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:376-406`
-- `check_stall` pattern: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:446-455`
+- "See Also" section to update: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:645-650`
+- Phase ordering table: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:242-262`
+- Single-shot Variant A: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:377-423`
+- Multi-item Variant B with `max_retries`: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:427-491`
+- `check_mcp` pattern: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:104-157`
+- `check_skill` pattern: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:159-216`
+- `check_stall` pattern: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:495-521`
 
 ### Validation Path Resolution
 - `ll-loop test loops/examples/harness-single-shot.yaml` — uses `resolve_loop_path()` at `scripts/little_loops/cli/loop/_helpers.py:119`; checks project `loops_dir` first, then built-in `loops/` directory
@@ -110,12 +110,12 @@ Neither `mcp_result` nor skill-as-judge (`check_skill` as `slash_command + llm_s
    - Include `check_mcp` and `check_skill` as commented-out optional states with inline explanation
 3. Author `loops/examples/harness-multi-item.yaml` (Variant B):
    - Pattern: `discover → execute → check_stall → check_concrete → check_mcp → check_skill → check_semantic → check_invariants → advance → discover` (cycle)
-   - Extract and annotate from `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:474-544`
+   - Extract and annotate from `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:540-614`
    - Add `max_retries: 3` + `on_retry_exhausted: advance` on `execute` state (Variant B pattern from guide lines 211-273)
 4. Annotate both YAML files with `# EXAMPLE:` comments explaining each state's pedagogical purpose
 5. Validate: `ll-loop test loops/examples/harness-single-shot.yaml` (uses `testing.py:12`, `validation.py:274-386`)
 6. Validate: `ll-loop test loops/examples/harness-multi-item.yaml`
-7. Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:575-579` ("See Also") to reference both new files
+7. Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:645-650` ("See Also") to reference both new files
 
 ## API/Interface
 
@@ -275,6 +275,19 @@ states:
     terminal: true
 ```
 
+**Implementation note — `discover` state empty-list detection**: The `exit_code` evaluator on the `discover` state won't reliably detect when there are no more items — `head -1` on empty input exits 0. Use `output_contains` with a pattern matching the expected output format (e.g., pattern: `[A-Z]+-[0-9]+`) or pipe through `grep -q .` to exit non-zero on empty output:
+```yaml
+discover:
+  action: "ll-issues list --status open --format id | head -1 | grep -q . && ll-issues list --status open --format id | head -1"
+  action_type: shell
+  # OR use output_contains evaluator:
+  evaluate:
+    type: output_contains
+    pattern: "\\w+-\\d+"   # matches any ISSUE-ID format
+  on_yes: execute
+  on_no: done
+```
+
 **Key schema facts for implementation** (`scripts/little_loops/fsm/validation.py:274-386`, `schema.py:379-471`):
 - Required top-level fields: `name`, `initial`, `states`
 - Every non-terminal state needs at least one of: routing (`on_yes`/`on_no`/`on_error`/`route`), `next`, or `terminal: true`
@@ -309,6 +322,8 @@ states:
 **Open** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-19T18:50:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1034ca11-fa1c-4d2c-adec-b1cb83f3e254.jsonl`
+- `/ll:refine-issue` - 2026-03-19T18:46:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5f1422f-02f5-4b6d-9c63-ba535dcd6569.jsonl`
 - `/ll:refine-issue` - 2026-03-16T02:10:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f28a12c5-6dae-4415-bc85-15a3d7f258d5.jsonl`
 - `/ll:verify-issues` - 2026-03-15T19:08:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:format-issue` - 2026-03-15T19:06:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
