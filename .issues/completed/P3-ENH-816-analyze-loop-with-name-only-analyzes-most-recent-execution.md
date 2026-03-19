@@ -86,7 +86,37 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_fsm_persistence.py:481-497` — `test_list_run_history_returns_newest_first`: verifies runs[0] is newest
 - `scripts/tests/test_fsm_persistence.py:504-518` — `test_get_archived_events_returns_events`: verifies event loading from a specific run_id
 
+## Scope Boundaries
+
+- Only modifies the `analyze-loop` skill prompt (`skills/analyze-loop/SKILL.md`)
+- Does NOT change the `ll-loop history` CLI, `cmd_history()`, or `_list_archived_runs()`
+- Does NOT change behavior when no loop name is provided (auto-selection path unchanged)
+- Does NOT add a `--all` flag or cross-run aggregation mode
+
+## Impact
+
+- **Priority**: P3 - Quality-of-life improvement; analysis is currently misleading when invoked by name but not broken
+- **Effort**: Small - Two-line change in SKILL.md, no Python code changes required
+- **Risk**: Low - Skill-prompt change only; CLI already supports the run_id path
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `ux`, `analyze-loop`, `skill`
+
+## Resolution
+
+**Status**: Completed
+**Resolved**: 2026-03-19
+**Implementation**: Modified `skills/analyze-loop/SKILL.md` — added run_id resolution sub-step in Step 1 (calls `ll-loop history <loop_name> --json` to get run summaries, extracts `runs[0]["run_id"]` as `LATEST_RUN_ID`) and updated Step 2 to pass `<LATEST_RUN_ID>` when loop_name was provided. Auto-selection path unchanged.
+
+## Status
+
+**Completed** | Created: 2026-03-19 | Resolved: 2026-03-19 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-19T21:08:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20af4924-3de9-4fd2-a974-571b3ec52e86.jsonl`
 - `/ll:refine-issue` - 2026-03-19T20:57:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe506d9d-2172-487c-8370-e42c14c33014.jsonl`
 - `/ll:capture-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff0e595f-a48d-4d2e-85f9-57323060acb1.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f6767ff-6b4b-4285-a0f3-44b2dfb9e9ee.jsonl`
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

@@ -29,7 +29,16 @@ Inspect loop execution history and synthesize actionable issues (BUG/ENH/FEAT) f
 
 ## Step 1: Resolve Loop Name
 
-If `loop_name` argument is provided, skip to Step 2.
+If `loop_name` argument is provided, resolve the most recent run_id before proceeding to Step 2:
+
+```bash
+ll-loop history <loop_name> --json
+```
+
+This outputs a JSON array of run summaries, sorted newest-first. Each entry contains a `run_id` field (compact ISO timestamp, e.g. `2026-03-19T204149`).
+
+- If the array is **empty**: report "No archived runs found for `<loop_name>`." and stop.
+- Otherwise: extract `runs[0]["run_id"]` as `LATEST_RUN_ID` and proceed to Step 2.
 
 Otherwise, enumerate candidate loops:
 
@@ -61,7 +70,15 @@ This outputs a JSON array of `LoopState` objects. Each object contains:
 
 ## Step 2: Load Event History and Loop Config
 
-Load the full event history for the selected loop:
+Load the full event history for the selected loop.
+
+**If `loop_name` was provided** (and `LATEST_RUN_ID` was resolved in Step 1):
+
+```bash
+ll-loop history <loop_name> <LATEST_RUN_ID> --json --tail <tail_arg_or_200>
+```
+
+**If `loop_name` was auto-selected** (from the running/interrupted list in Step 1):
 
 ```bash
 ll-loop history <loop_name> --json --tail <tail_arg_or_200>
