@@ -1,0 +1,178 @@
+# EXAMPLE: Multi-item harness processing a list of items with the full evaluation pipeline.
+# Use this when you need to process multiple items (issues, files, etc.) with quality gates.
+# This is Variant B from docs/guides/AUTOMATIC_HARNESSING_GUIDE.md
+#
+# Demonstrates all evaluation phases in sequence:
+#   discover → execute → check_stall → check_concrete → check_mcp → check_skill
+#            → check_semantic → check_invariants → advance → discover (cycle)
+#
+# This example processes open issues through /ll:refine-issue.
+# Adapt by replacing the discover action and execute action for your use case.
+#
+# Usage:    ll-loop run loops/examples/harness-multi-item.yaml
+# Validate: ll-loop test loops/examples/harness-multi-item.yaml
+
+name: harness-multi-item
+description: |
+  EXAMPLE: Multi-item harness demonstrating all evaluation phases in sequence.
+  Discovers items from a dynamic list, processes each with a skill, and gates
+  on check_stall → check_concrete → check_mcp → check_skill → check_semantic
+  → check_invariants before advancing to the next item.
+  Adapt by replacing the discover and execute actions for your target workflow.
+initial: discover
+max_iterations: 200       # total budget across all items
+timeout: 14400            # 4-hour wall clock limit (seconds)
+
+states:
+
+  discover:
+    # EXAMPLE: Pop the next item to process from a dynamic list.
+    # This action outputs the item ID (e.g., FEAT-042) and exits 0 if found,
+    # exits 1 if the list is empty → routes to done.
+    # Replace with your own discovery command:
+    #   - file glob:      find . -name "*.todo" | head -1
+    #   - manual list:    head -1 my-items.txt && sed -i '1d' my-items.txt
+    #   - database query: via a shell script calling your DB CLI
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      open_issues = [i for i in issues if i.get('status') == 'open']
+      if not open_issues:
+          sys.exit(1)
+      print(open_issues[0]['id'])
+      "
+    action_type: shell
+    capture: current_item             # stored as ${captured.current_item.output}
+    evaluate:
+      type: exit_code
+    on_yes: execute                   # item found → process it
+    on_no: done                       # list empty → all items processed
+    on_error: done
+
+  execute:
+    # EXAMPLE: Invoke the skill with the captured item ID.
+    # max_retries + on_retry_exhausted is the key multi-item safeguard:
+    # without it, one stuck item exhausts the entire max_iterations budget.
+    # Replace the action and action_type for your target skill:
+    #   action_type: slash_command → for a fixed /ll:<name> command
+    #   action_type: prompt        → for a free-form instruction to Claude
+    action: "/ll:refine-issue ${captured.current_item.output} --auto"
+    action_type: prompt
+    max_retries: 3                    # skip item after 3 failed attempts
+    on_retry_exhausted: advance
+    next: check_stall
+
+  check_stall:
+    # EXAMPLE: Stall detection — catches skills that complete without any file changes.
+    # Especially important for prompt-based skills that may say "already done".
+    # Placement: between execute and check_concrete catches no-ops before any gate cost.
+    # on_yes = progress (diff changed); on_no = stalled → skip to next item.
+    action: "echo 'checking stall'"   # output is ignored; only the diff matters
+    action_type: shell
+    evaluate:
+      type: diff_stall
+      max_stall: 2                    # 2 consecutive no-change iterations → stall verdict
+    on_yes: check_concrete            # progress detected → evaluation chain
+    on_no: advance                    # stalled → skip item, move to next
+    on_error: check_concrete
+
+  check_concrete:
+    # EXAMPLE: Cheapest gate first — run the project's configured test suite.
+    # Reads test_cmd from .claude/ll-config.json; falls back to 'pytest' if absent.
+    # set -o pipefail ensures the tee pipe does not swallow the test exit code.
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.claude/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      mkdir -p .loops/tmp
+      set -o pipefail
+      eval "$CMD" 2>&1 | tee .loops/tmp/harness-multi-item-tests.txt
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: check_mcp                 # tests pass → MCP gate
+    on_no: execute                    # tests fail → retry skill
+    on_error: execute
+
+  check_mcp:
+    # EXAMPLE: Deterministic MCP tool gate — ~500ms latency, no LLM cost.
+    # Use for verifying discrete external state: UI rendered, record saved, PR created.
+    # Replace "playwright/screenshot" with any MCP tool registered in .mcp.json.
+    # Route not_found to the next phase to skip gracefully when the server is absent.
+    # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — MCP Tool Gates section
+    action_type: mcp_tool
+    action: "playwright/screenshot"
+    params:
+      url: "http://localhost:3000"
+    capture: mcp_result
+    route:
+      success: check_skill            # tool succeeded → skill-as-judge gate
+      tool_error: execute             # tool reported error → retry skill
+      not_found: check_skill          # playwright not in .mcp.json → skip this gate
+      timeout: execute                # dev server not responding → retry
+
+  check_skill:
+    # EXAMPLE: Agentic user-simulation gate (30–300s, proportional cost).
+    # Runs a skill that exercises the feature from a real-user perspective.
+    # Use when check_mcp cannot observe the quality dimension you care about
+    # (e.g., multi-step UX flows, end-to-end workflows).
+    # When this gate provides sufficient quality judgment, check_semantic can be omitted.
+    # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — Skill-as-Judge section
+    action: "/ll:ready-issue ${captured.current_item.output}"
+    action_type: slash_command
+    timeout: 300
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the skill report the item as ready or complete?
+        Answer YES if the skill confirmed success, NO if it reported problems or incompleteness.
+    on_yes: check_semantic            # user simulation passed → LLM quality judge
+    on_no: execute                    # user simulation failed → retry skill
+
+  check_semantic:
+    # EXAMPLE: LLM-as-judge evaluates whether the skill achieved its intent.
+    # The llm_structured evaluator judges the *previous* state's output context —
+    # the echo here is a placeholder; the shell output is ignored.
+    # Customize the prompt to describe what "success" means for your workflow.
+    # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — LLM-as-Judge section
+    action: "echo 'Evaluating refinement quality'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the previous skill action successfully complete its task?
+        Check that: the item was meaningfully updated, no errors occurred, and the
+        overall quality improved. Answer YES or NO with brief rationale.
+    on_yes: check_invariants          # quality confirmed → diff size gate
+    on_no: execute                    # quality not confirmed → retry
+    on_partial: check_semantic        # ambiguous → re-evaluate
+
+  check_invariants:
+    # EXAMPLE: Diff size gate — catches runaway changes before advancing to next item.
+    # target: 50 suits small-to-medium skills. Tune upward (150–200) for doc-heavy skills.
+    # on_yes → advance (move to next item); on_no → retry the skill.
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_yes: advance                   # diff is acceptably small → mark item done
+    on_no: execute                    # diff too large → retry
+    on_error: advance
+
+  advance:
+    # EXAMPLE: Mark the current item as complete and loop back to discover the next one.
+    # Add a periodic commit step here to avoid large uncommitted batches:
+    #   action: "/ll:commit"
+    #   action_type: prompt
+    action: "echo 'Item ${captured.current_item.output} complete'"
+    action_type: shell
+    next: discover
+
+  done:
+    terminal: true

@@ -1,0 +1,145 @@
+# EXAMPLE: Single-shot harness wrapping a skill with quality gates.
+# Use this as a starting point when you have one item to process (no discovery loop).
+# This is Variant A from docs/guides/AUTOMATIC_HARNESSING_GUIDE.md
+#
+# Demonstrates the full evaluation pipeline in sequence:
+#   execute → check_stall → check_concrete → check_semantic → check_invariants → done
+#
+# Optional gates (check_mcp, check_skill) are shown as commented-out blocks.
+# Uncomment and adapt them to add MCP tool gates or agentic user-simulation.
+#
+# Usage:    ll-loop run loops/examples/harness-single-shot.yaml
+# Validate: ll-loop test loops/examples/harness-single-shot.yaml
+
+name: harness-single-shot
+description: |
+  EXAMPLE: Single-shot harness demonstrating all evaluation phases in sequence.
+  Wraps a single skill invocation with stall detection, a concrete tool gate,
+  an LLM quality judge, and a diff size invariant check.
+  Adapt by replacing the execute action with your own skill or prompt.
+initial: execute
+max_iterations: 5         # total attempts before giving up
+timeout: 3600             # 1-hour wall clock limit (seconds)
+
+states:
+
+  execute:
+    # EXAMPLE: Replace this action with your skill or prompt.
+    # action_type: prompt  → sends a free-form instruction to Claude
+    # action_type: slash_command → runs a fixed /ll:<name> command
+    # action_type: shell   → runs a shell command directly (no LLM)
+    action: "Run /ll:manage-issue to implement the next open feature."
+    action_type: prompt
+    max_retries: 3
+    on_retry_exhausted: done
+    next: check_stall
+
+  check_stall:
+    # EXAMPLE: Stall detection — catches skills that return "already done" without
+    # making any file changes. diff_stall compares the git diff between iterations.
+    # Placement: between execute and check_concrete catches no-ops before any gate cost.
+    # on_yes = progress detected (diff changed); on_no = stalled → give up in single-shot mode.
+    action: "echo 'checking stall'"   # output is ignored; only the diff matters
+    action_type: shell
+    evaluate:
+      type: diff_stall
+      max_stall: 2                    # allow up to 2 consecutive no-change iterations
+    on_yes: check_concrete            # progress detected → proceed to evaluation chain
+    on_no: done                       # stalled in single-shot mode → nothing more to do
+    on_error: done
+
+  check_concrete:
+    # EXAMPLE: Cheapest gate first — run the project's configured test suite.
+    # Reads test_cmd from .claude/ll-config.json; falls back to 'pytest' if absent.
+    # Replace the Python snippet with a direct command if you prefer:
+    #   action: "python -m pytest scripts/tests/ -q --tb=no"
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.claude/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      eval "$CMD" 2>&1
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: check_semantic            # tests pass → LLM quality check
+    on_no: execute                    # tests fail → retry the skill
+    on_error: execute
+
+  # OPTIONAL: check_mcp
+  # Uncomment and adapt to add a deterministic MCP tool gate after check_concrete.
+  # Use for verifying discrete external state (UI rendered, record saved, PR created).
+  # ~500ms latency; no LLM cost. Place before check_skill / check_semantic.
+  #
+  # check_mcp:
+  #   # EXAMPLE: Browser screenshot to verify a UI change rendered correctly.
+  #   # Replace "playwright/screenshot" with any MCP tool registered in .mcp.json.
+  #   # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — MCP Tool Gates section
+  #   action_type: mcp_tool
+  #   action: "playwright/screenshot"
+  #   params:
+  #     url: "http://localhost:3000"
+  #   capture: mcp_result
+  #   route:
+  #     success: check_semantic       # tool succeeded → proceed to LLM judge
+  #     tool_error: execute           # tool reported an error → retry skill
+  #     not_found: check_semantic     # playwright not in .mcp.json → skip this gate
+  #     timeout: execute              # dev server not responding → retry
+
+  # OPTIONAL: check_skill
+  # Uncomment to add an agentic user-simulation gate (30–300s, proportional cost).
+  # Best for end-to-end user flows that other phases cannot observe.
+  # When present, check_semantic can often be omitted — the skill provides semantic judgment.
+  #
+  # check_skill:
+  #   # EXAMPLE: Run /ll:ready-issue to confirm the task is complete from a user perspective.
+  #   # Replace with any skill that exercises the feature as a real user would.
+  #   # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — Skill-as-Judge section
+  #   action: "/ll:ready-issue feature FEAT-NNN"
+  #   action_type: slash_command
+  #   timeout: 300
+  #   evaluate:
+  #     type: llm_structured
+  #     prompt: >
+  #       Did the skill confirm the work is complete and ready?
+  #       Answer YES or NO with what it observed.
+  #   on_yes: check_semantic
+  #   on_no: execute
+
+  check_semantic:
+    # EXAMPLE: LLM-as-judge evaluates whether the skill achieved its intent.
+    # The llm_structured evaluator judges the *previous* state's output context —
+    # the echo here is a placeholder; the shell output is ignored.
+    # Customize the prompt to describe what "success" means for your skill.
+    # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — LLM-as-Judge section
+    action: "echo 'Evaluating output quality'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the previous skill action successfully complete its task with meaningful changes?
+        Check that: at least one file was modified, no errors were reported, and the task
+        appears complete. Answer YES or NO with brief rationale.
+    on_yes: check_invariants          # quality confirmed → check diff size
+    on_no: execute                    # quality not confirmed → retry
+    on_partial: check_semantic        # ambiguous → re-evaluate
+
+  check_invariants:
+    # EXAMPLE: Diff size gate — prevents runaway changes from being accepted.
+    # target: 50 suits small-to-medium skills (bug fixes, single-file features).
+    # Increase to 150–200 for documentation or large-scale refactor skills.
+    # output_numeric reads the integer from the shell output and compares it.
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_yes: done                      # diff is acceptably small → done
+    on_no: execute                    # diff too large → retry
+    on_error: done
+
+  done:
+    terminal: true

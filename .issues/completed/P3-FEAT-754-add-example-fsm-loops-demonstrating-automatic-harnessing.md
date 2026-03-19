@@ -2,7 +2,7 @@
 id: FEAT-754
 priority: P3
 type: FEAT
-status: open
+status: completed
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
@@ -317,11 +317,33 @@ discover:
 
 ---
 
+## Resolution
+
+**Completed** | 2026-03-19
+
+Created two annotated example FSM loop files in `loops/examples/`:
+
+- **`loops/examples/harness-single-shot.yaml`** — Variant A: `execute → check_stall → check_concrete → check_semantic → check_invariants → done`. Includes commented-out `check_mcp` and `check_skill` optional gates.
+- **`loops/examples/harness-multi-item.yaml`** — Variant B: full pipeline with all evaluation phases including active `check_mcp` and `check_skill` states.
+
+Both files pass `ll-loop validate` and `ll-loop test`. Updated the guide's See Also section to reference both files.
+
+### Acceptance Criteria Fulfilled
+
+- [x] `loops/examples/harness-single-shot.yaml` exists and demonstrates Variant A
+- [x] `loops/examples/harness-multi-item.yaml` exists and demonstrates Variant B
+- [x] Both files include all evaluation phases in sequence
+- [x] Both files include `check_stall` demonstrating stall detection
+- [x] `ll-loop test loops/examples/harness-single-shot.yaml` passes
+- [x] `ll-loop test loops/examples/harness-multi-item.yaml` passes
+- [x] Guide's "See Also" section references the new example files
+
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Completed** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-19T18:57:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ac4bf2f-7b08-4d77-992b-07a9dd970509.jsonl`
 - `/ll:refine-issue` - 2026-03-19T18:50:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1034ca11-fa1c-4d2c-adec-b1cb83f3e254.jsonl`
 - `/ll:refine-issue` - 2026-03-19T18:46:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5f1422f-02f5-4b6d-9c63-ba535dcd6569.jsonl`
 - `/ll:refine-issue` - 2026-03-16T02:10:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f28a12c5-6dae-4415-bc85-15a3d7f258d5.jsonl`
@@ -330,3 +352,4 @@ discover:
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/121e4920-b20f-4051-b1be-b7df4a928d30.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fac56d79-3579-4d9f-92ac-185268df5162.jsonl`
+- `/ll:ready-issue` - 2026-03-19T18:58:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ac4bf2f-7b08-4d77-992b-07a9dd970509.jsonl`

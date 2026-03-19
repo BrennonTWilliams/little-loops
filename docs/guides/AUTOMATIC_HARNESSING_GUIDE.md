@@ -648,3 +648,5 @@ states:
 - [`skills/create-loop/loop-types.md`](../../skills/create-loop/loop-types.md) — Wizard implementation: Harness Questions section (lines 548–912)
 - [`skills/create-loop/reference.md`](../../skills/create-loop/reference.md) — FSM field reference, evaluator catalog, harness state diagrams
 - [`loops/issue-refinement.yaml`](../../loops/issue-refinement.yaml) — Real-world harness-like loop: multi-skill pipeline over active issues with commit cadence
+- [`loops/examples/harness-single-shot.yaml`](../../loops/examples/harness-single-shot.yaml) — Runnable Variant A example: single-shot harness with all evaluation phases annotated
+- [`loops/examples/harness-multi-item.yaml`](../../loops/examples/harness-multi-item.yaml) — Runnable Variant B example: multi-item harness including `check_mcp` and `check_skill` gates
