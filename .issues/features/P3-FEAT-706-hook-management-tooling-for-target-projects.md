@@ -19,7 +19,7 @@ Little-loops has no tooling to read, evaluate, or install hooks in a target proj
 
 A `/ll:configure hooks` command (or sub-command) provides three modes:
 - **show**: Display a unified table of all hooks (plugin-level and settings.json), their event types, script paths, and enabled status, flagging any broken paths
-- **install**: Generate and merge hook entries into `.claude/settings.json` from the plugin's `hooks/hooks.json`, preserving existing unrelated keys
+- **install**: Generate and merge hook entries into the user's chosen settings file (`.claude/settings.json` or `.claude/settings.local.json`) from the plugin's `hooks/hooks.json`, preserving existing unrelated keys
 - **validate**: Check each configured hook for script existence, executable bit, and timeout reasonableness, reporting issues by severity
 
 ## Use Case
@@ -33,10 +33,11 @@ A developer installs little-loops, runs `/ll:init`, enables context monitoring a
 ## Acceptance Criteria
 
 - [ ] A command or skill can display current hook configuration (both plugin-level and target `.claude/settings.json`)
-- [ ] A command or skill can install little-loops hook entries into a target project's `.claude/settings.json`
+- [ ] A command or skill can install little-loops hook entries into a target project's settings file
+- [ ] The user is prompted to choose target file: `.claude/settings.local.json` (recommended, gitignored) or `.claude/settings.json` (tracked)
 - [ ] Installed hooks correctly reference plugin scripts via `${CLAUDE_PLUGIN_ROOT}`
 - [ ] The tool validates that referenced script paths exist before installing
-- [ ] Existing hooks in `.claude/settings.json` are preserved (additive, not destructive)
+- [ ] Existing hooks in the target file are preserved (additive, not destructive)
 - [ ] A `--dry-run` flag shows what would be installed without making changes
 
 ## Proposed Solution
@@ -49,8 +50,9 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 ### `install` mode
 - Read `hooks/hooks.json` from the plugin
-- Generate equivalent entries for `.claude/settings.json` with absolute or `${CLAUDE_PLUGIN_ROOT}`-relative paths
-- Merge into existing `.claude/settings.json` without overwriting unrelated keys
+- **Ask the user which target file** to write to: `.claude/settings.local.json` (recommended — gitignored, personal) or `.claude/settings.json` (tracked, shared with team). Follow the same prompt pattern as `allowed-tools` in `areas.md:760-783`.
+- Generate equivalent entries with `${CLAUDE_PLUGIN_ROOT}`-relative paths
+- Merge into the chosen file without overwriting unrelated keys
 - Report what was added
 
 ### `validate` mode
@@ -64,13 +66,24 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 ## Implementation Steps
 
-1. Identify Claude Code's `.claude/settings.json` hook schema (structure for inline hook definitions)
-2. Create `skills/configure/hooks.md` or extend `skills/configure/SKILL.md` with a `hooks` subcommand
-3. Implement `show`: parse plugin `hooks/hooks.json` + target `.claude/settings.json`, display unified table
-4. Implement `install`: generate settings.json hook entries from plugin hooks, merge safely
-5. Implement `validate`: check script existence and executable bit for all configured hooks
-6. Add `--dry-run` support for `install` mode
-7. Surface from `/ll:configure` dispatcher
+1. **Settings.json schema is already documented** — `docs/claude-code/hooks-reference.md` contains the full hook schema. The structure is identical to `hooks/hooks.json`. No separate research needed.
+
+2. **Register `hooks` area in `skills/configure/SKILL.md`** — Three edits required:
+   - Area Mapping table (lines 46-60): add `hooks` row → reads/writes `.claude/settings.json` like `allowed-tools`
+   - Interactive area selection (lines 138-207): add `hooks` option to the appropriate "More areas..." batch
+   - Arguments list (lines 261-273): add `hooks` bullet
+
+3. **Create `skills/configure/areas.md` section `## Area: hooks`** — Append after the `allowed-tools` section (line 792). Follow the `allowed-tools` pattern (lines 736-792) exactly: detect current state, display table, interactive round, merge JSON, write result.
+
+4. **Implement `show` mode**: Read `hooks/hooks.json` (plugin hooks, always present) + `.claude/settings.json` (may not exist). Display unified table with columns: Source (`[Plugin]`/`[Project]`/`[Local]`), Event, Matcher, Script, Timeout, Status (exists/missing). Flag broken script paths.
+
+5. **Implement `install` mode**: First, ask the user which target file to write to — `.claude/settings.local.json` (recommended, gitignored) or `.claude/settings.json` (tracked). Use the same "Target File" `AskUserQuestion` pattern as `allowed-tools` (areas.md:760-783). Then translate each entry in `hooks/hooks.json` into a settings.json-compatible entry (command strings stay the same — `${CLAUDE_PLUGIN_ROOT}` is valid). Merge into the chosen file using the same pattern as `allowed-tools` (areas.md:785-790): read target (default to `{}`), merge `hooks` key additively (don't overwrite existing non-ll hooks), write with 2-space indent.
+
+6. **Implement `validate` mode**: For each hook in both sources, check: script path exists (`[ -f <path> ]`), executable bit set (`[ -x <path> ]`), timeout is reasonable (warn if > 30s for blocking hooks). Report by severity: ERROR (missing script), WARNING (not executable, high timeout).
+
+7. **Add `--dry-run` support for `install`**: Show what entries would be added without writing. Follow the `--dry-run` pattern already established in the issue's Acceptance Criteria.
+
+8. **Add `hooks --show` format to `skills/configure/show-output.md`**: Follow the pattern of existing show sections (e.g., lines 5-21 for `project --show`).
 
 ## Integration Map
 
@@ -94,8 +107,79 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 - `/ll:help` output — new sub-command needs listing
 
 ### Configuration
-- `.claude/settings.json` — target file for hook installation
+- `.claude/settings.json` or `.claude/settings.local.json` — target file for hook installation (user chooses)
 - `hooks/hooks.json` — read-only source for hook definitions
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+#### Exact integration points in `skills/configure/SKILL.md`
+
+- **Line 46-60** (Area Mapping table): Add a `hooks` row pointing to a new area description. Pattern to follow is the `allowed-tools` row at line 59: `| \`allowed-tools\` | \`permissions.allow\` in \`.claude/settings.json\`... | ll- CLI tool allow entries |`. Hooks writes to `.claude/settings.json` similarly.
+- **Lines 138-207** (interactive area selection batches): Add `hooks` option to one of the "More areas..." batches.
+- **Lines 261-273** (Arguments list): Add `hooks` to the bullet list of valid areas.
+
+#### Exact integration points in `skills/configure/areas.md`
+
+- Append a new `## Area: hooks` section at the end of the file (after the `allowed-tools` section at line 736). Model after `## Area: allowed-tools` (lines 736-792) — same pattern: detect/display current state, interactive round, JSON merge logic, write result.
+
+#### New file: `skills/configure/show-output.md`
+
+- Add a `## hooks --show` section following the pattern of existing show sections (e.g., `## issues --show`, `## parallel --show`).
+
+#### `hooks/hooks.json` — complete hook inventory (6 hooks across 6 events)
+
+All scripts use `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/` prefix. When installed to `.claude/settings.json`, these command strings remain valid since `${CLAUDE_PLUGIN_ROOT}` resolves at runtime:
+
+| Event | Matcher | Script | Timeout |
+|-------|---------|--------|---------|
+| `SessionStart` | `*` | `session-start.sh` | 5s |
+| `UserPromptSubmit` | (none) | `user-prompt-check.sh` | 3s |
+| `PreToolUse` | `Write\|Edit` | `check-duplicate-issue-id.sh` | 5s |
+| `PostToolUse` | `*` | `context-monitor.sh` | 5s |
+| `Stop` | (none) | `session-cleanup.sh` | 15s |
+| `PreCompact` | `*` | `precompact-state.sh` | 5s |
+
+Scripts live at `hooks/scripts/`: `session-start.sh`, `user-prompt-check.sh`, `check-duplicate-issue-id.sh`, `context-monitor.sh`, `session-cleanup.sh`, `precompact-state.sh` (+ `lib/common.sh`).
+
+#### `.claude/settings.json` hook schema (from `docs/claude-code/hooks-reference.md`)
+
+The schema is identical to `hooks/hooks.json`. A top-level `hooks` key with event names as keys. No `description` field is needed at top level. Example translation of one plugin hook:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-monitor.sh",
+            "timeout": 5,
+            "statusMessage": "Monitoring context usage..."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Important**: `.claude/settings.json` does not currently exist in this project. Install mode must create it from scratch when absent, initialized as `{"hooks": {...}}`.
+
+#### JSON merge pattern (from `skills/configure/areas.md:785-790`)
+
+The `allowed-tools` area uses this exact pattern — directly reusable:
+1. Read target file (or start with `{}` if absent)
+2. Remove existing conflicting entries
+3. Append new entries
+4. Write result with 2-space indent, preserving all top-level keys
+
+#### Test pattern (from `scripts/tests/test_hooks_integration.py`)
+
+Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(input_data), ...)` directly against shell scripts. The hooks skill itself is a Claude Code skill (markdown), so new tests would be manual integration tests; no Python unit test pattern to follow for skill behavior itself.
 
 ### Related Issues
 - ENH-705: Init should validate plugin loading and hook activation (complementary — ENH-705 warns, this FEAT fixes)
@@ -124,6 +208,7 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 **Open** | Created: 2026-03-12 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-19T02:51:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f2bd1a9-9196-4775-a221-228c31d6c262.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4922c4e9-2029-4f68-b0a3-04ae4dbcd620.jsonl`
