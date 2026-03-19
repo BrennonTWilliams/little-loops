@@ -20,6 +20,7 @@ from little_loops.config.automation import (
 )
 from little_loops.config.cli import (
     CliColorsConfig,
+    CliColorsEdgeLabelsConfig,
     CliColorsLoggerConfig,
     CliColorsPriorityConfig,
     CliColorsTypeConfig,
@@ -56,6 +57,7 @@ __all__ = [
     "SyncConfig",
     "ScoringWeightsConfig",
     "DependencyMappingConfig",
+    "CliColorsEdgeLabelsConfig",
     "CliColorsLoggerConfig",
     "CliColorsPriorityConfig",
     "CliColorsTypeConfig",

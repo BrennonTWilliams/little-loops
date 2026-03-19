@@ -827,6 +827,21 @@
             "type": "string",
             "default": "32",
             "description": "ANSI SGR code for the active FSM state highlight during verbose run (default: green)"
+          },
+          "fsm_edge_labels": {
+            "type": "object",
+            "description": "ANSI SGR color overrides for FSM transition edge labels in loop diagrams.",
+            "properties": {
+              "yes":             { "type": "string", "default": "32",      "description": "ANSI SGR code for 'yes' transitions (default: green)" },
+              "no":              { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'no' transitions (default: orange)" },
+              "error":           { "type": "string", "default": "31",      "description": "ANSI SGR code for 'error' transitions (default: red)" },
+              "partial":         { "type": "string", "default": "33",      "description": "ANSI SGR code for 'partial' transitions (default: yellow)" },
+              "next":            { "type": "string", "default": "2",       "description": "ANSI SGR code for 'next' transitions (default: dim)" },
+              "default":         { "type": "string", "default": "2",       "description": "ANSI SGR code for unlabeled ('_') transitions (default: dim)" },
+              "blocked":         { "type": "string", "default": "31",      "description": "ANSI SGR code for 'blocked' transitions (default: red)" },
+              "retry_exhausted": { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'retry_exhausted' transitions (default: orange)" }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false

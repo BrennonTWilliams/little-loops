@@ -72,13 +72,17 @@ def _edge_line_color(label: str) -> str:
     return code
 
 
-def _colorize_diagram_labels(diagram: str) -> str:
+def _colorize_diagram_labels(diagram: str, colors: dict[str, str] | None = None) -> str:
     """Apply ANSI color to known edge labels in a rendered diagram string.
 
     Labels are colorized only when bounded by box-drawing or whitespace chars
     to avoid coloring partial matches inside state names.
+
+    Args:
+        colors: Optional label→SGR-code mapping; falls back to _EDGE_LABEL_COLORS if None.
     """
-    for label, code in _EDGE_LABEL_COLORS.items():
+    label_colors = colors if colors is not None else _EDGE_LABEL_COLORS
+    for label, code in label_colors.items():
         colored = colorize(label, code)
         diagram = re.sub(
             r"(?<=[─ │▶\n])" + re.escape(label) + r"(?=[─ │▶\n])",
@@ -659,6 +663,7 @@ def _render_layered_diagram(
     verbose: bool,
     highlight_state: str | None,
     highlight_color: str,
+    edge_label_colors: dict[str, str] | None = None,
 ) -> str:
     """Render FSM using layered (Sugiyama-style) vertical layout."""
     terminal_states = terminal_states or set()
@@ -1411,7 +1416,7 @@ def _render_layered_diagram(
     if diagram_indent > 0:
         lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]
 
-    return _colorize_diagram_labels("\n".join(lines))
+    return _colorize_diagram_labels("\n".join(lines), edge_label_colors)
 
 
 # ---------------------------------------------------------------------------
@@ -1424,6 +1429,7 @@ def _render_fsm_diagram(
     verbose: bool = False,
     highlight_state: str | None = None,
     highlight_color: str = "32",
+    edge_label_colors: dict[str, str] | None = None,
 ) -> str:
     """Render an adaptive text diagram of the FSM graph.
 
@@ -1436,6 +1442,8 @@ def _render_fsm_diagram(
         verbose: If True, show expanded action content in boxes.
         highlight_state: If provided, render this state's box with the highlight color.
         highlight_color: ANSI SGR code for the highlighted state (default: green).
+        edge_label_colors: Optional label→SGR-code mapping for transition labels.
+            Falls back to hardcoded defaults when None.
     """
     edges = _collect_edges(fsm)
     bfs_order_list, bfs_depth = _bfs_order(fsm.initial, edges)
@@ -1478,6 +1486,7 @@ def _render_fsm_diagram(
             verbose,
             highlight_state,
             highlight_color,
+            edge_label_colors,
         )
 
     # Compute max node width to determine width constraint
@@ -1517,6 +1526,7 @@ def _render_fsm_diagram(
         verbose,
         highlight_state,
         highlight_color,
+        edge_label_colors,
     )
 
 
@@ -1533,6 +1543,7 @@ def _render_horizontal_simple(
     verbose: bool,
     highlight_state: str | None,
     highlight_color: str,
+    edge_label_colors: dict[str, str] | None = None,
 ) -> str:
     """Simple horizontal rendering for single-state or very simple FSMs."""
     if not main_path:
@@ -1603,4 +1614,4 @@ def _render_horizontal_simple(
     if diagram_indent > 0:
         lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]
 
-    return _colorize_diagram_labels("\n".join(lines))
+    return _colorize_diagram_labels("\n".join(lines), edge_label_colors)

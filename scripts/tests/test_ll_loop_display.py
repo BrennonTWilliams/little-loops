@@ -1273,6 +1273,46 @@ class TestRenderFsmDiagram:
         result = _render_fsm_diagram(fsm, highlight_state="nonexistent", highlight_color="32")
         assert "a" in result
 
+    def test_edge_label_custom_color_applied(self) -> None:
+        """Custom edge_label_colors overrides the default ANSI code for known labels."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step a", on_yes="b"),
+                "b": StateConfig(terminal=True),
+            },
+        )
+        custom_colors = {"yes": "99", "no": "38;5;208", "error": "31", "partial": "33",
+                         "next": "2", "_": "2", "blocked": "31", "retry_exhausted": "38;5;208"}
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm, edge_label_colors=custom_colors)
+
+        # Custom ANSI code for "yes" should appear
+        assert "\033[99m" in result
+
+    def test_edge_label_custom_color_overrides_default(self) -> None:
+        """When edge_label_colors overrides 'yes', the default green code is not used for it."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step a", on_yes="b"),
+                "b": StateConfig(terminal=True),
+            },
+        )
+        # Override "yes" with a unique color code unlikely to appear from any other source
+        custom_colors = {"yes": "55", "no": "38;5;208", "error": "31", "partial": "33",
+                         "next": "2", "_": "2", "blocked": "31", "retry_exhausted": "38;5;208"}
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm, edge_label_colors=custom_colors)
+
+        assert "\033[55m" in result
+        # Default green "32" should not appear as the edge label color for "yes"
+        assert "\033[32myes" not in result
+
     def test_non_highlighted_state_name_bold(self) -> None:
         """Non-highlighted state names are rendered in bold for visual hierarchy."""
         import little_loops.cli.output as output_mod
@@ -1561,7 +1601,8 @@ class TestDisplayProgressEvents:
         ) as mock_render:
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
             mock_render.assert_called_once_with(
-                self._make_fsm(), highlight_state="start", highlight_color="32"
+                self._make_fsm(), highlight_state="start", highlight_color="32",
+                edge_label_colors=None,
             )
         out = capsys.readouterr().out
         # Diagram contains box drawing characters
@@ -1617,7 +1658,8 @@ class TestDisplayProgressEvents:
                 executor, self._make_fsm(), self._make_args(verbose=True, show_diagrams=True)
             )
             mock_render.assert_called_once_with(
-                self._make_fsm(), highlight_state="start", highlight_color="32"
+                self._make_fsm(), highlight_state="start", highlight_color="32",
+                edge_label_colors=None,
             )
         out = capsys.readouterr().out
         assert "\u250c" in out

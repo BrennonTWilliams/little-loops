@@ -73,6 +73,50 @@ class CliColorsTypeConfig:
 
 
 @dataclass
+class CliColorsEdgeLabelsConfig:
+    """ANSI color overrides for FSM transition edge labels in loop diagrams."""
+
+    yes: str = "32"
+    no: str = "38;5;208"
+    error: str = "31"
+    partial: str = "33"
+    next: str = "2"
+    default: str = "2"
+    blocked: str = "31"
+    retry_exhausted: str = "38;5;208"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CliColorsEdgeLabelsConfig:
+        """Create CliColorsEdgeLabelsConfig from dictionary."""
+        return cls(
+            yes=data.get("yes", "32"),
+            no=data.get("no", "38;5;208"),
+            error=data.get("error", "31"),
+            partial=data.get("partial", "33"),
+            next=data.get("next", "2"),
+            default=data.get("default", "2"),
+            blocked=data.get("blocked", "31"),
+            retry_exhausted=data.get("retry_exhausted", "38;5;208"),
+        )
+
+    def to_dict(self) -> dict[str, str]:
+        """Convert to a label→SGR-code dict for use by _colorize_diagram_labels.
+
+        Maps 'default' back to '_' to match the key used in _EDGE_LABEL_COLORS.
+        """
+        return {
+            "yes": self.yes,
+            "no": self.no,
+            "error": self.error,
+            "partial": self.partial,
+            "next": self.next,
+            "_": self.default,
+            "blocked": self.blocked,
+            "retry_exhausted": self.retry_exhausted,
+        }
+
+
+@dataclass
 class CliColorsConfig:
     """ANSI color overrides for logger levels, priority labels, and type labels."""
 
@@ -80,6 +124,7 @@ class CliColorsConfig:
     priority: CliColorsPriorityConfig = field(default_factory=CliColorsPriorityConfig)
     type: CliColorsTypeConfig = field(default_factory=CliColorsTypeConfig)
     fsm_active_state: str = "32"
+    fsm_edge_labels: CliColorsEdgeLabelsConfig = field(default_factory=CliColorsEdgeLabelsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CliColorsConfig:
@@ -89,6 +134,7 @@ class CliColorsConfig:
             priority=CliColorsPriorityConfig.from_dict(data.get("priority", {})),
             type=CliColorsTypeConfig.from_dict(data.get("type", {})),
             fsm_active_state=data.get("fsm_active_state", "32"),
+            fsm_edge_labels=CliColorsEdgeLabelsConfig.from_dict(data.get("fsm_edge_labels", {})),
         )
 
 

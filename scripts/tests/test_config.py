@@ -13,6 +13,7 @@ from little_loops.config import (
     BRConfig,
     CategoryConfig,
     CliColorsConfig,
+    CliColorsEdgeLabelsConfig,
     CliColorsLoggerConfig,
     CliColorsPriorityConfig,
     CliColorsTypeConfig,
@@ -1099,6 +1100,50 @@ class TestCliColorsConfig:
     def test_fsm_active_state_from_dict_override(self) -> None:
         config = CliColorsConfig.from_dict({"fsm_active_state": "36"})
         assert config.fsm_active_state == "36"
+
+    def test_cli_colors_has_fsm_edge_labels(self) -> None:
+        config = CliColorsConfig()
+        assert hasattr(config, "fsm_edge_labels")
+        assert isinstance(config.fsm_edge_labels, CliColorsEdgeLabelsConfig)
+
+    def test_cli_colors_from_dict_fsm_edge_labels_override(self) -> None:
+        config = CliColorsConfig.from_dict({"fsm_edge_labels": {"yes": "36"}})
+        assert config.fsm_edge_labels.yes == "36"
+        assert config.fsm_edge_labels.no == "38;5;208"  # default
+
+
+class TestCliColorsEdgeLabelsConfig:
+    """Tests for CliColorsEdgeLabelsConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        config = CliColorsEdgeLabelsConfig()
+        assert config.yes == "32"
+        assert config.no == "38;5;208"
+        assert config.error == "31"
+        assert config.partial == "33"
+        assert config.next == "2"
+        assert config.default == "2"
+        assert config.blocked == "31"
+        assert config.retry_exhausted == "38;5;208"
+
+    def test_from_dict_empty(self) -> None:
+        config = CliColorsEdgeLabelsConfig.from_dict({})
+        assert config.yes == "32"
+        assert config.no == "38;5;208"
+
+    def test_from_dict_override(self) -> None:
+        config = CliColorsEdgeLabelsConfig.from_dict({"yes": "36", "error": "91"})
+        assert config.yes == "36"
+        assert config.error == "91"
+        assert config.no == "38;5;208"  # default
+
+    def test_to_dict_maps_default_to_underscore(self) -> None:
+        config = CliColorsEdgeLabelsConfig()
+        d = config.to_dict()
+        assert "_" in d
+        assert "default" not in d
+        assert d["_"] == "2"
+        assert d["yes"] == "32"
 
 
 class TestCliConfig:

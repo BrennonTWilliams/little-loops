@@ -276,12 +276,17 @@ def run_background(
 
 
 def run_foreground(
-    executor: Any, fsm: FSMLoop, args: argparse.Namespace, highlight_color: str = "32"
+    executor: Any,
+    fsm: FSMLoop,
+    args: argparse.Namespace,
+    highlight_color: str = "32",
+    edge_label_colors: dict[str, str] | None = None,
 ) -> int:
     """Run loop with progress display.
 
     Args:
         highlight_color: ANSI SGR code for the active FSM state highlight in verbose mode.
+        edge_label_colors: Optional label→SGR-code mapping for transition edge labels.
 
     Returns:
         Exit code (0 = success).
@@ -319,7 +324,10 @@ def run_foreground(
                 from little_loops.cli.loop.layout import _render_fsm_diagram
 
                 diagram = _render_fsm_diagram(
-                    fsm, highlight_state=state, highlight_color=highlight_color
+                    fsm,
+                    highlight_state=state,
+                    highlight_color=highlight_color,
+                    edge_label_colors=edge_label_colors,
                 )
                 print(diagram, flush=True)
             if not quiet:

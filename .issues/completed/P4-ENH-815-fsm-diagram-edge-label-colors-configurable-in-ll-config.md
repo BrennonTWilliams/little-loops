@@ -36,7 +36,7 @@ Currently edge label colors are hardcoded in `_EDGE_LABEL_COLORS` in `scripts/li
 ## Implementation Steps
 
 1. **Add `CliColorsEdgeLabelsConfig` dataclass** in `scripts/little_loops/config/cli.py` (before `CliColorsConfig`, following `CliColorsLoggerConfig`/`CliColorsPriorityConfig`/`CliColorsTypeConfig` pattern):
-   - Fields: `yes: str = "32"`, `no: str = "38;5;208"`, `error: str = "31"`, `partial: str = "33"`, `next: str = "2"`, `default: str = "2"` (rename `_` → `default` for JSON-friendliness; map back in `to_dict`)
+   - Fields: `yes: str = "32"`, `no: str = "38;5;208"`, `error: str = "31"`, `partial: str = "33"`, `next: str = "2"`, `default: str = "2"` (rename `_` → `default` for JSON-friendliness; map back in `to_dict`), `blocked: str = "31"`, `retry_exhausted: str = "38;5;208"` (added by ENH-813, now in `_EDGE_LABEL_COLORS` at layout.py:25–34)
    - `from_dict()` classmethod reads per-key with fallback to field default
 
 2. **Add `fsm_edge_labels` field to `CliColorsConfig`** (`config/cli.py:76–92`):
@@ -45,12 +45,12 @@ Currently edge label colors are hardcoded in `_EDGE_LABEL_COLORS` in `scripts/li
 
 3. **Update `config-schema.json`** — add `fsm_edge_labels` object under `cli.colors.properties` (alongside `fsm_active_state` at line 826), following the `type`/`priority` group pattern with `"additionalProperties": false` and per-label `"type": "string"` + `"default"` + `"description"` entries
 
-4. **Update `_colorize_diagram_labels(diagram, colors)`** in `layout.py:52–65` to accept an optional `colors: dict[str, str] | None = None` parameter; fall back to `_EDGE_LABEL_COLORS` if `None` (preserves existing behavior for callers that don't pass it)
+4. **Update `_colorize_diagram_labels(diagram, colors)`** in `layout.py:75–88` to accept an optional `colors: dict[str, str] | None = None` parameter; fall back to `_EDGE_LABEL_COLORS` if `None` (preserves existing behavior for callers that don't pass it)
 
 5. **Thread the colors dict through the rendering chain**:
-   - `_render_fsm_diagram` (line 1371): add `edge_label_colors: dict[str, str] | None = None` parameter; pass to both `_render_layered_diagram` and `_render_horizontal_simple`; those pass to `_colorize_diagram_labels` at lines 1363 and 1555
+   - `_render_fsm_diagram` (line 1422): add `edge_label_colors: dict[str, str] | None = None` parameter; pass to both `_render_layered_diagram` and `_render_horizontal_simple`; those pass to `_colorize_diagram_labels` at lines 1414 and 1606
    - `run_foreground` in `_helpers.py:278`: add `edge_label_colors: dict[str, str] | None = None` parameter; pass to `_render_fsm_diagram`
-   - `cmd_run` in `run.py:151`: read `BRConfig(Path.cwd()).cli.colors.fsm_edge_labels` and convert to `{"yes": ..., "no": ..., ...}` dict; pass to `run_foreground`
+   - `cmd_run` in `run.py:153`: read `BRConfig(Path.cwd()).cli.colors.fsm_edge_labels` and convert to `{"yes": ..., "no": ..., ...}` dict; pass to `run_foreground`
 
 6. **`/ll:init` — no changes needed**: init follows the "minimal write rule" and never emits `cli.colors` keys; `CliColorsEdgeLabelsConfig` defaults in `from_dict()` serve as the effective defaults
 
@@ -58,11 +58,11 @@ Currently edge label colors are hardcoded in `_EDGE_LABEL_COLORS` in `scripts/li
 
 8. **Add tests**:
    - `test_config.py`: `CliColorsEdgeLabelsConfig` default/override/integration tests (follow pattern at lines 1091–1167)
-   - `test_ll_loop_display.py`: pass a custom `edge_label_colors` dict to `_render_fsm_diagram`, assert the overridden ANSI codes appear in the rendered output (follow pattern at lines 1213–1272)
+   - `test_ll_loop_display.py`: pass a custom `edge_label_colors` dict to `_render_fsm_diagram`, assert the overridden ANSI codes appear in the rendered output (follow pattern at lines 1226–1273)
 
 ## Integration Map
 
-- `scripts/little_loops/cli/loop/layout.py` — `_EDGE_LABEL_COLORS` (lines 25–32), `_colorize_label` (35–49), `_colorize_diagram_labels` (52–65); both renderers call `_colorize_diagram_labels` as final post-pass at lines 1363 and 1555
+- `scripts/little_loops/cli/loop/layout.py` — `_EDGE_LABEL_COLORS` (lines 25–34), `_colorize_label` (37–51), `_colorize_diagram_labels` (75–88); both renderers call `_colorize_diagram_labels` as final post-pass at lines 1414 and 1606
 - `config-schema.json` — `cli.colors` section (lines 779–836), alongside `fsm_active_state` and nested objects like `type` and `priority`
 - `skills/configure/areas.md` — may need `cli.colors.fsm_edge_labels` area entry
 - `skills/init/SKILL.md` — defaults generation step
@@ -76,10 +76,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/config/cli.py:119–124` — `CliConfig.from_dict()` routes `cli.colors` to `CliColorsConfig.from_dict()` automatically; no changes needed here
 
 **Rendering layer (consumer):**
-- `scripts/little_loops/cli/loop/layout.py:25–32` — `_EDGE_LABEL_COLORS` module-level dict to replace with values from config
-- `scripts/little_loops/cli/loop/layout.py:52–65` — `_colorize_diagram_labels(diagram)` consumes `_EDGE_LABEL_COLORS` directly; must be extended to accept an optional colors dict parameter
-- `scripts/little_loops/cli/loop/layout.py:1371–1387` — `_render_fsm_diagram(fsm, verbose, highlight_state, highlight_color)` is the renderer entry point; add `edge_label_colors: dict[str, str] | None = None` parameter, thread through to both internal renderers
-- `scripts/little_loops/cli/loop/layout.py:1363, 1555` — call sites for `_colorize_diagram_labels` inside `_render_layered_diagram` and `_render_horizontal_simple`; pass the colors dict
+- `scripts/little_loops/cli/loop/layout.py:25–34` — `_EDGE_LABEL_COLORS` module-level dict to replace with values from config (now has 8 entries including `blocked`/`retry_exhausted` added by ENH-813)
+- `scripts/little_loops/cli/loop/layout.py:75–88` — `_colorize_diagram_labels(diagram)` consumes `_EDGE_LABEL_COLORS` directly; must be extended to accept an optional colors dict parameter
+- `scripts/little_loops/cli/loop/layout.py:1422` — `_render_fsm_diagram(fsm, verbose, highlight_state, highlight_color)` is the renderer entry point; add `edge_label_colors: dict[str, str] | None = None` parameter, thread through to both internal renderers
+- `scripts/little_loops/cli/loop/layout.py:1414, 1606` — call sites for `_colorize_diagram_labels` inside `_render_layered_diagram` and `_render_horizontal_simple`; pass the colors dict
 
 **Note:** `_colorize_label()` (line 35) is NOT used in the rendering path; only `_colorize_diagram_labels()` is called by the renderers. `_colorize_label` may be dead code or used externally — check `info.py` before removing.
 
@@ -105,7 +105,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - ENH-813: color-code transition lines in FSM loop diagrams (adds colors; this makes them configurable)
 - ENH-654: FSM diagram active-state background fill highlight
 
+## Resolution
+
+**Status**: Completed 2026-03-19
+
+**Changes**:
+- Added `CliColorsEdgeLabelsConfig` dataclass to `scripts/little_loops/config/cli.py` with fields for all 8 edge label types (`yes`, `no`, `error`, `partial`, `next`, `default`, `blocked`, `retry_exhausted`) and `to_dict()` method mapping `default` → `_`
+- Added `fsm_edge_labels: CliColorsEdgeLabelsConfig` field to `CliColorsConfig.from_dict()`
+- Exported `CliColorsEdgeLabelsConfig` from `scripts/little_loops/config/__init__.py`
+- Updated `config-schema.json` with `fsm_edge_labels` object under `cli.colors.properties` with per-label SGR string properties
+- Updated `_colorize_diagram_labels(diagram, colors=None)` in `layout.py` to accept optional colors dict (falls back to `_EDGE_LABEL_COLORS` when None)
+- Added `edge_label_colors: dict[str, str] | None = None` parameter to `_render_fsm_diagram`, `_render_layered_diagram`, `_render_horizontal_simple`
+- Added `edge_label_colors` parameter to `run_foreground` in `_helpers.py`
+- Updated `cmd_run` in `run.py` to read `cli_colors.fsm_edge_labels.to_dict()` and pass to `run_foreground`
+- Added 6 new tests (4 in `test_config.py`, 2 in `test_ll_loop_display.py`)
+- Updated 2 existing tests in `test_ll_loop_display.py` to include the new `edge_label_colors=None` kwarg
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-19T17:19:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e76feec2-af0b-4c9d-91eb-f940c2fac08f.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05c0fd42-591b-4a8e-b3b7-08165c6c2477.jsonl`
 - `/ll:refine-issue` - 2026-03-19T16:54:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c179030-87aa-47bd-98f0-dbd231f6dfc2.jsonl`
 - `/ll:capture-issue` - 2026-03-19T16:50:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e76feec2-af0b-4c9d-91eb-f940c2fac08f.jsonl`
