@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.53.0] - 2026-03-18
+
+### Added
+
+- **`--priority` filter for `ll-auto`** — Filter issue processing by priority level; also fixes validation in `ll-parallel` (b2d242d)
+- **FSM state box unicode composition badges** — State boxes now render unicode badges indicating state type, replacing text annotations (fca522b)
+
+### Fixed
+
+- **Route states missing unicode badge in FSM diagram** — `_get_state_badge()` now checks `state.route` so routing/branching states receive a distinct visual badge (BUG-806)
+- **Numeric-only `--only` filter support** — `ll-auto`, `ll-parallel`, and `ll-sprint` now correctly accept numeric-only values for the `--only` filter (4d0942a)
+
+### Changed
+
+- **FSM state box badge moved to top border** — Badge character is now embedded in the box's top border line with one space of padding on each side, rather than appearing in the first content row (ENH-807)
+
+### Documentation
+
+- Fixed documentation accuracy issues across 5 guide files: LOOPS_GUIDE (10 fixes), AUTOMATIC_HARNESSING_GUIDE (10 fixes), SESSION_HANDOFF (8 fixes), WORKFLOW_ANALYSIS_GUIDE (9 fixes), SPRINT_GUIDE (5 fixes) (9ab98f1, 1026be3, f6a32a0, 159a2e2, d739fa2)
+
 ## [1.52.0] - 2026-03-17
 
 ### Added
@@ -1423,6 +1443,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.53.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.52.0...v1.53.0
 [1.52.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.51.0...v1.52.0
 [1.51.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.50.0...v1.51.0
 [1.50.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.49.0...v1.50.0
