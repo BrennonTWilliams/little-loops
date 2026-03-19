@@ -12,7 +12,7 @@ states:
       independently completable steps. Each step should be small enough to
       complete in a single focused session.
 
-      Write the step list to /tmp/ll-general-task-plan.md in this format:
+      Write the step list to ${env.PWD}/.loops/tmp/general-task-plan.md in this format:
       ```
       # Task Plan
       - [ ] Step 1: ...
@@ -28,7 +28,7 @@ states:
     action: >
       Your task is: ${context.input}
 
-      A step-by-step plan exists at /tmp/ll-general-task-plan.md.
+      A step-by-step plan exists at ${env.PWD}/.loops/tmp/general-task-plan.md.
       Read it, find the FIRST unchecked step (- [ ]), complete ONLY that step,
       then mark it done (- [x]) in the file.
 
@@ -56,7 +56,7 @@ states:
     action: >
       Your task is: ${context.input}
 
-      A step-by-step plan exists at /tmp/ll-general-task-plan.md.
+      A step-by-step plan exists at ${env.PWD}/.loops/tmp/general-task-plan.md.
       Read it, find the FIRST unchecked step (- [ ]), complete ONLY that step,
       then mark it done (- [x]) in the file.
 
