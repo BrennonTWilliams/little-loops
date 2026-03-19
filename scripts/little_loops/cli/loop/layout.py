@@ -608,6 +608,13 @@ def _draw_box(
             for j in range(1, len(line)):
                 if col + 2 + j < col + width - 1:
                     grid[r][col + 2 + j] = ""
+        elif i == 0:
+            bold_line = colorize(line, "1")
+            if col + 2 < total_width:
+                grid[r][col + 2] = bold_line
+            for j in range(1, len(line)):
+                if col + 2 + j < col + width - 1:
+                    grid[r][col + 2 + j] = ""
         else:
             for j, ch in enumerate(line):
                 if col + 2 + j < col + width - 1:

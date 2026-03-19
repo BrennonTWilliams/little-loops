@@ -1273,6 +1273,23 @@ class TestRenderFsmDiagram:
         result = _render_fsm_diagram(fsm, highlight_state="nonexistent", highlight_color="32")
         assert "a" in result
 
+    def test_non_highlighted_state_name_bold(self) -> None:
+        """Non-highlighted state names are rendered in bold for visual hierarchy."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step a", on_yes="b"),
+                "b": StateConfig(terminal=True),
+            },
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm)
+
+        # State names should be bold (ANSI SGR 1); no highlight_state set so both boxes are non-highlighted
+        assert "\033[1m" in result, "Non-highlighted state names should use bold (ANSI code 1)"
+
 
 class TestAdaptiveLayoutTopologies:
     """Tests for topology-specific adaptive layout rendering."""
