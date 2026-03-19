@@ -5,6 +5,8 @@ priority: P2
 status: open
 discovered_date: 2026-03-19
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 78
 ---
 
 # BUG-817: Cross-project /tmp path conflicts cause silent data corruption
@@ -17,7 +19,7 @@ Multiple components in the CLI, commands, and skills use bare `/tmp/<name>` path
 
 Nine locations write to unscoped `/tmp/` paths:
 
-1. **`scripts/little_loops/fsm/evaluators.py:421-423`** — `evaluate_diff_stall()` writes `/tmp/ll-diff-stall-{cache_key}.txt` and `.count`. The `cache_key` is hashed from scope (file paths like `["scripts/"]`), **not** from CWD. Two projects with identically-named source dirs share the same key and stomp each other's stall-detection state.
+1. **`scripts/little_loops/fsm/evaluators.py:420-423`** — `evaluate_diff_stall()` writes `/tmp/ll-diff-stall-{cache_key}.txt` and `.count`. The `cache_key` is hashed from scope (file paths like `["scripts/"]`), **not** from CWD. Two projects with identically-named source dirs share the same key and stomp each other's stall-detection state.
 2. **`.claude/CLAUDE.md` scratch pad section** — Instructs Claude to write large outputs to `/tmp/ll-scratch/<name>.txt`. All projects share this global directory.
 3. **`hooks/scripts/session-cleanup.sh:17`** — `rm -rf "/tmp/ll-scratch"` deletes *all* projects' scratch files when any project's session ends.
 4. **`commands/manage-release.md:337`** — `gh release create ... --notes-file /tmp/ll-release-notes.md` collides when two projects run manage-release simultaneously.
@@ -66,7 +68,7 @@ Apply the BUG-744 pattern (`Path.cwd() / ".loops" / "tmp" / name`) consistently:
 | `skills/review-loop/SKILL.md` QC-10 | Extend FA-3 to add Warning when action text writes to bare `/tmp/<name>` (not `.loops/tmp/`) |
 | `skills/review-loop/reference.md` FA-3 | Update fix template "After" example to show `.loops/tmp/` |
 | `test_fsm_evaluators.py:clean_state_files` | Replace path-patching with `monkeypatch.chdir(tmp_path)` + create `.loops/tmp/` under `tmp_path` |
-| `test_builtin_loops.py:AFFECTED_LOOPS` | Add `"pr-review-cycle"` to the list |
+| `test_builtin_loops.py:AFFECTED_LOOPS` | **No change needed** — `pr-review-cycle` was removed in ENH-758 and does not exist; `FORBIDDEN_PATTERNS` list (lines 234-241) may need `/tmp/ll-diff-stall-*` added if a test is introduced for stall state isolation |
 
 ## Integration Map
 
@@ -82,13 +84,61 @@ Apply the BUG-744 pattern (`Path.cwd() / ".loops" / "tmp" / name`) consistently:
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/evaluators.py` is imported by FSM orchestrator; no interface change, only internal paths change
+- `scripts/little_loops/fsm/executor.py:870-875` — dispatches to `evaluate_diff_stall()` via `evaluate(config=state.evaluate, ...)` — no changes needed
+- `scripts/little_loops/fsm/executor.py:646` — calls `_evaluate()` from main state-execution loop — no changes needed
 
 ### Similar Patterns
 - `.loops/general-task.yaml`, `issue-refinement`, `fix-quality-and-tests`, `dead-code-cleanup` built-in loops already use `.loops/tmp/` (fixed in BUG-744)
 
 ### Tests
 - `scripts/tests/test_fsm_evaluators.py` — fixture update required (clean_state_files)
-- `scripts/tests/test_builtin_loops.py` — add `pr-review-cycle` to AFFECTED_LOOPS
+- `scripts/tests/test_builtin_loops.py` — `AFFECTED_LOOPS` (lines 222-226) and `FORBIDDEN_PATTERNS` (lines 234-241); `pr-review-cycle` does not exist (removed ENH-758), no changes needed here unless a new stall-isolation test is added
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Exact current code in `evaluators.py:420-423`:**
+```python
+scope_str = "|".join(sorted(scope)) if scope else "_root_"
+cache_key = hashlib.md5(scope_str.encode()).hexdigest()[:12]
+state_file = Path(f"/tmp/ll-diff-stall-{cache_key}.txt")
+count_file = Path(f"/tmp/ll-diff-stall-{cache_key}.count")
+```
+
+**Dispatch call site at `evaluators.py:809-813`:**
+```python
+elif eval_type == "diff_stall":
+    return evaluate_diff_stall(
+        scope=config.scope,
+        max_stall=config.max_stall,
+    )
+```
+
+**Exact current `clean_state_files` fixture at `test_fsm_evaluators.py:984-997`:**
+```python
+@pytest.fixture(autouse=True)
+def clean_state_files(self, tmp_path, monkeypatch):
+    import little_loops.fsm.evaluators as ev_module
+    original_path = Path
+    def patched_path(p: str) -> Path:
+        if p.startswith("/tmp/ll-diff-stall-"):
+            filename = original_path(p).name
+            return tmp_path / filename
+        return original_path(p)
+    monkeypatch.setattr(ev_module, "Path", patched_path)
+```
+
+**Replacement fixture pattern** (from `test_ll_loop_integration.py:95-106`):
+```python
+@pytest.fixture(autouse=True)
+def clean_state_files(self, tmp_path, monkeypatch):
+    loops_tmp = tmp_path / ".loops" / "tmp"
+    loops_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+```
+
+**`scope` field wiring** — `scope` in loop YAML (e.g. `dead-code-cleanup.yaml:7-8`) maps to `EvaluateConfig.scope` (`schema.py:79`), then to `evaluate_diff_stall(scope=config.scope, ...)`.
 
 ### Documentation
 - `skills/review-loop/SKILL.md` — extended QC check
@@ -105,8 +155,8 @@ Apply the BUG-744 pattern (`Path.cwd() / ".loops" / "tmp" / name`) consistently:
 3. Update `commands/manage-release.md` and `commands/normalize-issues.md`
 4. Update `skills/create-loop/loop-types.md` template
 5. Extend `skills/review-loop/SKILL.md` QC-10/FA-3 and update `reference.md` fix template
-6. Fix test fixtures: `clean_state_files` in `test_fsm_evaluators.py` + add `pr-review-cycle` to `test_builtin_loops.py`
-7. Verify: run pytest, run loop validator on built-in loops, grep for remaining bare `/tmp/ll-`
+6. Fix test fixture: replace `clean_state_files` path-patching in `test_fsm_evaluators.py:984-997` with `monkeypatch.chdir(tmp_path)` + `(tmp_path / ".loops/tmp").mkdir(parents=True, exist_ok=True)` — matching the pattern in `test_ll_loop_integration.py:95-106`
+7. Verify: run pytest, run loop validator on built-in loops, grep for remaining bare `/tmp/ll-`; confirm no reference to `pr-review-cycle` needed (loop was removed in ENH-758)
 
 ## Impact
 
@@ -123,7 +173,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `data-integrity`, `cross-project`, `tmp-paths`, `captured`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-03-19_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 78/100 → MODERATE
+
+### Outcome Risk Factors
+- **8 files across 5 subsystems** means broad surface even though each change is mechanical — a missed location leaves the bug partially present.
+- **7 of 8 modified files are .md** with no automated validation. Run `grep -r '/tmp/ll-' .` (excluding .issues/) as a post-implementation verification step to catch any remaining bare paths.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/934d9f0f-b9bc-4615-9e82-33b060fb05ae.jsonl`
+- `/ll:refine-issue` - 2026-03-19T21:10:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b191584-d516-4c9b-9c77-d1ebf5b58898.jsonl`
 
 - `/ll:capture-issue` - 2026-03-19T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50a1c997-86c0-49fe-9276-210a71c2c9da.jsonl`
 
