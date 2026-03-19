@@ -307,6 +307,136 @@ class TestContextMonitor:
             os.chdir(original_dir)
 
 
+    def test_known_model_auto_detection(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Known model in JSONL triggers auto-detection of 200K context limit.
+
+        Uses baseline of 180K tokens. At 200K limit: 90% → triggers handoff (exit 2).
+        At 1M limit: 18% → no trigger (exit 0). The exit code proves which limit was used.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())  # context_limit_estimate = 1000000
+
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-sonnet-4-6",
+                    "usage": {
+                        "input_tokens": 180000,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 0,
+                    },
+                },
+            }
+            transcript_file.write_text(json.dumps(assistant_entry) + "\n")
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x\n"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            # exit 2 = handoff triggered. 180K / 200K = 90% > 80% threshold.
+            # If denominator were 1M, 180K / 1M = 18% → no trigger (exit 0).
+            assert result.returncode == 2, (
+                f"Expected exit 2 (auto-detected 200K limit), got {result.returncode}. "
+                f"stderr: {result.stderr}"
+            )
+            # Confirm denominator is 200000 in the handoff message
+            assert "200000" in result.stderr, (
+                f"Expected '200000' in stderr to confirm auto-detected limit. stderr: {result.stderr}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_unknown_model_config_fallback(
+        self, hook_script: Path, tmp_path: Path
+    ):
+        """Unknown model falls back to context_limit_estimate from config.
+
+        Uses baseline of 45K tokens with config limit 50K. At 50K: 90% → triggers (exit 2).
+        At 200K auto-detected: 22.5% → no trigger (exit 0). Exit code proves fallback was used.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            # Create config with explicit non-default context_limit_estimate
+            config = {
+                "context_monitor": {
+                    "enabled": True,
+                    "auto_handoff_threshold": 80,
+                    "context_limit_estimate": 50000,
+                    "state_file": str(tmp_path / "ll-context-state.json"),
+                }
+            }
+            config_file = tmp_path / ".claude" / "ll-config.json"
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file.write_text(json.dumps(config, indent=2))
+
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-custom-model-xyz",  # unknown model
+                    "usage": {
+                        "input_tokens": 45000,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 0,
+                    },
+                },
+            }
+            transcript_file.write_text(json.dumps(assistant_entry) + "\n")
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x\n"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            # exit 2 = handoff triggered. 45K / 50K = 90% > 80% threshold.
+            # If denominator were 200K (auto-detected), 45K / 200K = 22.5% → no trigger.
+            assert result.returncode == 2, (
+                f"Expected exit 2 (config fallback 50K limit), got {result.returncode}. "
+                f"stderr: {result.stderr}"
+            )
+            # Confirm denominator is 50000 in the handoff message
+            assert "50000" in result.stderr, (
+                f"Expected '50000' in stderr to confirm config fallback limit. stderr: {result.stderr}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""
 

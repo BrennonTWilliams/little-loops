@@ -460,7 +460,7 @@
         },
         "context_limit_estimate": {
           "type": "integer",
-          "description": "Estimated total context window tokens. Default matches Sonnet 4.6/Opus 4.6 (1M). Set to 200000 for Haiku 4.5.",
+          "description": "Fallback/override for the context window token limit. Auto-detection reads the model from the JSONL transcript and selects the correct limit for known models (claude-*-4* → 200000). Set this only to override auto-detection or when using an unknown/custom model.",
           "default": 1000000,
           "minimum": 50000,
           "maximum": 2000000

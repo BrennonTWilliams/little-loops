@@ -2,7 +2,7 @@
 id: FEAT-812
 type: FEAT
 priority: P3
-status: active
+status: completed
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 confidence_score: 100
@@ -139,11 +139,34 @@ A user switches from claude-sonnet-4-6 to claude-opus-4-6 (both 200K) without up
 `feat`, `context-monitor`, `accuracy`, `hooks`, `jq`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-19T18:33:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c8b6089-e13f-43fe-83e6-c47add117668.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74eac9b6-0514-4106-b8b2-da35fb895c2e.jsonl`
 - `/ll:refine-issue` - 2026-03-19T04:48:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74626b26-3433-4c87-9955-47d8b604be07.jsonl`
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
+## Resolution
+
+**Completed** 2026-03-19
+
+### Changes Made
+- `hooks/scripts/context-monitor.sh`: Added `DETECTED_MODEL` extraction from JSONL transcript (jq `-rs` flag for raw string output), added `get_context_limit()` function that maps known `claude-*-4*` model prefixes to 200K context window, moved final `CONTEXT_LIMIT` assignment into `main()` using `get_context_limit`.
+- `scripts/tests/test_hooks_integration.py`: Added `test_known_model_auto_detection` (known model → 200K denominator triggers at 90% of 200K) and `test_unknown_model_config_fallback` (unknown model + config 50K → falls back to config value).
+- `config-schema.json`: Updated `context_limit_estimate` description to clarify fallback/override role.
+- `docs/reference/CONFIGURATION.md`: Updated `context_limit_estimate` table row to reflect auto-detection.
+
+### Acceptance Criteria Met
+- [x] `context-monitor.sh` extracts `model` from last assistant JSONL entry
+- [x] Lookup table maps known model IDs (`claude-*-4*`) to 200K context window
+- [x] Recognized model uses auto-detected context window as denominator
+- [x] Unrecognized model falls back to `context_limit_estimate` from config
+- [x] `context_limit_estimate` acts as override when set to non-default value
+- [x] All existing tests pass; new tests cover detection and fallback paths
+
+---
+## Session Log
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+
 ---
 ## Status
 
-**Open** | Created: 2026-03-18 | Priority: P3
+**Completed** | Created: 2026-03-18 | Completed: 2026-03-19 | Priority: P3

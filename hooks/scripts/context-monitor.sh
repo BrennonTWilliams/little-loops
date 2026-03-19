@@ -24,10 +24,8 @@ fi
 
 # Read configuration with defaults
 THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"
-# Default 1,000,000 reflects Sonnet 4.6 / Opus 4.6 GA context window (March 13, 2026).
-# Set to 200000 for Haiku 4.5 deployments via LL_CONTEXT_LIMIT env var or
-# context_monitor.context_limit_estimate in ll-config.json.
-CONTEXT_LIMIT="${LL_CONTEXT_LIMIT:-$(ll_config_value "context_monitor.context_limit_estimate" "1000000")}"
+# context_limit_estimate is an optional override/fallback; auto-detection sets the final limit below.
+CONFIG_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "1000000")
 STATE_FILE=$(ll_config_value "context_monitor.state_file" ".claude/ll-context-state.json")
 
 # Read estimate weights with defaults
@@ -47,6 +45,10 @@ USE_TRANSCRIPT_BASELINE=$(ll_config_value "context_monitor.use_transcript_baseli
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
 TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}')
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
+DETECTED_MODEL=""
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+    DETECTED_MODEL=$(jq -rs 'map(select(.type == "assistant")) | last | .message.model // ""' "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
+fi
 
 # Estimate tokens for this tool call
 estimate_tokens() {
@@ -125,6 +127,20 @@ get_transcript_baseline() {
         (.message.usage.output_tokens // 0)' "$path" 2>/dev/null || echo 0
 }
 
+# Map a model identifier to its context window size.
+# Config override wins when explicitly set to a non-default value (anything other than 1000000).
+# Known claude-*-4* prefixes → 200000; unknown models → config_override fallback.
+get_context_limit() {
+    local model="$1"
+    local config_override="$2"
+    # Explicit user override: if set to something other than the default 1000000, honour it.
+    [ -n "$config_override" ] && [ "$config_override" != "1000000" ] && echo "$config_override" && return
+    case "$model" in
+        claude-opus-4*|claude-sonnet-4*|claude-haiku-4*) echo 200000 ;;
+        *) echo "${config_override:-200000}" ;;
+    esac
+}
+
 # Note: get_mtime and parse_iso_date are now provided by lib/common.sh
 # as get_mtime() and to_epoch() respectively
 
@@ -197,6 +213,10 @@ main() {
     if [ -z "$TOOL_NAME" ]; then
         exit 0
     fi
+
+    # Resolve final context limit: LL_CONTEXT_LIMIT env var wins first, then auto-detection
+    # by model prefix, then config value fallback for unknown models.
+    CONTEXT_LIMIT="${LL_CONTEXT_LIMIT:-$(get_context_limit "$DETECTED_MODEL" "$CONFIG_LIMIT")}"
 
     # Estimate tokens for this tool call
     TOKENS=$(estimate_tokens "$TOOL_NAME" "$TOOL_RESPONSE")
