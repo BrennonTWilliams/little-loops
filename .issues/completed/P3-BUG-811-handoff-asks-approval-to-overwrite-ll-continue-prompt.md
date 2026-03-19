@@ -2,7 +2,7 @@
 id: BUG-811
 type: BUG
 priority: P3
-status: open
+status: Closed - Already Fixed
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 ---
@@ -33,35 +33,44 @@ The approval prompt interrupts the handoff flow for no benefit. The file is a we
 
 ## Proposed Solution
 
-Add `.claude/ll-continue-prompt.md` to the project's `settings.json` write permissions so Claude Code does not prompt for approval when the file already exists. Alternatively, update `commands/handoff.md` to instruct Claude to use `Bash` with a heredoc redirect instead of the `Write` tool, bypassing the approval prompt.
+Add `Write(.claude/ll-continue-prompt.md)` to the canonical allow list that `/ll:init` (Step 10) and `/ll:configure allowed-tools` append to the target settings file. It should sit alongside the existing `Bash(ll-*)` entries:
 
-A cleaner long-term solution is to add a `write_file_no_confirm` pattern in settings that covers this path.
+```json
+"Bash(ll-issues:*)",
+"Bash(ll-auto:*)",
+...
+"Bash(ll-check-links:*)",
+"Write(.claude/ll-continue-prompt.md)"
+```
+
+This ensures any project that runs `/ll:init` or re-runs `/ll:configure allowed-tools` gets the permission pre-authorized, eliminating the approval prompt on every subsequent handoff.
 
 ## Integration Map
 
 ### Files to Modify
-- `commands/handoff.md` — update write instruction to avoid triggering approval prompt
+- `skills/init/SKILL.md` — add `Write(.claude/ll-continue-prompt.md)` to the canonical allow list in Step 10
+- `skills/configure/SKILL.md` — same canonical list referenced in the `allowed-tools` section
 
 ### Dependent Files (Callers/Importers)
-- `.claude/settings.json` or `.claude/settings.local.json` — may need permission entry for `.claude/ll-continue-prompt.md`
+- `.claude/settings.json` / `.claude/settings.local.json` in target projects — populated by init/configure
 
 ### Similar Patterns
-- Other commands that write well-known output files (e.g., plan files) may have the same issue
+- All other `Bash(ll-*:*)` entries in the canonical allow list follow the same pattern
 
 ### Tests
-- N/A — command behavior, not unit-testable
+- N/A — skill instruction update, not unit-testable
 
 ### Documentation
 - N/A
 
 ### Configuration
-- `.claude/settings.json` — potential write permissions entry
+- N/A — the fix is in the skill instructions that generate settings entries
 
 ## Implementation Steps
 
-1. Decide approach: settings permission vs. Bash heredoc in command
-2. If settings: add `ll-continue-prompt.md` write permission to `.claude/settings.json`
-3. If command: update `commands/handoff.md` to use `Bash` redirect instead of `Write` tool
+1. Add `"Write(.claude/ll-continue-prompt.md)"` to the canonical allow list in `skills/init/SKILL.md` (Step 10)
+2. Add the same entry to the canonical allow list in `skills/configure/SKILL.md` (`allowed-tools` section)
+3. Verify: run `/ll:init` or `/ll:configure allowed-tools` and confirm the entry appears in the target settings file
 4. Verify: run `/ll:handoff` twice and confirm no approval prompt on second run
 
 ## Impact
@@ -80,6 +89,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `captured`, `ux`, `handoff`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-19T04:32:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bb6a792-a2fe-4d51-b678-f9c1a1745893.jsonl`
+- `/ll:refine-issue` - 2026-03-19T04:31:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4dd7eb52-05b2-4dee-89fa-f20e6fb0fa81.jsonl`
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0769f82c-7917-4279-b938-66dfdf42d867.jsonl`
 
