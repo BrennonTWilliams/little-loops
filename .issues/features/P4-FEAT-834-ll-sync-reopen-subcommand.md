@@ -3,6 +3,8 @@ discovered_commit: 8c6cf902efed0f071b9293a82ce6b13a7de425c1
 discovered_branch: main
 discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
+confidence_score: 88
+outcome_confidence: 86
 ---
 
 # FEAT-834: `ll-sync` missing `reopen` subcommand
@@ -56,5 +58,27 @@ Add a `reopen` subparser to the sync CLI. In `GitHubSyncManager`, add a `reopen_
 **Open** | Created: 2026-03-19 | Priority: P4
 
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-03-19
+
+- `scripts/little_loops/cli/sync.py` exists; `close_parser` is at lines 72-84 as stated
+- Subcommands confirmed: `status`, `push`, `pull`, `diff`, `close` — no `reopen`
+- `GitHubSyncManager.close_issues()` exists in `scripts/little_loops/sync.py:872` with no `reopen_issue` counterpart
+- Proposed solution (mirror `close` pattern with `gh issue reopen`) is architecturally sound
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-03-19_
+
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Concerns
+- `--all-reopened` semantics need a decision: likely means "find all active-dir issues that have `github_issue` frontmatter where the GitHub issue state is currently closed." Verify this is the intended behavior before coding.
+- "Optionally moves local file back" — the existing `reopen_issue()` in `issue_discovery/search.py` handles git mv + adds Reopened section. Confirm whether to reuse it or implement a simpler plain file move.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:16:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
