@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.54.0] - 2026-03-19
+
+### Added
+
+- **Example FSM harness loops** — Built-in harness loop examples for automatic harnessing workflows (198abf8)
+- **`/ll:go-no-go` skill** — Adversarial issue assessment that stress-tests implementation plans before coding begins (202d59f)
+- **Auto-detect model from JSONL in context monitor** — Context monitor reads session JSONL to detect which model is active and select the correct context limit (0cfbc0c)
+
+### Fixed
+
+- **FSM tmp paths scoped to project CWD** — Temporary files created by FSM loops are now scoped to the project directory, preventing cross-project collisions (3dde2d0)
+- **`general-task` plan file scoped to project dir** — Plan files are now project-scoped, avoiding conflicts between concurrent sessions (828086d)
+- **`ll-continue-prompt.md` write permission** — Added `Write(ll-continue-prompt.md)` to canonical permissions so handoff no longer prompts for approval (BUG-811)
+- **Context monitor default limit raised from 150K to 1M** — Prevents premature handoffs on modern models with large context windows (BUG-809)
+
+### Changed
+
+- **FSM diagram visual improvements** — State box titles are bold; transition line characters are color-coded by edge type; edge label colors are configurable via `ll-config.json` (1da47fb, 8fc6508, 49d574f)
+- **`analyze-loop` name-based analysis scoped to most recent execution** — Avoids false positives from older loop runs with the same name (7cf3373)
+- **Context monitor uses JSONL transcript baseline** — More accurate token estimation via JSONL transcript rather than conversation estimates (8749815)
+- **`on_handoff` set to `spawn` across all built-in loop configs** — Ensures consistent session handoff behavior (533cc27)
+
 ## [1.53.0] - 2026-03-18
 
 ### Added
@@ -1443,6 +1465,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.54.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.53.0...v1.54.0
 [1.53.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.52.0...v1.53.0
 [1.52.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.51.0...v1.52.0
 [1.51.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.50.0...v1.51.0
