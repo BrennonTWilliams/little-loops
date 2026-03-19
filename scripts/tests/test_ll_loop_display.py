@@ -1284,8 +1284,16 @@ class TestRenderFsmDiagram:
                 "b": StateConfig(terminal=True),
             },
         )
-        custom_colors = {"yes": "99", "no": "38;5;208", "error": "31", "partial": "33",
-                         "next": "2", "_": "2", "blocked": "31", "retry_exhausted": "38;5;208"}
+        custom_colors = {
+            "yes": "99",
+            "no": "38;5;208",
+            "error": "31",
+            "partial": "33",
+            "next": "2",
+            "_": "2",
+            "blocked": "31",
+            "retry_exhausted": "38;5;208",
+        }
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, edge_label_colors=custom_colors)
 
@@ -1304,8 +1312,16 @@ class TestRenderFsmDiagram:
             },
         )
         # Override "yes" with a unique color code unlikely to appear from any other source
-        custom_colors = {"yes": "55", "no": "38;5;208", "error": "31", "partial": "33",
-                         "next": "2", "_": "2", "blocked": "31", "retry_exhausted": "38;5;208"}
+        custom_colors = {
+            "yes": "55",
+            "no": "38;5;208",
+            "error": "31",
+            "partial": "33",
+            "next": "2",
+            "_": "2",
+            "blocked": "31",
+            "retry_exhausted": "38;5;208",
+        }
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, edge_label_colors=custom_colors)
 
@@ -1601,7 +1617,9 @@ class TestDisplayProgressEvents:
         ) as mock_render:
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
             mock_render.assert_called_once_with(
-                self._make_fsm(), highlight_state="start", highlight_color="32",
+                self._make_fsm(),
+                highlight_state="start",
+                highlight_color="32",
                 edge_label_colors=None,
             )
         out = capsys.readouterr().out
@@ -1658,7 +1676,9 @@ class TestDisplayProgressEvents:
                 executor, self._make_fsm(), self._make_args(verbose=True, show_diagrams=True)
             )
             mock_render.assert_called_once_with(
-                self._make_fsm(), highlight_state="start", highlight_color="32",
+                self._make_fsm(),
+                highlight_state="start",
+                highlight_color="32",
                 edge_label_colors=None,
             )
         out = capsys.readouterr().out
@@ -2008,6 +2028,4 @@ class TestEdgeLineColorization:
         with patch.object(output_mod, "_USE_COLOR", False):
             result = _render_fsm_diagram(fsm)
 
-        assert "\033[" not in result, (
-            f"Expected no ANSI codes when color disabled.\n{result!r}"
-        )
+        assert "\033[" not in result, f"Expected no ANSI codes when color disabled.\n{result!r}"
