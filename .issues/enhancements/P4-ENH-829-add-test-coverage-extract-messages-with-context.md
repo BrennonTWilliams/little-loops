@@ -58,5 +58,17 @@ Add a `TestExtractMessagesWithContext` class in `test_user_messages.py` using in
 **Open** | Created: 2026-03-19 | Priority: P4
 
 
+## Verification Notes
+
+**Verdict**: RESOLVED (2026-03-19)
+
+The test coverage described as missing has been added. `TestExtractUserMessagesWithResponseContext` class exists at `scripts/tests/test_user_messages.py:760` and exercises the `include_response_context=True` code path via multiple tests (lines 775, 879, 953, 996, 1007). All four expected behaviors from the issue are covered.
+
+Line numbers have shifted: `_extract_messages_with_context` is now at line 643 (was 382-398 at scan commit 8c6cf90). `_aggregate_response_metadata` is at line 199.
+
+Fix introduced in commit `35a5ed6` (feat(user-messages): add response context capture to ll-messages).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:29:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:verify-issues` - 2026-03-19T00:00:00 - ``
