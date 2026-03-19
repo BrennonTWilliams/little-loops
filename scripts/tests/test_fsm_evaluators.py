@@ -984,17 +984,9 @@ class TestDiffStallEvaluator:
     @pytest.fixture(autouse=True)
     def clean_state_files(self, tmp_path, monkeypatch):
         """Redirect state files to a temp directory for test isolation."""
-        import little_loops.fsm.evaluators as ev_module
-
-        original_path = Path
-
-        def patched_path(p: str) -> Path:
-            if p.startswith("/tmp/ll-diff-stall-"):
-                filename = original_path(p).name
-                return tmp_path / filename
-            return original_path(p)
-
-        monkeypatch.setattr(ev_module, "Path", patched_path)
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True, exist_ok=True)
+        monkeypatch.chdir(tmp_path)
 
     def test_first_iteration_returns_success(self, mock_git) -> None:
         """First call always returns success (no previous snapshot)."""

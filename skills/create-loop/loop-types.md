@@ -794,7 +794,7 @@ states:
 |------|------------------|
 | Active issues list | `ll-issues list --json \| python3 -c "import json,sys; issues=[i for i in json.load(sys.stdin) if i.get('status')=='open']; print(issues[0]['id']) if issues else sys.exit(1)"` |
 | File glob pattern | `find . -name '<pattern>' -not -path './.git/*' \| sort \| head -1` |
-| Manual list | `python3 -c "items='<item1>,<item2>,...'.split(','); [open('/tmp/harness-items.txt','w').write('\n'.join(items))]; print(items[0])"` (first-run seeding) |
+| Manual list | `python3 -c "import os; os.makedirs('.loops/tmp', exist_ok=True); items='<item1>,<item2>,...'.split(','); [open('.loops/tmp/harness-items.txt','w').write('\n'.join(items))]; print(items[0])"` (first-run seeding) |
 
 **Tool-gate command priority** (use highest-priority configured command):
 1. `test_cmd` (most comprehensive)

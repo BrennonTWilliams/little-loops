@@ -167,8 +167,12 @@ Scan all terminal states. If none has a name suggesting failure (`failed`, `erro
 
 ### QC-10: Unresetting Shared State
 
-Scan all state `action` texts for writes to `/tmp/` paths (e.g., `echo ... > /tmp/foo`, `tee /tmp/foo`). For each `/tmp/` path written, check whether any state action resets or removes it at loop start (in the `initial` state or an explicit `start`/`init` state):
-- If a `/tmp/` file is written but never reset: add Warning finding at path `states.<name>.action` (check_id: FA-3)
+Scan all state `action` texts for writes to `/tmp/` paths (e.g., `echo ... > /tmp/foo`, `tee /tmp/foo`). For each `/tmp/` path written:
+
+**Cross-project path check (FA-3a)**: If the path matches bare `/tmp/<name>` (i.e., not `.loops/tmp/`), add Warning finding at path `states.<name>.action` (check_id: FA-3a). Bare `/tmp/` paths are shared globally across all projects on the machine — when two projects run concurrently, they collide silently. Use `.loops/tmp/<name>` (project-scoped by CWD) instead.
+
+**Unresetting state check (FA-3)**: Check whether any state action resets or removes the path at loop start (in the `initial` state or an explicit `start`/`init` state):
+- If a file is written but never reset: add Warning finding at path `states.<name>.action` (check_id: FA-3)
 
 ### QC-11: Monolithic Prompt State
 

@@ -419,8 +419,10 @@ def evaluate_diff_stall(
     # Derive a stable cache key from the scope so independent loops don't collide
     scope_str = "|".join(sorted(scope)) if scope else "_root_"
     cache_key = hashlib.md5(scope_str.encode()).hexdigest()[:12]
-    state_file = Path(f"/tmp/ll-diff-stall-{cache_key}.txt")
-    count_file = Path(f"/tmp/ll-diff-stall-{cache_key}.count")
+    loops_tmp = Path.cwd() / ".loops" / "tmp"
+    loops_tmp.mkdir(parents=True, exist_ok=True)
+    state_file = loops_tmp / f"ll-diff-stall-{cache_key}.txt"
+    count_file = loops_tmp / f"ll-diff-stall-{cache_key}.count"
 
     # Read previous snapshot and stall count
     previous_diff: str | None = None

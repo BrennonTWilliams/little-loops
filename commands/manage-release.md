@@ -331,10 +331,11 @@ Create a GitHub release:
 ```bash
 # Write release notes to temp file
 # (Same content as changelog entry, formatted for GitHub)
+mkdir -p .loops/tmp
 
 gh release create vX.Y.Z \
   --title "vX.Y.Z" \
-  --notes-file /tmp/ll-release-notes.md
+  --notes-file .loops/tmp/ll-release-notes.md
 ```
 
 If `--draft` flag is set, add `--draft` to the command.

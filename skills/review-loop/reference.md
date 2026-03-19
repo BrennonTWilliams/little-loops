@@ -324,15 +324,45 @@ states:
 
 ---
 
+### FA-3a: Bare /tmp/ Path (Cross-Project Collision)
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Yes (mechanical rename; no behavior change within a single project)
+
+Any state action that writes to a bare `/tmp/<name>` path (not `.loops/tmp/`) risks silent data corruption when two projects using little-loops run concurrently on the same machine — they share the global `/tmp/` namespace.
+
+**Finding**: `Warning: states.<name>.action: Writes to bare /tmp/<file>. Use .loops/tmp/<file> instead to scope state to this project's working directory and avoid cross-project collisions.`
+
+**Fix template**:
+```yaml
+# Before (bare /tmp/ path — collides across projects)
+states:
+  check_commit:
+    action: |
+      COUNT=$(cat /tmp/my-count 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > /tmp/my-count
+
+# After (project-scoped path with mkdir guard)
+states:
+  check_commit:
+    action: |
+      mkdir -p .loops/tmp
+      COUNT=$(cat .loops/tmp/my-count 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > .loops/tmp/my-count
+```
+
+---
+
 ### FA-3: Unresetting Shared State
 
 **Severity**: Warning
 **Breaking**: false
 **When to auto-apply**: Never (requires understanding of loop restart behavior)
 
-For each state action that writes to a `/tmp/` path (e.g., `echo N > /tmp/foo`, `tee /tmp/foo`): if no state action resets or removes that same `/tmp/` path before the loop's first action (or in the `initial` state's action):
+For each state action that writes to a path (preferably `.loops/tmp/<name>` after FA-3a is applied): if no state action resets or removes that file before the loop's first action (in the `initial` state or an explicit `start`/`init` state):
 
-**Finding**: `Warning: states.<name>.action: Writes to /tmp/<file> but no state resets this file. Shared state persists across loop restarts, which can cause incorrect counts or stale data on retry.`
+**Finding**: `Warning: states.<name>.action: Writes to .loops/tmp/<file> but no state resets this file. Shared state persists across loop restarts, which can cause incorrect counts or stale data on retry.`
 
 **Fix template**:
 ```yaml
@@ -340,19 +370,21 @@ For each state action that writes to a `/tmp/` path (e.g., `echo N > /tmp/foo`, 
 states:
   check_commit:
     action: |
-      COUNT=$(cat /tmp/my-count 2>/dev/null || echo 0)
-      echo $((COUNT + 1)) > /tmp/my-count
+      mkdir -p .loops/tmp
+      COUNT=$(cat .loops/tmp/my-count 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > .loops/tmp/my-count
 
 # After (reset in initial state or add a reset state before the write)
 states:
   start:
-    action: "rm -f /tmp/my-count"
+    action: "rm -f .loops/tmp/my-count"
     action_type: shell
     next: check_commit
   check_commit:
     action: |
-      COUNT=$(cat /tmp/my-count 2>/dev/null || echo 0)
-      echo $((COUNT + 1)) > /tmp/my-count
+      mkdir -p .loops/tmp
+      COUNT=$(cat .loops/tmp/my-count 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > .loops/tmp/my-count
 ```
 
 ---

@@ -159,6 +159,7 @@ Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH) and all 
 
 ```bash
 # Build a map of ID numbers to files (include completed/ to catch reused IDs)
+mkdir -p .loops/tmp
 find {{config.issues.base_dir}} -name "*.md" -type f | while read file; do
     basename=$(basename "$file")
     # Extract the numeric ID (e.g., 007 from BUG-007 or FEAT-007)
@@ -166,12 +167,12 @@ find {{config.issues.base_dir}} -name "*.md" -type f | while read file; do
     if [ -n "$id_num" ]; then
         echo "$id_num:$file"
     fi
-done | sort -t: -k1,1n > /tmp/issue_id_map.txt
+done | sort -t: -k1,1n > .loops/tmp/issue_id_map.txt
 
 # Find duplicate ID numbers (same number across any files/directories)
-cut -d: -f1 /tmp/issue_id_map.txt | uniq -d | while read dup_id; do
+cut -d: -f1 .loops/tmp/issue_id_map.txt | uniq -d | while read dup_id; do
     echo "DUPLICATE ID $dup_id:"
-    grep "^$dup_id:" /tmp/issue_id_map.txt | cut -d: -f2
+    grep "^$dup_id:" .loops/tmp/issue_id_map.txt | cut -d: -f2
 done
 ```
 
