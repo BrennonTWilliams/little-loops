@@ -57,5 +57,15 @@ Add `--since` and `--until` arguments to `analyze_parser`. Pre-filter the comple
 **Open** | Created: 2026-03-19 | Priority: P4
 
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-03-19
+
+- `scripts/little_loops/cli/history.py` exists; `analyze_parser` confirmed at lines 66–101 (matches issue)
+- `analyze` subcommand has only `--compare DAYS` (line 94–101); no `--since`/`--until` present
+- `export` subcommand has `--since` at line 134–140, confirming the asymmetry described
+- All claims accurate; feature gap is real and not yet implemented
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:12:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`

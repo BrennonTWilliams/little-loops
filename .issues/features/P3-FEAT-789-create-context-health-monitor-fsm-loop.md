@@ -220,7 +220,19 @@ states:
 
 - [ ] Not started
 
+## Verification Notes
+
+_Verified by `/ll:verify-issues` on 2026-03-19 — **VALID**_
+
+- `loops/context-health-monitor.yaml` does not exist — feature is not yet implemented ✓
+- `hooks/scripts/context-monitor.sh` exists at `hooks/scripts/context-monitor.sh` ✓
+- `.claude/ll-context-state.json` exists ✓
+- All documented JSON fields (`session_start`, `estimated_tokens`, `tool_calls`, `threshold_crossed_at`, `handoff_complete`, `breakdown`, `last_compaction`) confirmed accurate against `context-monitor.sh` ✓
+- Similar loop patterns confirmed: `backlog-flow-optimizer.yaml` has `context:` block + `output_contains`; `worktree-health.yaml` has `maintain: true`, `backoff: 300`, `output_numeric` ✓
+- No dependency references to validate
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:11:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
 - `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
