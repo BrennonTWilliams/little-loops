@@ -79,5 +79,17 @@ Add `self._current_process = process` before the `try` block and `self._current_
 **Open** | Created: 2026-03-19 | Priority: P3
 
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-03-19
+
+- `scripts/little_loops/fsm/executor.py` exists (1050 lines)
+- `FSMExecutor._run_subprocess` is at lines 739–799; code snippet (lines 758–792) matches current code exactly
+- `finally: pass` at line 792 confirmed — no `self._current_process` assignment anywhere in `FSMExecutor`
+- `DefaultActionRunner.run` (lines 136–212) correctly tracks `_current_process`: set at line 175, cleared in `finally` at line 204
+- `FSMExecutor` (class starts line 337) has no `_current_process` attribute — the gap described is accurate
+- **Confidence**: High — code is unchanged since scan commit
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:00:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
