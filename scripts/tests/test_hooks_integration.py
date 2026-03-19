@@ -306,10 +306,7 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
-
-    def test_known_model_auto_detection(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    ):
+    def test_known_model_auto_detection(self, hook_script: Path, test_config: Path, tmp_path: Path):
         """Known model in JSONL triggers auto-detection of 200K context limit.
 
         Uses baseline of 180K tokens. At 200K limit: 90% → triggers handoff (exit 2).
@@ -367,9 +364,7 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
-    def test_unknown_model_config_fallback(
-        self, hook_script: Path, tmp_path: Path
-    ):
+    def test_unknown_model_config_fallback(self, hook_script: Path, tmp_path: Path):
         """Unknown model falls back to context_limit_estimate from config.
 
         Uses baseline of 45K tokens with config limit 50K. At 50K: 90% → triggers (exit 2).
