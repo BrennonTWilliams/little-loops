@@ -53,6 +53,7 @@ temp/
 .claude/ll.local.md
 .claude/loop-suggestions/
 .claude/skills/
+.claude/ll-continue-prompt.md
 .mcp.json
 
 # Python
