@@ -47,14 +47,16 @@ Color is enabled when `sys.stdout.isatty()` is `True` and `NO_COLOR` env var is 
 | `FEAT` | `32` | Green |
 | `ENH` | `34` | Blue |
 
-Edge label colors (used in FSM diagrams):
+Edge colors (used in FSM diagrams — applied to both label text and connector line characters):
 
 | Label | ANSI Code | Appearance |
 |-------|-----------|------------|
-| `success` | `32` | Green |
-| `fail` | `38;5;208` | Orange |
+| `yes` | `32` | Green |
+| `no` | `38;5;208` | Orange |
 | `error` | `31` | Red |
+| `blocked` | `31` | Red |
 | `partial` | `33` | Yellow |
+| `retry_exhausted` | `38;5;208` | Orange |
 | `next`, `_` | `2` | Dim |
 
 ### Startup configuration
@@ -179,9 +181,13 @@ Self-loops render as `↺ label` below the box row.
 
 The entire diagram is center-indented: `indent = (terminal_width - total_diagram_width) // 2`
 
-### Edge label colorization
+### Edge colorization
 
-`_colorize_diagram_labels(diagram)` post-processes the rendered diagram string, applying ANSI color to known label words (success/fail/error/partial/next) when bounded by box-drawing or whitespace characters.
+Transition edges are colored by semantic type — both connector line characters (`│`, `─`, `▼`, `▶`, corner chars) and label text:
+
+- Color is applied **at draw time**: each grid character (pipe, dash, arrowhead, corner) is wrapped in `colorize(ch, code)` via the `_edge_line_color(label)` helper.
+- `_colorize_diagram_labels(diagram)` additionally post-processes the rendered string to colorize label words when bounded by box-drawing or whitespace characters.
+- `_collect_edges()` includes `on_blocked` (`"blocked"`) and `on_retry_exhausted` (`"retry_exhausted"`) transitions in addition to the standard fields.
 
 ### State overview table
 

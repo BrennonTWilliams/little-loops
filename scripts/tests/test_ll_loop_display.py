@@ -16,6 +16,7 @@ from little_loops.cli.loop.layout import (
     _ACTION_TYPE_BADGES,
     _ROUTE_BADGE,
     _SUB_LOOP_BADGE,
+    _collect_edges,
     _get_state_badge,
 )
 from little_loops.fsm.executor import ExecutionResult
@@ -1806,3 +1807,148 @@ class TestStateBadges:
         )
         result = _render_fsm_diagram(fsm)
         assert "\u2443" in result  # ⑃ route badge in top border
+
+
+class TestEdgeLineColorization:
+    """Tests that FSM transition line characters are colored by edge semantic type.
+
+    ENH-813: Color-code transition lines (│ pipes, ─ dashes, corner connectors,
+    ▼▶ arrowheads) in addition to the existing label text colorization.
+    """
+
+    def _make_fsm(
+        self,
+        initial: str = "a",
+        states: dict[str, StateConfig] | None = None,
+    ) -> FSMLoop:
+        return FSMLoop(name="test", initial=initial, states=states or {}, max_iterations=10)
+
+    def test_collect_edges_includes_on_blocked(self) -> None:
+        """_collect_edges() collects on_blocked transitions as 'blocked' label."""
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step", on_blocked="b"),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        edges = _collect_edges(fsm)
+        assert ("a", "b", "blocked") in edges
+
+    def test_collect_edges_includes_on_retry_exhausted(self) -> None:
+        """_collect_edges() collects on_retry_exhausted transitions."""
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step", max_retries=3, on_retry_exhausted="b"),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        edges = _collect_edges(fsm)
+        assert ("a", "b", "retry_exhausted") in edges
+
+    def test_error_edge_connector_chars_are_colored_red(self) -> None:
+        """on_error transition connector characters (│, ▼) are colored red."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step", on_error="b"),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm)
+
+        # The pipe │ or arrowhead ▼ should be wrapped in red ANSI (code 31)
+        assert "\033[31m\u2502" in result or "\033[31m\u25bc" in result, (
+            f"Expected red ANSI on error edge connector chars.\n{result!r}"
+        )
+
+    def test_yes_edge_connector_chars_are_colored_green(self) -> None:
+        """on_yes transition connector characters are colored green."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step", on_yes="b"),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm)
+
+        # Green code 32 on │ or ▼
+        assert "\033[32m\u2502" in result or "\033[32m\u25bc" in result, (
+            f"Expected green ANSI on yes edge connector chars.\n{result!r}"
+        )
+
+    def test_no_edge_connector_chars_are_colored_orange(self) -> None:
+        """on_no transition connector characters are colored orange."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step", on_no="b"),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm)
+
+        # Orange code 38;5;208 on │ or ▼
+        assert "\033[38;5;208m\u2502" in result or "\033[38;5;208m\u25bc" in result, (
+            f"Expected orange ANSI on no edge connector chars.\n{result!r}"
+        )
+
+    def test_blocked_edge_connector_chars_are_colored_red(self) -> None:
+        """on_blocked transition connector characters are colored red."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step", on_blocked="b"),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm)
+
+        assert "\033[31m\u2502" in result or "\033[31m\u25bc" in result, (
+            f"Expected red ANSI on blocked edge connector chars.\n{result!r}"
+        )
+
+    def test_back_edge_connector_chars_are_colored(self) -> None:
+        """Back-edge (loop-back) connector characters are colored by edge type."""
+        import little_loops.cli.output as output_mod
+
+        # a → b (on_yes), b → a (on_error, back-edge)
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step_a", on_yes="b"),
+                "b": StateConfig(action="step_b", on_error="a", on_yes="c"),
+                "c": StateConfig(terminal=True),
+            }
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm)
+
+        # Back-edge uses │ (vertical) and ▶ (arrowhead): expect red on error back-edge
+        assert "\033[31m\u2502" in result or "\033[31m\u25b6" in result, (
+            f"Expected red ANSI on error back-edge connector chars.\n{result!r}"
+        )
+
+    def test_no_ansi_on_connector_chars_when_color_disabled(self) -> None:
+        """When _USE_COLOR is False, no ANSI codes appear on connector characters."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(action="step", on_error="b"),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = _render_fsm_diagram(fsm)
+
+        assert "\033[" not in result, (
+            f"Expected no ANSI codes when color disabled.\n{result!r}"
+        )

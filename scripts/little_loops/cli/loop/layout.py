@@ -29,6 +29,8 @@ _EDGE_LABEL_COLORS: dict[str, str] = {
     "partial": "33",
     "next": "2",
     "_": "2",
+    "blocked": "31",
+    "retry_exhausted": "38;5;208",
 }
 
 
@@ -47,6 +49,27 @@ def _colorize_label(label: str) -> str:
         elif part in ("next", "_") and not code:
             code = _EDGE_LABEL_COLORS["next"]
     return colorize(label, code) if code else label
+
+
+def _edge_line_color(label: str) -> str:
+    """Return the ANSI SGR code to use for connector characters of an edge.
+
+    Applies the same priority cascade as ``_colorize_label`` so that line
+    characters (│, ─, ▼, ▶, corners) match the semantic color of their label.
+    Returns an empty string when no color applies (callers treat this as "no-op").
+    """
+    parts = label.split("/")
+    code = ""
+    for part in parts:
+        if part in ("no", "error", "blocked", "retry_exhausted"):
+            return _EDGE_LABEL_COLORS.get(part, "31")
+        if part == "partial" and not code:
+            code = _EDGE_LABEL_COLORS["partial"]
+        elif part == "yes" and not code:
+            code = _EDGE_LABEL_COLORS["yes"]
+        elif part in ("next", "_") and not code:
+            code = _EDGE_LABEL_COLORS["next"]
+    return code
 
 
 def _colorize_diagram_labels(diagram: str) -> str:
@@ -164,6 +187,10 @@ def _collect_edges(fsm: FSMLoop) -> list[tuple[str, str, str]]:
             edges.append((name, state.on_error, "error"))
         if state.on_partial:
             edges.append((name, state.on_partial, "partial"))
+        if state.on_blocked:
+            edges.append((name, state.on_blocked, "blocked"))
+        if state.on_retry_exhausted:
+            edges.append((name, state.on_retry_exhausted, "retry_exhausted"))
         if state.next:
             edges.append((name, state.next, "next"))
         if state.route:
@@ -998,6 +1025,10 @@ def _render_layered_diagram(
             dst_cc = col_center[dst]
             src_left = col_start[src]
             src_right = src_left + box_width[src]
+            ec = _edge_line_color(label)  # ANSI code for this edge's connector chars
+
+            def _lc(ch: str, _ec: str = ec) -> str:  # noqa: E306
+                return colorize(ch, _ec) if _ec else ch
 
             # Horizontal connector when pipe is outside source box range
             if dst_cc >= src_right or dst_cc < src_left:
@@ -1007,28 +1038,28 @@ def _render_layered_diagram(
                         # Pipe right of source: └───┐
                         src_cc = col_center[src]
                         if 0 <= src_cc < total_width and grid[conn_row][src_cc] == " ":
-                            grid[conn_row][src_cc] = "\u2514"  # └
+                            grid[conn_row][src_cc] = _lc("\u2514")  # └
                             start_c = src_cc + 1
                         else:
                             start_c = src_right
                         for c in range(start_c, dst_cc):
                             if 0 <= c < total_width:
-                                grid[conn_row][c] = "\u2500"
+                                grid[conn_row][c] = _lc("\u2500")
                         if 0 <= dst_cc < total_width:
-                            grid[conn_row][dst_cc] = "\u2510"  # ┐
+                            grid[conn_row][dst_cc] = _lc("\u2510")  # ┐
                     else:
                         # Pipe left of source: ┌───┘
                         src_cc = col_center[src]
                         if 0 <= src_cc < total_width and grid[conn_row][src_cc] == " ":
                             end_c = src_cc
-                            grid[conn_row][src_cc] = "\u2518"  # ┘
+                            grid[conn_row][src_cc] = _lc("\u2518")  # ┘
                         else:
                             end_c = src_left
                         for c in range(dst_cc + 1, end_c):
                             if 0 <= c < total_width:
-                                grid[conn_row][c] = "\u2500"
+                                grid[conn_row][c] = _lc("\u2500")
                         if 0 <= dst_cc < total_width:
-                            grid[conn_row][dst_cc] = "\u250c"  # ┌
+                            grid[conn_row][dst_cc] = _lc("\u250c")  # ┌
                 pipe_start = arrow_start_row + 1
             else:
                 pipe_start = arrow_start_row
@@ -1036,11 +1067,11 @@ def _render_layered_diagram(
             # Draw vertical pipe at destination's center column
             for r in range(pipe_start, arrow_end_row):
                 if 0 <= dst_cc < total_width and r < total_height:
-                    grid[r][dst_cc] = "\u2502"
+                    grid[r][dst_cc] = _lc("\u2502")
 
             # Arrow tip at destination center
             if arrow_end_row < total_height and 0 <= dst_cc < total_width:
-                grid[arrow_end_row][dst_cc] = "\u25bc"
+                grid[arrow_end_row][dst_cc] = _lc("\u25bc")
 
             # Label to the right of the pipe (or left if it would overlap)
             label_row = arrow_start_row
@@ -1103,6 +1134,11 @@ def _render_layered_diagram(
         dst_left = col_start[dst]
         src_left = col_start[src]
         _row_boxes = _box_occ.get(name_row, set())
+        ec = _edge_line_color(label)
+
+        def _lc(ch: str, _ec: str = ec) -> str:  # noqa: E306
+            return colorize(ch, _ec) if _ec else ch
+
         if dst_left >= src_right:
             # Left to right horizontal arrow: src ──label──▶ dst
             start = src_right
@@ -1115,7 +1151,7 @@ def _render_layered_diagram(
             for k in range(left_dashes):
                 pos = start + k
                 if pos < total_width and name_row < total_height and pos not in _row_boxes:
-                    grid[name_row][pos] = "\u2500"
+                    grid[name_row][pos] = _lc("\u2500")
             for k, ch in enumerate(edge_text):
                 pos = start + left_dashes + k
                 if (
@@ -1124,7 +1160,7 @@ def _render_layered_diagram(
                     and name_row < total_height
                     and pos not in _row_boxes
                 ):
-                    grid[name_row][pos] = ch
+                    grid[name_row][pos] = _lc(ch)
         elif dst_right <= src_left:
             # Right to left: dst is left of src: src → dst drawn as dst ◀──label── src
             start = dst_right
@@ -1137,7 +1173,7 @@ def _render_layered_diagram(
             for k in range(left_dashes):
                 pos = start + k
                 if pos < total_width and name_row < total_height and pos not in _row_boxes:
-                    grid[name_row][pos] = "\u2500"
+                    grid[name_row][pos] = _lc("\u2500")
             for k, ch in enumerate(edge_text):
                 pos = start + left_dashes + k
                 if (
@@ -1146,7 +1182,7 @@ def _render_layered_diagram(
                     and name_row < total_height
                     and pos not in _row_boxes
                 ):
-                    grid[name_row][pos] = ch
+                    grid[name_row][pos] = _lc(ch)
 
     # Back-edges: left-margin vertical arrows with labels
     if non_self_back:
@@ -1176,15 +1212,19 @@ def _render_layered_diagram(
 
             top_row = min(src_row, dst_row)
             bot_row = max(src_row, dst_row)
+            ec = _edge_line_color(label)
+
+            def _lc(ch: str, _ec: str = ec) -> str:  # noqa: E306
+                return colorize(ch, _ec) if _ec else ch
 
             # Draw vertical line in margin (exclude corner rows handled below)
             for r in range(top_row + 1, bot_row):
                 if 0 <= r < total_height and col < total_width:
                     cell = grid[r][col]
-                    if cell == "\u2500":  # ─ → ┼
+                    if cell == "\u2500":  # ─ → ┼ (junction, leave uncolored)
                         grid[r][col] = "\u253c"
                     elif cell == " ":
-                        grid[r][col] = "\u2502"
+                        grid[r][col] = _lc("\u2502")
 
             # Horizontal connector from source box to margin
             # Draw right-to-left, crossing existing pipes with junction chars
@@ -1195,14 +1235,14 @@ def _render_layered_diagram(
                     if c < total_width and c not in _src_row_boxes:
                         cell = grid[src_row][c]
                         if cell == " ":
-                            grid[src_row][c] = "\u2500"  # ─
-                        elif cell == "\u2502":  # │ → ┼
+                            grid[src_row][c] = _lc("\u2500")  # ─
+                        elif cell == "\u2502":  # │ → ┼ (junction)
                             grid[src_row][c] = "\u253c"
-                        elif cell == "\u2514":  # └ → ┴
+                        elif cell == "\u2514":  # └ → ┴ (junction)
                             grid[src_row][c] = "\u2534"
-                        elif cell == "\u250c":  # ┌ → ┬
+                        elif cell == "\u250c":  # ┌ → ┬ (junction)
                             grid[src_row][c] = "\u252c"
-                        elif cell == "\u251c":  # ├ → ┼
+                        elif cell == "\u251c":  # ├ → ┼ (junction)
                             grid[src_row][c] = "\u253c"
                         # Leave ─, ▶, box chars unchanged
 
@@ -1215,14 +1255,14 @@ def _render_layered_diagram(
                     if c < total_width and c not in _dst_row_boxes:
                         cell = grid[dst_row][c]
                         if cell == " ":
-                            grid[dst_row][c] = "\u2500"  # ─
-                        elif cell == "\u2502":  # │ → ┼
+                            grid[dst_row][c] = _lc("\u2500")  # ─
+                        elif cell == "\u2502":  # │ → ┼ (junction)
                             grid[dst_row][c] = "\u253c"
-                        elif cell == "\u2514":  # └ → ┴
+                        elif cell == "\u2514":  # └ → ┴ (junction)
                             grid[dst_row][c] = "\u2534"
-                        elif cell == "\u250c":  # ┌ → ┬
+                        elif cell == "\u250c":  # ┌ → ┬ (junction)
                             grid[dst_row][c] = "\u252c"
-                        elif cell == "\u251c":  # ├ → ┼
+                        elif cell == "\u251c":  # ├ → ┼ (junction)
                             grid[dst_row][c] = "\u253c"
 
             # Corner characters at pipe-to-horizontal turn points
@@ -1231,14 +1271,14 @@ def _render_layered_diagram(
                     existing = grid[row][col]
                     if row == bot_row:
                         # Pipe ends, turns right: └; if horizontal already crosses here: ┴
-                        grid[row][col] = "\u2534" if existing == "\u2500" else "\u2514"
+                        grid[row][col] = "\u2534" if existing == "\u2500" else _lc("\u2514")
                     else:  # row == top_row
                         # Pipe starts going down, turns right: ┌; if horizontal already crosses here: ┬
-                        grid[row][col] = "\u252c" if existing == "\u2500" else "\u250c"
+                        grid[row][col] = "\u252c" if existing == "\u2500" else _lc("\u250c")
 
             # Arrow tip at target: place ▶ at end of horizontal connector (entering box from left)
             if 0 <= dst_row < total_height and dst_left - 1 > col and dst_left - 1 < total_width:
-                grid[dst_row][dst_left - 1] = "\u25b6"
+                grid[dst_row][dst_left - 1] = _lc("\u25b6")
 
             # Label on the margin line (right of ALL pipes, not just this one)
             label_row_pos = (top_row + bot_row) // 2
@@ -1246,7 +1286,7 @@ def _render_layered_diagram(
                 label_start = rightmost_pipe_col + 2
                 for j, ch in enumerate(label):
                     if label_start + j < content_left - 1 and label_start + j < total_width:
-                        grid[label_row_pos][label_start + j] = ch
+                        grid[label_row_pos][label_start + j] = _lc(ch)
 
     # Forward skip-layer edges: right-margin vertical arrows with labels
     # Symmetric to the left-margin back-edge renderer above
@@ -1276,15 +1316,19 @@ def _render_layered_diagram(
 
             top_row = min(src_row, dst_row)
             bot_row = max(src_row, dst_row)
+            ec = _edge_line_color(label)
+
+            def _lc(ch: str, _ec: str = ec) -> str:  # noqa: E306
+                return colorize(ch, _ec) if _ec else ch
 
             # Draw vertical line in right margin (exclude corner rows handled below)
             for r in range(top_row + 1, bot_row):
                 if 0 <= r < total_height and col < total_width:
                     cell = grid[r][col]
-                    if cell == "\u2500":  # ─ → ┼
+                    if cell == "\u2500":  # ─ → ┼ (junction)
                         grid[r][col] = "\u253c"
                     elif cell == " ":
-                        grid[r][col] = "\u2502"
+                        grid[r][col] = _lc("\u2502")
 
             # Horizontal connector from source box right side to margin
             # Draw left-to-right, crossing existing pipes with junction chars
@@ -1295,14 +1339,14 @@ def _render_layered_diagram(
                     if 0 <= c < total_width and c not in _src_row_boxes:
                         cell = grid[src_row][c]
                         if cell == " ":
-                            grid[src_row][c] = "\u2500"  # ─
-                        elif cell == "\u2502":  # │ → ┼
+                            grid[src_row][c] = _lc("\u2500")  # ─
+                        elif cell == "\u2502":  # │ → ┼ (junction)
                             grid[src_row][c] = "\u253c"
-                        elif cell == "\u2518":  # ┘ → ┴
+                        elif cell == "\u2518":  # ┘ → ┴ (junction)
                             grid[src_row][c] = "\u2534"
-                        elif cell == "\u2510":  # ┐ → ┬
+                        elif cell == "\u2510":  # ┐ → ┬ (junction)
                             grid[src_row][c] = "\u252c"
-                        elif cell == "\u2524":  # ┤ → ┼
+                        elif cell == "\u2524":  # ┤ → ┼ (junction)
                             grid[src_row][c] = "\u253c"
                         # Leave ─, ◀, box chars unchanged
 
@@ -1314,14 +1358,14 @@ def _render_layered_diagram(
                     if 0 <= c < total_width and c not in _dst_row_boxes:
                         cell = grid[dst_row][c]
                         if cell == " ":
-                            grid[dst_row][c] = "\u2500"  # ─
-                        elif cell == "\u2502":  # │ → ┼
+                            grid[dst_row][c] = _lc("\u2500")  # ─
+                        elif cell == "\u2502":  # │ → ┼ (junction)
                             grid[dst_row][c] = "\u253c"
-                        elif cell == "\u2518":  # ┘ → ┴
+                        elif cell == "\u2518":  # ┘ → ┴ (junction)
                             grid[dst_row][c] = "\u2534"
-                        elif cell == "\u2510":  # ┐ → ┬
+                        elif cell == "\u2510":  # ┐ → ┬ (junction)
                             grid[dst_row][c] = "\u252c"
-                        elif cell == "\u2524":  # ┤ → ┼
+                        elif cell == "\u2524":  # ┤ → ┼ (junction)
                             grid[dst_row][c] = "\u253c"
 
             # Corner characters at pipe-to-horizontal turn points
@@ -1330,14 +1374,14 @@ def _render_layered_diagram(
                     existing = grid[row][col]
                     if row == bot_row:
                         # Pipe ends, turns left: ┘; if horizontal crosses: ┤
-                        grid[row][col] = "\u2524" if existing == "\u2500" else "\u2518"
+                        grid[row][col] = "\u2524" if existing == "\u2500" else _lc("\u2518")
                     else:  # row == top_row
                         # Pipe starts going down, turns left: ┐; if horizontal crosses: ┤
-                        grid[row][col] = "\u2524" if existing == "\u2500" else "\u2510"
+                        grid[row][col] = "\u2524" if existing == "\u2500" else _lc("\u2510")
 
             # Arrow tip at target: ◀ entering box from right side
             if 0 <= dst_row < total_height and dst_right < col and dst_right < total_width:
-                grid[dst_row][dst_right] = "\u25c0"
+                grid[dst_row][dst_right] = _lc("\u25c0")
 
             # Label on the margin line (right of ALL pipes, mirroring left-margin approach)
             label_row_pos = (top_row + bot_row) // 2
@@ -1345,7 +1389,7 @@ def _render_layered_diagram(
                 label_start = rightmost_fwd_pipe_col + 2
                 for j, ch in enumerate(label):
                     if label_start + j < total_width:
-                        grid[label_row_pos][label_start + j] = ch
+                        grid[label_row_pos][label_start + j] = _lc(ch)
 
     # Convert grid to string
     lines = ["".join(row).rstrip() for row in grid]
