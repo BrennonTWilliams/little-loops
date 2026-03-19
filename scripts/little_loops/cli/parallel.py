@@ -9,6 +9,7 @@ from pathlib import Path
 
 from little_loops.cli.output import configure_output
 from little_loops.cli_args import (
+    add_context_limit_arg,
     add_dry_run_arg,
     add_handoff_threshold_arg,
     add_idle_timeout_arg,
@@ -122,6 +123,7 @@ Examples:
     add_timeout_arg(parser)
     add_idle_timeout_arg(parser)
     add_handoff_threshold_arg(parser)
+    add_context_limit_arg(parser)
     add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
@@ -161,6 +163,11 @@ Examples:
         if not (1 <= args.handoff_threshold <= 100):
             parser.error("--handoff-threshold must be between 1 and 100")
         os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
+
+    if args.context_limit is not None:
+        if args.context_limit < 50000:
+            parser.error("--context-limit must be at least 50000")
+        os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
 
     # Parse issue ID filters
     only_ids = parse_issue_ids(args.only)

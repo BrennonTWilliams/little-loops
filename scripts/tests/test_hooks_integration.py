@@ -26,7 +26,7 @@ class TestContextMonitor:
             "context_monitor": {
                 "enabled": True,
                 "auto_handoff_threshold": 80,
-                "context_limit_estimate": 150000,
+                "context_limit_estimate": 1000000,
                 "state_file": str(tmp_path / "ll-context-state.json"),
             }
         }
@@ -161,6 +161,47 @@ class TestContextMonitor:
             # Hook triggers handoff (exit 2) because LL_HANDOFF_THRESHOLD=1 means any context
             # usage exceeds threshold. Config threshold is 80, so without the env var the hook
             # would exit 0. The fact that it triggered confirms env var was used.
+            assert result.returncode == 2
+            assert "handoff" in result.stderr.lower() or "context" in result.stderr.lower()
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_env_var_overrides_context_limit(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """LL_CONTEXT_LIMIT env var overrides config context_limit_estimate."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # Generate enough output tokens (~150) to exceed 80% of a tiny 50000-token window
+            # (threshold = 40000 tokens). With LL_CONTEXT_LIMIT=50000 and LL_HANDOFF_THRESHOLD=1
+            # any context usage triggers handoff, confirming the env var was used.
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x" * 500},
+            }
+            env = os.environ.copy()
+            env["LL_CONTEXT_LIMIT"] = "50000"
+            env["LL_HANDOFF_THRESHOLD"] = "1"  # trigger immediately
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+                env=env,
+            )
+
+            # Hook should trigger (exit 2) confirming LL_CONTEXT_LIMIT was consumed
             assert result.returncode == 2
             assert "handoff" in result.stderr.lower() or "context" in result.stderr.lower()
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli_args import add_handoff_threshold_arg
+from little_loops.cli_args import add_context_limit_arg, add_handoff_threshold_arg
 
 __all__ = ["main_loop"]
 
@@ -151,6 +151,7 @@ Examples:
         help="Load loop from built-ins directory (bypasses project .loops/ lookup)",
     )
     add_handoff_threshold_arg(run_parser)
+    add_context_limit_arg(run_parser)
 
     # Validate subcommand
     validate_parser = subparsers.add_parser(
@@ -218,6 +219,7 @@ Examples:
         help="Sleep N seconds between iterations (useful for recording)",
     )
     add_handoff_threshold_arg(resume_parser)
+    add_context_limit_arg(resume_parser)
 
     # History subcommand
     history_parser = subparsers.add_parser(

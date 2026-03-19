@@ -111,7 +111,7 @@ For interactive editing, use `/ll:configure`.
   "context_monitor": {
     "enabled": false,
     "auto_handoff_threshold": 80,
-    "context_limit_estimate": 150000
+    "context_limit_estimate": 1000000
   },
 
   "sprints": {
@@ -327,7 +327,7 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 |-----|---------|-------------|
 | `enabled` | `false` | Enable context window monitoring |
 | `auto_handoff_threshold` | `80` | Context usage percentage to trigger handoff warning |
-| `context_limit_estimate` | `150000` | Estimated context window size in tokens |
+| `context_limit_estimate` | `1000000` | Estimated context window size in tokens. Default matches Sonnet 4.6/Opus 4.6 (1M). Set to `200000` for Haiku 4.5. Override via `LL_CONTEXT_LIMIT` env var. |
 
 ### `sprints`
 

@@ -102,6 +102,10 @@ def _cmd_sprint_run(
     if handoff_threshold is not None:
         os.environ["LL_HANDOFF_THRESHOLD"] = str(handoff_threshold)
 
+    context_limit = getattr(args, "context_limit", None)
+    if context_limit is not None:
+        os.environ["LL_CONTEXT_LIMIT"] = str(context_limit)
+
     sprint = manager.load(args.sprint)
     if not sprint:
         logger.error(f"Sprint not found: {args.sprint}")

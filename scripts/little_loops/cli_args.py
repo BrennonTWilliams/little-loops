@@ -147,6 +147,20 @@ def add_handoff_threshold_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_context_limit_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --context-limit argument for per-run context window size override.
+
+    Args:
+        parser: The argument parser to add the argument to
+    """
+    parser.add_argument(
+        "--context-limit",
+        type=int,
+        default=None,
+        help="Override context window token estimate (default: from config or 1000000 for Sonnet/Opus, 200000 for Haiku 4.5)",
+    )
+
+
 def add_quiet_arg(parser: argparse.ArgumentParser) -> None:
     """Add --quiet/-q argument to suppress output."""
     parser.add_argument(
@@ -344,7 +358,7 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
     Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --priority,
-          --config, --idle-timeout, --handoff-threshold
+          --config, --idle-timeout, --handoff-threshold, --context-limit
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
@@ -357,12 +371,14 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     add_config_arg(parser)
     add_idle_timeout_arg(parser)
     add_handoff_threshold_arg(parser)
+    add_context_limit_arg(parser)
 
 
 def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to parallel execution tools.
 
-    Adds: --dry-run, --resume, --max-workers, --timeout, --idle-timeout, --quiet, --only, --skip, --type, --config
+    Adds: --dry-run, --resume, --max-workers, --timeout, --idle-timeout, --quiet, --only, --skip, --type, --config,
+          --context-limit
     """
     add_dry_run_arg(parser)
     add_resume_arg(parser)
@@ -374,6 +390,7 @@ def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
     add_skip_arg(parser)
     add_type_arg(parser)
     add_config_arg(parser)
+    add_context_limit_arg(parser)
 
 
 __all__ = [
@@ -388,6 +405,7 @@ __all__ = [
     "add_timeout_arg",
     "add_idle_timeout_arg",
     "add_handoff_threshold_arg",
+    "add_context_limit_arg",
     "add_quiet_arg",
     "add_skip_analysis_arg",
     "add_max_issues_arg",

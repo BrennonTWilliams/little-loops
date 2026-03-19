@@ -857,7 +857,7 @@ flowchart TB
   "context_monitor": {
     "enabled": true,
     "auto_handoff_threshold": 80,
-    "context_limit_estimate": 150000
+    "context_limit_estimate": 1000000
   }
 }
 ```

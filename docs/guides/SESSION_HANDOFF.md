@@ -278,7 +278,7 @@ Run /ll:handoff to generate one, or specify a custom path:
   "context_monitor": {
     "enabled": true,
     "auto_handoff_threshold": 80,
-    "context_limit_estimate": 150000,
+    "context_limit_estimate": 1000000,
     "estimate_weights": {
       "read_per_line": 10,
       "tool_call_base": 100,
@@ -304,7 +304,7 @@ Run /ll:handoff to generate one, or specify a custom path:
 |---------|---------|-------------|
 | `context_monitor.enabled` | `false` | Enable automatic context monitoring |
 | `context_monitor.auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
-| `context_monitor.context_limit_estimate` | `150000` | Conservative token limit estimate used to calculate usage percentage |
+| `context_monitor.context_limit_estimate` | `1000000` | Token limit estimate for usage percentage calculation. Default matches Sonnet 4.6/Opus 4.6 (1M). Set to `200000` for Haiku 4.5. |
 | `context_monitor.estimate_weights.read_per_line` | `10` | Token cost per line for Read tool calls |
 | `context_monitor.estimate_weights.tool_call_base` | `100` | Base token overhead per tool call |
 | `context_monitor.estimate_weights.bash_output_per_char` | `0.3` | Token cost per character for Bash output |

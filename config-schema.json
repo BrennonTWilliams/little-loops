@@ -460,10 +460,10 @@
         },
         "context_limit_estimate": {
           "type": "integer",
-          "description": "Estimated total context window tokens (conservative)",
-          "default": 150000,
+          "description": "Estimated total context window tokens. Default matches Sonnet 4.6/Opus 4.6 (1M). Set to 200000 for Haiku 4.5.",
+          "default": 1000000,
           "minimum": 50000,
-          "maximum": 500000
+          "maximum": 2000000
         },
         "state_file": {
           "type": "string",

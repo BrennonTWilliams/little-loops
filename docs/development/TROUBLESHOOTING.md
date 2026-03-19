@@ -458,7 +458,7 @@ grep state_file .claude/ll-config.json
          "tool_call_base": 100,
          "bash_output_per_char": 0.3
        },
-       "context_limit_estimate": 150000
+       "context_limit_estimate": 1000000
      }
    }
    ```

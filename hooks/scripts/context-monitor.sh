@@ -24,7 +24,10 @@ fi
 
 # Read configuration with defaults
 THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"
-CONTEXT_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "150000")
+# Default 1,000,000 reflects Sonnet 4.6 / Opus 4.6 GA context window (March 13, 2026).
+# Set to 200000 for Haiku 4.5 deployments via LL_CONTEXT_LIMIT env var or
+# context_monitor.context_limit_estimate in ll-config.json.
+CONTEXT_LIMIT="${LL_CONTEXT_LIMIT:-$(ll_config_value "context_monitor.context_limit_estimate" "1000000")}"
 STATE_FILE=$(ll_config_value "context_monitor.state_file" ".claude/ll-context-state.json")
 
 # Read estimate weights with defaults

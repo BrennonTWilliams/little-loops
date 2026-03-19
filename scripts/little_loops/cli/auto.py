@@ -70,6 +70,11 @@ Examples:
             parser.error("--handoff-threshold must be between 1 and 100")
         os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
 
+    if args.context_limit is not None:
+        if args.context_limit < 50000:
+            parser.error("--context-limit must be at least 50000")
+        os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
+
     # Parse issue ID filters
     only_ids = parse_issue_ids_ordered(args.only)
     skip_ids = parse_issue_ids(args.skip)

@@ -2,9 +2,10 @@
 id: BUG-809
 type: BUG
 priority: P2
-status: active
+status: completed
 discovered_date: 2026-03-18
 discovered_by: capture-issue
+completed_date: 2026-03-18
 ---
 
 # BUG-809: context-monitor.sh default context_limit_estimate (150K) is 6–7x too low for current models
@@ -102,11 +103,24 @@ Premature handoffs interrupt long-running sessions unnecessarily, force users to
 bug, context-monitor, hooks, accuracy
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-19T04:20:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4003e03-570d-4698-b2d1-1b2752853fdb.jsonl`
 - `/ll:refine-issue` - 2026-03-19T04:09:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/577cb407-2c53-42ff-9cc5-923c88fb7a19.jsonl`
 - `/ll:refine-issue` - 2026-03-19T04:09:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28fae77f-f951-4427-bc31-ccdf8679e0c6.jsonl`
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11790a5c-4ad1-498a-9649-93255e24e9c4.jsonl`
 
 ---
+## Resolution
+
+Fixed. Changes made:
+1. `hooks/scripts/context-monitor.sh:27` — default changed from `150000` → `1000000`; added `LL_CONTEXT_LIMIT` env var override layer (same pattern as `LL_HANDOFF_THRESHOLD`); added comment noting March 13, 2026 1M GA and Haiku 4.5 guidance.
+2. `config-schema.json` — updated `context_limit_estimate` default (`150000` → `1000000`), maximum (`500000` → `2000000`), and description to mention model-specific values.
+3. `docs/guides/SESSION_HANDOFF.md`, `docs/reference/CONFIGURATION.md`, `docs/ARCHITECTURE.md`, `docs/development/TROUBLESHOOTING.md` — updated all `150000` example values to `1000000`; updated reference table descriptions to document Haiku 4.5 override and `LL_CONTEXT_LIMIT` env var.
+4. `scripts/little_loops/cli_args.py` — added `add_context_limit_arg()` helper; wired into `add_common_auto_args` and `add_common_parallel_args`.
+5. `scripts/little_loops/cli/auto.py`, `parallel.py`, `sprint/__init__.py`, `loop/__init__.py`, `loop/_helpers.py`, `sprint/run.py`, `loop/run.py` — propagate `LL_CONTEXT_LIMIT` env var following `LL_HANDOFF_THRESHOLD` pattern.
+6. `scripts/tests/test_hooks_integration.py` — updated test fixture from `150000` → `1000000`; added `test_env_var_overrides_context_limit` test.
+
+All 3704 tests pass.
+
 ## Status
 
-Active — not yet implemented.
+Completed — 2026-03-18.

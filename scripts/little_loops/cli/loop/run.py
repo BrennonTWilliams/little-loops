@@ -69,6 +69,9 @@ def cmd_run(
             raise SystemExit("--handoff-threshold must be between 1 and 100")
         os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
 
+    if getattr(args, "context_limit", None) is not None:
+        os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
+
     # Dry run
     if args.dry_run:
         print_execution_plan(fsm)

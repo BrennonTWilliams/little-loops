@@ -252,6 +252,9 @@ def run_background(
     handoff_threshold = getattr(args, "handoff_threshold", None)
     if handoff_threshold is not None:
         cmd.extend(["--handoff-threshold", str(handoff_threshold)])
+    context_limit = getattr(args, "context_limit", None)
+    if context_limit is not None:
+        cmd.extend(["--context-limit", str(context_limit)])
 
     with open(log_file, "w") as log_fh:
         process = subprocess.Popen(

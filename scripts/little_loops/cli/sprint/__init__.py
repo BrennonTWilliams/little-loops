@@ -53,6 +53,7 @@ def main_sprint() -> int:
     """
     from little_loops.cli_args import (
         add_config_arg,
+        add_context_limit_arg,
         add_dry_run_arg,
         add_handoff_threshold_arg,
         add_max_workers_arg,
@@ -130,6 +131,7 @@ Examples:
     add_skip_analysis_arg(run_parser)
     add_type_arg(run_parser)
     add_handoff_threshold_arg(run_parser)
+    add_context_limit_arg(run_parser)
 
     # list subcommand
     list_parser = subparsers.add_parser("list", aliases=["l"], help="List all sprints")
