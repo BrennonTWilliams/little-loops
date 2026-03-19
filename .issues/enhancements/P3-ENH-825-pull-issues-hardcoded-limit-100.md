@@ -3,6 +3,8 @@ discovered_commit: 8c6cf902efed0f071b9293a82ce6b13a7de425c1
 discovered_branch: main
 discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
+confidence_score: 98
+outcome_confidence: 86
 ---
 
 # ENH-825: `pull_issues` hardcoded limit of 100 GitHub issues
@@ -67,5 +69,14 @@ Users syncing repositories with 100+ issues will silently miss issues during `ll
 **Open** | Created: 2026-03-19 | Priority: P3
 
 
+## Verification Notes
+
+- **Verified**: 2026-03-19 — VALID
+- File `scripts/little_loops/sync.py` exists; hardcoded `"100"` confirmed at line 526 (within stated range 520-526)
+- `get_status` confirmed using `"500"` at line 720, consistent with the inconsistency described
+- No code changes since scan commit; all claims accurate
+
 ## Session Log
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
+- `/ll:verify-issues` - 2026-03-19T22:38:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`

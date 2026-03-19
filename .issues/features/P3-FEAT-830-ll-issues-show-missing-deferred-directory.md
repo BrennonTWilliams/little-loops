@@ -3,6 +3,8 @@ discovered_commit: 8c6cf902efed0f071b9293a82ce6b13a7de425c1
 discovered_branch: main
 discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # FEAT-830: `ll-issues show` does not search the deferred directory
@@ -77,3 +79,4 @@ Add `search_dirs.append(config.get_deferred_dir())` after the completed director
 ## Session Log
 - `/ll:verify-issues` - 2026-03-19T22:16:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8637da89-7c9f-4c8a-bd66-a7063d39b45a.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
