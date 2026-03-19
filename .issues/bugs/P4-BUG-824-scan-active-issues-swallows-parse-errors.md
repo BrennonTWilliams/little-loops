@@ -3,6 +3,8 @@ discovered_commit: 8c6cf902efed0f071b9293a82ce6b13a7de425c1
 discovered_branch: main
 discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # BUG-824: `scan_active_issues` swallows all parse errors silently
@@ -60,5 +62,20 @@ Replace `except Exception: pass` with `except Exception as e: logger.warning(f"F
 **Open** | Created: 2026-03-19 | Priority: P4
 
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-03-19
+
+- `scripts/little_loops/issue_history/parsing.py` exists ✓
+- `scan_active_issues` defined at line 325 ✓
+- `except Exception: pass` block at lines 365-370 (issue cites 363-370; minor offset, anchor correct) ✓
+- Quoted code snippet matches exactly ✓
+- No logging on parse failure confirmed ✓
+- No dependency references to validate
+
+**Confidence**: High — bug is present as described.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:46:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

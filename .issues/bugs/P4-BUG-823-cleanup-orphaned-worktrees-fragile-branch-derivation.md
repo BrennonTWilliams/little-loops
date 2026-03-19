@@ -58,5 +58,20 @@ Use `git -C <worktree_path> rev-parse --abbrev-ref HEAD` to read the actual bran
 **Open** | Created: 2026-03-19 | Priority: P4
 
 
+## Verification Notes
+
+**Verified**: 2026-03-19 | **Verdict**: NEEDS_UPDATE
+
+**Core bug is VALID and still present** (orchestrator.py:273):
+```python
+branch_name = worktree_path.name.replace("worker-", "parallel/")
+```
+`GitLock.run()` (git_lock.py:81) returns `CompletedProcess` without raising on non-zero exit codes, so the `branch -D` failure at lines 274-278 is silently swallowed — confirming the silent-failure claim.
+
+**Incorrect reference**: The issue states "Compare with `_cleanup_worktree` (line 679)" implying this is in `orchestrator.py`. Line 679 in `orchestrator.py` is `issue = queued.issue_info` — unrelated. The correct comparison is `scripts/little_loops/parallel/worker_pool.py`, `_cleanup_worktree` at line 641, which reads the actual branch via `git rev-parse --abbrev-ref HEAD` at line 660.
+
+**Update needed**: Change the `## Current Behavior` comparison reference from `(line 679)` to `worker_pool.py:_cleanup_worktree (line 641)`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:49:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
