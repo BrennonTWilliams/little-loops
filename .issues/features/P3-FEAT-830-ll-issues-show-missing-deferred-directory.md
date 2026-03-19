@@ -63,5 +63,17 @@ Add `search_dirs.append(config.get_deferred_dir())` after the completed director
 **Open** | Created: 2026-03-19 | Priority: P3
 
 
+## Verification Notes
+
+- **Verified**: 2026-03-19 by `/ll:verify-issues`
+- **Verdict**: VALID
+- **File exists**: `scripts/little_loops/cli/issues/show.py` confirmed present
+- **Line numbers accurate**: `_resolve_issue_id` at lines 17-82; `search_dirs` built at lines 62-66 — matches issue description
+- **Code snippet verified**: `search_dirs` includes active categories and `config.get_completed_dir()` but NOT `config.get_deferred_dir()`
+- **Claim validated**: `search.py:_load_issues_with_status` (line 91) and `issue_discovery/search.py` (line 67) both support deferred via `config.get_deferred_dir()` — confirming the inconsistency
+- **`get_deferred_dir` available**: Method exists on `BRConfig` (found in 10 files)
+- **Deferred directory**: `.issues/deferred/` exists on disk (currently empty)
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T22:16:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8637da89-7c9f-4c8a-bd66-a7063d39b45a.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
