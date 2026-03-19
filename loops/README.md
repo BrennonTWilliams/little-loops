@@ -31,6 +31,12 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass after each removal |
 | `docs-sync` | Verify documentation matches the codebase and fix broken links |
 
+## Quality Monitoring
+
+| Loop | Description |
+|---|---|
+| `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
+
 ## Reinforcement Learning (RL)
 
 | Loop | Description |

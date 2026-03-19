@@ -438,6 +438,39 @@ Dependency mapping threshold configuration for overlap detection and conflict sc
 
 Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"]`
 
+### `cli.colors.fsm_edge_labels`
+
+Override the default ANSI color codes used for FSM diagram edge labels and connector line characters. Colors are applied to both the text label and the `│`, `─`, `▼`, `▶`, and corner characters that form each edge.
+
+| Key | Default ANSI | Appearance | When applied |
+|-----|-------------|------------|--------------|
+| `yes` | `32` | Green | Success / affirmative transitions |
+| `no` | `38;5;208` | Orange | Failure / negative transitions |
+| `error` | `31` | Red | Error transitions |
+| `blocked` | `31` | Red | `on_blocked` routing |
+| `partial` | `33` | Yellow | Partial-success transitions |
+| `retry_exhausted` | `38;5;208` | Orange | `on_retry_exhausted` transitions |
+| `next` | `2` | Dim | Default/unconditional transitions |
+
+**Example** — use cyan for success edges and magenta for error edges:
+
+```json
+{
+  "cli": {
+    "colors": {
+      "fsm_edge_labels": {
+        "yes": "36",
+        "error": "35"
+      }
+    }
+  }
+}
+```
+
+Set `LL_NO_COLOR=1` or `NO_COLOR=1` to disable all colorization regardless of config.
+
+---
+
 ## Manual Configuration
 
 The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.claude/ll-config.json` directly. All have sensible defaults and rarely need changing.

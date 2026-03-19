@@ -148,15 +148,16 @@ The renderer produces three sections:
 ### State box format
 
 ```
-┌──────────────────────┐
-│ → state_name  [type] │
+┌──[type]──────────────┐
+│ → state_name         │
 │ action preview...    │
 └──────────────────────┘
 ```
 
 - `→` prefix marks the initial state
 - `◉` suffix marks terminal states
-- `[type]` badge shows the action type (e.g., `[prompt]`, `[shell]`, `[slash_command]`)
+- `[type]` badge appears in the **top border row** (not the content area) — e.g., `──[prompt]──`
+- The state name in the first content row is rendered **bold** for visual hierarchy
 - In non-verbose mode, action is truncated to the first non-empty line with `…`
 - Box widths are computed per-state, capped by `max_box_inner` derived from terminal width
 
@@ -188,6 +189,20 @@ Transition edges are colored by semantic type — both connector line characters
 - Color is applied **at draw time**: each grid character (pipe, dash, arrowhead, corner) is wrapped in `colorize(ch, code)` via the `_edge_line_color(label)` helper.
 - `_colorize_diagram_labels(diagram)` additionally post-processes the rendered string to colorize label words when bounded by box-drawing or whitespace characters.
 - `_collect_edges()` includes `on_blocked` (`"blocked"`) and `on_retry_exhausted` (`"retry_exhausted"`) transitions in addition to the standard fields.
+
+Default edge color mapping (see `Output Color Reference > Edge colors` above for ANSI codes):
+
+| Label keyword | Color |
+|---------------|-------|
+| `yes` / `success` | Green |
+| `no` / `failure` | Orange |
+| `error` | Red |
+| `blocked` | Red |
+| `partial` | Yellow |
+| `retry_exhausted` | Orange |
+| `next` / `_` (default) | Dim |
+
+Edge label colors are **user-configurable** via `cli.colors.fsm_edge_labels` in `ll-config.json`. See [`CONFIGURATION.md → cli.colors.fsm_edge_labels`](CONFIGURATION.md#clicolorsfsm_edge_labels).
 
 ### State overview table
 

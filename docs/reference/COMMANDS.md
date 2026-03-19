@@ -181,6 +181,18 @@ Evaluate the size and complexity of active issues and propose decomposition for 
 
 **Trigger keywords:** "issue size review", "decompose issues", "split large issues"
 
+### `/ll:go-no-go`
+Evaluate whether one or more issues should be implemented using an adversarial debate format. Launches two isolated background agents concurrently — one arguing for implementation, one against — each grounded in real codebase research. A third judge agent delivers a final GO or NO-GO verdict with structured reasoning, key arguments from both sides, and a deciding factor.
+
+**Arguments:**
+- `issue-id` (optional): One or more comma-separated issue IDs, or a sprint name. Defaults to the highest-priority open issue.
+
+**Flags:**
+- `--check`: Exit 0 on all GO, exit 1 on any NO-GO — enables FSM loop gating via `evaluate: type: exit_code`
+- `--auto`: Non-interactive mode
+
+**Trigger keywords:** "go no go", "should I implement", "adversarial review", "worth implementing", "debate this issue"
+
 ### `/ll:map-dependencies`
 Analyze active issues to discover cross-issue dependencies based on file overlap, validate existing dependency references, and propose new relationships. Delegates to `ll-deps` CLI subcommands.
 
