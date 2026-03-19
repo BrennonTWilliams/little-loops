@@ -776,7 +776,7 @@ questions:
     question: "Which ll- CLI commands should be allowed?"
     options:
       - label: "All ll- commands (Recommended)"
-        description: "Authorize all 12 ll- CLI tools: ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links"
+        description: "Authorize all 12 ll- CLI tools and handoff write: ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links, Write(.claude/ll-continue-prompt.md)"
       - label: "Keep current"
         description: "Keep existing entries without changes"
     multiSelect: false
@@ -785,7 +785,8 @@ questions:
 **Configuration result**: Perform the merge on the chosen target file using the same logic as SKILL.md Step 10:
 1. Read target file (or start with `{"permissions": {"allow": [], "deny": []}}` if absent)
 2. Remove all existing `Bash(ll-` entries from `permissions.allow`
-3. Append the canonical allow entries (if "All ll- commands" selected)
-4. Write result back with 2-space indent, preserving all top-level keys
+3. Remove any existing `Write(.claude/ll-continue-prompt.md)` entry from `permissions.allow`
+4. Append the canonical allow entries (if "All ll- commands" selected)
+5. Write result back with 2-space indent, preserving all top-level keys
 
-If "Skip / Remove entries" selected, remove all `Bash(ll-` entries from both files (if they exist) and skip writing.
+If "Skip / Remove entries" selected, remove all `Bash(ll-` entries and any `Write(.claude/ll-continue-prompt.md)` entry from both files (if they exist) and skip writing.

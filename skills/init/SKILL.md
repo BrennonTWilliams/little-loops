@@ -405,6 +405,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
 4. Perform merge into the chosen target file:
    - Read target file, or start with `{"permissions": {"allow": [], "deny": []}}` if absent
    - Remove all existing entries starting with `Bash(ll-` from `permissions.allow` (idempotency)
+   - Remove any existing `Write(.claude/ll-continue-prompt.md)` entry from `permissions.allow` (idempotency)
    - Append the canonical allow entries:
      ```json
      "Bash(ll-issues:*)",
@@ -418,7 +419,8 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-deps:*)",
      "Bash(ll-sync:*)",
      "Bash(ll-verify-docs:*)",
-     "Bash(ll-check-links:*)"
+     "Bash(ll-check-links:*)",
+     "Write(.claude/ll-continue-prompt.md)"
      ```
    - Create `.claude/` directory first if needed
    - Write result back with 2-space indent, preserving all top-level keys (`$schema`, `env`, etc.)
