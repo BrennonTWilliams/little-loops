@@ -3,6 +3,8 @@ discovered_commit: 8c6cf902efed0f071b9293a82ce6b13a7de425c1
 discovered_branch: main
 discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
+confidence_score: 90
+outcome_confidence: 93
 ---
 
 # BUG-820: `_detect_main_repo_leaks` hardcoded source prefixes miss project-specific layouts
@@ -70,5 +72,18 @@ if self.config.project.src_dir:
 **Open** | Created: 2026-03-19 | Priority: P3
 
 
+## Verification Notes
+
+**Verified**: 2026-03-19 | **Verdict**: VALID
+
+- File `scripts/little_loops/parallel/worker_pool.py` exists ✅
+- Method `WorkerPool._detect_main_repo_leaks` exists at line 950 (shifted from stated 1003 due to code growth)
+- Code snippet (`elif file_path.startswith(("backend/", "src/", "lib/", "tests/"))`) matches at line 1006 ✅
+- Bug confirmed: `scripts/` is not in the hardcoded prefix list; source files in this project's own `scripts/` directory would not be detected as leaks
+- No dependency references to validate
+
+**Line number update**: Key `elif` is now at line 1006–1007; method definition at line 950.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T22:44:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`

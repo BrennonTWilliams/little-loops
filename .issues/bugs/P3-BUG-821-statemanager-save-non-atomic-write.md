@@ -3,6 +3,8 @@ discovered_commit: 8c6cf902efed0f071b9293a82ce6b13a7de425c1
 discovered_branch: main
 discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # BUG-821: `StateManager.save` non-atomic write — crash mid-write corrupts state file
@@ -80,5 +82,16 @@ The same pattern should be applied to `_save_state` in `orchestrator.py`.
 **Open** | Created: 2026-03-19 | Priority: P3
 
 
+## Verification Notes
+
+**Verdict**: VALID | **Date**: 2026-03-19 | **Confidence**: High
+
+- `scripts/little_loops/state.py` exists and `StateManager.save` at lines 119-126 matches the quoted code exactly — `self.state_file.write_text(...)` is the non-atomic write.
+- `StateManager.load` at lines 113-114 catches `json.JSONDecodeError` exactly as described; a corrupted file silently skips resume.
+- `orchestrator.py` `_save_state` at line 508 has the identical pattern (`state_file.write_text(...)`), confirming the proposed fix scope is accurate.
+- All file paths, line numbers, and code snippets are current as of HEAD.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T22:41:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
