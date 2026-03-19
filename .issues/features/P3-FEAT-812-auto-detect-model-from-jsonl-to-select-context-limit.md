@@ -58,7 +58,9 @@ A user switches from claude-sonnet-4-6 to claude-opus-4-6 (both 200K) without up
    get_context_limit() {
        local model="$1"
        local config_override="$2"
-       # Config override wins if explicitly set
+       # Config override wins if explicitly set to a non-default value.
+       # NOTE: ll_config_value always returns a value (default "1000000" if unset),
+       # so the only signal that the user explicitly configured it is config_override != "1000000".
        [ -n "$config_override" ] && [ "$config_override" != "1000000" ] && echo "$config_override" && return
        case "$model" in
            claude-opus-4*|claude-sonnet-4*|claude-haiku-4*) echo 200000 ;;
@@ -78,34 +80,42 @@ A user switches from claude-sonnet-4-6 to claude-opus-4-6 (both 200K) without up
 ## Integration Map
 
 ### Files to Modify
-- `hooks/scripts/context-monitor.sh` — add `get_context_limit()`, extract `DETECTED_MODEL`, replace hardcoded denominator
+- `hooks/scripts/context-monitor.sh` — add `get_context_limit()` function (after `get_transcript_baseline()` at line 126), extract `DETECTED_MODEL` at line ~50 (right after `TRANSCRIPT_PATH` at line 49), replace `CONTEXT_LIMIT` assignment at line 30
 
 ### Dependent Files (Callers/Importers)
 - `hooks/hooks.json:42-53` — PostToolUse hook definition; no changes needed
-- `hooks/scripts/lib/common.sh` — `ll_config_value` used to read `context_limit_estimate`; no changes needed
+- `hooks/scripts/lib/common.sh:217-233` — `ll_config_value` used to read `context_limit_estimate`; no changes needed
+
+### Key Variable Locations in `context-monitor.sh`
+- `line 30` — `CONTEXT_LIMIT` assignment (only assignment; single use at line 271 for `USAGE_PERCENT`)
+- `line 49` — `TRANSCRIPT_PATH` extracted from stdin JSON; `DETECTED_MODEL` extraction goes here
+- `line 57-105` — `estimate_tokens()` `case` statement — structural model for the `get_context_limit()` `case` block
+- `line 118-126` — `get_transcript_baseline()` — direct structural model for `get_context_limit()` function
 
 ### Similar Patterns
 - `hooks/scripts/precompact-state.sh:25` — `transcript_path` extraction pattern (identical jq approach)
-- `hooks/scripts/context-monitor.sh` — ENH-810 adds `get_transcript_baseline()`; `get_context_limit()` follows the same function pattern
+- `hooks/scripts/context-monitor.sh:118-126` — `get_transcript_baseline()` uses the exact same `jq -s 'map(select(.type == "assistant")) | last | ...'` idiom; `get_context_limit()` reads `.message.model` instead of `.message.usage.*`
+- `hooks/scripts/context-monitor.sh:57-105` — `estimate_tokens()` `case` block; the proposed model-prefix→window-size lookup follows this same pattern
 
 ### Tests
-- `scripts/tests/test_hooks_integration.py` — add test for auto-detection (known model → correct window) and fallback (unknown model → config value)
+- `scripts/tests/test_hooks_integration.py:94-150` — `test_transcript_baseline_used_when_jsonl_present` is the direct template for new detection tests; new tests add `"model": "claude-sonnet-4-6"` to the `assistant_entry["message"]` dict
+- `scripts/tests/test_hooks_integration.py:22-36` — `test_config` fixture; new fallback test uses an unknown model string with `context_limit_estimate: 50000` to verify config fallback
 
 ### Documentation
 - `docs/reference/CONFIGURATION.md` — update `context_limit_estimate` docs to clarify it's now a fallback/override
 
 ### Configuration
-- `config-schema.json:409-481` — `context_limit_estimate` description update only; no structural changes
+- `config-schema.json:461-467` — `context_limit_estimate` field definition; update description only (no structural changes). Full `context_monitor` block is lines 409-487.
 
 ## Implementation Steps
 
-1. Implement ENH-810 first (adds JSONL parsing infrastructure this builds on)
-2. Add `DETECTED_MODEL` extraction to `context-monitor.sh` (same `jq -s` pass)
-3. Add `get_context_limit()` function with model prefix lookup table
-4. Replace hardcoded `CONTEXT_LIMIT_ESTIMATE` denominator with `get_context_limit` output
-5. Add debug logging for detection path
-6. Update `context_limit_estimate` config description to "fallback/override"
-7. Add tests for detection and fallback paths
+1. ~~Implement ENH-810 first~~ — **ENH-810 is already merged and live** (`get_transcript_baseline()` at `context-monitor.sh:118-126`, `USE_TRANSCRIPT_BASELINE` at line 44, `TRANSCRIPT_PATH` at line 49)
+2. Add `DETECTED_MODEL` extraction at `context-monitor.sh:~50` (immediately after `TRANSCRIPT_PATH` at line 49): `DETECTED_MODEL=$(jq -s 'map(select(.type == "assistant")) | last | .message.model // ""' "$TRANSCRIPT_PATH" 2>/dev/null || echo "")`
+3. Add `get_context_limit()` function after `get_transcript_baseline()` (after line 126); follow the same function signature and `case` patterns already in the file
+4. Replace `CONTEXT_LIMIT` assignment at line 30 to call `get_context_limit "$DETECTED_MODEL" "$CONFIG_LIMIT"` — the `LL_CONTEXT_LIMIT` env var override wraps the call as it does today
+5. Add debug logging for the detection path (detected vs fallback)
+6. Update `context_limit_estimate` description in `config-schema.json:461-467` to "fallback/override for unknown models"
+7. Add tests in `scripts/tests/test_hooks_integration.py` following the `test_transcript_baseline_used_when_jsonl_present` template (lines 94-150): add `"model"` key to the JSONL `assistant_entry["message"]` dict; assert `state["estimated_tokens"]` implies correct `CONTEXT_LIMIT` denominator
 
 ## Impact
 
@@ -127,6 +137,7 @@ A user switches from claude-sonnet-4-6 to claude-opus-4-6 (both 200K) without up
 `feat`, `context-monitor`, `accuracy`, `hooks`, `jq`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-19T04:48:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74626b26-3433-4c87-9955-47d8b604be07.jsonl`
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
