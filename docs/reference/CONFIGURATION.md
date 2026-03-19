@@ -328,6 +328,7 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 | `enabled` | `false` | Enable context window monitoring |
 | `auto_handoff_threshold` | `80` | Context usage percentage to trigger handoff warning |
 | `context_limit_estimate` | `1000000` | Estimated context window size in tokens. Default matches Sonnet 4.6/Opus 4.6 (1M). Set to `200000` for Haiku 4.5. Override via `LL_CONTEXT_LIMIT` env var. |
+| `use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Improves accuracy from ±30–50% to ±5–15%. Falls back to pure heuristics when unavailable. |
 
 ### `sprints`
 

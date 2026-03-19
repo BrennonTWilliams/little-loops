@@ -91,6 +91,104 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
+    def test_transcript_baseline_used_when_jsonl_present(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Test that JSONL transcript token counts are used as the baseline."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # Create a JSONL transcript with a single assistant entry containing usage data
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "usage": {
+                        "input_tokens": 50000,
+                        "cache_creation_input_tokens": 10000,
+                        "cache_read_input_tokens": 5000,
+                        "output_tokens": 2000,
+                    }
+                },
+            }
+            transcript_file.write_text(json.dumps(assistant_entry) + "\n")
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "small output\n"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode == 0
+
+            state_file = tmp_path / "ll-context-state.json"
+            assert state_file.exists()
+            state = json.loads(state_file.read_text())
+
+            # transcript_baseline_tokens should be the sum of all usage fields
+            expected_baseline = 50000 + 10000 + 5000 + 2000  # 67000
+            assert state["transcript_baseline_tokens"] == expected_baseline
+
+            # estimated_tokens should be baseline + current-turn delta (not a full heuristic accumulation)
+            assert state["estimated_tokens"] > expected_baseline
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_transcript_baseline_falls_back_when_absent(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Test that pure heuristics are used when transcript_path is absent."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # No transcript_path in input
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "output\n" * 100},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode == 0
+
+            state_file = tmp_path / "ll-context-state.json"
+            state = json.loads(state_file.read_text())
+
+            # Baseline should be 0 (no transcript available)
+            assert state["transcript_baseline_tokens"] == 0
+            # Heuristic estimate should still be non-zero
+            assert state["estimated_tokens"] > 0
+
+        finally:
+            os.chdir(original_dir)
+
     def test_state_file_corruption_resistance(
         self, hook_script: Path, test_config: Path, tmp_path: Path
     ):

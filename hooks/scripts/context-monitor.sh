@@ -40,9 +40,13 @@ SYSTEM_PROMPT_BASELINE=$(ll_config_value "context_monitor.estimate_weights.syste
 # Post-compaction reset: percentage of context limit to use as new baseline
 POST_COMPACT_PERCENT=$(ll_config_value "context_monitor.post_compaction_percent" "30")
 
+# Use JSONL transcript as accurate token baseline (one-turn lag)
+USE_TRANSCRIPT_BASELINE=$(ll_config_value "context_monitor.use_transcript_baseline" "true")
+
 # Extract tool information from input
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
 TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}')
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
 
 # Estimate tokens for this tool call
 estimate_tokens() {
@@ -107,6 +111,18 @@ estimate_tokens() {
 
     # Return integer part only
     echo "${tokens%.*}"
+}
+
+# Read the last assistant entry's token usage from JSONL transcript.
+# Returns sum of input + cache_creation + cache_read + output tokens, or 0 on failure.
+get_transcript_baseline() {
+    local path="$1"
+    [ -z "$path" ] || [ ! -f "$path" ] && echo 0 && return
+    jq -s 'map(select(.type == "assistant")) | last |
+        (.message.usage.input_tokens // 0) +
+        (.message.usage.cache_creation_input_tokens // 0) +
+        (.message.usage.cache_read_input_tokens // 0) +
+        (.message.usage.output_tokens // 0)' "$path" 2>/dev/null || echo 0
 }
 
 # Note: get_mtime and parse_iso_date are now provided by lib/common.sh
@@ -208,8 +224,20 @@ main() {
     THRESHOLD_CROSSED_AT=$(echo "$STATE" | jq -r '.threshold_crossed_at // ""')
     HANDOFF_COMPLETE=$(echo "$STATE" | jq -r '.handoff_complete // false')
 
+    # Get transcript baseline if enabled (API-exact, one-turn lag)
+    TRANSCRIPT_BASELINE=0
+    if [ "${USE_TRANSCRIPT_BASELINE}" = "true" ] && [ -n "$TRANSCRIPT_PATH" ]; then
+        TRANSCRIPT_BASELINE=$(get_transcript_baseline "$TRANSCRIPT_PATH")
+    fi
+
     # Calculate new totals
-    NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
+    # When transcript baseline is available, use it as the accurate foundation
+    # and add only the current-turn heuristic delta on top.
+    if [ "${TRANSCRIPT_BASELINE}" -gt 0 ] 2>/dev/null; then
+        NEW_TOKENS=$((TRANSCRIPT_BASELINE + TOKENS))
+    else
+        NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
+    fi
     NEW_CALLS=$((CURRENT_CALLS + 1))
 
     # Add per-turn overhead for Claude output + user message tokens
@@ -236,7 +264,8 @@ main() {
         --arg key "$TOOL_KEY" \
         --argjson tool_tokens "$TOOL_NEW" \
         --argjson overhead "$OVERHEAD_NEW" \
-        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead')
+        --argjson baseline "$TRANSCRIPT_BASELINE" \
+        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline')
 
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))

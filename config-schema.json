@@ -476,6 +476,11 @@
           "default": 30,
           "minimum": 10,
           "maximum": 60
+        },
+        "use_transcript_baseline": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use JSONL transcript usage fields as accurate baseline for token estimation (one-turn lag). Falls back to pure heuristics if transcript is unavailable."
         }
       },
       "additionalProperties": false

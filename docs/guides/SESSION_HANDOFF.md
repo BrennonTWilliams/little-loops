@@ -328,9 +328,26 @@ ll-sprint run my-sprint --handoff-threshold 85
 
 When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.claude/ll-continue-prompt.md` at the beginning of each session. If a prompt file is found that is not yet expired, a notice is printed prompting you to run `/ll:resume`. Set this to `false` to suppress automatic detection and only resume manually.
 
+### Transcript Baseline Mode (Default)
+
+By default (`use_transcript_baseline: true`), the monitor uses the JSONL transcript at `transcript_path` (provided by the PostToolUse hook payload) as an API-exact baseline:
+
+1. **Read** `input_tokens + cache_creation_input_tokens + cache_read_input_tokens + output_tokens` from the last `assistant` entry in the transcript
+2. **Add** the current-turn heuristic delta (single tool call estimate) on top
+3. **Divide** by `context_limit_estimate` for the usage percentage
+
+This shifts accuracy from ±30–50% (pure heuristics) to ±5–15% (API-exact baseline + small current-turn delta).
+
+| Mode | Accuracy | When Active |
+|------|----------|-------------|
+| Transcript baseline | ±5–15% | `use_transcript_baseline: true` (default) and transcript available |
+| Pure heuristics | ±30–50% | Fallback when transcript is absent or parse fails |
+
+The transcript has a one-turn lag (it reflects the last completed API call). The current-turn estimate bridges the gap.
+
 ### Token Estimation Weights
 
-The context monitor estimates token usage based on tool activity:
+The context monitor estimates the current-turn delta based on tool activity:
 
 | Tool | Estimation | Rationale |
 |------|------------|-----------|
@@ -360,6 +377,7 @@ The context monitor estimates token usage based on tool activity:
 {
   "session_start": "2024-01-15T10:30:00Z",
   "estimated_tokens": 125000,
+  "transcript_baseline_tokens": 122000,
   "tool_calls": 63,
   "threshold_crossed_at": "2024-01-15T11:45:00Z",
   "handoff_complete": false,
@@ -372,6 +390,8 @@ The context monitor estimates token usage based on tool activity:
   }
 }
 ```
+
+- `transcript_baseline_tokens`: The raw API token sum from the last assistant entry in the JSONL transcript (0 when unavailable or `use_transcript_baseline: false`). Useful for diagnosing estimation accuracy.
 
 ## Troubleshooting
 

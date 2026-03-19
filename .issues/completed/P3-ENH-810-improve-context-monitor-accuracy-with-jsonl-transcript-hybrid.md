@@ -2,7 +2,7 @@
 id: ENH-810
 type: ENH
 priority: P3
-status: active
+status: completed
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 confidence_score: 95
@@ -72,11 +72,11 @@ In `context-monitor.sh`:
   TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
   ```
 - `hooks/scripts/lib/common.sh:197-211` — `ll_feature_enabled` for reading the new boolean flag
-- `hooks/scripts/context-monitor.sh:166-169` — multi-arg `jq` mutation pattern to follow for new state fields
+- `hooks/scripts/context-monitor.sh:169-172` — multi-arg `jq` mutation pattern to follow for new state fields
 
 ### Tests
 - `scripts/tests/test_hooks_integration.py:38-92` — existing context-monitor tests; new JSONL baseline test goes here, following the same `subprocess.run` + `json.loads(state_file.read_text())` pattern
-- `scripts/tests/test_hooks_integration.py:617-657` — precompact test with `transcript_path` in stdin — model test input structure from this
+- `scripts/tests/test_hooks_integration.py:658-709` — precompact test with `transcript_path` in stdin — model test input structure from this
 
 ### Documentation
 - `docs/guides/SESSION_HANDOFF.md` — document the improved accuracy mode
@@ -91,17 +91,17 @@ In `context-monitor.sh`:
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-1. **Extract `transcript_path` at `context-monitor.sh:43`** (after the existing two-field extraction at lines 41-42), using the identical pattern from `precompact-state.sh:25`:
+1. **Extract `transcript_path` at `context-monitor.sh:46`** (after the existing two-field extraction at lines 44-45), using the identical pattern from `precompact-state.sh:25`:
    ```bash
    TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
    ```
 
-2. **Add config read at `context-monitor.sh:36`** (alongside existing reads at lines 26-35), using `ll_feature_enabled` from `lib/common.sh:197-211`:
+2. **Add config read at `context-monitor.sh:42`** (after existing reads at lines 26-41), using `ll_feature_enabled` from `lib/common.sh:197-211`:
    ```bash
    USE_TRANSCRIPT_BASELINE=$(ll_config_value "context_monitor.use_transcript_baseline" "true")
    ```
 
-3. **Add new `get_transcript_baseline()` function after `context-monitor.sh:107`** (end of `estimate_tokens`). The JSONL structure per `user_messages.py:512` is `{"type":"assistant","message":{"usage":{...}}}`. Use `jq -s` to find the last assistant entry:
+3. **Add new `get_transcript_baseline()` function after `context-monitor.sh:110`** (end of `estimate_tokens`). The JSONL structure per `user_messages.py:512` is `{"type":"assistant","message":{"usage":{...}}}`. Use `jq -s` to find the last assistant entry:
    ```bash
    get_transcript_baseline() {
        local path="$1"
@@ -114,9 +114,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    }
    ```
 
-4. **Replace accumulation logic at `context-monitor.sh:209-218`**: When `USE_TRANSCRIPT_BASELINE=true` and baseline > 0, use `baseline + current_turn_delta` instead of `CURRENT_TOKENS + TOKENS`. The `current_turn_delta` is just `$TOKENS + per-turn overhead` (the heuristic for the current tool call only).
+4. **Replace accumulation logic at `context-monitor.sh:211-221`**: When `USE_TRANSCRIPT_BASELINE=true` and baseline > 0, use `baseline + current_turn_delta` instead of `CURRENT_TOKENS + TOKENS`. The `current_turn_delta` is just `$TOKENS + per-turn overhead` (the heuristic for the current tool call only).
 
-5. **Add `transcript_baseline_tokens` field to state JSON** at `context-monitor.sh:120-129` for observability in the breakdown — follow the `--argjson` pattern used at lines 230-236.
+5. **Add `transcript_baseline_tokens` field to state JSON** at `context-monitor.sh:120-129` for observability in the breakdown — follow the `--argjson` pattern used at lines 232-239.
 
 6. **Update `config-schema.json:409-481`**: Insert `"use_transcript_baseline"` property inside `context_monitor.properties` before line 481 (`additionalProperties: false`):
    ```json
@@ -127,7 +127,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    }
    ```
 
-7. **Add test to `test_hooks_integration.py`** after line 92, following the subprocess pattern at lines 38-92. Create a temp JSONL with one assistant entry containing `usage` fields, pass `transcript_path` in stdin alongside a tool call, assert `state["transcript_baseline_tokens"]` > 0 and `state["estimated_tokens"]` equals baseline + delta.
+7. **Add test to `test_hooks_integration.py`** after line 92, following the subprocess pattern at lines 38-92. Model JSONL stdin from `TestPrecompactState` at lines 658-709 (see `input_data = {"transcript_path": ...}` at line 675). Create a temp JSONL with one assistant entry containing `usage` fields, pass `transcript_path` in stdin alongside a tool call, assert `state["transcript_baseline_tokens"]` > 0 and `state["estimated_tokens"]` equals baseline + delta.
 
 8. **Update `docs/guides/SESSION_HANDOFF.md`** with accuracy comparison table. Update `docs/reference/CONFIGURATION.md` with `use_transcript_baseline` description.
 
@@ -137,6 +137,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Dependencies**: `jq` already required by the script; no new deps
 - **Latency**: Negligible — one `jq` parse of a local file per tool call
 - **Risk**: Low — fallback to heuristics on failure preserves existing behavior
+
+## Known Limitation: context_limit_estimate is model-unaware
+
+The transcript baseline improves the **numerator** (tokens used) to API-exact accuracy, but the **denominator** (`context_limit_estimate`) remains a static config value. Users must set it correctly for their model:
+
+| Model | Context Window |
+|---|---|
+| claude-opus-4-6 | 200,000 |
+| claude-sonnet-4-6 | 200,000 |
+| claude-haiku-4-5 | 200,000 |
+| Third-party models | Varies |
+
+If `context_limit_estimate` is misconfigured (e.g., left at 1M for a 200K model), the percentage calculation will be wrong regardless of how accurate the numerator is. Auto-detecting the model from the JSONL and selecting the appropriate limit is out of scope here — that would be a separate enhancement.
 
 ## Related Key Documentation
 
@@ -151,11 +164,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 enhancement, context-monitor, accuracy, hooks, jq
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-19T04:40:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c76ff1ee-0e20-46ac-b7b8-1af1a8922ddd.jsonl`
 - `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0769f82c-7917-4279-b938-66dfdf42d867.jsonl`
 - `/ll:refine-issue` - 2026-03-19T04:15:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17e62d86-ce17-4688-90e3-90ca6ccc7acc.jsonl`
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11790a5c-4ad1-498a-9649-93255e24e9c4.jsonl`
 
 ---
-## Status
 
-Active — not yet implemented. Blocks on / pairs with BUG-809 (context limit default fix).
+## Resolution
+
+Implemented 2026-03-18. Changes:
+- `hooks/scripts/context-monitor.sh`: Reads `USE_TRANSCRIPT_BASELINE` config, extracts `TRANSCRIPT_PATH` from stdin, adds `get_transcript_baseline()` function, uses API-exact baseline + current-turn delta when transcript available, stores `transcript_baseline_tokens` in state JSON
+- `config-schema.json`: Added `use_transcript_baseline` boolean property (default `true`) to `context_monitor` block
+- `scripts/tests/test_hooks_integration.py`: Two new tests — baseline used when JSONL present, fallback when absent
+- `docs/guides/SESSION_HANDOFF.md`: Added Transcript Baseline Mode section with accuracy comparison table; updated state file format example
+- `docs/reference/CONFIGURATION.md`: Added `use_transcript_baseline` row to `context_monitor` table
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - implementation complete
