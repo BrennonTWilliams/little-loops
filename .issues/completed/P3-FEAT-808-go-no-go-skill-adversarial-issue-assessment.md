@@ -2,7 +2,7 @@
 id: FEAT-808
 priority: P3
 type: FEAT
-status: open
+status: completed
 title: "go-no-go skill for adversarial issue implementation assessment"
 discovered_date: "2026-03-19"
 discovered_by: capture-issue
@@ -15,6 +15,14 @@ outcome_confidence: 90
 ## Summary
 
 Create a new `/ll:go-no-go` skill that evaluates whether an issue should be implemented by launching two isolated background agents to argue for and against, then using an impartial LLM-as-judge agent to deliver a final go/no-go determination with reasoning.
+
+## Current Behavior
+
+No adversarial issue assessment mechanism exists. Developers evaluating whether an issue is worth implementing must rely solely on the `/ll:confidence-check` scoring system, which does not surface structured arguments for/against implementation or produce a binary go/no-go decision.
+
+## Expected Behavior
+
+Running `/ll:go-no-go <issue-id>` launches two background agents concurrently — one arguing for implementation, one against — each grounded in real codebase research. A third judge agent evaluates both arguments and delivers a **GO** or **NO-GO** verdict with structured reasoning, key arguments from both sides, and supporting evidence.
 
 ## Motivation
 
@@ -105,13 +113,47 @@ Sprint name → issue list: `cat {{config.sprints.sprints_dir}}/<sprint-name>.ya
 ### Tests That May Need Updating
 - `scripts/tests/test_doc_counts.py` — verifies documented skill counts match actual file counts; will fail after adding the new skill directory if counts aren't updated in `CLAUDE.md`
 
+## Impact
+
+- **Priority**: P3 — Useful for sprint planning validation, but non-blocking; `/ll:confidence-check` partially covers the need
+- **Effort**: Medium — New `skills/go-no-go/SKILL.md` only; no Python scripts required; reuses established skill patterns
+- **Risk**: Low — Purely additive; no modifications to existing skills, CLI tools, or Python code
+- **Breaking Change**: No
+
+## Labels
+
+`skill`, `automation`, `planning`, `adversarial`, `go-no-go`, `captured`
+
 ## Related Files
 
 - `skills/confidence-check/SKILL.md` — reference implementation for skill structure, argument parsing, output format, --check mode
 - `.claude-plugin/plugin.json` — skill auto-registration (directory scan, no per-skill entry needed)
 - `.claude/CLAUDE.md` — command catalog entry (line 38 count, line 53 category list)
 
+## Resolution
+
+**Implemented** by `/ll:manage-issue` on 2026-03-19.
+
+### Changes Made
+
+- **Created** `skills/go-no-go/SKILL.md` — new skill with full argument parsing, adversarial agent prompts, judge prompt, formatted output, batch table, --check mode, and session log
+- **Updated** `.claude/CLAUDE.md` — skill count 18→19, added `go-no-go`^ to Planning & Implementation category
+- **Updated** `README.md` — skill count 18→19, added go-no-go to Planning & Implementation table
+- **Updated** `CONTRIBUTING.md` — skill count 18→19, added go-no-go to skills directory listing
+- **Updated** `docs/ARCHITECTURE.md` — skill count 18→19 in both mermaid diagram and directory tree
+
+### Verification
+
+- `ll-verify-docs`: All 9 count(s) match ✓
+- `python -m pytest scripts/tests/`: 3725 passed, 4 skipped ✓
+
+## Status
+
+**Completed** | Created: 2026-03-19 | Priority: P3
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1034ca11-fa1c-4d2c-adec-b1cb83f3e254.jsonl`
+- `/ll:ready-issue` - 2026-03-19T18:43:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09ae314a-9811-4a52-9fe2-ae18bf4b4f54.jsonl`
 - `/ll:refine-issue` - 2026-03-19T03:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe93df18-9bd8-4ea2-b803-eb08b9798bc3.jsonl`
 - `/ll:capture-issue` - 2026-03-19T03:10:22Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e62307c-bbbf-4088-99bc-a42ef930c75f.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2bce9f8b-7339-49ed-88ba-ffe6b245d592.jsonl`
