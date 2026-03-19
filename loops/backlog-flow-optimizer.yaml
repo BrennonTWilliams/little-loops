@@ -5,6 +5,7 @@ description: |
   priority imbalance is the main drag, then acts: closes dead-weight issues,
   splits large ones, or promotes quick wins. Loops until backlog is healthy.
 initial: measure
+on_handoff: spawn
 context:
   target_active_max: 20
   target_weekly_completion: 5

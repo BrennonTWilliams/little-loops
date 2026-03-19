@@ -54,4 +54,4 @@ states:
   failed:
     terminal: true
 max_iterations: 100
-on_handoff: pause
+on_handoff: spawn

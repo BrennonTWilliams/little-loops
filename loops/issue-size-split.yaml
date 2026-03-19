@@ -4,6 +4,7 @@ description: |
   smaller issues. Iterates until no issues exceed the size threshold,
   normalizing filenames after each split.
 initial: find_large
+on_handoff: spawn
 scope:
   - ".issues/"
 states:
