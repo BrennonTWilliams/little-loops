@@ -3,6 +3,8 @@ discovered_commit: 8c6cf902efed0f071b9293a82ce6b13a7de425c1
 discovered_branch: main
 discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # FEAT-832: `ll-issues count` missing `--status` flag
@@ -64,5 +66,19 @@ Use `_load_issues_with_status` from `search.py` (already implements status filte
 **Open** | Created: 2026-03-19 | Priority: P4
 
 
+## Verification Notes
+
+**Verdict**: VALID — Issue accurately describes the current codebase state (verified 2026-03-19).
+
+- `scripts/little_loops/cli/issues/count_cmd.py` exists; `cmd_count` spans lines 14-53 — matches exactly.
+- Quoted code snippet (`find_issues(config, type_prefixes=...)`) matches current file verbatim.
+- `count` subparser (`__init__.py:201-210`) has `--type`, `--priority`, `--json` — no `--status`. Confirmed gap.
+- `list` subparser (`__init__.py:80-85`) and `search` subparser (`__init__.py:143-148`) both define `--status choices=[active,completed,deferred,all]`. Confirmed asymmetry.
+- `_load_issues_with_status` exists in `search.py:56` and is already imported/used by `list_cmd.py:27,37`. Proposed solution is viable.
+
+**Confidence**: High — all file references, line numbers, code snippets, and behavioral claims verified against current code.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-19T23:22:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
