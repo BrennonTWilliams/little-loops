@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-18
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # FEAT-812: Auto-detect model from JSONL to select context limit
@@ -137,6 +139,7 @@ A user switches from claude-sonnet-4-6 to claude-opus-4-6 (both 200K) without up
 `feat`, `context-monitor`, `accuracy`, `hooks`, `jq`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74eac9b6-0514-4106-b8b2-da35fb895c2e.jsonl`
 - `/ll:refine-issue` - 2026-03-19T04:48:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74626b26-3433-4c87-9955-47d8b604be07.jsonl`
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 

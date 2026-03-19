@@ -6,6 +6,8 @@ status: open
 title: "go-no-go skill for adversarial issue implementation assessment"
 discovered_date: "2026-03-19"
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 90
 ---
 
 # FEAT-808: go-no-go skill for adversarial issue implementation assessment
@@ -112,3 +114,4 @@ Sprint name → issue list: `cat {{config.sprints.sprints_dir}}/<sprint-name>.ya
 ## Session Log
 - `/ll:refine-issue` - 2026-03-19T03:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe93df18-9bd8-4ea2-b803-eb08b9798bc3.jsonl`
 - `/ll:capture-issue` - 2026-03-19T03:10:22Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e62307c-bbbf-4088-99bc-a42ef930c75f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2bce9f8b-7339-49ed-88ba-ffe6b245d592.jsonl`
