@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-20T00:00:00Z
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 90
 ---
 
 # ENH-838: Show LLM model name in ll-auto header via stream-json init event
@@ -52,11 +54,48 @@ When testing multiple models or when the default model changes, users need to kn
 
 ## Implementation Steps
 
-1. Add `--output-format stream-json` to `cmd_args` in `subprocess_utils.py:88`
-2. Wrap the `json.loads(line)` parse in a try/except and route by `event["type"]`
-3. Extract text from assistant content blocks: `event["message"]["content"]` list, `type == "text"` entries
-4. Add `on_model_detected` callback param to `run_claude_command()` signature
-5. Wire callback in `issue_manager.py` wrapper; store result; log in `AutoManager.run()` header
+1. Add `--output-format stream-json` to `cmd_args` in `subprocess_utils.py:88` — insert `"--output-format", "stream-json"` into the four-element list
+2. In the readline loop at `subprocess_utils.py:122–179`: wrap each stdout `line` in `try: event = json.loads(line) except json.JSONDecodeError: pass`; route by `event["type"]`:
+   - `{"type": "system", "subtype": "init", "model": "..."}` → call `on_model_detected(event["model"])` if set
+   - `{"type": "assistant", ...}` → extract text from `event["message"]["content"]` list (`type == "text"` entries), join, use as the effective `line` for `stream_callback` and `stdout_lines`
+   - All other event types → skip (do not append to `stdout_lines`, do not call `stream_callback`)
+   - Non-JSON lines (fallback) → pass through as raw text (maintains backward compat)
+3. Add `on_model_detected: Callable[[str], None] | None = None` parameter to `run_claude_command()` at `subprocess_utils.py:58–66` (after existing `on_process_end` param)
+4. Add matching `on_model_detected` param to the `issue_manager.run_claude_command()` wrapper at `issue_manager.py:92`; pass it through to `_run_claude_base()` at line 120
+5. In `AutoManager.run()` at `issue_manager.py:833–885`: define `detected_model: list[str] = []`; pass `on_model_detected=lambda m: detected_model.append(m)` when calling `run_claude_command()`; after/during first call, emit `self.logger.info(f"model: {detected_model[0]}")` near the startup log at line 840
+
+> **Note**: `logger.header()` (`logger.py:106`) is gated by `if self.verbose` — if verbose mode is off (the default in ll-auto), it will not print. Use `logger.info()` as stated in step 5, or call `print()` directly for guaranteed visibility.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+#### Files to Modify
+- `scripts/little_loops/subprocess_utils.py` — primary change site: cmd_args (line 88), readline loop (lines 122–179), `run_claude_command()` signature (line 58)
+- `scripts/little_loops/issue_manager.py` — thread `on_model_detected` through module-level wrapper (line 92) and wire in `AutoManager.run()` (line 833)
+
+#### Dependent Callers of `_run_claude_base`
+- `scripts/little_loops/issue_manager.py:120` — calls `_run_claude_base()` directly; receives the new param as optional (no breaking change)
+- `scripts/little_loops/parallel/worker_pool.py:686` — also calls `_run_claude_base()` directly; out-of-scope but unaffected (optional param)
+- `scripts/little_loops/issue_manager.py:318` — `process_issue_inplace()` calls `issue_manager.run_claude_command()`; this is the call site being extended
+
+#### Similar Patterns (to follow)
+- `scripts/little_loops/mcp_call.py:107` — per-line `json.loads()` with `JSONDecodeError: continue` guard on live subprocess stdout — **closest parallel** to the stream-json readline loop change
+- `scripts/little_loops/parallel/worker_pool.py:617` — uses `--output-format json` (blocking) to extract model name from `data["modelUsage"]` keys — related prior art for model detection
+- `scripts/little_loops/user_messages.py:386` — JSONL per-line parse pattern with `except json.JSONDecodeError: continue`
+- `scripts/little_loops/fsm/evaluators.py:619` — JSONL vs single-JSON disambiguation
+
+#### Tests
+- `scripts/tests/test_subprocess_utils.py:461` — `TestRunClaudeCommandStreaming`: follow for new `on_model_detected` callback tests (uses `io.StringIO` + `_patch_selector_cm` helpers)
+- `scripts/tests/test_subprocess_utils.py:673` — `TestRunClaudeCommandProcessCallbacks`: follow for callback-invoked-once and callback-on-error patterns
+- `scripts/tests/test_subprocess_mocks.py` — uses `issue_manager.run_claude_command` wrapper; update if wrapper signature changes
+- `scripts/tests/test_issue_manager.py` — add test verifying model name appears in `AutoManager` startup output
+
+#### Documentation
+- `docs/reference/API.md` — documents `run_claude_command` parameters; update when signature changes
+- `docs/research/claude-cli-integration-mechanics.md` — covers `--output-format stream-json` event structure; reference for implementation
 
 ## Impact
 
@@ -74,4 +113,6 @@ When testing multiple models or when the default model changes, users need to kn
 **Open** | Created: 2026-03-20 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83be42b0-964f-445f-adf0-2d937be906b5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T22:54:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0521297f-d479-439c-a1a1-1262178dbfc7.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07c52770-6d90-48f0-81b1-6b09daee89b1.jsonl`
