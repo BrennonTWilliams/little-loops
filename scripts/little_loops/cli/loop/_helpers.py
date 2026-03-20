@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import signal
 import subprocess
 import sys
@@ -306,6 +307,7 @@ def run_foreground(
 
     current_iteration = [0]  # Use list to allow mutation in closure
     last_parent_state: list[str | None] = [None]  # Track last depth=0 state for sub-loop highlighting
+    current_child_fsm: list[FSMLoop | None] = [None]  # Track active child FSM during sub-loop execution
     loop_start_time = time.monotonic()
 
     def display_progress(event: dict) -> None:
@@ -329,6 +331,16 @@ def run_foreground(
                 print("\033[2J\033[H", end="", flush=True)
             if depth == 0:
                 last_parent_state[0] = state
+                fsm_state = fsm.states.get(state)
+                if fsm_state is not None and fsm_state.loop is not None:
+                    try:
+                        current_child_fsm[0] = load_loop(
+                            fsm_state.loop, executor.loops_dir, logging.getLogger(__name__)
+                        )
+                    except (FileNotFoundError, ValueError):
+                        pass  # leave current_child_fsm[0] unchanged on failure
+                else:
+                    current_child_fsm[0] = None
             if show_diagrams:
                 from little_loops.cli.loop.layout import _render_fsm_diagram
 
@@ -340,6 +352,18 @@ def run_foreground(
                     edge_label_colors=edge_label_colors,
                 )
                 print(diagram, flush=True)
+                if depth > 0 and current_child_fsm[0] is not None:
+                    child_name = current_child_fsm[0].name
+                    separator_text = f"\u2500\u2500 sub-loop: {child_name} "
+                    separator = separator_text + "\u2500" * max(0, tw - len(separator_text))
+                    print(separator, flush=True)
+                    child_diagram = _render_fsm_diagram(
+                        current_child_fsm[0],
+                        highlight_state=state,
+                        highlight_color=highlight_color,
+                        edge_label_colors=edge_label_colors,
+                    )
+                    print(child_diagram, flush=True)
             if not quiet:
                 print(
                     f"{indent}[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",

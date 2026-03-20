@@ -120,12 +120,12 @@ events = [
 
 ## Implementation Steps
 
-1. Add `current_child_fsm: list[FSMLoop | None] = [None]` at `_helpers.py:308` (directly after `current_iteration = [0]` at line 307)
-2. In the `state_enter` branch at `_helpers.py:318`, when `depth == 0`:
+1. Add `current_child_fsm: list[FSMLoop | None] = [None]` at `_helpers.py:309` (directly after `last_parent_state` at line 308)
+2. In the `state_enter` branch at `_helpers.py:319`, when `depth == 0`:
    a. Look up `fsm_state = fsm.states.get(state)` — returns `StateConfig | None` (`schema.py:230`), not `FSMState`
    b. If `fsm_state is not None and fsm_state.loop is not None`, load the child FSM: `current_child_fsm[0] = load_loop(fsm_state.loop, executor.loops_dir, logging.getLogger(__name__))` — note: `executor.loops_dir`, **not** `args.loops_dir` or `getattr(args, "loops_dir", ...)`; wrap in `try/except (FileNotFoundError, ValueError)` to leave `current_child_fsm[0]` unchanged on failure
    c. If `fsm_state is None or fsm_state.loop is None`, clear `current_child_fsm[0] = None`
-3. In the diagram rendering block at `_helpers.py:329–337`, check `current_child_fsm[0]`:
+3. In the diagram rendering block at `_helpers.py:332–342`, check `current_child_fsm[0]`:
    - If set: render parent diagram, print separator `── sub-loop: <fsm_state.loop> ──` using `\u2500` fill (pattern: `info.py:596–605`), render child diagram with `highlight_state=state`
    - If not set: render parent diagram only (existing behavior, unchanged)
 4. Ensure BUG-844 fix (`last_parent_state`) is applied first — this enhancement depends on it for correct parent highlighting; `last_parent_state[0]` provides the parent state name when depth > 0
@@ -158,13 +158,34 @@ _Added by `/ll:confidence-check` on 2026-03-20_
 **Outcome Confidence**: 97/100 → HIGH CONFIDENCE
 
 ### Concerns
-- **BUG-844 is an unresolved prerequisite**: `last_parent_state` tracking is not yet in `_helpers.py`. ENH-846 implementation step 4 requires it for correct parent-diagram highlighting when `depth > 0`. Without it, the parent diagram will have no active-state highlight during sub-loop execution. Implement BUG-844 first, or combine both in one session.
+- ~~**BUG-844 is an unresolved prerequisite**~~: BUG-844 is now completed. `last_parent_state` tracking is already in `_helpers.py:308`. This concern is resolved.
+
+## Resolution
+
+**Completed** on 2026-03-20
+
+### Changes Made
+
+- `scripts/little_loops/cli/loop/_helpers.py`:
+  - Added `import logging`
+  - Added `current_child_fsm: list[FSMLoop | None] = [None]` closure variable alongside `last_parent_state`
+  - On `depth == 0` `state_enter` events: looks up `fsm.states.get(state)`; if `fsm_state.loop` is set, loads child FSM via `load_loop(fsm_state.loop, executor.loops_dir, ...)` with `try/except`; otherwise clears `current_child_fsm[0]`
+  - On `show_diagrams` rendering: after printing parent diagram, if `depth > 0` and `current_child_fsm[0]` is set, prints separator (`── sub-loop: <name> ──`) and child FSM diagram with `highlight_state=state`
+
+- `scripts/tests/test_ll_loop_display.py`:
+  - Added `loops_dir: Path = Path(".")` to `MockExecutor.__init__`
+  - Added `test_sub_loop_child_diagram_rendered_during_sub_loop_execution` regression test
+
+### Verification
+
+All 121 tests pass (`python -m pytest scripts/tests/test_ll_loop_display.py`).
 
 ## Status
 
-**Open** | Created: 2026-03-20 | Priority: P3
+**Completed** | Created: 2026-03-20 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T21:39:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51a33daf-4007-40cc-a0a0-fa27ffa9df00.jsonl`
 - `/ll:refine-issue` - 2026-03-20T21:02:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66287049-8150-4128-9cfd-31f459fc62db.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae4f7fa9-4038-444b-b34c-8c4cea5178e2.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a252f10d-b254-4738-9e2f-e6571da6b831.jsonl`

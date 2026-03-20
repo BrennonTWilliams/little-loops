@@ -34,9 +34,10 @@ if TYPE_CHECKING:
 class MockExecutor:
     """Mock executor that emits a fixed sequence of events then returns a result."""
 
-    def __init__(self, events: list[dict[str, Any]]) -> None:
+    def __init__(self, events: list[dict[str, Any]], loops_dir: Path = Path(".")) -> None:
         self._events = events
         self._on_event: Any = None
+        self.loops_dir = loops_dir
 
     def run(self) -> ExecutionResult:
         for event in self._events:
@@ -1767,6 +1768,64 @@ class TestDisplayProgressEvents:
         state_lines = [ln for ln in out.splitlines() if "start" in ln and "[" in ln]
         assert state_lines, "Expected state_enter output for start"
         assert not state_lines[0].startswith("  "), "Depth-0 output should not be indented"
+
+    def test_sub_loop_child_diagram_rendered_during_sub_loop_execution(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """During sub-loop execution, both parent and child FSM diagrams are rendered.
+
+        When a depth=1 state_enter event arrives and the parent state had loop set,
+        _render_fsm_diagram is called for parent (highlight=parent_state) then for
+        child (highlight=child_state). A separator line is printed between them.
+        """
+        from unittest.mock import call, patch
+
+        from little_loops.cli.loop import layout as layout_mod
+
+        child_fsm = make_test_fsm(
+            name="child-loop",
+            initial="child_state_1",
+            states={
+                "child_state_1": make_test_state(action="echo child", next="done"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        parent_fsm = make_test_fsm(
+            name="parent-loop",
+            initial="run_sub_loop",
+            states={
+                "run_sub_loop": StateConfig(loop="child-loop", next="done"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        events = [
+            {"event": "state_enter", "state": "run_sub_loop", "iteration": 1},
+            {"event": "state_enter", "state": "child_state_1", "iteration": 1, "depth": 1},
+        ]
+        executor = MockExecutor(events)
+        with (
+            patch.object(
+                layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+            ) as mock_render,
+            patch("little_loops.cli.loop._helpers.load_loop", return_value=child_fsm),
+        ):
+            run_foreground(executor, parent_fsm, self._make_args(show_diagrams=True))
+
+        # depth=0 event: 1 render (parent only, child FSM loaded but not yet shown)
+        # depth=1 event: 2 renders (parent with parent highlight + child with child highlight)
+        assert mock_render.call_count == 3, f"Expected 3 render calls, got {mock_render.call_count}"
+        calls = mock_render.call_args_list
+        assert calls[0] == call(
+            parent_fsm, highlight_state="run_sub_loop", highlight_color="32", edge_label_colors=None
+        )
+        assert calls[1] == call(
+            parent_fsm, highlight_state="run_sub_loop", highlight_color="32", edge_label_colors=None
+        )
+        assert calls[2] == call(
+            child_fsm, highlight_state="child_state_1", highlight_color="32", edge_label_colors=None
+        )
+        out = capsys.readouterr().out
+        assert "sub-loop: child-loop" in out
 
     def test_sub_loop_route_indented_with_depth(self, capsys: pytest.CaptureFixture[str]) -> None:
         """route event with depth=1 is prefixed with 2-space indent."""
