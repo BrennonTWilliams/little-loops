@@ -244,6 +244,11 @@
           "type": "boolean",
           "description": "Require worktree to produce code changes before merging. Skips no-op runs.",
           "default": true
+        },
+        "remote_name": {
+          "type": "string",
+          "description": "Git remote name used for fetch/pull operations in parallel runs. Use if your remote is not named 'origin'.",
+          "default": "origin"
         }
       },
       "additionalProperties": false

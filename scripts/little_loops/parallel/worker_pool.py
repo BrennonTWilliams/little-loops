@@ -845,22 +845,22 @@ class WorkerPool:
         Returns:
             Tuple of (success, error_message)
         """
-        # Fetch latest base branch from origin
+        # Fetch latest base branch from configured remote (fall back to local if fetch fails)
         base = self.parallel_config.base_branch
+        remote = self.parallel_config.remote_name
         fetch_result = subprocess.run(
-            ["git", "fetch", "origin", base],
+            ["git", "fetch", remote, base],
             cwd=worktree_path,
             capture_output=True,
             text=True,
             timeout=60,
         )
 
-        if fetch_result.returncode != 0:
-            return False, f"Failed to fetch origin/{base}: {fetch_result.stderr}"
+        rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
-        # Rebase current branch onto origin base branch
+        # Rebase current branch onto base (remote or local fallback)
         rebase_result = subprocess.run(
-            ["git", "rebase", f"origin/{base}"],
+            ["git", "rebase", rebase_target],
             cwd=worktree_path,
             capture_output=True,
             text=True,
@@ -875,9 +875,9 @@ class WorkerPool:
                 capture_output=True,
                 timeout=10,
             )
-            return False, f"Failed to rebase onto origin/{base}: {rebase_result.stderr}"
+            return False, f"Failed to rebase onto {rebase_target}: {rebase_result.stderr}"
 
-        self.logger.info(f"[{issue_id}] Rebased branch onto origin/{base}")
+        self.logger.info(f"[{issue_id}] Rebased branch onto {rebase_target}")
         return True, ""
 
     def _verify_work_was_done(

@@ -54,6 +54,7 @@ class ParallelAutomationConfig:
         default_factory=lambda: [".claude/settings.local.json", ".env"]
     )
     require_code_changes: bool = True
+    remote_name: str = "origin"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ParallelAutomationConfig:
@@ -83,6 +84,7 @@ class ParallelAutomationConfig:
                 "worktree_copy_files", [".claude/settings.local.json", ".env"]
             ),
             require_code_changes=data.get("require_code_changes", True),
+            remote_name=data.get("remote_name", "origin"),
         )
 
 

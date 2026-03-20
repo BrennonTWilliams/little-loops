@@ -641,7 +641,7 @@ class TestMergeCoordinatorGitOperations:
                     return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
                 # Pull --rebase: fails with local changes error
-                if cmd[:4] == ["git", "pull", "--rebase", "origin"]:
+                if cmd[:4] == ["git", "pull", "--rebase", config.remote_name]:
                     return subprocess.CompletedProcess(
                         cmd,
                         1,

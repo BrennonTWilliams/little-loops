@@ -748,6 +748,7 @@ class TestParallelConfig:
         assert config.merge_pending is False
         assert config.clean_start is False
         assert config.ignore_pending is False
+        assert config.remote_name == "origin"
 
     def test_creation_with_custom_values(self) -> None:
         """ParallelConfig can be created with custom values."""
@@ -891,6 +892,7 @@ class TestParallelConfig:
             "only_ids": ["A", "B"],
             "skip_ids": ["C"],
             "base_branch": "develop",
+            "remote_name": "upstream",
         }
 
         config = ParallelConfig.from_dict(data)
@@ -908,6 +910,7 @@ class TestParallelConfig:
         assert config.base_branch == "develop"
         assert config.only_ids == {"A", "B"}
         assert config.skip_ids == {"C"}
+        assert config.remote_name == "upstream"
 
     def test_from_dict_strings_to_paths(self) -> None:
         """from_dict converts strings to Path objects."""
@@ -987,6 +990,7 @@ class TestParallelConfig:
             clean_start=True,
             ignore_pending=True,
             base_branch="develop",
+            remote_name="upstream",
         )
 
         restored = ParallelConfig.from_dict(original.to_dict())
@@ -1014,3 +1018,4 @@ class TestParallelConfig:
         assert restored.clean_start == original.clean_start
         assert restored.ignore_pending == original.ignore_pending
         assert restored.base_branch == original.base_branch
+        assert restored.remote_name == original.remote_name

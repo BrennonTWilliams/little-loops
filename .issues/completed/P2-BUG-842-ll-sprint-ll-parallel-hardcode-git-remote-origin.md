@@ -2,7 +2,7 @@
 id: BUG-842
 type: BUG
 priority: P2
-status: open
+status: completed
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 100
@@ -46,7 +46,7 @@ Any project whose git remote is not named `"origin"` is completely unable to use
 ## Root Cause
 
 - **File**: `scripts/little_loops/parallel/worker_pool.py`
-- **Anchor**: `in _sync_with_base()` (approximately line 847)
+- **Anchor**: `in _update_branch_base()` (approximately line 851)
 - **Cause**: `git fetch origin` is hardcoded. Fetch failure returns `(False, "Failed to fetch origin/...")` immediately — no fallback to local base.
 
 Secondary location:
@@ -64,12 +64,12 @@ Root config gap:
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Corrected function names and exact line numbers:**
-- Primary site: `_update_branch_base()` (not `_sync_with_base()`) in `worker_pool.py:830–877`
-  - `worker_pool.py:847` — `["git", "fetch", "origin", base]` (hardcoded)
-  - `worker_pool.py:855` — error string `f"Failed to fetch origin/{base}: ..."` (hardcoded)
-  - `worker_pool.py:859` — `["git", "rebase", f"origin/{base}"]` (hardcoded)
-  - `worker_pool.py:874` — error string `f"Failed to rebase onto origin/{base}: ..."` (hardcoded)
-  - **Fetch failure**: immediately returns `(False, error)` at line 855 — no fallback
+- Primary site: `_update_branch_base()` (not `_sync_with_base()`) in `worker_pool.py:834–881`
+  - `worker_pool.py:851` — `["git", "fetch", "origin", base]` (hardcoded)
+  - `worker_pool.py:859` — error string `f"Failed to fetch origin/{base}: ..."` (hardcoded)
+  - `worker_pool.py:863` — `["git", "rebase", f"origin/{base}"]` (hardcoded)
+  - `worker_pool.py:878` — error string `f"Failed to rebase onto origin/{base}: ..."` (hardcoded)
+  - **Fetch failure**: immediately returns `(False, error)` at line 859 — no fallback
 - Secondary site: `_handle_conflict()` (not `_sync_branch_with_base()`) in `merge_coordinator.py:997–1005`
   - `merge_coordinator.py:999` — `["git", "fetch", "origin", base]` (hardcoded)
   - Already has fetch-fail fallback: `rebase_target = f"origin/{base}" if fetch ok else base` (line 1005)
@@ -116,7 +116,7 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
 ### Files to Modify
 - `scripts/little_loops/parallel/types.py` — add `remote_name` field to `ParallelConfig` (after `base_branch` at line ~350); update `to_dict()` and `from_dict()` (lines ~382–450)
-- `scripts/little_loops/parallel/worker_pool.py` — replace all `"origin"` literals in `_update_branch_base()`: git args at lines 847, 859; error messages at 855, 874; log message at 876; add fetch-fail fallback
+- `scripts/little_loops/parallel/worker_pool.py` — replace all `"origin"` literals in `_update_branch_base()`: git args at lines 851, 863; error messages at 859, 878; log message at 880; add fetch-fail fallback
 - `scripts/little_loops/parallel/merge_coordinator.py` — replace `"origin"` in `_handle_conflict()` (line 999) and `_process_merge()` (lines 794, 818)
 - `scripts/little_loops/config/automation.py` — add `remote_name` to `ParallelAutomationConfig` (lines ~40–86) and its `from_dict()` — **required to wire `ll-config.json` → `ParallelConfig`**
 - `scripts/little_loops/config/core.py` — thread `self._parallel.remote_name` into `create_parallel_config()` (lines 253–327): add `remote_name: str = "origin"` parameter at line 272 (following `base_branch` pattern), forward to `ParallelConfig(remote_name=remote_name, ...)` at line 326
@@ -172,7 +172,28 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
 `bug`, `parallel`, `ll-sprint`, `ll-parallel`, `captured`
 
+## Resolution
+
+**Fixed**: 2026-03-20
+
+### Changes Made
+
+1. **`scripts/little_loops/parallel/types.py`** — Added `remote_name: str = "origin"` field to `ParallelConfig`; updated `to_dict()` and `from_dict()` to serialize/deserialize the field.
+2. **`scripts/little_loops/config/automation.py`** — Added `remote_name: str = "origin"` to `ParallelAutomationConfig`; updated `from_dict()`.
+3. **`scripts/little_loops/config/core.py`** — Added optional `remote_name` parameter to `create_parallel_config()`, threading it through from config to `ParallelConfig`.
+4. **`scripts/little_loops/parallel/worker_pool.py`** — `_update_branch_base()`: replaced hardcoded `"origin"` with `self.parallel_config.remote_name`; added fetch-fail fallback (rebase onto local base when fetch fails, matching `merge_coordinator.py`'s existing pattern).
+5. **`scripts/little_loops/parallel/merge_coordinator.py`** — `_process_merge()`: replaced hardcoded `"origin"` in `pull --rebase` and `pull --no-rebase` commands; `_handle_conflict()`: replaced hardcoded `"origin"` in fetch command and `rebase_target` construction.
+6. **`config-schema.json`** — Added `remote_name` string property to `parallel` block.
+7. **`docs/reference/CONFIGURATION.md`** — Documented `parallel.remote_name` config option.
+
+### Tests Added
+
+- `test_parallel_types.py` — `remote_name` default value, `from_dict` deserialization, roundtrip serialization.
+- `test_worker_pool.py` — `TestUpdateBranchBase` class: custom remote name used in fetch/rebase, fetch-failure fallback to local base, default `"origin"` behavior.
+- `test_subprocess_mocks.py` — Updated pull `--rebase` mock to use `config.remote_name` instead of hardcoded `"origin"`.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T20:59:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c57795c-b90c-4deb-82f5-643b24c29331.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36183605-dd79-41a4-9e6a-73bd76c04600.jsonl`
 - `/ll:refine-issue` - 2026-03-20T20:25:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b67db3c-3212-4208-a849-0257b4b7d161.jsonl`
 - `/ll:format-issue` - 2026-03-20T20:13:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d10017-26b1-49e5-af25-cfb58245ab95.jsonl`

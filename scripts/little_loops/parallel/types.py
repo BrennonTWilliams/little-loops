@@ -348,6 +348,8 @@ class ParallelConfig:
     serialize_overlapping: bool = True  # If True, defer overlapping issues; if False, just warn
     # Base branch for rebase/merge operations (auto-detected at startup)
     base_branch: str = "main"
+    # Git remote name for fetch/pull operations
+    remote_name: str = "origin"
 
     def get_ready_command(self, issue_id: str) -> str:
         """Build the ready-issue command string.
@@ -409,6 +411,7 @@ class ParallelConfig:
             "overlap_detection": self.overlap_detection,
             "serialize_overlapping": self.serialize_overlapping,
             "base_branch": self.base_branch,
+            "remote_name": self.remote_name,
         }
 
     @classmethod
@@ -447,4 +450,5 @@ class ParallelConfig:
             overlap_detection=data.get("overlap_detection", False),
             serialize_overlapping=data.get("serialize_overlapping", True),
             base_branch=data.get("base_branch", "main"),
+            remote_name=data.get("remote_name", "origin"),
         )

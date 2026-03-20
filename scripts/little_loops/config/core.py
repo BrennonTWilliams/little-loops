@@ -270,6 +270,7 @@ class BRConfig:
         overlap_detection: bool = False,
         serialize_overlapping: bool = True,
         base_branch: str = "main",
+        remote_name: str | None = None,
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -324,6 +325,7 @@ class BRConfig:
             overlap_detection=overlap_detection,
             serialize_overlapping=serialize_overlapping,
             base_branch=base_branch,
+            remote_name=remote_name if remote_name is not None else self._parallel.remote_name,
         )
 
     @property

@@ -752,6 +752,7 @@ class MergeCoordinator:
 
             # Ensure we're on base branch in the main repo
             base = self.config.base_branch
+            remote = self.config.remote_name
             checkout_result = self._git_lock.run(
                 ["checkout", base],
                 cwd=self.repo_path,
@@ -791,7 +792,7 @@ class MergeCoordinator:
 
             # Pull latest changes
             pull_result = self._git_lock.run(
-                ["pull", "--rebase", "origin", base],
+                ["pull", "--rebase", remote, base],
                 cwd=self.repo_path,
                 timeout=60,
             )
@@ -815,7 +816,7 @@ class MergeCoordinator:
 
                         # Attempt merge strategy pull
                         merge_pull_result = self._git_lock.run(
-                            ["pull", "--no-rebase", "origin", base],
+                            ["pull", "--no-rebase", remote, base],
                             cwd=self.repo_path,
                             timeout=60,
                         )
@@ -993,16 +994,17 @@ class MergeCoordinator:
                     self.logger.warning(f"Failed to stash worktree changes: {stash_result.stderr}")
 
             # Fetch latest base branch before rebase (BUG-180)
-            # Use origin/base if fetch succeeds, fall back to base if no remote
+            # Use remote/base if fetch succeeds, fall back to base if no remote
             base = self.config.base_branch
+            remote = self.config.remote_name
             fetch_result = subprocess.run(
-                ["git", "fetch", "origin", base],
+                ["git", "fetch", remote, base],
                 cwd=result.worktree_path,
                 capture_output=True,
                 text=True,
                 timeout=60,
             )
-            rebase_target = f"origin/{base}" if fetch_result.returncode == 0 else base
+            rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
             # Rebase the branch onto latest base branch (BUG-180)
             rebase_result = subprocess.run(

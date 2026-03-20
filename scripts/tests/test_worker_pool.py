@@ -1600,6 +1600,98 @@ class TestWorkerPoolHelpers:
         assert not reset_called[0]  # Reset should be skipped
 
 
+class TestUpdateBranchBase:
+    """Tests for _update_branch_base() remote name configuration."""
+
+    def test_update_branch_base_uses_configured_remote(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_update_branch_base() uses remote_name from config instead of hardcoded 'origin'."""
+        worker_pool.parallel_config.remote_name = "upstream"
+        worker_pool.parallel_config.base_branch = "main"
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_cmds: list[list[str]] = []
+
+        def mock_run(
+            cmd: list[str], **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            success, error = worker_pool._update_branch_base(worktree_path, "BUG-001")
+
+        assert success is True
+        assert error == ""
+        fetch_cmds = [c for c in captured_cmds if "fetch" in c]
+        assert len(fetch_cmds) == 1
+        assert fetch_cmds[0] == ["git", "fetch", "upstream", "main"]
+        rebase_cmds = [c for c in captured_cmds if "rebase" in c and "--abort" not in c]
+        assert len(rebase_cmds) == 1
+        assert rebase_cmds[0] == ["git", "rebase", "upstream/main"]
+
+    def test_update_branch_base_fetch_failure_falls_back_to_local(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_update_branch_base() falls back to local base branch when fetch fails."""
+        worker_pool.parallel_config.remote_name = "origin"
+        worker_pool.parallel_config.base_branch = "main"
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_cmds: list[list[str]] = []
+
+        def mock_run(
+            cmd: list[str], **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            if "fetch" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 1, "", "fatal: 'origin' does not appear to be a git repository"
+                )
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            success, error = worker_pool._update_branch_base(worktree_path, "BUG-001")
+
+        assert success is True
+        assert error == ""
+        rebase_cmds = [c for c in captured_cmds if "rebase" in c and "--abort" not in c]
+        assert len(rebase_cmds) == 1
+        # Should fall back to local "main" instead of "origin/main"
+        assert rebase_cmds[0] == ["git", "rebase", "main"]
+
+    def test_update_branch_base_default_remote_is_origin(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_update_branch_base() uses 'origin' when remote_name is default."""
+        worker_pool.parallel_config.base_branch = "main"
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_cmds: list[list[str]] = []
+
+        def mock_run(
+            cmd: list[str], **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            worker_pool._update_branch_base(worktree_path, "BUG-001")
+
+        fetch_cmds = [c for c in captured_cmds if "fetch" in c]
+        assert fetch_cmds[0] == ["git", "fetch", "origin", "main"]
+
+
 class TestWorkerPoolModelDetection:
     """Tests for _detect_worktree_model_via_api()."""
 
