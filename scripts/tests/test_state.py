@@ -556,9 +556,7 @@ class TestStateConcurrency:
 class TestStateManagerAtomicSave:
     """Tests for BUG-821: StateManager.save must use atomic write."""
 
-    def test_save_uses_os_replace(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_save_uses_os_replace(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Save must use os.replace (atomic rename) rather than write_text directly."""
         manager = StateManager(temp_state_file, mock_logger)
         manager.state.phase = "testing"
@@ -616,4 +614,6 @@ class TestStateManagerAtomicSave:
 
         # Original file must still be intact and readable
         content = json.loads(temp_state_file.read_text())
-        assert content["phase"] == "initial", "Original state file must be preserved on write failure"
+        assert content["phase"] == "initial", (
+            "Original state file must be preserved on write failure"
+        )

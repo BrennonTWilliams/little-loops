@@ -1400,7 +1400,9 @@ class TestUndeferIssue:
             if "commit" in cmd:
                 idx = cmd.index("-m")
                 committed_messages.append(cmd[idx + 1])
-                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc1234] commit", stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="[main abc1234] commit", stderr=""
+                )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):

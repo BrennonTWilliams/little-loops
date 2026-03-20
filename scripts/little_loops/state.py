@@ -129,9 +129,7 @@ class StateManager:
         try:
             self.state.timestamp = datetime.now().isoformat()
             data = json.dumps(self.state.to_dict(), indent=2)
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                dir=self.state_file.parent, suffix=".tmp"
-            )
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=self.state_file.parent, suffix=".tmp")
             try:
                 with os.fdopen(tmp_fd, "w") as f:
                     f.write(data)

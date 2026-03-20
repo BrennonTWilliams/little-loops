@@ -1616,9 +1616,7 @@ class TestUpdateBranchBase:
 
         captured_cmds: list[list[str]] = []
 
-        def mock_run(
-            cmd: list[str], **kwargs: Any
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             captured_cmds.append(cmd)
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -1647,9 +1645,7 @@ class TestUpdateBranchBase:
 
         captured_cmds: list[list[str]] = []
 
-        def mock_run(
-            cmd: list[str], **kwargs: Any
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             captured_cmds.append(cmd)
             if "fetch" in cmd:
                 return subprocess.CompletedProcess(
@@ -1679,9 +1675,7 @@ class TestUpdateBranchBase:
 
         captured_cmds: list[list[str]] = []
 
-        def mock_run(
-            cmd: list[str], **kwargs: Any
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             captured_cmds.append(cmd)
             return subprocess.CompletedProcess(cmd, 0, "", "")
 

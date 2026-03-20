@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import signal
 import subprocess
 import sys
@@ -13,10 +12,10 @@ from types import FrameType
 from typing import TYPE_CHECKING, Any
 
 from little_loops.cli.output import colorize, terminal_width
+from little_loops.logger import Logger
 
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
-    from little_loops.logger import Logger
 
 # Exit code mapping for terminated_by values
 EXIT_CODES: dict[str, int] = {
@@ -306,8 +305,12 @@ def run_foreground(
         print()
 
     current_iteration = [0]  # Use list to allow mutation in closure
-    last_parent_state: list[str | None] = [None]  # Track last depth=0 state for sub-loop highlighting
-    current_child_fsm: list[FSMLoop | None] = [None]  # Track active child FSM during sub-loop execution
+    last_parent_state: list[str | None] = [
+        None
+    ]  # Track last depth=0 state for sub-loop highlighting
+    current_child_fsm: list[FSMLoop | None] = [
+        None
+    ]  # Track active child FSM during sub-loop execution
     loop_start_time = time.monotonic()
 
     def display_progress(event: dict) -> None:
@@ -335,7 +338,7 @@ def run_foreground(
                 if fsm_state is not None and fsm_state.loop is not None:
                     try:
                         current_child_fsm[0] = load_loop(
-                            fsm_state.loop, executor.loops_dir, logging.getLogger(__name__)
+                            fsm_state.loop, executor.loops_dir, Logger()
                         )
                     except (FileNotFoundError, ValueError):
                         pass  # leave current_child_fsm[0] unchanged on failure
