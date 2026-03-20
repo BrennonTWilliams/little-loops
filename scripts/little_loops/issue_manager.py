@@ -179,6 +179,10 @@ def run_with_continuation(
             prompt_content = read_continuation_prompt(repo_path)
             if not prompt_content:
                 logger.warning("Context handoff signaled but no continuation prompt found")
+                all_stderr.append("Handoff detected but no continuation prompt found")
+                result = subprocess.CompletedProcess(
+                    args=result.args, returncode=1, stdout=result.stdout, stderr=result.stderr
+                )
                 break
 
             if continuation_count >= max_continuations:

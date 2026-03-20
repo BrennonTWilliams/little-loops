@@ -1011,10 +1011,11 @@ class TestRunWithContinuation:
         with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result):
             with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
                 with patch("little_loops.issue_manager.read_continuation_prompt", return_value=""):
-                    run_with_continuation("test", mock_logger)
+                    result = run_with_continuation("test", mock_logger)
 
-        # Should stop after handoff with no prompt
+        # Should stop after handoff with no prompt and signal failure
         mock_logger.warning.assert_called()
+        assert result.returncode == 1
 
     def test_continuation_uses_resume_flag(self, temp_project_dir: Path) -> None:
         """Test that continuation re-invokes original command with --resume (BUG-327)."""

@@ -2034,3 +2034,35 @@ class TestWorkerPoolStageTracking:
 
         # Removing non-existent stage should not raise
         worker_pool.remove_worker_stage("NONEXISTENT")
+
+
+class TestRunWithContinuation:
+    """Tests for WorkerPool._run_with_continuation() (BUG-819)."""
+
+    def test_breaks_when_no_continuation_prompt(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """When handoff is detected but no prompt file exists, returncode must be 1."""
+        handoff_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=0,
+            stdout="CONTEXT_HANDOFF\n",
+            stderr="",
+        )
+
+        with patch.object(worker_pool, "_run_claude_command", return_value=handoff_result):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff", return_value=True
+            ):
+                with patch(
+                    "little_loops.parallel.worker_pool.read_continuation_prompt", return_value=""
+                ):
+                    result = worker_pool._run_with_continuation(
+                        "test", temp_repo_with_config, issue_id="BUG-819"
+                    )
+
+        # Should signal failure when handoff has no prompt file
+        assert result.returncode == 1
+        assert "Handoff detected but no continuation prompt found" in result.stderr

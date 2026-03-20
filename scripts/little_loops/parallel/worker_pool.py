@@ -777,6 +777,10 @@ class WorkerPool:
                     self.logger.warning(
                         f"[{issue_id}] Context handoff signaled but no continuation prompt found"
                     )
+                    all_stderr.append("Handoff detected but no continuation prompt found")
+                    result = subprocess.CompletedProcess(
+                        args=result.args, returncode=1, stdout=result.stdout, stderr=result.stderr
+                    )
                     break
 
                 if continuation_count >= max_continuations:

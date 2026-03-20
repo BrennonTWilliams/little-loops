@@ -16,14 +16,18 @@ In `WorkerPool._run_with_continuation`, when `detect_context_handoff` returns `T
 ## Location
 
 - **File**: `scripts/little_loops/parallel/worker_pool.py`
-- **Line(s)**: 776-780 (at scan commit: 8c6cf90)
+- **Line(s)**: 771-780
 - **Anchor**: `in method WorkerPool._run_with_continuation`
 - **Code**:
 ```python
 if detect_context_handoff(result.stdout):
+    self.logger.info(f"[{issue_id}] Detected CONTEXT_HANDOFF signal")
     prompt_content = read_continuation_prompt(working_dir)
     if not prompt_content:
-        break  # Silently exits loop — result.returncode is 0
+        self.logger.warning(
+            f"[{issue_id}] Context handoff signaled but no continuation prompt found"
+        )
+        break  # Warning logged but result.returncode is still 0 — silent success
 ```
 
 ## Current Behavior
@@ -64,7 +68,7 @@ if not prompt_content:
 
 ### Files to Modify
 - `scripts/little_loops/parallel/worker_pool.py:776-780` — primary bug site in `_run_with_continuation`; add `all_stderr.append(...)` and reassign `result` with `returncode=1` before `break`
-- `scripts/little_loops/issue_manager.py:181` — identical bug in standalone `run_with_continuation` used by `ll-auto`; same fix pattern applies
+- `scripts/little_loops/issue_manager.py:180` — identical bug in standalone `run_with_continuation` used by `ll-auto`; same fix pattern applies
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/parallel/worker_pool.py:375` — calls `_run_with_continuation`; `manage_result.returncode` checked at line 437
@@ -95,7 +99,7 @@ if not prompt_content:
 ## Implementation Steps
 
 1. **Fix `worker_pool.py`**: At `worker_pool.py:776-780`, append error to `all_stderr` and reassign `result` with `returncode=1` before `break` (see Proposed Solution for exact code)
-2. **Fix `issue_manager.py`**: Apply the same pattern at `issue_manager.py:181` in `run_with_continuation` — append error message to `all_stderr` and reassign `result` with `returncode=1`
+2. **Fix `issue_manager.py`**: Apply the same pattern at `issue_manager.py:180` in `run_with_continuation` — append error message to `all_stderr` and reassign `result` with `returncode=1`
 3. **Update existing test**: In `test_issue_manager.py:1017`, add `assert result.returncode == 1` to `test_breaks_when_no_continuation_prompt`
 4. **Add `worker_pool` test**: Add `TestRunWithContinuation` class in `test_worker_pool.py` with a `test_breaks_when_no_continuation_prompt` test following the pattern at `test_issue_manager.py:1000-1017`
 5. **Verify**: Run `python -m pytest scripts/tests/test_worker_pool.py scripts/tests/test_issue_manager.py -v`
@@ -106,7 +110,18 @@ if not prompt_content:
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P3
+**Completed** | Created: 2026-03-19 | Resolved: 2026-03-20 | Priority: P3
+
+## Resolution
+
+**Fixed** both sites where a detected handoff with no prompt file would silently succeed.
+
+- `scripts/little_loops/parallel/worker_pool.py:776-784` — appended error to `all_stderr` and reassigned `result` with `returncode=1` before `break`
+- `scripts/little_loops/issue_manager.py:180-186` — same fix in standalone `run_with_continuation` for `ll-auto`
+- `scripts/tests/test_issue_manager.py:1014` — captured return value; added `assert result.returncode == 1`
+- `scripts/tests/test_worker_pool.py` — added `TestRunWithContinuation.test_breaks_when_no_continuation_prompt`
+
+All 158 tests pass.
 
 
 ## Verification Notes
@@ -121,6 +136,8 @@ if not prompt_content:
 - **Confidence**: High — bug logic and location are accurate
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00f5970a-005d-4048-9178-bd7b6fd43284.jsonl`
+- `/ll:ready-issue` - 2026-03-20T20:26:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00f5970a-005d-4048-9178-bd7b6fd43284.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1b24f49-0ca4-4c97-bf45-3f90c26e257c.jsonl`
 - `/ll:refine-issue` - 2026-03-20T20:14:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b203c0f-8ccf-4004-9c82-59375350b1d4.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

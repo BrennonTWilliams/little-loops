@@ -6,7 +6,7 @@ status: open
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 72
+outcome_confidence: 78
 ---
 
 # BUG-842: ll-sprint and ll-parallel hardcode git remote name "origin"
@@ -77,7 +77,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   - `merge_coordinator.py:794` — `["pull", "--rebase", "origin", base]` (hardcoded)
   - `merge_coordinator.py:818` — `["pull", "--no-rebase", "origin", base]` (hardcoded, merge-strategy fallback)
 - **Config bridge gap**: `scripts/little_loops/config/automation.py:40–86` — `ParallelAutomationConfig` is the intermediate dataclass between `ll-config.json` and `ParallelConfig`. It must also receive `remote_name` for the field to be read from config.
-- **`orchestrator.py`** also contains hardcoded "origin" references (confirmed by file scan; scope TBD).
+- **`orchestrator.py`** confirmed zero git-remote "origin" hardcodings — all `origin` occurrences are Python variable names (`_original_sigint`, `_original_sigterm`, `original_path`). No changes needed.
 
 ## Proposed Solution
 
@@ -116,14 +116,14 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
 ### Files to Modify
 - `scripts/little_loops/parallel/types.py` — add `remote_name` field to `ParallelConfig` (after `base_branch` at line ~350); update `to_dict()` and `from_dict()` (lines ~382–450)
-- `scripts/little_loops/parallel/worker_pool.py` — replace all 4 `"origin"` literals in `_update_branch_base()` (lines 847, 855, 859, 874); add fetch-fail fallback
+- `scripts/little_loops/parallel/worker_pool.py` — replace all `"origin"` literals in `_update_branch_base()`: git args at lines 847, 859; error messages at 855, 874; log message at 876; add fetch-fail fallback
 - `scripts/little_loops/parallel/merge_coordinator.py` — replace `"origin"` in `_handle_conflict()` (line 999) and `_process_merge()` (lines 794, 818)
 - `scripts/little_loops/config/automation.py` — add `remote_name` to `ParallelAutomationConfig` (lines ~40–86) and its `from_dict()` — **required to wire `ll-config.json` → `ParallelConfig`**
-- `scripts/little_loops/config/core.py` — thread `self._parallel.remote_name` into `create_parallel_config()` (lines 253–327)
+- `scripts/little_loops/config/core.py` — thread `self._parallel.remote_name` into `create_parallel_config()` (lines 253–327): add `remote_name: str = "origin"` parameter at line 272 (following `base_branch` pattern), forward to `ParallelConfig(remote_name=remote_name, ...)` at line 326
 - `config-schema.json` — add `remote_name` string property to `parallel` block (before `additionalProperties: false` at line 249)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/parallel/orchestrator.py` — no git-remote `"origin"` hardcoding found; all `origin`-matches are Python variable names (`_original_sigint`, `_original_sigterm`, `original_path`) — no changes needed
+- `scripts/little_loops/parallel/orchestrator.py` — confirmed zero git-remote `"origin"` hardcodings (lines 98, 99, 168, 169, 173, 175, 1058, 1060 are all Python variable names) — no changes needed
 - `scripts/little_loops/cli/sprint/run.py` — invokes parallel module; no `"origin"` string literals found — no changes needed
 - `scripts/little_loops/cli/sprint/create.py` / `edit.py` — no `"origin"` string literals found — no changes needed
 
@@ -134,8 +134,9 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
 ### Tests
 - `scripts/tests/test_worker_pool.py` — add test for non-`"origin"` remote name; see `default_parallel_config` fixture at lines 61–74
-- `scripts/tests/test_parallel_types.py` — add to `test_default_values`, `test_from_dict`, `test_roundtrip_serialization` (lines 964–1016) following the `base_branch` field pattern at line 989
-- `scripts/tests/test_merge_coordinator.py` — update `default_config` fixture at lines 65–78 if non-default remote is needed
+- `scripts/tests/test_parallel_types.py` — `TestParallelConfig` class at line 721; add to `test_default_values` (line 724), `test_from_dict` (line 878), and roundtrip serialization tests, following the `base_branch` field pattern
+- `scripts/tests/test_merge_coordinator.py` — `default_config` fixture at lines 65–78; update if non-default remote needed for tests
+- `scripts/tests/test_subprocess_mocks.py:644` — **NEW**: mock checks `cmd[:4] == ["git", "pull", "--rebase", "origin"]`; must be updated to match the configurable remote name or parameterized to accept any remote
 
 ### Documentation
 - `docs/reference/CLI.md` — document `parallel.remote_name` config option
@@ -150,7 +151,7 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 2. Replace all 4 hardcoded `"origin"` literals in `worker_pool.py` `_update_branch_base()` and add fetch-fail fallback
 3. Replace all 3 hardcoded `"origin"` literals in `merge_coordinator.py` (`_handle_conflict()` + `_process_merge()`)
 4. Add `remote_name` string property to `config-schema.json` under `parallel`; update `docs/reference/CLI.md`
-5. Add tests: `test_parallel_types.py` roundtrip for `remote_name`, `test_worker_pool.py` non-`"origin"` remote test
+5. Add tests: `test_parallel_types.py` roundtrip for `remote_name`, `test_worker_pool.py` non-`"origin"` remote test; update `test_subprocess_mocks.py:644` mock to use configurable remote
 6. Verify end-to-end with `ll-sprint run` in a repo whose remote is not named `"origin"`
 
 ## Impact
@@ -172,6 +173,8 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 `bug`, `parallel`, `ll-sprint`, `ll-parallel`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36183605-dd79-41a4-9e6a-73bd76c04600.jsonl`
+- `/ll:refine-issue` - 2026-03-20T20:25:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b67db3c-3212-4208-a849-0257b4b7d161.jsonl`
 - `/ll:format-issue` - 2026-03-20T20:13:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d10017-26b1-49e5-af25-cfb58245ab95.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/594d1b83-cf85-4943-8fc1-ffa883e482c8.jsonl`
 - `/ll:refine-issue` - 2026-03-20T19:30:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e8b60e0-04d0-42b9-8fe6-3dfdc7801672.jsonl`
