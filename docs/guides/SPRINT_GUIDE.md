@@ -205,7 +205,7 @@ Wave 2 (parallel, after Wave 1):
   └── FEAT-003: Update middleware tests (P2)
       └── blocked by: FEAT-001
 
-Wave 3 (after Wave 2):
+Wave 3 (serial, after Wave 2):
   └── FEAT-004: Integration tests for middleware (P3)
       blocked by: FEAT-002, FEAT-003
 

@@ -941,7 +941,7 @@ Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's ex
 ## Tips
 
 - **Start with low `max_iterations`** (5-10) while developing a loop. Increase once the logic is proven.
-- **Use `backoff:`** to add delay between iterations — useful for rate-limited APIs or CI systems.
+- **Use `backoff:`** to add a delay before a state's action executes — useful for rate-limited APIs or CI systems.
 - **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
 - **Loop run state and event logs are automatically archived** to `.loops/.history/<loop-name>/<timestamp>/` when a new run starts. Use `ll-loop history <name>` without a `run_id` to list archived runs, or `ll-loop history <name> <run_id>` to inspect a specific one.
