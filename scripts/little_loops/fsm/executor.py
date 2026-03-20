@@ -401,6 +401,10 @@ class FSMExecutor:
         # State entered in the previous iteration (None on first iteration or after resume).
         self._prev_state: str | None = None
 
+        # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
+        # Set by the parent executor when constructing child executors.
+        self._depth: int = 0
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
 
@@ -581,11 +585,22 @@ class FSMExecutor:
         if state.context_passthrough:
             child_fsm.context = {**self.fsm.context, **self.captured, **child_fsm.context}
 
+        depth = self._depth + 1
+
+        def _sub_event_callback(event: dict) -> None:
+            # Only inject depth if not already set by a deeper nested sub-loop
+            if "depth" not in event:
+                self.event_callback({**event, "depth": depth})
+            else:
+                self.event_callback(event)
+
         child_executor = FSMExecutor(
             child_fsm,
             action_runner=self.action_runner,
             loops_dir=self.loops_dir,
+            event_callback=_sub_event_callback,
         )
+        child_executor._depth = depth  # propagate depth for further nesting
         child_result = child_executor.run()
 
         # Merge child captures back into parent under the state name

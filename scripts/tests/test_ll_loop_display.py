@@ -1707,6 +1707,48 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "\033[2J" not in out
 
+    def test_sub_loop_state_enter_indented_with_depth(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """state_enter event with depth=1 is prefixed with 2-space indent."""
+        events = [
+            {"event": "state_enter", "state": "child_state", "iteration": 1, "depth": 1},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args())
+        out = capsys.readouterr().out
+        state_lines = [ln for ln in out.splitlines() if "child_state" in ln]
+        assert state_lines, "Expected state_enter output for child_state"
+        assert state_lines[0].startswith("  "), f"Expected 2-space indent, got: {state_lines[0]!r}"
+
+    def test_depth_zero_state_enter_not_indented(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """state_enter event with no depth (depth=0) is not indented."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args())
+        out = capsys.readouterr().out
+        state_lines = [ln for ln in out.splitlines() if "start" in ln and "[" in ln]
+        assert state_lines, "Expected state_enter output for start"
+        assert not state_lines[0].startswith("  "), "Depth-0 output should not be indented"
+
+    def test_sub_loop_route_indented_with_depth(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """route event with depth=1 is prefixed with 2-space indent."""
+        events = [
+            {"event": "route", "from": "a", "to": "b", "depth": 1},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args())
+        out = capsys.readouterr().out
+        route_lines = [ln for ln in out.splitlines() if "->" in ln and "b" in ln]
+        assert route_lines, "Expected route output"
+        assert route_lines[0].startswith("  "), f"Expected 2-space indent, got: {route_lines[0]!r}"
+
 
 class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""

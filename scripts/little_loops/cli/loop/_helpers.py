@@ -306,8 +306,10 @@ def run_foreground(
     def display_progress(event: dict) -> None:
         """Display progress for events."""
         event_type = event.get("event")
+        depth = event.get("depth", 0)
+        indent = "  " * depth
         tw = terminal_width()
-        max_line = tw - 8  # 8 chars for "       " indent prefix
+        max_line = tw - 8 - len(indent)
 
         if event_type == "state_enter":
             current_iteration[0] = event.get("iteration", 0)
@@ -332,7 +334,7 @@ def run_foreground(
                 print(diagram, flush=True)
             if not quiet:
                 print(
-                    f"[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
+                    f"{indent}[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
                     end="",
                     flush=True,
                 )
@@ -346,25 +348,25 @@ def run_foreground(
                     line_count = len(lines)
                     prompt_badge = "\u2726"  # ✦
                     print(
-                        f" -> {colorize(prompt_badge, '2')} {colorize(f'({line_count} lines)', '2')}",
+                        f"{indent} -> {colorize(prompt_badge, '2')} {colorize(f'({line_count} lines)', '2')}",
                         flush=True,
                     )
                     show_count = line_count if verbose else min(5, line_count)
                     for line in lines[:show_count]:
                         display = line[:max_line] + "..." if len(line) > max_line else line
-                        print(f"       {display}", flush=True)
+                        print(f"{indent}       {display}", flush=True)
                     if line_count > show_count:
-                        print(f"       ... ({line_count - show_count} more lines)", flush=True)
+                        print(f"{indent}       ... ({line_count - show_count} more lines)", flush=True)
                 else:
                     action_display = action[:max_line] + "..." if len(action) > max_line else action
-                    print(f" -> {colorize(action_display, '2')}", flush=True)
+                    print(f"{indent} -> {colorize(action_display, '2')}", flush=True)
 
         elif event_type == "action_output":
             if not quiet and verbose:
                 line = event.get("line", "")
                 if line.strip():
                     display = line[:max_line] + "..." if len(line) > max_line else line
-                    print(f"       {display}", flush=True)
+                    print(f"{indent}       {display}", flush=True)
 
         elif event_type == "action_complete":
             if not quiet:
@@ -379,7 +381,7 @@ def run_foreground(
                     minutes = int(duration_sec // 60)
                     seconds = duration_sec % 60
                     duration_str = f"{minutes}m {seconds:.0f}s"
-                parts = [f"       ({colorize(duration_str, '2')})"]
+                parts = [f"{indent}       ({colorize(duration_str, '2')})"]
                 if exit_code == 124:
                     parts.append(colorize("timed out", "38;5;208"))
                 elif exit_code != 0:
@@ -393,7 +395,7 @@ def run_foreground(
                     show_lines = lines[-8:] if lines else []
                     for line in show_lines:
                         display = line[:max_line] + "..." if len(line) > max_line else line
-                        print(f"       {display}", flush=True)
+                        print(f"{indent}       {display}", flush=True)
 
         elif event_type == "evaluate":
             if not quiet:
@@ -420,20 +422,20 @@ def run_foreground(
                     )
                 else:
                     verdict_line = f"{symbol} {verdict_colored}"
-                print(f"       {verdict_line}", flush=True)
+                print(f"{indent}       {verdict_line}", flush=True)
                 # Show raw_preview for error verdicts to aid diagnosis
                 raw_preview = event.get("raw_preview", "")
                 if raw_preview and verdict == "error":
-                    print(f"         raw: {raw_preview[:200]}", flush=True)
+                    print(f"{indent}         raw: {raw_preview[:200]}", flush=True)
                 # Show reason on a second line if present (and not already shown as error)
                 if reason and not (error and verdict == "error"):
                     reason_display = reason[:300] + "..." if len(reason) > 300 else reason
-                    print(f"         {reason_display}", flush=True)
+                    print(f"{indent}         {reason_display}", flush=True)
 
         elif event_type == "route":
             if not quiet:
                 to_state = event.get("to", "")
-                print(f"       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
+                print(f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
 
     # Wire progress display via the proper observer slot on PersistentExecutor
     if not quiet or show_diagrams:

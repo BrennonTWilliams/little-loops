@@ -3376,3 +3376,61 @@ class TestSubLoopExecution:
         assert result.final_state == "done"
         # MockActionRunner should NOT have been called (sub-loop doesn't use action_runner)
         assert len(mock_runner.calls) == 0
+
+    def test_sub_loop_events_forwarded_to_parent_callback(self, tmp_path: Path) -> None:
+        """Child executor events are forwarded to parent event_callback with depth=1."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child has a non-terminal initial state so state_enter is emitted
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: step\nstates:\n"
+            "  step:\n    next: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fail"),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir, event_callback=events.append)
+        executor.run()
+        child_events = [e for e in events if e.get("depth") == 1]
+        assert len(child_events) > 0, "Expected child events forwarded with depth=1"
+        event_types = [e["event"] for e in child_events]
+        assert "state_enter" in event_types
+
+    def test_sub_loop_depth_propagates_to_nested_sub_loops(self, tmp_path: Path) -> None:
+        """Nested sub-loops increment depth at each level (depth=2 for grandchild)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # grandchild: has a non-terminal initial state so state_enter is emitted
+        (loops_dir / "grandchild.yaml").write_text(
+            "name: grandchild\ninitial: step\nstates:\n"
+            "  step:\n    next: done\n"
+            "  done:\n    terminal: true"
+        )
+        # child: delegates to grandchild
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: run_grandchild\nstates:\n"
+            "  run_grandchild:\n    loop: grandchild\n    on_yes: done\n    on_no: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fail"),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir, event_callback=events.append)
+        executor.run()
+        depth2_events = [e for e in events if e.get("depth") == 2]
+        assert len(depth2_events) > 0, "Expected grandchild events forwarded with depth=2"

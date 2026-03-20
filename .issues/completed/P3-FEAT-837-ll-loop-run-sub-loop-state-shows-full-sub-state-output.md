@@ -2,7 +2,7 @@
 id: FEAT-837
 priority: P3
 type: FEAT
-status: open
+status: completed
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 95
@@ -173,8 +173,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-03-20 | Priority: P3
 
+## Resolution
+
+Implemented depth-annotated event forwarding from child FSM executors to the parent's event callback:
+
+1. **`executor.py`** — Added `_depth: int = 0` attribute to `FSMExecutor.__init__`. In `_execute_sub_loop()`, compute `depth = self._depth + 1`, define `_sub_event_callback` that injects `"depth": depth` into each event (only if not already set by a deeper sub-loop), pass it to the child executor, and set `child_executor._depth = depth` to propagate nesting.
+
+2. **`_helpers.py`** — Updated `display_progress()` to read `depth = event.get("depth", 0)` and compute `indent = "  " * depth` (2 spaces per level). All print calls are now prefixed with `indent`. `max_line` is reduced by `len(indent)` to maintain correct line wrapping.
+
+3. **Tests** — Added 2 tests to `TestSubLoopExecution` (event forwarding with depth=1, nested depth=2 propagation) and 3 tests to `TestDisplayProgressEvents` (depth-indented state_enter, depth-0 not indented, depth-indented route).
+
+All 3734 tests pass.
+
 ## Session Log
 - `/ll:ready-issue` - 2026-03-20T18:09:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/346bcd11-2121-427d-87da-c8c172089341.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b913cdb-30ae-4f85-948f-0a1ee629b59a.jsonl`
 - `/ll:refine-issue` - 2026-03-20T18:04:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7180749-0a2c-4750-bf04-c0450201c88c.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/707beb95-6757-467e-96fe-ecc041ee03ed.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
