@@ -74,11 +74,31 @@ Use `_load_issues_with_status` from `search.py` (already implements status filte
 - Quoted code snippet (`find_issues(config, type_prefixes=...)`) matches current file verbatim.
 - `count` subparser (`__init__.py:201-210`) has `--type`, `--priority`, `--json` — no `--status`. Confirmed gap.
 - `list` subparser (`__init__.py:80-85`) and `search` subparser (`__init__.py:143-148`) both define `--status choices=[active,completed,deferred,all]`. Confirmed asymmetry.
-- `_load_issues_with_status` exists in `search.py:56` and is already imported/used by `list_cmd.py:27,37`. Proposed solution is viable.
+- `_load_issues_with_status` exists in `search.py:87` and is already imported/used by `list_cmd.py:27,37`. Proposed solution is viable.
 
 **Confidence**: High — all file references, line numbers, code snippets, and behavioral claims verified against current code.
 
+## Resolution
+
+**Completed**: 2026-03-20
+
+### Changes Made
+
+- `scripts/little_loops/cli/issues/count_cmd.py`: Replaced `find_issues` with `_load_issues_with_status` to support status filtering; added `status` field to JSON output.
+- `scripts/little_loops/cli/issues/__init__.py`: Added `--status` argument (choices: active/completed/deferred/all, default: active) to the `count` subparser.
+- `scripts/tests/test_issues_cli.py`: Added 5 tests covering `--status completed`, `--status deferred`, `--status all`, default unchanged, and JSON status field.
+
+### Acceptance Criteria
+
+- [x] `ll-issues count --status completed` counts issues in the completed directory
+- [x] `ll-issues count --status deferred` counts issues in the deferred directory
+- [x] `ll-issues count --status all` counts across all directories
+- [x] Default behavior unchanged (active only)
+- [x] `--json` output includes the status filter used
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-20T18:34:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f522464b-f9db-467e-b99b-78cd62f47af6.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:22:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

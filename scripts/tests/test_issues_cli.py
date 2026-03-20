@@ -1476,6 +1476,138 @@ class TestIssuesCLICount:
         captured = capsys.readouterr()
         assert captured.out.strip() == "5"
 
+    def test_count_status_completed(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --status completed counts issues in the completed directory."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        completed_dir = issues_dir / "completed"
+        (completed_dir / "P1-BUG-010-fixed-crash.md").write_text(
+            "# BUG-010: Fixed crash\n\n## Summary\nWas crashing."
+        )
+        (completed_dir / "P2-FEAT-011-shipped-feature.md").write_text(
+            "# FEAT-011: Shipped feature\n\n## Summary\nShipped."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "count", "--status", "completed", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "2"
+
+    def test_count_status_deferred(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --status deferred counts issues in the deferred directory."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        deferred_dir = issues_dir / "deferred"
+        (deferred_dir / "P3-FEAT-020-parked.md").write_text(
+            "# FEAT-020: Parked feature\n\n## Summary\nParked for now."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "count", "--status", "deferred", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "1"
+
+    def test_count_status_all(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --status all counts across active, completed, and deferred."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        completed_dir = issues_dir / "completed"
+        deferred_dir = issues_dir / "deferred"
+        (completed_dir / "P1-BUG-010-fixed.md").write_text("# BUG-010: Fixed\n\n## Summary\nFixed.")
+        (deferred_dir / "P3-FEAT-020-parked.md").write_text("# FEAT-020: Parked\n\n## Summary\nParked.")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "count", "--status", "all", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # 5 active + 1 completed + 1 deferred = 7
+        assert captured.out.strip() == "7"
+
+    def test_count_status_active_default_unchanged(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count default (no --status) still only counts active issues."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        completed_dir = issues_dir / "completed"
+        (completed_dir / "P1-BUG-010-fixed.md").write_text("# BUG-010: Fixed\n\n## Summary\nFixed.")
+
+        with patch.object(sys, "argv", ["ll-issues", "count", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "5"
+
+    def test_count_json_includes_status(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --json --status completed includes status field in output."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        completed_dir = issues_dir / "completed"
+        (completed_dir / "P1-BUG-010-fixed.md").write_text("# BUG-010: Fixed\n\n## Summary\nFixed.")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "count", "--status", "completed", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["total"] == 1
+        assert data["status"] == "completed"
+
 
 class TestIssuesAppendLog:
     """Tests for ll-issues append-log sub-command."""

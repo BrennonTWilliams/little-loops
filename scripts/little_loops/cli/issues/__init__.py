@@ -206,6 +206,12 @@ Examples:
         choices=["P0", "P1", "P2", "P3", "P4", "P5"],
         help="Filter by priority level",
     )
+    cnt.add_argument(
+        "--status",
+        choices=["active", "completed", "deferred", "all"],
+        default="active",
+        help="Filter by status (default: active)",
+    )
     cnt.add_argument("--json", action="store_true", help="Output as JSON with breakdowns")
     add_config_arg(cnt)
 

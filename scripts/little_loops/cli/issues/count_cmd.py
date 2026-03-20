@@ -1,4 +1,4 @@
-"""ll-issues count: Count active issues with optional type/priority filters."""
+"""ll-issues count: Count issues with optional type/priority/status filters."""
 
 from __future__ import annotations
 
@@ -12,19 +12,27 @@ if TYPE_CHECKING:
 
 
 def cmd_count(config: BRConfig, args: argparse.Namespace) -> int:
-    """Print active issue counts.
+    """Print issue counts with optional status, type, and priority filters.
 
     Args:
         config: Project configuration
-        args: Parsed arguments with optional .type, .priority, and .json attributes
+        args: Parsed arguments with optional .type, .priority, .status, and .json attributes
 
     Returns:
         Exit code (0 = success)
     """
-    from little_loops.issue_parser import find_issues
+    from little_loops.cli.issues.search import _load_issues_with_status
 
-    type_prefixes = {args.type} if getattr(args, "type", None) else None
-    issues = find_issues(config, type_prefixes=type_prefixes)
+    status = getattr(args, "status", "active") or "active"
+    include_active = status in ("active", "all")
+    include_completed = status in ("completed", "all")
+    include_deferred = status in ("deferred", "all")
+
+    raw = _load_issues_with_status(config, include_active, include_completed, include_deferred)
+    issues = [issue for issue, _stat in raw]
+
+    if getattr(args, "type", None):
+        issues = [i for i in issues if i.issue_id.split("-", 1)[0] == args.type]
 
     if getattr(args, "priority", None):
         issues = [i for i in issues if i.priority == args.priority]
@@ -46,7 +54,7 @@ def cmd_count(config: BRConfig, args: argparse.Namespace) -> int:
             if issue.priority in by_priority:
                 by_priority[issue.priority] += 1
 
-        print_json({"total": len(issues), "by_type": by_type, "by_priority": by_priority})
+        print_json({"total": len(issues), "status": status, "by_type": by_type, "by_priority": by_priority})
         return 0
 
     print(len(issues))
