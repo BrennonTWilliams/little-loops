@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2406,3 +2407,74 @@ class TestDetectPlanCreation:
             assert result is None
         finally:
             os.chdir(original_dir)
+
+
+class TestAutoManagerModelDetection:
+    """Tests for AutoManager model name detection and logging (ENH-838)."""
+
+    @pytest.fixture
+    def temp_project_with_issue(self, temp_project_dir: Path) -> Path:
+        """Set up project with a single feature issue."""
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+        (issues_dir / "P1-FEAT-001-test-feature.md").write_text("# FEAT-001: Test Feature\n")
+
+        return temp_project_dir
+
+    def test_auto_manager_logs_detected_model(
+        self, temp_project_with_issue: Path
+    ) -> None:
+        """AutoManager logs model name when on_model_detected callback fires."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager, IssueProcessingResult
+
+        config = BRConfig(temp_project_with_issue)
+        manager = AutoManager(config, dry_run=False)
+
+        # Capture logger.info calls
+        info_log: list[str] = []
+        manager.logger.info = lambda msg: info_log.append(msg)  # type: ignore[method-assign]
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+
+        def mock_process_inplace(
+            info: Any,
+            cfg: Any,
+            logger: Any,
+            dry_run: bool = False,
+            on_model_detected: Any = None,
+        ) -> IssueProcessingResult:
+            if on_model_detected:
+                on_model_detected("claude-sonnet-4-6")
+            return IssueProcessingResult(
+                success=True, duration=1.0, issue_id=info.issue_id
+            )
+
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace",
+            side_effect=mock_process_inplace,
+        ):
+            manager._process_issue(issue)
+
+        assert any("model: claude-sonnet-4-6" in msg for msg in info_log)

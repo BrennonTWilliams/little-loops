@@ -10,7 +10,7 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -95,6 +95,7 @@ def run_claude_command(
     timeout: int = 3600,
     stream_output: bool = True,
     idle_timeout: int = 0,
+    on_model_detected: Callable[[str], None] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -104,6 +105,8 @@ def run_claude_command(
         timeout: Timeout in seconds
         stream_output: Whether to stream output to console
         idle_timeout: Kill process if no output for this many seconds (0 to disable)
+        on_model_detected: Optional callback invoked with the model name from the
+            stream-json system/init event.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -122,6 +125,7 @@ def run_claude_command(
         timeout=timeout,
         stream_callback=stream_callback if stream_output else None,
         idle_timeout=idle_timeout,
+        on_model_detected=on_model_detected,
     )
 
 
@@ -286,6 +290,7 @@ def process_issue_inplace(
     config: BRConfig,
     logger: Logger,
     dry_run: bool = False,
+    on_model_detected: Callable[[str], None] | None = None,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
 
@@ -297,6 +302,8 @@ def process_issue_inplace(
         config: Project configuration
         logger: Logger for output
         dry_run: If True, only preview what would be done
+        on_model_detected: Optional callback invoked with the model name from the
+            first stream-json system/init event during this issue's processing.
 
     Returns:
         IssueProcessingResult with outcome details
@@ -321,6 +328,7 @@ def process_issue_inplace(
                 timeout=config.automation.timeout_seconds,
                 stream_output=config.automation.stream_output,
                 idle_timeout=config.automation.idle_timeout_seconds,
+                on_model_detected=on_model_detected,
             )
             if result.returncode != 0:
                 logger.warning("ready-issue command failed to execute, continuing anyway...")
@@ -370,6 +378,7 @@ def process_issue_inplace(
                                 timeout=config.automation.timeout_seconds,
                                 stream_output=config.automation.stream_output,
                                 idle_timeout=config.automation.idle_timeout_seconds,
+                                on_model_detected=on_model_detected,
                             )
 
                             if retry_result.returncode != 0:
@@ -724,6 +733,7 @@ class AutoManager:
         self.logger = Logger(verbose=verbose)
         self.state_manager = StateManager(config.get_state_file(), self.logger)
         self.parser = IssueParser(config)
+        self._detected_model: list[str] = []
 
         # Build dependency graph for dependency-aware sequencing (ENH-016)
         # Note: don't filter by type here — we need all issues for dependency resolution
@@ -944,7 +954,16 @@ class AutoManager:
         self.state_manager.mark_attempted(info.issue_id, save=False)
         self.state_manager.update_current(str(info.path), "processing")
 
-        result = process_issue_inplace(info, self.config, self.logger, self.dry_run)
+        on_model: Callable[[str], None] | None = None
+        if not self._detected_model:
+
+            def on_model(m: str) -> None:
+                self._detected_model.append(m)
+                self.logger.info(f"model: {m}")
+
+        result = process_issue_inplace(
+            info, self.config, self.logger, self.dry_run, on_model_detected=on_model
+        )
 
         # Map result back to state tracking
         if result.was_closed:

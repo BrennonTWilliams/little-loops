@@ -95,6 +95,8 @@ class TestRunClaudeCommand:
         assert captured_args[0] == [
             "claude",
             "--dangerously-skip-permissions",
+            "--output-format",
+            "stream-json",
             "-p",
             "/ll:ready-issue BUG-001",
         ]
@@ -157,6 +159,46 @@ class TestRunClaudeCommand:
                 )
 
         assert result.returncode == 1
+
+    def test_wrapper_passes_on_model_detected(self, mock_logger: MagicMock) -> None:
+        """issue_manager.run_claude_command passes on_model_detected to subprocess layer."""
+        init_event = '{"type": "system", "subtype": "init", "model": "test-model"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        detected: list[str] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector_cls:
+                mock_selector = MagicMock()
+                mock_selector_cls.return_value = mock_selector
+                mock_selector.__enter__ = Mock(return_value=mock_selector)
+                mock_selector.__exit__ = Mock(return_value=False)
+                call_count = [0]
+
+                def get_map_side_effect() -> dict[Any, Any]:
+                    call_count[0] += 1
+                    return {"stdout": True} if call_count[0] == 1 else {}
+
+                mock_selector.get_map.side_effect = get_map_side_effect
+                key = Mock()
+                key.fileobj = mock_process.stdout
+                mock_selector.select.return_value = [(key, None)]
+                mock_selector.register = Mock()
+                mock_selector.unregister = Mock()
+
+                from little_loops.issue_manager import run_claude_command
+
+                run_claude_command(
+                    "/ll:test",
+                    mock_logger,
+                    on_model_detected=lambda m: detected.append(m),
+                )
+
+        assert detected == ["test-model"]
 
 
 class TestCheckGitStatus:

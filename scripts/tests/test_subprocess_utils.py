@@ -214,7 +214,7 @@ class TestRunClaudeCommand:
                 assert isinstance(result, subprocess.CompletedProcess)
 
     def test_constructs_correct_command_args(self) -> None:
-        """Uses ['claude', '--dangerously-skip-permissions', '-p', command]."""
+        """Uses ['claude', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p', command]."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
@@ -237,6 +237,8 @@ class TestRunClaudeCommand:
         assert captured_args[0] == [
             "claude",
             "--dangerously-skip-permissions",
+            "--output-format",
+            "stream-json",
             "-p",
             "/ll:test-command",
         ]
@@ -898,6 +900,8 @@ class TestRunClaudeCommandIntegration:
         assert result.args == [
             "claude",
             "--dangerously-skip-permissions",
+            "--output-format",
+            "stream-json",
             "-p",
             "/ll:test_cmd",
         ]
@@ -1238,3 +1242,161 @@ class TestRunClaudeCommandWaitTimeout:
         assert mock_process.wait.call_count == 2
         mock_process.wait.assert_any_call(timeout=30)
         mock_process.wait.assert_any_call(timeout=10)
+
+
+# =============================================================================
+# TestRunClaudeCommandModelDetection
+# =============================================================================
+
+
+class TestRunClaudeCommandModelDetection:
+    """Tests for stream-json event parsing and on_model_detected callback (ENH-838)."""
+
+    def _make_single_line_selector(
+        self, mock_selector: Any, mock_process: Mock
+    ) -> None:
+        """Configure selector to return stdout key once then exit loop."""
+        _patch_selector_cm(mock_selector)
+        selector_instance = mock_selector.return_value
+        call_count = [0]
+
+        def get_map_side_effect() -> dict[Any, Any]:
+            call_count[0] += 1
+            return {"stdout": True} if call_count[0] == 1 else {}
+
+        selector_instance.get_map.side_effect = get_map_side_effect
+        key = Mock()
+        key.fileobj = mock_process.stdout
+        selector_instance.select.return_value = [(key, None)]
+        selector_instance.register = Mock()
+        selector_instance.unregister = Mock()
+
+    def test_on_model_detected_called_with_model_name(self) -> None:
+        """on_model_detected callback fired with model name from system/init event."""
+        init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        detected: list[str] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_model_detected=lambda m: detected.append(m))
+
+        assert detected == ["claude-sonnet-4-6"]
+
+    def test_init_event_not_added_to_stdout(self) -> None:
+        """Init event line must not appear in result.stdout."""
+        init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command("test")
+
+        assert result.stdout == ""
+
+    def test_assistant_event_text_extracted_to_stdout(self) -> None:
+        """Text content from assistant event appears in result.stdout."""
+        assistant_event = (
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "text", "text": "Hello world"}]}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(assistant_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command("test")
+
+        assert result.stdout == "Hello world"
+
+    def test_assistant_event_text_passed_to_stream_callback(self) -> None:
+        """stream_callback receives extracted text from assistant event."""
+        assistant_event = (
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "text", "text": "Stream me"}]}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(assistant_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        callback_calls: list[tuple[str, bool]] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command(
+                    "test",
+                    stream_callback=lambda line, is_stderr: callback_calls.append((line, is_stderr)),
+                )
+
+        assert callback_calls == [("Stream me", False)]
+
+    def test_unknown_event_type_skipped(self) -> None:
+        """Non-init, non-assistant JSON events are skipped: no stdout, no callback."""
+        result_event = '{"type": "result", "subtype": "success", "cost_usd": 0.01}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        callback_calls: list[Any] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command(
+                    "test",
+                    stream_callback=lambda line, is_stderr: callback_calls.append((line, is_stderr)),
+                )
+
+        assert result.stdout == ""
+        assert callback_calls == []
+
+    def test_non_json_line_passes_through(self) -> None:
+        """Non-JSON stdout lines pass through as raw text (backward compat)."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("plain text line\n")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command("test")
+
+        assert result.stdout == "plain text line"
+
+    def test_on_model_detected_none_no_error(self) -> None:
+        """Omitting on_model_detected when init event arrives raises no error."""
+        init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command("test")  # no on_model_detected
+
+        assert result is not None  # no exception

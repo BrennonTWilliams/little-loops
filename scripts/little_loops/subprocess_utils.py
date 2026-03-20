@@ -6,6 +6,7 @@ real-time output streaming, timeout handling, and context handoff detection.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -22,6 +23,9 @@ OutputCallback = Callable[[str, bool], None]
 
 # Process lifecycle callback: (process: Popen) -> None
 ProcessCallback = Callable[[subprocess.Popen[str]], None]
+
+# Model detection callback: (model: str) -> None
+ModelCallback = Callable[[str], None]
 
 # Context handoff detection pattern
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
@@ -63,6 +67,7 @@ def run_claude_command(
     on_process_start: ProcessCallback | None = None,
     on_process_end: ProcessCallback | None = None,
     idle_timeout: int = 0,
+    on_model_detected: ModelCallback | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -77,6 +82,8 @@ def run_claude_command(
         on_process_end: Optional callback invoked after process completes.
             Receives the Popen object. Called in finally block.
         idle_timeout: Kill process if no output for this many seconds (0 to disable).
+        on_model_detected: Optional callback invoked with the model name from the
+            stream-json system/init event. Called at most once per invocation.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -85,7 +92,7 @@ def run_claude_command(
         subprocess.TimeoutExpired: If command exceeds timeout or idle timeout.
             When triggered by idle timeout, the output field is set to "idle_timeout".
     """
-    cmd_args = ["claude", "--dangerously-skip-permissions", "-p", command]
+    cmd_args = ["claude", "--dangerously-skip-permissions", "--output-format", "stream-json", "-p", command]
 
     # Set environment to keep Claude in the project working directory (BUG-007)
     # This helps prevent file writes from leaking to the main repo in worktrees
@@ -153,6 +160,29 @@ def run_claude_command(
                     last_output_time = time.time()
                     line = line.rstrip("\n")
                     is_stderr = key.fileobj is process.stderr
+
+                    if not is_stderr:
+                        try:
+                            event = json.loads(line)
+                            etype = event.get("type")
+                            if etype == "system" and event.get("subtype") == "init":
+                                if on_model_detected and "model" in event:
+                                    on_model_detected(event["model"])
+                                continue  # don't add to stdout_lines
+                            elif etype == "assistant":
+                                msg = event.get("message", {})
+                                text_parts = [
+                                    block["text"]
+                                    for block in msg.get("content", [])
+                                    if block.get("type") == "text"
+                                ]
+                                line = "".join(text_parts)
+                                if not line:
+                                    continue
+                            else:
+                                continue  # skip other event types (result, tool_use, etc.)
+                        except (json.JSONDecodeError, KeyError, TypeError):
+                            pass  # non-JSON line: pass through as raw text
 
                     if is_stderr:
                         stderr_lines.append(line)
