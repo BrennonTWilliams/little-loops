@@ -69,7 +69,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/worker_pool.py:1005-1007` — replace hardcoded tuple with dynamic prefix list using `self.br_config.project.src_dir` and `self.br_config.project.test_dir`
+- `scripts/little_loops/parallel/worker_pool.py:1010-1011` — replace hardcoded tuple with dynamic prefix list using `self.br_config.project.src_dir` and `self.br_config.project.test_dir`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/parallel/worker_pool.py:403` — sole caller of `_detect_main_repo_leaks`, inside `_process_issue`; no signature change needed
@@ -88,7 +88,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. **Modify `_detect_main_repo_leaks`** at `worker_pool.py:1005-1007`: replace the hardcoded tuple with a dynamically-built list — start with the fallback defaults, then normalize and append `self.br_config.project.src_dir` and `self.br_config.project.test_dir` using the `rstrip("/") + "/"` pattern from `file_hints.py:280`
+1. **Modify `_detect_main_repo_leaks`** at `worker_pool.py:1010-1011`: replace the hardcoded tuple with a dynamically-built list — start with the fallback defaults, then normalize and append `self.br_config.project.src_dir` and `self.br_config.project.test_dir` using the `rstrip("/") + "/"` pattern from `file_hints.py:280`
 2. **Add regression test** in `test_worker_pool.py:1163` class: create a `br_config` fixture variant that sets `src_dir = "scripts/"` (model after `temp_repo_with_config` fixture at `:44`), then assert a file like `scripts/foo.py` appears in the leak results
 3. **Run tests**: `python -m pytest scripts/tests/test_worker_pool.py -v -k "detect_main_repo_leaks"` to verify existing tests still pass and new test passes
 
@@ -105,7 +105,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P3
+**Completed** | Created: 2026-03-19 | Resolved: 2026-03-20 | Priority: P3
+
+## Resolution
+
+**Fixed** in `scripts/little_loops/parallel/worker_pool.py` (`_detect_main_repo_leaks`).
+
+Replaced the hardcoded `("backend/", "src/", "lib/", "tests/")` tuple with a dynamically-built list that starts from those fallback defaults and then normalizes and appends `self.br_config.project.src_dir` and `self.br_config.project.test_dir` (using the `rstrip("/") + "/"` pattern). The `elif` now uses `tuple(source_prefixes)`.
+
+Added regression test `test_detect_main_repo_leaks_uses_configured_src_dir` in `TestWorkerPoolHelpers` that asserts files in `scripts/` and `custom_tests/` are detected when those dirs are configured. All 3758 tests pass.
 
 
 ## Verification Notes
@@ -118,9 +126,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Bug confirmed: `scripts/` is not in the hardcoded prefix list; source files in this project's own `scripts/` directory would not be detected as leaks
 - No dependency references to validate
 
-**Line number update**: Key `elif` is now at line 1006–1007; method definition at line 950.
+**Line number update**: Key `elif` is now at line 1010–1011; method definition at line 954.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-03-20T20:33:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5dffd95d-00b8-4884-b44f-ce4532c2a67c.jsonl`
 - `/ll:refine-issue` - 2026-03-20T19:30:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fc8b6bb-dbc0-4a9e-a015-97a9f20b7147.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4db97f80-f87e-4cf7-9f2e-13139630f81c.jsonl`
 - `/ll:verify-issues` - 2026-03-19T22:44:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`

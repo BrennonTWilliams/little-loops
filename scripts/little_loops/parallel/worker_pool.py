@@ -994,6 +994,14 @@ class WorkerPool:
         issue_id_lower = issue_id.lower()
         leaked_files: list[str] = []
 
+        # Build source prefix list: start with common fallbacks, then add configured dirs
+        source_prefixes = ["backend/", "src/", "lib/", "tests/"]
+        for dir_path in [self.br_config.project.src_dir, self.br_config.project.test_dir]:
+            if dir_path:
+                normalized = dir_path.rstrip("/") + "/"
+                if normalized not in source_prefixes:
+                    source_prefixes.append(normalized)
+
         for file_path in new_files:
             # Skip state file (managed by orchestrator)
             if file_path.endswith(".parallel-manage-state.json"):
@@ -1007,7 +1015,7 @@ class WorkerPool:
             if issue_id_lower in file_lower:
                 leaked_files.append(file_path)
             # Also catch source files that shouldn't be modified in main
-            elif file_path.startswith(("backend/", "src/", "lib/", "tests/")):
+            elif file_path.startswith(tuple(source_prefixes)):
                 leaked_files.append(file_path)
             # Catch thoughts/plans files
             elif file_path.startswith("thoughts/"):

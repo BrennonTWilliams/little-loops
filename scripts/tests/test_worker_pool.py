@@ -1284,6 +1284,48 @@ class TestWorkerPoolHelpers:
         # Should NOT detect other worker's file (cross-worker isolation)
         assert "issues/enhancements/P2-ENH-002-other-workers-file.md" not in leaks
 
+    def test_detect_main_repo_leaks_uses_configured_src_dir(
+        self,
+        default_parallel_config: ParallelConfig,
+        mock_logger: MagicMock,
+        mock_git_lock: GitLock,
+        tmp_path: Path,
+    ) -> None:
+        """_detect_main_repo_leaks() detects files in configured src_dir and test_dir."""
+        # Set up a repo with non-default src_dir/test_dir not in the hardcoded fallback list
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "ll-config.json").write_text(
+            json.dumps({"project": {"src_dir": "scripts/", "test_dir": "custom_tests"}})
+        )
+        (tmp_path / ".worktrees").mkdir()
+
+        br_config = BRConfig(tmp_path)
+        pool = WorkerPool(
+            parallel_config=default_parallel_config,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=tmp_path,
+            git_lock=mock_git_lock,
+        )
+
+        baseline_status: set[str] = set()
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["status", "--porcelain"]:
+                return subprocess.CompletedProcess(
+                    args, 0, "?? scripts/new_module.py\n?? custom_tests/test_new.py\n", ""
+                )
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(pool._git_lock, "run", side_effect=mock_git_run):
+            leaks = pool._detect_main_repo_leaks("BUG-001", baseline_status)
+
+        assert "scripts/new_module.py" in leaks
+        assert "custom_tests/test_new.py" in leaks
+
     def test_has_other_issue_id(self, worker_pool: WorkerPool) -> None:
         """_has_other_issue_id() correctly identifies files with other issue IDs."""
         # No issue ID in filename
