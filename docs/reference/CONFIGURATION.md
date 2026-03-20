@@ -468,7 +468,7 @@ Override the default ANSI color codes used for FSM diagram edge labels and conne
 }
 ```
 
-Set `LL_NO_COLOR=1` or `NO_COLOR=1` to disable all colorization regardless of config.
+Set `NO_COLOR=1` to disable all colorization regardless of config.
 
 ---
 

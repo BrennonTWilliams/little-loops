@@ -447,6 +447,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `issue-workflow`^ | Quick reference for issue management workflow |
 | `issue-size-review`^ | Evaluate issue size/complexity and propose decomposition |
 | `map-dependencies`^ | Analyze cross-issue dependencies based on file overlap |
+| `go-no-go`^ | Adversarial go/no-go debate for issue implementation decisions |
 | `audit-architecture` | Analyze code structure |
 | `audit-docs`^ | Check documentation accuracy |
 | `update-docs`^ | Identify stale or missing docs from recent commits and completed issues |
