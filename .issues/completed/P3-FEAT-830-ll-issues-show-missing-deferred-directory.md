@@ -41,9 +41,9 @@ A developer defers an issue and later wants to review its contents to decide whe
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues show <id>` finds issues in the deferred directory
-- [ ] No change to default output format
-- [ ] Works with both full ID (BUG-042) and partial matching
+- [x] `ll-issues show <id>` finds issues in the deferred directory
+- [x] No change to default output format
+- [x] Works with both full ID (BUG-042) and partial matching
 
 ## Proposed Solution
 
@@ -76,7 +76,14 @@ Add `search_dirs.append(config.get_deferred_dir())` after the completed director
 - **`get_deferred_dir` available**: Method exists on `BRConfig` (found in 10 files)
 - **Deferred directory**: `.issues/deferred/` exists on disk (currently empty)
 
+## Resolution
+
+- Added `search_dirs.append(config.get_deferred_dir())` to `_resolve_issue_id` in `show.py`
+- Updated status detection in `_parse_card_fields` to show "Deferred" when the parent directory is "deferred"
+- Updated docstring to mention deferred directory search
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T18:27:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/505b4472-203f-44cd-bcb2-df9bd110b957.jsonl`
 - `/ll:verify-issues` - 2026-03-19T22:16:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8637da89-7c9f-4c8a-bd66-a7063d39b45a.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
 - `/ll:confidence-check` - 2026-03-19T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`

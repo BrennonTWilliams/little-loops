@@ -22,7 +22,7 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     - Type + ID: "FEAT-518"
     - Priority + Type + ID: "P3-FEAT-518"
 
-    Searches all active category directories and the completed directory.
+    Searches all active category directories, the completed directory, and the deferred directory.
 
     Args:
         config: Project configuration
@@ -59,11 +59,12 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     if numeric_id is None:
         return None
 
-    # Build search directories: all active categories + completed
+    # Build search directories: all active categories + completed + deferred
     search_dirs: list[Path] = []
     for category in config.issue_categories:
         search_dirs.append(config.get_issue_dir(category))
     search_dirs.append(config.get_completed_dir())
+    search_dirs.append(config.get_deferred_dir())
 
     # Search for matching files
     for search_dir in search_dirs:
@@ -119,8 +120,13 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
             title = path.stem
 
     # Determine status
-    is_completed = path.parent.name == "completed"
-    status = "Completed" if is_completed else "Open"
+    parent_name = path.parent.name
+    if parent_name == "completed":
+        status = "Completed"
+    elif parent_name == "deferred":
+        status = "Deferred"
+    else:
+        status = "Open"
 
     # Extract optional frontmatter fields
     confidence = frontmatter.get("confidence_score")
