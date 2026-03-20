@@ -16,7 +16,7 @@ from enum import Enum
 from pathlib import Path
 
 from little_loops.config import BRConfig
-from little_loops.issue_parser import IssueInfo, get_next_issue_number, slugify
+from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger
 
 # =============================================================================
@@ -795,6 +795,9 @@ def undefer_issue(
         content = deferred_issue_path.read_text(encoding="utf-8")
         content += _build_undeferred_section(reason)
 
+        # Parse IssueInfo before git mv so the path still exists
+        info = IssueParser(config).parse_file(deferred_issue_path)
+
         # Try git mv first for history preservation
         result = subprocess.run(
             ["git", "mv", str(deferred_issue_path), str(target_path)],
@@ -808,6 +811,11 @@ def undefer_issue(
             deferred_issue_path.unlink()
         else:
             target_path.write_text(content, encoding="utf-8")
+
+        commit_body = f"""{info.issue_id} - Undeferred
+
+Reason: {reason}"""
+        _commit_issue_completion(info, "undefer", commit_body, logger)
 
         logger.success(f"Undeferred: {target_path.name}")
         return target_path

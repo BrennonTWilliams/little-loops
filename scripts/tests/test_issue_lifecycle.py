@@ -1270,13 +1270,15 @@ class TestUndeferIssue:
         deferred_path = deferred_dir / "P1-BUG-001-test-bug.md"
         deferred_path.write_text("# BUG-001: Test Bug\n\n## Summary\nTest.")
 
+        call_log: list[list[str]] = []
+
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            call_log.append(list(cmd))
             if "mv" in cmd:
                 src, dst = Path(cmd[2]), Path(cmd[3])
                 if src.exists():
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1290,6 +1292,13 @@ class TestUndeferIssue:
         assert "## Undeferred" in content
         assert "Ready to work on" in content
         mock_logger.success.assert_called()
+
+        # Verify git commit was called with correct message
+        commit_cmds = [cmd for cmd in call_log if "commit" in cmd]
+        assert len(commit_cmds) == 1
+        commit_msg = commit_cmds[0][commit_cmds[0].index("-m") + 1]
+        assert "undefer(bugs):" in commit_msg
+        assert "BUG-001" in commit_msg
 
     def test_undefer_feature_goes_to_features(
         self,
@@ -1369,3 +1378,39 @@ class TestUndeferIssue:
         assert not deferred_path.exists()
         content = result.read_text()
         assert "## Undeferred" in content
+
+    def test_undefer_commits(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test that undefer_issue creates a git commit with the correct message."""
+        deferred_dir = sample_config.get_deferred_dir()
+        deferred_path = deferred_dir / "P2-BUG-007-old-bug.md"
+        deferred_path.write_text("# BUG-007: Old Bug\n\n## Summary\nDeferred before.")
+
+        committed_messages: list[str] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+            if "commit" in cmd:
+                idx = cmd.index("-m")
+                committed_messages.append(cmd[idx + 1])
+                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc1234] commit", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = undefer_issue(
+                sample_config, deferred_path, mock_logger, reason="Dependency resolved"
+            )
+
+        assert result is not None
+        assert len(committed_messages) == 1
+        msg = committed_messages[0]
+        assert msg.startswith("undefer(bugs):")
+        assert "BUG-007 - Undeferred" in msg
+        assert "Dependency resolved" in msg

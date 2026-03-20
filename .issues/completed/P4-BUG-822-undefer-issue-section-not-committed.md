@@ -152,7 +152,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Resolved** | Created: 2026-03-19 | Resolved: 2026-03-20 | Priority: P4
+
+## Resolution
+
+**Fixed** in `scripts/little_loops/issue_lifecycle.py`:
+
+- Added `IssueParser` to top-level import from `issue_parser`
+- In `undefer_issue`: parse `IssueInfo` from `deferred_issue_path` before the `git mv` (so the path still exists)
+- After writing updated content in both branches (git mv success and manual fallback), call `_commit_issue_completion(info, "undefer", commit_body, logger)` — matching the existing `defer_issue` pattern exactly
+- Commit message format: `undefer({category}): {issue_id} - Undeferred\n\nReason: {reason}`
+
+**Tests** in `scripts/tests/test_issue_lifecycle.py`:
+- Updated `test_undefer_success` to assert git commit is called with correct message prefix
+- Added `test_undefer_commits` to verify full commit message format (`undefer(bugs): BUG-007 - Undeferred`, reason included)
 
 
 ## Verification Notes
