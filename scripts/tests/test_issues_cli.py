@@ -1495,7 +1495,9 @@ class TestIssuesCLICount:
         )
 
         with patch.object(
-            sys, "argv", ["ll-issues", "count", "--status", "completed", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "count", "--status", "completed", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -1521,7 +1523,9 @@ class TestIssuesCLICount:
         )
 
         with patch.object(
-            sys, "argv", ["ll-issues", "count", "--status", "deferred", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "count", "--status", "deferred", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -1544,10 +1548,14 @@ class TestIssuesCLICount:
         completed_dir = issues_dir / "completed"
         deferred_dir = issues_dir / "deferred"
         (completed_dir / "P1-BUG-010-fixed.md").write_text("# BUG-010: Fixed\n\n## Summary\nFixed.")
-        (deferred_dir / "P3-FEAT-020-parked.md").write_text("# FEAT-020: Parked\n\n## Summary\nParked.")
+        (deferred_dir / "P3-FEAT-020-parked.md").write_text(
+            "# FEAT-020: Parked\n\n## Summary\nParked."
+        )
 
         with patch.object(
-            sys, "argv", ["ll-issues", "count", "--status", "all", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "count", "--status", "all", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -1596,7 +1604,15 @@ class TestIssuesCLICount:
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "count", "--status", "completed", "--json", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "count",
+                "--status",
+                "completed",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli import main_issues
 

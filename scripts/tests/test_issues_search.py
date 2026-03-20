@@ -599,7 +599,6 @@ class TestSearchDateFieldUpdated:
         self, temp_project_dir: Path, sample_config: dict, updated_issues_dir: Path
     ) -> None:
         """When multiple session log entries exist, the last one wins."""
-        import json
 
         bugs_dir = updated_issues_dir / "bugs"
         (bugs_dir / "P1-BUG-020-multi-entry.md").write_text(

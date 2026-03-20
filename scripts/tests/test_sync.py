@@ -1477,9 +1477,7 @@ class TestReopenIssue:
         assert result.success is False
         assert any("--all-reopened" in e for e in result.errors)
 
-    def test_reopen_issue_not_found(
-        self, mock_config: BRConfig, mock_logger: MagicMock
-    ) -> None:
+    def test_reopen_issue_not_found(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
         """reopen_issues reports failure when local issue doesn't exist."""
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:

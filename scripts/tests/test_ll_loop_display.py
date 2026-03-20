@@ -1721,9 +1721,7 @@ class TestDisplayProgressEvents:
         assert state_lines, "Expected state_enter output for child_state"
         assert state_lines[0].startswith("  "), f"Expected 2-space indent, got: {state_lines[0]!r}"
 
-    def test_depth_zero_state_enter_not_indented(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_depth_zero_state_enter_not_indented(self, capsys: pytest.CaptureFixture[str]) -> None:
         """state_enter event with no depth (depth=0) is not indented."""
         events = [
             {"event": "state_enter", "state": "start", "iteration": 1},
@@ -1735,9 +1733,7 @@ class TestDisplayProgressEvents:
         assert state_lines, "Expected state_enter output for start"
         assert not state_lines[0].startswith("  "), "Depth-0 output should not be indented"
 
-    def test_sub_loop_route_indented_with_depth(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_sub_loop_route_indented_with_depth(self, capsys: pytest.CaptureFixture[str]) -> None:
         """route event with depth=1 is prefixed with 2-space indent."""
         events = [
             {"event": "route", "from": "a", "to": "b", "depth": 1},

@@ -54,7 +54,9 @@ def cmd_count(config: BRConfig, args: argparse.Namespace) -> int:
             if issue.priority in by_priority:
                 by_priority[issue.priority] += 1
 
-        print_json({"total": len(issues), "status": status, "by_type": by_type, "by_priority": by_priority})
+        print_json(
+            {"total": len(issues), "status": status, "by_type": by_type, "by_priority": by_priority}
+        )
         return 0
 
     print(len(issues))

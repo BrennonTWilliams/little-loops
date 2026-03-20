@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from little_loops.config import BRConfig
     from little_loops.issue_parser import IssueInfo
 
@@ -30,15 +32,14 @@ def _parse_discovered_date(content: str) -> date | None:
         return None
 
 
-def _parse_updated_date(content: str, file_path: "Path") -> "date | None":
-    """Extract last-activity date from the ## Session Log section, or fall back to file mtime.
+def _parse_updated_date(content: str, file_path: Path) -> date | None:
+    r"""Extract last-activity date from the ## Session Log section, or fall back to file mtime.
 
     Scans for the most recent timestamp entry in the Session Log section.
     Entry format: `- \`/ll:cmd\` - YYYY-MM-DDTHH:MM:SS - \`path\``
     Falls back to file mtime when no session log timestamps are found.
     """
     import re as _re
-    from pathlib import Path as _Path
 
     _SESSION_LOG_RE = _re.compile(
         r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", _re.MULTILINE | _re.DOTALL

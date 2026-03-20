@@ -356,7 +356,9 @@ def run_foreground(
                         display = line[:max_line] + "..." if len(line) > max_line else line
                         print(f"{indent}       {display}", flush=True)
                     if line_count > show_count:
-                        print(f"{indent}       ... ({line_count - show_count} more lines)", flush=True)
+                        print(
+                            f"{indent}       ... ({line_count - show_count} more lines)", flush=True
+                        )
                 else:
                     action_display = action[:max_line] + "..." if len(action) > max_line else action
                     print(f"{indent} -> {colorize(action_display, '2')}", flush=True)

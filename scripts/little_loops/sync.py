@@ -1064,9 +1064,7 @@ class GitHubSyncManager:
                     except subprocess.CalledProcessError:
                         target_path.write_text(content, encoding="utf-8")
                         issue_path.unlink()
-                        self.logger.info(
-                            f"Moved {issue_path.name} back to {category}/ (fallback)"
-                        )
+                        self.logger.info(f"Moved {issue_path.name} back to {category}/ (fallback)")
 
         if result.failed:
             result.success = False
