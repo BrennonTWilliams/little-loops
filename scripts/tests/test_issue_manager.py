@@ -2441,9 +2441,7 @@ class TestAutoManagerModelDetection:
 
         return temp_project_dir
 
-    def test_auto_manager_logs_detected_model(
-        self, temp_project_with_issue: Path
-    ) -> None:
+    def test_auto_manager_logs_detected_model(self, temp_project_with_issue: Path) -> None:
         """AutoManager logs model name when on_model_detected callback fires."""
         from little_loops.config import BRConfig
         from little_loops.issue_manager import AutoManager, IssueProcessingResult
@@ -2467,9 +2465,7 @@ class TestAutoManagerModelDetection:
         ) -> IssueProcessingResult:
             if on_model_detected:
                 on_model_detected("claude-sonnet-4-6")
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         with patch(
             "little_loops.issue_manager.process_issue_inplace",

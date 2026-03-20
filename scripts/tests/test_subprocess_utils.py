@@ -1252,9 +1252,7 @@ class TestRunClaudeCommandWaitTimeout:
 class TestRunClaudeCommandModelDetection:
     """Tests for stream-json event parsing and on_model_detected callback (ENH-838)."""
 
-    def _make_single_line_selector(
-        self, mock_selector: Any, mock_process: Mock
-    ) -> None:
+    def _make_single_line_selector(self, mock_selector: Any, mock_process: Mock) -> None:
         """Configure selector to return stdout key once then exit loop."""
         _patch_selector_cm(mock_selector)
         selector_instance = mock_selector.return_value
@@ -1343,7 +1341,9 @@ class TestRunClaudeCommandModelDetection:
                 self._make_single_line_selector(mock_selector, mock_process)
                 run_claude_command(
                     "test",
-                    stream_callback=lambda line, is_stderr: callback_calls.append((line, is_stderr)),
+                    stream_callback=lambda line, is_stderr: callback_calls.append(
+                        (line, is_stderr)
+                    ),
                 )
 
         assert callback_calls == [("Stream me", False)]
@@ -1364,7 +1364,9 @@ class TestRunClaudeCommandModelDetection:
                 self._make_single_line_selector(mock_selector, mock_process)
                 result = run_claude_command(
                     "test",
-                    stream_callback=lambda line, is_stderr: callback_calls.append((line, is_stderr)),
+                    stream_callback=lambda line, is_stderr: callback_calls.append(
+                        (line, is_stderr)
+                    ),
                 )
 
         assert result.stdout == ""

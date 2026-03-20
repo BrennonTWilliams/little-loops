@@ -92,7 +92,14 @@ def run_claude_command(
         subprocess.TimeoutExpired: If command exceeds timeout or idle timeout.
             When triggered by idle timeout, the output field is set to "idle_timeout".
     """
-    cmd_args = ["claude", "--dangerously-skip-permissions", "--output-format", "stream-json", "-p", command]
+    cmd_args = [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "stream-json",
+        "-p",
+        command,
+    ]
 
     # Set environment to keep Claude in the project working directory (BUG-007)
     # This helps prevent file writes from leaking to the main repo in worktrees
