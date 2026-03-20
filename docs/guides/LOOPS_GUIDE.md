@@ -71,22 +71,22 @@ Use `/ll:create-loop` for an interactive wizard that guides you through creating
 ```
 What are you trying to do?
 │
-├─ Fix a specific problem ──────────▶ Fix until clean
+├─ Fix a specific problem ──────────→ Fix until clean
 │   "Run check, if fails run fix, repeat"
 │
-├─ Maintain multiple standards ─────▶ Maintain constraints
+├─ Maintain multiple standards ─────→ Maintain constraints
 │   "Check A, fix A, check B, fix B, ..."
 │
-├─ Reduce/increase a metric ────────▶ Drive a metric
+├─ Reduce/increase a metric ────────→ Drive a metric
 │   "Measure, if not at target, fix, measure again"
 │
-├─ Run ordered steps ───────────────▶ Run a sequence
+├─ Run ordered steps ───────────────→ Run a sequence
 │   "Do step 1, do step 2, check if done, repeat"
 │
-├─ Apply a skill to many items ─────▶ Harness a skill
+├─ Apply a skill to many items ─────→ Harness a skill
 │   "Discover items, run skill, pass evaluation pipeline, advance"
 │
-└─ Chain existing loops together ───▶ Composable sub-loops
+└─ Chain existing loops together ───→ Composable sub-loops
     "Run loop A, then loop B, using the same context"
 ```
 
@@ -189,7 +189,7 @@ States:
 
 Diagram:
   ┌──────────┐             ┌──────┐
-  │ evaluate │───success──▶│ done │
+  │ evaluate │───success──→│ done │
   └──────────┘             └──────┘
        │ ▲
   fail │ │ next
@@ -523,6 +523,8 @@ Automatic Prompt Optimization (APO) loops apply iterative improvement techniques
 
 Five built-in APO loops ship with little-loops:
 
+---
+
 ### `apo-feedback-refinement` — Feedback-Driven Refinement
 
 **Technique**: Generate one improved candidate → evaluate against criteria → apply feedback → repeat until convergence.
@@ -560,6 +562,8 @@ generate_candidate ──→ evaluate_candidate ──→ route_convergence
                                                └─ NEEDS_REFINE ──→ refine ──→ generate_candidate
 ```
 
+---
+
 ### `apo-contrastive` — Contrastive Optimization
 
 **Technique**: Generate N diverse variants → score comparatively → select the best → update the file → repeat until convergence.
@@ -594,6 +598,8 @@ generate_variants ──→ score_and_select ──→ route_convergence
                                            ├─ CONVERGED ──→ done
                                            └─ CONTINUE ──→ generate_variants
 ```
+
+---
 
 ### `apo-opro` — OPRO-Style History-Guided Optimization
 
@@ -634,6 +640,8 @@ init_history ──→ propose_candidate ──→ evaluate_candidate ──→ 
                                                                           CONVERGED ──→ done
 ```
 
+---
+
 ### `apo-beam` — Beam Search Optimization
 
 **Technique**: Generate N variants in parallel → score all → advance the highest-scoring winner → repeat until convergence.
@@ -672,6 +680,8 @@ generate_variants ──→ score_variants ──→ select_best ──→ route
                                                           ├─ CONVERGED ──→ done
                                                           └─ CONTINUE ──→ generate_variants
 ```
+
+---
 
 ### `apo-textgrad` — TextGrad (Example-Driven Gradient Descent)
 

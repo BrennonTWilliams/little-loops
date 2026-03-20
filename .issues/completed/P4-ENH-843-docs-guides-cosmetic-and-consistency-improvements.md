@@ -5,6 +5,7 @@ priority: P4
 status: Open
 title: "docs/guides: cosmetic and consistency improvements (post-audit remaining items)"
 created: 2026-03-20
+testable: false
 ---
 
 ## Summary
@@ -37,7 +38,7 @@ Four minor inconsistencies across three guide files:
 
 ## Integration Map
 
-- `docs/guides/SPRINT_GUIDE.md:419-421` — "Full Plan a Feature Sprint Pipeline" recipe section (**already cross-referenced in working tree — item 1 may be complete**)
+- `docs/guides/SPRINT_GUIDE.md:419-421` — "Full Plan a Feature Sprint Pipeline" recipe section (**CONFIRMED complete** — lines 419-421 already contain the one-sentence cross-reference to `ISSUE_MANAGEMENT_GUIDE.md`; skip in implementation)
 - `docs/guides/LOOPS_GUIDE.md:74,77,80,83,86,89` — `──▶` arrows in use-case pattern tree (diagram block lines 72–91)
 - `docs/guides/LOOPS_GUIDE.md:192` — bare `▶` arrow in `ll-loop show` walkthrough box-drawing diagram
 - `docs/guides/LOOPS_GUIDE.md:526,563,598,637,676` — `### \`apo-*\`` headings missing `---` separators before them
@@ -55,15 +56,37 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. `SPRINT_GUIDE.md`: Verify `git diff docs/guides/SPRINT_GUIDE.md` — item likely already complete (lines 419-421 already contain cross-reference). Skip if confirmed.
+1. `SPRINT_GUIDE.md`: **SKIP — already complete.** Lines 419-421 confirmed to contain the one-sentence cross-reference to `ISSUE_MANAGEMENT_GUIDE.md`.
 2. `LOOPS_GUIDE.md:74,77,80,83,86,89,192`: Replace `▶` → `→` at the end of each arrow sequence. Edit only the closing character; preserve dash/box-drawing prefix. Verify with `grep -n '▶' docs/guides/LOOPS_GUIDE.md`.
 3. `LOOPS_GUIDE.md:526,563,598,637,676`: Insert `---\n` before each `### \`apo-*\`` heading. Lines 563, 598, 637, 676 are preceded by a blank line after a closing ` ``` ` fence; line 526 is preceded by a blank after a prose sentence.
 4. `AUTOMATIC_HARNESSING_GUIDE.md:390`: Change `action_type: prompt` → `action_type: slash_command` on the `execute` state only. Confirm surrounding context: `execute:` at line 388, `action: /ll:check-code --auto` at line 389, `next: check_concrete` at line 391. Do **not** touch other intentional `action_type: prompt` occurrences at lines 199, 204, 451, 505, 637.
 
+## Labels
+
+`documentation`, `cosmetic`, `captured`
+
+## Scope Boundaries
+
+- Changes are limited to the three guide files listed in the Integration Map
+- No changes to code, schemas, or non-documentation files
+- Item 1 (SPRINT_GUIDE.md cross-reference) is already complete; remaining scope is items 2–4 only
+- Arrow style unification applies only to LOOPS_GUIDE.md ASCII diagrams; do not alter other files for consistency
+- Do not change `action_type: prompt` occurrences that are intentional (lines 199, 204, 451, 505, 637 of AUTOMATIC_HARNESSING_GUIDE.md)
+
+## Resolution
+
+**Completed** | 2026-03-20
+
+- Item 1 (`SPRINT_GUIDE.md` cross-reference): already complete prior to this session — skipped.
+- Item 2 (`LOOPS_GUIDE.md` arrow styles): replaced all `▶` with `→` at lines 74, 77, 80, 83, 86, 89, 192.
+- Item 3 (`LOOPS_GUIDE.md` APO separators): inserted `---` before each of the five `### \`apo-*\`` headings (before lines 526, 563, 598, 637, 676).
+- Item 4 (`AUTOMATIC_HARNESSING_GUIDE.md:390`): changed `action_type: prompt` → `action_type: slash_command` on the `execute` state of `harness-check-code` Variant A.
+
 ## Status
 
-**Open** | Captured: 2026-03-20 | Source: `/ll:audit-docs docs/guides/`
+**Completed** | Captured: 2026-03-20 | Source: `/ll:audit-docs docs/guides/`
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T19:28:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6274724-364d-4d8e-bce7-5e6142a84f94.jsonl`
 - `/ll:refine-issue` - 2026-03-20T19:23:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eff6b70f-1b02-408c-b33e-25fc3b821c22.jsonl`

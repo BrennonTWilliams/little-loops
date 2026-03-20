@@ -387,7 +387,7 @@ states:
 
   execute:
     action: /ll:check-code --auto
-    action_type: prompt
+    action_type: slash_command
     next: check_concrete
 
   check_concrete:            # present if tool-based gates selected
