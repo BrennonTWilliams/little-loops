@@ -89,6 +89,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 5. **Add tests** (`scripts/tests/test_sync.py`): add `TestReopenIssue` class following `TestCloseIssue` at lines 1122-1275 — test explicit IDs, `--all-reopened`, skip-if-not-closed, error handling, dry-run
 6. **Run tests**: `python -m pytest scripts/tests/test_sync.py -v -k reopen`
 
+## Resolution
+
+**Completed**: 2026-03-20
+
+### Changes Made
+- `scripts/little_loops/sync.py`: Added `reopen_issues()` method to `GitHubSyncManager`, mirroring `close_issues()`. Supports explicit issue IDs and `--all-reopened` flag. For `--all-reopened`, scans active dirs and checks GitHub state before reopening. Moves local file from `completed/` back to active category dir when applicable.
+- `scripts/little_loops/cli/sync.py`: Added `reopen` subparser with `issue_ids` (nargs="*") and `--all-reopened` arguments; added dispatch branch calling `manager.reopen_issues()`.
+- `scripts/tests/test_sync.py`: Added `TestReopenIssue` class (9 tests) covering: specific ID in completed, specific ID in active, all_reopened with CLOSED/OPEN states, no github_issue, dry_run, auth failure, no args, not found.
+- `docs/reference/CLI.md`: Added `ll-sync reopen` subcommand documentation with flags and examples.
+
+### Acceptance Criteria Met
+- [x] `ll-sync reopen <issue-id>` reopens the corresponding GitHub issue
+- [x] Optionally moves the local file from `completed/` back to the active directory
+- [x] Works with `--all-reopened` flag to batch-reopen issues that have been moved back to active locally
+- [x] Error handling for issues that aren't closed on GitHub
+
 ## Labels
 
 `feature`, `sync`, `cli`
@@ -117,9 +133,11 @@ _Updated by `/ll:confidence-check` on 2026-03-20 (prior: 88/100 → 86/100 on 20
 All prior concerns resolved by `/ll:refine-issue` (2026-03-20). No remaining gaps.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T18:39:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/650f8cc4-577e-4ec7-8987-ea5add55fc59.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cb37d07-186a-4535-a7d8-8cad23ab3f18.jsonl`
 - `/ll:refine-issue` - 2026-03-20T18:19:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ede48de0-59a6-4de6-b7b5-bbe2ba16255f.jsonl`
 
 - `/ll:verify-issues` - 2026-03-19T23:16:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

@@ -661,6 +661,14 @@ Close GitHub issues for completed local issues.
 |------|-------------|
 | `--all-completed` | Close all GitHub issues whose local counterparts are in `completed/` |
 
+#### `ll-sync reopen [issue_ids...]`
+
+Reopen GitHub issues for locally-active issues. If the issue file is in `completed/`, it is moved back to its active category directory (`bugs/`, `features/`, or `enhancements/`).
+
+| Flag | Description |
+|------|-------------|
+| `--all-reopened` | Reopen all GitHub issues whose local counterparts have moved back to an active directory |
+
 **Examples:**
 ```bash
 ll-sync status                    # Show sync status
@@ -671,6 +679,8 @@ ll-sync diff BUG-123              # Show diff for specific issue
 ll-sync diff                      # Diff summary for all synced issues
 ll-sync close ENH-123             # Close GitHub issue for ENH-123
 ll-sync close --all-completed     # Close all completed issues on GitHub
+ll-sync reopen BUG-042            # Reopen GitHub issue for BUG-042
+ll-sync reopen --all-reopened     # Reopen all issues moved back to active locally
 ```
 
 Requires `"sync": { "enabled": true }` in `.claude/ll-config.json`.

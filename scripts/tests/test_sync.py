@@ -1273,3 +1273,219 @@ class TestCloseIssue:
         assert result.success is False
         assert len(result.failed) == 1
         assert "not found" in result.failed[0][1]
+
+
+class TestReopenIssue:
+    """Tests for reopen_issues method."""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path: Path) -> BRConfig:
+        """Create a mock BRConfig with test directories."""
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        config_file = claude_dir / "ll-config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "sync": {
+                        "enabled": True,
+                        "github": {
+                            "repo": "test/repo",
+                            "label_mapping": {
+                                "BUG": "bug",
+                                "FEAT": "enhancement",
+                                "ENH": "enhancement",
+                            },
+                            "priority_labels": True,
+                        },
+                    },
+                    "issues": {"base_dir": ".issues"},
+                }
+            )
+        )
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "completed").mkdir(parents=True)
+        return BRConfig(tmp_path)
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        return MagicMock(spec=Logger)
+
+    def test_reopen_specific_issue_in_completed(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """reopen_issues reopens a GitHub issue and moves file from completed/ to active."""
+        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                )
+                with patch("subprocess.run") as mock_subprocess:
+                    mock_subprocess.return_value = subprocess.CompletedProcess(
+                        args=[], returncode=0, stdout="", stderr=""
+                    )
+                    result = manager.reopen_issues(issue_ids=["BUG-001"])
+
+        assert result.success is True
+        assert len(result.updated) == 1
+        assert "reopened" in result.updated[0]
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "issue" in call_args
+        assert "reopen" in call_args
+        assert "42" in call_args
+        assert "--comment" in call_args
+
+    def test_reopen_specific_issue_in_active(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """reopen_issues reopens a GitHub issue that is already in an active dir (no move)."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                )
+                result = manager.reopen_issues(issue_ids=["BUG-001"])
+
+        assert result.success is True
+        assert len(result.updated) == 1
+        assert "reopened" in result.updated[0]
+        mock_run.assert_called_once()
+
+    def test_reopen_all_reopened(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """reopen_issues with all_reopened reopens CLOSED GitHub issues in active dirs."""
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        (bugs_dir / "P1-BUG-001-bug.md").write_text(
+            "---\ngithub_issue: 42\n---\n\n# BUG-001: Bug\n\nBody.\n"
+        )
+        (bugs_dir / "P2-BUG-002-bug.md").write_text(
+            "---\ngithub_issue: 43\n---\n\n# BUG-002: Bug\n\nBody.\n"
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                # First two calls are gh issue view (state checks), next two are gh issue reopen
+                # Calls are interleaved: view-001, reopen-001, view-002, reopen-002
+                mock_run.side_effect = [
+                    subprocess.CompletedProcess(
+                        args=[], returncode=0, stdout="CLOSED\n", stderr=""
+                    ),
+                    subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                    subprocess.CompletedProcess(
+                        args=[], returncode=0, stdout="CLOSED\n", stderr=""
+                    ),
+                    subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                ]
+                result = manager.reopen_issues(all_reopened=True)
+
+        assert result.success is True
+        assert len(result.updated) == 2
+        assert mock_run.call_count == 4
+
+    def test_reopen_all_reopened_skips_open_on_github(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """reopen_issues with all_reopened skips issues already OPEN on GitHub."""
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        (bugs_dir / "P1-BUG-001-bug.md").write_text(
+            "---\ngithub_issue: 42\n---\n\n# BUG-001: Bug\n\nBody.\n"
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="OPEN\n", stderr=""
+                )
+                result = manager.reopen_issues(all_reopened=True)
+
+        assert result.success is True
+        assert len(result.skipped) == 1
+        assert "already open" in result.skipped[0]
+        # Only one call (the view/state check), no reopen call
+        assert mock_run.call_count == 1
+
+    def test_reopen_no_github_issue(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """reopen_issues skips issues not synced to GitHub."""
+        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.reopen_issues(issue_ids=["BUG-001"])
+
+        assert result.success is True
+        assert len(result.skipped) == 1
+        assert "not synced" in result.skipped[0]
+
+    def test_reopen_dry_run(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """reopen_issues in dry-run mode does not call gh."""
+        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                result = manager.reopen_issues(issue_ids=["BUG-001"])
+
+        mock_run.assert_not_called()
+        assert result.success is True
+        assert len(result.updated) == 1
+        assert "would reopen" in result.updated[0]
+
+    def test_reopen_auth_failure(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """reopen_issues reports error on auth failure."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = False
+            result = manager.reopen_issues(issue_ids=["BUG-001"])
+
+        assert result.success is False
+        assert any("not authenticated" in e for e in result.errors)
+
+    def test_reopen_no_args(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """reopen_issues with no args and no all_reopened returns error."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.reopen_issues()
+
+        assert result.success is False
+        assert any("--all-reopened" in e for e in result.errors)
+
+    def test_reopen_issue_not_found(
+        self, mock_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """reopen_issues reports failure when local issue doesn't exist."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.reopen_issues(issue_ids=["BUG-999"])
+
+        assert result.success is False
+        assert len(result.failed) == 1
+        assert "not found" in result.failed[0][1]

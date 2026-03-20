@@ -33,6 +33,8 @@ Examples:
   %(prog)s diff               # Show diff summary for all synced issues
   %(prog)s close ENH-123      # Close GitHub issue for ENH-123
   %(prog)s close --all-completed  # Close all completed issues on GitHub
+  %(prog)s reopen BUG-042     # Reopen GitHub issue for BUG-042
+  %(prog)s reopen --all-reopened  # Reopen all issues moved back to active locally
 """,
     )
 
@@ -81,6 +83,21 @@ Examples:
         "--all-completed",
         action="store_true",
         help="Close all GitHub issues whose local counterparts are in completed/",
+    )
+
+    # Reopen subcommand
+    reopen_parser = subparsers.add_parser(
+        "reopen", help="Reopen GitHub issues for locally-active issues"
+    )
+    reopen_parser.add_argument(
+        "issue_ids",
+        nargs="*",
+        help="Specific issue IDs to reopen (e.g., BUG-042)",
+    )
+    reopen_parser.add_argument(
+        "--all-reopened",
+        action="store_true",
+        help="Reopen all GitHub issues whose local counterparts have moved back to active",
     )
 
     # Common args
@@ -144,6 +161,15 @@ Examples:
         issue_ids = args.issue_ids if args.issue_ids else None
         all_completed = getattr(args, "all_completed", False)
         result = manager.close_issues(issue_ids, all_completed=all_completed)
+        _print_sync_result(result, logger)
+        return 0 if result.success else 1
+
+    elif args.action == "reopen":
+        if dry_run:
+            logger.info("[DRY RUN] Showing what would be reopened (no changes will be made)")
+        issue_ids = args.issue_ids if args.issue_ids else None
+        all_reopened = getattr(args, "all_reopened", False)
+        result = manager.reopen_issues(issue_ids, all_reopened=all_reopened)
         _print_sync_result(result, logger)
         return 0 if result.success else 1
 

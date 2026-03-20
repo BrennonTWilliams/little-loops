@@ -947,3 +947,128 @@ class GitHubSyncManager:
             result.success = False
 
         return result
+
+    def reopen_issues(
+        self,
+        issue_ids: list[str] | None = None,
+        all_reopened: bool = False,
+    ) -> SyncResult:
+        """Reopen GitHub issues for locally-active issues.
+
+        Args:
+            issue_ids: Specific issue IDs to reopen, or None
+            all_reopened: If True, reopen GitHub issues for all local issues in active
+                          directories that are CLOSED on GitHub
+
+        Returns:
+            SyncResult with operation details
+        """
+        result = SyncResult(action="reopen", success=True)
+
+        if not _check_gh_auth(self.logger):
+            result.success = False
+            result.errors.append("GitHub CLI not authenticated. Run: gh auth login")
+            return result
+
+        files_to_reopen: list[tuple[Path, str]] = []  # (path, issue_id)
+
+        if all_reopened:
+            for issue_path in self._get_local_issues():
+                eid = self._extract_issue_id(issue_path.name)
+                if eid:
+                    files_to_reopen.append((issue_path, eid))
+        elif issue_ids:
+            for eid in issue_ids:
+                found_path = self._find_local_issue(eid)
+                if found_path:
+                    files_to_reopen.append((found_path, eid))
+                else:
+                    result.failed.append((eid, "Local issue not found"))
+        else:
+            result.success = False
+            result.errors.append("Specify issue IDs or use --all-reopened")
+            return result
+
+        for issue_path, issue_id in files_to_reopen:
+            content = issue_path.read_text(encoding="utf-8")
+            frontmatter = parse_frontmatter(content, coerce_types=True)
+            github_number = frontmatter.get("github_issue")
+
+            if github_number is None:
+                result.skipped.append(f"{issue_id} (not synced to GitHub)")
+                continue
+
+            if all_reopened:
+                try:
+                    state_result = _run_gh_command(
+                        [
+                            "issue",
+                            "view",
+                            str(int(github_number)),
+                            "--json",
+                            "state",
+                            "-q",
+                            ".state",
+                        ],
+                        self.logger,
+                    )
+                    state = state_result.stdout.strip()
+                    if state != "CLOSED":
+                        result.skipped.append(
+                            f"{issue_id} (#{github_number}: already open on GitHub)"
+                        )
+                        continue
+                except subprocess.CalledProcessError as e:
+                    result.failed.append((issue_id, f"gh issue view failed: {e.stderr}"))
+                    continue
+
+            if self.dry_run:
+                result.updated.append(f"{issue_id} → #{github_number} (would reopen)")
+                self.logger.info(f"Would reopen GitHub issue #{github_number} for {issue_id}")
+                continue
+
+            try:
+                _run_gh_command(
+                    [
+                        "issue",
+                        "reopen",
+                        str(int(github_number)),
+                        "--comment",
+                        f"Reopened via ll-sync. Issue {issue_id} moved back to active locally.",
+                    ],
+                    self.logger,
+                )
+                result.updated.append(f"{issue_id} → #{github_number} (reopened)")
+                self.logger.success(f"Reopened GitHub issue #{github_number} for {issue_id}")
+            except subprocess.CalledProcessError as e:
+                result.failed.append((issue_id, f"gh issue reopen failed: {e.stderr}"))
+                self.logger.error(f"Failed to reopen GitHub issue #{github_number}: {e.stderr}")
+                continue
+
+            # Move local file from completed/ back to active directory if needed
+            completed_dir = self.config.get_completed_dir()
+            if issue_path.parent == completed_dir:
+                type_prefix = issue_id.split("-")[0]
+                category_map = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
+                category = category_map.get(type_prefix)
+                if category:
+                    target_dir = self.config.get_issue_dir(category)
+                    target_path = target_dir / issue_path.name
+                    try:
+                        subprocess.run(
+                            ["git", "mv", str(issue_path), str(target_path)],
+                            check=True,
+                            capture_output=True,
+                        )
+                        self.logger.info(f"Moved {issue_path.name} back to {category}/")
+                    except subprocess.CalledProcessError:
+                        target_path.write_text(content, encoding="utf-8")
+                        issue_path.unlink()
+                        self.logger.info(
+                            f"Moved {issue_path.name} back to {category}/ (fallback)"
+                        )
+
+        if result.failed:
+            result.success = False
+
+        return result
