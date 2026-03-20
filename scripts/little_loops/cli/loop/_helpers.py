@@ -305,6 +305,7 @@ def run_foreground(
         print()
 
     current_iteration = [0]  # Use list to allow mutation in closure
+    last_parent_state: list[str | None] = [None]  # Track last depth=0 state for sub-loop highlighting
     loop_start_time = time.monotonic()
 
     def display_progress(event: dict) -> None:
@@ -326,12 +327,15 @@ def run_foreground(
                     elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
             if clear_screen and sys.stdout.isatty():
                 print("\033[2J\033[H", end="", flush=True)
+            if depth == 0:
+                last_parent_state[0] = state
             if show_diagrams:
                 from little_loops.cli.loop.layout import _render_fsm_diagram
 
+                highlight = state if depth == 0 else last_parent_state[0]
                 diagram = _render_fsm_diagram(
                     fsm,
-                    highlight_state=state,
+                    highlight_state=highlight,
                     highlight_color=highlight_color,
                     edge_label_colors=edge_label_colors,
                 )

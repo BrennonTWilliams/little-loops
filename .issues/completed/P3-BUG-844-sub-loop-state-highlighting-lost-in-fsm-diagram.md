@@ -143,10 +143,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/cli/loop/_helpers.py`:
+
+1. Added `last_parent_state: list[str | None] = [None]` alongside `current_iteration` in `run_foreground()` to track the last depth=0 state.
+2. In the `state_enter` handler, update `last_parent_state[0] = state` when `depth == 0`.
+3. Derive `highlight = state if depth == 0 else last_parent_state[0]` and pass that to `_render_fsm_diagram` instead of always using `state`.
+4. Added regression test `test_sub_loop_diagram_keeps_parent_state_highlighted` in `test_ll_loop_display.py`.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-03-20 | Priority: P3
+**Completed** | Created: 2026-03-20 | Resolved: 2026-03-20 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-03-20T21:21:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c36d8d5-c74f-40f7-ba5e-174db436832e.jsonl`
 - `/ll:refine-issue` - 2026-03-20T21:16:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3303c29-3790-45d8-bfd8-d2eed0c1be4f.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1bf4f47d-175f-43a1-a162-27f1c4d41801.jsonl`

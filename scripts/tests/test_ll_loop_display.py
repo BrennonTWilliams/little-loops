@@ -1707,6 +1707,41 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "\033[2J" not in out
 
+    def test_sub_loop_diagram_keeps_parent_state_highlighted(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """During sub-loop execution, parent FSM diagram keeps the sub-loop state highlighted.
+
+        When depth=1 child events arrive, _render_fsm_diagram should be called with
+        the last depth=0 state as highlight_state, not the child state.
+        """
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import layout as layout_mod
+
+        fsm = make_test_fsm(
+            initial="run_sub_loop",
+            states={
+                "run_sub_loop": make_test_state(action="echo sub", on_yes="done"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        events = [
+            {"event": "state_enter", "state": "run_sub_loop", "iteration": 1},
+            {"event": "state_enter", "state": "child_state_1", "iteration": 1, "depth": 1},
+            {"event": "state_enter", "state": "child_state_2", "iteration": 2, "depth": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch.object(
+            layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+        ) as mock_render:
+            run_foreground(executor, fsm, self._make_args(show_diagrams=True))
+            assert mock_render.call_count == 3
+            for call_args in mock_render.call_args_list:
+                assert call_args.kwargs["highlight_state"] == "run_sub_loop", (
+                    f"Expected highlight_state='run_sub_loop', got {call_args.kwargs['highlight_state']!r}"
+                )
+
     def test_sub_loop_state_enter_indented_with_depth(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
