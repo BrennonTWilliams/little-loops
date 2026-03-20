@@ -98,10 +98,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Callers of `undefer_issue`
 - No CLI entry point calls `undefer_issue` directly — it is library API only
-- `scripts/tests/test_issue_lifecycle.py:1261` — `TestUndefer` class with existing tests for `undefer_issue`
+- `scripts/tests/test_issue_lifecycle.py:1260` — `TestUndeferIssue` class with existing tests for `undefer_issue`
 
 ### Tests to Update
-- `scripts/tests/test_issue_lifecycle.py:1263` — `test_undefer_success`: currently mocks `subprocess.run` but only handles `"mv"` — other calls fall through to a default success. Must add explicit assertions that `git add -A` and `git commit` were called (and assert commit message format matches `"undefer(bugs): BUG-001 - Undeferred"`)
+- `scripts/tests/test_issue_lifecycle.py:1263` — `test_undefer_success` (in `TestUndeferIssue`): currently mocks `subprocess.run` but only handles `"mv"` — other calls fall through to a default success. Must add explicit assertions that `git add -A` and `git commit` were called (and assert commit message format matches `"undefer(bugs): BUG-001 - Undeferred"`)
 - New test: `test_undefer_commits` — modeled after `defer_issue` test at line 1153
 
 ### Similar Patterns (All Existing `_commit_issue_completion` Call Sites)
@@ -168,6 +168,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Confidence**: High
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T20:50:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1273e8c-f810-4c65-affd-d5a9dd5a9bf1.jsonl`
 - `/ll:refine-issue` - 2026-03-20T20:28:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6dabc1ad-73dc-4904-8dd7-62288dad5555.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:52:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
