@@ -31,11 +31,14 @@ def cmd_count(config: BRConfig, args: argparse.Namespace) -> int:
     raw = _load_issues_with_status(config, include_active, include_completed, include_deferred)
     issues = [issue for issue, _stat in raw]
 
+    from little_loops.cli_args import parse_priorities
+
     if getattr(args, "type", None):
         issues = [i for i in issues if i.issue_id.split("-", 1)[0] == args.type]
 
-    if getattr(args, "priority", None):
-        issues = [i for i in issues if i.priority == args.priority]
+    priority_filter = parse_priorities(getattr(args, "priority", None))
+    if priority_filter is not None:
+        issues = [i for i in issues if i.priority in priority_filter]
 
     if getattr(args, "json", False):
         by_type: dict[str, int] = {"BUG": 0, "FEAT": 0, "ENH": 0}

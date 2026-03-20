@@ -377,7 +377,7 @@ List active issues with optional filters.
 | Flag | Description |
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
-| `--priority` | Filter by priority: `P0`–`P5` |
+| `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
 | `--include-completed` | Include completed issues (alias for `--status all`) |
 | `--flat` | Output flat list for scripting |
@@ -392,7 +392,7 @@ Count active issues. Outputs a single integer by default, or a JSON object with 
 | Flag | Description |
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
-| `--priority` | Filter by priority: `P0`–`P5` |
+| `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
 | `--json` | Output JSON with `total`, `status`, `by_type`, and `by_priority` breakdowns |
 | `--config` | Path to project root |
@@ -472,6 +472,7 @@ Append a session log entry to an issue file.
 ```bash
 ll-issues next-id
 ll-issues list --type FEAT --priority P2
+ll-issues list --priority P1,P2              # Filter by multiple priorities
 ll-issues list --json                         # JSON array of all active issues
 ll-issues list --type BUG --json             # JSON filtered by type
 ll-issues count                              # Total active issue count

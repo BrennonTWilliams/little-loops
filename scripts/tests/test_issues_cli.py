@@ -212,6 +212,32 @@ class TestIssuesCLIList:
         assert "BUG-001" in captured.out  # BUG-001 is P0
         assert "BUG-002" not in captured.out  # BUG-002 is P1
 
+    def test_list_filter_by_priority_multi_value(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --priority P0,P1 shows issues matching either priority."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--priority", "P0,P1", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out  # BUG-001 is P0
+        assert "BUG-002" in captured.out  # BUG-002 is P1
+        assert "BUG-003" not in captured.out  # BUG-003 is P2
+
     def test_list_empty_groups_shown(
         self,
         temp_project_dir: Path,
@@ -1379,6 +1405,30 @@ class TestIssuesCLICount:
         assert result == 0
         captured = capsys.readouterr()
         assert captured.out.strip() == "1"
+
+    def test_count_filter_by_priority_multi_value(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --priority P0,P1 counts issues matching either priority."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "count", "--priority", "P0,P1", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "3"  # BUG-001 (P0) + BUG-002 (P1) + FEAT-001 (P1)
 
     def test_count_json_output(
         self,

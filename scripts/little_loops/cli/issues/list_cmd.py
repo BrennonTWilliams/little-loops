@@ -36,14 +36,16 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
 
     raw = _load_issues_with_status(config, include_active, include_completed, include_deferred)
 
+    from little_loops.cli_args import parse_priorities
+
     type_filter = getattr(args, "type", None)
-    priority_filter = getattr(args, "priority", None)
+    priority_filter: set[str] | None = parse_priorities(getattr(args, "priority", None))
 
     filtered = [
         (issue, stat)
         for issue, stat in raw
         if (not type_filter or issue.issue_id.split("-", 1)[0] == type_filter)
-        and (not priority_filter or issue.priority == priority_filter)
+        and (not priority_filter or issue.priority in priority_filter)
     ]
 
     # Sort

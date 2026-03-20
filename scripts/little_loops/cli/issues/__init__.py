@@ -74,8 +74,8 @@ Examples:
     ls.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     ls.add_argument(
         "--priority",
-        choices=["P0", "P1", "P2", "P3", "P4", "P5"],
-        help="Filter by priority level",
+        metavar="PRIORITY",
+        help="Filter by priority level, e.g. P1 or P1,P2",
     )
     ls.add_argument(
         "--status",
@@ -203,8 +203,8 @@ Examples:
     cnt.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     cnt.add_argument(
         "--priority",
-        choices=["P0", "P1", "P2", "P3", "P4", "P5"],
-        help="Filter by priority level",
+        metavar="PRIORITY",
+        help="Filter by priority level, e.g. P1 or P1,P2",
     )
     cnt.add_argument(
         "--status",

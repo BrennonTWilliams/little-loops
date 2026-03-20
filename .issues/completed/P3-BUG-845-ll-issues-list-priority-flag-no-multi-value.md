@@ -11,9 +11,20 @@ outcome_confidence: 93
 
 # BUG-845: ll-issues list --priority flag does not accept comma-separated values
 
-## Problem Statement
+## Summary
 
 `ll-issues list --priority P1,P2` fails because the flag is declared with `choices=["P0","P1","P2","P3","P4","P5"]`, which enforces a single-value string match. Other CLI tools (`ll-auto`, `ll-parallel`) accept comma-separated priority values via the shared `parse_priorities()` helper in `cli_args.py`.
+
+## Current Behavior
+
+Running `ll-issues list` or `ll-issues count` with comma-separated priority values fails immediately with an argparse error:
+
+```
+$ ll-issues list --priority P1,P2
+error: argument --priority: invalid choice: 'P1,P2' (choose from 'P0', 'P1', 'P2', 'P3', 'P4', 'P5')
+```
+
+The `count` subcommand has the same constraint. Users who want results for multiple priorities must run separate commands and mentally combine results.
 
 ## Root Cause
 
@@ -93,12 +104,36 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Documentation
 - `docs/reference/CLI.md:473-476` — documents `ll-issues list --priority` usage; update example to show comma-separated form
 
+## Impact
+
+- **Priority**: P3 - Minor UX inconsistency; workaround is running separate commands per priority
+- **Effort**: Small - 4 files to modify, clear pattern to follow from existing `parse_priorities()` usage in `auto.py` and `parallel.py`
+- **Risk**: Low - Only changes argument parsing; backward compatible (single values still work)
+- **Breaking Change**: No
+
+## Labels
+
+`bug`, `cli`
+
+## Resolution
+
+Fixed by removing `choices=` from `--priority` in both `list` and `count` subcommands in `__init__.py`, and updating `list_cmd.py` and `count_cmd.py` to call `parse_priorities()` from `cli_args.py` and use `in` instead of `==` for priority filtering. Consistent with `ll-auto` and `ll-parallel` patterns.
+
+**Files changed:**
+- `scripts/little_loops/cli/issues/__init__.py` — removed `choices=`, updated help text for `list` and `count`
+- `scripts/little_loops/cli/issues/list_cmd.py` — use `parse_priorities()`, filter with `in`
+- `scripts/little_loops/cli/issues/count_cmd.py` — use `parse_priorities()`, filter with `in`
+- `scripts/tests/test_issues_cli.py` — added multi-value priority tests for `list` and `count`
+- `docs/reference/CLI.md` — updated `--priority` docs to show comma-separated usage
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T21:28:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e98dce6-6d03-4e9a-9181-cd971fdca8cc.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae4f7fa9-4038-444b-b34c-8c4cea5178e2.jsonl`
 - `/ll:refine-issue` - 2026-03-20T20:49:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0f20ea2-de01-4aad-9b50-0fb474f379d2.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7180b81f-d6f9-4361-8292-01d583d240bd.jsonl`
+- `/ll:manage-issue` - 2026-03-20T21:35:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 ## Status
 
-Open
+Completed
