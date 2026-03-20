@@ -1007,6 +1007,18 @@ Without `context_passthrough`, the child runs with its own isolated context and 
 
 For full sub-loop schema details — `context_passthrough`, verdict handling, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md#6-sub-loop-composition) and [`skills/create-loop/reference.md`](../../skills/create-loop/reference.md).
 
+### Visualizing Sub-Loop Execution
+
+When `--show-diagrams` is active and a state invokes a child loop, both FSM diagrams are rendered after each child step:
+
+```
+[parent diagram — parent state highlighted]
+── sub-loop: fix-quality-and-tests ──
+[child diagram — current child state highlighted]
+```
+
+The parent state remains highlighted throughout child execution so you can track where you are in the outer pipeline. Sub-loop diagram display is supported for one level of nesting (depth-1 child loops).
+
 ---
 
 ## Troubleshooting
