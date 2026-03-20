@@ -112,6 +112,34 @@ class TestParseFrontmatter:
         assert result["key"] == "value"
         assert "Unsupported YAML block scalar" in caplog.text
 
+    def test_block_sequence_parsed_as_list(self) -> None:
+        """Block sequence syntax parses correctly as a list."""
+        content = "---\nrelated_issues:\n  - P1-BUG-8743\n  - P2-ENH-8762\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result == {"related_issues": ["P1-BUG-8743", "P2-ENH-8762"]}
+
+    def test_empty_value_no_items_is_none(self) -> None:
+        """Empty key with no list items following is None."""
+        content = "---\nkey:\nnext: value\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["key"] is None
+        assert result["next"] == "value"
+
+    def test_block_sequence_followed_by_scalar(self) -> None:
+        """List key followed by a scalar key both parse correctly."""
+        content = "---\ntags:\n  - foo\n  - bar\nauthor: alice\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["tags"] == ["foo", "bar"]
+        assert result["author"] == "alice"
+
+    def test_orphaned_list_item_still_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        """List item after a scalar-valued key still emits a warning."""
+        content = "---\nkey: value\n- orphan\n---\n\n"
+        with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
+            result = parse_frontmatter(content)
+        assert result == {"key": "value"}
+        assert "Unsupported YAML list syntax" in caplog.text
+
 
 class TestStripFrontmatter:
     """Tests for strip_frontmatter function."""

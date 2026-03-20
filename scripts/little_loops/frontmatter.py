@@ -17,9 +17,10 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
     """Extract YAML frontmatter from content.
 
     Looks for content between opening and closing '---' markers.
-    Parses a subset of YAML: simple ``key: value`` pairs only. Lists,
-    block scalars, and nested structures are not supported and will emit
-    a ``logging.WARNING``. Returns empty dict if no frontmatter found.
+    Parses a subset of YAML: simple ``key: value`` pairs and YAML block
+    sequences (``key:`` followed by ``- item`` lines). Block scalars and
+    nested structures are not supported and will emit a ``logging.WARNING``.
+    Returns empty dict if no frontmatter found.
 
     Args:
         content: File content to parse
@@ -38,13 +39,21 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
     frontmatter_text = content[4 : 3 + end_match.start()]
 
     result: dict[str, Any] = {}
+    current_list_key: str | None = None
     for line in frontmatter_text.split("\n"):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("- "):
-            logger.warning("Unsupported YAML list syntax in frontmatter: %r", line)
+            if current_list_key is not None:
+                result[current_list_key].append(line[2:].strip())
+            else:
+                logger.warning("Unsupported YAML list syntax in frontmatter: %r", line)
             continue
+        # Non-list line: finalize any in-progress empty list, then reset
+        if current_list_key is not None and result[current_list_key] == []:
+            result[current_list_key] = None
+        current_list_key = None
         if ":" in line:
             key, value = line.split(":", 1)
             key = key.strip()
@@ -54,11 +63,18 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
                 result[key] = None
                 continue
             if value.lower() in ("null", "~", ""):
-                result[key] = None
+                if value == "":
+                    result[key] = []
+                    current_list_key = key
+                else:
+                    result[key] = None
             elif coerce_types and value.isdigit():
                 result[key] = int(value)
             else:
                 result[key] = value
+    # Finalize any trailing empty list key
+    if current_list_key is not None and result[current_list_key] == []:
+        result[current_list_key] = None
     return result
 
 

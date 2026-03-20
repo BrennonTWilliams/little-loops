@@ -5,8 +5,8 @@ priority: P4
 status: open
 discovered_date: 2026-03-15
 discovered_by: capture-issue
-confidence_score: 70
-outcome_confidence: 28
+confidence_score: 82
+outcome_confidence: 36
 ---
 
 # FEAT-769: Add OpenCode Plugin Compatibility
@@ -92,14 +92,15 @@ def find_config() -> Path:
     return Path(".claude/ll-config.json")  # default (create on init)
 ```
 
-**Registration** in user's `opencode.json`:
+**Registration** in user's `opencode.json` (key is `"plugin"` singular, not `"plugins"`):
 ```json
 {
-  "plugins": ["./opencode-plugin/index.ts"]
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@ll/opencode-plugin"]
 }
 ```
 
-`ll:init` would offer to add this automatically when OpenCode is detected.
+The `opencode-plugin/package.json` sets `"name": "@ll/opencode-plugin"` so after `npm install ./opencode-plugin` the package is resolvable by name. `ll:init` would offer to add this automatically when OpenCode is detected.
 
 ### Alternative: Option C — Full Dual-Target Restructure
 
@@ -162,9 +163,10 @@ Shell hooks layer — **KEY INSIGHT**: `hooks/scripts/lib/common.sh:ll_resolve_c
 
 _Added by `/ll:refine-issue` run 3 — based on codebase analysis:_
 
-- `scripts/little_loops/state.py` — state management module; assess for `.claude/` hardcodes that would need `LL_STATE_DIR`-style abstraction
+- `scripts/little_loops/state.py` — **VERIFIED CLEAN**: zero `.claude/` hardcodes. `StateManager.__init__` accepts `state_file: Path` as an injected parameter; never constructs a path itself. State file defaults are in `config/automation.py:19` (`.auto-manage-state.json`) and resolve via `config/core.py:247` to project root — NOT inside `.claude/`. No changes needed in `state.py`.
 - `scripts/tests/test_user_messages.py` — add OpenCode log-path tests alongside Claude Code path tests
-- `scripts/tests/test_state.py` — check for `.claude/` fixtures; add `.opencode/` variants if state paths are tested
+- `scripts/tests/test_state.py` — **VERIFIED CLEAN**: uses `tmp_path`-based fixtures only; no `.claude/` strings anywhere. No OpenCode variants needed.
+- `scripts/tests/test_hooks_integration.py:33,104` — two fixtures create `.claude/ll-config.json` inside `tmp_path` because tests invoke `context-monitor.sh` as a subprocess (which reads config from `.claude/ll-config.json` in its working dir); add `.opencode/` variant fixture paths when adding OpenCode config path tests here
 
 ### Implementation Accuracy Corrections (Run 3)
 
@@ -179,18 +181,40 @@ _Added by `/ll:refine-issue` run 3 — correcting prior research:_
 - New: `opencode-plugin/index.ts` (and sub-modules)
 - `config-schema.json` — no changes needed (schema is platform-agnostic)
 
+### Codebase Research Findings (Run 5 — OpenCode API Verification)
+
+_Added by `/ll:refine-issue` — based on web research (opencode.ai/docs/plugins, npm, GitHub sst/opencode):_
+
+**OpenCode plugin SDK confirmed:**
+- `@opencode-ai/plugin` v1.2.27 — published on npm, MIT license; `@opencode-ai/sdk` + `zod` as dependencies
+- Runtime: **Bun** (confirmed). `PluginInput` includes `$: BunShell` — use `ctx.$` for shell execution inside handlers
+- Plugin function signature: `type Plugin = (input: PluginInput) => Promise<Hooks>`
+- `PluginInput` fields: `client`, `project`, `directory`, `worktree`, `serverUrl`, `$` (BunShell)
+
+**All 6 event names verified against official docs (opencode.ai/docs/plugins):**
+- `session.created` ✓ | `session.compacted` ✓ | `session.idle` ✓
+- `tool.execute.before` ✓ | `tool.execute.after` ✓ | `tui.prompt.append` ✓
+
+**`LL_STATE_DIR` mechanism design (concrete model exists):**
+The `LL_HANDOFF_THRESHOLD` / `LL_CONTEXT_LIMIT` pattern (`auto.py:71,76`) is the exact model: Python CLIs set `os.environ["LL_STATE_DIR"] = ".opencode"` before spawning Claude processes; shell scripts read `${LL_STATE_DIR:-.claude}`. `precompact-state.sh:28` already has `STATE_DIR=".claude"` as the single derivation point — change to `STATE_DIR="${LL_STATE_DIR:-.claude}"` to cover all 3 derived paths in that file at once. Apply the same `${LL_STATE_DIR:-.claude}` substitution to `context-monitor.sh:181,238,309`, `session-cleanup.sh:14,20`, and `session-start.sh:13`. The 4 Python CLIs that need `os.environ["LL_STATE_DIR"]`: `cli/auto.py:71`, `cli/parallel.py:165`, `cli/loop/run.py:70`, `cli/sprint/run.py:103` (mirroring existing `LL_HANDOFF_THRESHOLD` injection points). The JS plugin writes state files to `.opencode/` directly — no env var needed for the JS side.
+
+**New scope gap — `skills/init/SKILL.md` gitignore block (lines 313-319) is missing 2 entries:**
+- `.claude/ll-precompact-state.json` (written by `precompact-state.sh`)
+- `.claude/ll-continue-prompt.md` (written by `context-monitor.sh`)
+Step 10 must add these missing Claude Code entries AND add all 6 `.opencode/` equivalents.
+
 ## Implementation Steps
 
 1. **Config path abstraction (Python)** — Update `config/core.py:75` to change `CONFIG_DIR = ".claude"` to a priority-ordered search: try `.opencode/ll-config.json` first, fall back to `.claude/ll-config.json`; review `config/features.py` and `config/automation.py` for additional `.claude/` hardcodes; write tests in `scripts/tests/test_config.py` following the `test_load_config_without_file` pattern at line 373
 2. **Config path abstraction (Shell)** — Update `hooks/scripts/lib/common.sh:ll_resolve_config()` at lines 186–190 to probe `.opencode/ll-config.json` first (propagates to `context-monitor.sh` and `user-prompt-check.sh` automatically); also update `session-start.sh:16` (shell) and `session-start.sh:65-72` (embedded Python); **separately** patch `session-cleanup.sh:20` which has its own independent hardcoded `CONFIG_FILE=".claude/ll-config.json"` and does NOT source `lib/common.sh` — this script needs its own independent fix
-3. **State file paths (Shell)** — Resolve `.claude/` state file references in `context-monitor.sh:181,238,309`, `precompact-state.sh:28-29,66`, `session-cleanup.sh:14,20`, and `session-start.sh:13` to check an `LL_STATE_DIR` variable (defaulting to `.claude/`) that the JS plugin can set to `.opencode/` at session start
+3. **State file paths (Shell + Python CLIs)** — Replace hardcoded `.claude/` state paths with `${LL_STATE_DIR:-.claude}`: change `precompact-state.sh:28` from `STATE_DIR=".claude"` to `STATE_DIR="${LL_STATE_DIR:-.claude}"` (covers all 3 derived paths in that file); apply same to `context-monitor.sh:181,238,309`, `session-cleanup.sh:14,20`, and `session-start.sh:13`; add `os.environ["LL_STATE_DIR"] = ".opencode"` to 4 Python CLI entry points (`cli/auto.py:71`, `cli/parallel.py:165`, `cli/loop/run.py:70`, `cli/sprint/run.py:103`) when OpenCode context detected — mirrors existing `LL_HANDOFF_THRESHOLD` injection pattern at those same lines; also update `subprocess_utils.py:28` (`CONTINUATION_PROMPT_PATH`) to probe `.opencode/ll-continue-prompt.md` first
 4. **user_messages.py log path** — Update `user_messages.py:338` (`Path.home() / ".claude" / "projects"`) and `user_messages.py:703` (`Path.cwd() / ".claude"`) to probe OpenCode log path when Claude Code path doesn't exist; follow `get_project_folder()` pattern
-5. **OpenCode plugin scaffold** — Create `opencode-plugin/` with `package.json` and `index.ts` that imports `@opencode-ai/plugin` types and exports a no-op plugin (validates the plumbing and confirms runtime — Bun vs Node — before committing to `Bun.shell` API in later steps)
+5. **OpenCode plugin scaffold** — Create `opencode-plugin/` with `package.json` (`"name": "@ll/opencode-plugin"`) and `index.ts` that imports `Plugin` from `@opencode-ai/plugin` and exports a no-op handler; **Bun runtime confirmed** — `ctx.$` is the `BunShell` instance, use `ctx.$.shell(["cmd", "arg"])` syntax in later steps (not `Bun.shell` global)
 6. **Port session-start logic** — Implement `session.created` handler: load config following `session-start.sh` logic; apply `.opencode/ll.local.md` overrides; confirm shell execution API based on step 5 findings
 7. **Port context monitor** — Implement `tool.execute.after` handler: replicate token estimation and handoff trigger from `context-monitor.sh` (key state files: `.opencode/ll-context-state.json`, `.opencode/ll-continue-prompt.md`)
 8. **Port duplicate ID check** — Implement `tool.execute.before` handler for Write/Edit tools on `.issues/` paths, replicating `check-duplicate-issue-id.sh` logic
 9. **Port compact/cleanup hooks** — Implement `session.compacted` and `session.idle` handlers (key state file: `.opencode/ll-precompact-state.json`)
-10. **Update `ll:init` skill** — In `skills/init/SKILL.md`: detect OpenCode presence via `opencode.json` file or `opencode` binary in PATH; offer to register `./opencode-plugin/index.ts` in `opencode.json`; create `.opencode/ll-config.json` if absent
+10. **Update `ll:init` skill** — In `skills/init/SKILL.md`: detect OpenCode presence via `opencode.json` file or `opencode` binary in PATH; offer to register `@ll/opencode-plugin` using `"plugin"` key (singular) in `opencode.json`; create `.opencode/ll-config.json` if absent; fix missing gitignore entries at lines 313-319 — add `.claude/ll-precompact-state.json` and `.claude/ll-continue-prompt.md` (currently absent), then add all 6 `.opencode/` variants for OpenCode users
 11. **Document and test** — Add `test_config.py` OpenCode path tests; update `docs/ARCHITECTURE.md`; update `CONTRIBUTING.md` with OpenCode setup
 
 ## Impact
@@ -222,43 +246,46 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-03-19 (post-refine-issue run 3)_
+_Updated by `/ll:confidence-check` on 2026-03-20 (post-refine-issue run 5 — OpenCode API verified)_
 
-**Readiness Score**: 70/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 28/100 → VERY LOW
+**Readiness Score**: 82/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 36/100 → VERY LOW
 
 ### Readiness Scores
 
 | Criterion | Score | Details |
 |-----------|-------|---------|
-| No duplicate implementations | 20/20 | `opencode-plugin/` doesn't exist; no OpenCode code anywhere in Python/shell layer |
-| Architecture compliance | 10/20 | Python/shell changes fit existing patterns; JS/TS plugin is uncharted — no tsconfig, package manager, or JS conventions in repo |
-| Requirements clarity | 15/20 | 10 clear ACs, Option B chosen, event mapping table specified; `@opencode-ai/plugin` SDK and event API not verified against actual OpenCode spec |
-| Issue well-specified | 15/20 | 11 concrete steps with file:line refs; JS runtime (Bun vs Node) and `LL_STATE_DIR` signaling mechanism still undesigned |
-| Dependencies satisfied | 10/20 | All Python/shell files exist (verified); `@opencode-ai/plugin` SDK unverified; no JS tooling infrastructure in repo |
+| No duplicate implementations | 20/20 | `opencode-plugin/` doesn't exist; zero OpenCode code in Python/shell layer (grep-confirmed) |
+| Architecture compliance | 12/20 | Python/shell changes fit existing patterns; JS/TS plugin needs new Bun tooling infrastructure — runtime confirmed, SDK confirmed, but no existing JS conventions in repo |
+| Requirements clarity | 18/20 | 10 ACs, Option B chosen, `@opencode-ai/plugin` v1.2.27 verified, Bun confirmed, all 6 events verified, `opencode.json` key corrected; minor gap: OpenCode detection logic in Python CLIs undesigned |
+| Issue well-specified | 17/20 | 11 concrete steps with file:line refs; LL_STATE_DIR mechanism designed (mirrors `LL_HANDOFF_THRESHOLD` at `auto.py:71`); minor gaps: JS test tooling setup, OpenCode detection heuristic |
+| Dependencies satisfied | 15/20 | All Python/shell files verified; `@opencode-ai/plugin` SDK confirmed on npm; no Bun/JS tooling in repo (in-scope setup, not a pre-existing dep) |
 
 ### Outcome Confidence Scores
 
 | Criterion | Score | Details |
 |-----------|-------|---------|
 | Complexity | 0/25 | 13+ existing files across 3 language subsystems (Python/Shell/TS) + 6 new JS files |
-| Test coverage | 18/25 | `test_config.py`, `test_hooks_integration.py`, `test_user_messages.py`, `test_state.py` cover Python/shell changes (>50%); no JS test infra for 6 new plugin files |
-| Ambiguity | 10/25 | JS runtime (Bun vs Node) unresolved; `LL_STATE_DIR` signaling mechanism undesigned; `@opencode-ai/plugin` event API unverified |
+| Test coverage | 18/25 | `test_config.py`, `test_hooks_integration.py`, `test_user_messages.py` cover Python/shell (>50%); no JS test infra for 6 new plugin files |
+| Ambiguity | 18/25 | Major unknowns resolved (Bun confirmed, events verified, LL_STATE_DIR designed, opencode.json key corrected); minor open: OpenCode detection logic in Python CLIs, Bun test tooling setup |
 | Change surface | 0/25 | `config/core.py` imported by 60 files (114 occurrences, grep-confirmed); very wide blast radius |
 
 ### Concerns
-- **New tech stack**: The JS/TS opencode-plugin introduces a language/runtime (likely Bun) with no existing infrastructure in the repo — no tsconfig, no package management conventions, no CI coverage for JS
-- **SDK dependency unverified**: `@opencode-ai/plugin` types package existence and API stability not confirmed; event names (`session.created`, `tool.execute.before`, etc.) must be validated against the actual OpenCode plugin spec before porting hook logic
-- **`session-cleanup.sh` independent probe**: Run 3 found that `session-cleanup.sh` does NOT use `ll_resolve_config()` and has its own independent hardcoded `CONFIG_FILE=".claude/ll-config.json"` — patching `lib/common.sh` alone will miss this script
+- **No JS/Bun tooling in repo**: Step 5 scaffold must establish `package.json`, Bun version pinning, and import resolution before steps 6-9 can proceed; treat as prerequisite
+- **Config blast radius**: `config/core.py` with 60 importers — path-fallback change is additive and backward-safe, but write `test_config.py` tests BEFORE modifying `core.py:74-75`
+- **OpenCode detection logic undesigned**: Python CLIs need a reliable heuristic to set `os.environ["LL_STATE_DIR"] = ".opencode"` — detection signal (presence of `opencode.json`? `OPENCODE_SESSION` env var?) not yet specified
+- **`session-cleanup.sh` independent probe**: Does NOT use `ll_resolve_config()` — has its own independent hardcoded `CONFIG_FILE=".claude/ll-config.json"` at line 20; patching `lib/common.sh` alone will miss this script
 
 ### Outcome Risk Factors
-- **JS runtime not pinned**: "Bun shell" is mentioned in step 6 but not confirmed; if OpenCode plugins run under Node, `Bun.shell` API won't be available — step 5 scaffold is explicitly designed to surface this; do not skip
-- **Config blast radius**: 60 files import from `little_loops.config` (114 occurrences, grep-confirmed); path-fallback change is additive and backward-safe, but write tests in `test_config.py` BEFORE modifying `core.py:74-75`
-- **Integration test infrastructure**: No JS test runner exists; step 11 integration test deliverable requires establishing JS tooling first — plan this as a setup task, not an afterthought
-- **State file signaling mechanism undesigned**: `LL_STATE_DIR` proposed in step 3 as mechanism for JS plugin to set state dir for shell scripts at session start — this cross-language signaling is not designed; needs explicit design before step 6
-- **Complexity tier**: 13 existing files + 6 new JS files across Python/Shell/TypeScript — sequential execution required (step 5 scaffold must complete before steps 6–9 begin)
+- **Complexity**: 13+ existing files + 6 new JS files across 3 subsystems — strict sequential execution required (step 5 scaffold → steps 6-9)
+- **Change surface**: `config/core.py` changes affect 60 importers — additive pattern is safe, but test-first (`test_config.py`) is non-negotiable before modifying `core.py:74-75`
+- **JS test gap**: No Bun test runner; 6 new plugin files have zero automated coverage at completion; establish Bun testing setup in step 11 as a scope item, not an afterthought
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-20T00:39:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T00:37:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:30:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T00:29:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:25:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:refine-issue` - 2026-03-20T00:22:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:18:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

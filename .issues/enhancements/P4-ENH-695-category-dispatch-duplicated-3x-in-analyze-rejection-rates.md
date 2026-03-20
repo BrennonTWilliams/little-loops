@@ -3,6 +3,8 @@ discovered_commit: 3e9beeaf2bbe8608104beb89fbc7e2e2259310d8
 discovered_branch: main
 discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-695: Category dispatch logic duplicated 3x in `analyze_rejection_rates`
@@ -61,6 +63,7 @@ A single helper function `_update_rejection_metrics(metrics: RejectionMetrics, c
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 
 ---
 
