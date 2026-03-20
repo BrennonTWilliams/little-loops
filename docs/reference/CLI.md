@@ -24,6 +24,7 @@ These flags appear across multiple tools:
 | `--config` | | Path to project root (default: current directory) | `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-sync` |
 | `--timeout` | `-t` | Timeout in seconds per issue | `ll-parallel`, `ll-sprint run` |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
+| `--context-limit` | | Override context window token estimate (default: from config or model-detected) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-sprint analyze`, `ll-verify-docs`, `ll-check-links` |
 
 ---
@@ -47,7 +48,10 @@ Process all backlog issues sequentially in priority order.
 | `--type` | | Process only these types: `BUG`, `FEAT`, `ENH` |
 | `--config` | | Path to project root |
 | `--category` | `-c` | Filter to category: `bugs`, `features`, `enhancements` |
+| `--priority` | `-p` | Comma-separated priority levels to process (e.g., `P1,P2`) |
+| `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
+| `--context-limit` | | Override context window token estimate |
 
 **Examples:**
 ```bash
@@ -60,6 +64,7 @@ ll-auto --only BUG-001,BUG-002   # Process only specific issues
 ll-auto --skip BUG-003           # Skip a specific issue
 ll-auto --type BUG               # Process only bugs
 ll-auto --type BUG,ENH           # Process bugs and enhancements
+ll-auto --priority P1,P2         # Only process P1 and P2 issues
 ll-auto --handoff-threshold 90   # Trigger handoff at 90% context usage
 ```
 
@@ -93,7 +98,9 @@ Process issues concurrently using isolated git worktrees.
 | `--type` | | Process only these types: `BUG`, `FEAT`, `ENH` |
 | `--max-issues` | `-m` | Limit total issues processed |
 | `--config` | | Path to project root |
+| `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
+| `--context-limit` | | Override context window token estimate |
 
 **Examples:**
 ```bash
@@ -148,6 +155,7 @@ Execute a sprint.
 | `--skip-analysis` | | Skip dependency analysis |
 | `--type` | | Filter by type |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
+| `--context-limit` | | Override context window token estimate |
 
 #### `ll-sprint list` / `ll-sprint l`
 
@@ -227,6 +235,7 @@ Run a loop.
 | Argument/Flag | Short | Description |
 |---------------|-------|-------------|
 | `loop` | | Loop name or path |
+| `input` | | (Optional positional) Input string injected as `context['input']` (or the key declared in `input_key`) |
 | `--max-iterations` | `-n` | Override iteration limit |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--no-llm` | | Disable LLM evaluation |
@@ -238,8 +247,10 @@ Run a loop.
 | `--queue` | | Wait for conflicting loops to finish |
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
+| `--builtin` | | Load loop from built-ins directory (bypasses project `.loops/` lookup) |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
+| `--context-limit` | | Override context window token estimate |
 
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
 
@@ -278,6 +289,7 @@ Resume an interrupted loop.
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
+| `--context-limit` | | Override context window token estimate |
 
 #### `ll-loop history <loop>` / `ll-loop h <loop>`
 
@@ -408,7 +420,7 @@ Search issues with filters and sorting.
 | `--since` | Only issues on or after DATE (YYYY-MM-DD) |
 | `--until` | Only issues on or before DATE (YYYY-MM-DD) |
 | `--date-field` | Date field to filter on: `discovered` (default) uses `discovered_date` frontmatter; `updated` uses the last `## Session Log` entry timestamp, falling back to file mtime |
-| `--sort` | Sort field: `priority` (default), `id`, `date`, `type`, `title` |
+| `--sort` | Sort field: `priority` (default), `id`, `date`, `type`, `title`, `created`, `completed`, `confidence`, `outcome`, `refinement` |
 | `--asc` / `--desc` | Sort direction |
 | `--format` | Output format: `table` (default), `list`, `ids` |
 | `--limit` | Cap results at N |
