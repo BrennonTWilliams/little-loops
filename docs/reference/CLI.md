@@ -406,7 +406,7 @@ Search issues with filters and sorting.
 | `--label` | Filter by label tag (repeatable) |
 | `--since` | Only issues on or after DATE (YYYY-MM-DD) |
 | `--until` | Only issues on or before DATE (YYYY-MM-DD) |
-| `--date-field` | Date field to filter on: `discovered` (default), `updated` |
+| `--date-field` | Date field to filter on: `discovered` (default) uses `discovered_date` frontmatter; `updated` uses the last `## Session Log` entry timestamp, falling back to file mtime |
 | `--sort` | Sort field: `priority` (default), `id`, `date`, `type`, `title` |
 | `--asc` / `--desc` | Sort direction |
 | `--format` | Output format: `table` (default), `list`, `ids` |

@@ -30,6 +30,37 @@ def _parse_discovered_date(content: str) -> date | None:
         return None
 
 
+def _parse_updated_date(content: str, file_path: "Path") -> "date | None":
+    """Extract last-activity date from the ## Session Log section, or fall back to file mtime.
+
+    Scans for the most recent timestamp entry in the Session Log section.
+    Entry format: `- \`/ll:cmd\` - YYYY-MM-DDTHH:MM:SS - \`path\``
+    Falls back to file mtime when no session log timestamps are found.
+    """
+    import re as _re
+    from pathlib import Path as _Path
+
+    _SESSION_LOG_RE = _re.compile(
+        r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", _re.MULTILINE | _re.DOTALL
+    )
+    _TIMESTAMP_RE = _re.compile(r"- `[^`]+` - (\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}")
+
+    match = _SESSION_LOG_RE.search(content)
+    if match:
+        timestamps = _TIMESTAMP_RE.findall(match.group(1))
+        if timestamps:
+            try:
+                return date.fromisoformat(timestamps[-1])
+            except ValueError:
+                pass
+
+    # Fallback to file mtime
+    try:
+        return date.fromtimestamp(file_path.stat().st_mtime)
+    except OSError:
+        return None
+
+
 def _parse_labels_from_content(content: str) -> list[str]:
     """Extract labels from ## Labels section (backtick-wrapped items)."""
     match = re.search(r"## Labels\s*\n(.*?)(?:\n##|\Z)", content, re.DOTALL)
@@ -194,6 +225,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
         or until_date
         or getattr(args, "label", None)
         or sort_field in {"date", "created", "completed"}
+        or getattr(args, "date_field", "discovered") == "updated"
     )
 
     # Build enriched list: (IssueInfo, status, discovered_date, completed_date)
@@ -242,8 +274,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
         if date_field == "discovered":
             ref_date = disc_date
         else:
-            # "updated" not stored; fall back to discovered_date
-            ref_date = disc_date
+            ref_date = _parse_updated_date(content, issue.path)
 
         if since_date and (ref_date is None or ref_date < since_date):
             continue

@@ -527,6 +527,112 @@ class TestSearchDateFilter:
 
 
 # ---------------------------------------------------------------------------
+# --date-field=updated
+# ---------------------------------------------------------------------------
+
+
+class TestSearchDateFieldUpdated:
+    """Tests for --date-field=updated using Session Log timestamps or mtime fallback."""
+
+    @pytest.fixture
+    def updated_issues_dir(self, temp_project_dir: Path, sample_config: dict) -> Path:
+        """Issue files with varied Session Log timestamps for date-field=updated tests."""
+        import json
+
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config, indent=2))
+
+        issues_base = temp_project_dir / ".issues"
+        bugs_dir = issues_base / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Issue with session log entry in March 2026, discovered in January 2026
+        (bugs_dir / "P1-BUG-010-session-march.md").write_text(
+            "---\ndiscovered_date: 2026-01-01T00:00:00Z\n---\n"
+            "# BUG-010: Issue with session log in March\n\n## Summary\nSome bug.\n\n"
+            "## Session Log\n"
+            "- `/ll:refine-issue` - 2026-03-15T10:00:00 - `/some/path.jsonl`\n"
+        )
+
+        # Issue with session log entry in January 2026, discovered in January 2026
+        (bugs_dir / "P2-BUG-011-session-january.md").write_text(
+            "---\ndiscovered_date: 2026-01-05T00:00:00Z\n---\n"
+            "# BUG-011: Issue with session log in January\n\n## Summary\nAnother bug.\n\n"
+            "## Session Log\n"
+            "- `/ll:verify-issues` - 2026-01-20T12:00:00 - `/some/path.jsonl`\n"
+        )
+
+        # Issue with no session log (mtime fallback) — touch to a known recent mtime
+        no_log_path = bugs_dir / "P3-BUG-012-no-session-log.md"
+        no_log_path.write_text(
+            "---\ndiscovered_date: 2026-01-10T00:00:00Z\n---\n"
+            "# BUG-012: Issue without session log\n\n## Summary\nNo log here.\n"
+        )
+
+        return issues_base
+
+    def test_updated_since_filters_by_session_log(
+        self, temp_project_dir: Path, updated_issues_dir: Path
+    ) -> None:
+        code, out = _run_search(
+            temp_project_dir, "--date-field", "updated", "--since", "2026-03-01"
+        )
+        assert code == 0
+        # BUG-010 has a March session log entry — should be included
+        assert "BUG-010" in out
+        # BUG-011 has a January session log entry — should be excluded
+        assert "BUG-011" not in out
+
+    def test_updated_until_filters_by_session_log(
+        self, temp_project_dir: Path, updated_issues_dir: Path
+    ) -> None:
+        code, out = _run_search(
+            temp_project_dir, "--date-field", "updated", "--until", "2026-02-01"
+        )
+        assert code == 0
+        # BUG-011 has a January session log entry — should be included
+        assert "BUG-011" in out
+        # BUG-010 has a March session log entry — should be excluded
+        assert "BUG-010" not in out
+
+    def test_updated_uses_last_session_log_entry(
+        self, temp_project_dir: Path, sample_config: dict, updated_issues_dir: Path
+    ) -> None:
+        """When multiple session log entries exist, the last one wins."""
+        import json
+
+        bugs_dir = updated_issues_dir / "bugs"
+        (bugs_dir / "P1-BUG-020-multi-entry.md").write_text(
+            "---\ndiscovered_date: 2026-01-01T00:00:00Z\n---\n"
+            "# BUG-020: Issue with multiple session entries\n\n## Summary\nMulti.\n\n"
+            "## Session Log\n"
+            "- `/ll:verify-issues` - 2026-01-10T08:00:00 - `/some/path.jsonl`\n"
+            "- `/ll:refine-issue` - 2026-03-20T14:30:00 - `/some/path.jsonl`\n"
+        )
+        code, out = _run_search(
+            temp_project_dir, "--date-field", "updated", "--since", "2026-03-01"
+        )
+        assert code == 0
+        assert "BUG-020" in out
+
+    def test_updated_differs_from_discovered_when_session_log_present(
+        self, temp_project_dir: Path, updated_issues_dir: Path
+    ) -> None:
+        """--date-field=updated and --date-field=discovered should differ when session log exists."""
+        code_upd, out_upd = _run_search(
+            temp_project_dir, "--date-field", "updated", "--since", "2026-03-01"
+        )
+        code_disc, out_disc = _run_search(
+            temp_project_dir, "--date-field", "discovered", "--since", "2026-03-01"
+        )
+        assert code_upd == 0
+        assert code_disc == 0
+        # BUG-010 discovered in Jan but session-log in March — included with updated, not with discovered
+        assert "BUG-010" in out_upd
+        assert "BUG-010" not in out_disc
+
+
+# ---------------------------------------------------------------------------
 # Sorting
 # ---------------------------------------------------------------------------
 

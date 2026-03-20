@@ -101,9 +101,19 @@ Add `_parse_updated_date(content: str, file_path: Path) -> date | None` to `sear
 
 `feature`, `cli`, `issues`
 
+## Resolution
+
+- **Action**: Implemented
+- **Completed**: 2026-03-20
+- `_parse_updated_date()` added to `search.py` — parses last Session Log timestamp, falls back to file mtime
+- `need_content` guard updated to include `date_field == "updated"` so file content is read when needed
+- Stub replaced: `else: ref_date = _parse_updated_date(content, issue.path)`
+- 4 tests added in `TestSearchDateFieldUpdated`
+- `docs/reference/CLI.md` updated to document `updated` semantics
+
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Completed** | Created: 2026-03-19 | Completed: 2026-03-20 | Priority: P4
 
 ## Verification Notes
 
@@ -116,6 +126,8 @@ Add `_parse_updated_date(content: str, file_path: Path) -> date | None` to `sear
 - **Minor inaccuracy**: Anchor says `in function _load_issues_with_status` but the code lives in `cmd_search` (line 149). Does not affect validity.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-20T18:30:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6da57837-b581-4462-8eff-4aa7e1e27830.jsonl`
+- `/ll:ready-issue` - 2026-03-20T18:30:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6da57837-b581-4462-8eff-4aa7e1e27830.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2af7f4f8-73af-4315-81b7-60727567c63e.jsonl`
 - `/ll:refine-issue` - 2026-03-20T18:19:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4b6ef1b-b89b-45e2-a89f-d803b08bf7d7.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
