@@ -789,6 +789,8 @@ discover ──→ execute ──→ check_concrete ──→ check_semantic ─
 no items remaining ──→ done
 ```
 
+_(simplified — omits optional `check_mcp` and `check_skill` phases)_
+
 The critical safeguard in multi-item loops is `max_retries` + `on_retry_exhausted: advance` on the `execute` state — without it, one item that never passes evaluation consumes the entire `max_iterations` budget:
 
 ```yaml
