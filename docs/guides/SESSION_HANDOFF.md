@@ -284,6 +284,7 @@ Run /ll:handoff to generate one, or specify a custom path:
       "tool_call_base": 100,
       "bash_output_per_char": 0.3
     },
+    "use_transcript_baseline": true,
     "state_file": ".claude/ll-context-state.json"
   },
   "continuation": {
@@ -308,6 +309,7 @@ Run /ll:handoff to generate one, or specify a custom path:
 | `context_monitor.estimate_weights.read_per_line` | `10` | Token cost per line for Read tool calls |
 | `context_monitor.estimate_weights.tool_call_base` | `100` | Base token overhead per tool call |
 | `context_monitor.estimate_weights.bash_output_per_char` | `0.3` | Token cost per character for Bash output |
+| `context_monitor.use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Improves accuracy from ±30–50% to ±5–15%. Falls back to pure heuristics when unavailable. |
 | `continuation.enabled` | `true` | Enable session continuation features |
 | `continuation.auto_detect_on_session_start` | `true` | Automatically detect and offer to resume an existing continuation prompt when a new session starts |
 | `continuation.include_todos` | `true` | Include current todo list state in deep mode handoff output |
