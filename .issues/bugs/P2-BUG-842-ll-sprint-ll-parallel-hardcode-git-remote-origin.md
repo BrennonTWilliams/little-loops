@@ -5,6 +5,8 @@ priority: P2
 status: open
 discovered_date: 2026-03-20
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 72
 ---
 
 # BUG-842: ll-sprint and ll-parallel hardcode git remote name "origin"
@@ -57,6 +59,26 @@ Root config gap:
 - **Anchor**: `class ParallelConfig`
 - **Cause**: No `remote_name` field exists; config loading ignores any `remote_name` in `ll-config.json`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Corrected function names and exact line numbers:**
+- Primary site: `_update_branch_base()` (not `_sync_with_base()`) in `worker_pool.py:830–877`
+  - `worker_pool.py:847` — `["git", "fetch", "origin", base]` (hardcoded)
+  - `worker_pool.py:855` — error string `f"Failed to fetch origin/{base}: ..."` (hardcoded)
+  - `worker_pool.py:859` — `["git", "rebase", f"origin/{base}"]` (hardcoded)
+  - `worker_pool.py:874` — error string `f"Failed to rebase onto origin/{base}: ..."` (hardcoded)
+  - **Fetch failure**: immediately returns `(False, error)` at line 855 — no fallback
+- Secondary site: `_handle_conflict()` (not `_sync_branch_with_base()`) in `merge_coordinator.py:997–1005`
+  - `merge_coordinator.py:999` — `["git", "fetch", "origin", base]` (hardcoded)
+  - Already has fetch-fail fallback: `rebase_target = f"origin/{base}" if fetch ok else base` (line 1005)
+- **Two additional hardcoded "origin" sites** not mentioned above (in `_process_merge()`):
+  - `merge_coordinator.py:794` — `["pull", "--rebase", "origin", base]` (hardcoded)
+  - `merge_coordinator.py:818` — `["pull", "--no-rebase", "origin", base]` (hardcoded, merge-strategy fallback)
+- **Config bridge gap**: `scripts/little_loops/config/automation.py:40–86` — `ParallelAutomationConfig` is the intermediate dataclass between `ll-config.json` and `ParallelConfig`. It must also receive `remote_name` for the field to be read from config.
+- **`orchestrator.py`** also contains hardcoded "origin" references (confirmed by file scan; scope TBD).
+
 ## Proposed Solution
 
 **Step 1 — Add `remote_name` to `ParallelConfig`** (`types.py`):
@@ -64,7 +86,7 @@ Root config gap:
 remote_name: str = "origin"  # Git remote name to use for fetching base branch
 ```
 
-**Step 2 — Fix `worker_pool.py`** in `_sync_with_base()`:
+**Step 2 — Fix `worker_pool.py`** in `_update_branch_base()`:
 ```python
 remote = self.parallel_config.remote_name
 fetch_result = subprocess.run(["git", "fetch", remote, base], ...)
@@ -77,11 +99,15 @@ self.logger.info(f"[{issue_id}] Rebased branch onto {rebase_target}")
 return True, ""
 ```
 
-**Step 3 — Fix `merge_coordinator.py`** in `_sync_branch_with_base()`:
+**Step 3 — Fix `merge_coordinator.py`** in `_handle_conflict()` and `_process_merge()`:
 ```python
 remote = self.config.remote_name
+# _handle_conflict(): replace hardcoded "origin" in fetch + rebase_target logic
 fetch_result = subprocess.run(["git", "fetch", remote, base], ...)
 rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
+# _process_merge(): replace "origin" in pull --rebase and pull --no-rebase commands
+["git", "pull", "--rebase", remote, base]
+["git", "pull", "--no-rebase", remote, base]
 ```
 
 **Step 4 — Document the new config field** in `ll-config.json` schema and `docs/reference/CLI.md`.
@@ -89,38 +115,43 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/types.py` — add `remote_name` field to `ParallelConfig`
-- `scripts/little_loops/parallel/worker_pool.py` — use config remote + add graceful fallback
-- `scripts/little_loops/parallel/merge_coordinator.py` — use config remote
+- `scripts/little_loops/parallel/types.py` — add `remote_name` field to `ParallelConfig` (after `base_branch` at line ~350); update `to_dict()` and `from_dict()` (lines ~382–450)
+- `scripts/little_loops/parallel/worker_pool.py` — replace all 4 `"origin"` literals in `_update_branch_base()` (lines 847, 855, 859, 874); add fetch-fail fallback
+- `scripts/little_loops/parallel/merge_coordinator.py` — replace `"origin"` in `_handle_conflict()` (line 999) and `_process_merge()` (lines 794, 818)
+- `scripts/little_loops/config/automation.py` — add `remote_name` to `ParallelAutomationConfig` (lines ~40–86) and its `from_dict()` — **required to wire `ll-config.json` → `ParallelConfig`**
+- `scripts/little_loops/config/core.py` — thread `self._parallel.remote_name` into `create_parallel_config()` (lines 253–327)
+- `config-schema.json` — add `remote_name` string property to `parallel` block (before `additionalProperties: false` at line 249)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/parallel/worker_pool.py` — reads `ParallelConfig`
-- `scripts/little_loops/parallel/merge_coordinator.py` — reads `ParallelConfig`
-- `scripts/little_loops/parallel/coordinator.py` — constructs `ParallelConfig` from ll-config.json
+- `scripts/little_loops/parallel/orchestrator.py` — no git-remote `"origin"` hardcoding found; all `origin`-matches are Python variable names (`_original_sigint`, `_original_sigterm`, `original_path`) — no changes needed
+- `scripts/little_loops/cli/sprint/run.py` — invokes parallel module; no `"origin"` string literals found — no changes needed
+- `scripts/little_loops/cli/sprint/create.py` / `edit.py` — no `"origin"` string literals found — no changes needed
 
 ### Similar Patterns
-- `merge_coordinator.py` already has the fallback pattern; `worker_pool.py` should match it
+- `merge_coordinator.py:1005` already has the fetch-fail fallback pattern (`rebase_target = f"origin/{base}" if fetch ok else base`); `worker_pool.py:854–855` should match it
+- All other `ParallelConfig` str fields use `field_name: str = "default"` syntax (no `field()` wrapper needed)
+- `ParallelAutomationConfig.from_dict()` always uses `data.get("key", default)` for safe deserialization
 
 ### Tests
-- `scripts/tests/test_worker_pool.py` (if exists) — add tests for non-"origin" remote name
-- `scripts/tests/test_parallel_types.py` (if exists) — verify new field defaults
+- `scripts/tests/test_worker_pool.py` — add test for non-`"origin"` remote name; see `default_parallel_config` fixture at lines 61–74
+- `scripts/tests/test_parallel_types.py` — add to `test_default_values`, `test_from_dict`, `test_roundtrip_serialization` (lines 964–1016) following the `base_branch` field pattern at line 989
+- `scripts/tests/test_merge_coordinator.py` — update `default_config` fixture at lines 65–78 if non-default remote is needed
 
 ### Documentation
 - `docs/reference/CLI.md` — document `parallel.remote_name` config option
-- `config-schema.json` — add `remote_name` to `parallel` schema definition
+- `docs/development/MERGE-COORDINATOR.md` — directly references `_sync_with_base`, `_sync_branch_with_base`, and the `"origin"` hardcoding; update with corrected function names and new field
 
 ### Configuration
-- `config-schema.json` — `parallel` object needs `remote_name` string property
+- `config-schema.json` — `parallel` object needs `remote_name` string property; example pattern from existing `command_prefix` property (around line 230)
 
 ## Implementation Steps
 
-1. Add `remote_name: str = "origin"` to `ParallelConfig` dataclass in `types.py`
-2. Update `worker_pool.py` `_sync_with_base()` to read `self.parallel_config.remote_name` and fall back gracefully on fetch failure
-3. Update `merge_coordinator.py` to read `self.config.remote_name` instead of `"origin"`
-4. Add `remote_name` to `config-schema.json` under `parallel` properties
-5. Update `docs/reference/CLI.md` to document the new config field
-6. Add/update tests for the new behavior
-7. Verify with `ll-sprint run` in a repo with a non-"origin" remote name
+1. Add `remote_name: str = "origin"` to `ParallelConfig` (`types.py`) and `ParallelAutomationConfig` (`config/automation.py`); wire through `create_parallel_config()` in `config/core.py`
+2. Replace all 4 hardcoded `"origin"` literals in `worker_pool.py` `_update_branch_base()` and add fetch-fail fallback
+3. Replace all 3 hardcoded `"origin"` literals in `merge_coordinator.py` (`_handle_conflict()` + `_process_merge()`)
+4. Add `remote_name` string property to `config-schema.json` under `parallel`; update `docs/reference/CLI.md`
+5. Add tests: `test_parallel_types.py` roundtrip for `remote_name`, `test_worker_pool.py` non-`"origin"` remote test
+6. Verify end-to-end with `ll-sprint run` in a repo whose remote is not named `"origin"`
 
 ## Impact
 
@@ -141,6 +172,9 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 `bug`, `parallel`, `ll-sprint`, `ll-parallel`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-20T20:13:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d10017-26b1-49e5-af25-cfb58245ab95.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/594d1b83-cf85-4943-8fc1-ffa883e482c8.jsonl`
+- `/ll:refine-issue` - 2026-03-20T19:30:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e8b60e0-04d0-42b9-8fe6-3dfdc7801672.jsonl`
 
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b275638-5179-4c71-9525-1b50451e1ba7.jsonl`
 
