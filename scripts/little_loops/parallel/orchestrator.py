@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import signal
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -497,7 +498,7 @@ class ParallelOrchestrator:
             self.state.started_at = datetime.now().isoformat()
 
     def _save_state(self) -> None:
-        """Save current state to file."""
+        """Save current state to file using an atomic write."""
         with self._state_lock:
             self.state.last_checkpoint = datetime.now().isoformat()
             self.state.completed_issues = self.queue.completed_ids
@@ -505,7 +506,15 @@ class ParallelOrchestrator:
             self.state.in_progress_issues = self.queue.in_progress_ids
 
             state_file = self.repo_path / self.parallel_config.state_file
-            state_file.write_text(json.dumps(self.state.to_dict(), indent=2))
+            data = json.dumps(self.state.to_dict(), indent=2)
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=state_file.parent, suffix=".tmp")
+            try:
+                with os.fdopen(tmp_fd, "w") as f:
+                    f.write(data)
+                os.replace(tmp_path, state_file)
+            except Exception:
+                os.unlink(tmp_path)
+                raise
 
     def _cleanup_state(self) -> None:
         """Remove state file on successful completion."""

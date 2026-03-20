@@ -6,6 +6,8 @@ Provides state management for resume capability during automated processing.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -117,10 +119,26 @@ class StateManager:
         return None
 
     def save(self) -> None:
-        """Save current state to file."""
+        """Save current state to file using an atomic write.
+
+        Writes to a temporary file in the same directory, then renames it over
+        the target path via os.replace.  This ensures the state file is always
+        either the previous valid version or the new valid version — never an
+        empty or partially-written file.
+        """
         try:
             self.state.timestamp = datetime.now().isoformat()
-            self.state_file.write_text(json.dumps(self.state.to_dict(), indent=2))
+            data = json.dumps(self.state.to_dict(), indent=2)
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=self.state_file.parent, suffix=".tmp"
+            )
+            try:
+                with os.fdopen(tmp_fd, "w") as f:
+                    f.write(data)
+                os.replace(tmp_path, self.state_file)
+            except Exception:
+                os.unlink(tmp_path)
+                raise
             self.logger.info(f"State saved to {self.state_file}")
         except Exception as e:
             self.logger.error(f"Failed to save state: {e}")

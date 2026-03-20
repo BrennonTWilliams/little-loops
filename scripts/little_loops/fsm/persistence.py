@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -168,15 +170,25 @@ class StatePersistence:
         self.running_dir.mkdir(parents=True, exist_ok=True)
 
     def save_state(self, state: LoopState) -> None:
-        """Save current state to file.
+        """Save current state to file using an atomic write.
 
-        Updates the updated_at timestamp before saving.
+        Updates the updated_at timestamp before saving.  Writes to a temporary
+        file first, then renames it over the target to avoid leaving a corrupt
+        or empty state file if the process is killed mid-write.
 
         Args:
             state: LoopState to save
         """
         state.updated_at = _iso_now()
-        self.state_file.write_text(json.dumps(state.to_dict(), indent=2))
+        data = json.dumps(state.to_dict(), indent=2)
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=self.state_file.parent, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w") as f:
+                f.write(data)
+            os.replace(tmp_path, self.state_file)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
 
     def load_state(self) -> LoopState | None:
         """Load state from file, or None if not exists.

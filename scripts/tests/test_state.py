@@ -7,7 +7,7 @@ import threading
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -551,3 +551,69 @@ class TestStateConcurrency:
         # No errors and all reads completed
         assert len(errors) == 0, f"Errors occurred: {errors}"
         assert read_count[0] == 50
+
+
+class TestStateManagerAtomicSave:
+    """Tests for BUG-821: StateManager.save must use atomic write."""
+
+    def test_save_uses_os_replace(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """Save must use os.replace (atomic rename) rather than write_text directly."""
+        manager = StateManager(temp_state_file, mock_logger)
+        manager.state.phase = "testing"
+
+        replace_calls: list[tuple[str, str]] = []
+        import os as _os
+
+        original_replace = _os.replace
+
+        def capture_replace(src: str, dst: str) -> None:
+            replace_calls.append((src, str(dst)))
+            original_replace(src, dst)
+
+        with patch("os.replace", side_effect=capture_replace):
+            manager.save()
+
+        assert len(replace_calls) == 1, "os.replace must be called exactly once for atomic write"
+        assert Path(replace_calls[0][1]) == temp_state_file
+
+    def test_save_no_tmp_files_on_success(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """No .tmp files should remain in the directory after a successful save."""
+        manager = StateManager(temp_state_file, mock_logger)
+        manager.state.completed_issues = ["BUG-001"]
+
+        manager.save()
+
+        tmp_files = list(temp_state_file.parent.glob("*.tmp"))
+        assert tmp_files == [], f"Orphaned tmp files after save: {tmp_files}"
+
+    def test_save_preserves_existing_file_on_write_failure(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """If the write fails mid-way, the original state file must be preserved."""
+        original = {
+            "phase": "initial",
+            "current_issue": "",
+            "timestamp": "",
+            "completed_issues": [],
+            "failed_issues": {},
+            "attempted_issues": [],
+            "timing": {},
+            "corrections": {},
+        }
+        temp_state_file.write_text(json.dumps(original))
+
+        manager = StateManager(temp_state_file, mock_logger)
+        manager.load()
+        manager.state.phase = "updated"
+
+        # Simulate failure during the atomic rename step
+        with patch("os.replace", side_effect=OSError("simulated disk full")):
+            manager.save()
+
+        # Original file must still be intact and readable
+        content = json.loads(temp_state_file.read_text())
+        assert content["phase"] == "initial", "Original state file must be preserved on write failure"

@@ -91,7 +91,30 @@ The same pattern should be applied to `_save_state` in `orchestrator.py`.
 - `orchestrator.py` `_save_state` at line 508 has the identical pattern (`state_file.write_text(...)`), confirming the proposed fix scope is accurate.
 - All file paths, line numbers, and code snippets are current as of HEAD.
 
+## Resolution
+
+**Status**: Resolved | **Date**: 2026-03-20
+
+### Changes Made
+
+- `scripts/little_loops/state.py` — `StateManager.save`: replaced `Path.write_text()` with
+  `tempfile.mkstemp` + `os.fdopen` + `os.replace` atomic pattern; added `import os` and
+  `import tempfile`.
+- `scripts/little_loops/parallel/orchestrator.py` — `_save_state`: same atomic write pattern;
+  added `import tempfile` (already had `import os`).
+- `scripts/little_loops/fsm/persistence.py` — `save_state`: same atomic write pattern; added
+  `import os` and `import tempfile`.
+- `scripts/tests/test_state.py` — new `TestStateManagerAtomicSave` class (3 tests): verifies
+  `os.replace` is called, no orphaned `.tmp` files remain, and the original file is preserved
+  when a write failure occurs.
+
+### Verification
+
+All 36 `test_state.py` tests pass (3 new). `ruff check` and `mypy` report no issues.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-20T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-20T20:40:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55f29a66-da73-4d4a-a5f4-8f6a20c5efe5.jsonl`
 - `/ll:verify-issues` - 2026-03-19T22:41:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
 - `/ll:confidence-check` - 2026-03-19T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
