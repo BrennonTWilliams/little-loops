@@ -396,6 +396,17 @@ ll-issues refine-status --format json         # JSONL output for scripting
 ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
 ```
 
+### ll-gitignore
+
+Suggest and apply `.gitignore` patterns based on untracked files:
+
+```bash
+ll-gitignore                  # Show suggestions and apply approved patterns
+ll-gitignore --dry-run        # Preview suggestions without modifying .gitignore
+```
+
+Run `ll-gitignore --help` for all options.
+
 ### ll-verify-docs / ll-check-links
 
 Documentation verification utilities:
