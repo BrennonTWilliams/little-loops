@@ -70,10 +70,25 @@ class TestLoopSignalHandler:
 
         mock_process.kill.assert_called_once()
 
+    def test_signal_handler_kills_fsm_executor_current_process(self) -> None:
+        """Signal handler kills _current_process on FSMExecutor for MCP path (BUG-818)."""
+        mock_fsm_process = MagicMock()
+        mock_inner = MagicMock()
+        mock_inner.action_runner._current_process = None
+        mock_inner._current_process = mock_fsm_process
+        mock_executor = MagicMock()
+        mock_executor._executor = mock_inner
+        self.helpers._loop_executor = mock_executor
+
+        self.helpers._loop_signal_handler(signal.SIGTERM, None)
+
+        mock_fsm_process.kill.assert_called_once()
+
     def test_signal_handler_no_current_process_is_safe(self) -> None:
         """Signal handler doesn't crash when _current_process is None (BUG-592)."""
         mock_inner = MagicMock()
         mock_inner.action_runner._current_process = None
+        mock_inner._current_process = None
         mock_executor = MagicMock()
         mock_executor._executor = mock_inner
         self.helpers._loop_executor = mock_executor

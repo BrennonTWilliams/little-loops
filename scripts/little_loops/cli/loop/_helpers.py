@@ -57,6 +57,10 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
                 proc = getattr(runner, "_current_process", None)
                 if proc is not None:
                     proc.kill()
+            # Also kill MCP subprocesses tracked directly on FSMExecutor (_run_subprocess path)
+            fsm_proc = getattr(inner, "_current_process", None)
+            if fsm_proc is not None:
+                fsm_proc.kill()
 
 
 def register_loop_signal_handlers(executor: Any, pid_file: Path | None = None) -> None:

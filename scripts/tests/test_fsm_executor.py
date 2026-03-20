@@ -2927,6 +2927,51 @@ class TestDefaultActionRunnerProcessTracking:
         assert runner._current_process is None
 
 
+class TestFSMExecutorProcessTracking:
+    """Tests for FSMExecutor._current_process tracking (BUG-818)."""
+
+    def _make_executor(self) -> FSMExecutor:
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(action="echo hello", terminal=True)},
+        )
+        return FSMExecutor(fsm)
+
+    def test_current_process_initially_none(self) -> None:
+        """_current_process is None before any subprocess is run."""
+        executor = self._make_executor()
+        assert executor._current_process is None
+
+    def test_current_process_cleared_after_successful_run(self) -> None:
+        """_current_process is None after _run_subprocess completes normally."""
+        executor = self._make_executor()
+        mock_process = MagicMock()
+        mock_process.stdout = iter(["output\n"])
+        mock_process.returncode = 0
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            executor._run_subprocess(["echo", "hello"], timeout=10)
+
+        assert executor._current_process is None
+
+    def test_current_process_cleared_after_timeout(self) -> None:
+        """_current_process is None even when _run_subprocess times out."""
+        import subprocess as sp
+
+        executor = self._make_executor()
+        mock_process = MagicMock()
+        mock_process.stdout = iter([])
+        mock_process.returncode = -9
+        mock_process.wait.side_effect = [sp.TimeoutExpired("cmd", 1), None]
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            result = executor._run_subprocess(["slow-cmd"], timeout=1)
+
+        assert executor._current_process is None
+        assert result.exit_code == 124
+
+
 class TestDefaultActionRunnerStderrDrain:
     """Tests for BUG-618: stderr pipe deadlock on large stderr output."""
 

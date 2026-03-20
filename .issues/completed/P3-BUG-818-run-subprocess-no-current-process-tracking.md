@@ -148,7 +148,18 @@ self._current_process: subprocess.Popen[str] | None = None
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P3
+**Completed** | Created: 2026-03-19 | Resolved: 2026-03-20 | Priority: P3
+
+## Resolution
+
+**Fixed** — Added `_current_process` tracking to `FSMExecutor._run_subprocess` to match the existing `DefaultActionRunner.run` pattern:
+
+1. Declared `self._current_process: subprocess.Popen[str] | None = None` in `FSMExecutor.__init__` (`executor.py:391`)
+2. Set `self._current_process = process` immediately after `Popen` in `_run_subprocess` (`executor.py:784`)
+3. Replaced `finally: pass` with `finally: self._current_process = None` (`executor.py:812`)
+4. Updated `_loop_signal_handler` in `_helpers.py` to also kill `inner._current_process` (the FSMExecutor MCP path) after the existing `action_runner._current_process` kill
+
+Tests added: `TestFSMExecutorProcessTracking` (3 tests) in `test_fsm_executor.py`; `test_signal_handler_kills_fsm_executor_current_process` in `test_cli_loop_background.py`. All 156 tests pass.
 
 
 ## Verification Notes
@@ -163,6 +174,8 @@ self._current_process: subprocess.Popen[str] | None = None
 - **Confidence**: High — code is unchanged since scan commit
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-20T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-20T20:20:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8a0e158-a601-46eb-8fe7-1f8e98586d32.jsonl`
 - `/ll:refine-issue` - 2026-03-20T20:14:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9839f80c-9a2c-41c0-89ac-f549658ef724.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:00:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`

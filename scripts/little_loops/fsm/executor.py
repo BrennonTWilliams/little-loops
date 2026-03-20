@@ -387,6 +387,10 @@ class FSMExecutor:
         # Shutdown flag for graceful signal handling
         self._shutdown_requested = False
 
+        # Currently running MCP subprocess (set by _run_subprocess, cleared in finally).
+        # Enables external shutdown code to kill the process on SIGTERM.
+        self._current_process: subprocess.Popen[str] | None = None
+
         # Pending handoff signal (set by _run_action, checked by main loop)
         self._pending_handoff: DetectedSignal | None = None
 
@@ -776,6 +780,7 @@ class FSMExecutor:
             stderr=subprocess.PIPE,
             text=True,
         )
+        self._current_process = process
         output_chunks: list[str] = []
         stderr_chunks: list[str] = []
 
@@ -804,7 +809,7 @@ class FSMExecutor:
                 duration_ms=timeout * 1000,
             )
         finally:
-            pass
+            self._current_process = None
         stderr_thread.join(timeout=5)
         return ActionResult(
             output="".join(output_chunks),
