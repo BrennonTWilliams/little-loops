@@ -74,12 +74,43 @@ The `state` variable is still used unchanged for the text output line (showing c
 
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_ll_loop_display.py` — add regression test
+- `scripts/little_loops/fsm/executor.py:592–599` — `_sub_event_callback` closure stamps child events with `"depth": depth`; read-only context, no changes needed
 
 ### Similar Patterns
 - `current_iteration = [0]` at line 307 — same mutable-list closure pattern to use
+- `loop_start_time` at line 308 — plain float closed over alongside `current_iteration` (read-only, no list needed)
+- `layout.py:1427–1432` — `_render_fsm_diagram(fsm, verbose, highlight_state, highlight_color, edge_label_colors)` signature
 
 ### Tests
 - `scripts/tests/test_ll_loop_display.py` — add test using `MockExecutor` that emits depth-0 then depth-1 `state_enter` events and asserts `_render_fsm_diagram` is called with the depth-0 state as `highlight_state` for all events
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Exact spy pattern to use for the new test** (follow `test_ll_loop_display.py:1603–1627`):
+
+```python
+from little_loops.cli.loop import layout as layout_mod
+
+events = [
+    {"event": "state_enter", "state": "run_sub_loop", "iteration": 1},          # depth=0
+    {"event": "state_enter", "state": "child_state_1", "iteration": 1, "depth": 1},  # depth=1
+    {"event": "state_enter", "state": "child_state_2", "iteration": 2, "depth": 1},  # depth=1
+]
+executor = MockExecutor(events)
+with patch.object(
+    layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+) as mock_render:
+    run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
+    # All three calls should highlight "run_sub_loop" (the depth-0 state)
+    for call_args in mock_render.call_args_list:
+        assert call_args.kwargs["highlight_state"] == "run_sub_loop"
+```
+
+Note: use `layout_mod` (not `info_mod`) because `_helpers.py`'s `show_diagrams` branch does `from little_loops.cli.loop.layout import _render_fsm_diagram` at runtime. The existing spy tests at lines 1603–1627 and 1659–1686 confirm this import path.
+
+**Depth event structure** (from `executor.py:592–599`): child events arrive as `{"event": "state_enter", "state": "<child-state>", "iteration": N, "depth": 1}`. The `"depth"` key is added by `_sub_event_callback` wrapping the child executor's callback. The parent's own `state_enter` for the sub-loop state has no `"depth"` key (defaults to 0 in the handler).
 
 ## Implementation Steps
 
@@ -96,6 +127,12 @@ The `state` variable is still used unchanged for the text output line (showing c
 - **Risk**: Low - Only affects `--show-diagrams` rendering path
 - **Breaking Change**: No
 
+## Related Issues
+
+- **ENH-846** (`.issues/enhancements/P3-ENH-846-show-sub-loop-fsm-diagram-alongside-parent.md`) — complementary enhancement to show the child FSM diagram alongside the parent; may share the depth-tracking variable introduced here
+- **BUG-759** (`.issues/bugs/P3-BUG-759-fsm-diagram-shifts-horizontally-when-state-highlighted.md`) — open bug: diagram shifts horizontally during highlighting; may interact with this fix
+- **ENH-839** (`.issues/enhancements/P3-ENH-839-split-layout-py-diagram-rendering-into-focused-modules.md`) — planned restructuring of `layout.py`; no conflict, but worth noting if ENH-839 lands first
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -111,4 +148,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-03-20 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-20T21:16:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3303c29-3790-45d8-bfd8-d2eed0c1be4f.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1bf4f47d-175f-43a1-a162-27f1c4d41801.jsonl`
