@@ -8,7 +8,7 @@ confidence_score: 100
 outcome_confidence: 71
 ---
 
-# ENH-818: Split layout.py diagram rendering into focused modules
+# ENH-839: Split layout.py diagram rendering into focused modules
 
 ## Summary
 

@@ -8,7 +8,7 @@ confidence_score: 100
 outcome_confidence: 70
 ---
 
-# ENH-820: Extract FSM executor result types and runners
+# ENH-841: Extract FSM executor result types and runners
 
 ## Summary
 

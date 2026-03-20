@@ -8,7 +8,7 @@ confidence_score: 100
 outcome_confidence: 71
 ---
 
-# ENH-819: Split workflow_sequence_analyzer.py into package
+# ENH-840: Split workflow_sequence_analyzer.py into package
 
 ## Summary
 
