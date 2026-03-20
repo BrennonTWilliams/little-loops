@@ -330,6 +330,9 @@ Sync local `.issues/` files with GitHub Issues:
 ll-sync status                   # Show sync status
 ll-sync push                     # Push all local issues to GitHub
 ll-sync pull                     # Pull GitHub Issues to local
+ll-sync diff [issue_id]          # Show diff between local and GitHub issues
+ll-sync close [issue_ids...]     # Close GitHub issues for completed local issues
+ll-sync reopen [issue_ids...]    # Reopen GitHub issues for locally-active issues
 ```
 
 Requires `sync.enabled: true` in config. Run `ll-sync --help` for all options.
