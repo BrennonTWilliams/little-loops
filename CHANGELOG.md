@@ -12,6 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.55.0] - 2026-03-20
+
+### Added
+
+- **Sub-loop FSM diagram rendering** — Child FSM diagram renders alongside parent during sub-loop execution with `--show-diagrams` (46bfa69)
+- **Sub-loop events forwarded to parent callback** — Sub-loop state transitions are forwarded to parent callback with depth annotation (632bc9a)
+- **`ll-sync reopen` subcommand** — Reopen closed GitHub Issues from local issue files (e9df9cb)
+- **`--status` flag for `ll-issues count`** — Count issues by status with the new `--status` filter flag (1449881)
+- **`--date-field=updated` search** — Search issues by last-updated date using Session Log timestamps (cc192c2)
+- **Deferred directory search in `ll-issues show`** — `ll-issues show` now searches deferred issues in addition to active ones (4ad1e72)
+
+### Fixed
+
+- **`StateManager.save` atomic write** — Prevents state file corruption on crash by using atomic write (1dfa79b)
+- **`_current_process` tracking in FSMExecutor** — Adds `_current_process` tracking to `FSMExecutor._run_subprocess` for reliable subprocess management (f0a270f)
+- **Missed handoff signals failure** — Missed continuation handoff now correctly signals failure with `returncode=1` (642a477)
+- **Parent state highlighted during sub-loop execution** — Parent FSM diagram keeps current state highlighted while sub-loop runs (4f124df)
+- **Configurable `remote_name` in `ll-parallel` and `ll-sprint`** — Hardcoded "origin" remote replaced with configurable `remote_name` option (f62e476)
+- **Undefer issue commits undeferred section** — `undefer_issue` now correctly commits the undeferred section (3aa2738)
+- **`ll-parallel` leak detection uses configured src/test dirs** — Leak detection now respects `src_dir`/`test_dir` from config instead of hardcoding paths (cf1aba2)
+- **Comma-separated `--priority` in `ll-issues`** — `ll-issues list` and `ll-issues count` now accept comma-separated priority values (887dbeb)
+- **Logger type fix in `load_loop`** — Corrects Logger type annotation in `load_loop` call (2934b4c)
+- **YAML block sequence frontmatter parsing** — Parses YAML block sequences in issue frontmatter without spurious warnings (964c0fb)
+- **Lint errors resolved** — Fix lint errors and reformat to pass ruff checks (548be51)
+
+### Changed
+
+- **Documentation: `ll-gitignore` CLI tool** — Added `ll-gitignore` to CLAUDE.md and README documentation (2e65c0e)
+- **Documentation: sub-loop FSM diagram `--show-diagrams`** — Added guide for visualizing sub-loop execution (789d338)
+- **Documentation: harness FSM diagram annotation** — Simplified annotation and fixed inaccuracies in harness FSM diagram guide (76663a9, 7271b44, 8a8dc63)
+- **Documentation: CLI flags** — Added `--context-limit`, `--priority`, `--idle-timeout`, `--builtin` flags and new sort fields to CLI reference (69f2dba, f3d0dae)
+- **Documentation: README ll-sync subcommands** — Added `diff`, `close`, `reopen` subcommands and bumped CLI tool count to 13 (63263bc, f4dc17a)
+
+[1.55.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.54.0...v1.55.0
+
 ## [1.54.0] - 2026-03-19
 
 ### Added
