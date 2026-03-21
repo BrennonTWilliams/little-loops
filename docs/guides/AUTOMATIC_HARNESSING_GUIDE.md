@@ -423,7 +423,7 @@ states:
     terminal: true
 ```
 
-> **Ready-to-run example**: [`loops/examples/harness-single-shot.yaml`](../../loops/examples/harness-single-shot.yaml) is a fully annotated version of this variant, including commented-out `check_mcp` and `check_skill` optional gates. See [Using the Example Files](#using-the-example-files) below.
+> **Ready-to-run example**: [`loops/harness-single-shot.yaml`](../../loops/harness-single-shot.yaml) is a fully annotated version of this variant, including commented-out `check_mcp` and `check_skill` optional gates. See [Using the Example Files](#using-the-example-files) below.
 
 ---
 
@@ -493,7 +493,7 @@ states:
 
 > **`max_retries` + `on_retry_exhausted`**: Adding these to `execute` is the key safeguard in multi-item loops. Without them, one item that never passes evaluation will consume the entire `max_iterations` budget. With them, the loop skips the stuck item and moves on after `max_retries` attempts.
 
-> **Ready-to-run example**: [`loops/examples/harness-multi-item.yaml`](../../loops/examples/harness-multi-item.yaml) is a fully annotated version of this variant with all five evaluation phases active, including `check_mcp` and `check_skill`. See [Using the Example Files](#using-the-example-files) below.
+> **Ready-to-run example**: [`loops/harness-multi-item.yaml`](../../loops/harness-multi-item.yaml) is a fully annotated version of this variant with all five evaluation phases active, including `check_mcp` and `check_skill`. See [Using the Example Files](#using-the-example-files) below.
 
 ---
 
@@ -544,20 +544,20 @@ skip_item:
 
 ## Using the Example Files
 
-Two annotated example harness loops live in `loops/examples/`:
+Two annotated example harness loops are built in to `loops/`:
 
 | File | Variant | Phases included |
 |------|---------|-----------------|
-| [`loops/examples/harness-single-shot.yaml`](../../loops/examples/harness-single-shot.yaml) | A — Single-shot | `check_stall`, `check_concrete`, `check_semantic`, `check_invariants`; `check_mcp` and `check_skill` as commented-out optional gates |
-| [`loops/examples/harness-multi-item.yaml`](../../loops/examples/harness-multi-item.yaml) | B — Multi-item | All five phases active: `check_concrete`, `check_mcp`, `check_skill`, `check_semantic`, `check_invariants` |
+| [`loops/harness-single-shot.yaml`](../../loops/harness-single-shot.yaml) | A — Single-shot | `check_stall`, `check_concrete`, `check_semantic`, `check_invariants`; `check_mcp` and `check_skill` as commented-out optional gates |
+| [`loops/harness-multi-item.yaml`](../../loops/harness-multi-item.yaml) | B — Multi-item | All five phases active: `check_concrete`, `check_mcp`, `check_skill`, `check_semantic`, `check_invariants` |
 
 Each state in both files has an `# EXAMPLE:` comment explaining its pedagogical purpose.
 
 ### Validate structure
 
 ```bash
-ll-loop validate loops/examples/harness-single-shot.yaml
-ll-loop validate loops/examples/harness-multi-item.yaml
+ll-loop validate harness-single-shot
+ll-loop validate harness-multi-item
 ```
 
 ### Run interactively (dry-run)
@@ -565,14 +565,14 @@ ll-loop validate loops/examples/harness-multi-item.yaml
 `ll-loop test` walks through every state and lets you choose simulated verdicts — useful for understanding the FSM transitions without executing the real skill:
 
 ```bash
-ll-loop test loops/examples/harness-single-shot.yaml
+ll-loop test harness-single-shot
 ```
 
 ### Run for real
 
 ```bash
-ll-loop run loops/examples/harness-single-shot.yaml
-ll-loop run loops/examples/harness-multi-item.yaml
+ll-loop run harness-single-shot
+ll-loop run harness-multi-item
 ```
 
 The multi-item example discovers open issues via `ll-issues list` and runs `/ll:manage-issue` on each one. Make sure you have open issues before running it.
@@ -582,7 +582,8 @@ The multi-item example discovers open issues via `ll-issues list` and runs `/ll:
 The recommended approach is to copy, rename, and edit rather than modifying the originals (so they remain usable as references):
 
 ```bash
-cp loops/examples/harness-single-shot.yaml loops/my-harness.yaml
+ll-loop install harness-single-shot   # copies to .loops/harness-single-shot.yaml
+cp .loops/harness-single-shot.yaml .loops/my-harness.yaml
 ```
 
 Key fields to change:
@@ -604,7 +605,7 @@ After editing, validate with `ll-loop validate <your-file>` before running.
 
 The following is a production-ready harness that refines all active issues. It is the canonical output of running the wizard with: target = `refine-issue`, discovery = active issues, all evaluation phases enabled, 3 retries, 200 iterations.
 
-> **See also**: [`loops/examples/harness-multi-item.yaml`](../../loops/examples/harness-multi-item.yaml) is a runnable annotated variant of this pattern with all five evaluation phases active, including `check_mcp` and `check_skill`.
+> **See also**: [`loops/harness-multi-item.yaml`](../../loops/harness-multi-item.yaml) is a runnable annotated variant of this pattern with all five evaluation phases active, including `check_mcp` and `check_skill`.
 
 > **Note**: This example includes `check_concrete` and `check_semantic` but omits `check_mcp` and `check_skill`. The `check_mcp` gate is not generated by the wizard (add it manually if needed — see [MCP Tool Gates](#mcp-tool-gates-check_mcp)). The `check_skill` gate is optional and only applies when a user-simulation skill is available for the workflow; it is omitted here to keep the example minimal.
 
@@ -713,5 +714,5 @@ states:
 - [`skills/create-loop/loop-types.md`](../../skills/create-loop/loop-types.md) — Wizard implementation: Harness Questions section (lines 548–914)
 - [`skills/create-loop/reference.md`](../../skills/create-loop/reference.md) — FSM field reference, evaluator catalog, harness state diagrams
 - [`loops/issue-refinement.yaml`](../../loops/issue-refinement.yaml) — Real-world harness-like loop: multi-skill pipeline over active issues with commit cadence
-- [`loops/examples/harness-single-shot.yaml`](../../loops/examples/harness-single-shot.yaml) — Runnable Variant A example: single-shot harness with all evaluation phases annotated
-- [`loops/examples/harness-multi-item.yaml`](../../loops/examples/harness-multi-item.yaml) — Runnable Variant B example: multi-item harness including `check_mcp` and `check_skill` gates
+- [`loops/harness-single-shot.yaml`](../../loops/harness-single-shot.yaml) — Runnable Variant A example: single-shot harness with all evaluation phases annotated
+- [`loops/harness-multi-item.yaml`](../../loops/harness-multi-item.yaml) — Runnable Variant B example: multi-item harness including `check_mcp` and `check_skill` gates

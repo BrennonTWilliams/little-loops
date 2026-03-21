@@ -56,6 +56,13 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `apo-beam` | Beam search — generate N variants, score all, advance the winner |
 | `apo-textgrad` | TextGrad-style — test on examples, compute failure gradient, apply refinement |
 
+## Harness / Templates
+
+| Loop | Description |
+|---|---|
+| `harness-single-shot` | EXAMPLE: Single-shot harness demonstrating all evaluation phases (stall detection, concrete, semantic, invariant); `check_mcp` and `check_skill` as commented-out optional gates. Adapt for one-item workflows. |
+| `harness-multi-item` | EXAMPLE: Multi-item harness with all five evaluation phases active (`check_concrete`, `check_mcp`, `check_skill`, `check_semantic`, `check_invariants`). Includes discover/advance loop. Adapt for batch workflows. |
+
 ---
 
 ## Creating Custom Loops

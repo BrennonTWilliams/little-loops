@@ -9,8 +9,8 @@
 # This example processes open issues through /ll:refine-issue.
 # Adapt by replacing the discover action and execute action for your use case.
 #
-# Usage:    ll-loop run loops/examples/harness-multi-item.yaml
-# Validate: ll-loop test loops/examples/harness-multi-item.yaml
+# Usage:    ll-loop run harness-multi-item
+# Validate: ll-loop test harness-multi-item
 
 name: harness-multi-item
 description: |

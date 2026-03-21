@@ -8,8 +8,8 @@
 # Optional gates (check_mcp, check_skill) are shown as commented-out blocks.
 # Uncomment and adapt them to add MCP tool gates or agentic user-simulation.
 #
-# Usage:    ll-loop run loops/examples/harness-single-shot.yaml
-# Validate: ll-loop test loops/examples/harness-single-shot.yaml
+# Usage:    ll-loop run harness-single-shot
+# Validate: ll-loop test harness-single-shot
 
 name: harness-single-shot
 description: |

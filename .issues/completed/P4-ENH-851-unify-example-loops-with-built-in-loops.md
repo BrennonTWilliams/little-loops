@@ -2,7 +2,7 @@
 id: ENH-851
 type: ENH
 priority: P4
-status: open
+status: completed
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 100
@@ -106,11 +106,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `dx`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-21T02:59:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b414242a-7c10-49f7-aa41-bdbd5cdf4644.jsonl`
 - `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a45f8274-0823-4329-a446-ba23ffbf5ad8.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:52:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97e6f95-4e3d-4b42-9409-9b35dfe09ebe.jsonl`
 
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ae8a776-9a67-47c4-9196-89c5316f5812.jsonl`
 
+## Resolution
+
+- Moved `loops/examples/harness-single-shot.yaml` → `loops/harness-single-shot.yaml`
+- Moved `loops/examples/harness-multi-item.yaml` → `loops/harness-multi-item.yaml`
+- Deleted empty `loops/examples/` directory
+- Updated `# Usage:` comments in both YAML files to use built-in name (`ll-loop run harness-*`)
+- Updated all 8 `loops/examples/` path references in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
+- Added "Harness / Templates" section to `loops/README.md`
+- Added `"harness-single-shot"` and `"harness-multi-item"` to `test_expected_loops_exist` expected set
+- All 36 `test_builtin_loops.py` tests pass
+
 ---
 
-**Open** | Created: 2026-03-20 | Priority: P4
+**Completed** | Created: 2026-03-20 | Priority: P4
