@@ -80,12 +80,12 @@ No changes to existing hooks or scripts required. Optionally reads `.claude/ll-c
 
 ## Acceptance Criteria
 
-- [ ] `loops/context-health-monitor.yaml` passes `ll-loop validate context-health-monitor`
-- [ ] `assess_context` state reads `.claude/ll-context-state.json` if it exists and includes its `estimated_tokens` value in the snapshot
-- [ ] Loop terminates at `done` when `CONTEXT_HEALTHY` is diagnosed
-- [ ] `compact_scratch` state reduces file sizes without deleting files referenced in active issues
-- [ ] `archive_outputs` state moves files to `.loops/archive/` (not deletes) so nothing is permanently lost
-- [ ] Loop runs to completion in < 10 minutes on a typical `.loops/tmp/` state
+- [x] `loops/context-health-monitor.yaml` passes `ll-loop validate context-health-monitor`
+- [x] `assess_context` state reads `.claude/ll-context-state.json` if it exists and includes its `estimated_tokens` value in the snapshot
+- [x] Loop terminates at `done` when `CONTEXT_HEALTHY` is diagnosed
+- [x] `compact_scratch` state reduces file sizes without deleting files referenced in active issues
+- [x] `archive_outputs` state moves files to `.loops/archive/` (not deletes) so nothing is permanently lost
+- [x] Loop runs to completion in < 10 minutes on a typical `.loops/tmp/` state
 
 ## Integration Map
 
@@ -277,7 +277,7 @@ action: |
 
 ## Status
 
-- [ ] Not started
+- [x] Completed 2026-03-20
 
 ## Verification Notes
 
@@ -290,7 +290,20 @@ _Verified by `/ll:verify-issues` on 2026-03-19 — **VALID**_
 - Similar loop patterns confirmed: `backlog-flow-optimizer.yaml` has `context:` block + `output_contains`; `worktree-health.yaml` has `maintain: true`, `backoff: 300`, `output_numeric` ✓
 - No dependency references to validate
 
+## Resolution
+
+Implemented 2026-03-20. Created `loops/context-health-monitor.yaml` with the 8-state FSM described in the issue, applying all three corrections from the Second Pass review:
+- Fixed `assess_context` sort (uses `-exec du -sk {} \;` piped to `sort -rn`)
+- Added `${captured.snapshot.output}` to `compact_scratch` and `archive_outputs` prompts
+- Added `on_error:` to routing states following `backlog-flow-optimizer.yaml` pattern
+
+Also updated `scripts/tests/test_builtin_loops.py::test_expected_loops_exist` to include `context-health-monitor`.
+
+`ll-loop validate context-health-monitor` passes. All 3779 tests pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-20T20:00:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d09ee0f3-cb43-4c99-8bef-98547284f6a2.jsonl`
+- `/ll:ready-issue` - 2026-03-21T00:54:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aff8f7bc-86de-4a43-b435-accb0774eb8b.jsonl`
 - `/ll:refine-issue` - 2026-03-21T00:51:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24f32447-0c48-4116-8565-f064477c3067.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:11:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`

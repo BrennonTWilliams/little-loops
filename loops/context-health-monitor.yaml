@@ -1,0 +1,94 @@
+name: context-health-monitor
+description: |
+  Monitor context health via scratch file accumulation and session log size.
+  Compact scratch files and archive stale outputs when pressure is detected.
+initial: assess_context
+context:
+  scratch_size_kb_warn: 500
+  log_age_days_warn: 7
+  scratch_dir: .loops/tmp
+max_iterations: 10
+timeout: 3600
+
+states:
+  assess_context:
+    action_type: shell
+    action: |
+      echo "=== Scratch Dir ==="
+      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)
+      FILE_COUNT=$(find ${context.scratch_dir} -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+      echo "scratch_kb: $SCRATCH_SIZE"
+      echo "file_count: $FILE_COUNT"
+      TOKENS=$(jq -r '.estimated_tokens // "n/a"' .claude/ll-context-state.json 2>/dev/null || echo "n/a")
+      echo "estimated_tokens: $TOKENS"
+      find ${context.scratch_dir} -maxdepth 1 -type f -size +100k -exec du -sk {} \; 2>/dev/null | sort -rn || true
+    capture: snapshot
+    next: self_assess
+
+  self_assess:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Evaluate this context health snapshot and emit a diagnosis tag:
+
+      ${captured.snapshot.output}
+
+      Thresholds: scratch_size_warn=${context.scratch_size_kb_warn}KB
+
+      Emit exactly one of:
+      PRESSURE_SCRATCH
+      PRESSURE_OUTPUTS
+      CONTEXT_HEALTHY
+    capture: diagnosis
+    next: route
+
+  route:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "CONTEXT_HEALTHY"
+    on_yes: done
+    on_no: route_scratch
+    on_error: done
+
+  route_scratch:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "PRESSURE_SCRATCH"
+    on_yes: compact_scratch
+    on_no: archive_outputs
+    on_error: archive_outputs
+
+  compact_scratch:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Here is the current scratch directory snapshot:
+      ${captured.snapshot.output}
+
+      Compact large scratch files in ${context.scratch_dir}. For each file >100KB listed above,
+      summarize to essential findings and overwrite. Delete clearly stale files.
+      Do NOT delete files referenced in active issues.
+    next: verify
+
+  archive_outputs:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Here is the current scratch directory snapshot:
+      ${captured.snapshot.output}
+
+      Archive stale outputs from ${context.scratch_dir}. Move files older than
+      ${context.log_age_days_warn} days to .loops/archive/. Delete zero-byte files.
+    next: verify
+
+  verify:
+    action_type: shell
+    action: |
+      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)
+      echo "post_remediation_kb: $SCRATCH_SIZE"
+    next: assess_context
+
+  done:
+    terminal: true
