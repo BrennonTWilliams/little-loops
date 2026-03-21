@@ -91,13 +91,28 @@ Examples:
         default="monthly",
         help="Grouping period for trends (default: monthly)",
     )
-    analyze_parser.add_argument(
+    date_filter_group = analyze_parser.add_mutually_exclusive_group()
+    date_filter_group.add_argument(
         "-c",
         "--compare",
         type=int,
         default=None,
         metavar="DAYS",
         help="Compare last N days to previous N days",
+    )
+    date_filter_group.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        metavar="DATE",
+        help="Only analyze issues completed on or after DATE (YYYY-MM-DD)",
+    )
+    analyze_parser.add_argument(
+        "--until",
+        type=str,
+        default=None,
+        metavar="DATE",
+        help="Only analyze issues completed on or before DATE (YYYY-MM-DD)",
     )
 
     # export subcommand (FEAT-503, renamed from generate-docs in ENH-523)
@@ -189,7 +204,20 @@ Examples:
 
     if args.command == "analyze":
         # New analyze logic (FEAT-110)
+        from datetime import date as date_type
+
         issues = scan_completed_issues(completed_dir)
+
+        since_date = date_type.fromisoformat(args.since) if args.since else None
+        until_date = date_type.fromisoformat(args.until) if args.until else None
+        if since_date or until_date:
+            issues = [
+                i for i in issues
+                if i.completed_date is not None
+                and (since_date is None or i.completed_date >= since_date)
+                and (until_date is None or i.completed_date <= until_date)
+            ]
+
         analysis = calculate_analysis(
             issues,
             issues_dir=issues_dir,

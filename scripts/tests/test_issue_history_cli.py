@@ -145,7 +145,10 @@ class TestAnalyzeArgumentParsing:
             choices=["weekly", "monthly", "quarterly"],
             default="monthly",
         )
-        analyze_parser.add_argument("-c", "--compare", type=int, default=None)
+        date_group = analyze_parser.add_mutually_exclusive_group()
+        date_group.add_argument("-c", "--compare", type=int, default=None)
+        date_group.add_argument("--since", type=str, default=None, metavar="DATE")
+        analyze_parser.add_argument("--until", type=str, default=None, metavar="DATE")
 
         return parser.parse_args(args)
 
@@ -183,6 +186,31 @@ class TestAnalyzeArgumentParsing:
         assert args.format == "markdown"
         assert args.period == "weekly"
         assert args.compare == 14
+
+    def test_analyze_since(self) -> None:
+        """Test --since flag."""
+        args = self._parse_history_args(["analyze", "--since", "2026-01-01"])
+        assert args.since == "2026-01-01"
+        assert args.compare is None
+
+    def test_analyze_until(self) -> None:
+        """Test --until flag."""
+        args = self._parse_history_args(["analyze", "--until", "2026-03-31"])
+        assert args.until == "2026-03-31"
+
+    def test_analyze_date_range(self) -> None:
+        """Test --since and --until combined."""
+        args = self._parse_history_args(
+            ["analyze", "--since", "2026-01-01", "--until", "2026-03-31"]
+        )
+        assert args.since == "2026-01-01"
+        assert args.until == "2026-03-31"
+
+    def test_analyze_since_defaults_none(self) -> None:
+        """--since defaults to None."""
+        args = self._parse_history_args(["analyze"])
+        assert args.since is None
+        assert args.until is None
 
 
 class TestMainHistoryAnalyze:
@@ -290,3 +318,161 @@ class TestMainHistoryAnalyze:
         assert result == 0
         captured = capsys.readouterr()
         assert "Completed: 0" in captured.out
+
+    def test_main_history_analyze_since(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test --since filters out issues completed before the date."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-old.md").write_text(
+            "# BUG-001\n\n## Resolution\n**Completed**: 2025-12-31\n"
+        )
+        (completed_dir / "P1-BUG-002-new.md").write_text(
+            "# BUG-002\n\n## Resolution\n**Completed**: 2026-01-15\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--since", "2026-01-01", "--format", "json",
+             "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["total_completed"] == 1
+
+    def test_main_history_analyze_until(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test --until filters out issues completed after the date."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-q1.md").write_text(
+            "# BUG-001\n\n## Resolution\n**Completed**: 2026-03-15\n"
+        )
+        (completed_dir / "P1-BUG-002-q2.md").write_text(
+            "# BUG-002\n\n## Resolution\n**Completed**: 2026-04-05\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--until", "2026-03-31", "--format", "json",
+             "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["total_completed"] == 1
+
+    def test_main_history_analyze_date_range(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test --since and --until together scope the analysis window."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-before.md").write_text(
+            "# BUG-001\n\n## Resolution\n**Completed**: 2025-12-31\n"
+        )
+        (completed_dir / "P1-BUG-002-in.md").write_text(
+            "# BUG-002\n\n## Resolution\n**Completed**: 2026-02-14\n"
+        )
+        (completed_dir / "P1-BUG-003-after.md").write_text(
+            "# BUG-003\n\n## Resolution\n**Completed**: 2026-04-01\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--since", "2026-01-01", "--until", "2026-03-31",
+             "--format", "json", "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["total_completed"] == 1
+
+    def test_main_history_analyze_compare_and_since_mutually_exclusive(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that --compare and --since are mutually exclusive."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--compare", "30", "--since", "2026-01-01",
+             "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_history()
+            assert exc_info.value.code != 0
+
+
+class TestAnalyzeDateArgParsing:
+    """Tests for --since/--until argument parsing in ll-history analyze."""
+
+    def test_analyze_since_default_none(self, tmp_path: Path) -> None:
+        """--since and --until default to None (no filtering)."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys, "argv", ["ll-history", "analyze", "-d", str(tmp_path / ".issues")]
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+
+    def test_analyze_since_parsed(self, tmp_path: Path) -> None:
+        """--since is accepted and stored as a string."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--since", "2026-01-01",
+             "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+
+    def test_analyze_until_parsed(self, tmp_path: Path) -> None:
+        """--until is accepted and stored as a string."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--until", "2026-03-31",
+             "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
