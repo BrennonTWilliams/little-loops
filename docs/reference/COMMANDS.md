@@ -54,7 +54,7 @@ Toggle automatic prompt optimization settings.
 ### `/ll:check-code`
 Run code quality checks (lint, format, types).
 
-**Modes:** `lint`, `format`, `types`, `all`, `fix`
+**Modes:** `lint`, `format`, `types`, `build`, `all`, `fix`
 
 ### `/ll:run-tests`
 Run test suites with common patterns.

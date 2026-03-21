@@ -449,7 +449,7 @@ Display an impact vs. effort matrix for active issues.
 
 #### `ll-issues refine-status` / `ll-issues rs`
 
-Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title, per-command session indicators (✓/—), Norm (✓ = filename matches naming convention, ✗ = non-conformant), Ready (confidence score), OutConf (outcome confidence), Total.
+Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title, source, norm, fmt, per-command session indicators (✓/—), Ready (confidence score), conf (outcome confidence), total.
 
 | Flag | Description |
 |------|-------------|
@@ -820,6 +820,27 @@ ll-check-links --format markdown          # Markdown report
 ll-check-links -C docs/                   # Check specific directory
 ll-check-links --ignore 'http://localhost.*'  # Ignore pattern
 ll-check-links --timeout 30 --workers 5   # Custom timeout and concurrency
+```
+
+---
+
+### mcp-call
+
+Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads `.mcp.json` from the current directory, spawns the MCP server subprocess, performs the JSON-RPC initialize handshake, calls `tools/call`, and writes the MCP response envelope to stdout.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `server/tool-name` | MCP server name and tool name joined by `/` (e.g., `pencil/batch_get`) |
+| `params_json` | Tool parameters as a JSON object string |
+
+**Exit codes:** `0` = success, `1` = tool error, `2` = usage/config error, `124` = timeout, `127` = server or tool not found in `.mcp.json`
+
+**Examples:**
+```bash
+mcp-call pencil/batch_get '{"patterns": ["**/*.pen"]}'
+mcp-call my-server/my-tool '{"key": "value"}'
 ```
 
 ---
