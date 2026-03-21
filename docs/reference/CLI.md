@@ -621,14 +621,18 @@ Analyze workflows from messages and Step 1 patterns.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--input` | `-i` | **Required.** Input JSONL file with user messages |
+| `--input` | `-i` | Input JSONL file with user messages (default: `.claude/workflow-analysis/step1-patterns.jsonl`) |
 | `--patterns` | `-p` | **Required.** Input YAML from Step 1 (workflow-pattern-analyzer) |
 | `--output` | `-o` | Output YAML file (default: `.claude/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | Show verbose analysis output |
 
 **Examples:**
 ```bash
-ll-workflows analyze --input messages.jsonl --patterns step1.yaml
+# Use conventional path (no --input needed if ll-messages wrote to the default location)
+ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
+ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
+
+# Explicit input
 ll-workflows analyze -i messages.jsonl -p patterns.yaml -o output.yaml
 ll-workflows analyze --input .claude/user-messages.jsonl \
                      --patterns .claude/workflow-analysis/step1-patterns.yaml

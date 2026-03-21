@@ -161,6 +161,11 @@ All outputs are written to `.claude/workflow-analysis/`:
 You can run Step 2 independently — useful if you've run Step 1 manually or want to re-analyze with updated patterns.
 
 ```bash
+# Shortest form — works when ll-messages wrote to the conventional default path
+ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
+ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
+
+# Explicit input
 ll-workflows analyze \
   --input .claude/user-messages-20260112.jsonl \
   --patterns .claude/workflow-analysis/step1-patterns.yaml \
@@ -171,7 +176,7 @@ ll-workflows analyze \
 
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
-| `--input FILE` | `-i FILE` | Yes | Input JSONL file with user messages |
+| `--input FILE` | `-i FILE` | No | Input JSONL file with user messages (default: `.claude/workflow-analysis/step1-patterns.jsonl`) |
 | `--patterns FILE` | `-p FILE` | Yes | Step 1 output YAML (from workflow-pattern-analyzer) |
 | `--output FILE` | `-o FILE` | No | Output YAML (default: `.claude/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | No | Print detailed progress |
