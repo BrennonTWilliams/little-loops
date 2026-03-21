@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.59.0] - 2026-03-21
+
+### Added
+
+- **Co-evolutionary examples mining loop** — New built-in loop for co-evolutionary examples mining in apo-textgrad (2e00b9dc)
+- **MkDocs brand theme** — Apply brand theme to MkDocs documentation site (c3ea5d35)
+
+### Fixed
+
+- **Homepage logo scheme-awareness** — Add home-logo class for scheme-aware homepage logo coloring (a6f37a4a)
+- **MkDocs logo color scheme** — Invert logo color per color scheme in MkDocs theme (9e1c3db0)
+
+### Documentation
+
+- **Co-evolutionary examples guide** — New guide for the co-evolutionary examples mining workflow (c574b83d)
+- **Docs index cleanup** — Remove stale research, demo, and Claude Code reference sections from index (3259f914)
+- **Logo width constraint** — Constrain docs logo width to 200px (838f245a)
+- **Oracle calibration** — Tighten oracle calibration language and update confidence scores in FEAT-849 loop (8f6f6076)
+
 ## [1.58.0] - 2026-03-21
 
 ### Added
@@ -66,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.59.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.58.0...v1.59.0
 [1.58.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.57.0...v1.58.0
 [1.57.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.56.0...v1.57.0
 
