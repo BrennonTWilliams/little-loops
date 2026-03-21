@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.57.0] - 2026-03-21
+
+### Added
+
+- **`ll-loop history` filters** — New `--event`, `--state`, and `--since` filters for targeted history queries (FEAT-543)
+- **`ll-messages` skill/examples flags** — New `--skill` filter and `--examples-format` flags for targeted message extraction (153706b)
+- **`workflow-analyzer` default input** — `ll-workflows analyze` now defaults `--input` to the ll-messages pipeline output path (FEAT-559)
+- **MkDocs Material docs site** — Full documentation site with Cloudflare Pages deployment config (FEAT-852)
+- **`context-health-monitor` FSM loop** — New built-in loop for monitoring and responding to context pressure (3c1f07f)
+- **Unified harness example loops** — Example loops merged with built-in loops directory for consistent discoverability (ENH-851)
+
+### Fixed
+
+- **`_find_test_file` path resolution** — Anchors test file search to project root instead of process CWD (ENH-828)
+- **Parse errors now logged** — JSONL parse errors emit a warning instead of being silently swallowed (64fbadf)
+- **Orphaned worktree branch derivation** — Uses `git rev-parse` for reliable branch name detection in cleanup (BUG-823)
+- **`go-no-go` agents authentication** — Removed worktree isolation from adversarial agents to fix "Not logged in" failure (BUG-849)
+
+### Changed
+
+- **`_extract_messages_with_context` performance** — O(n²) inner scan replaced with O(n) single-pass using index map (ENH-827)
+
+### Documentation
+
+- **Loops guide**: harness examples table and `--tail` flag entry (bf4db8d)
+- **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
+- **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
+
+[1.57.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.56.0...v1.57.0
+
 ## [1.56.0] - 2026-03-20
 
 ### Fixed
