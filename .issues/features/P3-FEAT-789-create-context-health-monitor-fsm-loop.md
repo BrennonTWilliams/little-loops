@@ -203,6 +203,65 @@ states:
 
 **Key pattern**: `context:` block values referenced as `${context.<key>}` inside state fields. `captured.<name>.output` interpolated in prompt actions.
 
+---
+
+### Second Pass: YAML Corrections (2026-03-20)
+
+_Added by `/ll:refine-issue` — engine analysis and real-loop cross-validation revealed three bugs in the proposed YAML above:_
+
+**1. `assess_context` — file-listing sort is broken**
+
+```yaml
+# BROKEN — `sort -k5 -rn` expects 5+ whitespace-delimited fields per line,
+# but `find` without -ls outputs just file paths (one field):
+find ${context.scratch_dir} -maxdepth 1 -type f -size +100k 2>/dev/null | sort -k5 -rn || true
+
+# CORRECT — pipe through `du -sk` first to get "size path" pairs:
+find ${context.scratch_dir} -maxdepth 1 -type f -size +100k -exec du -sk {} \; 2>/dev/null | sort -rn || true
+```
+
+Confirmed by `executor.py`: FSM interpolates `${context.scratch_dir}` → `.loops/tmp` before bash runs the command, so the variable substitution itself is fine — the bug is only in the sort.
+
+**2. `compact_scratch` — LLM has no file list**
+
+```yaml
+# BROKEN — LLM is told to "compact files >100KB" but has no data about which files exist:
+action: |
+  Compact large scratch files in ${context.scratch_dir}. For each file >100KB, ...
+
+# CORRECT — pass the measured snapshot so LLM acts on real data:
+action: |
+  Here is the current scratch directory snapshot:
+  ${captured.snapshot.output}
+
+  Compact large scratch files in ${context.scratch_dir}. For each file >100KB listed above,
+  summarize to essential findings and overwrite. Delete clearly stale files.
+  Do NOT delete files referenced in active issues.
+```
+
+Pattern confirmed by `backlog-flow-optimizer.yaml:44` — `diagnose` always includes `${captured.metrics.output}` before the prompt instructions.
+
+**3. `archive_outputs` — same missing-context issue**
+
+```yaml
+# CORRECT form:
+action: |
+  Here is the current scratch directory snapshot:
+  ${captured.snapshot.output}
+
+  Archive stale outputs from ${context.scratch_dir}. Move files older than
+  ${context.log_age_days_warn} days to .loops/archive/. Delete zero-byte files.
+```
+
+**4. Engine behavior confirmations (no changes needed)**
+
+- `${context.scratch_dir}` in shell `action:` ✓ — engine interpolates before handing to `bash -c`
+- `capture: snapshot` on shell state ✓ — captures stdout regardless of exit code (executor.py:737-743)
+- `evaluate:` with no `action:` ✓ — pure routing states are valid (route, route_scratch)
+- `source: "${captured.diagnosis.output}"` ✓ — matches pattern in backlog-flow-optimizer.yaml
+- `terminal: true` minimal state ✓ — confirmed in every loop file
+- `max_iterations: 10` prevents infinite `verify → assess_context` cycle ✓
+
 ## Impact
 
 - **Priority**: P3 — Useful maintenance loop; not blocking
@@ -232,6 +291,7 @@ _Verified by `/ll:verify-issues` on 2026-03-19 — **VALID**_
 - No dependency references to validate
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-21T00:51:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24f32447-0c48-4116-8565-f064477c3067.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:11:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
 - `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
