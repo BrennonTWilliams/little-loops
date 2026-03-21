@@ -35,6 +35,27 @@ A loop (`examples-miner.yaml` or similar) runs as a wrapper around `apo-textgrad
 6. **Publishes** a fresh `examples.json` with per-example metadata (provenance, difficulty score, failure cluster, freshness weight)
 7. **Maintains** a living corpus: new completions enter the harvest queue automatically; stale examples decay in weight; an archived regression floor prevents backward drift
 
+## Use Case
+
+**Who**: Developer or automation engineer running `ll-loop` prompt optimization
+
+**Context**: After `apo-textgrad` has plateaued on hand-crafted examples, or after skill conventions have evolved and the static corpus is stale
+
+**Goal**: Have `examples.json` regenerated automatically from real project history — 784+ completed issues and session logs — with adversarial examples targeting the current gradient's failure pattern
+
+**Outcome**: `apo-textgrad` receives a continuously calibrated, adversarially enriched corpus that stays ahead of the prompt's current capability, producing ongoing gradient signal rather than convergence to a local optimum
+
+## Acceptance Criteria
+
+- [ ] `ll-loop run loops/examples-miner.yaml` harvests skill invocations from all session logs linked in completed issues via `## Session Log` entries
+- [ ] Each harvested pair is scored by the oracle rubric; only pairs in the 40–80% pass-rate band are included in the active calibrated set
+- [ ] Trivially easy (>80% pass rate) and noise-level hard (<40% pass rate) examples are excluded from the corpus
+- [ ] After an optimizer run, adversarial examples are synthesized by perturbing passing example inputs using the type matched to `FAILURE_PATTERN`; original expected outputs are never reused
+- [ ] `source: adversarial` examples are capped at ≤30% of the final corpus at all times
+- [ ] Published `examples.json` includes per-example metadata: `source`, `perturbation_type`, `seed_id`, `difficulty_score`, `failure_cluster`, `freshness_weight`
+- [ ] New completions from subsequent issues enter the harvest queue automatically; stale examples decay in weight via freshness field
+- [ ] Loop terminates with a fresh `examples.json` written to `context.examples_file`
+
 ## Motivation
 
 `apo-textgrad` is only as good as its examples. A static hand-crafted `examples.json` optimizes the prompt for known cases while leaving blind spots untouched. The project already has the labeled dataset — completed issues with accepted outputs are implicit human approvals — it just lacks the mining step. Without adaptive calibration, the corpus goes stale as the prompt improves and new conventions emerge. Without adversarial synthesis, the gradient signal only covers patterns already in the corpus. The co-evolutionary design ensures the example difficulty always leads the prompt's current capability, producing continuous improvement rather than convergence to a local optimum.
@@ -54,6 +75,26 @@ Key components:
 - **Calibration state**: run current prompt against all candidates, compute pass rates, select 40–80% band
 - **Adversarial synthesizer**: LLM-guided perturbation of passing examples using the current gradient
 - **Diversity budget**: enforced per-axis coverage constraints
+
+## API/Interface
+
+New loop invocation (external interface):
+
+```bash
+ll-loop run loops/examples-miner.yaml
+```
+
+New loop YAML (context contract for `examples-miner.yaml`):
+
+```yaml
+context:
+  examples_file: examples.json       # path where fresh corpus is published
+  prompt_file: <skill-prompt-path>   # prompt being optimized (passed to apo-textgrad)
+  corpus_state_file: corpus.json     # optional: persisted calibration state across runs
+  target_pass_rate: 0.6              # center of 40–80% band
+```
+
+Python API changes (ExampleRecord dataclass, `build_examples()`, `--skill`, `--examples-format` flags) are specified and owned by FEAT-850. No direct Python public API additions in this issue.
 
 ## Integration Map
 
@@ -139,7 +180,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. **Implement FEAT-850 first**: `ExampleRecord` dataclass + `build_examples()` in `scripts/little_loops/user_messages.py`; `--skill`, `--examples-format`, `--context-window` args in `scripts/little_loops/cli/messages.py:main_messages()` (line 11); tests in `scripts/tests/test_user_messages.py` and `scripts/tests/test_cli_messages_save.py`
+1. ~~**Implement FEAT-850 first**~~ — **DONE** (completed 2026-03-21). `ExampleRecord` (fields: `skill`, `input`, `output`, `session_id`, `timestamp`, `context_window`) and `build_examples()` are live in `scripts/little_loops/user_messages.py:145–176` and `753–806`. `--skill`, `--examples-format`, `--context-window` flags are implemented in `scripts/little_loops/cli/messages.py`. **Critical implication for oracle design**: `ExampleRecord.output` is a JSON-serialized `ResponseMetadata` summary (`{"tools_used": [...], "files_modified": [...], "completion_status": "success"}`) — NOT a free-text assistant response. The oracle's phase-2 LLM scoring must evaluate tool/file choices and completion status, not prose quality. Free-text response capture is deferred to a follow-on issue.
 2. **Build `examples-miner.yaml`**: follow FSM schema from `loops/apo-textgrad.yaml`; states: `harvest` (shell: `ll-messages --skill <name> --examples-format -o ${context.examples_file}`) → `judge` (prompt: score each pair against rubric) → `calibrate` (prompt: select 40–80% pass-rate band) → `publish` (shell: write final `examples.json`)
 3. **Validate end-to-end**: run miner on `ready-issue` session logs (`.issues/completed/` via `issue_history/parsing.py:20`), feed output to `loops/apo-textgrad.yaml` with `context.examples_file` pointing at miner output, verify gradient fires (`FAILURE_PATTERN`/`ROOT_CAUSE` present in `captured.gradient.output`)
 4. **Add adversarial synthesis states**: after `calibrate`, insert `run_optimizer` and four new states before `diversify`. Full outer loop becomes: `harvest → judge → calibrate → run_optimizer → synthesize → screen_adversarial → score_adversarial → merge → diversify → publish`
@@ -155,7 +196,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - **`merge`** (`action_type: shell`): concatenates `${captured.calibrate.output}` (harvested corpus) with `${captured.validated_adversarial.output}`; each pair retains its `source` field (`harvested` or `adversarial`) as provenance metadata; captures combined corpus as `merged_corpus`; `next: diversify`
 5. **Add diversity enforcement**: coverage budget logic in the `calibrate`/`publish` state; enforce per-axis minimums (skill type, issue type, priority band, lifecycle stage, failure cluster)
 6. **Add oracle prompts**: one scoring prompt per target skill in `loops/oracles/` (e.g., `oracle-capture-issue.yaml`, `oracle-refine-issue.yaml`); each accepts `skill_name`, `invocation`, and `output` context variables; phase 1 mechanical checks are deterministic (schema, file existence, required sections) and run before the LLM call; maintain a calibration fixture of 10–15 hand-labeled examples per skill and run it as a pre-flight check before each mining cycle — halt if score distribution drifts beyond threshold; treat oracle prompts as manually maintained in v1
-7. **Add corpus maintenance**: freshness decay via weight field in `examples.json`; regression floor archiving; auto-ingest hook triggered on issue completion (see `hooks/hooks.json` for hook patterns)
+7. **Add corpus maintenance**: freshness decay via weight field in `examples.json`; regression floor archiving; auto-ingest on new completions. **Hook mechanism constraint**: `hooks/hooks.json` has no "issue completion" event — available events are `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `PreCompact`. Recommended approach: the `harvest` state in `examples-miner.yaml` uses a sentinel timestamp file (e.g., `corpus.last_harvested`) written by the `publish` state; on next run, `ll-messages --skill <name> --since <timestamp>` discovers sessions added after the last harvest. This is polling-based, not event-driven — no hook changes needed.
 
 ## Impact
 
@@ -169,7 +210,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `loops/README.md` — loop catalog; add miner/optimizer pairing pattern and `examples-miner.yaml` entry here
 - `loops/apo-textgrad.yaml` — inner loop; `context.examples_file: examples.json` (line 9) is the direct integration point; gradient format at lines 31–33
 - `loops/apo-opro.yaml` — reference for history-chaining pattern (`captured.score_history` chain across iterations)
-- `loops/examples/harness-single-shot.yaml` — reference for `skill_invocation` pattern in loop YAML
+- `loops/harness-single-shot.yaml` — reference for `skill_invocation` pattern in loop YAML (note: no `examples/` subdirectory; file is at the `loops/` root)
 - `docs/guides/LOOPS_GUIDE.md` — already references `examples_file` and `examples.json`; update with miner pairing
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — references `skill_invocation` patterns; relevant background
 - `docs/generalized-fsm-loop.md` — FSM loop architecture doc; background on `context_passthrough` for sub-loop chaining
@@ -178,7 +219,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Blocked By
 
-- FEAT-850
+- ~~FEAT-850~~ (completed 2026-03-21)
 
 ## Labels
 
@@ -189,6 +230,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-03-20 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-21T05:53:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5b33b4-4f43-4816-926d-91f9358c3ab6.jsonl`
+- `/ll:format-issue` - 2026-03-21T05:50:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29becafe-e61b-4664-a177-52d37aba9ad2.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:26:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37aaa01c-fc9c-49b3-a00c-669bbb0655ed.jsonl`
 - `/ll:refine-issue` - 2026-03-21T01:28:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f97b7680-1084-46aa-9586-4d4827393f96.jsonl`
