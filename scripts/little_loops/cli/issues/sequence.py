@@ -16,7 +16,7 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
 
     Args:
         config: Project configuration
-        args: Parsed arguments with .limit attribute
+        args: Parsed arguments with .limit and optional .type attributes
 
     Returns:
         Exit code (0 = success)
@@ -24,7 +24,8 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.dependency_graph import DependencyGraph
     from little_loops.issue_parser import find_issues
 
-    issues = find_issues(config)
+    type_prefixes = {args.type} if getattr(args, "type", None) else None
+    issues = find_issues(config, type_prefixes=type_prefixes)
 
     if not issues:
         print("No active issues found.")
@@ -42,6 +43,7 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
     shown = ordered[:limit]
 
     if getattr(args, "json", False):
+        type_filter = getattr(args, "type", None)
         print_json(
             [
                 {
@@ -51,6 +53,7 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
                     "path": str(issue.path),
                     "blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set())),
                     "blocks": issue.blocks,
+                    **({"type_filter": type_filter} if type_filter else {}),
                 }
                 for issue in shown
             ]

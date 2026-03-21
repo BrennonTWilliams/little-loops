@@ -219,6 +219,7 @@ Examples:
         "sequence", aliases=["seq"], help="Suggest implementation order based on dependencies"
     )
     seq.set_defaults(command="sequence")
+    seq.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     seq.add_argument(
         "--limit", type=int, default=10, help="Maximum number of issues to show (default: 10)"
     )

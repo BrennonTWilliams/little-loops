@@ -41,10 +41,10 @@ A developer is doing a bug-fix pass and wants to see all bugs in the correct dep
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues sequence --type BUG` filters to bug issues only
-- [ ] Dependency graph still considers cross-type dependencies for ordering
-- [ ] Default behavior unchanged (all types)
-- [ ] `--json` output includes the type filter used
+- [x] `ll-issues sequence --type BUG` filters to bug issues only
+- [x] Dependency graph still considers cross-type dependencies for ordering
+- [x] Default behavior unchanged (all types)
+- [x] `--json` output includes the type filter used
 
 ## Proposed Solution
 
@@ -63,7 +63,11 @@ Add `--type` argument to the `sequence` subparser in `__init__.py`. Pass `type_p
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Completed** | Created: 2026-03-19 | Resolved: 2026-03-21 | Priority: P4
+
+## Resolution
+
+Added `--type` argument to the `sequence` subparser in `__init__.py` (same pattern as `count`, `impact-effort`, `refine-status`). Updated `cmd_sequence` in `sequence.py` to pass `type_prefixes={args.type}` to `find_issues` when the flag is provided. JSON output includes `type_filter` field in each item when a type filter is active. Four new tests added to `TestIssuesCLISequence` covering filter by BUG, filter by FEAT, empty results, and JSON `type_filter` field.
 
 
 ## Verification Notes
@@ -77,6 +81,8 @@ Add `--type` argument to the `sequence` subparser in `__init__.py`. Pass `type_p
 - `list`, `count`, `impact-effort`, `refine-status` all expose `--type` — confirmed
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2f8a4f6-3ee2-4a2d-836e-a1e6fa1a16fe.jsonl`
+- `/ll:ready-issue` - 2026-03-21T21:09:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2f8a4f6-3ee2-4a2d-836e-a1e6fa1a16fe.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:19:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`

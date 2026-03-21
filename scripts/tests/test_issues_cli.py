@@ -607,6 +607,121 @@ class TestIssuesCLISequence:
         data = json.loads(captured.out)
         assert isinstance(data, list)
 
+    def test_sequence_type_filter_bug(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """sequence --type BUG shows only bug issues."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "sequence", "--type", "BUG", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+        assert "BUG-002" in captured.out
+        assert "FEAT-001" not in captured.out
+        assert "FEAT-002" not in captured.out
+
+    def test_sequence_type_filter_feat(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """sequence --type FEAT shows only feature issues."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "sequence", "--type", "FEAT", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "FEAT-001" in captured.out
+        assert "FEAT-002" in captured.out
+        assert "BUG-001" not in captured.out
+
+    def test_sequence_type_filter_no_matches(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """sequence --type ENH shows 'No active issues' when no enhancements exist."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "sequence", "--type", "ENH", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No active issues" in captured.out
+
+    def test_sequence_json_type_filter_included(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """sequence --type BUG --json includes type_filter in each item."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "sequence",
+                "--type",
+                "BUG",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert all(item.get("type_filter") == "BUG" for item in data)
+        assert all(item["id"].startswith("BUG-") for item in data)
+
 
 class TestIssuesCLIImpactEffort:
     """Tests for ll-issues impact-effort sub-command."""
