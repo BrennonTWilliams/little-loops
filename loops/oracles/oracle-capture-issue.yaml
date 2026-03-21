@@ -1,0 +1,102 @@
+name: oracle-capture-issue
+description: |
+  Two-phase rubric scoring oracle for capture-issue ExampleRecord pairs.
+
+  Phase 1 (shell): mechanical/deterministic checks — schema conformance, JSON validity,
+  required field presence. Runs at zero LLM cost; discards structurally invalid pairs.
+
+  Phase 2 (prompt): semantic LLM scoring — evaluates tool choices, file path relevance,
+  and completion status correctness for capture-issue invocations.
+
+  Usage (v2 sub-loop promotion from examples-miner judge state):
+    loop: oracles/oracle-capture-issue
+    context_passthrough: true   # injects invocation and output from parent captures
+
+  Context variables provided by parent via context_passthrough:
+    invocation: the input text passed to the skill
+    output:     JSON-serialized ResponseMetadata (tools_used, files_modified, completion_status)
+initial: check_mechanical
+max_iterations: 1
+timeout: 180
+on_handoff: spawn
+context:
+  skill_name: capture-issue
+  invocation: ""
+  output: ""
+states:
+  check_mechanical:
+    action_type: shell
+    timeout: 30
+    action: |
+      python3 -c "
+      import json, sys
+      raw = '''${context.output}'''
+      failures = []
+      if not raw.strip():
+          print('PHASE1_FAIL: empty output')
+          sys.exit(0)
+      try:
+          data = json.loads(raw)
+      except Exception as e:
+          print(f'PHASE1_FAIL: invalid JSON — {e}')
+          sys.exit(0)
+      if not isinstance(data, dict):
+          failures.append('output is not a JSON object')
+      else:
+          for req in ('tools_used', 'completion_status'):
+              if req not in data:
+                  failures.append(f'missing required field: {req}')
+          if 'tools_used' in data and not isinstance(data['tools_used'], list):
+              failures.append('tools_used must be a list')
+      print('PHASE1_FAIL: ' + '; '.join(failures) if failures else 'PHASE1_PASS')
+      "
+    capture: phase1
+    next: route_phase1
+
+  route_phase1:
+    evaluate:
+      type: output_contains
+      source: "${captured.phase1.output}"
+      pattern: "PHASE1_PASS"
+    on_yes: score_semantic
+    on_no: done
+    on_error: done
+
+  score_semantic:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Score this ${context.skill_name} invocation pair for training utility.
+
+      Invocation context (what the user asked):
+      ${context.invocation}
+
+      Response metadata (JSON — tools used and outcome):
+      ${context.output}
+
+      Evaluate across three dimensions. The output JSON has these fields:
+        tools_used:         list of tool names invoked during the skill
+        files_modified:     list of file paths created or changed
+        completion_status:  "success", "partial", or "error"
+
+      Scoring:
+      1. Tool selection quality (0–33 pts):
+         For a capture-issue invocation, appropriate tools include Read, Grep, Glob,
+         Bash (for searching), and Write (to create the issue file). Penalize: no tools
+         used, wrong tool types for issue capture, excessive unrelated tool calls.
+
+      2. File modification relevance (0–33 pts):
+         capture-issue should write exactly one file in .issues/bugs/, .issues/features/,
+         or .issues/enhancements/. Penalize: no files modified, file in wrong directory,
+         more than one issue file created, unrelated files modified.
+
+      3. Completion integrity (0–34 pts):
+         completion_status should be "success" for an accepted capture-issue output.
+         Penalize: "partial" or "error" status, or "success" with zero files modified.
+
+      Output: SCORE=<0-100>
+    capture: score
+    next: done
+
+  done:
+    terminal: true

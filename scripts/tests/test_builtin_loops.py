@@ -66,6 +66,7 @@ class TestBuiltinLoopFiles:
             "apo-opro",
             "apo-beam",
             "apo-textgrad",
+            "examples-miner",
             "context-health-monitor",
             "harness-single-shot",
             "harness-multi-item",

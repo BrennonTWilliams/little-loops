@@ -1,0 +1,314 @@
+name: examples-miner
+description: |
+  Co-evolutionary examples mining loop for apo-textgrad: harvests skill invocations
+  from completed issue session logs, quality-gates candidates through a three-layer
+  judge (code persistence, revision distance, oracle scoring), calibrates to the 40–80%
+  difficulty band, writes a fresh examples.json, wraps apo-textgrad as a child loop to
+  obtain a text gradient, synthesizes adversarial examples targeting the gradient's
+  failure pattern, enforces coverage diversity, and publishes the final corpus.
+
+  On each run, only sessions added since the last harvest (sentinel: corpus.last_harvested)
+  are re-processed. The calibrated_corpus capture is used as the single accumulating
+  variable — merge and diversify overwrite it in place so publish always has a valid
+  corpus regardless of which path was taken.
+initial: harvest
+max_iterations: 20
+timeout: 7200
+on_handoff: spawn
+context:
+  examples_file: examples.json
+  prompt_file: system.md
+  skill_name: capture-issue
+  corpus_state_file: corpus.json
+  target_pass_rate: 0.6
+states:
+  harvest:
+    action_type: shell
+    timeout: 120
+    action: |
+      SINCE_ARG=""; [ -f corpus.last_harvested ] && SINCE_ARG="--since $(cat corpus.last_harvested)"; \
+      ll-messages --skill ${context.skill_name} --examples-format --context-window 3 $SINCE_ARG --stdout
+    capture: harvested_examples
+    next: judge
+
+  judge:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are a quality judge for training examples used in prompt optimization.
+      Below are harvested (input, output) pairs extracted from completed project issues
+      for the "${context.skill_name}" skill (JSON lines — one object per line, or an empty output):
+      ${captured.harvested_examples.output}
+
+      Apply a three-layer quality stack to each candidate:
+
+      Layer 1 — Code persistence (use Bash tool):
+        For each candidate, parse the "files_modified" list from the output JSON field.
+        For each file: run git log --follow --oneline <file> 2>/dev/null | wc -l
+        Compute:
+          persistence_score = fraction of files_modified still tracked in HEAD
+          persistence_age   = average commit count for still-present files
+        DISCARD any candidate where persistence_score = 0 (all modified files are absent).
+
+      Layer 2 — Revision distance (use Bash tool):
+        For each surviving candidate, estimate revision_distance (0.0–1.0):
+          Check .issues/completed/ for the issue file most likely linked to this session.
+          Count session log entries in its ## Session Log section.
+          1–2 entries → distance ≈ 0.1 (output accepted quickly)
+          3–4 entries → distance ≈ 0.4
+          5+ entries  → distance ≈ 0.7 (heavily revised before acceptance)
+
+      Layer 3 — Oracle rubric (skill-scoped inline scoring):
+        For each candidate that clears layers 1–2 (persistence_score > 0):
+          - tools_used quality: were appropriate tools used for ${context.skill_name}? (0–33 pts)
+          - files_modified quality: are the file paths realistic and relevant? (0–33 pts)
+          - completion_status validity: is "success" correct for an accepted output? (0–34 pts)
+          oracle_score = sum of three criteria (0–100)
+
+      When multiple candidates share the same invocation context (same issue), keep only
+      the highest-ranked by downstream_stability:
+        downstream_stability = persistence_score × persistence_age × (1.0 − revision_distance)
+
+      Output a JSON array of surviving candidates with full per-example metadata:
+      [
+        {
+          "input": "<original input text>",
+          "expected": "<original output JSON string>",
+          "source": "harvested",
+          "difficulty_score": <estimated 0–100>,
+          "failure_cluster": null,
+          "freshness_weight": 1.0,
+          "persistence_score": <0.0–1.0>,
+          "persistence_age": <integer>,
+          "revision_distance": <0.0–1.0>,
+          "oracle_score": <0–100>
+        }
+      ]
+      If no candidates survive all three layers, output an empty JSON array: []
+    capture: judge_scores
+    on_blocked: done
+    next: calibrate
+
+  calibrate:
+    action_type: prompt
+    timeout: 120
+    action: |
+      You are calibrating a training corpus for prompt optimization.
+      Target difficulty band: 40–80% pass rate (trivially easy and noise-level hard examples excluded).
+
+      Judged candidates (JSON array):
+      ${captured.judge_scores.output}
+
+      For each candidate, estimate whether it would PASS or FAIL evaluation against a
+      typical "${context.skill_name}" prompt of moderate quality. Assign a difficulty_score:
+        0–39:  trivially easy  → EXCLUDE
+        40–80: informatively challenging → INCLUDE
+        81–100: noise-level hard → EXCLUDE
+
+      If "${context.corpus_state_file}" exists, use the Read tool to load it. Decay each
+      existing entry's freshness_weight by × 0.9, then merge with today's INCLUDE set
+      (deduplicate by input text). Existing entries carry forward their oracle_score and metadata.
+
+      Output a JSON array of the calibrated corpus preserving all metadata fields.
+      On the final line output: CALIBRATED_COUNT=<integer>
+    capture: calibrated_corpus
+    on_blocked: done
+    next: write_examples
+
+  write_examples:
+    action_type: prompt
+    timeout: 60
+    action: |
+      Write the calibrated corpus to disk so that apo-textgrad can read it.
+
+      Calibrated corpus (JSON array — strip the trailing CALIBRATED_COUNT=N line before parsing):
+      ${captured.calibrated_corpus.output}
+
+      Steps:
+      1. Parse the JSON array from the corpus above.
+      2. Write the parsed JSON array to "${context.examples_file}" using the Write tool.
+      3. Output: WRITTEN=<integer count of examples written>
+    capture: write_examples_result
+    on_blocked: run_optimizer
+    next: run_optimizer
+
+  run_optimizer:
+    loop: apo-textgrad
+    context_passthrough: true
+    on_success: synthesize
+    on_failure: diversify
+
+  synthesize:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are synthesizing adversarial training examples targeting a known prompt weakness.
+
+      Gradient signal from the most recent apo-textgrad run:
+      ${captured.run_optimizer.gradient.output}
+
+      Current calibrated corpus (JSON array — strip any trailing sentinel lines before using):
+      ${captured.calibrated_corpus.output}
+
+      Step 1: Parse FAILURE_PATTERN from the gradient signal above.
+      Step 2: Select the perturbation type that best matches the FAILURE_PATTERN:
+        - complexity_injection:  add a second symptom that may or may not belong in the same issue
+        - ambiguity_injection:   strip specific file/function names, forcing discovery over copying
+        - domain_shift:          reproduce the same failure pattern in a different subsystem
+        - priority_boundary:     edge case sitting between two adjacent priority levels
+        - type_confusion:        description that looks like FEAT but is BUG (or vice versa)
+      Step 3: Select up to 5 examples nearest the 80% difficulty boundary as seeds
+        (highest information density for perturbation — highest difficulty_score ≤ 80).
+      Step 4: Apply the chosen perturbation to each seed's INPUT only.
+        The original expected output MUST NOT be reused — generate a fresh one in step 5.
+      Step 5: For each perturbed input, generate a fresh expected output simulating what
+        a correct ${context.skill_name} invocation would produce (JSON with fields:
+        tools_used, files_modified, completion_status).
+
+      Output a JSON array:
+      [
+        {
+          "input": "<perturbed input>",
+          "expected": "<fresh expected output JSON string>",
+          "source": "adversarial",
+          "perturbation_type": "<type selected in step 2>",
+          "seed_id": "<session_id of the seed example>",
+          "difficulty_score": <estimated 0–100>,
+          "failure_cluster": "<FAILURE_PATTERN tag>",
+          "freshness_weight": 1.0
+        }
+      ]
+      If gradient output is CONVERGED or FAILURE_PATTERN is absent, output an empty array: []
+    capture: adversarial_candidates
+    on_blocked: diversify
+    next: screen_adversarial
+
+  screen_adversarial:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Apply mechanical quality checks to these adversarial training candidates:
+      ${captured.adversarial_candidates.output}
+
+      For each candidate, verify:
+      1. Schema conformance: has all required fields (input, expected, source, perturbation_type, seed_id)
+      2. Source field: must equal "adversarial"
+      3. Expected field: must be a parseable JSON string (not empty, not raw text)
+      4. Input field: must be non-empty text
+      5. Perturbation type: must be one of the five taxonomy values
+         (complexity_injection, ambiguity_injection, domain_shift, priority_boundary, type_confusion)
+      6. File path plausibility: use the Bash tool to run: test -e <path> for any file paths
+         mentioned literally in the input text; flag candidates with implausible paths
+
+      Discard any candidate that fails schema conformance, has an empty input, a non-JSON
+      expected field, or a perturbation_type outside the taxonomy.
+      Keep all others even if file paths are merely plausibility-flagged (soft check).
+
+      Output a JSON array of surviving candidates, preserving all metadata fields.
+      On the final line output: SCREENED_COUNT=<integer>
+    capture: screened_adversarial
+    on_blocked: diversify
+    next: score_adversarial
+
+  score_adversarial:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are an oracle scoring adversarial training example candidates for "${context.skill_name}".
+
+      Screened adversarial candidates (JSON array — strip any trailing sentinel lines):
+      ${captured.screened_adversarial.output}
+
+      Current calibrated corpus (JSON array — used to enforce the adversarial cap):
+      ${captured.calibrated_corpus.output}
+
+      For each candidate:
+      1. Score against the oracle rubric (0–100):
+         - Perturbation coherence: is the perturbation type applied correctly to the input? (0–34 pts)
+         - Expected output quality: does the fresh expected output correctly reflect
+           what ${context.skill_name} should produce for this input? (0–33 pts)
+         - Adversarial value: does this example target a real weakness from the failure cluster? (0–33 pts)
+      2. Assign difficulty_score (0–100); only include candidates in the 40–80 difficulty band.
+      3. Enforce adversarial cap:
+         count "source: adversarial" examples in the calibrated corpus.
+         Combined with new candidates, adversarial must be ≤ 30% of the final corpus size.
+         Trim lowest-oracle-scored candidates first if cap would be exceeded.
+
+      Output a JSON array of accepted adversarial examples preserving all metadata fields.
+      On the final line output: ADVERSARIAL_ACCEPTED=<integer>
+    capture: validated_adversarial
+    on_blocked: diversify
+    next: merge
+
+  merge:
+    action_type: prompt
+    timeout: 60
+    action: |
+      Merge two JSON arrays into one combined training corpus.
+
+      Calibrated harvested corpus (JSON array — strip trailing sentinel lines):
+      ${captured.calibrated_corpus.output}
+
+      Validated adversarial examples (JSON array — strip trailing sentinel lines):
+      ${captured.validated_adversarial.output}
+
+      Instructions:
+      1. Parse both arrays (remove any trailing lines like CALIBRATED_COUNT=N or ADVERSARIAL_ACCEPTED=N).
+      2. Concatenate them into a single JSON array.
+      3. Each example retains its "source" field ("harvested" or "adversarial") as provenance.
+      4. Output the combined JSON array only — no prose commentary.
+    capture: calibrated_corpus
+    on_blocked: diversify
+    next: diversify
+
+  diversify:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Enforce coverage diversity in this training corpus.
+
+      Combined corpus (JSON array — strip trailing sentinel lines):
+      ${captured.calibrated_corpus.output}
+
+      Count examples per coverage axis:
+      - issue_type:     infer from input context (BUG / FEAT / ENH mentions)
+      - priority_band:  infer from input context (P0–P5 mentions)
+      - failure_cluster: group by failure_cluster field (null → "unclustered")
+      - source:         harvested vs adversarial
+
+      Coverage targets (apply when corpus size ≥ 10):
+      - At least 2 examples per represented issue_type
+      - At least 1 example per represented priority_band
+      - Adversarial examples ≤ 30% of corpus (trim lowest oracle_score first)
+
+      If all coverage targets are already met, output the corpus unchanged.
+      Otherwise, sub-sample over-represented axes by removing the easiest examples
+      (lowest difficulty_score) from over-represented groups until targets are met.
+
+      Output the final diversified corpus as a JSON array preserving all metadata.
+      On the final line output: FINAL_COUNT=<integer>
+    capture: calibrated_corpus
+    on_blocked: publish
+    next: publish
+
+  publish:
+    action_type: prompt
+    timeout: 60
+    action: |
+      Write the final calibrated corpus to disk and update the harvest sentinel.
+
+      Final corpus (JSON array — strip any trailing sentinel lines like FINAL_COUNT=N):
+      ${captured.calibrated_corpus.output}
+
+      Steps:
+      1. Parse the JSON array from the corpus above.
+      2. Write the parsed JSON array to "${context.examples_file}" using the Write tool.
+         (This is the final publish; it overwrites the intermediate write from write_examples.)
+      3. Use the Bash tool to run: date -u +%Y-%m-%dT%H:%M:%SZ > corpus.last_harvested
+      4. Output: PUBLISHED=<integer count of examples written>
+    capture: publish_result
+    on_blocked: done
+    next: done
+
+  done:
+    terminal: true

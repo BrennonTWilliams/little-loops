@@ -55,6 +55,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `apo-opro` | OPRO-style — history-guided proposal loop until convergence |
 | `apo-beam` | Beam search — generate N variants, score all, advance the winner |
 | `apo-textgrad` | TextGrad-style — test on examples, compute failure gradient, apply refinement |
+| `examples-miner` | Co-evolutionary corpus miner — harvest session logs, quality-gate via three-layer judge, calibrate to 40–80% difficulty band, run apo-textgrad as inner loop, synthesize adversarial examples from gradient signal, enforce diversity, publish fresh examples.json |
 
 ## Harness / Templates
 

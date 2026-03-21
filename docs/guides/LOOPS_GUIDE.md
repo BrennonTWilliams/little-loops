@@ -739,6 +739,90 @@ test_on_examples ──→ compute_gradient ──→ route_convergence
                                           └─ CONTINUE ──→ apply_gradient ──→ test_on_examples
 ```
 
+---
+
+### `examples-miner` — Co-evolutionary Corpus Mining
+
+**Technique**: Harvest skill invocations from completed issue session logs → quality-gate via a three-layer judge (code persistence, revision distance, oracle scoring) → calibrate to the 40–80% difficulty band → run `apo-textgrad` as a child loop to obtain a gradient signal → synthesize adversarial examples targeting the failure pattern → enforce diversity → publish a fresh `examples.json`.
+
+**When to use**: After `apo-textgrad` has plateaued on hand-crafted examples, or after skill conventions have evolved and the static corpus is stale. The miner automatically harvests the project's own completed issues (784+ issues = implicit human approvals) and synthesizes adversarial examples from the current gradient's failure pattern.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `examples_file` | `examples.json` | Path where the fresh corpus is published |
+| `prompt_file` | `system.md` | Prompt file passed to the inner apo-textgrad loop |
+| `skill_name` | `capture-issue` | Skill to mine (e.g., `capture-issue`, `refine-issue`) |
+| `corpus_state_file` | `corpus.json` | Optional: persisted calibration state for freshness decay |
+| `target_pass_rate` | `0.6` | Center of the 40–80% difficulty band (fraction, 0–1) |
+
+**Invocation**:
+
+```bash
+# Run with defaults (mines capture-issue sessions, publishes to examples.json)
+ll-loop run examples-miner
+
+# Mine a different skill with a custom examples file
+ll-loop run examples-miner \
+  --context skill_name=refine-issue \
+  --context examples_file=tests/refine-examples.json \
+  --context prompt_file=skills/refine-issue/SKILL.md
+
+# Install to project for customization (hardcode oracle path for v2 sub-loop promotion)
+ll-loop install examples-miner
+```
+
+**FSM flow**:
+```
+harvest ──→ judge ──→ calibrate ──→ write_examples ──→ run_optimizer (sub-loop: apo-textgrad)
+                                                         ├─ SUCCESS ──→ synthesize ──→ screen_adversarial ──→ score_adversarial ──→ merge ──→ diversify ──→ publish ──→ done
+                                                         └─ FAILURE ──→ diversify ──→ publish ──→ done
+```
+
+**Three-layer quality judge**:
+
+| Layer | Mechanism | What it checks |
+|-------|-----------|----------------|
+| 1. Code persistence | `git log --follow` via Bash | `files_modified` still present in HEAD; persistence age (commit count without revert) |
+| 2. Revision distance | Session log entry count | Low session count → output accepted quickly (low distance); many refinement sessions → high distance |
+| 3. Oracle rubric | Inline LLM scoring | Tool selection quality, file path relevance, completion status (0–100 pts per candidate) |
+
+Only candidates that survive all three layers and fall in the 40–80% pass-rate band enter the active calibrated set.
+
+**Adversarial synthesis perturbation taxonomy** (gradient `FAILURE_PATTERN` selects type):
+
+| Type | What it does |
+|------|-------------|
+| `complexity_injection` | Adds a second symptom that may or may not belong in the same issue — tests scope boundary judgment |
+| `ambiguity_injection` | Strips specific file/function names, forcing discovery rather than copying references |
+| `domain_shift` | Reproduces the same failure pattern in a different subsystem — tests generalization |
+| `priority_boundary` | Edge case sitting between two adjacent priority levels |
+| `type_confusion` | Description that looks like FEAT but is BUG (or vice versa) |
+
+**Adversarial cap**: `source: adversarial` examples are capped at ≤ 30% of the final corpus at all times.
+
+**Sentinel-based incremental harvest**: The `publish` state writes `corpus.last_harvested` with the current UTC timestamp. On the next run, `harvest` passes `--since <timestamp>` to `ll-messages` so only new sessions are re-processed. On the first run the sentinel file is absent and all sessions are harvested.
+
+**Pairing with apo-textgrad** (recommended workflow):
+
+```bash
+# Step 1: Build a fresh corpus from project history
+ll-loop run examples-miner --context skill_name=capture-issue
+
+# Step 2: Run apo-textgrad against the mined corpus
+ll-loop run apo-textgrad \
+  --context prompt_file=skills/capture-issue/SKILL.md \
+  --context examples_file=examples.json
+
+# Or: run examples-miner once — it calls apo-textgrad internally as run_optimizer
+ll-loop run examples-miner \
+  --context skill_name=capture-issue \
+  --context prompt_file=skills/capture-issue/SKILL.md
+```
+
+**Oracle sub-loop (v2)**: The `loops/oracles/oracle-capture-issue.yaml` file provides a two-phase oracle (mechanical checks + semantic LLM scoring) that can be promoted to a sub-loop in a customized `examples-miner.yaml` via `loop: oracles/oracle-capture-issue` + `context_passthrough: true` on the `judge` state. The built-in `examples-miner.yaml` uses inline oracle scoring (v1 approach) — install and customize to enable sub-loop promotion.
+
 ### Choosing Between APO Loops
 
 | | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` |
