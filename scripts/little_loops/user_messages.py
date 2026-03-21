@@ -696,26 +696,23 @@ def _extract_messages_with_context(
     """
     messages: list[UserMessage] = []
 
-    i = 0
-    while i < len(records):
-        record = records[i]
-        msg = _parse_user_record(record, jsonl_file, since)
+    current_msg: UserMessage | None = None
+    current_responses: list[dict] = []
 
-        if msg is not None:
-            # Collect ALL assistant responses until next user message
-            assistant_responses: list[dict] = []
-            for j in range(i + 1, len(records)):
-                next_record = records[j]
-                if next_record.get("type") == "assistant":
-                    assistant_responses.append(next_record)
-                elif next_record.get("type") == "user":
-                    # Hit another user message, stop collecting
-                    break
+    for record in records:
+        if record.get("type") == "user":
+            if current_msg is not None:
+                current_msg.response_metadata = _aggregate_response_metadata(current_responses)
+                messages.append(current_msg)
+            current_msg = _parse_user_record(record, jsonl_file, since)
+            current_responses = []
+        elif record.get("type") == "assistant" and current_msg is not None:
+            current_responses.append(record)
 
-            msg.response_metadata = _aggregate_response_metadata(assistant_responses)
-            messages.append(msg)
-
-        i += 1
+    # Emit the final group
+    if current_msg is not None:
+        current_msg.response_metadata = _aggregate_response_metadata(current_responses)
+        messages.append(current_msg)
 
     return messages
 

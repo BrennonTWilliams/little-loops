@@ -16,8 +16,8 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/user_messages.py`
-- **Line(s)**: 663-682 (at scan commit: 8c6cf90)
-- **Anchor**: `in function _extract_messages_with_context`
+- **Line(s)**: 699-718 (at scan commit: 8c6cf90; updated from 663-682)
+- **Anchor**: `_extract_messages_with_context` (function at line 679)
 - **Code**:
 ```python
 i = 0
@@ -83,7 +83,11 @@ for record in records:
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Completed** | Created: 2026-03-19 | Resolved: 2026-03-21 | Priority: P4
+
+## Resolution
+
+Replaced the O(n²) nested-loop in `_extract_messages_with_context` with a single O(n) forward pass that groups records as they are encountered. Each user-record boundary emits the previous group; the final group is emitted after the loop. Behavioral equivalence verified across all edge cases (since-filtered records, consecutive user messages, empty sessions). All 85 existing tests pass; no lint or type errors.
 
 
 ## Verification Notes
@@ -95,6 +99,7 @@ for record in records:
 - No fix has been applied; issue remains open and accurate
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-21T06:21:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1a13c8e-1bd6-4940-b98d-e1147b5c2a82.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:44:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
