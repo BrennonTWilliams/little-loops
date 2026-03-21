@@ -266,6 +266,13 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 | `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
 
+**Harness Examples**
+
+| Loop | Description |
+|------|-------------|
+| `harness-single-shot` | Annotated single-shot harness example — all evaluation phases with commented-out optional gates |
+| `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
+
 ## Beyond the Basics
 
 The sections below cover features you'll encounter as you move past simple loops: evaluators, variable interpolation, capture, routing, action types, retry and timing fields, handoff behavior, and scope-based concurrency. For full technical details — schema definitions, compiler internals, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md).
@@ -851,6 +858,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 
 | Flag | Effect |
 |------|--------|
+| `--tail` / `-n` | Limit output to last N events (default: 50) |
 | `--event` / `-e` | Filter by event type (e.g. `evaluate`, `route`, `state_enter`) |
 | `--state` / `-s` | Filter by state name (matches `state`, `from`, or `to` fields) |
 | `--since` | Filter to events within a time window (e.g. `1h`, `30m`, `2d`) |
