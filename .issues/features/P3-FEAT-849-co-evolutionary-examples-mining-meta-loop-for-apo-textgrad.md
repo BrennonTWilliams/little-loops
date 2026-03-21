@@ -23,7 +23,14 @@ A loop (`examples-miner.yaml` or similar) runs as a wrapper around `apo-textgrad
 1. **Harvests** skill invocations from all session logs linked in completed issues (`## Session Log` entries)
 2. **Judges** each harvested pair using a rubric oracle (a separate calibrated prompt) that scores outputs against structured criteria rather than literal string matching
 3. **Calibrates** the active example set to the informative difficulty band (40–80% pass rate against the current prompt) — trivially easy examples are retired, noise-level hard examples are excluded
-4. **Synthesizes** new adversarial examples by reading the gradient output (`FAILURE_PATTERN`, `ROOT_CAUSE`) from the most recent `apo-textgrad` run and generating targeted perturbations of passing examples
+4. **Synthesizes** new adversarial examples by reading `FAILURE_PATTERN`/`ROOT_CAUSE` from the most recent `apo-textgrad` run and applying a named perturbation type to the **inputs** of passing examples — expected outputs are never carried over; they are regenerated fresh for each perturbed input to prevent ground-truth corruption. Perturbation taxonomy (gradient `FAILURE_PATTERN` selects which type to apply):
+   - **Complexity injection**: add a second symptom that may or may not belong in the same issue — tests scope boundary judgment
+   - **Ambiguity injection**: strip specific file/function names from the description, forcing the model to discover rather than copy references
+   - **Domain shift**: same failure pattern reproduced in a different subsystem — tests generalization vs. overfitting
+   - **Priority boundary**: edge case sitting between two adjacent priority levels — exercises the decision criteria
+   - **Type confusion**: description that looks like FEAT but is BUG, or vice versa — tests classification robustness
+
+   Synthesized pairs are quality-gated by the oracle (both phases) before corpus inclusion and compete for corpus slots on equal footing with harvested examples. At most 25–30% of the final corpus may have `source: adversarial` at any time.
 5. **Diversifies** via a coverage budget: at least N examples per skill type, issue type, priority band, lifecycle stage, and failure cluster
 6. **Publishes** a fresh `examples.json` with per-example metadata (provenance, difficulty score, failure cluster, freshness weight)
 7. **Maintains** a living corpus: new completions enter the harvest queue automatically; stale examples decay in weight; an archived regression floor prevents backward drift
@@ -36,7 +43,7 @@ A loop (`examples-miner.yaml` or similar) runs as a wrapper around `apo-textgrad
 
 A two-loop architecture using FSM sub-loop chaining:
 
-**Outer loop** (`examples-miner.yaml`): harvest → judge → calibrate → run_optimizer (sub-loop) → synthesize → diversify → publish
+**Outer loop** (`examples-miner.yaml`): harvest → judge → calibrate → run_optimizer (sub-loop) → synthesize → screen_adversarial → score_adversarial → merge → diversify → publish
 **Inner loop** (`apo-textgrad`): test → gradient → apply → iterate
 
 The outer loop invokes `apo-textgrad` as a child FSM via `loop: apo-textgrad` + `context_passthrough: true` in the `run_optimizer` state. The child's gradient output (`FAILURE_PATTERN`, `ROOT_CAUSE`, `GRADIENT`) is available in the parent as `${captured.run_optimizer.gradient.output}` for the `synthesize` state. The inner loop reads `examples.json` published by the outer loop via its `context.examples_file`. Both loops run within a single `ll-loop run` invocation — no file I/O required to pass the gradient signal.
@@ -122,12 +129,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_cli.py` — `TestMainMessages` class at ~line 580; add `--skill` and `--examples-format` CLI argument tests here
 - `scripts/tests/test_builtin_loops.py` — loop YAML validation tests; add `examples-miner.yaml` schema validation here
 
+**Adversarial synthesis — codebase anchors:**
+- `docs/guides/LOOPS_GUIDE.md:700-709` — current `examples.json` schema is `[{"input": ..., "expected": ...}]` only; the metadata fields proposed here (`source`, `perturbation_type`, `seed_id`, `difficulty_score`, `failure_cluster`, `freshness_weight`) are all new additions with no existing schema definition
+- `loops/oracles/` — does **not** exist yet; new directory to create; oracle YAML files (`oracle-capture-issue.yaml`, etc.) will be the first files placed here
+- `scripts/little_loops/fsm/schema.py:179-231` — `StateConfig` dataclass; confirmed `action_type` options are `prompt`, `slash_command`, `shell`, `mcp_tool`; the four new synthesis states (`synthesize`, `screen_adversarial`, `score_adversarial`, `merge`) use `prompt`/`shell` alternately
+- `loops/apo-beam.yaml:13-22` — closest structural analogue to `synthesize` state: `generate_variants` prompt state emits multiple candidates in a structured text block; follow this pattern for the synthesize action's JSON array output
+- `loops/evaluation-quality.yaml:57-93` — closest structural analogue to `score_adversarial`: multi-input `score` prompt state that synthesizes prior captured outputs and emits structured scores; follow for the oracle phase-2 action format
+- Perturbation type → `FAILURE_PATTERN` mapping is purely prompt-level logic — no code-level dispatch; the `synthesize` prompt must include the full taxonomy table (5 types) and instruct the LLM to select the best match for the observed pattern
+
 ## Implementation Steps
 
 1. **Implement FEAT-850 first**: `ExampleRecord` dataclass + `build_examples()` in `scripts/little_loops/user_messages.py`; `--skill`, `--examples-format`, `--context-window` args in `scripts/little_loops/cli/messages.py:main_messages()` (line 11); tests in `scripts/tests/test_user_messages.py` and `scripts/tests/test_cli_messages_save.py`
 2. **Build `examples-miner.yaml`**: follow FSM schema from `loops/apo-textgrad.yaml`; states: `harvest` (shell: `ll-messages --skill <name> --examples-format -o ${context.examples_file}`) → `judge` (prompt: score each pair against rubric) → `calibrate` (prompt: select 40–80% pass-rate band) → `publish` (shell: write final `examples.json`)
 3. **Validate end-to-end**: run miner on `ready-issue` session logs (`.issues/completed/` via `issue_history/parsing.py:20`), feed output to `loops/apo-textgrad.yaml` with `context.examples_file` pointing at miner output, verify gradient fires (`FAILURE_PATTERN`/`ROOT_CAUSE` present in `captured.gradient.output`)
-4. **Add adversarial synthesis state**: insert a `run_optimizer` sub-loop state (after `calibrate`, before `synthesize`) that invokes `apo-textgrad` via `loop: apo-textgrad` + `context_passthrough: true`; then add a `synthesize` prompt state that reads `${captured.run_optimizer.gradient.output}` to extract `FAILURE_PATTERN` and `ROOT_CAUSE` and generates targeted perturbations of passing examples
+4. **Add adversarial synthesis states**: after `calibrate`, insert `run_optimizer` and four new states before `diversify`. Full outer loop becomes: `harvest → judge → calibrate → run_optimizer → synthesize → screen_adversarial → score_adversarial → merge → diversify → publish`
+   - **`run_optimizer`**: `loop: apo-textgrad`, `context_passthrough: true`, `on_success: synthesize`, `on_failure: publish` — skip synthesis entirely if the optimizer hit `max_iterations`/timeout
+   - **`synthesize`** (`action_type: prompt`, timeout: 300): reads `${captured.run_optimizer.gradient.output}` and the passing-example list from `${captured.calibrate.output}`; executes five sub-steps in a single prompt action:
+     1. Parse `FAILURE_PATTERN` from `${captured.run_optimizer.gradient.output}`; map it to one of the five perturbation types (complexity injection, ambiguity injection, domain shift, priority boundary, type confusion — see Expected Behavior §4)
+     2. Select up to N passing examples nearest the 80% difficulty boundary as seeds (highest information density for perturbation)
+     3. Apply the selected perturbation type to each seed's **input only** — the original expected output must NOT be reused
+     4. For each perturbed input, generate a fresh expected output by running the skill prompt against it as if it were a live invocation
+     5. Emit results as a JSON array: `[{"input": ..., "expected": ..., "source": "adversarial", "perturbation_type": ..., "seed_id": ...}]`; capture as `adversarial_candidates`; `next: screen_adversarial`
+   - **`screen_adversarial`** (`action_type: shell`): runs oracle phase-1 mechanical checks (schema conformance, required sections, file path plausibility) on each pair in `${captured.adversarial_candidates.output}`; discards incoherent pairs immediately at zero LLM cost; emits survivors; capture as `screened_adversarial`; `next: score_adversarial`
+   - **`score_adversarial`** (`action_type: prompt`): runs oracle phase-2 LLM scoring on `${captured.screened_adversarial.output}` using the same skill-scoped oracle prompt used in `judge`; filters to the 40–80% pass-rate band; enforces adversarial cap — if survivors would push `source: adversarial` above 25–30% of corpus, trim lowest-scoring pairs first; captures final adversarial set as `validated_adversarial`; `next: merge`
+   - **`merge`** (`action_type: shell`): concatenates `${captured.calibrate.output}` (harvested corpus) with `${captured.validated_adversarial.output}`; each pair retains its `source` field (`harvested` or `adversarial`) as provenance metadata; captures combined corpus as `merged_corpus`; `next: diversify`
 5. **Add diversity enforcement**: coverage budget logic in the `calibrate`/`publish` state; enforce per-axis minimums (skill type, issue type, priority band, lifecycle stage, failure cluster)
 6. **Add oracle prompts**: one scoring prompt per target skill in `loops/oracles/` (e.g., `oracle-capture-issue.yaml`, `oracle-refine-issue.yaml`); each accepts `skill_name`, `invocation`, and `output` context variables; phase 1 mechanical checks are deterministic (schema, file existence, required sections) and run before the LLM call; maintain a calibration fixture of 10–15 hand-labeled examples per skill and run it as a pre-flight check before each mining cycle — halt if score distribution drifts beyond threshold; treat oracle prompts as manually maintained in v1
 7. **Add corpus maintenance**: freshness decay via weight field in `examples.json`; regression floor archiving; auto-ingest hook triggered on issue completion (see `hooks/hooks.json` for hook patterns)
@@ -164,6 +189,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-03-20 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-21T02:26:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37aaa01c-fc9c-49b3-a00c-669bbb0655ed.jsonl`
 - `/ll:refine-issue` - 2026-03-21T01:28:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f97b7680-1084-46aa-9586-4d4827393f96.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2dab8d3-f1a2-4974-84ba-68f20250569c.jsonl`
