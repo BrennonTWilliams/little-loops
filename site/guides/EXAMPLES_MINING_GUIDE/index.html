@@ -1,0 +1,2687 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/guides/EXAMPLES_MINING_GUIDE/">
+      
+      
+        <link rel="prev" href="../AUTOMATIC_HARNESSING_GUIDE/">
+      
+      
+        <link rel="next" href="../../reference/CLI/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/logo-icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Examples Mining - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../docs-theme/stylesheets/little-loops.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#co-evolutionary-examples-mining-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  <img src="../../assets/logo-icon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Examples Mining
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  <img src="../../assets/logo-icon.svg" alt="logo">
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Mining
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Mining
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-problem-with-static-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem with Static Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-examples-miner-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What examples-miner Does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-pipeline-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the Pipeline Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the Pipeline Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stage-1-harvest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 1: Harvest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-2-judge-three-layer-quality-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 2: Judge — Three-Layer Quality Stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-3-calibrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 3: Calibrate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-4-write-optimize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 4: Write + Optimize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-5-synthesize-adversarial-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 5: Synthesize — Adversarial Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-6-screen-score-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 6: Screen → Score → Merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-7-diversify-publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 7: Diversify + Publish
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-examplesjson-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The examples.json Schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-io-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File I/O Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuring-for-a-different-skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring for a Different Skill
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#incremental-harvesting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Incremental Harvesting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-oracle-sub-loop-v2-upgrade" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Oracle Sub-loop (v2 Upgrade)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Oracle Sub-loop (v2 Upgrade)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-the-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install the loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-create-the-oracle-yaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Create the oracle YAML
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-wire-the-oracle-into-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Wire the oracle into judge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-calibrate-the-oracle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Calibrate the oracle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring a Run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-problem-with-static-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem with Static Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-examples-miner-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What examples-miner Does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-pipeline-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the Pipeline Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the Pipeline Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stage-1-harvest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 1: Harvest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-2-judge-three-layer-quality-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 2: Judge — Three-Layer Quality Stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-3-calibrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 3: Calibrate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-4-write-optimize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 4: Write + Optimize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-5-synthesize-adversarial-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 5: Synthesize — Adversarial Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-6-screen-score-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 6: Screen → Score → Merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-7-diversify-publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage 7: Diversify + Publish
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-examplesjson-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The examples.json Schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-io-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File I/O Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuring-for-a-different-skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring for a Different Skill
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#incremental-harvesting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Incremental Harvesting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-oracle-sub-loop-v2-upgrade" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Oracle Sub-loop (v2 Upgrade)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Oracle Sub-loop (v2 Upgrade)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-the-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install the loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-create-the-oracle-yaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Create the oracle YAML
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-wire-the-oracle-into-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Wire the oracle into judge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-calibrate-the-oracle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Calibrate the oracle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring a Run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="co-evolutionary-examples-mining-guide">Co-evolutionary Examples Mining Guide<a class="headerlink" href="#co-evolutionary-examples-mining-guide" title="Permanent link">&para;</a></h1>
+<p>Static <code>examples.json</code> files have a natural expiry date. When <code>apo-textgrad</code> is first set up, examples are written for the prompt's current capability — but as the prompt improves, those examples become trivially easy, <code>PASS_RATE</code> saturates, the gradient signal disappears, and optimization stalls at a local optimum. Meanwhile, the skill itself evolves: new conventions, new file layouts, new issue formats. The corpus quietly goes stale.</p>
+<p><code>examples-miner</code> breaks this pattern by coupling the corpus to the project's own history. Every completed issue with a session log is an implicit human approval — the agent's output was good enough that a human accepted it and the issue closed. <code>examples-miner</code> harvests these real labeled invocations, quality-gates them through a three-layer judge, calibrates difficulty to an informative 40–80% band, runs <code>apo-textgrad</code> as an inner sub-loop to extract a gradient signal, and synthesizes adversarial examples targeting exactly the failure pattern the optimizer found. Repeat, and difficulty always leads the prompt's current capability.</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#the-problem-with-static-examples">The Problem with Static Examples</a></li>
+<li><a href="#what-examples-miner-does">What examples-miner Does</a></li>
+<li><a href="#when-to-use">When to Use</a></li>
+<li><a href="#quick-start">Quick Start</a></li>
+<li><a href="#how-the-pipeline-works">How the Pipeline Works</a></li>
+<li><a href="#stage-1-harvest">Stage 1: Harvest</a></li>
+<li><a href="#stage-2-judge-three-layer-quality-stack">Stage 2: Judge — Three-Layer Quality Stack</a></li>
+<li><a href="#stage-3-calibrate">Stage 3: Calibrate</a></li>
+<li><a href="#stage-4-write-optimize">Stage 4: Write + Optimize</a></li>
+<li><a href="#stage-5-synthesize-adversarial-examples">Stage 5: Synthesize — Adversarial Examples</a></li>
+<li><a href="#stage-6-screen-score-merge">Stage 6: Screen → Score → Merge</a></li>
+<li><a href="#stage-7-diversify-publish">Stage 7: Diversify + Publish</a></li>
+<li><a href="#the-examplesjson-schema">The examples.json Schema</a></li>
+<li><a href="#configuration-reference">Configuration Reference</a></li>
+<li><a href="#file-io-reference">File I/O Reference</a></li>
+<li><a href="#configuring-for-a-different-skill">Configuring for a Different Skill</a></li>
+<li><a href="#incremental-harvesting">Incremental Harvesting</a></li>
+<li><a href="#the-oracle-sub-loop-v2-upgrade">The Oracle Sub-loop (v2 Upgrade)</a></li>
+<li><a href="#monitoring-a-run">Monitoring a Run</a></li>
+<li><a href="#tips">Tips</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#see-also">See Also</a></li>
+</ul>
+<hr />
+<h2 id="the-problem-with-static-examples">The Problem with Static Examples<a class="headerlink" href="#the-problem-with-static-examples" title="Permanent link">&para;</a></h2>
+<p><code>apo-textgrad</code> works by testing the current prompt against a batch of <code>(input, expected)</code> pairs, counting how many pass, and computing a text gradient from the failures. This gradient drives the next prompt revision. The mechanism is powerful — but it depends entirely on the examples being informative.</p>
+<p>When examples are hand-crafted at the time the skill is written:</p>
+<ol>
+<li><strong>The prompt improves</strong> — iterations drive the pass rate up toward 100%.</li>
+<li><strong>The examples become trivially easy</strong> — the prompt now handles them without effort.</li>
+<li><strong><code>PASS_RATE</code> saturates</strong> → the loop emits <code>CONVERGED</code> and stops.</li>
+<li><strong>The prompt still fails on harder real inputs</strong> that were never in the corpus — but the optimizer doesn't know this.</li>
+</ol>
+<p>The result is a prompt optimized for the hand-crafted corpus, not for the full distribution of real invocations. The corpus is also frozen in time: as the skill's conventions evolve, examples reference old file paths, old issue formats, old tool patterns. The optimizer silently reinforces stale behavior.</p>
+<p><code>examples-miner</code> solves both problems. It sources examples from the project's completed issue history — real invocations that real humans accepted. It continuously recalibrates difficulty to keep examples in the informative 40–80% pass-rate band. And after each optimizer run, it synthesizes new adversarial examples that specifically target the current gradient's failure pattern, so the corpus always stays ahead of the prompt's current capability.</p>
+<hr />
+<h2 id="what-examples-miner-does">What examples-miner Does<a class="headerlink" href="#what-examples-miner-does" title="Permanent link">&para;</a></h2>
+<p>Two loops coupled together:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌── OUTER LOOP: examples-miner ───────────────────────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│                                                                          │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│  harvest ──→ judge ──→ calibrate ──→ write_examples                     │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│                                              │                          │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│                                        run_optimizer                    │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│                                    (inner: apo-textgrad)                │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│                                        │         │                      │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│                                    SUCCESS    FAILURE                   │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│                                        │         │                      │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│                                     synthesize   │                      │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│                                        │         │                      │
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│                           screen_adversarial     │                      │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│                                        │         │                      │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│                            score_adversarial     │                      │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│                                        │         │                      │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│                                      merge       │                      │
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│                                        │         │                      │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│                                     diversify ←──┘                      │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│                                        │                                │
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│                                     publish ──→ done                    │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>└──────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<p>The <strong>outer loop</strong> mines, calibrates, and publishes the corpus. The <strong>inner loop</strong> (<code>apo-textgrad</code>) runs as a child FSM via sub-loop chaining (<code>context_passthrough: true</code>), inheriting the outer loop's <code>prompt_file</code> and <code>examples_file</code>. After the inner loop completes, the outer loop reads its gradient signal from <code>${captured.run_optimizer.gradient.output}</code> and uses it to synthesize adversarial examples that target the exact failure pattern the optimizer found.</p>
+<hr />
+<h2 id="when-to-use">When to Use<a class="headerlink" href="#when-to-use" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Use examples-miner?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apo-textgrad</code> <code>PASS_RATE</code> plateaus ≥90% but prompt still fails on real invocations</td>
+<td>Yes — corpus is stale or too easy</td>
+</tr>
+<tr>
+<td><code>examples.json</code> was hand-crafted months ago and the skill has evolved</td>
+<td>Yes — conventions have drifted</td>
+</tr>
+<tr>
+<td>No <code>examples.json</code> exists yet and you want one from real project history</td>
+<td>Yes — first-run builds from scratch</td>
+</tr>
+<tr>
+<td>You have a brand-new skill with no completed issues yet</td>
+<td>No — harvest will be empty; write initial examples manually, then use the miner</td>
+</tr>
+<tr>
+<td>You want to run <code>apo-textgrad</code> against a specific curated test set</td>
+<td>No — manage that corpus manually</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># 1. Check that session data exists for the skill</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>ll-messages<span class="w"> </span>--skill<span class="w"> </span>capture-issue<span class="w"> </span>--examples-format<span class="w"> </span>--stdout<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-3
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># 2. First run: mine all history, optimize the prompt, publish examples.json</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>capture-issue<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">prompt_file</span><span class="o">=</span>skills/capture-issue/SKILL.md
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># 3. Verify the output</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="s2">import json</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="s2">with open(&#39;examples.json&#39;) as f:</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="s2">    data = json.load(f)</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="s2">print(f&#39;{len(data)} examples&#39;)</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="s2">print(&#39;Sources:&#39;, set(e.get(\&quot;source\&quot;) for e in data))</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="s2">print(&#39;Difficulty range:&#39;, min(e.get(\&quot;difficulty_score\&quot;, 0) for e in data),</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="s2">      &#39;–&#39;, max(e.get(\&quot;difficulty_score\&quot;, 0) for e in data))</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="s2">&quot;</span>
+</code></pre></div>
+<p>On the first run, no <code>corpus.last_harvested</code> sentinel exists so all session history is harvested. Subsequent runs are incremental — only sessions newer than the sentinel are re-processed.</p>
+<hr />
+<h2 id="how-the-pipeline-works">How the Pipeline Works<a class="headerlink" href="#how-the-pipeline-works" title="Permanent link">&para;</a></h2>
+<h3 id="stage-1-harvest">Stage 1: Harvest<a class="headerlink" href="#stage-1-harvest" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>harvest (shell, 120s)
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  runs: ll-messages --skill &lt;skill_name&gt; --examples-format --context-window 3 [--since &lt;sentinel&gt;] --stdout
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  produces: harvested_examples (JSON lines)
+</code></pre></div>
+<p>The <code>harvest</code> state runs <code>ll-messages</code> with <code>--examples-format</code> to extract <code>(input, expected)</code> pairs from Claude Code session logs. Each record is a JSON object on its own line:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;example&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">&quot;skill&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;capture-issue&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;N preceding user messages concatenated&gt;&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">&quot;output&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{\&quot;tools_used\&quot;: [\&quot;Read\&quot;, \&quot;Write\&quot;], \&quot;files_modified\&quot;: [\&quot;.issues/features/P3-FEAT-849-...\&quot;], \&quot;completion_status\&quot;: \&quot;success\&quot;}&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">&quot;session_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;361c2c3a-bd3c-417b-9d69-cfd541e136fc&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-21T22:21:36&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span><span class="nt">&quot;context_window&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Important</strong>: the <code>output</code> field is not free text. It is a JSON-serialized <code>ResponseMetadata</code> object recording what tools the agent used and what files it changed — not the raw assistant response. The oracle judge evaluates tool choices and file changes, not prose quality.</p>
+<p>On the first run, no sentinel file exists and all sessions are harvested. On subsequent runs, <code>--since $(cat corpus.last_harvested)</code> limits the query to sessions added after the last publish.</p>
+<hr />
+<h3 id="stage-2-judge-three-layer-quality-stack">Stage 2: Judge — Three-Layer Quality Stack<a class="headerlink" href="#stage-2-judge-three-layer-quality-stack" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>judge (prompt, 300s)
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  reads: harvested_examples
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  produces: judge_scores (JSON array with per-example metadata)
+</code></pre></div>
+<p>Every harvested candidate passes through three sequential quality layers. Failing any layer discards the candidate.</p>
+<p><strong>Layer 1 — Code persistence</strong> (objective, uses Bash tool):</p>
+<p>For each candidate, the judge checks <code>files_modified</code> from the <code>output</code> JSON against the current repository:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git<span class="w"> </span>log<span class="w"> </span>--follow<span class="w"> </span>--oneline<span class="w"> </span>&lt;file&gt;<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+</code></pre></div>
+<ul>
+<li><code>persistence_score</code> = fraction of <code>files_modified</code> still tracked in HEAD</li>
+<li><code>persistence_age</code> = average commit count for still-present files</li>
+</ul>
+<p>Candidates where <code>persistence_score = 0</code> (all modified files are absent from HEAD) are discarded immediately. If the agent created a file that was later deleted, the output was likely incorrect or superseded — not worth training on.</p>
+<p><strong>Layer 2 — Revision distance</strong> (heuristic, uses Bash tool):</p>
+<p>For each surviving candidate, the judge estimates how much the linked issue was revised after the invocation:</p>
+<ul>
+<li>1–2 session log entries in <code>## Session Log</code> → <code>revision_distance ≈ 0.1</code> (output accepted quickly)</li>
+<li>3–4 entries → <code>revision_distance ≈ 0.4</code></li>
+<li>5+ entries → <code>revision_distance ≈ 0.7</code> (heavily revised before acceptance)</li>
+</ul>
+<p>Low distance signals the output was accepted nearly as-is — high training utility. High distance means the output needed substantial correction — lower confidence.</p>
+<p><strong>Layer 3 — Oracle rubric</strong> (LLM scoring):</p>
+<p>For candidates that clear layers 1–2, the judge scores the <code>output</code> JSON against skill-specific criteria (0–100 pts):</p>
+<ul>
+<li><code>tools_used</code> quality: were appropriate tools used for this skill? (0–33 pts)</li>
+<li><code>files_modified</code> quality: are the file paths realistic and relevant? (0–33 pts)</li>
+<li><code>completion_status</code> validity: is <code>"success"</code> the correct status for an accepted output? (0–34 pts)</li>
+</ul>
+<p><strong>Deduplication</strong>: when multiple candidates exist for the same issue (same invocation context, multiple refinement passes), only the highest-ranked is kept. The ranking metric is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>downstream_stability = persistence_score × persistence_age × (1 − revision_distance)
+</code></pre></div>
+<p>The surviving candidates are emitted as a JSON array with all computed metadata fields.</p>
+<hr />
+<h3 id="stage-3-calibrate">Stage 3: Calibrate<a class="headerlink" href="#stage-3-calibrate" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>calibrate (prompt, 120s)
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  reads: judge_scores, corpus_state_file (optional)
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  produces: calibrated_corpus (JSON array, overwrites on re-runs)
+</code></pre></div>
+<p>The calibrate state assigns a <code>difficulty_score</code> (0–100) to each surviving candidate and applies the difficulty band filter:</p>
+<table>
+<thead>
+<tr>
+<th>Score range</th>
+<th>Classification</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0–39</td>
+<td>Trivially easy</td>
+<td>Excluded — won't produce gradient signal</td>
+</tr>
+<tr>
+<td>40–80</td>
+<td>Informatively challenging</td>
+<td><strong>Included</strong></td>
+</tr>
+<tr>
+<td>81–100</td>
+<td>Noise-level hard</td>
+<td>Excluded — will always fail, wasting LLM calls</td>
+</tr>
+</tbody>
+</table>
+<p>If <code>corpus_state_file</code> (default: <code>corpus.json</code>) exists, calibrate loads it, decays each existing entry's <code>freshness_weight</code> by ×0.9, and merges with today's included set (deduplicating by input text). This preserves the accumulated corpus across runs while progressively down-weighting stale examples.</p>
+<p>The output is a JSON array capturing all metadata. The final line is a sentinel: <code>CALIBRATED_COUNT=N</code>.</p>
+<hr />
+<h3 id="stage-4-write-optimize">Stage 4: Write + Optimize<a class="headerlink" href="#stage-4-write-optimize" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>write_examples (prompt, 60s)
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  reads: calibrated_corpus
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  writes: examples_file to disk
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  produces: write_examples_result
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>run_optimizer (sub-loop: apo-textgrad, context_passthrough: true)
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  reads: examples_file (from disk), prompt_file (from disk)
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>  on_success → synthesize
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>  on_failure → diversify
+</code></pre></div>
+<p><code>apo-textgrad</code> reads <code>examples_file</code> from disk — it cannot receive the corpus via FSM captures. The <code>write_examples</code> state handles this by writing the calibrated corpus to <code>examples_file</code> before the optimizer starts. This is the intermediate write; <code>publish</code> performs the final write at the end.</p>
+<p><code>run_optimizer</code> invokes <code>apo-textgrad</code> as a child FSM. With <code>context_passthrough: true</code>, the child inherits the parent's <code>prompt_file</code>, <code>examples_file</code>, and other context variables. The child runs to completion independently (up to its own <code>max_iterations: 20</code>), then routes the parent:</p>
+<ul>
+<li><strong>SUCCESS</strong> (child reached its <code>done</code> terminal state): gradient signal is available in <code>${captured.run_optimizer.gradient.output}</code> → proceed to <code>synthesize</code></li>
+<li><strong>FAILURE</strong> (child hit <code>max_iterations</code> or timed out): no gradient available → skip adversarial synthesis, go directly to <code>diversify</code></li>
+</ul>
+<hr />
+<h3 id="stage-5-synthesize-adversarial-examples">Stage 5: Synthesize — Adversarial Examples<a class="headerlink" href="#stage-5-synthesize-adversarial-examples" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>synthesize (prompt, 300s)
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  reads: run_optimizer.gradient.output, calibrated_corpus
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  produces: adversarial_candidates (JSON array)
+</code></pre></div>
+<p>If the optimizer produced a gradient (not <code>CONVERGED</code>), the synthesize state uses it to generate adversarial examples. The gradient includes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>FAILURE_PATTERN: &lt;common theme across all failures&gt;
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>ROOT_CAUSE: &lt;what is wrong in the current prompt&gt;
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>GRADIENT: &lt;precise instruction for how to change the prompt&gt;
+</code></pre></div>
+<p>The <code>FAILURE_PATTERN</code> is matched to one of five perturbation types:</p>
+<table>
+<thead>
+<tr>
+<th>Perturbation type</th>
+<th>What it does</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>complexity_injection</code></td>
+<td>Adds a second symptom that may or may not belong in the same issue</td>
+<td>Prompt fails to exercise scope boundary judgment</td>
+</tr>
+<tr>
+<td><code>ambiguity_injection</code></td>
+<td>Strips specific file/function names, forcing discovery rather than copying</td>
+<td>Prompt over-fits to copying literal references</td>
+</tr>
+<tr>
+<td><code>domain_shift</code></td>
+<td>Reproduces the same failure pattern in a different subsystem</td>
+<td>Prompt passes in training domain but fails in others</td>
+</tr>
+<tr>
+<td><code>priority_boundary</code></td>
+<td>Edge case sitting between two adjacent priority levels</td>
+<td>Prompt misclassifies borderline priority cases</td>
+</tr>
+<tr>
+<td><code>type_confusion</code></td>
+<td>Description that looks like FEAT but is BUG (or vice versa)</td>
+<td>Prompt mis-classifies issue types</td>
+</tr>
+</tbody>
+</table>
+<p>Seeds are selected as the up to 5 examples nearest the 80% difficulty boundary (highest <code>difficulty_score</code> ≤ 80) — the region with the highest information density for perturbation.</p>
+<p><strong>Critical constraint</strong>: only the seed's INPUT is perturbed. The original expected output is never reused. A fresh expected output is generated for each perturbed input — this prevents ground-truth corruption where the expected output no longer matches the perturbed input.</p>
+<hr />
+<h3 id="stage-6-screen-score-merge">Stage 6: Screen → Score → Merge<a class="headerlink" href="#stage-6-screen-score-merge" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>screen_adversarial (prompt, 120s)
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  reads: adversarial_candidates
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>  produces: screened_adversarial
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>score_adversarial (prompt, 300s)
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>  reads: screened_adversarial, calibrated_corpus
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>  produces: validated_adversarial
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>merge (prompt, 60s)
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>  reads: calibrated_corpus, validated_adversarial
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>  produces: calibrated_corpus (overwritten — now contains both harvested + adversarial)
+</code></pre></div>
+<p><strong>Screen</strong>: mechanical quality checks. Discards candidates with missing required fields, non-JSON <code>expected</code> values, empty inputs, or <code>perturbation_type</code> values outside the five-type taxonomy. File path plausibility is a soft check (flags but does not discard).</p>
+<p><strong>Score</strong>: oracle rubric applied to screened candidates:
+- Perturbation coherence: is the perturbation type correctly applied? (0–34 pts)
+- Expected output quality: does the fresh expected output correctly reflect what the skill should produce? (0–33 pts)
+- Adversarial value: does this example target a real weakness from the failure cluster? (0–33 pts)</p>
+<p>Only candidates in the 40–80 difficulty band are accepted. The adversarial cap is enforced here: <code>source: adversarial</code> examples must stay ≤ 30% of the final corpus size. If accepted candidates would exceed the cap, the lowest-scoring ones are trimmed first.</p>
+<p><strong>Merge</strong>: concatenates the calibrated harvested corpus with the validated adversarial examples. Overwrites <code>calibrated_corpus</code> so the rest of the pipeline sees the combined set. Each example retains its <code>source</code> field (<code>"harvested"</code> or <code>"adversarial"</code>) as provenance.</p>
+<hr />
+<h3 id="stage-7-diversify-publish">Stage 7: Diversify + Publish<a class="headerlink" href="#stage-7-diversify-publish" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>diversify (prompt, 120s)
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  reads: calibrated_corpus (merged)
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>  produces: calibrated_corpus (overwritten — final diversified version)
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>publish (prompt, 60s)
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>  reads: calibrated_corpus (final)
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>  writes: examples_file, corpus.last_harvested
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>  produces: publish_result
+</code></pre></div>
+<p><strong>Diversify</strong>: enforces per-axis coverage minimums when the corpus has ≥ 10 examples:
+- At least 2 examples per represented issue type (BUG / FEAT / ENH)
+- At least 1 example per represented priority band (P0–P5)
+- Adversarial examples ≤ 30% of corpus (trim lowest <code>oracle_score</code> first)</p>
+<p>Sub-sampling removes the easiest examples (lowest <code>difficulty_score</code>) from over-represented groups. If coverage targets are already met, the corpus passes through unchanged. The final line is a sentinel: <code>FINAL_COUNT=N</code>.</p>
+<p><strong>Publish</strong>: writes the final corpus to <code>examples_file</code> (overwriting the intermediate write from <code>write_examples</code>) and updates the harvest sentinel:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>date<span class="w"> </span>-u<span class="w"> </span>+%Y-%m-%dT%H:%M:%SZ<span class="w"> </span>&gt;<span class="w"> </span>corpus.last_harvested
+</code></pre></div>
+<p>The sentinel records the UTC timestamp of this publish. The next run's <code>harvest</code> state reads it to limit <code>ll-messages</code> to new sessions only.</p>
+<hr />
+<h2 id="the-examplesjson-schema">The examples.json Schema<a class="headerlink" href="#the-examplesjson-schema" title="Permanent link">&para;</a></h2>
+<p>Each object in the published <code>examples.json</code> array has the following fields:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;User message history preceding the skill invocation (N messages concatenated)&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{\&quot;tools_used\&quot;: [\&quot;Read\&quot;, \&quot;Write\&quot;], \&quot;files_modified\&quot;: [\&quot;.issues/features/P3-FEAT-849-...\&quot;], \&quot;completion_status\&quot;: \&quot;success\&quot;}&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;harvested&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span><span class="nt">&quot;difficulty_score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">62</span><span class="p">,</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span><span class="nt">&quot;failure_cluster&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span><span class="nt">&quot;freshness_weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.9</span><span class="p">,</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">  </span><span class="nt">&quot;persistence_score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span><span class="nt">&quot;persistence_age&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">  </span><span class="nt">&quot;revision_distance&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">  </span><span class="nt">&quot;oracle_score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">87</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input</code></td>
+<td>string</td>
+<td>Concatenated preceding user messages (context window)</td>
+</tr>
+<tr>
+<td><code>expected</code></td>
+<td>string</td>
+<td>JSON-serialized <code>ResponseMetadata</code> — NOT free text</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>"harvested"</code> | <code>"adversarial"</code></td>
+<td>Provenance</td>
+</tr>
+<tr>
+<td><code>difficulty_score</code></td>
+<td>0–100</td>
+<td>Estimated pass-rate difficulty; 40–80 = active band</td>
+</tr>
+<tr>
+<td><code>failure_cluster</code></td>
+<td>string | null</td>
+<td><code>FAILURE_PATTERN</code> tag for adversarial examples; null for harvested</td>
+</tr>
+<tr>
+<td><code>freshness_weight</code></td>
+<td>0.0–1.0</td>
+<td>Decays ×0.9 per run; new examples start at 1.0</td>
+</tr>
+<tr>
+<td><code>perturbation_type</code></td>
+<td>string | absent</td>
+<td>Adversarial only: which of the five types was applied</td>
+</tr>
+<tr>
+<td><code>seed_id</code></td>
+<td>string | absent</td>
+<td>Adversarial only: <code>session_id</code> of the source example</td>
+</tr>
+<tr>
+<td><code>persistence_score</code></td>
+<td>0.0–1.0</td>
+<td>Harvested: fraction of <code>files_modified</code> still in HEAD</td>
+</tr>
+<tr>
+<td><code>persistence_age</code></td>
+<td>integer</td>
+<td>Harvested: average commit count for still-present files</td>
+</tr>
+<tr>
+<td><code>revision_distance</code></td>
+<td>0.0–1.0</td>
+<td>Harvested: how much the linked issue was revised post-invocation</td>
+</tr>
+<tr>
+<td><code>oracle_score</code></td>
+<td>0–100</td>
+<td>Quality gate score from the oracle rubric</td>
+</tr>
+</tbody>
+</table>
+<p><code>apo-textgrad</code> reads only <code>input</code> and <code>expected</code> — the other fields are miner bookkeeping and are preserved across re-runs.</p>
+<hr />
+<h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
+<p>Set context variables with <code>--context key=value</code> flags or by editing the loop's <code>context:</code> block after <code>ll-loop install</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>skill_name</code></td>
+<td><code>capture-issue</code></td>
+<td>Controls <code>ll-messages --skill</code> filter; must match a real skill name exactly</td>
+</tr>
+<tr>
+<td><code>prompt_file</code></td>
+<td><code>system.md</code></td>
+<td>Path to the prompt being optimized; passed to the inner <code>apo-textgrad</code> loop</td>
+</tr>
+<tr>
+<td><code>examples_file</code></td>
+<td><code>examples.json</code></td>
+<td>Written twice per run: intermediate (before optimizer) and final (at publish)</td>
+</tr>
+<tr>
+<td><code>corpus_state_file</code></td>
+<td><code>corpus.json</code></td>
+<td>If this file exists, calibrate loads it and decays <code>freshness_weight</code> ×0.9</td>
+</tr>
+<tr>
+<td><code>target_pass_rate</code></td>
+<td><code>0.6</code></td>
+<td>Center of the 40–80% difficulty band (fraction, 0–1); used only in the calibrate prompt</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="file-io-reference">File I/O Reference<a class="headerlink" href="#file-io-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Read by</th>
+<th>Written by</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>corpus.last_harvested</code></td>
+<td><code>harvest</code> (incremental <code>--since</code> flag)</td>
+<td><code>publish</code> (UTC timestamp)</td>
+<td>Incremental harvest sentinel</td>
+</tr>
+<tr>
+<td><code>corpus.json</code> (or <code>corpus_state_file</code>)</td>
+<td><code>calibrate</code> (Read tool, optional)</td>
+<td>Not written by the miner</td>
+<td>Persisted calibration state for freshness decay</td>
+</tr>
+<tr>
+<td><code>examples.json</code> (or <code>examples_file</code>)</td>
+<td><code>run_optimizer</code> inner loop</td>
+<td><code>write_examples</code> (intermediate), <code>publish</code> (final)</td>
+<td>The training corpus for <code>apo-textgrad</code></td>
+</tr>
+<tr>
+<td><code>.issues/completed/*.md</code></td>
+<td><code>judge</code> (session log entry count via Bash)</td>
+<td>Never</td>
+<td>Source of revision distance heuristic</td>
+</tr>
+<tr>
+<td>Session JSONL files in <code>~/.claude/projects/</code></td>
+<td><code>ll-messages</code> in <code>harvest</code></td>
+<td>Never</td>
+<td>Source of raw harvested candidates</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="configuring-for-a-different-skill">Configuring for a Different Skill<a class="headerlink" href="#configuring-for-a-different-skill" title="Permanent link">&para;</a></h2>
+<p>The default <code>skill_name: capture-issue</code> is just a starting point. The miner works for any skill that has completed issues with session logs.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Example: mine refine-issue sessions</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>refine-issue<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">prompt_file</span><span class="o">=</span>skills/refine-issue/SKILL.md<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">examples_file</span><span class="o">=</span>refine-examples.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">corpus_state_file</span><span class="o">=</span>refine-corpus.json
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="c1"># Verify</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import json; d=json.load(open(&#39;refine-examples.json&#39;)); print(len(d), &#39;examples&#39;)&quot;</span>
+</code></pre></div>
+<p><strong>Steps for a new skill:</strong></p>
+<ol>
+<li><strong>Check harvest availability</strong>: <code>ll-messages --skill &lt;name&gt; --examples-format --stdout | wc -l</code> — if 0, the skill has no eligible session history yet</li>
+<li><strong>Set <code>skill_name</code></strong> to the skill's exact name (e.g., <code>ready-issue</code>, <code>manage-issue</code>)</li>
+<li><strong>Set <code>prompt_file</code></strong> to the skill's SKILL.md or equivalent prompt file</li>
+<li><strong>Use a separate <code>examples_file</code></strong> per skill to avoid cross-contaminating corpora</li>
+<li><strong>Use a separate <code>corpus_state_file</code></strong> per skill for independent freshness tracking</li>
+</ol>
+<p><strong>On the inline oracle</strong>: the judge's oracle rubric is generic — it scores <code>tools_used</code>, <code>files_modified</code>, and <code>completion_status</code> without knowing what the "correct" tools or files are for a given skill. For skill-specific precision (e.g., knowing that <code>refine-issue</code> must always modify an issue file), see the Oracle Sub-loop section below.</p>
+<hr />
+<h2 id="incremental-harvesting">Incremental Harvesting<a class="headerlink" href="#incremental-harvesting" title="Permanent link">&para;</a></h2>
+<p>The sentinel file <code>corpus.last_harvested</code> is the key to efficient re-runs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>First run:
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  corpus.last_harvested not present
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>  → harvest state: SINCE_ARG=&quot;&quot;
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>  → ll-messages harvests ALL session history
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>  → publish writes: 2026-03-21T22:00:00Z &gt; corpus.last_harvested
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>Second run (next day):
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>  corpus.last_harvested = &quot;2026-03-21T22:00:00Z&quot;
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>  → harvest state: SINCE_ARG=&quot;--since 2026-03-21T22:00:00Z&quot;
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>  → ll-messages harvests only sessions from the past day
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>  → publish updates sentinel to current time
+</code></pre></div>
+<p><strong>Important</strong>: the sentinel is written only by <code>publish</code>. If the loop terminates early (e.g., <code>judge</code> is blocked, or the loop times out), the sentinel is NOT updated. The next run will re-harvest the same window — no sessions are skipped.</p>
+<p><strong>Forcing a full reharvest</strong> (e.g., after a major skill refactor):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>rm<span class="w"> </span>corpus.last_harvested
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>&lt;name&gt;<span class="w"> </span>...
+</code></pre></div>
+<p><strong>Resetting the corpus</strong> (start fresh, ignore freshness decay):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>rm<span class="w"> </span>corpus.last_harvested<span class="w"> </span>corpus.json<span class="w"> </span>examples.json
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>&lt;name&gt;<span class="w"> </span>...
+</code></pre></div>
+<hr />
+<h2 id="the-oracle-sub-loop-v2-upgrade">The Oracle Sub-loop (v2 Upgrade)<a class="headerlink" href="#the-oracle-sub-loop-v2-upgrade" title="Permanent link">&para;</a></h2>
+<p>The built-in <code>examples-miner.yaml</code> uses inline LLM judging in the <code>judge</code> and <code>score_adversarial</code> states. This is a generic rubric that works across all skills but doesn't know skill-specific invariants.</p>
+<p>For production use on a specific skill, upgrade to a dedicated oracle sub-loop:</p>
+<h3 id="1-install-the-loop">1. Install the loop<a class="headerlink" href="#1-install-the-loop" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>ll-loop<span class="w"> </span>install<span class="w"> </span>examples-miner
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="c1"># copies to .loops/examples-miner.yaml</span>
+</code></pre></div>
+<h3 id="2-create-the-oracle-yaml">2. Create the oracle YAML<a class="headerlink" href="#2-create-the-oracle-yaml" title="Permanent link">&para;</a></h3>
+<p>Copy the reference implementation and adapt for your skill:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>.loops/oracles
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>cp<span class="w"> </span>loops/oracles/oracle-capture-issue.yaml<span class="w"> </span>.loops/oracles/oracle-&lt;skill&gt;.yaml
+</code></pre></div>
+<p>Edit <code>.loops/oracles/oracle-&lt;skill&gt;.yaml</code>:
+- Update <code>skill_name</code> in the context block
+- Customize <code>check_mechanical</code>'s Python check for the skill's <code>files_modified</code> invariants (e.g., <code>refine-issue</code> should always modify an issue file in <code>.issues/</code>)
+- Update the <code>score_semantic</code> prompt for the skill's specific tool expectations</p>
+<h3 id="3-wire-the-oracle-into-judge">3. Wire the oracle into judge<a class="headerlink" href="#3-wire-the-oracle-into-judge" title="Permanent link">&para;</a></h3>
+<p>In <code>.loops/examples-miner.yaml</code>, replace the <code>judge</code> state's <code>action_type: prompt</code> with a sub-loop delegation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nt">judge</span><span class="p">:</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">  </span><span class="nt">loop</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">oracles/oracle-&lt;skill&gt;</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">  </span><span class="nt">context_passthrough</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">  </span><span class="nt">on_success</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">calibrate</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">  </span><span class="nt">on_failure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">done</span>
+</code></pre></div>
+<blockquote>
+<p><strong>Note</strong>: The <code>loop:</code> field does not support context interpolation — <code>loop: oracles/oracle-${context.skill_name}</code> does NOT work. Hardcode the oracle path.</p>
+</blockquote>
+<h3 id="4-calibrate-the-oracle">4. Calibrate the oracle<a class="headerlink" href="#4-calibrate-the-oracle" title="Permanent link">&para;</a></h3>
+<p>Use ensemble agreement bootstrapping to validate the oracle before deploying:</p>
+<ol>
+<li>Run the oracle at multiple temperatures against the full candidate pool</li>
+<li>Examples where all temperature variants agree strongly → use as fixture set</li>
+<li>Validate against deliberately degraded candidates (strip required sections, corrupt file paths in known-good examples) — the oracle must score these low; if it doesn't, it is miscalibrated</li>
+<li>If oracle scores on the fixture set drift significantly across consecutive runs, halt and re-calibrate rather than corrupting the corpus</li>
+</ol>
+<hr />
+<h2 id="monitoring-a-run">Monitoring a Run<a class="headerlink" href="#monitoring-a-run" title="Permanent link">&para;</a></h2>
+<p>Use <code>--verbose</code> to see candidate counts at each state:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span>--verbose<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>capture-issue<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">prompt_file</span><span class="o">=</span>skills/capture-issue/SKILL.md
+</code></pre></div>
+<p>What to watch at each stage:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>What to look for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvest</code></td>
+<td>Line count of JSON output = raw candidate count; 0 lines means no matching sessions</td>
+</tr>
+<tr>
+<td><code>judge</code></td>
+<td>Length of JSON array in output = survivors after quality gating; watch for discards</td>
+</tr>
+<tr>
+<td><code>calibrate</code></td>
+<td><code>CALIBRATED_COUNT=N</code> on last output line; N=0 means all candidates outside band</td>
+</tr>
+<tr>
+<td><code>write_examples</code></td>
+<td><code>WRITTEN=N</code>; confirms intermediate corpus write succeeded</td>
+</tr>
+<tr>
+<td><code>run_optimizer</code></td>
+<td>Sub-loop states shown with <code></code> indent; watch for <code>CONVERGED</code> vs exhausting iterations</td>
+</tr>
+<tr>
+<td><code>synthesize</code></td>
+<td>Length of JSON array = adversarial candidates generated; <code>[]</code> means no gradient / optimizer converged</td>
+</tr>
+<tr>
+<td><code>screen_adversarial</code></td>
+<td><code>SCREENED_COUNT=N</code></td>
+</tr>
+<tr>
+<td><code>score_adversarial</code></td>
+<td><code>ADVERSARIAL_ACCEPTED=N</code>; also watch adversarial cap enforcement in output</td>
+</tr>
+<tr>
+<td><code>diversify</code></td>
+<td><code>FINAL_COUNT=N</code></td>
+</tr>
+<tr>
+<td><code>publish</code></td>
+<td><code>PUBLISHED=N</code> = final corpus size; confirms sentinel updated</td>
+</tr>
+</tbody>
+</table>
+<p>The loop exits at <code>done</code> (terminal). If it exits early via <code>on_blocked: done</code> on <code>judge</code> or <code>calibrate</code>, the corpus was not published and the sentinel was not updated.</p>
+<hr />
+<h2 id="tips">Tips<a class="headerlink" href="#tips" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Start with <code>--verbose</code></strong> on the first run to see candidate counts at each stage and diagnose empty-corpus issues early.</li>
+<li><strong>Verify harvest first</strong>: run <code>ll-messages --skill &lt;name&gt; --examples-format --stdout | wc -l</code> standalone before running the full loop — it confirms the session data exists and the skill name is correct.</li>
+<li><strong>Separate <code>examples_file</code> per skill</strong>: don't share <code>examples.json</code> across skills; each skill's corpus should be isolated for clean gradient signals.</li>
+<li><strong>Delete <code>corpus.last_harvested</code> after major refactors</strong>: when skill conventions change significantly (new file layout, renamed commands), force a full reharvest to pick up all historical examples under the new conventions.</li>
+<li><strong>Use <code>corpus_state_file</code></strong> for long-running projects: it preserves <code>freshness_weight</code> decay across runs and prevents corpus churn when recent sessions produce no new candidates.</li>
+<li><strong>The <code>synthesize → []</code> result is the happy path</strong>: if the optimizer converged and <code>FAILURE_PATTERN</code> is absent, <code>synthesize</code> correctly outputs <code>[]</code>. No adversarial examples means the corpus is already doing its job.</li>
+<li><strong>Install before customizing</strong>: <code>ll-loop install examples-miner</code> copies the YAML to <code>.loops/</code> so you can tune timeouts, adjust the difficulty band, or wire a skill-specific oracle without affecting the built-in.</li>
+<li><strong>The intermediate <code>write_examples</code> matters</strong>: if this state is blocked, <code>run_optimizer</code> will read whatever <code>examples.json</code> was on disk before the run — potentially stale. Check <code>write_examples</code> output in <code>--verbose</code> mode if the optimizer behaves unexpectedly.</li>
+</ul>
+<hr />
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvest</code> produces 0 lines</td>
+<td>No sessions match <code>--skill</code> filter; or sentinel timestamp is in the future</td>
+<td>Run <code>ll-messages --skill &lt;name&gt; --stdout</code> standalone to verify; delete <code>corpus.last_harvested</code> to reset the window</td>
+</tr>
+<tr>
+<td><code>judge</code> outputs empty array <code>[]</code></td>
+<td>All candidates discarded: files absent from HEAD, or oracle_score too low</td>
+<td>Use <code>--verbose</code> to see which layer is discarding; check <code>git log</code> for <code>files_modified</code> paths; the skill may not modify trackable files</td>
+</tr>
+<tr>
+<td><code>calibrate</code> outputs <code>CALIBRATED_COUNT=0</code></td>
+<td>All judged candidates outside 40–80 difficulty band</td>
+<td>Corpus may be all easy (prompt too good for history) or all hard (few quality examples); delete <code>corpus.json</code> to clear stale accumulated state</td>
+</tr>
+<tr>
+<td>Loop skips to <code>diversify</code> after <code>run_optimizer</code></td>
+<td>Inner <code>apo-textgrad</code> hit <code>max_iterations</code> or timed out</td>
+<td>Expected behavior on timeout; increase outer loop <code>timeout:</code> (default 7200s) or override inner loop via context; check <code>--verbose</code> for inner loop state</td>
+</tr>
+<tr>
+<td><code>synthesize</code> outputs <code>[]</code></td>
+<td>Gradient is <code>CONVERGED</code> or <code>FAILURE_PATTERN</code> absent</td>
+<td>This is the happy path — the optimizer converged on the current corpus; no adversarial synthesis is needed</td>
+</tr>
+<tr>
+<td><code>ADVERSARIAL_ACCEPTED=0</code></td>
+<td>All adversarial candidates outside 40–80 band, below oracle threshold, or cap already full</td>
+<td>Check <code>synthesize</code> output in <code>--verbose</code>; the perturbation type may not match the actual failure pattern; or harvested corpus is already at/near the 30% adversarial cap</td>
+</tr>
+<tr>
+<td>Final corpus is empty</td>
+<td>All paths produced empty arrays</td>
+<td>Run with <code>--verbose</code> and trace which state first produced <code>[]</code>; the most common cause is an empty harvest (no sessions) flowing through to an empty judge and calibrate</td>
+</tr>
+<tr>
+<td><code>publish</code> writes the intermediate corpus</td>
+<td><code>diversify</code> was blocked or skipped; <code>publish</code> reads whatever <code>calibrated_corpus</code> last held</td>
+<td>Check <code>diversify</code> in <code>--verbose</code> for blocking; increase the <code>diversify</code> timeout</td>
+</tr>
+<tr>
+<td>Sentinel <code>corpus.last_harvested</code> has wrong date</td>
+<td>System clock skew or a previous run wrote a future timestamp</td>
+<td><code>cat corpus.last_harvested</code> to inspect; delete and let the next run rebuild from scratch</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../LOOPS_GUIDE/">LOOPS_GUIDE.md</a> — quick-reference section for <code>examples-miner</code>: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations</li>
+<li><a href="../../loops/examples-miner.yaml"><code>loops/examples-miner.yaml</code></a> — full annotated loop source (12 states with complete action prompts)</li>
+<li><a href="../../loops/oracles/oracle-capture-issue.yaml"><code>loops/oracles/oracle-capture-issue.yaml</code></a> — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)</li>
+<li><a href="../../loops/apo-textgrad.yaml"><code>loops/apo-textgrad.yaml</code></a> — inner optimizer loop invoked by <code>run_optimizer</code>; reads <code>examples_file</code>, emits <code>FAILURE_PATTERN</code> / <code>ROOT_CAUSE</code> / <code>GRADIENT</code></li>
+<li><a href="../AUTOMATIC_HARNESSING_GUIDE/">Automatic Harnessing Guide</a> — related guide for wrapping skills in layered quality evaluation pipelines</li>
+<li><a href="../../generalized-fsm-loop/">FSM Loop Architecture</a> — sub-loop chaining (<code>context_passthrough</code>), state field reference, evaluator catalog</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

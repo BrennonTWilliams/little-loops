@@ -13,21 +13,17 @@
         <link rel="canonical" href="https://docs.little-loops.ai/claude-code/hooks-reference/">
       
       
-        <link rel="prev" href="../settings/">
-      
-      
-        <link rel="next" href="../automate-workflows-with-hooks/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/logo-icon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Hooks Reference - little-loops</title>
+        <title>Hooks reference - little-loops</title>
       
     
     
@@ -48,10 +44,12 @@
         
         
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
-        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
+    
+      <link rel="stylesheet" href="../../docs-theme/stylesheets/little-loops.css">
     
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -69,7 +67,7 @@
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -94,8 +92,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../../assets/logo-icon.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -112,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Hooks Reference
+              Hooks reference
             
           </span>
         </div>
@@ -125,7 +122,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
     
       <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
@@ -135,7 +132,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
     
       <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
@@ -318,28 +315,6 @@
   
 
       
-        
-  
-  
-  
-    
-  
-  
-    
-    
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../cli-reference/" class="md-tabs__link">
-          
-  
-  
-  Claude Code Reference
-
-        </a>
-      </li>
-    
-  
-
-      
     </ul>
   </div>
 </nav>
@@ -364,8 +339,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../../assets/logo-icon.svg" alt="logo">
 
     </a>
     little-loops
@@ -649,6 +623,34 @@
     
   
     Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/EXAMPLES_MINING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Mining
   
 
     
@@ -1168,1190 +1170,6 @@
     
   
     FSM Loop
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-    
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Claude Code Reference
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Claude Code Reference
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../cli-reference/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../settings/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Settings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Hooks Reference
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Hooks Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#documentation-index" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Documentation Index
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#hooks-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hooks reference
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Hooks reference">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hook-lifecycle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hook lifecycle
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Hook lifecycle">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#how-a-hook-resolves" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How a hook resolves
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Configuration
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hook-locations" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hook locations
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#matcher-patterns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Matcher patterns
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#hook-handler-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hook handler fields
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Hook handler fields">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#common-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Common fields
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#command-hook-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Command hook fields
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#prompt-and-agent-hook-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prompt and agent hook fields
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reference-scripts-by-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reference scripts by path
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#hooks-in-skills-and-agents" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hooks in skills and agents
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#yaml-themenull" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ```yaml theme={null}
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="```yaml theme={null}">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#exit-code-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Exit code output
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#binbash" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        !/bin/bash
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#reads-json-input-from-stdin-checks-the-command" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reads JSON input from stdin, checks the command
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Reads JSON input from stdin, checks the command">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#decision-control" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision control
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#hook-events" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hook events
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Hook events">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sessionstart" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SessionStart
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="SessionStart">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sessionstart-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SessionStart input
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#persist-environment-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Persist environment variables
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#binbash_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        !/bin/bash
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="!/bin/bash">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#userpromptsubmit" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        UserPromptSubmit
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="UserPromptSubmit">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#userpromptsubmit-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        UserPromptSubmit input
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pretooluse" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PreToolUse
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="PreToolUse">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#pretooluse-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PreToolUse input
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="PreToolUse input">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#bash" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Bash
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#write" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Write
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#edit" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Edit
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#read" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Read
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#glob" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Glob
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#grep" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Grep
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#webfetch" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        WebFetch
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#websearch" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        WebSearch
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#task" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Task
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pretooluse-decision-control" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PreToolUse decision control
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#permissionrequest-decision-control" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PermissionRequest decision control
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#posttooluse-decision-control" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PostToolUse decision control
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#posttoolusefailure-decision-control" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PostToolUseFailure decision control
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#notification-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Notification input
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#stop" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stop
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Stop">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#stop-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stop input
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#teammateidle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        TeammateIdle
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="TeammateIdle">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#teammateidle-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        TeammateIdle input
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#taskcompleted" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        TaskCompleted
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="TaskCompleted">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#taskcompleted-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        TaskCompleted input
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#precompact" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PreCompact
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="PreCompact">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#precompact-input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PreCompact input
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#prompt-based-hooks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prompt-based hooks
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Prompt-based hooks">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#how-prompt-based-hooks-work" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How prompt-based hooks work
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#prompt-hook-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prompt hook configuration
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example-multi-criteria-stop-hook" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example: Multi-criteria Stop hook
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#run-hooks-in-the-background" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Run hooks in the background
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Run hooks in the background">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#configure-an-async-hook" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Configure an async hook
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../automate-workflows-with-hooks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Automate with Hooks
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../skills/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Skills
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../custom-subagents/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Custom Subagents
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../run-agent-teams/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Run Agent Teams
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../plugins-reference/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Plugins Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../create-plugin/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Create a Plugin
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../cli-programmatic-usage/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Programmatic Usage
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../checkpointing/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Checkpointing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../structured-outputs/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Structured Outputs
   
 
     
@@ -5062,6 +3880,12 @@ the stoppage occurred due to a user interrupt.</p>
 <script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
         
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
       </main>
       
         <footer class="md-footer">
@@ -5091,7 +3915,7 @@ the stoppage occurred due to a user interrupt.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>

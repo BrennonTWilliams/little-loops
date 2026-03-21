@@ -22,7 +22,7 @@
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/logo-icon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
@@ -48,10 +48,12 @@
         
         
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
-        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
       
     
+    
+      <link rel="stylesheet" href="../../docs-theme/stylesheets/little-loops.css">
     
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -69,7 +71,7 @@
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -94,8 +96,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../../assets/logo-icon.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -125,7 +126,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
     
       <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
@@ -135,7 +136,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
     
       <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
@@ -320,26 +321,6 @@
   
 
       
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="../../claude-code/cli-reference/" class="md-tabs__link">
-          
-  
-  
-  Claude Code Reference
-
-        </a>
-      </li>
-    
-  
-
-      
     </ul>
   </div>
 </nav>
@@ -364,8 +345,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../../assets/logo-icon.svg" alt="logo">
 
     </a>
     little-loops
@@ -969,6 +949,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#examples-miner-co-evolutionary-corpus-mining" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        examples-miner — Co-evolutionary Corpus Mining
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#choosing-between-apo-loops" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1341,6 +1332,34 @@
     
   
     Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../EXAMPLES_MINING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Mining
   
 
     
@@ -1880,431 +1899,6 @@
   
 
     
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
-        
-          
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Claude Code Reference
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Claude Code Reference
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/cli-reference/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/settings/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Settings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/hooks-reference/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Hooks Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/automate-workflows-with-hooks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Automate with Hooks
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/skills/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Skills
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/custom-subagents/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Custom Subagents
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/run-agent-teams/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Run Agent Teams
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/plugins-reference/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Plugins Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/create-plugin/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Create a Plugin
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/cli-programmatic-usage/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Programmatic Usage
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/checkpointing/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Checkpointing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../claude-code/structured-outputs/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Structured Outputs
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
   </ul>
 </nav>
                   </div>
@@ -2674,6 +2268,17 @@
     <span class="md-ellipsis">
       
         apo-textgrad — TextGrad (Example-Driven Gradient Descent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples-miner-co-evolutionary-corpus-mining" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        examples-miner — Co-evolutionary Corpus Mining
       
     </span>
   </a>
@@ -3985,6 +3590,141 @@
 <a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>                                          ├─ CONVERGED ──→ done
 <a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>                                          └─ CONTINUE ──→ apply_gradient ──→ test_on_examples
 </code></pre></div></p>
+<hr />
+<h3 id="examples-miner-co-evolutionary-corpus-mining"><code>examples-miner</code> — Co-evolutionary Corpus Mining<a class="headerlink" href="#examples-miner-co-evolutionary-corpus-mining" title="Permanent link">&para;</a></h3>
+<p><strong>Technique</strong>: Harvest skill invocations from completed issue session logs → quality-gate via a three-layer judge (code persistence, revision distance, oracle scoring) → calibrate to the 40–80% difficulty band → run <code>apo-textgrad</code> as a child loop to obtain a gradient signal → synthesize adversarial examples targeting the failure pattern → enforce diversity → publish a fresh <code>examples.json</code>.</p>
+<p><strong>When to use</strong>: After <code>apo-textgrad</code> has plateaued on hand-crafted examples, or after skill conventions have evolved and the static corpus is stale. The miner automatically harvests the project's own completed issues (784+ issues = implicit human approvals) and synthesizes adversarial examples from the current gradient's failure pattern.</p>
+<p><strong>Required context variables</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>examples_file</code></td>
+<td><code>examples.json</code></td>
+<td>Path where the fresh corpus is published</td>
+</tr>
+<tr>
+<td><code>prompt_file</code></td>
+<td><code>system.md</code></td>
+<td>Prompt file passed to the inner apo-textgrad loop</td>
+</tr>
+<tr>
+<td><code>skill_name</code></td>
+<td><code>capture-issue</code></td>
+<td>Skill to mine (e.g., <code>capture-issue</code>, <code>refine-issue</code>)</td>
+</tr>
+<tr>
+<td><code>corpus_state_file</code></td>
+<td><code>corpus.json</code></td>
+<td>Optional: persisted calibration state for freshness decay</td>
+</tr>
+<tr>
+<td><code>target_pass_rate</code></td>
+<td><code>0.6</code></td>
+<td>Center of the 40–80% difficulty band (fraction, 0–1)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Invocation</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="c1"># Run with defaults (mines capture-issue sessions, publishes to examples.json)</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="c1"># Mine a different skill with a custom examples file</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>refine-issue<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">examples_file</span><span class="o">=</span>tests/refine-examples.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">prompt_file</span><span class="o">=</span>skills/refine-issue/SKILL.md
+<a id="__codelineno-34-9" name="__codelineno-34-9" href="#__codelineno-34-9"></a>
+<a id="__codelineno-34-10" name="__codelineno-34-10" href="#__codelineno-34-10"></a><span class="c1"># Install to project for customization (hardcode oracle path for v2 sub-loop promotion)</span>
+<a id="__codelineno-34-11" name="__codelineno-34-11" href="#__codelineno-34-11"></a>ll-loop<span class="w"> </span>install<span class="w"> </span>examples-miner
+</code></pre></div>
+<p><strong>FSM flow</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>harvest ──→ judge ──→ calibrate ──→ write_examples ──→ run_optimizer (sub-loop: apo-textgrad)
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>                                                         ├─ SUCCESS ──→ synthesize ──→ screen_adversarial ──→ score_adversarial ──→ merge ──→ diversify ──→ publish ──→ done
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>                                                         └─ FAILURE ──→ diversify ──→ publish ──→ done
+</code></pre></div></p>
+<p><strong>Three-layer quality judge</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Mechanism</th>
+<th>What it checks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Code persistence</td>
+<td><code>git log --follow</code> via Bash</td>
+<td><code>files_modified</code> still present in HEAD; persistence age (commit count without revert)</td>
+</tr>
+<tr>
+<td>2. Revision distance</td>
+<td>Session log entry count</td>
+<td>Low session count → output accepted quickly (low distance); many refinement sessions → high distance</td>
+</tr>
+<tr>
+<td>3. Oracle rubric</td>
+<td>Inline LLM scoring</td>
+<td>Tool selection quality, file path relevance, completion status (0–100 pts per candidate)</td>
+</tr>
+</tbody>
+</table>
+<p>Only candidates that survive all three layers and fall in the 40–80% pass-rate band enter the active calibrated set.</p>
+<p><strong>Adversarial synthesis perturbation taxonomy</strong> (gradient <code>FAILURE_PATTERN</code> selects type):</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>complexity_injection</code></td>
+<td>Adds a second symptom that may or may not belong in the same issue — tests scope boundary judgment</td>
+</tr>
+<tr>
+<td><code>ambiguity_injection</code></td>
+<td>Strips specific file/function names, forcing discovery rather than copying references</td>
+</tr>
+<tr>
+<td><code>domain_shift</code></td>
+<td>Reproduces the same failure pattern in a different subsystem — tests generalization</td>
+</tr>
+<tr>
+<td><code>priority_boundary</code></td>
+<td>Edge case sitting between two adjacent priority levels</td>
+</tr>
+<tr>
+<td><code>type_confusion</code></td>
+<td>Description that looks like FEAT but is BUG (or vice versa)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Adversarial cap</strong>: <code>source: adversarial</code> examples are capped at ≤ 30% of the final corpus at all times.</p>
+<p><strong>Sentinel-based incremental harvest</strong>: The <code>publish</code> state writes <code>corpus.last_harvested</code> with the current UTC timestamp. On the next run, <code>harvest</code> passes <code>--since &lt;timestamp&gt;</code> to <code>ll-messages</code> so only new sessions are re-processed. On the first run the sentinel file is absent and all sessions are harvested.</p>
+<p><strong>Pairing with apo-textgrad</strong> (recommended workflow):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="c1"># Step 1: Build a fresh corpus from project history</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>capture-issue
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="c1"># Step 2: Run apo-textgrad against the mined corpus</span>
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>apo-textgrad<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">prompt_file</span><span class="o">=</span>skills/capture-issue/SKILL.md<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">examples_file</span><span class="o">=</span>examples.json
+<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a>
+<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a><span class="c1"># Or: run examples-miner once — it calls apo-textgrad internally as run_optimizer</span>
+<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>examples-miner<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-11" name="__codelineno-36-11" href="#__codelineno-36-11"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">skill_name</span><span class="o">=</span>capture-issue<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-12" name="__codelineno-36-12" href="#__codelineno-36-12"></a><span class="w">  </span>--context<span class="w"> </span><span class="nv">prompt_file</span><span class="o">=</span>skills/capture-issue/SKILL.md
+</code></pre></div>
+<p><strong>Oracle sub-loop (v2)</strong>: The <code>loops/oracles/oracle-capture-issue.yaml</code> file provides a two-phase oracle (mechanical checks + semantic LLM scoring) that can be promoted to a sub-loop in a customized <code>examples-miner.yaml</code> via <code>loop: oracles/oracle-capture-issue</code> + <code>context_passthrough: true</code> on the <code>judge</code> state. The built-in <code>examples-miner.yaml</code> uses inline oracle scoring (v1 approach) — install and customize to enable sub-loop promotion.</p>
 <h3 id="choosing-between-apo-loops">Choosing Between APO Loops<a class="headerlink" href="#choosing-between-apo-loops" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -4098,30 +3838,30 @@
 <h3 id="fsm-structure">FSM Structure<a class="headerlink" href="#fsm-structure" title="Permanent link">&para;</a></h3>
 <p><strong>Single-shot</strong> (no discovery): starts directly at <code>execute</code>, runs the evaluation chain once, reaches <code>done</code>.</p>
 <p><strong>Multi-item</strong> (issues list / glob / manual): adds <code>discover</code> and <code>advance</code> states around the evaluation chain:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>discover ──→ execute ──→ check_concrete ──→ check_semantic ──→ check_invariants ──→ advance ──→ discover
-<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>               ↑              │ on_no              │ on_no              │ on_no
-<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>               └──────────────┴────────────────────┘
-<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>no items remaining ──→ done
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>discover ──→ execute ──→ check_concrete ──→ check_semantic ──→ check_invariants ──→ advance ──→ discover
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>               ↑              │ on_no              │ on_no              │ on_no
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>               └──────────────┴────────────────────┘
+<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>no items remaining ──→ done
 </code></pre></div>
 <p><em>(simplified — omits optional <code>check_mcp</code> and <code>check_skill</code> phases)</em></p>
 <p>The critical safeguard in multi-item loops is <code>max_retries</code> + <code>on_retry_exhausted: advance</code> on the <code>execute</code> state — without it, one item that never passes evaluation consumes the entire <code>max_iterations</code> budget:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="nt">execute</span><span class="p">:</span>
-<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/ll:refine-issue ${captured.current_item.output} --auto</span>
-<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
-<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="w">  </span><span class="nt">on_retry_exhausted</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span>
-<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a><span class="w">  </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_concrete</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="nt">execute</span><span class="p">:</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/ll:refine-issue ${captured.current_item.output} --auto</span>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a><span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a><span class="w">  </span><span class="nt">on_retry_exhausted</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span>
+<a id="__codelineno-38-6" name="__codelineno-38-6" href="#__codelineno-38-6"></a><span class="w">  </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_concrete</span>
 </code></pre></div>
 <h3 id="stall-detection">Stall Detection<a class="headerlink" href="#stall-detection" title="Permanent link">&para;</a></h3>
 <p>For prompt-based skills that may produce no-ops ("already done"), add a <code>check_stall</code> state using the <code>diff_stall</code> evaluator between <code>execute</code> and the first check state. Without it, idempotent skills silently exhaust <code>max_iterations</code> without progress:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="nt">check_stall</span><span class="p">:</span>
-<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;echo</span><span class="nv"> </span><span class="s">&#39;checking</span><span class="nv"> </span><span class="s">stall&#39;&quot;</span>
-<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
-<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="w">  </span><span class="nt">evaluate</span><span class="p">:</span>
-<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">diff_stall</span>
-<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="w">    </span><span class="nt">max_stall</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a><span class="w">  </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_concrete</span><span class="w">    </span><span class="c1"># progress detected — continue evaluation</span>
-<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a><span class="w">  </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span><span class="w">            </span><span class="c1"># stalled — skip this item</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="nt">check_stall</span><span class="p">:</span>
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;echo</span><span class="nv"> </span><span class="s">&#39;checking</span><span class="nv"> </span><span class="s">stall&#39;&quot;</span>
+<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a><span class="w">  </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">diff_stall</span>
+<a id="__codelineno-39-6" name="__codelineno-39-6" href="#__codelineno-39-6"></a><span class="w">    </span><span class="nt">max_stall</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<a id="__codelineno-39-7" name="__codelineno-39-7" href="#__codelineno-39-7"></a><span class="w">  </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_concrete</span><span class="w">    </span><span class="c1"># progress detected — continue evaluation</span>
+<a id="__codelineno-39-8" name="__codelineno-39-8" href="#__codelineno-39-8"></a><span class="w">  </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span><span class="w">            </span><span class="c1"># stalled — skip this item</span>
 </code></pre></div>
 <h3 id="when-to-use-a-harness-vs-hand-authored-loop">When to Use a Harness vs. Hand-Authored Loop<a class="headerlink" href="#when-to-use-a-harness-vs-hand-authored-loop" title="Permanent link">&para;</a></h3>
 <table>
@@ -4337,60 +4077,60 @@
 <p>Issue prep skills (<code>format-issue</code>, <code>verify-issues</code>, <code>ready-issue</code>, <code>confidence-check</code>, <code>issue-size-review</code>, <code>map-dependencies</code>, <code>normalize-issues</code>, <code>prioritize-issues</code>) support a <code>--check</code> flag that runs analysis without side effects and exits non-zero when work remains. This makes them usable as FSM loop evaluators with <code>evaluate: type: exit_code</code>.</p>
 <p><strong>Important</strong>: Since <code>/ll:</code> commands are auto-detected as prompt actions by the executor, states using <code>--check</code> must explicitly set <code>evaluate: type: exit_code</code> to bypass LLM-structured evaluation.</p>
 <h3 id="example-prep-sprint-invariants-loop">Example: Prep-Sprint Invariants Loop<a class="headerlink" href="#example-prep-sprint-invariants-loop" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prep-sprint</span>
-<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a><span class="w">  </span><span class="no">Ensure all active issues pass prep gates before sprint planning.</span>
-<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a><span class="w">  </span><span class="no">Checks format compliance, verification, sizing, dependencies, and readiness.</span>
-<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a><span class="nt">initial</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-format</span>
-<a id="__codelineno-37-6" name="__codelineno-37-6" href="#__codelineno-37-6"></a><span class="nt">states</span><span class="p">:</span>
-<a id="__codelineno-37-7" name="__codelineno-37-7" href="#__codelineno-37-7"></a><span class="w">  </span><span class="nt">check-format</span><span class="p">:</span>
-<a id="__codelineno-37-8" name="__codelineno-37-8" href="#__codelineno-37-8"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:format-issue</span><span class="nv"> </span><span class="s">--all</span><span class="nv"> </span><span class="s">--check&quot;</span>
-<a id="__codelineno-37-9" name="__codelineno-37-9" href="#__codelineno-37-9"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
-<a id="__codelineno-37-10" name="__codelineno-37-10" href="#__codelineno-37-10"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
-<a id="__codelineno-37-11" name="__codelineno-37-11" href="#__codelineno-37-11"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
-<a id="__codelineno-37-12" name="__codelineno-37-12" href="#__codelineno-37-12"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-verify</span>
-<a id="__codelineno-37-13" name="__codelineno-37-13" href="#__codelineno-37-13"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-format</span>
-<a id="__codelineno-37-14" name="__codelineno-37-14" href="#__codelineno-37-14"></a><span class="w">  </span><span class="nt">fix-format</span><span class="p">:</span>
-<a id="__codelineno-37-15" name="__codelineno-37-15" href="#__codelineno-37-15"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:format-issue</span><span class="nv"> </span><span class="s">--all</span><span class="nv"> </span><span class="s">--auto&quot;</span>
-<a id="__codelineno-37-16" name="__codelineno-37-16" href="#__codelineno-37-16"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
-<a id="__codelineno-37-17" name="__codelineno-37-17" href="#__codelineno-37-17"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-format</span>
-<a id="__codelineno-37-18" name="__codelineno-37-18" href="#__codelineno-37-18"></a><span class="w">  </span><span class="nt">check-verify</span><span class="p">:</span>
-<a id="__codelineno-37-19" name="__codelineno-37-19" href="#__codelineno-37-19"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:verify-issues</span><span class="nv"> </span><span class="s">--check&quot;</span>
-<a id="__codelineno-37-20" name="__codelineno-37-20" href="#__codelineno-37-20"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
-<a id="__codelineno-37-21" name="__codelineno-37-21" href="#__codelineno-37-21"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
-<a id="__codelineno-37-22" name="__codelineno-37-22" href="#__codelineno-37-22"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
-<a id="__codelineno-37-23" name="__codelineno-37-23" href="#__codelineno-37-23"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-size</span>
-<a id="__codelineno-37-24" name="__codelineno-37-24" href="#__codelineno-37-24"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-verify</span>
-<a id="__codelineno-37-25" name="__codelineno-37-25" href="#__codelineno-37-25"></a><span class="w">  </span><span class="nt">fix-verify</span><span class="p">:</span>
-<a id="__codelineno-37-26" name="__codelineno-37-26" href="#__codelineno-37-26"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Run</span><span class="nv"> </span><span class="s">/ll:verify-issues</span><span class="nv"> </span><span class="s">--auto</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">fix</span><span class="nv"> </span><span class="s">verification</span><span class="nv"> </span><span class="s">issues.&quot;</span>
-<a id="__codelineno-37-27" name="__codelineno-37-27" href="#__codelineno-37-27"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
-<a id="__codelineno-37-28" name="__codelineno-37-28" href="#__codelineno-37-28"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-verify</span>
-<a id="__codelineno-37-29" name="__codelineno-37-29" href="#__codelineno-37-29"></a><span class="w">  </span><span class="nt">check-size</span><span class="p">:</span>
-<a id="__codelineno-37-30" name="__codelineno-37-30" href="#__codelineno-37-30"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:issue-size-review</span><span class="nv"> </span><span class="s">--check&quot;</span>
-<a id="__codelineno-37-31" name="__codelineno-37-31" href="#__codelineno-37-31"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
-<a id="__codelineno-37-32" name="__codelineno-37-32" href="#__codelineno-37-32"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
-<a id="__codelineno-37-33" name="__codelineno-37-33" href="#__codelineno-37-33"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
-<a id="__codelineno-37-34" name="__codelineno-37-34" href="#__codelineno-37-34"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-deps</span>
-<a id="__codelineno-37-35" name="__codelineno-37-35" href="#__codelineno-37-35"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-size</span>
-<a id="__codelineno-37-36" name="__codelineno-37-36" href="#__codelineno-37-36"></a><span class="w">  </span><span class="nt">fix-size</span><span class="p">:</span>
-<a id="__codelineno-37-37" name="__codelineno-37-37" href="#__codelineno-37-37"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Run</span><span class="nv"> </span><span class="s">/ll:issue-size-review</span><span class="nv"> </span><span class="s">--auto</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">decompose</span><span class="nv"> </span><span class="s">oversized</span><span class="nv"> </span><span class="s">issues.&quot;</span>
-<a id="__codelineno-37-38" name="__codelineno-37-38" href="#__codelineno-37-38"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
-<a id="__codelineno-37-39" name="__codelineno-37-39" href="#__codelineno-37-39"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-size</span>
-<a id="__codelineno-37-40" name="__codelineno-37-40" href="#__codelineno-37-40"></a><span class="w">  </span><span class="nt">check-deps</span><span class="p">:</span>
-<a id="__codelineno-37-41" name="__codelineno-37-41" href="#__codelineno-37-41"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:map-dependencies</span><span class="nv"> </span><span class="s">--check&quot;</span>
-<a id="__codelineno-37-42" name="__codelineno-37-42" href="#__codelineno-37-42"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
-<a id="__codelineno-37-43" name="__codelineno-37-43" href="#__codelineno-37-43"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
-<a id="__codelineno-37-44" name="__codelineno-37-44" href="#__codelineno-37-44"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
-<a id="__codelineno-37-45" name="__codelineno-37-45" href="#__codelineno-37-45"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">done</span>
-<a id="__codelineno-37-46" name="__codelineno-37-46" href="#__codelineno-37-46"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-deps</span>
-<a id="__codelineno-37-47" name="__codelineno-37-47" href="#__codelineno-37-47"></a><span class="w">  </span><span class="nt">fix-deps</span><span class="p">:</span>
-<a id="__codelineno-37-48" name="__codelineno-37-48" href="#__codelineno-37-48"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:map-dependencies</span><span class="nv"> </span><span class="s">--auto&quot;</span>
-<a id="__codelineno-37-49" name="__codelineno-37-49" href="#__codelineno-37-49"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
-<a id="__codelineno-37-50" name="__codelineno-37-50" href="#__codelineno-37-50"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-deps</span>
-<a id="__codelineno-37-51" name="__codelineno-37-51" href="#__codelineno-37-51"></a><span class="w">  </span><span class="nt">done</span><span class="p">:</span>
-<a id="__codelineno-37-52" name="__codelineno-37-52" href="#__codelineno-37-52"></a><span class="w">    </span><span class="nt">terminal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-37-53" name="__codelineno-37-53" href="#__codelineno-37-53"></a><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
-<a id="__codelineno-37-54" name="__codelineno-37-54" href="#__codelineno-37-54"></a><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3600</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prep-sprint</span>
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a><span class="w">  </span><span class="no">Ensure all active issues pass prep gates before sprint planning.</span>
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a><span class="w">  </span><span class="no">Checks format compliance, verification, sizing, dependencies, and readiness.</span>
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a><span class="nt">initial</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-format</span>
+<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a><span class="w">  </span><span class="nt">check-format</span><span class="p">:</span>
+<a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:format-issue</span><span class="nv"> </span><span class="s">--all</span><span class="nv"> </span><span class="s">--check&quot;</span>
+<a id="__codelineno-40-9" name="__codelineno-40-9" href="#__codelineno-40-9"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-40-10" name="__codelineno-40-10" href="#__codelineno-40-10"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-40-11" name="__codelineno-40-11" href="#__codelineno-40-11"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-40-12" name="__codelineno-40-12" href="#__codelineno-40-12"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-verify</span>
+<a id="__codelineno-40-13" name="__codelineno-40-13" href="#__codelineno-40-13"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-format</span>
+<a id="__codelineno-40-14" name="__codelineno-40-14" href="#__codelineno-40-14"></a><span class="w">  </span><span class="nt">fix-format</span><span class="p">:</span>
+<a id="__codelineno-40-15" name="__codelineno-40-15" href="#__codelineno-40-15"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:format-issue</span><span class="nv"> </span><span class="s">--all</span><span class="nv"> </span><span class="s">--auto&quot;</span>
+<a id="__codelineno-40-16" name="__codelineno-40-16" href="#__codelineno-40-16"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-40-17" name="__codelineno-40-17" href="#__codelineno-40-17"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-format</span>
+<a id="__codelineno-40-18" name="__codelineno-40-18" href="#__codelineno-40-18"></a><span class="w">  </span><span class="nt">check-verify</span><span class="p">:</span>
+<a id="__codelineno-40-19" name="__codelineno-40-19" href="#__codelineno-40-19"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:verify-issues</span><span class="nv"> </span><span class="s">--check&quot;</span>
+<a id="__codelineno-40-20" name="__codelineno-40-20" href="#__codelineno-40-20"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-40-21" name="__codelineno-40-21" href="#__codelineno-40-21"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-40-22" name="__codelineno-40-22" href="#__codelineno-40-22"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-40-23" name="__codelineno-40-23" href="#__codelineno-40-23"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-size</span>
+<a id="__codelineno-40-24" name="__codelineno-40-24" href="#__codelineno-40-24"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-verify</span>
+<a id="__codelineno-40-25" name="__codelineno-40-25" href="#__codelineno-40-25"></a><span class="w">  </span><span class="nt">fix-verify</span><span class="p">:</span>
+<a id="__codelineno-40-26" name="__codelineno-40-26" href="#__codelineno-40-26"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Run</span><span class="nv"> </span><span class="s">/ll:verify-issues</span><span class="nv"> </span><span class="s">--auto</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">fix</span><span class="nv"> </span><span class="s">verification</span><span class="nv"> </span><span class="s">issues.&quot;</span>
+<a id="__codelineno-40-27" name="__codelineno-40-27" href="#__codelineno-40-27"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
+<a id="__codelineno-40-28" name="__codelineno-40-28" href="#__codelineno-40-28"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-verify</span>
+<a id="__codelineno-40-29" name="__codelineno-40-29" href="#__codelineno-40-29"></a><span class="w">  </span><span class="nt">check-size</span><span class="p">:</span>
+<a id="__codelineno-40-30" name="__codelineno-40-30" href="#__codelineno-40-30"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:issue-size-review</span><span class="nv"> </span><span class="s">--check&quot;</span>
+<a id="__codelineno-40-31" name="__codelineno-40-31" href="#__codelineno-40-31"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-40-32" name="__codelineno-40-32" href="#__codelineno-40-32"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-40-33" name="__codelineno-40-33" href="#__codelineno-40-33"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-40-34" name="__codelineno-40-34" href="#__codelineno-40-34"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-deps</span>
+<a id="__codelineno-40-35" name="__codelineno-40-35" href="#__codelineno-40-35"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-size</span>
+<a id="__codelineno-40-36" name="__codelineno-40-36" href="#__codelineno-40-36"></a><span class="w">  </span><span class="nt">fix-size</span><span class="p">:</span>
+<a id="__codelineno-40-37" name="__codelineno-40-37" href="#__codelineno-40-37"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Run</span><span class="nv"> </span><span class="s">/ll:issue-size-review</span><span class="nv"> </span><span class="s">--auto</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">decompose</span><span class="nv"> </span><span class="s">oversized</span><span class="nv"> </span><span class="s">issues.&quot;</span>
+<a id="__codelineno-40-38" name="__codelineno-40-38" href="#__codelineno-40-38"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
+<a id="__codelineno-40-39" name="__codelineno-40-39" href="#__codelineno-40-39"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-size</span>
+<a id="__codelineno-40-40" name="__codelineno-40-40" href="#__codelineno-40-40"></a><span class="w">  </span><span class="nt">check-deps</span><span class="p">:</span>
+<a id="__codelineno-40-41" name="__codelineno-40-41" href="#__codelineno-40-41"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:map-dependencies</span><span class="nv"> </span><span class="s">--check&quot;</span>
+<a id="__codelineno-40-42" name="__codelineno-40-42" href="#__codelineno-40-42"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-40-43" name="__codelineno-40-43" href="#__codelineno-40-43"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-40-44" name="__codelineno-40-44" href="#__codelineno-40-44"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-40-45" name="__codelineno-40-45" href="#__codelineno-40-45"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">done</span>
+<a id="__codelineno-40-46" name="__codelineno-40-46" href="#__codelineno-40-46"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fix-deps</span>
+<a id="__codelineno-40-47" name="__codelineno-40-47" href="#__codelineno-40-47"></a><span class="w">  </span><span class="nt">fix-deps</span><span class="p">:</span>
+<a id="__codelineno-40-48" name="__codelineno-40-48" href="#__codelineno-40-48"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:map-dependencies</span><span class="nv"> </span><span class="s">--auto&quot;</span>
+<a id="__codelineno-40-49" name="__codelineno-40-49" href="#__codelineno-40-49"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-40-50" name="__codelineno-40-50" href="#__codelineno-40-50"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check-deps</span>
+<a id="__codelineno-40-51" name="__codelineno-40-51" href="#__codelineno-40-51"></a><span class="w">  </span><span class="nt">done</span><span class="p">:</span>
+<a id="__codelineno-40-52" name="__codelineno-40-52" href="#__codelineno-40-52"></a><span class="w">    </span><span class="nt">terminal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-40-53" name="__codelineno-40-53" href="#__codelineno-40-53"></a><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
+<a id="__codelineno-40-54" name="__codelineno-40-54" href="#__codelineno-40-54"></a><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3600</span>
 </code></pre></div>
 <p>Each <code>check-*</code> state uses <code>evaluate: type: exit_code</code> to route on the skill's exit code (0=success, 1=failure). The corresponding <code>fix-*</code> states run the skill in auto mode to remediate, then loop back to re-check.</p>
 <h2 id="tips">Tips<a class="headerlink" href="#tips" title="Permanent link">&para;</a></h2>
@@ -4404,29 +4144,29 @@
 <h2 id="composable-sub-loops">Composable Sub-Loops<a class="headerlink" href="#composable-sub-loops" title="Permanent link">&para;</a></h2>
 <p>Any loop can invoke another loop as a <strong>child FSM</strong> using the <code>loop:</code> field on a state. The child runs to completion; its result (<code>success</code> or <code>failure</code>) drives the parent's transition. This lets you build multi-stage pipelines from loops that already exist — without duplicating logic.</p>
 <h3 id="minimal-example">Minimal Example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;quality-then-ship&quot;</span>
-<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="nt">initial</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;run_quality&quot;</span>
-<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a><span class="nt">states</span><span class="p">:</span>
-<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a><span class="w">  </span><span class="nt">run_quality</span><span class="p">:</span>
-<a id="__codelineno-38-6" name="__codelineno-38-6" href="#__codelineno-38-6"></a><span class="w">    </span><span class="nt">loop</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;fix-quality-and-tests&quot;</span><span class="w">   </span><span class="c1"># runs the built-in loop as a child</span>
-<a id="__codelineno-38-7" name="__codelineno-38-7" href="#__codelineno-38-7"></a><span class="w">    </span><span class="nt">on_success</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;run_git&quot;</span>
-<a id="__codelineno-38-8" name="__codelineno-38-8" href="#__codelineno-38-8"></a><span class="w">    </span><span class="nt">on_failure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
-<a id="__codelineno-38-9" name="__codelineno-38-9" href="#__codelineno-38-9"></a><span class="w">  </span><span class="nt">run_git</span><span class="p">:</span>
-<a id="__codelineno-38-10" name="__codelineno-38-10" href="#__codelineno-38-10"></a><span class="w">    </span><span class="nt">loop</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;issue-refinement-git&quot;</span>
-<a id="__codelineno-38-11" name="__codelineno-38-11" href="#__codelineno-38-11"></a><span class="w">    </span><span class="nt">on_success</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
-<a id="__codelineno-38-12" name="__codelineno-38-12" href="#__codelineno-38-12"></a><span class="w">    </span><span class="nt">on_failure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
-<a id="__codelineno-38-13" name="__codelineno-38-13" href="#__codelineno-38-13"></a><span class="w">  </span><span class="nt">done</span><span class="p">:</span>
-<a id="__codelineno-38-14" name="__codelineno-38-14" href="#__codelineno-38-14"></a><span class="w">    </span><span class="nt">terminal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;quality-then-ship&quot;</span>
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a><span class="nt">initial</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;run_quality&quot;</span>
+<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a><span class="w">  </span><span class="nt">run_quality</span><span class="p">:</span>
+<a id="__codelineno-41-6" name="__codelineno-41-6" href="#__codelineno-41-6"></a><span class="w">    </span><span class="nt">loop</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;fix-quality-and-tests&quot;</span><span class="w">   </span><span class="c1"># runs the built-in loop as a child</span>
+<a id="__codelineno-41-7" name="__codelineno-41-7" href="#__codelineno-41-7"></a><span class="w">    </span><span class="nt">on_success</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;run_git&quot;</span>
+<a id="__codelineno-41-8" name="__codelineno-41-8" href="#__codelineno-41-8"></a><span class="w">    </span><span class="nt">on_failure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
+<a id="__codelineno-41-9" name="__codelineno-41-9" href="#__codelineno-41-9"></a><span class="w">  </span><span class="nt">run_git</span><span class="p">:</span>
+<a id="__codelineno-41-10" name="__codelineno-41-10" href="#__codelineno-41-10"></a><span class="w">    </span><span class="nt">loop</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;issue-refinement-git&quot;</span>
+<a id="__codelineno-41-11" name="__codelineno-41-11" href="#__codelineno-41-11"></a><span class="w">    </span><span class="nt">on_success</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
+<a id="__codelineno-41-12" name="__codelineno-41-12" href="#__codelineno-41-12"></a><span class="w">    </span><span class="nt">on_failure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
+<a id="__codelineno-41-13" name="__codelineno-41-13" href="#__codelineno-41-13"></a><span class="w">  </span><span class="nt">done</span><span class="p">:</span>
+<a id="__codelineno-41-14" name="__codelineno-41-14" href="#__codelineno-41-14"></a><span class="w">    </span><span class="nt">terminal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 </code></pre></div>
 <h3 id="sharing-context-between-parent-and-child">Sharing Context Between Parent and Child<a class="headerlink" href="#sharing-context-between-parent-and-child" title="Permanent link">&para;</a></h3>
 <p>Add <code>context_passthrough: true</code> to share the parent's <code>context</code> and <code>captured</code> variables with the child loop, and merge the child's captures back into the parent when it completes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="nt">states</span><span class="p">:</span>
-<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a><span class="w">  </span><span class="nt">run_quality</span><span class="p">:</span>
-<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a><span class="w">    </span><span class="nt">loop</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;fix-quality-and-tests&quot;</span>
-<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a><span class="w">    </span><span class="nt">context_passthrough</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">       </span><span class="c1"># child sees parent context; parent gets child captures</span>
-<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a><span class="w">    </span><span class="nt">on_success</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;run_git&quot;</span>
-<a id="__codelineno-39-6" name="__codelineno-39-6" href="#__codelineno-39-6"></a><span class="w">    </span><span class="nt">on_failure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a><span class="w">  </span><span class="nt">run_quality</span><span class="p">:</span>
+<a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a><span class="w">    </span><span class="nt">loop</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;fix-quality-and-tests&quot;</span>
+<a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a><span class="w">    </span><span class="nt">context_passthrough</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">       </span><span class="c1"># child sees parent context; parent gets child captures</span>
+<a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a><span class="w">    </span><span class="nt">on_success</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;run_git&quot;</span>
+<a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a><span class="w">    </span><span class="nt">on_failure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;done&quot;</span>
 </code></pre></div>
 <p>Without <code>context_passthrough</code>, the child runs with its own isolated context and its captured values are discarded after it exits.</p>
 <h3 id="routing-aliases">Routing Aliases<a class="headerlink" href="#routing-aliases" title="Permanent link">&para;</a></h3>
@@ -4453,9 +4193,9 @@
 <p>For full sub-loop schema details — <code>context_passthrough</code>, verdict handling, and advanced examples — see the <a href="../../generalized-fsm-loop/#6-sub-loop-composition">FSM Loop System Design</a> and <a href="../../skills/create-loop/reference.md"><code>skills/create-loop/reference.md</code></a>.</p>
 <h3 id="visualizing-sub-loop-execution">Visualizing Sub-Loop Execution<a class="headerlink" href="#visualizing-sub-loop-execution" title="Permanent link">&para;</a></h3>
 <p>When <code>--show-diagrams</code> is active and a state invokes a child loop, both FSM diagrams are rendered after each child step:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>[parent diagram — parent state highlighted]
-<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>── sub-loop: fix-quality-and-tests ──
-<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>[child diagram — current child state highlighted]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>[parent diagram — parent state highlighted]
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>── sub-loop: fix-quality-and-tests ──
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>[child diagram — current child state highlighted]
 </code></pre></div>
 <p>The parent state remains highlighted throughout child execution so you can track where you are in the outer pipeline. Sub-loop diagram display is supported for one level of nesting (depth-1 child loops).</p>
 <hr />
@@ -4520,6 +4260,12 @@
 <script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
         
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
       </main>
       
         <footer class="md-footer">
@@ -4549,7 +4295,7 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>

@@ -1,4 +1,4 @@
-![little-loops](assets/logo.svg){ width="200" }
+![little-loops](assets/logo.svg){ width="200" .home-logo }
 
 # Documentation Index
 
