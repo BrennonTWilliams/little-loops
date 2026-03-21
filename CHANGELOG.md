@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.58.0] - 2026-03-21
+
+### Added
+
+- **`ll-history` date range filters** — New `--since` and `--until` flags for `ll-history analyze` to scope analysis to a time window (dcf6bb8f)
+- **`ll-issues sequence` type filter** — New `--type` flag to filter sequence output by issue type (b9e3cea6)
+
+### Fixed
+
+- **`INDEX.md` case-sensitivity** — Renamed `INDEX.md` to `index.md` to generate the root `index.html` correctly on case-sensitive filesystems (2d4b046, ad38703)
+
+### Changed
+
+- **Behavioral quality stack** — Replaced completion-as-quality assumption with explicit behavioral quality evaluation in FEAT-849 loop (c290863a)
+
+### Documentation
+
+- **APO loop descriptions** — Expanded APO loop descriptions to block scalars for improved readability (bd023823)
+- **FSM evaluator docs** — Documented `diff_stall` and `mcp_result` evaluators, and removed unimplemented paradigm compilation docs (04f73bc8, 66bb0c6c)
+- **FSM verdict terminology** — Updated all docs from `success`/`failure` verdict terminology to `yes`/`no` (7f4f505, 7aff407)
+- **Docs site branding** — Added site logo/favicon, updated index branding, and removed stale nav entries (a2b2a61)
+
+### Maintenance
+
+- **Cloudflare Pages deployment** — Added `site/` build output to version control for Cloudflare Pages deployment (c8cb43f)
+
 ## [1.57.0] - 2026-03-21
 
 ### Added
@@ -40,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.58.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.57.0...v1.58.0
 [1.57.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.56.0...v1.57.0
 
 ## [1.56.0] - 2026-03-20
