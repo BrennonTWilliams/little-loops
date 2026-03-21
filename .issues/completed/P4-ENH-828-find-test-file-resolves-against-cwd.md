@@ -109,9 +109,30 @@ Follow this exact same pattern for `_find_test_file` and `analyze_test_gaps`.
 5. **Tests** — Add a test to `TestAnalyzeTestGaps` (`test_issue_history_advanced_analytics.py:1045`) using `tmp_path` + `monkeypatch.chdir()` to verify correct path anchoring; also test the `None`/cwd fallback via `monkeypatch.chdir`; model after `TestReadContinuationPrompt` in `test_subprocess_utils.py:136-183`
 6. **Verify** — Run `python -m pytest scripts/tests/test_issue_history_advanced_analytics.py::TestAnalyzeTestGaps -v`
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-03-21
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/issue_history/parsing.py` — Added `project_root: Path | None = None` to `_find_test_file`; updated existence check to `(project_root / candidate).exists() if project_root else Path(candidate).exists()`
+- `scripts/little_loops/issue_history/quality.py` — Added `project_root: Path | None = None` to `analyze_test_gaps`; forwarded to both `_find_test_file` call sites
+- `scripts/little_loops/issue_history/analysis.py` — Added `project_root=project_root` to `analyze_test_gaps(...)` call
+- `scripts/little_loops/cli/history.py` — Added `project_root=project_root` to `calculate_analysis(...)` call
+- `scripts/tests/test_issue_history_advanced_analytics.py` — Added two tests to `TestAnalyzeTestGaps`: `test_project_root_anchors_path_existence` and `test_none_project_root_falls_back_to_cwd`
+
+### Verification
+
+- All 11 `TestAnalyzeTestGaps` tests pass
+- Full suite: 3816 passed, 4 skipped
+- `ruff check scripts/`: all checks passed
+- `mypy` on modified files: success
+
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Completed** | Created: 2026-03-19 | Completed: 2026-03-21 | Priority: P4
 
 
 ## Verification Notes
@@ -127,6 +148,8 @@ Follow this exact same pattern for `_find_test_file` and `analyze_test_gaps`.
 - Enhancement remains unimplemented
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eae862b4-e4d3-4e7e-8ba4-75dc4b3ddb82.jsonl`
+- `/ll:ready-issue` - 2026-03-21T06:29:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eae862b4-e4d3-4e7e-8ba4-75dc4b3ddb82.jsonl`
 - `/ll:confidence-check` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:refine-issue` - 2026-03-21T05:54:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5b33b4-4f43-4816-926d-91f9358c3ab6.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

@@ -26,12 +26,14 @@ from little_loops.issue_history.parsing import _find_test_file, _parse_resolutio
 def analyze_test_gaps(
     issues: list[CompletedIssue],
     hotspots: HotspotAnalysis,
+    project_root: Path | None = None,
 ) -> TestGapAnalysis:
     """Correlate bug occurrences with test coverage gaps.
 
     Args:
         issues: List of completed issues (unused, for API consistency)
         hotspots: Pre-computed hotspot analysis
+        project_root: Project root for anchoring test file existence checks. Defaults to CWD.
 
     Returns:
         TestGapAnalysis with test coverage gap information
@@ -61,7 +63,7 @@ def analyze_test_gaps(
         bug_count = data["bug_count"]
         bug_ids = data["bug_ids"]
 
-        test_file = _find_test_file(source_file)
+        test_file = _find_test_file(source_file, project_root=project_root)
         has_test = test_file is not None
 
         # Calculate gap score: higher = more urgent to add tests
@@ -105,7 +107,9 @@ def analyze_test_gaps(
     )
 
     # Identify untested bug magnets (from hotspot analysis)
-    untested_magnets = [h.path for h in hotspots.bug_magnets if _find_test_file(h.path) is None]
+    untested_magnets = [
+        h.path for h in hotspots.bug_magnets if _find_test_file(h.path, project_root=project_root) is None
+    ]
 
     # Priority test targets: untested files sorted by bug count
     priority_targets = [g.source_file for g in gaps if not g.has_test_file]

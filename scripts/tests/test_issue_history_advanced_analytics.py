@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 from little_loops.issue_history import (
     AgentEffectivenessAnalysis,
     AgentOutcome,
@@ -1211,6 +1213,64 @@ class TestAnalyzeTestGaps:
 
         # Higher bug count should come first
         assert result.priority_test_targets[0] == "src/high.py"
+
+    def test_project_root_anchors_path_existence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """project_root anchors file existence checks away from CWD."""
+        # Create a test file under tmp_path matching the little-loops pattern
+        test_file = tmp_path / "scripts" / "tests" / "test_mymodule.py"
+        test_file.parent.mkdir(parents=True)
+        test_file.write_text("# test")
+
+        # Change CWD away so CWD-relative lookup would fail
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+        monkeypatch.chdir(other_dir)
+
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="scripts/little_loops/mymodule.py",
+                    issue_count=2,
+                    issue_ids=["BUG-001", "BUG-002"],
+                    issue_types={"BUG": 2},
+                )
+            ]
+        )
+
+        result = analyze_test_gaps([], hotspots, project_root=tmp_path)
+
+        assert len(result.gaps) == 1
+        assert result.gaps[0].has_test_file is True
+        assert result.gaps[0].test_file_path == "scripts/tests/test_mymodule.py"
+
+    def test_none_project_root_falls_back_to_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """project_root=None falls back to CWD for path resolution."""
+        # Create test file relative to tmp_path (which will become CWD)
+        test_file = tmp_path / "scripts" / "tests" / "test_mymodule.py"
+        test_file.parent.mkdir(parents=True)
+        test_file.write_text("# test")
+
+        monkeypatch.chdir(tmp_path)
+
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="scripts/little_loops/mymodule.py",
+                    issue_count=2,
+                    issue_ids=["BUG-001", "BUG-002"],
+                    issue_types={"BUG": 2},
+                )
+            ]
+        )
+
+        result = analyze_test_gaps([], hotspots, project_root=None)
+
+        assert len(result.gaps) == 1
+        assert result.gaps[0].has_test_file is True
 
 
 class TestParseResolutionAction:

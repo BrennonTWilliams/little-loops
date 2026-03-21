@@ -195,6 +195,7 @@ Examples:
             issues_dir=issues_dir,
             period_type=args.period,
             compare_days=args.compare,
+            project_root=project_root,
         )
 
         if args.format == "json":

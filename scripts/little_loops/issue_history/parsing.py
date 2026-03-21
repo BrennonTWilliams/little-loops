@@ -278,7 +278,7 @@ def _extract_paths_from_issue(content: str) -> list[str]:
     return sorted(extract_file_paths(content))
 
 
-def _find_test_file(source_path: str) -> str | None:
+def _find_test_file(source_path: str, project_root: Path | None = None) -> str | None:
     """Find corresponding test file for a source file.
 
     Checks common test file naming patterns:
@@ -290,6 +290,7 @@ def _find_test_file(source_path: str) -> str | None:
 
     Args:
         source_path: Path to source file (e.g., "src/core/processor.py")
+        project_root: Project root for anchoring existence checks. Defaults to CWD.
 
     Returns:
         Path to test file if found, None otherwise
@@ -319,7 +320,7 @@ def _find_test_file(source_path: str) -> str | None:
         candidates.append(f"scripts/tests/test_{stem}.py")
 
     for candidate in candidates:
-        if Path(candidate).exists():
+        if (project_root / candidate).exists() if project_root else Path(candidate).exists():
             return candidate
 
     return None
