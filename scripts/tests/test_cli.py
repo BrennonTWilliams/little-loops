@@ -1788,9 +1788,7 @@ class TestMainMessagesAdditionalCoverage:
                 with patch("little_loops.cli.messages._save_combined") as mock_save:
                     mock_save.return_value = Path("/output.jsonl")
 
-                    with patch.object(
-                        sys, "argv", ["ll-messages", "--skill", "capture-issue"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-messages", "--skill", "capture-issue"]):
                         from little_loops.cli import main_messages
 
                         result = main_messages()
@@ -1801,11 +1799,13 @@ class TestMainMessagesAdditionalCoverage:
         assert "sess-match" in session_ids
         assert "sess-other" not in session_ids
 
-    def test_examples_format_produces_example_records(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_examples_format_produces_example_records(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """--examples-format with --skill outputs ExampleRecord dicts via --stdout."""
         from datetime import datetime
 
-        from little_loops.user_messages import ExampleRecord, UserMessage
+        from little_loops.user_messages import UserMessage
 
         trigger_content = "<command-name>/ll:capture-issue</command-name>"
         msg = UserMessage(
@@ -1831,9 +1831,10 @@ class TestMainMessagesAdditionalCoverage:
 
         assert result == 0
         captured = capsys.readouterr()
-        lines = [l for l in captured.out.strip().split("\n") if l]
+        lines = [line for line in captured.out.strip().split("\n") if line]
         assert len(lines) == 1
         import json
+
         record = json.loads(lines[0])
         assert record["skill"] == "capture-issue"
         assert "input" in record

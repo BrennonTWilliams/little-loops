@@ -1447,9 +1447,7 @@ class TestBuildExamples:
 
     def test_context_window_slices_preceding_messages(self) -> None:
         """context_window=2 includes only the 2 messages before the trigger."""
-        trigger = (
-            "<command-name>/ll:capture-issue</command-name>"
-        )
+        trigger = "<command-name>/ll:capture-issue</command-name>"
         messages = [
             self._make_message("msg-0", ts_offset=0),
             self._make_message("msg-1", ts_offset=1),

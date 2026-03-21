@@ -185,9 +185,7 @@ Examples:
     if args.skill:
         import re
 
-        skill_pattern = re.compile(
-            rf"<command-name>/ll:{re.escape(args.skill)}</command-name>"
-        )
+        skill_pattern = re.compile(rf"<command-name>/ll:{re.escape(args.skill)}</command-name>")
         matching_sessions = {
             msg.session_id for msg in messages if skill_pattern.search(msg.content)
         }
@@ -231,8 +229,8 @@ Examples:
 
     # Output
     if args.stdout:
-        for item in combined:
-            print(json.dumps(item.to_dict()))
+        for record in combined:
+            print(json.dumps(record.to_dict()))
     else:
         output_path = _save_combined(combined, args.output)
         logger.success(f"Saved {len(combined)} records to: {output_path}")

@@ -455,8 +455,7 @@ def cmd_history(
         events = [
             e
             for e in events
-            if datetime.fromisoformat(e["ts"].replace("Z", "+00:00")).replace(tzinfo=None)
-            >= cutoff
+            if datetime.fromisoformat(e["ts"].replace("Z", "+00:00")).replace(tzinfo=None) >= cutoff
         ]
 
     if as_json:

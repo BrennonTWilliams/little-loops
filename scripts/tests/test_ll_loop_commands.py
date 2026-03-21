@@ -2237,8 +2237,13 @@ class TestHistoryFiltering:
         from little_loops.cli.loop.info import cmd_history
 
         args = argparse.Namespace(
-            tail=50, verbose=False, json=True, full=False,
-            event="evaluate", state=None, since=None,
+            tail=50,
+            verbose=False,
+            json=True,
+            full=False,
+            event="evaluate",
+            state=None,
+            since=None,
         )
         result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
@@ -2257,8 +2262,13 @@ class TestHistoryFiltering:
         from little_loops.cli.loop.info import cmd_history
 
         args = argparse.Namespace(
-            tail=50, verbose=False, json=True, full=False,
-            event=None, state="check", since=None,
+            tail=50,
+            verbose=False,
+            json=True,
+            full=False,
+            event=None,
+            state="check",
+            since=None,
         )
         result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
@@ -2268,9 +2278,7 @@ class TestHistoryFiltering:
         assert len(data) == 4
         for e in data:
             matches = (
-                e.get("state") == "check"
-                or e.get("from") == "check"
-                or e.get("to") == "check"
+                e.get("state") == "check" or e.get("from") == "check" or e.get("to") == "check"
             )
             assert matches, f"Event {e} does not match --state check"
 
@@ -2284,8 +2292,13 @@ class TestHistoryFiltering:
         from little_loops.cli.loop.info import cmd_history
 
         args = argparse.Namespace(
-            tail=50, verbose=False, json=True, full=False,
-            event=None, state=None, since="1h",
+            tail=50,
+            verbose=False,
+            json=True,
+            full=False,
+            event=None,
+            state=None,
+            since="1h",
         )
         result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
@@ -2304,8 +2317,13 @@ class TestHistoryFiltering:
         from little_loops.cli.loop.info import cmd_history
 
         args = argparse.Namespace(
-            tail=50, verbose=False, json=True, full=False,
-            event="route", state="check", since=None,
+            tail=50,
+            verbose=False,
+            json=True,
+            full=False,
+            event="route",
+            state="check",
+            since=None,
         )
         result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
@@ -2325,8 +2343,13 @@ class TestHistoryFiltering:
         from little_loops.cli.loop.info import cmd_history
 
         args = argparse.Namespace(
-            tail=1, verbose=False, json=True, full=False,
-            event="state_enter", state=None, since=None,
+            tail=1,
+            verbose=False,
+            json=True,
+            full=False,
+            event="state_enter",
+            state=None,
+            since=None,
         )
         result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
@@ -2346,8 +2369,13 @@ class TestHistoryFiltering:
         from little_loops.cli.loop.info import cmd_history
 
         args = argparse.Namespace(
-            tail=50, verbose=False, json=True, full=False,
-            event=None, state=None, since=None,
+            tail=50,
+            verbose=False,
+            json=True,
+            full=False,
+            event=None,
+            state=None,
+            since=None,
         )
         result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
