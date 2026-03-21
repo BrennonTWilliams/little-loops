@@ -16,7 +16,7 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 834–843 (at scan commit: a574ea0)
+- **Line(s)**: 944–950 (updated from 834–843 at scan commit: a574ea0)
 - **Anchor**: `in function main`, `analyze_parser.add_argument("-i", "--input", ...)`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L834-L843)
 - **Code**:
@@ -56,10 +56,10 @@ ll-messages && ll-workflows analyze --patterns ...
 
 ## Acceptance Criteria
 
-- [ ] `--input` is no longer `required=True` — it defaults to a discoverable path (e.g., `.claude/workflow-analysis/messages.jsonl` or the most recently modified `.jsonl` in `.claude/workflow-analysis/`)
-- [ ] If the default path does not exist and `--input` is not provided, a clear error message names the expected path
-- [ ] Explicit `--input` overrides the default
-- [ ] `ll-messages` documentation / help text mentions the default path convention
+- [x] `--input` is no longer `required=True` — defaults to `.claude/workflow-analysis/step1-patterns.jsonl`
+- [x] If the default path does not exist and `--input` is not provided, a clear error message names the expected path and hints to run `ll-messages`
+- [x] Explicit `--input` overrides the default
+- [x] `ll-messages` documentation / help text mentions the default path convention
 
 ## Proposed Solution
 
@@ -125,15 +125,13 @@ No changes to `analyze_workflows()` public API. Change is only in `main()` CLI a
 
 ## Blocked By
 
-- FEAT-555 — overlapping file `scripts/little_loops/workflow_sequence_analyzer.py`; higher priority feature should land first
-
-_(BUG-547, FEAT-557, FEAT-558, ENH-552 removed — all completed)_
+_(BUG-547, FEAT-557, FEAT-558, ENH-552, FEAT-555 removed — all completed)_
 
 ## Verification Notes
 
-- **Verified**: 2026-03-05
+- **Verified**: 2026-03-21
 - **Verdict**: VALID
-- **Details**: `analyze_parser.add_argument("-i", "--input", ..., required=True)` confirmed at `workflow_sequence_analyzer.py:850-856` (shifted from L834-843 at scan commit). The feature gap is accurate — `--input` remains required with no default. `--output` has `default=None` at L864-870 (with documented default applied at runtime). No dependency issues found.
+- **Details**: `analyze_parser.add_argument("-i", "--input", ..., required=True)` confirmed at `workflow_sequence_analyzer.py:944-950` (shifted from L834-843 at scan commit). The feature gap is accurate — `--input` remains required with no default. All blockers resolved: FEAT-555 completed.
 
 ## Related Key Documentation
 
@@ -144,6 +142,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `workflow-analyzer`, `cli`, `pipeline`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` — COMPLETED: Added default --input path, ll-messages hint, 3 new tests
+- `/ll:ready-issue` - 2026-03-21T06:40:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a2dbb84-00dd-42bb-8951-912a80ae4f38.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: --input still required=True with no default
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `--input required=True` confirmed; removed stale Blocked By: BUG-547, FEAT-557, FEAT-558, ENH-552 (all completed); remaining blocker: FEAT-555
 
@@ -157,6 +157,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Implemented** on 2026-03-21.
+
+- Added `_DEFAULT_INPUT_PATH = Path(".claude/workflow-analysis/step1-patterns.jsonl")` to `workflow_sequence_analyzer.py`
+- Changed `--input` from `required=True` to `default=_DEFAULT_INPUT_PATH`
+- When the default path is missing, error message now hints to run `ll-messages` first
+- Updated `ll-messages` epilog with pipeline example showing the conventional path
+- 3 new tests in `TestMainDefaultInput` (all passing)
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Resolved: 2026-03-21 | Priority: P4

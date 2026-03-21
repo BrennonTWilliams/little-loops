@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -32,6 +34,7 @@ from little_loops.workflow_sequence_analyzer import (
     entity_overlap,
     extract_entities,
     get_verb_class,
+    main,
     semantic_similarity,
 )
 
@@ -1915,3 +1918,54 @@ class TestParseTimestamps:
         result = _parse_timestamps(messages)
         assert len(result) == 1
         assert result[0].tzinfo is None
+
+
+class TestMainDefaultInput:
+    """Tests for main() --input default path behavior (FEAT-559)."""
+
+    def test_default_input_missing_shows_ll_messages_hint(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """When --input is omitted and default path doesn't exist, error mentions ll-messages."""
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-workflows", "analyze", "--patterns", "p.yaml"]):
+            result = main()
+        captured = capsys.readouterr()
+        assert result == 1
+        assert "ll-messages" in captured.err
+        assert ".claude/workflow-analysis/step1-patterns.jsonl" in captured.err
+
+    def test_explicit_input_missing_no_ll_messages_hint(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """When --input is given explicitly but file is missing, no ll-messages hint is shown."""
+        monkeypatch.chdir(tmp_path)
+        custom = tmp_path / "custom.jsonl"
+        with patch.object(
+            sys, "argv", ["ll-workflows", "analyze", "--input", str(custom), "--patterns", "p.yaml"]
+        ):
+            result = main()
+        captured = capsys.readouterr()
+        assert result == 1
+        assert "ll-messages" not in captured.err
+
+    def test_default_input_does_not_require_flag(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Omitting --input must not raise SystemExit from argparse (i.e. required=False)."""
+        monkeypatch.chdir(tmp_path)
+        # If required=True, argparse raises SystemExit(2) before we can intercept.
+        # After the fix, it should reach the file-existence check instead.
+        with patch.object(sys, "argv", ["ll-workflows", "analyze", "--patterns", "p.yaml"]):
+            try:
+                main()
+            except SystemExit as exc:
+                pytest.fail(f"argparse raised SystemExit({exc.code}) — --input is still required=True")

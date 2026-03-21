@@ -46,6 +46,8 @@ __all__ = [
     "semantic_similarity",
 ]
 
+_DEFAULT_INPUT_PATH = Path(".claude/workflow-analysis/step1-patterns.jsonl")
+
 # Module-level compiled regex patterns
 FILE_PATTERN = re.compile(r"[\w./-]+\.(?:md|py|json|yaml|yml|js|ts|tsx|jsx|sh|toml)", re.IGNORECASE)
 PHASE_PATTERN = re.compile(r"phase[- ]?\d+", re.IGNORECASE)
@@ -927,10 +929,14 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s analyze --input messages.jsonl --patterns step1.yaml
+  %(prog)s analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
   %(prog)s analyze -i messages.jsonl -p patterns.yaml -o output.yaml
   %(prog)s analyze --input .claude/user-messages.jsonl \\
                    --patterns .claude/workflow-analysis/step1-patterns.yaml
+
+Pipeline (--input defaults to .claude/workflow-analysis/step1-patterns.jsonl):
+  ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
+  %(prog)s analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
 """,
     )
 
@@ -945,8 +951,11 @@ Examples:
         "-i",
         "--input",
         type=Path,
-        required=True,
-        help="Input JSONL file with user messages",
+        default=_DEFAULT_INPUT_PATH,
+        help=(
+            "Input JSONL file with user messages"
+            " (default: .claude/workflow-analysis/step1-patterns.jsonl)"
+        ),
     )
     analyze_parser.add_argument(
         "-p",
@@ -1000,6 +1009,11 @@ Examples:
         # Validate input files
         if not args.input.exists():
             print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            if args.input == _DEFAULT_INPUT_PATH:
+                print(
+                    "  Run 'll-messages' first to generate the input file.",
+                    file=sys.stderr,
+                )
             return 1
 
         if not args.patterns.exists():

@@ -44,6 +44,10 @@ Examples:
   %(prog)s --skill capture-issue        # Filter to sessions where skill was invoked
   %(prog)s --skill capture-issue --examples-format  # Output (input, output) training pairs
   %(prog)s --skill refine-issue --examples-format --context-window 5 --stdout
+
+Pipeline with ll-workflows (use the conventional path so ll-workflows finds it automatically):
+  %(prog)s --output .claude/workflow-analysis/step1-patterns.jsonl
+  ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
 """,
     )
     parser.add_argument(
