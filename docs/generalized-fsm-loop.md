@@ -392,7 +392,7 @@ maintain: boolean               # Restart after completion
 llm:
   model: string                 # Model for LLM evaluation (default: DEFAULT_LLM_MODEL from schema.py)
   max_tokens: integer           # Max tokens for evaluation (default: 256)
-  timeout: number               # Timeout for LLM calls in seconds (default: 30)
+  timeout: number               # Timeout for LLM calls in seconds (default: 1800)
 ```
 
 ---
@@ -494,8 +494,8 @@ states:
   check:
     action: "pytest"
     route:
-      success: "deploy"
-      failure: "fix"
+      yes: "deploy"
+      no: "fix"
       error: "alert"
 ```
 
@@ -551,8 +551,8 @@ evaluate:
 
 | Exit Code | Verdict |
 |-----------|---------|
-| 0 | `success` |
-| 1 | `failure` |
+| 0 | `yes` |
+| 1 | `no` |
 | 2+ | `error` |
 
 Result details: `{ exit_code: <int> }`
@@ -570,8 +570,8 @@ evaluate:
 
 | Comparison Result | Verdict |
 |-------------------|---------|
-| Condition met | `success` |
-| Condition not met | `failure` |
+| Condition met | `yes` |
+| Condition not met | `no` |
 | Parse error | `error` |
 
 Result details: `{ value: <number>, target: <number>, operator: <string> }`
@@ -603,12 +603,12 @@ evaluate:
 
 | Match Result | Verdict |
 |--------------|---------|
-| Pattern found (negate=false) | `success` |
-| Pattern not found (negate=false) | `failure` |
-| Pattern found (negate=true) | `failure` |
-| Pattern not found (negate=true) | `success` |
+| Pattern found (negate=false) | `yes` |
+| Pattern not found (negate=false) | `no` |
+| Pattern found (negate=true) | `no` |
+| Pattern not found (negate=true) | `yes` |
 
-Result details: `{ matched: <bool>, pattern: <string> }`
+Result details: `{ matched: <bool>, pattern: <string>, negate: <bool> }`
 
 #### `convergence`
 
@@ -669,8 +669,8 @@ schema:
       type: string
       enum: ["yes", "no", "blocked", "partial"]
       description: |
-        - success: The action completed its goal
-        - failure: The action failed, should retry
+        - yes: The condition/check evaluated to true
+        - no: The condition/check evaluated to false
         - blocked: Cannot proceed without external help
         - partial: Made progress but not complete
     confidence:
@@ -1272,7 +1272,7 @@ states:
 - **Default timeout** (`default_timeout`): Loop-level fallback applied to all states that don't set `timeout:`; hardcoded fallback is 3600s for prompt/LLM states and 30s for MCP tool calls when neither is set
 - **Loop timeout** (`timeout`): Bounds total wall-clock execution time (independent of per-state timeouts)
 
-LLM evaluation has its own timeout (default 30s) configured at loop level:
+LLM evaluation has its own timeout (default 1800s) configured at loop level:
 
 ```yaml
 llm:
