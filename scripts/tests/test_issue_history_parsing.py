@@ -201,7 +201,9 @@ class TestScanActiveIssues:
         result = scan_active_issues(issues_dir)
         assert len(result) == 1
 
-    def test_scan_logs_warning_on_unreadable_file(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    def test_scan_logs_warning_on_unreadable_file(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Parse errors are logged at WARNING level; issue still appears in results."""
 
         bugs_dir = tmp_path / ".issues" / "bugs"

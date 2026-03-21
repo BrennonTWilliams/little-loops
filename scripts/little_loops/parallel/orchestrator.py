@@ -277,7 +277,9 @@ class ParallelOrchestrator:
                     capture_output=True,
                     text=True,
                 )
-                branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
+                branch_name = (
+                    branch_result.stdout.strip() if branch_result.returncode == 0 else None
+                )
                 if branch_name and branch_name.startswith("parallel/"):
                     self._git_lock.run(
                         ["branch", "-D", branch_name],
