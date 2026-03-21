@@ -34,16 +34,16 @@ A loop (`examples-miner.yaml` or similar) runs as a wrapper around `apo-textgrad
 
 ## Proposed Solution
 
-A two-loop architecture:
+A two-loop architecture using FSM sub-loop chaining:
 
-**Outer loop** (`examples-miner.yaml`): harvest → judge → calibrate → synthesize → diversify → publish
+**Outer loop** (`examples-miner.yaml`): harvest → judge → calibrate → run_optimizer (sub-loop) → synthesize → diversify → publish
 **Inner loop** (`apo-textgrad`): test → gradient → apply → iterate
 
-The outer loop reads the gradient output from the inner loop's most recent run as its synthesis signal. The inner loop reads `examples.json` published by the outer loop. They run in sequence per optimization cycle.
+The outer loop invokes `apo-textgrad` as a child FSM via `loop: apo-textgrad` + `context_passthrough: true` in the `run_optimizer` state. The child's gradient output (`FAILURE_PATTERN`, `ROOT_CAUSE`, `GRADIENT`) is available in the parent as `${captured.run_optimizer.gradient.output}` for the `synthesize` state. The inner loop reads `examples.json` published by the outer loop via its `context.examples_file`. Both loops run within a single `ll-loop run` invocation — no file I/O required to pass the gradient signal.
 
 Key components:
 - **Harvest script** (extend `ll-messages`): `--skill` filter + `--examples-format` flag that extracts (invocation context, accepted output) pairs from `.jsonl` logs
-- **Oracle prompt**: a separate prompt optimized for scoring skill outputs against rubric criteria; itself a candidate for apo-textgrad optimization
+- **Oracle prompt**: skill-scoped, not universal — one rubric per skill being optimized (e.g., a `capture-issue` oracle is distinct from a `refine-issue` oracle); the oracle prompt accepts a `skill_name` parameter and applies the corresponding rubric. Two phases: (1) mechanical/deterministic checks (schema conformance, file path existence, line number plausibility, required section presence) run first at zero LLM cost; (2) semantic LLM scoring (motivation coherence, codebase reference accuracy, implementer actionability) runs only for outputs that pass phase 1. The oracle is **manually maintained** in v1 — do not attempt to optimize it via `apo-textgrad` itself, as that requires a meta-oracle to score oracle scores (circular rabbit hole). Validate calibration using a small fixture set (10–15 hand-labeled examples per skill); if fixture scores drift before a mining cycle, halt rather than corrupt the corpus
 - **Calibration state**: run current prompt against all candidates, compute pass rates, select 40–80% band
 - **Adversarial synthesizer**: LLM-guided perturbation of passing examples using the current gradient
 - **Diversity budget**: enforced per-axis coverage constraints
@@ -99,11 +99,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Routing state fields: `evaluate: {type: output_contains, source: ..., pattern: ...}`, `on_yes`, `on_no`, `on_error`
 - Reference implementations: `loops/apo-textgrad.yaml` (gradient-driven), `loops/apo-opro.yaml` (history-guided with `score_history` capture chain)
 
-**Gradient persistence gap (open implementation question):**
-- `captured.gradient.output` lives only in memory for a single `ll-loop run` invocation — it is **not** persisted to disk automatically
-- The outer `examples-miner.yaml` cannot read gradient output from a prior inner loop run without an explicit mechanism
-- Options: (a) add a `write_gradient` terminal state to `apo-textgrad.yaml` that writes to a file before `done`, then miner reads that file; (b) use FSM sub-loop invocation (`StateConfig.loop` + `context_passthrough: true` in `fsm/schema.py:205`) to chain miner → textgrad in a single run and pass captures across
-- `scripts/little_loops/fsm/persistence.py` — FSM state persistence layer; investigate whether captured values are persisted between loop restarts
+**Gradient persistence — decided: FSM sub-loop with `context_passthrough: true` (option b):**
+- `captured.gradient.output` lives only in memory per `ll-loop run` invocation; it is **not** written to disk automatically. The chosen mechanism is FSM sub-loop chaining so that `examples-miner.yaml` invokes `apo-textgrad` as a child loop within a single run and reads its gradient directly from the merged captures.
+- **Mechanism** (`scripts/little_loops/fsm/schema.py:230-231`, `scripts/little_loops/fsm/executor.py:571-619`): a state sets `loop: apo-textgrad` and `context_passthrough: true`. The executor loads the child FSM, merges parent context + captures into the child's context, runs the child to completion, then stores the child's full `captured` dict into the parent's `captured` dict keyed by the state name (e.g., state name `run_optimizer` → `captured.run_optimizer.*`). Routing uses `on_success` / `on_failure` (aliases for `on_yes` / `on_no`).
+- **Exact YAML syntax** for the miner's optimizer invocation state:
+  ```yaml
+  run_optimizer:
+    loop: apo-textgrad
+    context_passthrough: true
+    on_success: synthesize     # child terminated cleanly → proceed to adversarial synthesis
+    on_failure: publish        # child hit max_iterations/timeout → skip synthesis, publish anyway
+  ```
+- **Accessing child captures** in subsequent states: the child's `captured.gradient.output` is available in the parent as `${captured.run_optimizer.gradient.output}` (child captures nested under the invoking state's name per `executor.py:611-612`).
+- **Persistence** (`scripts/little_loops/fsm/persistence.py:83`, `persistence.py:466`): the parent's `captured` dict (including the nested child captures) is written on every `state_enter` and `loop_complete` event and restored on resume — so a mid-run restart does not lose gradient data from a completed `run_optimizer` state.
+- **Mutual exclusion** (`scripts/little_loops/fsm/validation.py:198-206`): a state with `loop:` cannot also have `action:` — `run_optimizer` must be a pure sub-loop delegation state with no action.
+- **No changes to `apo-textgrad.yaml`** required: the child loop runs as-is; its terminal state already resolves with `terminated_by == "terminal"` which routes the parent to `on_success`. Option (a) (write_gradient terminal state) is **rejected** — it would require modifying `apo-textgrad.yaml` and couples the inner loop to the outer loop's file layout.
+- **Reference**: `loops/rl-coding-agent.yaml:30-36` has this pattern commented out as a pending upgrade; `docs/generalized-fsm-loop.md:195-211` and `loops/README.md:71-78` have canonical YAML examples; `scripts/tests/test_fsm_executor.py:3325-3357` has an integration test for `context_passthrough` capture merging.
 
 **Test patterns:**
 - `scripts/tests/test_user_messages.py` — uses `_write_jsonl` helper at line 107 + `tempfile.mkdtemp()`; add `ExampleRecord` and `build_examples()` unit tests here
@@ -116,9 +127,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 1. **Implement FEAT-850 first**: `ExampleRecord` dataclass + `build_examples()` in `scripts/little_loops/user_messages.py`; `--skill`, `--examples-format`, `--context-window` args in `scripts/little_loops/cli/messages.py:main_messages()` (line 11); tests in `scripts/tests/test_user_messages.py` and `scripts/tests/test_cli_messages_save.py`
 2. **Build `examples-miner.yaml`**: follow FSM schema from `loops/apo-textgrad.yaml`; states: `harvest` (shell: `ll-messages --skill <name> --examples-format -o ${context.examples_file}`) → `judge` (prompt: score each pair against rubric) → `calibrate` (prompt: select 40–80% pass-rate band) → `publish` (shell: write final `examples.json`)
 3. **Validate end-to-end**: run miner on `ready-issue` session logs (`.issues/completed/` via `issue_history/parsing.py:20`), feed output to `loops/apo-textgrad.yaml` with `context.examples_file` pointing at miner output, verify gradient fires (`FAILURE_PATTERN`/`ROOT_CAUSE` present in `captured.gradient.output`)
-4. **Add adversarial synthesis state**: insert after `calibrate`; read `captured.gradient.output` from previous `apo-textgrad` run; generate targeted perturbations of passing examples using the `FAILURE_PATTERN` and `ROOT_CAUSE` fields
+4. **Add adversarial synthesis state**: insert a `run_optimizer` sub-loop state (after `calibrate`, before `synthesize`) that invokes `apo-textgrad` via `loop: apo-textgrad` + `context_passthrough: true`; then add a `synthesize` prompt state that reads `${captured.run_optimizer.gradient.output}` to extract `FAILURE_PATTERN` and `ROOT_CAUSE` and generates targeted perturbations of passing examples
 5. **Add diversity enforcement**: coverage budget logic in the `calibrate`/`publish` state; enforce per-axis minimums (skill type, issue type, priority band, lifecycle stage, failure cluster)
-6. **Add oracle prompt**: separate calibrated scoring prompt in `loops/`; document how to optimize it using `apo-textgrad.yaml` itself
+6. **Add oracle prompts**: one scoring prompt per target skill in `loops/oracles/` (e.g., `oracle-capture-issue.yaml`, `oracle-refine-issue.yaml`); each accepts `skill_name`, `invocation`, and `output` context variables; phase 1 mechanical checks are deterministic (schema, file existence, required sections) and run before the LLM call; maintain a calibration fixture of 10–15 hand-labeled examples per skill and run it as a pre-flight check before each mining cycle — halt if score distribution drifts beyond threshold; treat oracle prompts as manually maintained in v1
 7. **Add corpus maintenance**: freshness decay via weight field in `examples.json`; regression floor archiving; auto-ingest hook triggered on issue completion (see `hooks/hooks.json` for hook patterns)
 
 ## Impact
@@ -153,5 +164,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-03-20 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-21T02:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37aaa01c-fc9c-49b3-a00c-669bbb0655ed.jsonl`
 - `/ll:refine-issue` - 2026-03-21T01:28:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f97b7680-1084-46aa-9586-4d4827393f96.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2dab8d3-f1a2-4974-84ba-68f20250569c.jsonl`
