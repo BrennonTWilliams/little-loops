@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-20
 discovered_by: capture-issue
+confidence_score: 90
+outcome_confidence: 78
 ---
 
 # FEAT-850: Add `--skill` filter and `--examples-format` flags to `ll-messages`
@@ -32,12 +34,14 @@ ll-messages --skill refine-issue --since 2026-01-01 --examples-format --stdout
 ```json
 {
   "input": "<N preceding user messages as context>",
-  "output": "<assistant response text or accepted tool output>",
+  "output": "{\"tools_used\": [...], \"files_modified\": [...], \"completion_status\": \"success\"}",
   "skill": "capture-issue",
   "session_id": "...",
   "timestamp": "..."
 }
 ```
+
+Note: `output` is a JSON-serialized `ResponseMetadata` summary (tools used, files modified, completion status). Free-text assistant response capture is deferred to a follow-on issue.
 
 ## Motivation
 
@@ -82,10 +86,12 @@ if args.skill:
     messages = [msg for msg in messages if msg.session_id in matching_sessions]
 ```
 
-**CRITICAL GAP — `ExampleRecord.output` field:** The current `ResponseMetadata` (assembled by `_aggregate_response_metadata()` at `user_messages.py:199-263`) captures only `tools_used`, `files_read`, `files_modified`, `completion_status`, `error_message`. It does **not** capture assistant response text (only `tool_use` blocks are processed; `text` content blocks are ignored). To populate a meaningful `output` field in `ExampleRecord`, one of these approaches is needed:
-- Extend `_aggregate_response_metadata()` to also collect assistant `text` blocks (out of scope for this issue but a prerequisite)
-- Redefine `output` as a serialized summary of `ResponseMetadata` (tools used, files modified) rather than free text
-- Defer `--examples-format` until `ResponseMetadata` captures text
+**`ExampleRecord.output` field — resolved:** The current `ResponseMetadata` (assembled by `_aggregate_response_metadata()` at `user_messages.py:199-263`) captures only `tools_used`, `files_read`, `files_modified`, `completion_status`, `error_message`. It does **not** capture assistant response text (`text` content blocks are ignored). **Decision: define `output` as a JSON-serialized summary of `ResponseMetadata`** — tools used and files modified — rather than free text. Free-text capture is deferred to a follow-on issue. This keeps scope tight and avoids blocking on a `_aggregate_response_metadata()` rewrite.
+
+Example serialized output value:
+```json
+{"tools_used": [{"tool": "Read", "count": 3}, {"tool": "Edit", "count": 1}], "files_modified": ["scripts/foo.py"], "completion_status": "success"}
+```
 
 **Auto-enable `--include-response-context`** — at `messages.py:152`, the flag is passed directly. Auto-enable by replacing with: `include_response_context=args.include_response_context or args.examples_format` (line 152). No other changes needed at the call site.
 
@@ -99,12 +105,13 @@ if args.skill:
 
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_cli.py` — `TestMainMessagesIntegration` class (line 572); `TestMainMessagesAdditionalCoverage` class (line 1644) — follow `test_include_response_context_flag` pattern at line 1712
-- `scripts/tests/test_user_messages.py` — `TestMessagesArgumentParsing` class (line 393); `TestMessagesArgumentParsingWithCommands` class (line 1312) — add new class or extend for `--skill`/`--examples-format`/`--context-window`
-- `scripts/tests/test_cli_messages_save.py` — `TestSaveCombined` class; needs updates if `ExampleRecord` items are passed to `_save_combined()`
+- `scripts/tests/test_user_messages.py` — `TestMessagesArgumentParsing` class (line 393); `TestMessagesArgumentParsingWithCommands` class (line 1312) — extend `_parse_messages_args()` helper at line 1312 to add the 3 new flags; add `test_skill_default`, `test_skill_flag`, `test_examples_format_default`, `test_examples_format_flag`, `test_context_window_default`, `test_context_window_flag` methods following the existing `test_skip_cli_default`/`test_skip_cli_flag` pattern
+- `scripts/tests/test_cli_messages_save.py` — `TestSaveCombined` class (line 12); **no changes needed** — `_save_combined` (messages.py:193-214) accepts any `list` with `.to_dict()` (duck-typed); existing tests use `MagicMock(to_dict=lambda: {...})`, so `ExampleRecord` passes through unchanged
 
 ### Similar Patterns
 - `--commands-only` / `--skip-cli` toggle pattern in `main_messages()` — same argparse flag approach
 - `--include-response-context` auto-activation precedent: can set a flag as a side-effect of another
+- `workflow_sequence_analyzer.py:384-392` — `_group_by_session()` helper: groups `list[dict]` by `session_id` key; reuse this pattern for context-window windowing (operate on per-session groups before the final descending-sort merge at messages.py:168-172)
 
 ### Tests
 - `scripts/tests/test_cli.py` — add cases: skill filter matches/non-matches, examples-format output shape
@@ -123,7 +130,7 @@ No config key needed; all behavior is flag-driven.
 2. Add `--skill` (str, optional), `--examples-format` (store_true), `--context-window` (int, default 3) args to the `argparse.ArgumentParser` block at `messages.py:84-104` — follow `action="store_true"` pattern for booleans, `type=str` for `--skill`
 3. Implement session-level skill detection at `messages.py:164` (post-extraction, before merge): build `matching_sessions` set via `<command-name>/ll:{skill}</command-name>` regex on `UserMessage.content`, filter `messages` list — **do NOT use `response_metadata.tools_used` (no Skill tool entries exist there)**
 4. Auto-enable `--include-response-context` when `--examples-format` is set: change `messages.py:152` from `args.include_response_context` to `args.include_response_context or getattr(args, 'examples_format', False)`
-5. Resolve the `ExampleRecord.output` definition gap (see Proposed Solution research findings) before wiring `--examples-format` → `build_examples()`
+5. Define `ExampleRecord.output` as `json.dumps(response_metadata.to_dict())` (serialized `ResponseMetadata` — tools used, files modified, completion status); if `response_metadata` is None, emit `"{}"`
 6. Wire `--examples-format` → `build_examples()` → emit `ExampleRecord` dicts instead of raw `UserMessage`/`CommandRecord` — slot in at `messages.py:169-176` (after merge, before limit)
 7. Update test classes: `TestMessagesArgumentParsingWithCommands` in `test_user_messages.py:1312`; add integration tests in `test_cli.py:1644` following `test_include_response_context_flag` at line 1712
 8. Update epilog at `messages.py:33-43` and `docs/reference/CLI.md`
@@ -149,7 +156,7 @@ ll-messages --skill capture-issue --examples-format --since 2026-01-01 -o exampl
 class ExampleRecord:
     skill: str
     input: str          # concatenated context messages
-    output: str         # accepted assistant response
+    output: str         # JSON-serialized ResponseMetadata (tools_used, files_modified, completion_status); free-text deferred
     session_id: str
     timestamp: datetime
     context_window: int
@@ -165,8 +172,10 @@ class ExampleRecord:
 `feat`, `ll-messages`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-21T02:33:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77fad3d4-4cd4-49d2-8703-5d4df8de3550.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:16:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0633f118-65ef-4b3d-9507-feb81b97f8cd.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/514a367b-5049-4476-a069-2e6e1f01d027.jsonl`
 
 ---
 ## Status
