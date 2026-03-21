@@ -241,6 +241,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 
 | Loop | Description |
 |------|-------------|
+| `context-health-monitor` | Monitor context health via scratch file accumulation and session log size; compacts scratch files and archives stale outputs when pressure is detected |
 | `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass |
 | `docs-sync` | Verify documentation matches the codebase and check for broken links |
 | `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
@@ -850,6 +851,9 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 
 | Flag | Effect |
 |------|--------|
+| `--event` / `-e` | Filter by event type (e.g. `evaluate`, `route`, `state_enter`) |
+| `--state` / `-s` | Filter by state name (matches `state`, `from`, or `to` fields) |
+| `--since` | Filter to events within a time window (e.g. `1h`, `30m`, `2d`) |
 | `--verbose` / `-v` | Show action output preview and LLM call details (model, latency, prompt, response) |
 | `--full` | Show untruncated prompts and output (implies --verbose) |
 | `--json` | Output events as JSON array |

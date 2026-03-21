@@ -33,7 +33,7 @@ These flags appear across multiple tools:
 
 ### ll-auto
 
-Process all backlog issues sequentially in priority order.
+Process all backlog issues sequentially in priority order. On startup, `ll-auto` prints a header showing the active LLM model name (detected from the Claude CLI `stream-json` init event).
 
 **Flags:**
 
@@ -299,6 +299,9 @@ Show execution history for a loop.
 |------|-------|-------------|
 | `run_id` | | (Optional positional) Archived run ID to inspect; omit to list all archived runs |
 | `--tail` | `-n` | Last N events to show (default: 50) |
+| `--event` | `-e` | Filter by event type (e.g. `evaluate`, `route`, `state_enter`) |
+| `--state` | `-s` | Filter by state name (matches `state`, `from`, or `to` fields) |
+| `--since` | | Filter to events within a time window (e.g. `1h`, `30m`, `2d`) |
 | `--verbose` | `-v` | Show action output preview and LLM call details (model, latency, prompt, response) |
 | `--full` | | Show untruncated prompts and output (implies `--verbose`) |
 | `--json` | | Output events as JSON array |
