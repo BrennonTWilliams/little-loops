@@ -71,6 +71,7 @@ nav:
     - Session Handoff: guides/SESSION_HANDOFF.md
     - Workflow Analysis: guides/WORKFLOW_ANALYSIS_GUIDE.md
     - Automatic Harnessing: guides/AUTOMATIC_HARNESSING_GUIDE.md
+    - Examples Mining: guides/EXAMPLES_MINING_GUIDE.md
   - Reference:
     - CLI Tools: reference/CLI.md
     - Commands: reference/COMMANDS.md
