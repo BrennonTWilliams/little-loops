@@ -7,6 +7,8 @@ docs_dir: docs
 
 theme:
   name: material
+  logo: assets/logo-icon.svg
+  favicon: assets/logo-icon.svg
   palette:
     - scheme: default
       toggle:
@@ -69,17 +71,3 @@ nav:
   - Architecture:
     - Overview: ARCHITECTURE.md
     - FSM Loop: generalized-fsm-loop.md
-  - Claude Code Reference:
-    - CLI Reference: claude-code/cli-reference.md
-    - Settings: claude-code/settings.md
-    - Hooks Reference: claude-code/hooks-reference.md
-    - Automate with Hooks: claude-code/automate-workflows-with-hooks.md
-    - Memory: claude-code/memory.md
-    - Skills: claude-code/skills.md
-    - Custom Subagents: claude-code/custom-subagents.md
-    - Run Agent Teams: claude-code/run-agent-teams.md
-    - Plugins Reference: claude-code/plugins-reference.md
-    - Create a Plugin: claude-code/create-plugin.md
-    - CLI Programmatic Usage: claude-code/cli-programmatic-usage.md
-    - Checkpointing: claude-code/checkpointing.md
-    - Structured Outputs: claude-code/structured-outputs.md

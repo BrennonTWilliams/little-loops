@@ -1,3 +1,5 @@
+![little-loops](assets/logo.svg)
+
 # Documentation Index
 
 Complete reference for all little-loops documentation.
