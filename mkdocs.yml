@@ -1,0 +1,85 @@
+site_name: little-loops
+site_description: Development workflow toolkit for Claude Code — issue management, code quality, and automation
+site_url: https://docs.little-loops.ai
+repo_url: https://github.com/BrennonTWilliams/little-loops
+repo_name: BrennonTWilliams/little-loops
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+exclude_docs: |
+  research/
+  guides/AUDIT_REPORT.md
+  demo/
+
+nav:
+  - Home: INDEX.md
+  - Guides:
+    - Getting Started: guides/GETTING_STARTED.md
+    - Issue Management: guides/ISSUE_MANAGEMENT_GUIDE.md
+    - Sprint Guide: guides/SPRINT_GUIDE.md
+    - Loops Guide: guides/LOOPS_GUIDE.md
+    - Session Handoff: guides/SESSION_HANDOFF.md
+    - Workflow Analysis: guides/WORKFLOW_ANALYSIS_GUIDE.md
+    - Automatic Harnessing: guides/AUTOMATIC_HARNESSING_GUIDE.md
+  - Reference:
+    - CLI Tools: reference/CLI.md
+    - Commands: reference/COMMANDS.md
+    - Configuration: reference/CONFIGURATION.md
+    - API: reference/API.md
+    - Issue Template: reference/ISSUE_TEMPLATE.md
+    - Output Styling: reference/OUTPUT_STYLING.md
+  - Development:
+    - Testing: development/TESTING.md
+    - E2E Testing: development/E2E_TESTING.md
+    - Troubleshooting: development/TROUBLESHOOTING.md
+    - Merge Coordinator: development/MERGE-COORDINATOR.md
+  - Architecture:
+    - Overview: ARCHITECTURE.md
+    - FSM Loop: generalized-fsm-loop.md
+  - Claude Code Reference:
+    - CLI Reference: claude-code/cli-reference.md
+    - Settings: claude-code/settings.md
+    - Hooks Reference: claude-code/hooks-reference.md
+    - Automate with Hooks: claude-code/automate-workflows-with-hooks.md
+    - Memory: claude-code/memory.md
+    - Skills: claude-code/skills.md
+    - Custom Subagents: claude-code/custom-subagents.md
+    - Run Agent Teams: claude-code/run-agent-teams.md
+    - Plugins Reference: claude-code/plugins-reference.md
+    - Create a Plugin: claude-code/create-plugin.md
+    - CLI Programmatic Usage: claude-code/cli-programmatic-usage.md
+    - Checkpointing: claude-code/checkpointing.md
+    - Structured Outputs: claude-code/structured-outputs.md

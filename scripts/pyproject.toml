@@ -41,7 +41,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/BrennonTWilliams/little-loops"
-Documentation = "https://github.com/BrennonTWilliams/little-loops/blob/main/README.md"
+Documentation = "https://docs.little-loops.ai"
 Repository = "https://github.com/BrennonTWilliams/little-loops"
 "Bug Tracker" = "https://github.com/BrennonTWilliams/little-loops/issues"
 
