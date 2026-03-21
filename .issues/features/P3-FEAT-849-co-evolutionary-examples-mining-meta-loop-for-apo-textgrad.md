@@ -96,6 +96,10 @@ Key components:
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Blocked By
+
+- FEAT-850
+
 ## Labels
 
 `feat`, `loops`, `apo`, `prompt-optimization`, `captured`
