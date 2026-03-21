@@ -1,5 +1,10 @@
 name: apo-textgrad
-description: "TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement"
+description: |
+  TextGrad-style prompt optimization (APO technique): tests the current prompt
+  against a set of labeled examples, computes a text gradient (failure pattern,
+  root cause, and refinement instruction), applies the gradient to improve the
+  prompt, and repeats until the pass rate exceeds the target or max_iterations
+  is reached. Requires examples_file containing labeled input/output pairs.
 initial: test_on_examples
 max_iterations: 20
 timeout: 3600

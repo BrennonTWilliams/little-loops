@@ -1,5 +1,10 @@
 name: apo-opro
-description: "OPRO-style prompt optimization — history-guided proposal until convergence"
+description: |
+  OPRO-style prompt optimization (APO technique): maintains a running history of
+  previous candidates and their scores, proposes improved variants informed by
+  past weaknesses, evaluates each candidate, and iterates until the score target
+  is reached or max_iterations is exceeded. History accumulates across iterations
+  to guide proposals away from known failure modes.
 initial: init_history
 max_iterations: 25
 timeout: 3600

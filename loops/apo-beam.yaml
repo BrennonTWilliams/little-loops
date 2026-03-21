@@ -1,5 +1,10 @@
 name: apo-beam
-description: "Beam search prompt optimization — generate N variants, score all, advance the winner"
+description: |
+  Beam search prompt optimization (APO technique): generates N candidate variants
+  per iteration, scores all of them against evaluation criteria, selects the
+  highest-scoring variant, and writes it back to the prompt file. Repeats until
+  the best score exceeds the target or max_iterations is reached.
+  Controlled by beam_width (number of variants per round) and target_score (0–100).
 initial: generate_variants
 max_iterations: 20
 timeout: 3600

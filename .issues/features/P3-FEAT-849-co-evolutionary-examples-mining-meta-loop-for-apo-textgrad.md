@@ -4,6 +4,8 @@ type: FEAT
 priority: P3
 discovered_date: 2026-03-20
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 71
 ---
 
 # FEAT-849: Co-evolutionary Examples Mining Meta-Loop for apo-textgrad
@@ -71,7 +73,7 @@ The outer loop invokes `apo-textgrad` as a child FSM via `loop: apo-textgrad` + 
 
 Key components:
 - **Harvest script** (extend `ll-messages`): `--skill` filter + `--examples-format` flag that extracts (invocation context, accepted output) pairs from `.jsonl` logs
-- **Oracle prompt**: skill-scoped, not universal — one rubric per skill being optimized (e.g., a `capture-issue` oracle is distinct from a `refine-issue` oracle); the oracle prompt accepts a `skill_name` parameter and applies the corresponding rubric. Two phases: (1) mechanical/deterministic checks (schema conformance, file path existence, line number plausibility, required section presence) run first at zero LLM cost; (2) semantic LLM scoring (motivation coherence, codebase reference accuracy, implementer actionability) runs only for outputs that pass phase 1. The oracle is **manually maintained** in v1 — do not attempt to optimize it via `apo-textgrad` itself, as that requires a meta-oracle to score oracle scores (circular rabbit hole). Validate calibration using a small fixture set (10–15 hand-labeled examples per skill); if fixture scores drift before a mining cycle, halt rather than corrupt the corpus
+- **Oracle prompt**: skill-scoped, not universal — one rubric per skill being optimized (e.g., a `capture-issue` oracle is distinct from a `refine-issue` oracle); the oracle prompt accepts a `skill_name` parameter and applies the corresponding rubric. Two phases: (1) mechanical/deterministic checks (schema conformance, file path existence, line number plausibility, required section presence) run first at zero LLM cost; (2) semantic LLM scoring (motivation coherence, codebase reference accuracy, implementer actionability) runs only for outputs that pass phase 1. The oracle is **manually maintained** in v1 — do not attempt to optimize it via `apo-textgrad` itself, as that requires a meta-oracle to score oracle scores (circular rabbit hole). Validate calibration using a fixed fixture set of 10–15 examples **drawn from existing completed issues** (completed issues are implicit human approvals — their accepted outputs are already labeled by the user who merged them); sample these once from the existing corpus and hold them constant across runs as a calibration reference. If oracle scores on the fixture set drift across consecutive runs, halt rather than corrupt the corpus
 - **Calibration state**: run current prompt against all candidates, compute pass rates, select 40–80% band
 - **Adversarial synthesizer**: LLM-guided perturbation of passing examples using the current gradient
 - **Diversity budget**: enforced per-axis coverage constraints
@@ -90,6 +92,7 @@ New loop YAML (context contract for `examples-miner.yaml`):
 context:
   examples_file: examples.json       # path where fresh corpus is published
   prompt_file: <skill-prompt-path>   # prompt being optimized (passed to apo-textgrad)
+  skill_name: <skill-name>           # skill to mine (e.g., capture-issue, refine-issue) — used by harvest state
   corpus_state_file: corpus.json     # optional: persisted calibration state across runs
   target_pass_rate: 0.6              # center of 40–80% band
 ```
@@ -162,7 +165,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Persistence** (`scripts/little_loops/fsm/persistence.py:83`, `persistence.py:466`): the parent's `captured` dict (including the nested child captures) is written on every `state_enter` and `loop_complete` event and restored on resume — so a mid-run restart does not lose gradient data from a completed `run_optimizer` state.
 - **Mutual exclusion** (`scripts/little_loops/fsm/validation.py:198-206`): a state with `loop:` cannot also have `action:` — `run_optimizer` must be a pure sub-loop delegation state with no action.
 - **No changes to `apo-textgrad.yaml`** required: the child loop runs as-is; its terminal state already resolves with `terminated_by == "terminal"` which routes the parent to `on_success`. Option (a) (write_gradient terminal state) is **rejected** — it would require modifying `apo-textgrad.yaml` and couples the inner loop to the outer loop's file layout.
-- **Reference**: `loops/rl-coding-agent.yaml:30-36` has this pattern commented out as a pending upgrade; `docs/generalized-fsm-loop.md:195-211` and `loops/README.md:71-78` have canonical YAML examples; `scripts/tests/test_fsm_executor.py:3325-3357` has an integration test for `context_passthrough` capture merging.
+- **Reference**: `loops/rl-coding-agent.yaml:30-36` has this pattern commented out as a pending upgrade (predates FEAT-659 completion); `docs/generalized-fsm-loop.md:195-211` and `loops/README.md:71-78` have canonical YAML examples; `scripts/tests/test_fsm_executor.py:3325-3357` has an integration test for `context_passthrough` capture merging. **FEAT-659 is confirmed complete** — `loops/oracles/` and `rl-coding-agent.yaml` simply haven't been upgraded yet.
+- **Context merge behavior** (`executor.py:590`): `child_fsm.context = {**self.fsm.context, **self.captured, **child_fsm.context}`. Parent captures (flat dict) are merged into child context — so parent's `captured.harvest.output` is available in child as `${context.harvest.output}`. Child's own context keys take precedence. Child's returned captures are stored in parent as `self.captured[current_state]` — so `captured.run_optimizer.gradient.output` is a nested access: `captured["run_optimizer"]["gradient"]["output"]`.
 
 **Test patterns:**
 - `scripts/tests/test_user_messages.py` — uses `_write_jsonl` helper at line 107 + `tempfile.mkdtemp()`; add `ExampleRecord` and `build_examples()` unit tests here
@@ -181,7 +185,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Implementation Steps
 
 1. ~~**Implement FEAT-850 first**~~ — **DONE** (completed 2026-03-21). `ExampleRecord` (fields: `skill`, `input`, `output`, `session_id`, `timestamp`, `context_window`) and `build_examples()` are live in `scripts/little_loops/user_messages.py:145–176` and `753–806`. `--skill`, `--examples-format`, `--context-window` flags are implemented in `scripts/little_loops/cli/messages.py`. **Critical implication for oracle design**: `ExampleRecord.output` is a JSON-serialized `ResponseMetadata` summary (`{"tools_used": [...], "files_modified": [...], "completion_status": "success"}`) — NOT a free-text assistant response. The oracle's phase-2 LLM scoring must evaluate tool/file choices and completion status, not prose quality. Free-text response capture is deferred to a follow-on issue.
-2. **Build `examples-miner.yaml`**: follow FSM schema from `loops/apo-textgrad.yaml`; states: `harvest` (shell: `ll-messages --skill <name> --examples-format -o ${context.examples_file}`) → `judge` (prompt: score each pair against rubric) → `calibrate` (prompt: select 40–80% pass-rate band) → `publish` (shell: write final `examples.json`)
+2. **Build `examples-miner.yaml`**: follow FSM schema from `loops/apo-textgrad.yaml`; states: `harvest` → `judge` → `calibrate` → `publish`
+   - **`harvest`** (`action_type: shell`, timeout: 120): incremental harvest using `--since` sentinel file (`corpus.last_harvested`). Shell command — use `--stdout` to capture output into the FSM (not `-o`):
+     ```bash
+     SINCE_ARG="" && [ -f corpus.last_harvested ] && SINCE_ARG="--since $(cat corpus.last_harvested)"; \
+     ll-messages --skill ${context.skill_name} --examples-format --context-window 3 $SINCE_ARG --stdout
+     ```
+     Capture as `harvested_examples`; `next: judge`. On first run with no sentinel file the flag is omitted and all sessions are harvested.
+   - **`judge`** (`action_type: prompt`, timeout: 300): score each pair in `${captured.harvested_examples.output}` against the skill rubric; emit per-pair scores; capture as `judge_scores`; `next: calibrate`. See Step 6 for oracle YAML structure — `judge` can call `loop: oracles/oracle-<skill>.yaml` with `context_passthrough: true` when the oracle is promoted to a sub-loop in v2.
+   - **`calibrate`** (`action_type: prompt`, timeout: 120): read `${captured.judge_scores.output}`; compute pass rates; emit the subset of examples in the 40–80% band as a JSON array with per-example metadata (`source: harvested`, `difficulty_score`); capture as `calibrated_corpus`; `next: run_optimizer` (or `publish` in the minimal v1 build)
+   - **`publish`** (`action_type: prompt`, timeout: 60): write the final corpus to disk and update the sentinel. Instruct the LLM to: (1) write `${captured.merged_corpus.output}` (or `${captured.calibrated_corpus.output}` in v1) to `${context.examples_file}`; (2) run `date -u +%Y-%m-%dT%H:%M:%SZ > corpus.last_harvested` via Bash; (3) confirm count written. Using a `prompt` action (not `shell`) avoids shell-escaping hazards with JSON content in captured outputs.
 3. **Validate end-to-end**: run miner on `ready-issue` session logs (`.issues/completed/` via `issue_history/parsing.py:20`), feed output to `loops/apo-textgrad.yaml` with `context.examples_file` pointing at miner output, verify gradient fires (`FAILURE_PATTERN`/`ROOT_CAUSE` present in `captured.gradient.output`)
 4. **Add adversarial synthesis states**: after `calibrate`, insert `run_optimizer` and four new states before `diversify`. Full outer loop becomes: `harvest → judge → calibrate → run_optimizer → synthesize → screen_adversarial → score_adversarial → merge → diversify → publish`
    - **`run_optimizer`**: `loop: apo-textgrad`, `context_passthrough: true`, `on_success: synthesize`, `on_failure: publish` — skip synthesis entirely if the optimizer hit `max_iterations`/timeout
@@ -194,8 +207,57 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - **`screen_adversarial`** (`action_type: shell`): runs oracle phase-1 mechanical checks (schema conformance, required sections, file path plausibility) on each pair in `${captured.adversarial_candidates.output}`; discards incoherent pairs immediately at zero LLM cost; emits survivors; capture as `screened_adversarial`; `next: score_adversarial`
    - **`score_adversarial`** (`action_type: prompt`): runs oracle phase-2 LLM scoring on `${captured.screened_adversarial.output}` using the same skill-scoped oracle prompt used in `judge`; filters to the 40–80% pass-rate band; enforces adversarial cap — if survivors would push `source: adversarial` above 25–30% of corpus, trim lowest-scoring pairs first; captures final adversarial set as `validated_adversarial`; `next: merge`
    - **`merge`** (`action_type: shell`): concatenates `${captured.calibrate.output}` (harvested corpus) with `${captured.validated_adversarial.output}`; each pair retains its `source` field (`harvested` or `adversarial`) as provenance metadata; captures combined corpus as `merged_corpus`; `next: diversify`
-5. **Add diversity enforcement**: coverage budget logic in the `calibrate`/`publish` state; enforce per-axis minimums (skill type, issue type, priority band, lifecycle stage, failure cluster)
-6. **Add oracle prompts**: one scoring prompt per target skill in `loops/oracles/` (e.g., `oracle-capture-issue.yaml`, `oracle-refine-issue.yaml`); each accepts `skill_name`, `invocation`, and `output` context variables; phase 1 mechanical checks are deterministic (schema, file existence, required sections) and run before the LLM call; maintain a calibration fixture of 10–15 hand-labeled examples per skill and run it as a pre-flight check before each mining cycle — halt if score distribution drifts beyond threshold; treat oracle prompts as manually maintained in v1
+5. **Add diversity enforcement** (`action_type: prompt`, timeout: 120): `diversify` state reads `${captured.merged_corpus.output}` (the combined harvested + validated adversarial corpus from `merge`), counts examples per axis (skill type, issue type, priority band, lifecycle stage, failure cluster), identifies under-represented axes, and either flags them for the next harvest cycle or sub-samples over-represented axes to hit per-axis minimums. Output is the final diversified corpus as a JSON array; capture as `final_corpus`; `next: publish`. Follow `generate_variants` output style from `apo-beam.yaml:13-22`: emit structured JSON in a single block, no prose commentary. If the corpus already meets coverage minimums, pass through unchanged.
+6. **Add oracle prompts**: one scoring loop per target skill in `loops/oracles/` (e.g., `oracle-capture-issue.yaml`, `oracle-refine-issue.yaml`). **Critical constraint**: the `loop:` field in `executor.py:585` uses `state.loop` as a raw string via `resolve_loop_path()` — no context interpolation is applied. So `loop: oracles/oracle-${context.skill_name}.yaml` does NOT work. Each `examples-miner.yaml` instance must hardcode its oracle path (e.g., `loop: oracles/oracle-capture-issue.yaml`). Oracle YAML structure (2-phase FSM, `context_passthrough: true` from `judge` state provides `invocation` and `output`):
+   ```yaml
+   name: oracle-capture-issue
+   description: "Two-phase rubric scoring for capture-issue ExampleRecord pairs"
+   initial: check_mechanical
+   max_iterations: 1
+   context:
+     skill_name: capture-issue
+     invocation: ""   # provided by parent via context_passthrough
+     output: ""       # provided by parent — serialized ResponseMetadata JSON
+   states:
+     check_mechanical:
+       action_type: shell
+       timeout: 30
+       action: |
+         python3 -c "
+         import json, sys
+         try:
+             data = json.loads(r'''${context.output}''')
+             failures = []
+             if 'tools_used' not in data: failures.append('missing tools_used')
+             if 'completion_status' not in data: failures.append('missing completion_status')
+             print('PHASE1_FAIL: ' + '; '.join(failures) if failures else 'PHASE1_PASS')
+         except Exception as e:
+             print(f'PHASE1_FAIL: invalid JSON — {e}')
+         "
+       capture: phase1
+       next: route_phase1
+     route_phase1:
+       evaluate:
+         type: output_contains
+         source: "${captured.phase1.output}"
+         pattern: "PHASE1_PASS"
+       on_yes: score_semantic
+       on_no: done
+     score_semantic:
+       action_type: prompt
+       timeout: 120
+       action: |
+         Score this ${context.skill_name} invocation for training utility.
+         Invocation context: ${context.invocation}
+         Response metadata (JSON): ${context.output}
+         Evaluate tool choices and completion_status for correctness.
+         Output: SCORE=<0-100>
+       capture: score
+       next: done
+     done:
+       terminal: true
+   ```
+   Note: `context_passthrough` at `executor.py:590` merges parent context + parent captures into child context — so parent's `captured.harvested_examples` entries become `${context.harvested_examples.*}` in the child; the `invocation` and `output` per-example values must be injected explicitly by the `judge` state action before calling the oracle sub-loop (v1 approach: inline LLM judging in `judge` state, oracle sub-loop promoted in v2). Maintain a calibration fixture of 10–15 hand-labeled examples per skill and run as a pre-flight check before each mining cycle — halt if score distribution drifts beyond threshold.
 7. **Add corpus maintenance**: freshness decay via weight field in `examples.json`; regression floor archiving; auto-ingest on new completions. **Hook mechanism constraint**: `hooks/hooks.json` has no "issue completion" event — available events are `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `PreCompact`. Recommended approach: the `harvest` state in `examples-miner.yaml` uses a sentinel timestamp file (e.g., `corpus.last_harvested`) written by the `publish` state; on next run, `ll-messages --skill <name> --since <timestamp>` discovers sessions added after the last harvest. This is polling-based, not event-driven — no hook changes needed.
 
 ## Impact
@@ -230,6 +292,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-03-20 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-21T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4323075c-a536-4375-b649-525fbfdd6bf7.jsonl`
+- `/ll:confidence-check` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/546d021c-f4c2-487a-b4ec-147443a5ce85.jsonl`
+- `/ll:refine-issue` - 2026-03-21T21:22:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/349449a7-2c6b-4cd5-9168-7b45a4a09364.jsonl`
 - `/ll:refine-issue` - 2026-03-21T05:53:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5b33b4-4f43-4816-926d-91f9358c3ab6.jsonl`
 - `/ll:format-issue` - 2026-03-21T05:50:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29becafe-e61b-4664-a177-52d37aba9ad2.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:26:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
