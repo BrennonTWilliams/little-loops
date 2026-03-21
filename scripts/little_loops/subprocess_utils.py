@@ -95,6 +95,7 @@ def run_claude_command(
     cmd_args = [
         "claude",
         "--dangerously-skip-permissions",
+        "--verbose",
         "--output-format",
         "stream-json",
         "-p",

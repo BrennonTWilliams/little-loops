@@ -95,6 +95,7 @@ class TestRunClaudeCommand:
         assert captured_args[0] == [
             "claude",
             "--dangerously-skip-permissions",
+            "--verbose",
             "--output-format",
             "stream-json",
             "-p",

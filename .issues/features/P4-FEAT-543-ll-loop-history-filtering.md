@@ -3,7 +3,7 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
-confidence_score: 93
+confidence_score: 100
 outcome_confidence: 93
 ---
 
@@ -16,20 +16,21 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 397– (updated from 297–325)
+- **Line(s)**: 399– (updated from 397–)
 - **Anchor**: `in function cmd_history()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L62-L84)
 
 - **File**: `scripts/little_loops/cli/loop/__init__.py`
-- **Line(s)**: 213–235 (updated from 205–220)
+- **Line(s)**: 225–247 (updated from 213–235)
 - **Anchor**: `history_parser` argument definition
 - **Code**:
 ```python
-history_parser.add_argument("loop", ...)
-history_parser.add_argument("--tail", "-n", type=int, default=50, ...)
-history_parser.add_argument("--verbose", "-v", action="store_true", ...)  # Added (ENH-740)
-history_parser.add_argument("--full", action="store_true", ...)           # Added (ENH-740)
-history_parser.add_argument("--json", action="store_true", ...)           # Added (ENH-740)
+history_parser.add_argument("loop", ...)                                  # line 229
+history_parser.add_argument("run_id", nargs="?", default=None, ...)       # line 230-235
+history_parser.add_argument("--tail", "-n", type=int, default=50, ...)    # line 236-238
+history_parser.add_argument("--verbose", "-v", action="store_true", ...)  # Added (ENH-740) line 239-241
+history_parser.add_argument("--full", action="store_true", ...)           # Added (ENH-740) line 243-246
+history_parser.add_argument("--json", action="store_true", ...)           # Added (ENH-740) line 247
 # No --event, --state, --since flags
 ```
 
@@ -92,10 +93,35 @@ history_parser.add_argument("--since", help="Time window (e.g. 1h, 30m, 2d)")
 In `cmd_history()`:
 1. Load all events from JSONL history file
 2. Apply `--event` filter: `[e for e in events if e.get("event") == args.event]`
-3. Apply `--state` filter: `[e for e in events if e.get("state") == args.state or e.get("from") == args.state]`
+3. Apply `--state` filter: `[e for e in events if e.get("state") == args.state or e.get("from") == args.state or e.get("to") == args.state]`
 4. Apply `--since` filter: parse duration string → subtract from `datetime.now()` → filter by `e["ts"]`
-5. Apply `--tail` limit
+5. Apply `--tail` limit (after all filters, consistent with existing tail behavior)
 6. Render: if `--json`, emit `json.dumps(e)` per line; otherwise keep current human-readable format
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Filter insertion point:** The existing non-verbose pre-filter at `info.py:428-429` strips `action_output` events _before_ `[-tail:]`. The new `--event`/`--state`/`--since` filters should be applied in the same pre-`[-tail:]` position so `--tail` acts as the final limit on the filtered result.
+
+**`--state` filter must cover `from`, `to`, and `state` fields:** `route` events use `from` and `to` but have no `state` field. `state_enter`, `evaluate`, `action_start`, `action_complete` use `state`. Matching all three fields ensures `--state check` catches both `{"event": "state_enter", "state": "check"}` and `{"event": "route", "from": "check", "to": "done"}`.
+
+**Duration parser — no shared utility exists:** No `parse_duration("1h")` function exists anywhere in `scripts/little_loops/`. The closest patterns are `datetime.timedelta(days=N)` in `analysis.py:181` and `summary.py:214`. A new `parse_duration(s: str) -> int` (seconds) function needs to be created. The Tradeoff Review recommends placing it in `scripts/little_loops/text_utils.py` for sharing with `ll-messages` and `ll-history`. Implementation:
+```python
+_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+def parse_duration(s: str) -> int:
+    """Parse '1h', '30m', '2d' into seconds."""
+    m = re.match(r"^(\d+)([smhd])$", s)
+    if not m:
+        raise ValueError(f"Invalid duration: {s!r}. Use e.g. 1h, 30m, 2d")
+    return int(m.group(1)) * _UNITS[m.group(2)]
+```
+
+**`--since` timestamp format in events:** Events store `"ts"` as ISO 8601 with `Z` suffix (e.g., `"2026-03-03T21:00:00Z"`). Use `.replace("Z", "+00:00")` before `datetime.fromisoformat()` — the same normalization used in `user_messages.py:521`. Then strip tzinfo for naive comparisons: `ts.replace(tzinfo=None)`.
+
+**`--json` current implementation:** `print_json(events[-tail:])` at `info.py` (after ENH-740). The new filter sequence must be applied _before_ passing to `print_json`: `print_json(filtered_events[-tail:])`.
+
+**Dispatcher location:** `__init__.py:319-320` — `cmd_history(args.loop, getattr(args, "run_id", None), args, loops_dir)`. New args will be auto-available via `args` namespace once added to `history_parser`.
 
 ## Integration Map
 
@@ -112,8 +138,22 @@ In `cmd_history()`:
 
 ### Tests
 - `scripts/tests/test_ll_loop_commands.py:324` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
-- `scripts/tests/test_ll_loop_commands.py:371` (`TestHistoryTail` class) — add: `--state check` filters to check-state events (note: `--json` tests should already exist or be added here)
-- Pattern: `many_events_file` fixture at `conftest.py:296` provides 10-event JSONL file; follow `TestHistoryTail` pattern for filter tests
+- `scripts/tests/test_ll_loop_commands.py:371` (`TestHistoryTail` class) — add: `--state check` filters to check-state events; `--since 1h` time-window filter; combined flag tests
+- `scripts/tests/test_ll_loop_commands.py:731+` — add a `TestHistoryFiltering` class for the new filters; follow `TestHistoryTail` pattern (monkeypatch.chdir + patch sys.argv + capsys)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`many_events_file` fixture location:** It is at `test_ll_loop_commands.py:374` (inside `TestHistoryTail`), NOT `conftest.py:296` as previously noted. The fixture creates 10 `transition`-typed events with `{"event": "transition", "from": "stateN", "to": "stateN+1"}` — no `state` field. This fixture cannot test `--event evaluate` or `--state check` filtering without modification.
+
+**New fixture needed for filter tests:** Create a `mixed_events_file` fixture that writes a variety of event types including `state_enter` (with `state` field), `evaluate` (with `verdict` field), `route` (with `from`/`to` fields), and `action_start`. This is the fixture needed to test `--event` and `--state` filtering meaningfully.
+
+**`--since` test pattern:** Follow `test_user_messages.py:225-249` pattern — write events with specific timestamps, call `cmd_history()` with a `--since` value that cuts out older events, assert on filtered count. Use `datetime.now() - timedelta(hours=2)` as the timestamp for "old" events.
+
+**JSON output assertion pattern:** Follow `test_ll_loop_commands.py:661` (`test_history_json_output`) — call `cmd_history()` directly with `argparse.Namespace(tail=50, verbose=False, json=True, full=False)`, capture output via `capsys`, parse with `json.loads()`.
+
+**`parse_duration` unit tests:** Add a dedicated test class (e.g., in `test_ll_loop_parsing.py`) testing `parse_duration("1h") == 3600`, `parse_duration("30m") == 1800`, `parse_duration("2d") == 172800`, and that an invalid string raises `ValueError`.
 
 ### Documentation
 - N/A
@@ -123,11 +163,11 @@ In `cmd_history()`:
 
 ## Implementation Steps
 
-1. Add `--event`, `--state`, `--json`, `--since` arguments to `history_parser` in `__init__.py`
-2. Implement filtering in `cmd_history()` in `info.py`
-3. Implement duration parser for `--since` (e.g., `1h` → 3600s)
-4. Implement JSON output mode
-5. Add tests for each filter flag
+1. **Add `parse_duration()` to `scripts/little_loops/text_utils.py`** — regex-based parser for `"1h"`, `"30m"`, `"2d"` → seconds; raises `ValueError` on bad input; unit tests in `test_ll_loop_parsing.py`
+2. **Add `--event`, `--state`, `--since` to `history_parser` in `__init__.py:247+`** — append after existing `--json` at line 247; `type=str` for all three; `--event`/`-e`, `--state`/`-s`, `--since` with metavar `"DURATION"`
+3. **Implement filtering in `cmd_history()` in `info.py:419+`** — apply `--event` → `--state` → `--since` filters in sequence, after loading events via `get_archived_events()` but before the `[-tail:]` slice; insert after line 427 (before existing `action_output` pre-filter which stays for non-verbose mode)
+4. **Add `mixed_events_file` fixture to `test_ll_loop_commands.py`** — JSONL with `state_enter`, `evaluate`, `route`, `action_start` events with varied timestamps and states
+5. **Add `TestHistoryFiltering` class in `test_ll_loop_commands.py`** — tests for `--event`, `--state`, `--since`, combined flags; follow `TestHistoryTail` pattern (monkeypatch.chdir + sys.argv patch + capsys)
 
 ## Impact
 
@@ -155,9 +195,9 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — 2026-03-15
+**Verdict**: NEEDS_UPDATE — 2026-03-20
 
-- `cmd_history()` is at `info.py:**397**` (issue body updated to reflect). `history_parser` args span `__init__.py` lines **213–235** (updated). `--json`, `--verbose`, `--full` already implemented (via ENH-740); `--event`, `--state`, `--since` still absent.
+- `cmd_history()` is at `info.py:399` (updated). `history_parser` args span `__init__.py` lines **225–247** (updated). `--json`, `--verbose`, `--full` already implemented (via ENH-740); `--event`, `--state`, `--since` still absent. `many_events_file` fixture confirmed at `test_ll_loop_commands.py:374` (not `conftest.py:296`). No shared duration parser exists — new `parse_duration()` needed in `text_utils.py`.
 
 ## Tradeoff Review Note
 
@@ -176,6 +216,8 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 Update first — HIGH utility (debugging 200+ event logs is a real pain point), but the `--since` duration parser is a non-trivial utility that will also be needed by `ll-messages` and `ll-history`. Before implementing, extract the duration string parser (`"1h"` → seconds, `"30m"` → seconds, `"2d"` → seconds) as a shared utility in `little_loops/text_utils.py` or a new `time_utils.py`. This reduces maintenance overhead (one implementation vs three) and makes the feature scope cleaner. Once that utility exists, the filtering implementation is straightforward.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-03-21T00:21:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5299772f-969e-4905-ae98-f9ec59c250bf.jsonl`
 - `/ll:verify-issues` - 2026-03-15T17:23:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c4b6f16-1629-4fbe-91ed-e715b7a19026.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
