@@ -225,7 +225,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../INDEX/" class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -392,7 +392,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../INDEX/" class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -3255,6 +3255,10 @@
 </thead>
 <tbody>
 <tr>
+<td><code>context-health-monitor</code></td>
+<td>Monitor context health via scratch file accumulation and session log size; compacts scratch files and archives stale outputs when pressure is detected</td>
+</tr>
+<tr>
 <td><code>dead-code-cleanup</code></td>
 <td>Find dead code, remove high-confidence items, and verify tests pass</td>
 </tr>
@@ -3327,6 +3331,25 @@
 <tr>
 <td><code>apo-textgrad</code></td>
 <td>TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Harness Examples</strong></p>
+<table>
+<thead>
+<tr>
+<th>Loop</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harness-single-shot</code></td>
+<td>Annotated single-shot harness example — all evaluation phases with commented-out optional gates</td>
+</tr>
+<tr>
+<td><code>harness-multi-item</code></td>
+<td>Annotated multi-item harness example — all five evaluation phases active over a discovered item list</td>
 </tr>
 </tbody>
 </table>
@@ -4189,6 +4212,22 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>--tail</code> / <code>-n</code></td>
+<td>Limit output to last N events (default: 50)</td>
+</tr>
+<tr>
+<td><code>--event</code> / <code>-e</code></td>
+<td>Filter by event type (e.g. <code>evaluate</code>, <code>route</code>, <code>state_enter</code>)</td>
+</tr>
+<tr>
+<td><code>--state</code> / <code>-s</code></td>
+<td>Filter by state name (matches <code>state</code>, <code>from</code>, or <code>to</code> fields)</td>
+</tr>
+<tr>
+<td><code>--since</code></td>
+<td>Filter to events within a time window (e.g. <code>1h</code>, <code>30m</code>, <code>2d</code>)</td>
+</tr>
 <tr>
 <td><code>--verbose</code> / <code>-v</code></td>
 <td>Show action output preview and LLM call details (model, latency, prompt, response)</td>

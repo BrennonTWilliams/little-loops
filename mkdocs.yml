@@ -45,7 +45,7 @@ exclude_docs: |
   demo/
 
 nav:
-  - Home: INDEX.md
+  - Home: index.md
   - Guides:
     - Getting Started: guides/GETTING_STARTED.md
     - Issue Management: guides/ISSUE_MANAGEMENT_GUIDE.md

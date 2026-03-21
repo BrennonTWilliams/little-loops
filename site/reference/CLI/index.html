@@ -225,7 +225,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../INDEX/" class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -392,7 +392,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../INDEX/" class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -1519,6 +1519,17 @@
     <span class="md-ellipsis">
       
         ll-check-links
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mcp-call
       
     </span>
   </a>
@@ -3171,6 +3182,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#mcp-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mcp-call
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3301,7 +3323,7 @@
 <hr />
 <h2 id="issue-processing">Issue Processing<a class="headerlink" href="#issue-processing" title="Permanent link">&para;</a></h2>
 <h3 id="ll-auto">ll-auto<a class="headerlink" href="#ll-auto" title="Permanent link">&para;</a></h3>
-<p>Process all backlog issues sequentially in priority order.</p>
+<p>Process all backlog issues sequentially in priority order. On startup, <code>ll-auto</code> prints a header showing the active LLM model name (detected from the Claude CLI <code>stream-json</code> init event).</p>
 <p><strong>Flags:</strong></p>
 <table>
 <thead>
@@ -4000,6 +4022,21 @@
 <td>Last N events to show (default: 50)</td>
 </tr>
 <tr>
+<td><code>--event</code></td>
+<td><code>-e</code></td>
+<td>Filter by event type (e.g. <code>evaluate</code>, <code>route</code>, <code>state_enter</code>)</td>
+</tr>
+<tr>
+<td><code>--state</code></td>
+<td><code>-s</code></td>
+<td>Filter by state name (matches <code>state</code>, <code>from</code>, or <code>to</code> fields)</td>
+</tr>
+<tr>
+<td><code>--since</code></td>
+<td></td>
+<td>Filter to events within a time window (e.g. <code>1h</code>, <code>30m</code>, <code>2d</code>)</td>
+</tr>
+<tr>
 <td><code>--verbose</code></td>
 <td><code>-v</code></td>
 <td>Show action output preview and LLM call details (model, latency, prompt, response)</td>
@@ -4294,7 +4331,7 @@
 </tbody>
 </table>
 <h4 id="ll-issues-refine-status-ll-issues-rs"><code>ll-issues refine-status</code> / <code>ll-issues rs</code><a class="headerlink" href="#ll-issues-refine-status-ll-issues-rs" title="Permanent link">&para;</a></h4>
-<p>Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title, per-command session indicators (✓/—), Norm (✓ = filename matches naming convention, ✗ = non-conformant), Ready (confidence score), OutConf (outcome confidence), Total.</p>
+<p>Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title, source, norm, fmt, per-command session indicators (✓/—), Ready (confidence score), conf (outcome confidence), total.</p>
 <table>
 <thead>
 <tr>
@@ -4607,7 +4644,7 @@
 <tr>
 <td><code>--input</code></td>
 <td><code>-i</code></td>
-<td><strong>Required.</strong> Input JSONL file with user messages</td>
+<td>Input JSONL file with user messages (default: <code>.claude/workflow-analysis/step1-patterns.jsonl</code>)</td>
 </tr>
 <tr>
 <td><code>--patterns</code></td>
@@ -4627,10 +4664,14 @@
 </tbody>
 </table>
 <p><strong>Examples:</strong>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span>--input<span class="w"> </span>messages.jsonl<span class="w"> </span>--patterns<span class="w"> </span>step1.yaml
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span>-i<span class="w"> </span>messages.jsonl<span class="w"> </span>-p<span class="w"> </span>patterns.yaml<span class="w"> </span>-o<span class="w"> </span>output.yaml
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span>--input<span class="w"> </span>.claude/user-messages.jsonl<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">                     </span>--patterns<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Use conventional path (no --input needed if ll-messages wrote to the default location)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>ll-messages<span class="w"> </span>--output<span class="w"> </span>.claude/workflow-analysis/step1-patterns.jsonl
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span>--patterns<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># Explicit input</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span>-i<span class="w"> </span>messages.jsonl<span class="w"> </span>-p<span class="w"> </span>patterns.yaml<span class="w"> </span>-o<span class="w"> </span>output.yaml
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span>--input<span class="w"> </span>.claude/user-messages.jsonl<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">                     </span>--patterns<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml
 </code></pre></div></p>
 <hr />
 <h2 id="synchronization">Synchronization<a class="headerlink" href="#synchronization" title="Permanent link">&para;</a></h2>
@@ -4963,6 +5004,33 @@
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>ll-check-links<span class="w"> </span>-C<span class="w"> </span>docs/<span class="w">                   </span><span class="c1"># Check specific directory</span>
 <a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>ll-check-links<span class="w"> </span>--ignore<span class="w"> </span><span class="s1">&#39;http://localhost.*&#39;</span><span class="w">  </span><span class="c1"># Ignore pattern</span>
 <a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>ll-check-links<span class="w"> </span>--timeout<span class="w"> </span><span class="m">30</span><span class="w"> </span>--workers<span class="w"> </span><span class="m">5</span><span class="w">   </span><span class="c1"># Custom timeout and concurrency</span>
+</code></pre></div></p>
+<hr />
+<h3 id="mcp-call">mcp-call<a class="headerlink" href="#mcp-call" title="Permanent link">&para;</a></h3>
+<p>Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads <code>.mcp.json</code> from the current directory, spawns the MCP server subprocess, performs the JSON-RPC initialize handshake, calls <code>tools/call</code>, and writes the MCP response envelope to stdout.</p>
+<p><strong>Arguments:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server/tool-name</code></td>
+<td>MCP server name and tool name joined by <code>/</code> (e.g., <code>pencil/batch_get</code>)</td>
+</tr>
+<tr>
+<td><code>params_json</code></td>
+<td>Tool parameters as a JSON object string</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Exit codes:</strong> <code>0</code> = success, <code>1</code> = tool error, <code>2</code> = usage/config error, <code>124</code> = timeout, <code>127</code> = server or tool not found in <code>.mcp.json</code></p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>mcp-call<span class="w"> </span>pencil/batch_get<span class="w"> </span><span class="s1">&#39;{&quot;patterns&quot;: [&quot;**/*.pen&quot;]}&#39;</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>mcp-call<span class="w"> </span>my-server/my-tool<span class="w"> </span><span class="s1">&#39;{&quot;key&quot;: &quot;value&quot;}&#39;</span>
 </code></pre></div></p>
 <hr />
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>

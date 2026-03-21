@@ -225,7 +225,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../INDEX/" class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -392,7 +392,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../INDEX/" class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -2507,10 +2507,15 @@
 </ul>
 <h2 id="cli-deep-dive-ll-workflows">CLI Deep Dive: <code>ll-workflows</code><a class="headerlink" href="#cli-deep-dive-ll-workflows" title="Permanent link">&para;</a></h2>
 <p>You can run Step 2 independently — useful if you've run Step 1 manually or want to re-analyze with updated patterns.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--input<span class="w"> </span>.claude/user-messages-20260112.jsonl<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--patterns<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--output<span class="w"> </span>.claude/workflow-analysis/step2-workflows.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Shortest form — works when ll-messages wrote to the conventional default path</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>ll-messages<span class="w"> </span>--output<span class="w"> </span>.claude/workflow-analysis/step1-patterns.jsonl
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span>--patterns<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Explicit input</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span>--input<span class="w"> </span>.claude/user-messages-20260112.jsonl<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span>--patterns<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span>--output<span class="w"> </span>.claude/workflow-analysis/step2-workflows.yaml
 </code></pre></div>
 <h3 id="argument-reference">Argument Reference<a class="headerlink" href="#argument-reference" title="Permanent link">&para;</a></h3>
 <table>
@@ -2526,8 +2531,8 @@
 <tr>
 <td><code>--input FILE</code></td>
 <td><code>-i FILE</code></td>
-<td>Yes</td>
-<td>Input JSONL file with user messages</td>
+<td>No</td>
+<td>Input JSONL file with user messages (default: <code>.claude/workflow-analysis/step1-patterns.jsonl</code>)</td>
 </tr>
 <tr>
 <td><code>--patterns FILE</code></td>
