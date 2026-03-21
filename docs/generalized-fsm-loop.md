@@ -219,120 +219,6 @@ states:
 
 ---
 
-## Paradigm Compilation
-
-All paradigms (except FSM Direct) compile to the universal FSM schema via **formal compilers**—deterministic Python functions that perform template expansion with variable substitution.
-
-### Why Formal Compilers (Not LLM Generation)
-
-1. **Paradigms are constrained** - Each paradigm maps to a fixed FSM template:
-   - **Convergence**: `measure → (target → done, progress → apply, stall → done), apply → measure`
-   - **Invariants**: `check_1 → (success → check_2, failure → fix_1), fix_1 → check_1, ...`
-   - **Imperative**: `step_0 → step_1 → ... → check_done → (success → done, failure → step_0)`
-   - **Goal-oriented**: `evaluate → (success → done, failure → fix), fix → evaluate`
-
-2. **Debuggability matters for automation** - When a loop misbehaves in CI, you can trace exactly why the FSM looks the way it does. Rules are documented, transformations are reproducible.
-
-3. **LLM generation suits the authoring layer** - The `/ll:create-loop` command uses Claude to understand natural language intent and produce paradigm YAML. Once you have valid YAML, compilation to FSM is deterministic.
-
-4. **Compilation logic is small enough to be correct** - Each paradigm compiler is ~50-100 lines of Python, small enough to write comprehensive tests and review by hand.
-
-### Architecture
-
-```
-Natural Language → [LLM: /ll:create-loop] → Paradigm YAML → [Compiler] → FSM YAML → [Executor]
-                                                    ↑
-                                           User reviews/edits
-```
-
-Human-in-the-loop review happens at the paradigm YAML level (readable, constrained). The FSM is an internal representation—users only see it when debugging.
-
-### Compiler Implementations
-
-```python
-# little_loops/fsm/compilers.py
-
-def compile_convergence(spec: dict) -> dict:
-    """Convergence paradigm → FSM"""
-    return {
-        "name": spec["name"],
-        "initial": "measure",
-        "context": {
-            "metric_cmd": spec["check"],
-            "target": spec["toward"],
-            "tolerance": spec.get("tolerance", 0),
-        },
-        "states": {
-            "measure": {
-                "action": "${context.metric_cmd}",
-                "capture": "current_value",
-                "evaluate": {
-                    "type": "convergence",
-                    "target": "${context.target}",
-                    "tolerance": "${context.tolerance}",
-                    "previous": "${prev.output}",
-                },
-                "route": {
-                    "target": "done",
-                    "progress": "apply",
-                    "stall": "done",
-                },
-            },
-            "apply": {
-                "action": spec["using"],
-                "next": "measure",
-            },
-            "done": {"terminal": True},
-        },
-    }
-
-def compile_invariants(spec: dict) -> dict:
-    """Invariants paradigm → FSM"""
-    states = {}
-    constraints = spec["constraints"]
-
-    for i, constraint in enumerate(constraints):
-        check_state = f"check_{constraint['name']}"
-        fix_state = f"fix_{constraint['name']}"
-        next_check = f"check_{constraints[i+1]['name']}" if i+1 < len(constraints) else "all_valid"
-
-        states[check_state] = {
-            "action": constraint["check"],
-            "on_yes": next_check,
-            "on_no": fix_state,
-        }
-        states[fix_state] = {
-            "action": constraint["fix"],
-            "next": check_state,
-        }
-
-    states["all_valid"] = {
-        "terminal": True,
-        "on_maintain": f"check_{constraints[0]['name']}" if spec.get("maintain") else None,
-    }
-
-    return {
-        "name": spec["name"],
-        "initial": f"check_{constraints[0]['name']}",
-        "states": states,
-        "maintain": spec.get("maintain", False),
-    }
-```
-
-### When LLM Generation Would Make Sense
-
-If users later need paradigms that don't fit the four templates—or want to skip YAML entirely—an LLM-backed compiler could be added as a fifth paradigm type:
-
-```yaml
-paradigm: natural
-description: "Fix all type errors, prioritizing the API module first"
-tools:
-  - /ll:check-code types
-  - /ll:manage-issue bug fix
-```
-
----
-
 ## Universal FSM Schema
 
 All loops compile to this schema. Compilation from paradigm syntax to FSM is handled by a Python module (`little_loops.fsm`).
@@ -1389,9 +1275,6 @@ ll-loop lint-cycle --background
 ll-loop run fix-types --dry-run
 ll-loop run .loops/fix-types.yaml    # Full path also works
 
-# Compile paradigm to FSM (debugging)
-ll-loop compile convergence -o .loops/convergence.fsm.yaml
-
 # Validate loop definition
 ll-loop validate fix-types
 
@@ -1523,43 +1406,7 @@ Loop completed: done (1 iteration, 2m 34s)
 
 The two-layer design (evaluate + route) enables isolated testing of each layer. The single LLM touchpoint means only one mock strategy is needed for all LLM-related tests.
 
-### 1. Unit Tests for Compilers
-
-Compilers are "~50-100 lines of Python, small enough to write comprehensive tests."
-
-```python
-# tests/unit/test_compilers.py
-
-class TestConvergenceCompiler:
-    def test_basic_convergence(self):
-        """Minimal convergence spec produces expected FSM."""
-        spec = {
-            "paradigm": "convergence",
-            "name": "reduce-errors",
-            "check": "mypy src/ | grep -c error",
-            "toward": 0,
-            "using": "/ll:check-code fix"
-        }
-        fsm = compile_convergence(spec)
-
-        assert fsm["initial"] == "measure"
-        assert "measure" in fsm["states"]
-        assert "apply" in fsm["states"]
-        assert "done" in fsm["states"]
-        assert fsm["states"]["apply"]["next"] == "measure"
-
-    def test_convergence_with_tolerance(self):
-        """Optional tolerance field propagates to context."""
-        # ...
-
-    def test_missing_required_field_raises(self):
-        """Validation catches missing 'toward' field."""
-        # ...
-```
-
-**Coverage target**: Each paradigm type with valid inputs, edge cases, and validation errors.
-
-### 2. Unit Tests for Evaluators
+### 1. Unit Tests for Evaluators
 
 Tier 1 evaluators are pure functions—deterministic and fast.
 
@@ -1600,7 +1447,7 @@ class TestConvergenceEvaluator:
         assert result["verdict"] == "stall"
 ```
 
-### 3. Mock Strategy for LLM Evaluation
+### 2. Mock Strategy for LLM Evaluation
 
 LLM structured output is used in only one place: `evaluate_llm_structured`. This makes mocking straightforward.
 
@@ -1643,7 +1490,7 @@ class TestLLMEvaluator:
 
 **Mock implementation**: Use `unittest.mock.patch` on the Anthropic client, or inject a client factory for dependency injection.
 
-### 4. Integration Tests for Executor
+### 3. Integration Tests for Executor
 
 Test the full state machine execution with mocked externals.
 
@@ -1712,12 +1559,11 @@ class TestExecutor:
         assert mock_action_runner.last_action == "mypy src/"
 ```
 
-### 5. Test File Organization
+### 4. Test File Organization
 
 ```
 scripts/tests/
 ├── unit/
-│   ├── test_compilers.py          # Paradigm → FSM compilation
 │   ├── test_evaluators.py         # All Tier 1 evaluators
 │   ├── test_llm_evaluator.py      # LLM evaluator with mocked API
 │   ├── test_routing.py            # Verdict → state resolution
