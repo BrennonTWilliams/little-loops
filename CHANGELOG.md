@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.56.0] - 2026-03-20
+
+### Fixed
+
+- **`--verbose` flag for stream-json with `--print`** — Adds required `--verbose` flag so stream-json output works correctly when `--print` is active (25d4737)
+- **Implementation Failure — FEAT-543** — Tracked and resolved failed FEAT-543 implementation attempt (BUG-848)
+
+### Changed
+
+- **Show LLM model name in ll-auto header** — Displays active model name in `ll-auto` run header using stream-json init event (ENH-838)
+- **Harness FSM diagram shows all 5 evaluation phases** — LOOPS_GUIDE harness FSM diagram now correctly shows all 5 evaluation phases instead of 3 (ENH-847)
+
+### Maintenance
+
+- style: apply ruff formatting to subprocess_utils and test files (5697233)
+
+[1.56.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.55.0...v1.56.0
+
 ## [1.55.0] - 2026-03-20
 
 ### Added
