@@ -5,6 +5,8 @@ priority: P4
 status: open
 discovered_date: 2026-03-20
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-851: Unify Example Loops with Built-in Loops
@@ -58,7 +60,9 @@ No code changes needed — the existing resolution, listing, install, and test i
 - N/A (purely a file relocation)
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — no code change needed; moved files auto-included by existing glob
+- `scripts/tests/test_builtin_loops.py:22-27` — fixture glob auto-includes moved files
+- `scripts/tests/test_builtin_loops.py:46-72` — `test_expected_loops_exist` uses exact set equality; **must add `"harness-single-shot"` and `"harness-multi-item"` to the `expected` set**
+- `scripts/tests/test_review_loop.py:187-198` — parameterized `test_builtin_loops_are_valid`; picks up moved files automatically via `LOOPS_DIR.glob("*.yaml")`
 
 ### Documentation
 - `loops/README.md` — needs new table rows for both harness loops
@@ -70,15 +74,21 @@ No code changes needed — the existing resolution, listing, install, and test i
 
 1. `git mv` both files from `loops/examples/` to `loops/`
 2. Remove empty `loops/examples/` directory
-3. Update path references in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
-4. Add harness loops to `loops/README.md` table
-5. Run `test_builtin_loops.py` to confirm both files pass schema validation
+3. Update the `# Usage:` comments in each moved YAML file (lines 11-12 of `harness-single-shot.yaml`, lines 12-13 of `harness-multi-item.yaml`) from `loops/examples/harness-*.yaml` → `loops/harness-*.yaml`
+4. Update path references in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (8+ occurrences at lines ~426, 496, 547–552, 559, 560, 574, 575, 583–585, 607, 715–717)
+5. Add harness loops to `loops/README.md` table under a new "Harness / Templates" category
+6. Update `scripts/tests/test_builtin_loops.py:46-72` — add `"harness-single-shot"` and `"harness-multi-item"` to the `expected` set in `test_expected_loops_exist`
+7. Run `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_review_loop.py -v` to confirm schema validation passes for both files
+
+### Critical Test Requirement (Step 6)
+
+`test_expected_loops_exist` (`test_builtin_loops.py:46-72`) asserts `expected == actual` using exact set equality. The current `expected` set lists exactly 21 names (no harness entries). Moving the files to `loops/` makes them discoverable by the glob (`actual` grows to 23), but **the test will fail until `expected` is updated**. This is the only code change required.
 
 ## Scope Boundaries
 
-- Do not change the content or structure of the harness YAML files
-- Do not change `get_builtin_loops_dir()` or loop resolution logic (no code changes)
+- Do not change `get_builtin_loops_dir()` or loop resolution logic — no production code changes needed
 - Do not add a new "example" category or tag system to `ll-loop list`
+- The harness YAML structure/schema should not change — only the `# Usage:` path comments and directory location
 
 ## Impact
 
@@ -96,6 +106,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `dx`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a45f8274-0823-4329-a446-ba23ffbf5ad8.jsonl`
+- `/ll:refine-issue` - 2026-03-21T02:52:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97e6f95-4e3d-4b42-9409-9b35dfe09ebe.jsonl`
 
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ae8a776-9a67-47c4-9196-89c5316f5812.jsonl`
 
