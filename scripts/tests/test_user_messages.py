@@ -19,11 +19,13 @@ import pytest
 
 from little_loops.user_messages import (
     CommandRecord,
+    ExampleRecord,
     ResponseMetadata,
     UserMessage,
     _detect_completion_status,
     _detect_error_message,
     _extract_response_metadata,
+    build_examples,
     extract_commands,
     extract_user_messages,
     get_project_folder,
@@ -1326,6 +1328,9 @@ class TestMessagesArgumentParsingWithCommands:
         parser.add_argument("--skip-cli", action="store_true")
         parser.add_argument("--commands-only", action="store_true")
         parser.add_argument("--tools", type=str, default="Bash")
+        parser.add_argument("--skill", type=str)
+        parser.add_argument("--examples-format", action="store_true")
+        parser.add_argument("--context-window", type=int, default=3)
         return parser.parse_args(args)
 
     def test_skip_cli_default(self) -> None:
@@ -1372,3 +1377,154 @@ class TestMessagesArgumentParsingWithCommands:
         assert args.skip_cli is True
         assert args.tools == "Bash,Task"
         assert args.limit == 50
+
+    def test_skill_default(self) -> None:
+        """--skill defaults to None."""
+        args = self._parse_messages_args([])
+        assert args.skill is None
+
+    def test_skill_flag(self) -> None:
+        """--skill sets the skill filter."""
+        args = self._parse_messages_args(["--skill", "capture-issue"])
+        assert args.skill == "capture-issue"
+
+    def test_examples_format_default(self) -> None:
+        """--examples-format defaults to False."""
+        args = self._parse_messages_args([])
+        assert args.examples_format is False
+
+    def test_examples_format_flag(self) -> None:
+        """--examples-format flag enables examples output."""
+        args = self._parse_messages_args(["--examples-format"])
+        assert args.examples_format is True
+
+    def test_context_window_default(self) -> None:
+        """--context-window defaults to 3."""
+        args = self._parse_messages_args([])
+        assert args.context_window == 3
+
+    def test_context_window_flag(self) -> None:
+        """--context-window sets the number of preceding messages."""
+        args = self._parse_messages_args(["--context-window", "5"])
+        assert args.context_window == 5
+
+
+class TestBuildExamples:
+    """Tests for the build_examples() helper function."""
+
+    def _make_message(
+        self,
+        content: str,
+        session_id: str = "sess-1",
+        ts_offset: int = 0,
+        response_metadata: ResponseMetadata | None = None,
+    ) -> UserMessage:
+        return UserMessage(
+            content=content,
+            timestamp=datetime(2026, 1, 1, 0, ts_offset, 0),
+            session_id=session_id,
+            uuid=f"uuid-{ts_offset}",
+            response_metadata=response_metadata,
+        )
+
+    def test_skill_trigger_produces_example(self) -> None:
+        """A skill trigger record produces one ExampleRecord."""
+        trigger_content = (
+            "<command-message>ll:capture-issue</command-message>\n"
+            "<command-name>/ll:capture-issue</command-name>\n"
+            "<command-args>some args</command-args>"
+        )
+        messages = [
+            self._make_message("Hello world", ts_offset=0),
+            self._make_message("Second message", ts_offset=1),
+            self._make_message(trigger_content, ts_offset=2),
+        ]
+        examples = build_examples(messages, "capture-issue", context_window=3)
+        assert len(examples) == 1
+        assert examples[0].skill == "capture-issue"
+        assert examples[0].session_id == "sess-1"
+        assert examples[0].context_window == 3
+
+    def test_context_window_slices_preceding_messages(self) -> None:
+        """context_window=2 includes only the 2 messages before the trigger."""
+        trigger = (
+            "<command-name>/ll:capture-issue</command-name>"
+        )
+        messages = [
+            self._make_message("msg-0", ts_offset=0),
+            self._make_message("msg-1", ts_offset=1),
+            self._make_message("msg-2", ts_offset=2),
+            self._make_message(trigger, ts_offset=3),
+        ]
+        examples = build_examples(messages, "capture-issue", context_window=2)
+        assert len(examples) == 1
+        assert "msg-1" in examples[0].input
+        assert "msg-2" in examples[0].input
+        assert "msg-0" not in examples[0].input
+
+    def test_no_skill_trigger_returns_empty(self) -> None:
+        """Sessions with no skill trigger produce no examples."""
+        messages = [
+            self._make_message("Hello world"),
+            self._make_message("Another message"),
+        ]
+        examples = build_examples(messages, "capture-issue")
+        assert examples == []
+
+    def test_output_is_json_serialized_response_metadata(self) -> None:
+        """output field is JSON-serialized ResponseMetadata when available."""
+        import json
+
+        meta = ResponseMetadata(
+            tools_used=[{"tool": "Read", "count": 2}],
+            files_read=["foo.py"],
+            files_modified=[],
+            completion_status="success",
+        )
+        trigger = "<command-name>/ll:capture-issue</command-name>"
+        messages = [
+            self._make_message(trigger, ts_offset=0, response_metadata=meta),
+        ]
+        examples = build_examples(messages, "capture-issue")
+        assert len(examples) == 1
+        parsed = json.loads(examples[0].output)
+        assert parsed["completion_status"] == "success"
+        assert parsed["tools_used"] == [{"tool": "Read", "count": 2}]
+
+    def test_output_is_empty_json_when_no_metadata(self) -> None:
+        """output field is '{}' when response_metadata is None."""
+        trigger = "<command-name>/ll:capture-issue</command-name>"
+        messages = [
+            self._make_message(trigger, ts_offset=0, response_metadata=None),
+        ]
+        examples = build_examples(messages, "capture-issue")
+        assert len(examples) == 1
+        assert examples[0].output == "{}"
+
+    def test_multiple_sessions_produce_separate_examples(self) -> None:
+        """Each matching session produces its own examples."""
+        trigger = "<command-name>/ll:refine-issue</command-name>"
+        messages = [
+            self._make_message(trigger, session_id="sess-1", ts_offset=0),
+            self._make_message(trigger, session_id="sess-2", ts_offset=0),
+        ]
+        examples = build_examples(messages, "refine-issue")
+        session_ids = {e.session_id for e in examples}
+        assert session_ids == {"sess-1", "sess-2"}
+
+    def test_example_record_to_dict(self) -> None:
+        """ExampleRecord.to_dict() returns expected keys."""
+        record = ExampleRecord(
+            skill="capture-issue",
+            input="some context",
+            output='{"completion_status": "success"}',
+            session_id="sess-1",
+            timestamp=datetime(2026, 1, 1, 0, 0, 0),
+            context_window=3,
+        )
+        d = record.to_dict()
+        assert d["skill"] == "capture-issue"
+        assert d["input"] == "some context"
+        assert d["session_id"] == "sess-1"
+        assert d["context_window"] == 3
+        assert "timestamp" in d

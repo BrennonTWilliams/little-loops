@@ -28,9 +28,11 @@ __all__ = [
     "UserMessage",
     "ResponseMetadata",
     "CommandRecord",
+    "ExampleRecord",
     "get_project_folder",
     "extract_user_messages",
     "extract_commands",
+    "build_examples",
     "save_messages",
 ]
 
@@ -137,6 +139,40 @@ class CommandRecord:
             "tool": self.tool,
             "cwd": self.cwd,
             "git_branch": self.git_branch,
+        }
+
+
+@dataclass
+class ExampleRecord:
+    """Training example pair extracted from a skill invocation session.
+
+    Attributes:
+        skill: The skill name (e.g., "capture-issue")
+        input: Concatenated preceding user messages as context
+        output: JSON-serialized ResponseMetadata summary (tools_used, files_modified,
+            completion_status); free-text assistant response capture is deferred
+        session_id: Claude Code session identifier
+        timestamp: When the skill was invoked
+        context_window: Number of preceding messages used as context
+    """
+
+    skill: str
+    input: str
+    output: str
+    session_id: str
+    timestamp: datetime
+    context_window: int
+
+    def to_dict(self) -> dict[str, object]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": "example",
+            "skill": self.skill,
+            "input": self.input,
+            "output": self.output,
+            "session_id": self.session_id,
+            "timestamp": self.timestamp.isoformat(),
+            "context_window": self.context_window,
         }
 
 
@@ -712,6 +748,66 @@ def save_messages(
             f.write(json.dumps(msg.to_dict()) + "\n")
 
     return output_path
+
+
+def build_examples(
+    messages: list[UserMessage],
+    skill: str,
+    context_window: int = 3,
+) -> list[ExampleRecord]:
+    """Build training example pairs from skill invocation sessions.
+
+    Groups messages by session, identifies skill trigger records (the user-side record
+    whose content contains ``<command-name>/ll:SKILL_NAME</command-name>``), and pairs
+    each trigger with the N preceding messages as input context.
+
+    Args:
+        messages: UserMessage list (already filtered to skill-matching sessions)
+        skill: The skill name to build examples for (e.g. "capture-issue")
+        context_window: Number of preceding messages to include as context (default 3)
+
+    Returns:
+        List of ExampleRecord objects, one per skill trigger record found.
+    """
+    import re
+
+    skill_pattern = re.compile(rf"<command-name>/ll:{re.escape(skill)}</command-name>")
+
+    # Group by session_id, sorted ascending by timestamp
+    sessions: dict[str, list[UserMessage]] = {}
+    for msg in messages:
+        sessions.setdefault(msg.session_id, []).append(msg)
+    for session_msgs in sessions.values():
+        session_msgs.sort(key=lambda m: m.timestamp)
+
+    examples: list[ExampleRecord] = []
+    for session_id, session_msgs in sessions.items():
+        for idx, msg in enumerate(session_msgs):
+            if not skill_pattern.search(msg.content):
+                continue
+
+            # Collect N preceding messages as context
+            preceding = session_msgs[max(0, idx - context_window) : idx]
+            input_text = "\n\n".join(m.content for m in preceding)
+
+            # Serialize response_metadata as output
+            if msg.response_metadata is not None:
+                output_str = json.dumps(msg.response_metadata.to_dict())
+            else:
+                output_str = "{}"
+
+            examples.append(
+                ExampleRecord(
+                    skill=skill,
+                    input=input_text,
+                    output=output_str,
+                    session_id=session_id,
+                    timestamp=msg.timestamp,
+                    context_window=context_window,
+                )
+            )
+
+    return examples
 
 
 def print_messages_to_stdout(messages: list[UserMessage]) -> None:

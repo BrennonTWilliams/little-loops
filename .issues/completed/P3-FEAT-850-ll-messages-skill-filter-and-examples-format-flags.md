@@ -168,10 +168,23 @@ class ExampleRecord:
 
 - FEAT-849
 
+## Resolution
+
+Implemented all three flags in `scripts/little_loops/cli/messages.py` and `scripts/little_loops/user_messages.py`:
+
+- `--skill SKILL_NAME` — session-level filter using `<command-name>/ll:{skill}</command-name>` regex on `UserMessage.content` (as specified in codebase research)
+- `--examples-format` — auto-enables `--include-response-context`, calls `build_examples()`, outputs `ExampleRecord` dicts; requires `--skill`
+- `--context-window N` (default 3) — preceding message count for `input` context
+
+Added `ExampleRecord` dataclass and `build_examples()` to `user_messages.py`. Updated `__all__`, CLI.md, and API.md.
+
+Tests: 15 new tests across `TestBuildExamples`, `TestMessagesArgumentParsingWithCommands`, and `TestMainMessagesAdditionalCoverage`. All 3794 tests pass.
+
 ## Labels
 `feat`, `ll-messages`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-21T02:35:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/081843aa-211e-4511-9ed7-f459a1863fa3.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:33:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77fad3d4-4cd4-49d2-8703-5d4df8de3550.jsonl`
 - `/ll:refine-issue` - 2026-03-21T02:16:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0633f118-65ef-4b3d-9507-feb81b97f8cd.jsonl`
@@ -179,4 +192,4 @@ class ExampleRecord:
 
 ---
 ## Status
-**Open** | Created: 2026-03-20 | Priority: P3
+**Completed** | Created: 2026-03-20 | Completed: 2026-03-20 | Priority: P3

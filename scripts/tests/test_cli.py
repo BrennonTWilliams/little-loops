@@ -1758,6 +1758,87 @@ class TestMainMessagesAdditionalCoverage:
             # Verbose output should include progress messages
             assert "Project folder:" in captured.out or "Limit:" in captured.out
 
+    def test_skill_filter_narrows_to_matching_sessions(self) -> None:
+        """--skill filters messages to sessions where the skill was invoked."""
+        from datetime import datetime
+
+        from little_loops.user_messages import UserMessage
+
+        trigger_content = (
+            "<command-message>ll:capture-issue</command-message>\n"
+            "<command-name>/ll:capture-issue</command-name>"
+        )
+        matching_msg = UserMessage(
+            content=trigger_content,
+            timestamp=datetime(2026, 1, 1, 1, 0, 0),
+            session_id="sess-match",
+            uuid="uuid-1",
+        )
+        non_matching_msg = UserMessage(
+            content="Just a regular message",
+            timestamp=datetime(2026, 1, 1, 0, 0, 0),
+            session_id="sess-other",
+            uuid="uuid-2",
+        )
+
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
+                mock_extract.return_value = [matching_msg, non_matching_msg]
+                with patch("little_loops.cli.messages._save_combined") as mock_save:
+                    mock_save.return_value = Path("/output.jsonl")
+
+                    with patch.object(
+                        sys, "argv", ["ll-messages", "--skill", "capture-issue"]
+                    ):
+                        from little_loops.cli import main_messages
+
+                        result = main_messages()
+
+        assert result == 0
+        saved_items = mock_save.call_args.args[0]
+        session_ids = {item.session_id for item in saved_items}
+        assert "sess-match" in session_ids
+        assert "sess-other" not in session_ids
+
+    def test_examples_format_produces_example_records(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--examples-format with --skill outputs ExampleRecord dicts via --stdout."""
+        from datetime import datetime
+
+        from little_loops.user_messages import ExampleRecord, UserMessage
+
+        trigger_content = "<command-name>/ll:capture-issue</command-name>"
+        msg = UserMessage(
+            content=trigger_content,
+            timestamp=datetime(2026, 1, 1, 0, 0, 0),
+            session_id="sess-1",
+            uuid="uuid-1",
+        )
+
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
+                mock_extract.return_value = [msg]
+
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["ll-messages", "--skill", "capture-issue", "--examples-format", "--stdout"],
+                ):
+                    from little_loops.cli import main_messages
+
+                    result = main_messages()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = [l for l in captured.out.strip().split("\n") if l]
+        assert len(lines) == 1
+        import json
+        record = json.loads(lines[0])
+        assert record["skill"] == "capture-issue"
+        assert "input" in record
+        assert "output" in record
+
 
 class TestMainLoopAdditionalCoverage:
     """Additional coverage tests for main_loop entry point."""

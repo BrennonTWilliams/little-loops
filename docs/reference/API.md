@@ -2172,6 +2172,62 @@ def to_dict(self) -> dict
 ```
 Convert to dictionary for JSON serialization.
 
+### ExampleRecord
+
+Training example pair extracted from a skill invocation session, suitable for APO/prompt-optimization pipelines.
+
+```python
+@dataclass
+class ExampleRecord:
+    skill: str         # Skill name (e.g., "capture-issue")
+    input: str         # Concatenated preceding user messages as context
+    output: str        # JSON-serialized ResponseMetadata (tools_used, files_modified, completion_status)
+    session_id: str    # Claude Code session identifier
+    timestamp: datetime
+    context_window: int  # Number of preceding messages used
+```
+
+#### Methods
+
+```python
+def to_dict(self) -> dict
+```
+Convert to dictionary for JSON serialization. Output includes `type: "example"`.
+
+### build_examples
+
+```python
+def build_examples(
+    messages: list[UserMessage],
+    skill: str,
+    context_window: int = 3,
+) -> list[ExampleRecord]
+```
+
+Build training example pairs from skill invocation sessions.
+
+Groups messages by session, identifies skill trigger records (user-side records containing
+`<command-name>/ll:SKILL_NAME</command-name>`), and pairs each with the N preceding messages
+as input context.
+
+**Parameters:**
+- `messages` - UserMessage list (typically pre-filtered to skill-matching sessions)
+- `skill` - Skill name to build examples for (e.g. `"capture-issue"`)
+- `context_window` - Number of preceding messages to include as input context (default: 3)
+
+**Returns:** List of `ExampleRecord` objects, one per skill trigger found.
+
+**Example:**
+```python
+from little_loops.user_messages import extract_user_messages, build_examples, get_project_folder
+
+project_folder = get_project_folder()
+messages = extract_user_messages(project_folder, include_response_context=True)
+examples = build_examples(messages, "capture-issue", context_window=3)
+for ex in examples:
+    print(ex.to_dict())
+```
+
 ### get_project_folder
 
 ```python

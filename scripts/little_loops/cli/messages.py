@@ -22,6 +22,7 @@ def main_messages() -> int:
     from little_loops.user_messages import (
         CommandRecord,
         UserMessage,
+        build_examples,
         extract_commands,
         extract_user_messages,
         get_project_folder,
@@ -40,6 +41,9 @@ Examples:
   %(prog)s --include-response-context   # Include response metadata
   %(prog)s --skip-cli                   # Exclude CLI commands from output
   %(prog)s --commands-only              # Extract only CLI commands
+  %(prog)s --skill capture-issue        # Filter to sessions where skill was invoked
+  %(prog)s --skill capture-issue --examples-format  # Output (input, output) training pairs
+  %(prog)s --skill refine-issue --examples-format --context-window 5 --stdout
 """,
     )
     parser.add_argument(
@@ -102,6 +106,22 @@ Examples:
         default="Bash",
         help="Comma-separated list of tools to extract commands from (default: Bash)",
     )
+    parser.add_argument(
+        "--skill",
+        type=str,
+        help="Filter to sessions where this skill was invoked (e.g. capture-issue)",
+    )
+    parser.add_argument(
+        "--examples-format",
+        action="store_true",
+        help="Output (input, output) training pairs for prompt optimization instead of raw messages",
+    )
+    parser.add_argument(
+        "--context-window",
+        type=int,
+        default=3,
+        help="Number of preceding messages to include as context in --examples-format (default: 3)",
+    )
 
     args = parser.parse_args()
 
@@ -149,7 +169,7 @@ Examples:
             limit=None,  # Apply limit after merging
             since=since,
             include_agent_sessions=not args.exclude_agents,
-            include_response_context=args.include_response_context,
+            include_response_context=args.include_response_context or args.examples_format,
         )
 
     if not args.skip_cli or args.commands_only:
@@ -161,8 +181,38 @@ Examples:
             tools=tools_list,
         )
 
+    # Apply skill filter (session-level): keep only sessions where skill was invoked
+    if args.skill:
+        import re
+
+        skill_pattern = re.compile(
+            rf"<command-name>/ll:{re.escape(args.skill)}</command-name>"
+        )
+        matching_sessions = {
+            msg.session_id for msg in messages if skill_pattern.search(msg.content)
+        }
+        messages = [msg for msg in messages if msg.session_id in matching_sessions]
+
     if not messages and not commands:
         logger.warning("No user messages or commands found")
+        return 0
+
+    # When --examples-format is set, reshape to ExampleRecord output and return early
+    if args.examples_format:
+        if not args.skill:
+            logger.error("--examples-format requires --skill to be specified")
+            return 1
+        examples = build_examples(messages, args.skill, args.context_window)
+        examples.sort(key=lambda x: x.timestamp, reverse=True)
+        if args.limit is not None:
+            examples = examples[: args.limit]
+        logger.info(f"Found {len(examples)} examples")
+        if args.stdout:
+            for item in examples:
+                print(json.dumps(item.to_dict()))
+        else:
+            output_path = _save_combined(examples, args.output)
+            logger.success(f"Saved {len(examples)} examples to: {output_path}")
         return 0
 
     # Merge and sort by timestamp
