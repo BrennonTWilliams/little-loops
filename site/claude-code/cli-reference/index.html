@@ -1,0 +1,2429 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/claude-code/cli-reference/">
+      
+      
+        <link rel="prev" href="../../generalized-fsm-loop/">
+      
+      
+        <link rel="next" href="../settings/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>CLI Reference - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#documentation-index" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CLI Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI flags
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI flags">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agents-flag-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agents flag format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#system-prompt-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System prompt flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI flags
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI flags">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agents-flag-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agents flag format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#system-prompt-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System prompt flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<blockquote>
+<h2 id="documentation-index">Documentation Index<a class="headerlink" href="#documentation-index" title="Permanent link">&para;</a></h2>
+<p>Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+Use this file to discover all available pages before exploring further.</p>
+</blockquote>
+<h1 id="cli-reference">CLI reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Complete reference for Claude Code command-line interface, including commands and flags.</p>
+</blockquote>
+<h2 id="cli-commands">CLI commands<a class="headerlink" href="#cli-commands" title="Permanent link">&para;</a></h2>
+<p>You can start sessions, pipe content, resume conversations, and manage updates with these commands:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Command</th>
+<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>claude</code></td>
+<td style="text-align: left;">Start interactive session</td>
+<td style="text-align: left;"><code>claude</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude "query"</code></td>
+<td style="text-align: left;">Start interactive session with initial prompt</td>
+<td style="text-align: left;"><code>claude "explain this project"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude -p "query"</code></td>
+<td style="text-align: left;">Query via SDK, then exit</td>
+<td style="text-align: left;"><code>claude -p "explain this function"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cat file \| claude -p "query"</code></td>
+<td style="text-align: left;">Process piped content</td>
+<td style="text-align: left;"><code>cat logs.txt \| claude -p "explain"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude -c</code></td>
+<td style="text-align: left;">Continue most recent conversation in current directory</td>
+<td style="text-align: left;"><code>claude -c</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude -c -p "query"</code></td>
+<td style="text-align: left;">Continue via SDK</td>
+<td style="text-align: left;"><code>claude -c -p "Check for type errors"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude -r "&lt;session&gt;" "query"</code></td>
+<td style="text-align: left;">Resume session by ID or name</td>
+<td style="text-align: left;"><code>claude -r "auth-refactor" "Finish this PR"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude update</code></td>
+<td style="text-align: left;">Update to latest version</td>
+<td style="text-align: left;"><code>claude update</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude auth login</code></td>
+<td style="text-align: left;">Sign in to your Anthropic account. Use <code>--email</code> to pre-fill your email address and <code>--sso</code> to force SSO authentication</td>
+<td style="text-align: left;"><code>claude auth login --email user@example.com --sso</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude auth logout</code></td>
+<td style="text-align: left;">Log out from your Anthropic account</td>
+<td style="text-align: left;"><code>claude auth logout</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude auth status</code></td>
+<td style="text-align: left;">Show authentication status as JSON. Use <code>--text</code> for human-readable output. Exits with code 0 if logged in, 1 if not</td>
+<td style="text-align: left;"><code>claude auth status</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude agents</code></td>
+<td style="text-align: left;">List all configured <a href="/en/sub-agents">subagents</a>, grouped by source</td>
+<td style="text-align: left;"><code>claude agents</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude mcp</code></td>
+<td style="text-align: left;">Configure Model Context Protocol (MCP) servers</td>
+<td style="text-align: left;">See the <a href="/en/mcp">Claude Code MCP documentation</a>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>claude remote-control</code></td>
+<td style="text-align: left;">Start a <a href="/en/remote-control">Remote Control session</a> to control Claude Code from Claude.ai or the Claude app while running locally. See <a href="/en/remote-control">Remote Control</a> for flags</td>
+<td style="text-align: left;"><code>claude remote-control</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="cli-flags">CLI flags<a class="headerlink" href="#cli-flags" title="Permanent link">&para;</a></h2>
+<p>Customize Claude Code's behavior with these command-line flags:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--add-dir</code></td>
+<td style="text-align: left;">Add additional working directories for Claude to access (validates each path exists as a directory)</td>
+<td style="text-align: left;"><code>claude --add-dir ../apps ../lib</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--agent</code></td>
+<td style="text-align: left;">Specify an agent for the current session (overrides the <code>agent</code> setting)</td>
+<td style="text-align: left;"><code>claude --agent my-custom-agent</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--agents</code></td>
+<td style="text-align: left;">Define custom <a href="/en/sub-agents">subagents</a> dynamically via JSON (see below for format)</td>
+<td style="text-align: left;"><code>claude --agents '{"reviewer":{"description":"Reviews code","prompt":"You are a code reviewer"}}'</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--allow-dangerously-skip-permissions</code></td>
+<td style="text-align: left;">Enable permission bypassing as an option without immediately activating it. Allows composing with <code>--permission-mode</code> (use with caution)</td>
+<td style="text-align: left;"><code>claude --permission-mode plan --allow-dangerously-skip-permissions</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--allowedTools</code></td>
+<td style="text-align: left;">Tools that execute without prompting for permission. See <a href="/en/settings#permission-rule-syntax">permission rule syntax</a> for pattern matching. To restrict which tools are available, use <code>--tools</code> instead</td>
+<td style="text-align: left;"><code>"Bash(git log *)" "Bash(git diff *)" "Read"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--append-system-prompt</code></td>
+<td style="text-align: left;">Append custom text to the end of the default system prompt</td>
+<td style="text-align: left;"><code>claude --append-system-prompt "Always use TypeScript"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--append-system-prompt-file</code></td>
+<td style="text-align: left;">Load additional system prompt text from a file and append to the default prompt</td>
+<td style="text-align: left;"><code>claude --append-system-prompt-file ./extra-rules.txt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--betas</code></td>
+<td style="text-align: left;">Beta headers to include in API requests (API key users only)</td>
+<td style="text-align: left;"><code>claude --betas interleaved-thinking</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--chrome</code></td>
+<td style="text-align: left;">Enable <a href="/en/chrome">Chrome browser integration</a> for web automation and testing</td>
+<td style="text-align: left;"><code>claude --chrome</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--continue</code>, <code>-c</code></td>
+<td style="text-align: left;">Load the most recent conversation in the current directory</td>
+<td style="text-align: left;"><code>claude --continue</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--dangerously-skip-permissions</code></td>
+<td style="text-align: left;">Skip all permission prompts (use with caution)</td>
+<td style="text-align: left;"><code>claude --dangerously-skip-permissions</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--debug</code></td>
+<td style="text-align: left;">Enable debug mode with optional category filtering (for example, <code>"api,hooks"</code> or <code>"!statsig,!file"</code>)</td>
+<td style="text-align: left;"><code>claude --debug "api,mcp"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--disable-slash-commands</code></td>
+<td style="text-align: left;">Disable all skills and commands for this session</td>
+<td style="text-align: left;"><code>claude --disable-slash-commands</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--disallowedTools</code></td>
+<td style="text-align: left;">Tools that are removed from the model's context and cannot be used</td>
+<td style="text-align: left;"><code>"Bash(git log *)" "Bash(git diff *)" "Edit"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--fallback-model</code></td>
+<td style="text-align: left;">Enable automatic fallback to specified model when default model is overloaded (print mode only)</td>
+<td style="text-align: left;"><code>claude -p --fallback-model sonnet "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--fork-session</code></td>
+<td style="text-align: left;">When resuming, create a new session ID instead of reusing the original (use with <code>--resume</code> or <code>--continue</code>)</td>
+<td style="text-align: left;"><code>claude --resume abc123 --fork-session</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--from-pr</code></td>
+<td style="text-align: left;">Resume sessions linked to a specific GitHub PR. Accepts a PR number or URL. Sessions are automatically linked when created via <code>gh pr create</code></td>
+<td style="text-align: left;"><code>claude --from-pr 123</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--ide</code></td>
+<td style="text-align: left;">Automatically connect to IDE on startup if exactly one valid IDE is available</td>
+<td style="text-align: left;"><code>claude --ide</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--init</code></td>
+<td style="text-align: left;">Run initialization hooks and start interactive mode</td>
+<td style="text-align: left;"><code>claude --init</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--init-only</code></td>
+<td style="text-align: left;">Run initialization hooks and exit (no interactive session)</td>
+<td style="text-align: left;"><code>claude --init-only</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--include-partial-messages</code></td>
+<td style="text-align: left;">Include partial streaming events in output (requires <code>--print</code> and <code>--output-format=stream-json</code>)</td>
+<td style="text-align: left;"><code>claude -p --output-format stream-json --include-partial-messages "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--input-format</code></td>
+<td style="text-align: left;">Specify input format for print mode (options: <code>text</code>, <code>stream-json</code>)</td>
+<td style="text-align: left;"><code>claude -p --output-format json --input-format stream-json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--json-schema</code></td>
+<td style="text-align: left;">Get validated JSON output matching a JSON Schema after agent completes its workflow (print mode only, see <a href="https://platform.claude.com/docs/en/agent-sdk/structured-outputs">structured outputs</a>)</td>
+<td style="text-align: left;"><code>claude -p --json-schema '{"type":"object","properties":{...}}' "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--maintenance</code></td>
+<td style="text-align: left;">Run maintenance hooks and exit</td>
+<td style="text-align: left;"><code>claude --maintenance</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--max-budget-usd</code></td>
+<td style="text-align: left;">Maximum dollar amount to spend on API calls before stopping (print mode only)</td>
+<td style="text-align: left;"><code>claude -p --max-budget-usd 5.00 "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--max-turns</code></td>
+<td style="text-align: left;">Limit the number of agentic turns (print mode only). Exits with an error when the limit is reached. No limit by default</td>
+<td style="text-align: left;"><code>claude -p --max-turns 3 "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--mcp-config</code></td>
+<td style="text-align: left;">Load MCP servers from JSON files or strings (space-separated)</td>
+<td style="text-align: left;"><code>claude --mcp-config ./mcp.json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--model</code></td>
+<td style="text-align: left;">Sets the model for the current session with an alias for the latest model (<code>sonnet</code> or <code>opus</code>) or a model's full name</td>
+<td style="text-align: left;"><code>claude --model claude-sonnet-4-6</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--no-chrome</code></td>
+<td style="text-align: left;">Disable <a href="/en/chrome">Chrome browser integration</a> for this session</td>
+<td style="text-align: left;"><code>claude --no-chrome</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--no-session-persistence</code></td>
+<td style="text-align: left;">Disable session persistence so sessions are not saved to disk and cannot be resumed (print mode only)</td>
+<td style="text-align: left;"><code>claude -p --no-session-persistence "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--output-format</code></td>
+<td style="text-align: left;">Specify output format for print mode (options: <code>text</code>, <code>json</code>, <code>stream-json</code>)</td>
+<td style="text-align: left;"><code>claude -p "query" --output-format json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--permission-mode</code></td>
+<td style="text-align: left;">Begin in a specified <a href="/en/permissions#permission-modes">permission mode</a></td>
+<td style="text-align: left;"><code>claude --permission-mode plan</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--permission-prompt-tool</code></td>
+<td style="text-align: left;">Specify an MCP tool to handle permission prompts in non-interactive mode</td>
+<td style="text-align: left;"><code>claude -p --permission-prompt-tool mcp_auth_tool "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--plugin-dir</code></td>
+<td style="text-align: left;">Load plugins from directories for this session only (repeatable)</td>
+<td style="text-align: left;"><code>claude --plugin-dir ./my-plugins</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--print</code>, <code>-p</code></td>
+<td style="text-align: left;">Print response without interactive mode (see <a href="https://platform.claude.com/docs/en/agent-sdk/overview">Agent SDK documentation</a> for programmatic usage details)</td>
+<td style="text-align: left;"><code>claude -p "query"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--remote</code></td>
+<td style="text-align: left;">Create a new <a href="/en/claude-code-on-the-web">web session</a> on claude.ai with the provided task description</td>
+<td style="text-align: left;"><code>claude --remote "Fix the login bug"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--resume</code>, <code>-r</code></td>
+<td style="text-align: left;">Resume a specific session by ID or name, or show an interactive picker to choose a session</td>
+<td style="text-align: left;"><code>claude --resume auth-refactor</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--session-id</code></td>
+<td style="text-align: left;">Use a specific session ID for the conversation (must be a valid UUID)</td>
+<td style="text-align: left;"><code>claude --session-id "550e8400-e29b-41d4-a716-446655440000"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--setting-sources</code></td>
+<td style="text-align: left;">Comma-separated list of setting sources to load (<code>user</code>, <code>project</code>, <code>local</code>)</td>
+<td style="text-align: left;"><code>claude --setting-sources user,project</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--settings</code></td>
+<td style="text-align: left;">Path to a settings JSON file or a JSON string to load additional settings from</td>
+<td style="text-align: left;"><code>claude --settings ./settings.json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--strict-mcp-config</code></td>
+<td style="text-align: left;">Only use MCP servers from <code>--mcp-config</code>, ignoring all other MCP configurations</td>
+<td style="text-align: left;"><code>claude --strict-mcp-config --mcp-config ./mcp.json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--system-prompt</code></td>
+<td style="text-align: left;">Replace the entire system prompt with custom text</td>
+<td style="text-align: left;"><code>claude --system-prompt "You are a Python expert"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--system-prompt-file</code></td>
+<td style="text-align: left;">Load system prompt from a file, replacing the default prompt</td>
+<td style="text-align: left;"><code>claude --system-prompt-file ./custom-prompt.txt</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--teleport</code></td>
+<td style="text-align: left;">Resume a <a href="/en/claude-code-on-the-web">web session</a> in your local terminal</td>
+<td style="text-align: left;"><code>claude --teleport</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--teammate-mode</code></td>
+<td style="text-align: left;">Set how <a href="/en/agent-teams">agent team</a> teammates display: <code>auto</code> (default), <code>in-process</code>, or <code>tmux</code>. See <a href="/en/agent-teams#set-up-agent-teams">set up agent teams</a></td>
+<td style="text-align: left;"><code>claude --teammate-mode in-process</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--tools</code></td>
+<td style="text-align: left;">Restrict which built-in tools Claude can use. Use <code>""</code> to disable all, <code>"default"</code> for all, or tool names like <code>"Bash,Edit,Read"</code></td>
+<td style="text-align: left;"><code>claude --tools "Bash,Edit,Read"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--verbose</code></td>
+<td style="text-align: left;">Enable verbose logging, shows full turn-by-turn output</td>
+<td style="text-align: left;"><code>claude --verbose</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--version</code>, <code>-v</code></td>
+<td style="text-align: left;">Output the version number</td>
+<td style="text-align: left;"><code>claude -v</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--worktree</code>, <code>-w</code></td>
+<td style="text-align: left;">Start Claude in an isolated <a href="/en/common-workflows#run-parallel-claude-code-sessions-with-git-worktrees">git worktree</a> at <code>&lt;repo&gt;/.claude/worktrees/&lt;name&gt;</code>. If no name is given, one is auto-generated</td>
+<td style="text-align: left;"><code>claude -w feature-auth</code></td>
+</tr>
+</tbody>
+</table>
+<p><Tip>
+  The <code>--output-format json</code> flag is particularly useful for scripting and
+  automation, allowing you to parse Claude's responses programmatically.
+</Tip></p>
+<h3 id="agents-flag-format">Agents flag format<a class="headerlink" href="#agents-flag-format" title="Permanent link">&para;</a></h3>
+<p>The <code>--agents</code> flag accepts a JSON object that defines one or more custom subagents. Each subagent requires a unique name (as the key) and a definition object with the following fields:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>description</code></td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Natural language description of when the subagent should be invoked</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>prompt</code></td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">The system prompt that guides the subagent's behavior</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tools</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Array of specific tools the subagent can use, for example <code>["Read", "Edit", "Bash"]</code>. If omitted, inherits all tools. Supports <a href="/en/sub-agents#restrict-which-subagents-can-be-spawned"><code>Agent(agent_type)</code></a> syntax</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>disallowedTools</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Array of tool names to explicitly deny for this subagent</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>model</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Model alias to use: <code>sonnet</code>, <code>opus</code>, <code>haiku</code>, or <code>inherit</code>. If omitted, defaults to <code>inherit</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>skills</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Array of <a href="/en/skills">skill</a> names to preload into the subagent's context</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mcpServers</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Array of <a href="/en/mcp">MCP servers</a> for this subagent. Each entry is a server name string or a <code>{name: config}</code> object</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>maxTurns</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Maximum number of agentic turns before the subagent stops</td>
+</tr>
+</tbody>
+</table>
+<p>Example:</p>
+<p><code>bash  theme={null}
+claude --agents '{
+  "code-reviewer": {
+    "description": "Expert code reviewer. Use proactively after code changes.",
+    "prompt": "You are a senior code reviewer. Focus on code quality, security, and best practices.",
+    "tools": ["Read", "Grep", "Glob", "Bash"],
+    "model": "sonnet"
+  },
+  "debugger": {
+    "description": "Debugging specialist for errors and test failures.",
+    "prompt": "You are an expert debugger. Analyze errors, identify root causes, and provide fixes."
+  }
+}'</code></p>
+<p>For more details on creating and using subagents, see the <a href="/en/sub-agents">subagents documentation</a>.</p>
+<h3 id="system-prompt-flags">System prompt flags<a class="headerlink" href="#system-prompt-flags" title="Permanent link">&para;</a></h3>
+<p>Claude Code provides four flags for customizing the system prompt. All four work in both interactive and non-interactive modes.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Behavior</th>
+<th style="text-align: left;">Use case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--system-prompt</code></td>
+<td style="text-align: left;"><strong>Replaces</strong> entire default prompt</td>
+<td style="text-align: left;">Complete control over Claude's behavior and instructions</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--system-prompt-file</code></td>
+<td style="text-align: left;"><strong>Replaces</strong> with file contents</td>
+<td style="text-align: left;">Load prompts from files for reproducibility and version control</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--append-system-prompt</code></td>
+<td style="text-align: left;"><strong>Appends</strong> to default prompt</td>
+<td style="text-align: left;">Add specific instructions while keeping default Claude Code behavior</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--append-system-prompt-file</code></td>
+<td style="text-align: left;"><strong>Appends</strong> file contents to default prompt</td>
+<td style="text-align: left;">Load additional instructions from files while keeping defaults</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use each:</strong></p>
+<ul>
+<li>
+<p><strong><code>--system-prompt</code></strong>: use when you need complete control over Claude's system prompt. This removes all default Claude Code instructions, giving you a blank slate.
+  <code>bash  theme={null}
+  claude --system-prompt "You are a Python expert who only writes type-annotated code"</code></p>
+</li>
+<li>
+<p><strong><code>--system-prompt-file</code></strong>: use when you want to load a custom prompt from a file, useful for team consistency or version-controlled prompt templates.
+  <code>bash  theme={null}
+  claude --system-prompt-file ./prompts/code-review.txt</code></p>
+</li>
+<li>
+<p><strong><code>--append-system-prompt</code></strong>: use when you want to add specific instructions while keeping Claude Code's default capabilities intact. This is the safest option for most use cases.
+  <code>bash  theme={null}
+  claude --append-system-prompt "Always use TypeScript and include JSDoc comments"</code></p>
+</li>
+<li>
+<p><strong><code>--append-system-prompt-file</code></strong>: use when you want to append instructions from a file while keeping Claude Code's defaults. Useful for version-controlled additions.
+  <code>bash  theme={null}
+  claude --append-system-prompt-file ./prompts/style-rules.txt</code></p>
+</li>
+</ul>
+<p><code>--system-prompt</code> and <code>--system-prompt-file</code> are mutually exclusive. The append flags can be used together with either replacement flag.</p>
+<p>For most use cases, <code>--append-system-prompt</code> or <code>--append-system-prompt-file</code> is recommended as they preserve Claude Code's built-in capabilities while adding your custom requirements. Use <code>--system-prompt</code> or <code>--system-prompt-file</code> only when you need complete control over the system prompt.</p>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="/en/chrome">Chrome extension</a> - Browser automation and web testing</li>
+<li><a href="/en/interactive-mode">Interactive mode</a> - Shortcuts, input modes, and interactive features</li>
+<li><a href="/en/quickstart">Quickstart guide</a> - Getting started with Claude Code</li>
+<li><a href="/en/common-workflows">Common workflows</a> - Advanced workflows and patterns</li>
+<li><a href="/en/settings">Settings</a> - Configuration options</li>
+<li><a href="https://platform.claude.com/docs/en/agent-sdk/overview">Agent SDK documentation</a> - Programmatic usage and integrations</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

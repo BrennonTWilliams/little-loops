@@ -1,0 +1,3735 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/claude-code/settings/">
+      
+      
+        <link rel="prev" href="../cli-reference/">
+      
+      
+        <link rel="next" href="../hooks-reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Settings - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#documentation-index" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Settings
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-code-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude Code settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude Code settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration-scopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration scopes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration scopes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#available-scopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available scopes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use each scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-scopes-interact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How scopes interact
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-uses-scopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What uses scopes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings files
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settings files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attribution-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribution settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#subagent-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subagent configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plugin-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plugin-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#extraknownmarketplaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        extraKnownMarketplaces
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#managing-plugins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Managing plugins
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-available-to-claude" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools available to Claude
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tools available to Claude">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bash-tool-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bash tool behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-source-pathtovenvbinactivate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        or: source /path/to/venv/bin/activate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-source-pathtovenvbinactivate_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        or: source /path/to/venv/bin/activate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-export-my_varvalue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        or: export MY_VAR=value
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="or: export MY_VAR=value">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#extending-tools-with-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extending tools with hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-code-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude Code settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude Code settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration-scopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration scopes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration scopes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#available-scopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available scopes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use each scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-scopes-interact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How scopes interact
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-uses-scopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What uses scopes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings files
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settings files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attribution-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribution settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#subagent-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subagent configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plugin-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plugin-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#extraknownmarketplaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        extraKnownMarketplaces
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#managing-plugins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Managing plugins
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-available-to-claude" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools available to Claude
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tools available to Claude">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bash-tool-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bash tool behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-source-pathtovenvbinactivate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        or: source /path/to/venv/bin/activate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-source-pathtovenvbinactivate_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        or: source /path/to/venv/bin/activate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-export-my_varvalue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        or: export MY_VAR=value
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="or: export MY_VAR=value">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#extending-tools-with-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extending tools with hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<blockquote>
+<h2 id="documentation-index">Documentation Index<a class="headerlink" href="#documentation-index" title="Permanent link">&para;</a></h2>
+<p>Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+Use this file to discover all available pages before exploring further.</p>
+</blockquote>
+<h1 id="claude-code-settings">Claude Code settings<a class="headerlink" href="#claude-code-settings" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Configure Claude Code with global and project-level settings, and environment variables.</p>
+</blockquote>
+<p>Claude Code offers a variety of settings to configure its behavior to meet your needs. You can configure Claude Code by running the <code>/config</code> command when using the interactive REPL, which opens a tabbed Settings interface where you can view status information and modify configuration options.</p>
+<h2 id="configuration-scopes">Configuration scopes<a class="headerlink" href="#configuration-scopes" title="Permanent link">&para;</a></h2>
+<p>Claude Code uses a <strong>scope system</strong> to determine where configurations apply and who they're shared with. Understanding scopes helps you decide how to configure Claude Code for personal use, team collaboration, or enterprise deployment.</p>
+<h3 id="available-scopes">Available scopes<a class="headerlink" href="#available-scopes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Scope</th>
+<th style="text-align: left;">Location</th>
+<th style="text-align: left;">Who it affects</th>
+<th style="text-align: left;">Shared with team?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Managed</strong></td>
+<td style="text-align: left;">System-level <code>managed-settings.json</code></td>
+<td style="text-align: left;">All users on the machine</td>
+<td style="text-align: left;">Yes (deployed by IT)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>User</strong></td>
+<td style="text-align: left;"><code>~/.claude/</code> directory</td>
+<td style="text-align: left;">You, across all projects</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Project</strong></td>
+<td style="text-align: left;"><code>.claude/</code> in repository</td>
+<td style="text-align: left;">All collaborators on this repository</td>
+<td style="text-align: left;">Yes (committed to git)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Local</strong></td>
+<td style="text-align: left;"><code>.claude/*.local.*</code> files</td>
+<td style="text-align: left;">You, in this repository only</td>
+<td style="text-align: left;">No (gitignored)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="when-to-use-each-scope">When to use each scope<a class="headerlink" href="#when-to-use-each-scope" title="Permanent link">&para;</a></h3>
+<p><strong>Managed scope</strong> is for:</p>
+<ul>
+<li>Security policies that must be enforced organization-wide</li>
+<li>Compliance requirements that can't be overridden</li>
+<li>Standardized configurations deployed by IT/DevOps</li>
+</ul>
+<p><strong>User scope</strong> is best for:</p>
+<ul>
+<li>Personal preferences you want everywhere (themes, editor settings)</li>
+<li>Tools and plugins you use across all projects</li>
+<li>API keys and authentication (stored securely)</li>
+</ul>
+<p><strong>Project scope</strong> is best for:</p>
+<ul>
+<li>Team-shared settings (permissions, hooks, MCP servers)</li>
+<li>Plugins the whole team should have</li>
+<li>Standardizing tooling across collaborators</li>
+</ul>
+<p><strong>Local scope</strong> is best for:</p>
+<ul>
+<li>Personal overrides for a specific project</li>
+<li>Testing configurations before sharing with the team</li>
+<li>Machine-specific settings that won't work for others</li>
+</ul>
+<h3 id="how-scopes-interact">How scopes interact<a class="headerlink" href="#how-scopes-interact" title="Permanent link">&para;</a></h3>
+<p>When the same setting is configured in multiple scopes, more specific scopes take precedence:</p>
+<ol>
+<li><strong>Managed</strong> (highest) - can't be overridden by anything</li>
+<li><strong>Command line arguments</strong> - temporary session overrides</li>
+<li><strong>Local</strong> - overrides project and user settings</li>
+<li><strong>Project</strong> - overrides user settings</li>
+<li><strong>User</strong> (lowest) - applies when nothing else specifies the setting</li>
+</ol>
+<p>For example, if a permission is allowed in user settings but denied in project settings, the project setting takes precedence and the permission is blocked.</p>
+<h3 id="what-uses-scopes">What uses scopes<a class="headerlink" href="#what-uses-scopes" title="Permanent link">&para;</a></h3>
+<p>Scopes apply to many Claude Code features:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Feature</th>
+<th style="text-align: left;">User location</th>
+<th style="text-align: left;">Project location</th>
+<th style="text-align: left;">Local location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Settings</strong></td>
+<td style="text-align: left;"><code>~/.claude/settings.json</code></td>
+<td style="text-align: left;"><code>.claude/settings.json</code></td>
+<td style="text-align: left;"><code>.claude/settings.local.json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Subagents</strong></td>
+<td style="text-align: left;"><code>~/.claude/agents/</code></td>
+<td style="text-align: left;"><code>.claude/agents/</code></td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>MCP servers</strong></td>
+<td style="text-align: left;"><code>~/.claude.json</code></td>
+<td style="text-align: left;"><code>.mcp.json</code></td>
+<td style="text-align: left;"><code>~/.claude.json</code> (per-project)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Plugins</strong></td>
+<td style="text-align: left;"><code>~/.claude/settings.json</code></td>
+<td style="text-align: left;"><code>.claude/settings.json</code></td>
+<td style="text-align: left;"><code>.claude/settings.local.json</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>CLAUDE.md</strong></td>
+<td style="text-align: left;"><code>~/.claude/CLAUDE.md</code></td>
+<td style="text-align: left;"><code>CLAUDE.md</code> or <code>.claude/CLAUDE.md</code></td>
+<td style="text-align: left;"><code>CLAUDE.local.md</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="settings-files">Settings files<a class="headerlink" href="#settings-files" title="Permanent link">&para;</a></h2>
+<p>The <code>settings.json</code> file is our official mechanism for configuring Claude
+Code through hierarchical settings:</p>
+<ul>
+<li><strong>User settings</strong> are defined in <code>~/.claude/settings.json</code> and apply to all
+  projects.</li>
+<li><strong>Project settings</strong> are saved in your project directory:</li>
+<li><code>.claude/settings.json</code> for settings that are checked into source control and shared with your team</li>
+<li><code>.claude/settings.local.json</code> for settings that are not checked in, useful for personal preferences and experimentation. Claude Code will configure git to ignore <code>.claude/settings.local.json</code> when it is created.</li>
+<li>
+<p><strong>Managed settings</strong>: For organizations that need centralized control, Claude Code supports <code>managed-settings.json</code> and <code>managed-mcp.json</code> files that can be deployed to system directories:</p>
+</li>
+<li>
+<p>macOS: <code>/Library/Application Support/ClaudeCode/</code></p>
+</li>
+<li>Linux and WSL: <code>/etc/claude-code/</code></li>
+<li>Windows: <code>C:\Program Files\ClaudeCode\</code></li>
+</ul>
+<p><Note>
+    These are system-wide paths (not user home directories like <code>~/Library/...</code>) that require administrator privileges. They are designed to be deployed by IT administrators.
+  </Note></p>
+<p>See <a href="/en/permissions#managed-settings">Managed settings</a> and <a href="/en/mcp#managed-mcp-configuration">Managed MCP configuration</a> for details. For organizations without device management infrastructure, see <a href="/en/server-managed-settings">server-managed settings</a>.</p>
+<p><Note>
+    Managed deployments can also restrict <strong>plugin marketplace additions</strong> using
+    <code>strictKnownMarketplaces</code>. For more information, see <a href="/en/plugin-marketplaces#managed-marketplace-restrictions">Managed marketplace restrictions</a>.
+  </Note>
+* <strong>Other configuration</strong> is stored in <code>~/.claude.json</code>. This file contains your preferences (theme, notification settings, editor mode), OAuth session, <a href="/en/mcp">MCP server</a> configurations for user and local scopes, per-project state (allowed tools, trust settings), and various caches. Project-scoped MCP servers are stored separately in <code>.mcp.json</code>.</p>
+<p><Note>
+  Claude Code automatically creates timestamped backups of configuration files and retains the five most recent backups to prevent data loss.
+</Note></p>
+<p>```JSON Example settings.json theme={null}
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(npm run test <em>)",
+      "Read(~/.zshrc)"
+    ],
+    "deny": [
+      "Bash(curl </em>)",
+      "Read(./.env)",
+      "Read(./.env.<em>)",
+      "Read(./secrets/</em>*)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp"
+  },
+  "companyAnnouncements": [
+    "Welcome to Acme Corp! Review our code guidelines at docs.acme.com",
+    "Reminder: Code reviews required for all PRs",
+    "New security policy in effect"
+  ]
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>The `$schema` line in the example above points to the [official JSON schema](https://json.schemastore.org/claude-code-settings.json) for Claude Code settings. Adding it to your `settings.json` enables autocomplete and inline validation in VS Code, Cursor, and any other editor that supports JSON schema validation.
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>### Available settings
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>`settings.json` supports a number of options:
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>| Key                               | Description                                                                                                                                                                                                                                                                     | Example                                                                 |
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>| :-------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------- |
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>| `apiKeyHelper`                    | Custom script, to be executed in `/bin/sh`, to generate an auth value. This value will be sent as `X-Api-Key` and `Authorization: Bearer` headers for model requests                                                                                                            | `/bin/generate_temp_api_key.sh`                                         |
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>| `cleanupPeriodDays`               | Sessions inactive for longer than this period are deleted at startup. Setting to `0` immediately deletes all sessions. (default: 30 days)                                                                                                                                       | `20`                                                                    |
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>| `companyAnnouncements`            | Announcement to display to users at startup. If multiple announcements are provided, they will be cycled through at random.                                                                                                                                                     | `[&quot;Welcome to Acme Corp! Review our code guidelines at docs.acme.com&quot;]` |
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>| `env`                             | Environment variables that will be applied to every session                                                                                                                                                                                                                     | `{&quot;FOO&quot;: &quot;bar&quot;}`                                                        |
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>| `attribution`                     | Customize attribution for git commits and pull requests. See [Attribution settings](#attribution-settings)                                                                                                                                                                      | `{&quot;commit&quot;: &quot;🤖 Generated with Claude Code&quot;, &quot;pr&quot;: &quot;&quot;}`                 |
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>| `includeCoAuthoredBy`             | **Deprecated**: Use `attribution` instead. Whether to include the `co-authored-by Claude` byline in git commits and pull requests (default: `true`)                                                                                                                             | `false`                                                                 |
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>| `permissions`                     | See table below for structure of permissions.                                                                                                                                                                                                                                   |                                                                         |
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>| `hooks`                           | Configure custom commands to run at lifecycle events. See [hooks documentation](/en/hooks) for format                                                                                                                                                                           | See [hooks](/en/hooks)                                                  |
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>| `disableAllHooks`                 | Disable all [hooks](/en/hooks) and any custom [status line](/en/statusline)                                                                                                                                                                                                     | `true`                                                                  |
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>| `allowManagedHooksOnly`           | (Managed settings only) Prevent loading of user, project, and plugin hooks. Only allows managed hooks and SDK hooks. See [Hook configuration](#hook-configuration)                                                                                                              | `true`                                                                  |
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>| `allowManagedPermissionRulesOnly` | (Managed settings only) Prevent user and project settings from defining `allow`, `ask`, or `deny` permission rules. Only rules in managed settings apply. See [Managed-only settings](/en/permissions#managed-only-settings)                                                    | `true`                                                                  |
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>| `model`                           | Override the default model to use for Claude Code                                                                                                                                                                                                                               | `&quot;claude-sonnet-4-5-20250929&quot;`                                          |
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>| `otelHeadersHelper`               | Script to generate dynamic OpenTelemetry headers. Runs at startup and periodically (see [Dynamic headers](/en/monitoring-usage#dynamic-headers))                                                                                                                                | `/bin/generate_otel_headers.sh`                                         |
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>| `statusLine`                      | Configure a custom status line to display context. See [`statusLine` documentation](/en/statusline)                                                                                                                                                                             | `{&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;~/.claude/statusline.sh&quot;}`             |
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>| `fileSuggestion`                  | Configure a custom script for `@` file autocomplete. See [File suggestion settings](#file-suggestion-settings)                                                                                                                                                                  | `{&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;~/.claude/file-suggestion.sh&quot;}`        |
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>| `respectGitignore`                | Control whether the `@` file picker respects `.gitignore` patterns. When `true` (default), files matching `.gitignore` patterns are excluded from suggestions                                                                                                                   | `false`                                                                 |
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>| `outputStyle`                     | Configure an output style to adjust the system prompt. See [output styles documentation](/en/output-styles)                                                                                                                                                                     | `&quot;Explanatory&quot;`                                                         |
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>| `forceLoginMethod`                | Use `claudeai` to restrict login to Claude.ai accounts, `console` to restrict login to Claude Console (API usage billing) accounts                                                                                                                                              | `claudeai`                                                              |
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>| `forceLoginOrgUUID`               | Specify the UUID of an organization to automatically select it during login, bypassing the organization selection step. Requires `forceLoginMethod` to be set                                                                                                                   | `&quot;xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx&quot;`                                |
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>| `enableAllProjectMcpServers`      | Automatically approve all MCP servers defined in project `.mcp.json` files                                                                                                                                                                                                      | `true`                                                                  |
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>| `enabledMcpjsonServers`           | List of specific MCP servers from `.mcp.json` files to approve                                                                                                                                                                                                                  | `[&quot;memory&quot;, &quot;github&quot;]`                                                  |
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>| `disabledMcpjsonServers`          | List of specific MCP servers from `.mcp.json` files to reject                                                                                                                                                                                                                   | `[&quot;filesystem&quot;]`                                                        |
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>| `allowedMcpServers`               | When set in managed-settings.json, allowlist of MCP servers users can configure. Undefined = no restrictions, empty array = lockdown. Applies to all scopes. Denylist takes precedence. See [Managed MCP configuration](/en/mcp#managed-mcp-configuration)                      | `[{ &quot;serverName&quot;: &quot;github&quot; }]`                                          |
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>| `deniedMcpServers`                | When set in managed-settings.json, denylist of MCP servers that are explicitly blocked. Applies to all scopes including managed servers. Denylist takes precedence over allowlist. See [Managed MCP configuration](/en/mcp#managed-mcp-configuration)                           | `[{ &quot;serverName&quot;: &quot;filesystem&quot; }]`                                      |
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>| `strictKnownMarketplaces`         | When set in managed-settings.json, allowlist of plugin marketplaces users can add. Undefined = no restrictions, empty array = lockdown. Applies to marketplace additions only. See [Managed marketplace restrictions](/en/plugin-marketplaces#managed-marketplace-restrictions) | `[{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/plugins&quot; }]`                 |
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>| `awsAuthRefresh`                  | Custom script that modifies the `.aws` directory (see [advanced credential configuration](/en/amazon-bedrock#advanced-credential-configuration))                                                                                                                                | `aws sso login --profile myprofile`                                     |
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>| `awsCredentialExport`             | Custom script that outputs JSON with AWS credentials (see [advanced credential configuration](/en/amazon-bedrock#advanced-credential-configuration))                                                                                                                            | `/bin/generate_aws_grant.sh`                                            |
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>| `alwaysThinkingEnabled`           | Enable [extended thinking](/en/common-workflows#use-extended-thinking-thinking-mode) by default for all sessions. Typically configured via the `/config` command rather than editing directly                                                                                   | `true`                                                                  |
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>| `plansDirectory`                  | Customize where plan files are stored. Path is relative to project root. Default: `~/.claude/plans`                                                                                                                                                                             | `&quot;./plans&quot;`                                                             |
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>| `showTurnDuration`                | Show turn duration messages after responses (e.g., &quot;Cooked for 1m 6s&quot;). Set to `false` to hide these messages                                                                                                                                                                   | `true`                                                                  |
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>| `spinnerVerbs`                    | Customize the action verbs shown in the spinner and turn duration messages. Set `mode` to `&quot;replace&quot;` to use only your verbs, or `&quot;append&quot;` to add them to the defaults                                                                                                         | `{&quot;mode&quot;: &quot;append&quot;, &quot;verbs&quot;: [&quot;Pondering&quot;, &quot;Crafting&quot;]}`                |
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>| `language`                        | Configure Claude&#39;s preferred response language (e.g., `&quot;japanese&quot;`, `&quot;spanish&quot;`, `&quot;french&quot;`). Claude will respond in this language by default                                                                                                                                   | `&quot;japanese&quot;`                                                            |
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>| `autoUpdatesChannel`              | Release channel to follow for updates. Use `&quot;stable&quot;` for a version that is typically about one week old and skips versions with major regressions, or `&quot;latest&quot;` (default) for the most recent release                                                                         | `&quot;stable&quot;`                                                              |
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>| `spinnerTipsEnabled`              | Show tips in the spinner while Claude is working. Set to `false` to disable tips (default: `true`)                                                                                                                                                                              | `false`                                                                 |
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>| `terminalProgressBarEnabled`      | Enable the terminal progress bar that shows progress in supported terminals like Windows Terminal and iTerm2 (default: `true`)                                                                                                                                                  | `false`                                                                 |
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>| `prefersReducedMotion`            | Reduce or disable UI animations (spinners, shimmer, flash effects) for accessibility                                                                                                                                                                                            | `true`                                                                  |
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>| `teammateMode`                    | How [agent team](/en/agent-teams) teammates display: `auto` (picks split panes in tmux or iTerm2, in-process otherwise), `in-process`, or `tmux`. See [set up agent teams](/en/agent-teams#set-up-agent-teams)                                                                  | `&quot;in-process&quot;`                                                          |
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>### Permission settings
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>| Keys                           | Description                                                                                                                                                                                                                                      | Example                                                                |
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>| :----------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------- |
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>| `allow`                        | Array of permission rules to allow tool use. See [Permission rule syntax](#permission-rule-syntax) below for pattern matching details                                                                                                            | `[ &quot;Bash(git diff *)&quot; ]`                                               |
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>| `ask`                          | Array of permission rules to ask for confirmation upon tool use. See [Permission rule syntax](#permission-rule-syntax) below                                                                                                                     | `[ &quot;Bash(git push *)&quot; ]`                                               |
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>| `deny`                         | Array of permission rules to deny tool use. Use this to exclude sensitive files from Claude Code access. See [Permission rule syntax](#permission-rule-syntax) and [Bash permission limitations](/en/permissions#tool-specific-permission-rules) | `[ &quot;WebFetch&quot;, &quot;Bash(curl *)&quot;, &quot;Read(./.env)&quot;, &quot;Read(./secrets/**)&quot; ]` |
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>| `additionalDirectories`        | Additional [working directories](/en/permissions#working-directories) that Claude has access to                                                                                                                                                  | `[ &quot;../docs/&quot; ]`                                                       |
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>| `defaultMode`                  | Default [permission mode](/en/permissions#permission-modes) when opening Claude Code                                                                                                                                                             | `&quot;acceptEdits&quot;`                                                        |
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>| `disableBypassPermissionsMode` | Set to `&quot;disable&quot;` to prevent `bypassPermissions` mode from being activated. This disables the `--dangerously-skip-permissions` command-line flag. See [managed settings](/en/permissions#managed-settings)                                      | `&quot;disable&quot;`                                                            |
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>### Permission rule syntax
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>
+<a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>Permission rules follow the format `Tool` or `Tool(specifier)`. Rules are evaluated in order: deny rules first, then ask, then allow. The first matching rule wins.
+<a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>Quick examples:
+<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>| Rule                           | Effect                                   |
+<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>| :----------------------------- | :--------------------------------------- |
+<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>| `Bash`                         | Matches all Bash commands                |
+<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>| `Bash(npm run *)`              | Matches commands starting with `npm run` |
+<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>| `Read(./.env)`                 | Matches reading the `.env` file          |
+<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>| `WebFetch(domain:example.com)` | Matches fetch requests to example.com    |
+<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>
+<a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>For the complete rule syntax reference, including wildcard behavior, tool-specific patterns for Read, Edit, WebFetch, MCP, and Task rules, and security limitations of Bash patterns, see [Permission rule syntax](/en/permissions#permission-rule-syntax).
+<a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>
+<a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>### Sandbox settings
+<a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>
+<a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>Configure advanced sandboxing behavior. Sandboxing isolates bash commands from your filesystem and network. See [Sandboxing](/en/sandboxing) for details.
+<a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>
+<a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a>**Filesystem and network restrictions** are configured via Read, Edit, and WebFetch permission rules, not via these sandbox settings.
+<a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a>
+<a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a>| Keys                          | Description                                                                                                                                                                                                                                                                                                                       | Example                         |
+<a id="__codelineno-0-80" name="__codelineno-0-80" href="#__codelineno-0-80"></a>| :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------ |
+<a id="__codelineno-0-81" name="__codelineno-0-81" href="#__codelineno-0-81"></a>| `enabled`                     | Enable bash sandboxing (macOS, Linux, and WSL2). Default: false                                                                                                                                                                                                                                                                   | `true`                          |
+<a id="__codelineno-0-82" name="__codelineno-0-82" href="#__codelineno-0-82"></a>| `autoAllowBashIfSandboxed`    | Auto-approve bash commands when sandboxed. Default: true                                                                                                                                                                                                                                                                          | `true`                          |
+<a id="__codelineno-0-83" name="__codelineno-0-83" href="#__codelineno-0-83"></a>| `excludedCommands`            | Commands that should run outside of the sandbox                                                                                                                                                                                                                                                                                   | `[&quot;git&quot;, &quot;docker&quot;]`             |
+<a id="__codelineno-0-84" name="__codelineno-0-84" href="#__codelineno-0-84"></a>| `allowUnsandboxedCommands`    | Allow commands to run outside the sandbox via the `dangerouslyDisableSandbox` parameter. When set to `false`, the `dangerouslyDisableSandbox` escape hatch is completely disabled and all commands must run sandboxed (or be in `excludedCommands`). Useful for enterprise policies that require strict sandboxing. Default: true | `false`                         |
+<a id="__codelineno-0-85" name="__codelineno-0-85" href="#__codelineno-0-85"></a>| `network.allowUnixSockets`    | Unix socket paths accessible in sandbox (for SSH agents, etc.)                                                                                                                                                                                                                                                                    | `[&quot;~/.ssh/agent-socket&quot;]`       |
+<a id="__codelineno-0-86" name="__codelineno-0-86" href="#__codelineno-0-86"></a>| `network.allowAllUnixSockets` | Allow all Unix socket connections in sandbox. Default: false                                                                                                                                                                                                                                                                      | `true`                          |
+<a id="__codelineno-0-87" name="__codelineno-0-87" href="#__codelineno-0-87"></a>| `network.allowLocalBinding`   | Allow binding to localhost ports (macOS only). Default: false                                                                                                                                                                                                                                                                     | `true`                          |
+<a id="__codelineno-0-88" name="__codelineno-0-88" href="#__codelineno-0-88"></a>| `network.allowedDomains`      | Array of domains to allow for outbound network traffic. Supports wildcards (e.g., `*.example.com`).                                                                                                                                                                                                                               | `[&quot;github.com&quot;, &quot;*.npmjs.org&quot;]` |
+<a id="__codelineno-0-89" name="__codelineno-0-89" href="#__codelineno-0-89"></a>| `network.httpProxyPort`       | HTTP proxy port used if you wish to bring your own proxy. If not specified, Claude will run its own proxy.                                                                                                                                                                                                                        | `8080`                          |
+<a id="__codelineno-0-90" name="__codelineno-0-90" href="#__codelineno-0-90"></a>| `network.socksProxyPort`      | SOCKS5 proxy port used if you wish to bring your own proxy. If not specified, Claude will run its own proxy.                                                                                                                                                                                                                      | `8081`                          |
+<a id="__codelineno-0-91" name="__codelineno-0-91" href="#__codelineno-0-91"></a>| `enableWeakerNestedSandbox`   | Enable weaker sandbox for unprivileged Docker environments (Linux and WSL2 only). **Reduces security.** Default: false                                                                                                                                                                                                            | `true`                          |
+<a id="__codelineno-0-92" name="__codelineno-0-92" href="#__codelineno-0-92"></a>
+<a id="__codelineno-0-93" name="__codelineno-0-93" href="#__codelineno-0-93"></a>**Configuration example:**
+<a id="__codelineno-0-94" name="__codelineno-0-94" href="#__codelineno-0-94"></a>
+<a id="__codelineno-0-95" name="__codelineno-0-95" href="#__codelineno-0-95"></a>```json  theme={null}
+<a id="__codelineno-0-96" name="__codelineno-0-96" href="#__codelineno-0-96"></a>{
+<a id="__codelineno-0-97" name="__codelineno-0-97" href="#__codelineno-0-97"></a>  &quot;sandbox&quot;: {
+<a id="__codelineno-0-98" name="__codelineno-0-98" href="#__codelineno-0-98"></a>    &quot;enabled&quot;: true,
+<a id="__codelineno-0-99" name="__codelineno-0-99" href="#__codelineno-0-99"></a>    &quot;autoAllowBashIfSandboxed&quot;: true,
+<a id="__codelineno-0-100" name="__codelineno-0-100" href="#__codelineno-0-100"></a>    &quot;excludedCommands&quot;: [&quot;docker&quot;],
+<a id="__codelineno-0-101" name="__codelineno-0-101" href="#__codelineno-0-101"></a>    &quot;network&quot;: {
+<a id="__codelineno-0-102" name="__codelineno-0-102" href="#__codelineno-0-102"></a>      &quot;allowedDomains&quot;: [&quot;github.com&quot;, &quot;*.npmjs.org&quot;, &quot;registry.yarnpkg.com&quot;],
+<a id="__codelineno-0-103" name="__codelineno-0-103" href="#__codelineno-0-103"></a>      &quot;allowUnixSockets&quot;: [
+<a id="__codelineno-0-104" name="__codelineno-0-104" href="#__codelineno-0-104"></a>        &quot;/var/run/docker.sock&quot;
+<a id="__codelineno-0-105" name="__codelineno-0-105" href="#__codelineno-0-105"></a>      ],
+<a id="__codelineno-0-106" name="__codelineno-0-106" href="#__codelineno-0-106"></a>      &quot;allowLocalBinding&quot;: true
+<a id="__codelineno-0-107" name="__codelineno-0-107" href="#__codelineno-0-107"></a>    }
+<a id="__codelineno-0-108" name="__codelineno-0-108" href="#__codelineno-0-108"></a>  },
+<a id="__codelineno-0-109" name="__codelineno-0-109" href="#__codelineno-0-109"></a>  &quot;permissions&quot;: {
+<a id="__codelineno-0-110" name="__codelineno-0-110" href="#__codelineno-0-110"></a>    &quot;deny&quot;: [
+<a id="__codelineno-0-111" name="__codelineno-0-111" href="#__codelineno-0-111"></a>      &quot;Read(.envrc)&quot;,
+<a id="__codelineno-0-112" name="__codelineno-0-112" href="#__codelineno-0-112"></a>      &quot;Read(~/.aws/**)&quot;
+<a id="__codelineno-0-113" name="__codelineno-0-113" href="#__codelineno-0-113"></a>    ]
+<a id="__codelineno-0-114" name="__codelineno-0-114" href="#__codelineno-0-114"></a>  }
+<a id="__codelineno-0-115" name="__codelineno-0-115" href="#__codelineno-0-115"></a>}
+</code></pre></div></p>
+<p><strong>Filesystem and network restrictions</strong> use standard permission rules:</p>
+<ul>
+<li>Use <code>Read</code> deny rules to block Claude from reading specific files or directories</li>
+<li>Use <code>Edit</code> allow rules to let Claude write to directories beyond the current working directory</li>
+<li>Use <code>Edit</code> deny rules to block writes to specific paths</li>
+<li>Use <code>WebFetch</code> allow/deny rules to control which network domains Claude can access</li>
+</ul>
+<h3 id="attribution-settings">Attribution settings<a class="headerlink" href="#attribution-settings" title="Permanent link">&para;</a></h3>
+<p>Claude Code adds attribution to git commits and pull requests. These are configured separately:</p>
+<ul>
+<li>Commits use <a href="https://git-scm.com/docs/git-interpret-trailers">git trailers</a> (like <code>Co-Authored-By</code>) by default,  which can be customized or disabled</li>
+<li>Pull request descriptions are plain text</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Keys</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>commit</code></td>
+<td style="text-align: left;">Attribution for git commits, including any trailers. Empty string hides commit attribution</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>pr</code></td>
+<td style="text-align: left;">Attribution for pull request descriptions. Empty string hides pull request attribution</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Default commit attribution:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>🤖 Generated with [Claude Code](https://claude.com/claude-code)
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>   Co-Authored-By: Claude Sonnet 4.5 &lt;noreply@anthropic.com&gt;
+</code></pre></div>
+<p><strong>Default pull request attribution:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>🤖 Generated with [Claude Code](https://claude.com/claude-code)
+</code></pre></div>
+<p><strong>Example:</strong></p>
+<p>```json  theme={null}
+{
+  "attribution": {
+    "commit": "Generated with AI\n\nCo-Authored-By: AI <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#97;&#105;&#64;&#101;&#120;&#97;&#109;&#112;&#108;&#101;&#46;&#99;&#111;&#109;">&#97;&#105;&#64;&#101;&#120;&#97;&#109;&#112;&#108;&#101;&#46;&#99;&#111;&#109;</a>",
+    "pr": ""
+  }
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>&lt;Note&gt;
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  The `attribution` setting takes precedence over the deprecated `includeCoAuthoredBy` setting. To hide all attribution, set `commit` and `pr` to empty strings.
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>&lt;/Note&gt;
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>### File suggestion settings
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>Configure a custom command for `@` file path autocomplete. The built-in file suggestion uses fast filesystem traversal, but large monorepos may benefit from project-specific indexing such as a pre-built file index or custom tooling.
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>```json  theme={null}
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>{
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  &quot;fileSuggestion&quot;: {
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    &quot;type&quot;: &quot;command&quot;,
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    &quot;command&quot;: &quot;~/.claude/file-suggestion.sh&quot;
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>  }
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>}
+</code></pre></div></p>
+<p>The command runs with the same environment variables as <a href="/en/hooks">hooks</a>, including <code>CLAUDE_PROJECT_DIR</code>. It receives JSON via stdin with a <code>query</code> field:</p>
+<p>```json  theme={null}
+{"query": "src/comp"}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Output newline-separated file paths to stdout (currently limited to 15):
+</code></pre></div>
+src/components/Button.tsx
+src/components/Modal.tsx
+src/components/Form.tsx
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>**Example:**
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>```bash  theme={null}
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>#!/bin/bash
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>query=$(cat | jq -r &#39;.query&#39;)
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>your-repo-file-index --query &quot;$query&quot; | head -20
+</code></pre></div></p>
+<h3 id="hook-configuration">Hook configuration<a class="headerlink" href="#hook-configuration" title="Permanent link">&para;</a></h3>
+<p><strong>Managed settings only</strong>: Controls which hooks are allowed to run. This setting can only be configured in <a href="#settings-files">managed settings</a> and provides administrators with strict control over hook execution.</p>
+<p><strong>Behavior when <code>allowManagedHooksOnly</code> is <code>true</code>:</strong></p>
+<ul>
+<li>Managed hooks and SDK hooks are loaded</li>
+<li>User hooks, project hooks, and plugin hooks are blocked</li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<p>```json  theme={null}
+{
+  "allowManagedHooksOnly": true
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>### Settings precedence
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>Settings apply in order of precedence. From highest to lowest:
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>1. **Managed settings** ([`managed-settings.json`](/en/permissions#managed-settings) or [server-managed settings](/en/server-managed-settings))
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>   * Policies deployed by IT/DevOps to system directories, or delivered from Anthropic&#39;s servers for Claude for Enterprise customers
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>   * Cannot be overridden by user or project settings
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>2. **Command line arguments**
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>   * Temporary overrides for a specific session
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>3. **Local project settings** (`.claude/settings.local.json`)
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>   * Personal project-specific settings
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>4. **Shared project settings** (`.claude/settings.json`)
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>   * Team-shared project settings in source control
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>5. **User settings** (`~/.claude/settings.json`)
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>   * Personal global settings
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>This hierarchy ensures that organizational policies are always enforced while still allowing teams and individuals to customize their experience.
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>For example, if your user settings allow `Bash(npm run *)` but a project&#39;s shared settings deny it, the project setting takes precedence and the command is blocked.
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>### Key points about the configuration system
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>* **Memory files (`CLAUDE.md`)**: Contain instructions and context that Claude loads at startup
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>* **Settings files (JSON)**: Configure permissions, environment variables, and tool behavior
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a>* **Skills**: Custom prompts that can be invoked with `/skill-name` or loaded by Claude automatically
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a>* **MCP servers**: Extend Claude Code with additional tools and integrations
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>* **Precedence**: Higher-level configurations (Managed) override lower-level ones (User/Project)
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a>* **Inheritance**: Settings are merged, with more specific settings adding to or overriding broader ones
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a>### System prompt
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a>Claude Code&#39;s internal system prompt is not published. To add custom instructions, use `CLAUDE.md` files or the `--append-system-prompt` flag.
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a>
+<a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a>### Excluding sensitive files
+<a id="__codelineno-6-39" name="__codelineno-6-39" href="#__codelineno-6-39"></a>
+<a id="__codelineno-6-40" name="__codelineno-6-40" href="#__codelineno-6-40"></a>To prevent Claude Code from accessing files containing sensitive information like API keys, secrets, and environment files, use the `permissions.deny` setting in your `.claude/settings.json` file:
+<a id="__codelineno-6-41" name="__codelineno-6-41" href="#__codelineno-6-41"></a>
+<a id="__codelineno-6-42" name="__codelineno-6-42" href="#__codelineno-6-42"></a>```json  theme={null}
+<a id="__codelineno-6-43" name="__codelineno-6-43" href="#__codelineno-6-43"></a>{
+<a id="__codelineno-6-44" name="__codelineno-6-44" href="#__codelineno-6-44"></a>  &quot;permissions&quot;: {
+<a id="__codelineno-6-45" name="__codelineno-6-45" href="#__codelineno-6-45"></a>    &quot;deny&quot;: [
+<a id="__codelineno-6-46" name="__codelineno-6-46" href="#__codelineno-6-46"></a>      &quot;Read(./.env)&quot;,
+<a id="__codelineno-6-47" name="__codelineno-6-47" href="#__codelineno-6-47"></a>      &quot;Read(./.env.*)&quot;,
+<a id="__codelineno-6-48" name="__codelineno-6-48" href="#__codelineno-6-48"></a>      &quot;Read(./secrets/**)&quot;,
+<a id="__codelineno-6-49" name="__codelineno-6-49" href="#__codelineno-6-49"></a>      &quot;Read(./config/credentials.json)&quot;,
+<a id="__codelineno-6-50" name="__codelineno-6-50" href="#__codelineno-6-50"></a>      &quot;Read(./build)&quot;
+<a id="__codelineno-6-51" name="__codelineno-6-51" href="#__codelineno-6-51"></a>    ]
+<a id="__codelineno-6-52" name="__codelineno-6-52" href="#__codelineno-6-52"></a>  }
+<a id="__codelineno-6-53" name="__codelineno-6-53" href="#__codelineno-6-53"></a>}
+</code></pre></div></p>
+<p>This replaces the deprecated <code>ignorePatterns</code> configuration. Files matching these patterns are excluded from file discovery and search results, and read operations on these files are denied.</p>
+<h2 id="subagent-configuration">Subagent configuration<a class="headerlink" href="#subagent-configuration" title="Permanent link">&para;</a></h2>
+<p>Claude Code supports custom AI subagents that can be configured at both user and project levels. These subagents are stored as Markdown files with YAML frontmatter:</p>
+<ul>
+<li><strong>User subagents</strong>: <code>~/.claude/agents/</code> - Available across all your projects</li>
+<li><strong>Project subagents</strong>: <code>.claude/agents/</code> - Specific to your project and can be shared with your team</li>
+</ul>
+<p>Subagent files define specialized AI assistants with custom prompts and tool permissions. Learn more about creating and using subagents in the <a href="/en/sub-agents">subagents documentation</a>.</p>
+<h2 id="plugin-configuration">Plugin configuration<a class="headerlink" href="#plugin-configuration" title="Permanent link">&para;</a></h2>
+<p>Claude Code supports a plugin system that lets you extend functionality with skills, agents, hooks, and MCP servers. Plugins are distributed through marketplaces and can be configured at both user and repository levels.</p>
+<h3 id="plugin-settings">Plugin settings<a class="headerlink" href="#plugin-settings" title="Permanent link">&para;</a></h3>
+<p>Plugin-related settings in <code>settings.json</code>:</p>
+<p>```json  theme={null}
+{
+  "enabledPlugins": {
+    "formatter@acme-tools": true,
+    "deployer@acme-tools": true,
+    "analyzer@security-plugins": false
+  },
+  "extraKnownMarketplaces": {
+    "acme-tools": {
+      "source": "github",
+      "repo": "acme-corp/claude-plugins"
+    }
+  }
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>#### `enabledPlugins`
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>Controls which plugins are enabled. Format: `&quot;plugin-name@marketplace-name&quot;: true/false`
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>**Scopes**:
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>* **User settings** (`~/.claude/settings.json`): Personal plugin preferences
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>* **Project settings** (`.claude/settings.json`): Project-specific plugins shared with team
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>* **Local settings** (`.claude/settings.local.json`): Per-machine overrides (not committed)
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>**Example**:
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>```json  theme={null}
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>{
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>  &quot;enabledPlugins&quot;: {
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    &quot;code-formatter@team-tools&quot;: true,
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    &quot;deployment-tools@team-tools&quot;: true,
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>    &quot;experimental-features@personal&quot;: false
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>  }
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>}
+</code></pre></div></p>
+<h4 id="extraknownmarketplaces"><code>extraKnownMarketplaces</code><a class="headerlink" href="#extraknownmarketplaces" title="Permanent link">&para;</a></h4>
+<p>Defines additional marketplaces that should be made available for the repository. Typically used in repository-level settings to ensure team members have access to required plugin sources.</p>
+<p><strong>When a repository includes <code>extraKnownMarketplaces</code></strong>:</p>
+<ol>
+<li>Team members are prompted to install the marketplace when they trust the folder</li>
+<li>Team members are then prompted to install plugins from that marketplace</li>
+<li>Users can skip unwanted marketplaces or plugins (stored in user settings)</li>
+<li>Installation respects trust boundaries and requires explicit consent</li>
+</ol>
+<p><strong>Example</strong>:</p>
+<p>```json  theme={null}
+{
+  "extraKnownMarketplaces": {
+    "acme-tools": {
+      "source": {
+        "source": "github",
+        "repo": "acme-corp/claude-plugins"
+      }
+    },
+    "security-plugins": {
+      "source": {
+        "source": "git",
+        "url": "https://git.example.com/security/plugins.git"
+      }
+    }
+  }
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>**Marketplace source types**:
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>* `github`: GitHub repository (uses `repo`)
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>* `git`: Any git URL (uses `url`)
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>* `directory`: Local filesystem path (uses `path`, for development only)
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>* `hostPattern`: regex pattern to match marketplace hosts (uses `hostPattern`)
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>#### `strictKnownMarketplaces`
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>**Managed settings only**: Controls which plugin marketplaces users are allowed to add. This setting can only be configured in [`managed-settings.json`](/en/permissions#managed-settings) and provides administrators with strict control over marketplace sources.
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>**Managed settings file locations**:
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>* **macOS**: `/Library/Application Support/ClaudeCode/managed-settings.json`
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>* **Linux and WSL**: `/etc/claude-code/managed-settings.json`
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>* **Windows**: `C:\Program Files\ClaudeCode\managed-settings.json`
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>**Key characteristics**:
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>* Only available in managed settings (`managed-settings.json`)
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>* Cannot be overridden by user or project settings (highest precedence)
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>* Enforced BEFORE network/filesystem operations (blocked sources never execute)
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>* Uses exact matching for source specifications (including `ref`, `path` for git sources), except `hostPattern`, which uses regex matching
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>**Allowlist behavior**:
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>* `undefined` (default): No restrictions - users can add any marketplace
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>* Empty array `[]`: Complete lockdown - users cannot add any new marketplaces
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>* List of sources: Users can only add marketplaces that match exactly
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>
+<a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>**All supported source types**:
+<a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a>
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>The allowlist supports seven marketplace source types. Most sources use exact matching, while `hostPattern` uses regex matching against the marketplace host.
+<a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>
+<a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>1. **GitHub repositories**:
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>```json  theme={null}
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/approved-plugins&quot; }
+<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/security-tools&quot;, &quot;ref&quot;: &quot;v2.0&quot; }
+<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/plugins&quot;, &quot;ref&quot;: &quot;main&quot;, &quot;path&quot;: &quot;marketplace&quot; }
+</code></pre></div></p>
+<p>Fields: <code>repo</code> (required), <code>ref</code> (optional: branch/tag/SHA), <code>path</code> (optional: subdirectory)</p>
+<ol>
+<li><strong>Git repositories</strong>:</li>
+</ol>
+<p>```json  theme={null}
+{ "source": "git", "url": "https://gitlab.example.com/tools/plugins.git" }
+{ "source": "git", "url": "https://bitbucket.org/acme-corp/plugins.git", "ref": "production" }
+{ "source": "git", "url": "ssh://git@git.example.com/plugins.git", "ref": "v3.1", "path": "approved" }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>Fields: `url` (required), `ref` (optional: branch/tag/SHA), `path` (optional: subdirectory)
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>3. **URL-based marketplaces**:
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>```json  theme={null}
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>{ &quot;source&quot;: &quot;url&quot;, &quot;url&quot;: &quot;https://plugins.example.com/marketplace.json&quot; }
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>{ &quot;source&quot;: &quot;url&quot;, &quot;url&quot;: &quot;https://cdn.example.com/marketplace.json&quot;, &quot;headers&quot;: { &quot;Authorization&quot;: &quot;Bearer ${TOKEN}&quot; } }
+</code></pre></div></p>
+<p>Fields: <code>url</code> (required), <code>headers</code> (optional: HTTP headers for authenticated access)</p>
+<p><Note>
+  URL-based marketplaces only download the <code>marketplace.json</code> file. They do not download plugin files from the server. Plugins in URL-based marketplaces must use external sources (GitHub, npm, or git URLs) rather than relative paths. For plugins with relative paths, use a Git-based marketplace instead. See <a href="/en/plugin-marketplaces#plugins-with-relative-paths-fail-in-url-based-marketplaces">Troubleshooting</a> for details.
+</Note></p>
+<ol>
+<li><strong>NPM packages</strong>:</li>
+</ol>
+<p>```json  theme={null}
+{ "source": "npm", "package": "@acme-corp/claude-plugins" }
+{ "source": "npm", "package": "@acme-corp/approved-marketplace" }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Fields: `package` (required, supports scoped packages)
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>5. **File paths**:
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>```json  theme={null}
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>{ &quot;source&quot;: &quot;file&quot;, &quot;path&quot;: &quot;/usr/local/share/claude/acme-marketplace.json&quot; }
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>{ &quot;source&quot;: &quot;file&quot;, &quot;path&quot;: &quot;/opt/acme-corp/plugins/marketplace.json&quot; }
+</code></pre></div></p>
+<p>Fields: <code>path</code> (required: absolute path to marketplace.json file)</p>
+<ol>
+<li><strong>Directory paths</strong>:</li>
+</ol>
+<p>```json  theme={null}
+{ "source": "directory", "path": "/usr/local/share/claude/acme-plugins" }
+{ "source": "directory", "path": "/opt/acme-corp/approved-marketplaces" }
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>Fields: `path` (required: absolute path to directory containing `.claude-plugin/marketplace.json`)
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>7. **Host pattern matching**:
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>```json  theme={null}
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>{ &quot;source&quot;: &quot;hostPattern&quot;, &quot;hostPattern&quot;: &quot;^github\\.example\\.com$&quot; }
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>{ &quot;source&quot;: &quot;hostPattern&quot;, &quot;hostPattern&quot;: &quot;^gitlab\\.internal\\.example\\.com$&quot; }
+</code></pre></div></p>
+<p>Fields: <code>hostPattern</code> (required: regex pattern to match against the marketplace host)</p>
+<p>Use host pattern matching when you want to allow all marketplaces from a specific host without enumerating each repository individually. This is useful for organizations with internal GitHub Enterprise or GitLab servers where developers create their own marketplaces.</p>
+<p>Host extraction by source type:</p>
+<ul>
+<li><code>github</code>: always matches against <code>github.com</code></li>
+<li><code>git</code>: extracts hostname from the URL (supports both HTTPS and SSH formats)</li>
+<li><code>url</code>: extracts hostname from the URL</li>
+<li><code>npm</code>, <code>file</code>, <code>directory</code>: not supported for host pattern matching</li>
+</ul>
+<p><strong>Configuration examples</strong>:</p>
+<p>Example: allow specific marketplaces only:</p>
+<p>```json  theme={null}
+{
+  "strictKnownMarketplaces": [
+    {
+      "source": "github",
+      "repo": "acme-corp/approved-plugins"
+    },
+    {
+      "source": "github",
+      "repo": "acme-corp/security-tools",
+      "ref": "v2.0"
+    },
+    {
+      "source": "url",
+      "url": "https://plugins.example.com/marketplace.json"
+    },
+    {
+      "source": "npm",
+      "package": "@acme-corp/compliance-plugins"
+    }
+  ]
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Example - Disable all marketplace additions:
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>```json  theme={null}
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>{
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>  &quot;strictKnownMarketplaces&quot;: []
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>}
+</code></pre></div></p>
+<p>Example: allow all marketplaces from an internal git server:</p>
+<p>```json  theme={null}
+{
+  "strictKnownMarketplaces": [
+    {
+      "source": "hostPattern",
+      "hostPattern": "^github\.example\.com$"
+    }
+  ]
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>**Exact matching requirements**:
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>Marketplace sources must match **exactly** for a user&#39;s addition to be allowed. For git-based sources (`github` and `git`), this includes all optional fields:
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>* The `repo` or `url` must match exactly
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>* The `ref` field must match exactly (or both be undefined)
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>* The `path` field must match exactly (or both be undefined)
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>Examples of sources that **do NOT match**:
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>```json  theme={null}
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>// These are DIFFERENT sources:
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/plugins&quot; }
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/plugins&quot;, &quot;ref&quot;: &quot;main&quot; }
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>// These are also DIFFERENT:
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/plugins&quot;, &quot;path&quot;: &quot;marketplace&quot; }
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>{ &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/plugins&quot; }
+</code></pre></div></p>
+<p><strong>Comparison with <code>extraKnownMarketplaces</code></strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th><code>strictKnownMarketplaces</code></th>
+<th><code>extraKnownMarketplaces</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Purpose</strong></td>
+<td>Organizational policy enforcement</td>
+<td>Team convenience</td>
+</tr>
+<tr>
+<td><strong>Settings file</strong></td>
+<td><code>managed-settings.json</code> only</td>
+<td>Any settings file</td>
+</tr>
+<tr>
+<td><strong>Behavior</strong></td>
+<td>Blocks non-allowlisted additions</td>
+<td>Auto-installs missing marketplaces</td>
+</tr>
+<tr>
+<td><strong>When enforced</strong></td>
+<td>Before network/filesystem operations</td>
+<td>After user trust prompt</td>
+</tr>
+<tr>
+<td><strong>Can be overridden</strong></td>
+<td>No (highest precedence)</td>
+<td>Yes (by higher precedence settings)</td>
+</tr>
+<tr>
+<td><strong>Source format</strong></td>
+<td>Direct source object</td>
+<td>Named marketplace with nested source</td>
+</tr>
+<tr>
+<td><strong>Use case</strong></td>
+<td>Compliance, security restrictions</td>
+<td>Onboarding, standardization</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Format difference</strong>:</p>
+<p><code>strictKnownMarketplaces</code> uses direct source objects:</p>
+<p>```json  theme={null}
+{
+  "strictKnownMarketplaces": [
+    { "source": "github", "repo": "acme-corp/plugins" }
+  ]
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>`extraKnownMarketplaces` requires named marketplaces:
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>```json  theme={null}
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>{
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>  &quot;extraKnownMarketplaces&quot;: {
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    &quot;acme-tools&quot;: {
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>      &quot;source&quot;: { &quot;source&quot;: &quot;github&quot;, &quot;repo&quot;: &quot;acme-corp/plugins&quot; }
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    }
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>  }
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>}
+</code></pre></div></p>
+<p><strong>Important notes</strong>:</p>
+<ul>
+<li>Restrictions are checked BEFORE any network requests or filesystem operations</li>
+<li>When blocked, users see clear error messages indicating the source is blocked by managed policy</li>
+<li>The restriction applies only to adding NEW marketplaces; previously installed marketplaces remain accessible</li>
+<li>Managed settings have the highest precedence and cannot be overridden</li>
+</ul>
+<p>See <a href="/en/plugin-marketplaces#managed-marketplace-restrictions">Managed marketplace restrictions</a> for user-facing documentation.</p>
+<h3 id="managing-plugins">Managing plugins<a class="headerlink" href="#managing-plugins" title="Permanent link">&para;</a></h3>
+<p>Use the <code>/plugin</code> command to manage plugins interactively:</p>
+<ul>
+<li>Browse available plugins from marketplaces</li>
+<li>Install/uninstall plugins</li>
+<li>Enable/disable plugins</li>
+<li>View plugin details (commands, agents, hooks provided)</li>
+<li>Add/remove marketplaces</li>
+</ul>
+<p>Learn more about the plugin system in the <a href="/en/plugins">plugins documentation</a>.</p>
+<h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<p>Claude Code supports the following environment variables to control its behavior:</p>
+<p><Note>
+  All environment variables can also be configured in <a href="#available-settings"><code>settings.json</code></a>. This is useful as a way to automatically set environment variables for each session, or to roll out a set of environment variables for your whole team or organization.
+</Note></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Variable</th>
+<th style="text-align: left;">Purpose</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_API_KEY</code></td>
+<td style="text-align: left;">API key sent as <code>X-Api-Key</code> header, typically for the Claude SDK (for interactive usage, run <code>/login</code>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_AUTH_TOKEN</code></td>
+<td style="text-align: left;">Custom value for the <code>Authorization</code> header (the value you set here will be prefixed with <code>Bearer</code>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_CUSTOM_HEADERS</code></td>
+<td style="text-align: left;">Custom headers to add to requests (<code>Name: Value</code> format, newline-separated for multiple headers)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_DEFAULT_HAIKU_MODEL</code></td>
+<td style="text-align: left;">See <a href="/en/model-config#environment-variables">Model configuration</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_DEFAULT_OPUS_MODEL</code></td>
+<td style="text-align: left;">See <a href="/en/model-config#environment-variables">Model configuration</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_DEFAULT_SONNET_MODEL</code></td>
+<td style="text-align: left;">See <a href="/en/model-config#environment-variables">Model configuration</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_FOUNDRY_API_KEY</code></td>
+<td style="text-align: left;">API key for Microsoft Foundry authentication (see <a href="/en/microsoft-foundry">Microsoft Foundry</a>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_FOUNDRY_BASE_URL</code></td>
+<td style="text-align: left;">Full base URL for the Foundry resource (for example, <code>https://my-resource.services.ai.azure.com/anthropic</code>). Alternative to <code>ANTHROPIC_FOUNDRY_RESOURCE</code> (see <a href="/en/microsoft-foundry">Microsoft Foundry</a>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_FOUNDRY_RESOURCE</code></td>
+<td style="text-align: left;">Foundry resource name (for example, <code>my-resource</code>). Required if <code>ANTHROPIC_FOUNDRY_BASE_URL</code> is not set (see <a href="/en/microsoft-foundry">Microsoft Foundry</a>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_MODEL</code></td>
+<td style="text-align: left;">Name of the model setting to use (see <a href="/en/model-config#environment-variables">Model Configuration</a>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_SMALL_FAST_MODEL</code></td>
+<td style="text-align: left;">[DEPRECATED] Name of <a href="/en/costs">Haiku-class model for background tasks</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION</code></td>
+<td style="text-align: left;">Override AWS region for the Haiku-class model when using Bedrock</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AWS_BEARER_TOKEN_BEDROCK</code></td>
+<td style="text-align: left;">Bedrock API key for authentication (see <a href="https://aws.amazon.com/blogs/machine-learning/accelerate-ai-development-with-amazon-bedrock-api-keys/">Bedrock API keys</a>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>BASH_DEFAULT_TIMEOUT_MS</code></td>
+<td style="text-align: left;">Default timeout for long-running bash commands</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>BASH_MAX_OUTPUT_LENGTH</code></td>
+<td style="text-align: left;">Maximum number of characters in bash outputs before they are middle-truncated</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>BASH_MAX_TIMEOUT_MS</code></td>
+<td style="text-align: left;">Maximum timeout the model can set for long-running bash commands</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_AUTOCOMPACT_PCT_OVERRIDE</code></td>
+<td style="text-align: left;">Set the percentage of context capacity (1-100) at which auto-compaction triggers. By default, auto-compaction triggers at approximately 95% capacity. Use lower values like <code>50</code> to compact earlier. Values above the default threshold have no effect. Applies to both main conversations and subagents. This percentage aligns with the <code>context_window.used_percentage</code> field available in <a href="/en/statusline">status line</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR</code></td>
+<td style="text-align: left;">Return to the original working directory after each Bash command</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD</code></td>
+<td style="text-align: left;">Set to <code>1</code> to load CLAUDE.md files from directories specified with <code>--add-dir</code>. By default, additional directories do not load memory files</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code></td>
+<td style="text-align: left;">Set to <code>1</code> to enable <a href="/en/agent-teams">agent teams</a>. Agent teams are experimental and disabled by default</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_API_KEY_HELPER_TTL_MS</code></td>
+<td style="text-align: left;">Interval in milliseconds at which credentials should be refreshed (when using <code>apiKeyHelper</code>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_CLIENT_CERT</code></td>
+<td style="text-align: left;">Path to client certificate file for mTLS authentication</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_CLIENT_KEY_PASSPHRASE</code></td>
+<td style="text-align: left;">Passphrase for encrypted CLAUDE_CODE_CLIENT_KEY (optional)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_CLIENT_KEY</code></td>
+<td style="text-align: left;">Path to client private key file for mTLS authentication</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_EFFORT_LEVEL</code></td>
+<td style="text-align: left;">Set the effort level for supported models. Values: <code>low</code>, <code>medium</code>, <code>high</code> (default). Lower effort is faster and cheaper, higher effort provides deeper reasoning. Currently supported with Opus 4.6 only. See <a href="/en/model-config#adjust-effort-level">Adjust effort level</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable Anthropic API-specific <code>anthropic-beta</code> headers. Use this if experiencing issues like "Unexpected value(s) for the <code>anthropic-beta</code> header" when using an LLM gateway with third-party providers</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_DISABLE_AUTO_MEMORY</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable <a href="/en/memory#auto-memory">auto memory</a>. Set to <code>0</code> to force auto memory on during the gradual rollout. When disabled, Claude does not create or load auto memory files</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_DISABLE_BACKGROUND_TASKS</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable all background task functionality, including the <code>run_in_background</code> parameter on Bash and subagent tools, auto-backgrounding, and the Ctrl+B shortcut</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable the "How is Claude doing?" session quality surveys. Also disabled when using third-party providers or when telemetry is disabled. See <a href="/en/data-usage#session-quality-surveys">Session quality surveys</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_EXIT_AFTER_STOP_DELAY</code></td>
+<td style="text-align: left;">Time in milliseconds to wait after the query loop becomes idle before automatically exiting. Useful for automated workflows and scripts using SDK mode</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_PROXY_RESOLVES_HOSTS</code></td>
+<td style="text-align: left;">Set to <code>true</code> to allow the proxy to perform DNS resolution instead of the caller. Opt-in for environments where the proxy should handle hostname resolution</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_TASK_LIST_ID</code></td>
+<td style="text-align: left;">Share a task list across sessions. Set the same ID in multiple Claude Code instances to coordinate on a shared task list. See <a href="/en/interactive-mode#task-list">Task list</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_TEAM_NAME</code></td>
+<td style="text-align: left;">Name of the agent team this teammate belongs to. Set automatically on <a href="/en/agent-teams">agent team</a> members</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_TMPDIR</code></td>
+<td style="text-align: left;">Override the temp directory used for internal temp files. Claude Code appends <code>/claude/</code> to this path. Default: <code>/tmp</code> on Unix/macOS, <code>os.tmpdir()</code> on Windows</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</code></td>
+<td style="text-align: left;">Equivalent of setting <code>DISABLE_AUTOUPDATER</code>, <code>DISABLE_BUG_COMMAND</code>, <code>DISABLE_ERROR_REPORTING</code>, and <code>DISABLE_TELEMETRY</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_DISABLE_TERMINAL_TITLE</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable automatic terminal title updates based on conversation context</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION</code></td>
+<td style="text-align: left;">Set to <code>false</code> to disable prompt suggestions (the "Prompt suggestions" toggle in <code>/config</code>). These are the grayed-out predictions that appear in your prompt input after Claude responds. See <a href="/en/interactive-mode#prompt-suggestions">Prompt suggestions</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_ENABLE_TASKS</code></td>
+<td style="text-align: left;">Set to <code>false</code> to temporarily revert to the previous TODO list instead of the task tracking system. Default: <code>true</code>. See <a href="/en/interactive-mode#task-list">Task list</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_ENABLE_TELEMETRY</code></td>
+<td style="text-align: left;">Set to <code>1</code> to enable OpenTelemetry data collection for metrics and logging. Required before configuring OTel exporters. See <a href="/en/monitoring-usage">Monitoring</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS</code></td>
+<td style="text-align: left;">Override the default token limit for file reads. Useful when you need to read larger files in full</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_HIDE_ACCOUNT_INFO</code></td>
+<td style="text-align: left;">Set to <code>1</code> to hide your email address and organization name from the Claude Code UI. Useful when streaming or recording</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL</code></td>
+<td style="text-align: left;">Skip auto-installation of IDE extensions</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_MAX_OUTPUT_TOKENS</code></td>
+<td style="text-align: left;">Set the maximum number of output tokens for most requests. Default: 32,000. Maximum: 64,000. Increasing this value reduces the effective context window available before <a href="/en/costs#reduce-token-usage">auto-compaction</a> triggers.</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS</code></td>
+<td style="text-align: left;">Interval for refreshing dynamic OpenTelemetry headers in milliseconds (default: 1740000 / 29 minutes). See <a href="/en/monitoring-usage#dynamic-headers">Dynamic headers</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_PLAN_MODE_REQUIRED</code></td>
+<td style="text-align: left;">Auto-set to <code>true</code> on <a href="/en/agent-teams">agent team</a> teammates that require plan approval. Read-only: set by Claude Code when spawning teammates. See <a href="/en/agent-teams#require-plan-approval-for-teammates">require plan approval</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_SHELL</code></td>
+<td style="text-align: left;">Override automatic shell detection. Useful when your login shell differs from your preferred working shell (for example, <code>bash</code> vs <code>zsh</code>)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_SHELL_PREFIX</code></td>
+<td style="text-align: left;">Command prefix to wrap all bash commands (for example, for logging or auditing). Example: <code>/path/to/logger.sh</code> will execute <code>/path/to/logger.sh &lt;command&gt;</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_SKIP_BEDROCK_AUTH</code></td>
+<td style="text-align: left;">Skip AWS authentication for Bedrock (for example, when using an LLM gateway)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_SKIP_FOUNDRY_AUTH</code></td>
+<td style="text-align: left;">Skip Azure authentication for Microsoft Foundry (for example, when using an LLM gateway)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_SKIP_VERTEX_AUTH</code></td>
+<td style="text-align: left;">Skip Google authentication for Vertex (for example, when using an LLM gateway)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_SUBAGENT_MODEL</code></td>
+<td style="text-align: left;">See <a href="/en/model-config">Model configuration</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_USE_BEDROCK</code></td>
+<td style="text-align: left;">Use <a href="/en/amazon-bedrock">Bedrock</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_USE_FOUNDRY</code></td>
+<td style="text-align: left;">Use <a href="/en/microsoft-foundry">Microsoft Foundry</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CODE_USE_VERTEX</code></td>
+<td style="text-align: left;">Use <a href="/en/google-vertex-ai">Vertex</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CLAUDE_CONFIG_DIR</code></td>
+<td style="text-align: left;">Customize where Claude Code stores its configuration and data files</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_AUTOUPDATER</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable automatic updates.</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_BUG_COMMAND</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable the <code>/bug</code> command</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_COST_WARNINGS</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable cost warning messages</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_ERROR_REPORTING</code></td>
+<td style="text-align: left;">Set to <code>1</code> to opt out of Sentry error reporting</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_INSTALLATION_CHECKS</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable installation warnings. Use only when manually managing the installation location, as this can mask issues with standard installations</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_NON_ESSENTIAL_MODEL_CALLS</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable model calls for non-critical paths like flavor text</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_PROMPT_CACHING</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable prompt caching for all models (takes precedence over per-model settings)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_PROMPT_CACHING_HAIKU</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable prompt caching for Haiku models</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_PROMPT_CACHING_OPUS</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable prompt caching for Opus models</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_PROMPT_CACHING_SONNET</code></td>
+<td style="text-align: left;">Set to <code>1</code> to disable prompt caching for Sonnet models</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DISABLE_TELEMETRY</code></td>
+<td style="text-align: left;">Set to <code>1</code> to opt out of Statsig telemetry (note that Statsig events do not include user data like code, file paths, or bash commands)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ENABLE_TOOL_SEARCH</code></td>
+<td style="text-align: left;">Controls <a href="/en/mcp#scale-with-mcp-tool-search">MCP tool search</a>. Values: <code>auto</code> (default, enables at 10% context), <code>auto:N</code> (custom threshold, e.g., <code>auto:5</code> for 5%), <code>true</code> (always on), <code>false</code> (disabled)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>FORCE_AUTOUPDATE_PLUGINS</code></td>
+<td style="text-align: left;">Set to <code>true</code> to force plugin auto-updates even when the main auto-updater is disabled via <code>DISABLE_AUTOUPDATER</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>HTTP_PROXY</code></td>
+<td style="text-align: left;">Specify HTTP proxy server for network connections</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>HTTPS_PROXY</code></td>
+<td style="text-align: left;">Specify HTTPS proxy server for network connections</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>IS_DEMO</code></td>
+<td style="text-align: left;">Set to <code>true</code> to enable demo mode: hides email and organization from the UI, skips onboarding, and hides internal commands. Useful for streaming or recording sessions</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MAX_MCP_OUTPUT_TOKENS</code></td>
+<td style="text-align: left;">Maximum number of tokens allowed in MCP tool responses. Claude Code displays a warning when output exceeds 10,000 tokens (default: 25000)</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MAX_THINKING_TOKENS</code></td>
+<td style="text-align: left;">Override the <a href="https://platform.claude.com/docs/en/build-with-claude/extended-thinking">extended thinking</a> token budget. Thinking is enabled at max budget (31,999 tokens) by default. Use this to limit the budget (for example, <code>MAX_THINKING_TOKENS=10000</code>) or disable thinking entirely (<code>MAX_THINKING_TOKENS=0</code>). For Opus 4.6, thinking depth is controlled by <a href="/en/model-config#adjust-effort-level">effort level</a> instead, and this variable is ignored unless set to <code>0</code> to disable thinking.</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MCP_CLIENT_SECRET</code></td>
+<td style="text-align: left;">OAuth client secret for MCP servers that require <a href="/en/mcp#use-pre-configured-oauth-credentials">pre-configured credentials</a>. Avoids the interactive prompt when adding a server with <code>--client-secret</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MCP_OAUTH_CALLBACK_PORT</code></td>
+<td style="text-align: left;">Fixed port for the OAuth redirect callback, as an alternative to <code>--callback-port</code> when adding an MCP server with <a href="/en/mcp#use-pre-configured-oauth-credentials">pre-configured credentials</a></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MCP_TIMEOUT</code></td>
+<td style="text-align: left;">Timeout in milliseconds for MCP server startup</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MCP_TOOL_TIMEOUT</code></td>
+<td style="text-align: left;">Timeout in milliseconds for MCP tool execution</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>NO_PROXY</code></td>
+<td style="text-align: left;">List of domains and IPs to which requests will be directly issued, bypassing proxy</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SLASH_COMMAND_TOOL_CHAR_BUDGET</code></td>
+<td style="text-align: left;">Override the character budget for skill metadata shown to the <a href="/en/skills#control-who-invokes-a-skill">Skill tool</a>. The budget scales dynamically at 2% of the context window, with a fallback of 16,000 characters. Legacy name kept for backwards compatibility</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>USE_BUILTIN_RIPGREP</code></td>
+<td style="text-align: left;">Set to <code>0</code> to use system-installed <code>rg</code> instead of <code>rg</code> included with Claude Code</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>VERTEX_REGION_CLAUDE_3_5_HAIKU</code></td>
+<td style="text-align: left;">Override region for Claude 3.5 Haiku when using Vertex AI</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>VERTEX_REGION_CLAUDE_3_7_SONNET</code></td>
+<td style="text-align: left;">Override region for Claude 3.7 Sonnet when using Vertex AI</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>VERTEX_REGION_CLAUDE_4_0_OPUS</code></td>
+<td style="text-align: left;">Override region for Claude 4.0 Opus when using Vertex AI</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>VERTEX_REGION_CLAUDE_4_0_SONNET</code></td>
+<td style="text-align: left;">Override region for Claude 4.0 Sonnet when using Vertex AI</td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>VERTEX_REGION_CLAUDE_4_1_OPUS</code></td>
+<td style="text-align: left;">Override region for Claude 4.1 Opus when using Vertex AI</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="tools-available-to-claude">Tools available to Claude<a class="headerlink" href="#tools-available-to-claude" title="Permanent link">&para;</a></h2>
+<p>Claude Code has access to a set of powerful tools that help it understand and modify your codebase:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tool</th>
+<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Permission Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>AskUserQuestion</strong></td>
+<td style="text-align: left;">Asks multiple-choice questions to gather requirements or clarify ambiguity</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Bash</strong></td>
+<td style="text-align: left;">Executes shell commands in your environment (see <a href="#bash-tool-behavior">Bash tool behavior</a> below)</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>TaskOutput</strong></td>
+<td style="text-align: left;">Retrieves output from a background task (bash shell or subagent)</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Edit</strong></td>
+<td style="text-align: left;">Makes targeted edits to specific files</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>ExitPlanMode</strong></td>
+<td style="text-align: left;">Prompts the user to exit plan mode and start coding</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Glob</strong></td>
+<td style="text-align: left;">Finds files based on pattern matching</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Grep</strong></td>
+<td style="text-align: left;">Searches for patterns in file contents</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>KillShell</strong></td>
+<td style="text-align: left;">Kills a running background bash shell by its ID</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>MCPSearch</strong></td>
+<td style="text-align: left;">Searches for and loads MCP tools when <a href="/en/mcp#scale-with-mcp-tool-search">tool search</a> is enabled</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>NotebookEdit</strong></td>
+<td style="text-align: left;">Modifies Jupyter notebook cells</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Read</strong></td>
+<td style="text-align: left;">Reads the contents of files</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Skill</strong></td>
+<td style="text-align: left;">Executes a <a href="/en/skills#control-who-invokes-a-skill">skill</a> within the main conversation</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Task</strong></td>
+<td style="text-align: left;">Runs a sub-agent to handle complex, multi-step tasks</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>TaskCreate</strong></td>
+<td style="text-align: left;">Creates a new task in the task list</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>TaskGet</strong></td>
+<td style="text-align: left;">Retrieves full details for a specific task</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>TaskList</strong></td>
+<td style="text-align: left;">Lists all tasks with their current status</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>TaskUpdate</strong></td>
+<td style="text-align: left;">Updates task status, dependencies, details, or deletes tasks</td>
+<td style="text-align: left;">No</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>WebFetch</strong></td>
+<td style="text-align: left;">Fetches content from a specified URL</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>WebSearch</strong></td>
+<td style="text-align: left;">Performs web searches with domain filtering</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Write</strong></td>
+<td style="text-align: left;">Creates or overwrites files</td>
+<td style="text-align: left;">Yes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>LSP</strong></td>
+<td style="text-align: left;">Code intelligence via language servers. Reports type errors and warnings automatically after file edits. Also supports navigation operations: jump to definitions, find references, get type info, list symbols, find implementations, trace call hierarchies. Requires a <a href="/en/discover-plugins#code-intelligence">code intelligence plugin</a> and its language server binary</td>
+<td style="text-align: left;">No</td>
+</tr>
+</tbody>
+</table>
+<p>Permission rules can be configured using <code>/allowed-tools</code> or in <a href="/en/settings#available-settings">permission settings</a>. Also see <a href="/en/permissions#tool-specific-permission-rules">Tool-specific permission rules</a>.</p>
+<h3 id="bash-tool-behavior">Bash tool behavior<a class="headerlink" href="#bash-tool-behavior" title="Permanent link">&para;</a></h3>
+<p>The Bash tool executes shell commands with the following persistence behavior:</p>
+<ul>
+<li><strong>Working directory persists</strong>: When Claude changes the working directory (for example, <code>cd /path/to/dir</code>), subsequent Bash commands will execute in that directory. You can use <code>CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1</code> to reset to the project directory after each command.</li>
+<li><strong>Environment variables do NOT persist</strong>: Environment variables set in one Bash command (for example, <code>export MY_VAR=value</code>) are <strong>not</strong> available in subsequent Bash commands. Each Bash command runs in a fresh shell environment.</li>
+</ul>
+<p>To make environment variables available in Bash commands, you have <strong>three options</strong>:</p>
+<p><strong>Option 1: Activate environment before starting Claude Code</strong> (simplest approach)</p>
+<p>Activate your virtual environment in your terminal before launching Claude Code:</p>
+<p>```bash  theme={null}
+conda activate myenv</p>
+<h1 id="or-source-pathtovenvbinactivate">or: source /path/to/venv/bin/activate<a class="headerlink" href="#or-source-pathtovenvbinactivate" title="Permanent link">&para;</a></h1>
+<p>claude
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>This works for shell environments but environment variables set within Claude&#39;s Bash commands will not persist between commands.
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>**Option 2: Set CLAUDE\_ENV\_FILE before starting Claude Code** (persistent environment setup)
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>Export the path to a shell script containing your environment setup:
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>```bash  theme={null}
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>export CLAUDE_ENV_FILE=/path/to/env-setup.sh
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>claude
+</code></pre></div></p>
+<p>Where <code>/path/to/env-setup.sh</code> contains:</p>
+<p>```bash  theme={null}
+conda activate myenv</p>
+<h1 id="or-source-pathtovenvbinactivate_1">or: source /path/to/venv/bin/activate<a class="headerlink" href="#or-source-pathtovenvbinactivate_1" title="Permanent link">&para;</a></h1>
+<h1 id="or-export-my_varvalue">or: export MY_VAR=value<a class="headerlink" href="#or-export-my_varvalue" title="Permanent link">&para;</a></h1>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Claude Code will source this file before each Bash command, making the environment persistent across all commands.
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>**Option 3: Use a SessionStart hook** (project-specific configuration)
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>Configure in `.claude/settings.json`:
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>```json  theme={null}
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>{
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>  &quot;hooks&quot;: {
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    &quot;SessionStart&quot;: [{
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>      &quot;matcher&quot;: &quot;startup&quot;,
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>      &quot;hooks&quot;: [{
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>        &quot;type&quot;: &quot;command&quot;,
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>        &quot;command&quot;: &quot;echo &#39;conda activate myenv&#39; &gt;&gt; \&quot;$CLAUDE_ENV_FILE\&quot;&quot;
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>      }]
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>    }]
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>  }
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>}
+</code></pre></div>
+<p>The hook writes to <code>$CLAUDE_ENV_FILE</code>, which is then sourced before each Bash command. This is ideal for team-shared project configurations.</p>
+<p>See <a href="/en/hooks#persist-environment-variables">SessionStart hooks</a> for more details on Option 3.</p>
+<h3 id="extending-tools-with-hooks">Extending tools with hooks<a class="headerlink" href="#extending-tools-with-hooks" title="Permanent link">&para;</a></h3>
+<p>You can run custom commands before or after any tool executes using
+<a href="/en/hooks-guide">Claude Code hooks</a>.</p>
+<p>For example, you could automatically run a Python formatter after Claude
+modifies Python files, or prevent modifications to production configuration
+files by blocking Write operations to certain paths.</p>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="/en/permissions">Permissions</a>: permission system, rule syntax, tool-specific patterns, and managed policies</li>
+<li><a href="/en/authentication">Authentication</a>: set up user access to Claude Code</li>
+<li><a href="/en/troubleshooting">Troubleshooting</a>: solutions for common configuration issues</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

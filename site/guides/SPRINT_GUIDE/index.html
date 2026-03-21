@@ -1,0 +1,2813 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/guides/SPRINT_GUIDE/">
+      
+      
+        <link rel="prev" href="../ISSUE_MANAGEMENT_GUIDE/">
+      
+      
+        <link rel="next" href="../LOOPS_GUIDE/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Sprint Guide - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#sprint-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Sprint Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../claude-code/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is a Sprint?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-waves-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Waves Work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How Waves Work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#single-vs-multi-issue-waves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single vs. Multi-Issue Waves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-contention-splitting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Contention Splitting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sprint-file-anatomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sprint File Anatomy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#creating-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Creating a Sprint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating a Sprint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#interactive-llcreate-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactive: /ll:create-sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#direct-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reviewing-before-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reviewing Before Running
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a Sprint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running a Sprint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pre-flight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-flight
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wave-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#failed-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failed Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graceful-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graceful Shutdown
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#handling-interruptions-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handling Interruptions (Resume)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#editing-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing a Sprint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspecting-sprints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspecting Sprints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-bug-fix-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Bug-Fix Sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#themed-sprint-test-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Themed Sprint (Test Coverage)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sprint-with-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sprint with Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resume-an-interrupted-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume an Interrupted Sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pre-pr-quality-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-PR Quality Sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-plan-a-feature-sprint-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full "Plan a Feature Sprint" Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is a Sprint?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-waves-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Waves Work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How Waves Work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#single-vs-multi-issue-waves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single vs. Multi-Issue Waves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-contention-splitting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Contention Splitting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sprint-file-anatomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sprint File Anatomy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#creating-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Creating a Sprint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating a Sprint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#interactive-llcreate-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactive: /ll:create-sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#direct-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reviewing-before-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reviewing Before Running
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a Sprint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running a Sprint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pre-flight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-flight
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wave-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#failed-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failed Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graceful-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graceful Shutdown
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#handling-interruptions-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handling Interruptions (Resume)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#editing-a-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing a Sprint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspecting-sprints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspecting Sprints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-bug-fix-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Bug-Fix Sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#themed-sprint-test-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Themed Sprint (Test Coverage)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sprint-with-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sprint with Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resume-an-interrupted-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume an Interrupted Sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pre-pr-quality-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-PR Quality Sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-plan-a-feature-sprint-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full "Plan a Feature Sprint" Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="sprint-guide">Sprint Guide<a class="headerlink" href="#sprint-guide" title="Permanent link">&para;</a></h1>
+<h2 id="what-is-a-sprint">What Is a Sprint?<a class="headerlink" href="#what-is-a-sprint" title="Permanent link">&para;</a></h2>
+<p>A sprint is a named, persistent list of issues executed as a coordinated batch. It lives in <code>.sprints/</code> as a YAML file, travels with your repository, and can be paused and resumed across sessions.</p>
+<p>Why use a sprint instead of running issues one at a time?</p>
+<ul>
+<li><strong>Batching</strong> — queue up a day or week of work, then execute hands-free</li>
+<li><strong>Dependency awareness</strong> — the system computes execution order automatically; you don't sequence by hand</li>
+<li><strong>Parallelism</strong> — independent issues run simultaneously in isolated worktrees</li>
+<li><strong>Resume</strong> — if execution is interrupted, pick up exactly where you left off</li>
+</ul>
+<p>The three batch tools each serve a different need:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ll-auto</code></td>
+<td>Sequential, unordered queue; simplest setup, no dependencies needed</td>
+</tr>
+<tr>
+<td><code>ll-parallel</code></td>
+<td>Ad-hoc parallel run of a few independent issues</td>
+</tr>
+<tr>
+<td><code>ll-sprint</code></td>
+<td>Curated list with dependency ordering, waves, file contention handling, and resume</td>
+</tr>
+</tbody>
+</table>
+<p>For anything beyond a few issues or anything with known dependencies, use <code>ll-sprint</code>.</p>
+<hr />
+<h2 id="how-waves-work">How Waves Work<a class="headerlink" href="#how-waves-work" title="Permanent link">&para;</a></h2>
+<p>The most important concept in sprint execution is the <strong>wave</strong>. A wave is a group of issues that can run at the same time because none of them depend on each other.</p>
+<p>The system computes waves automatically by performing a topological sort of the dependency graph:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Given issues and their blockers:
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  FEAT-001  (no blockers)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  BUG-010   (no blockers)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  FEAT-002  (blocked by FEAT-001)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  FEAT-003  (blocked by FEAT-001)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  FEAT-004  (blocked by FEAT-002, FEAT-003)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>Wave 1: FEAT-001, BUG-010    ← parallel (no blockers)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>Wave 2: FEAT-002, FEAT-003   ← parallel (Wave 1 done)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>Wave 3: FEAT-004             ← solo (Wave 2 done)
+</code></pre></div>
+<p>You don't configure waves — you configure dependencies (via the <code>blocked_by</code> field in issue files), and the system derives the wave structure.</p>
+<h3 id="single-vs-multi-issue-waves">Single vs. Multi-Issue Waves<a class="headerlink" href="#single-vs-multi-issue-waves" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Single-issue wave</strong>: runs in-place without worktree overhead (fast path)</li>
+<li><strong>Multi-issue wave</strong>: each issue runs in its own git worktree in parallel, up to <code>max_workers</code> at once</li>
+</ul>
+<h3 id="file-contention-splitting">File Contention Splitting<a class="headerlink" href="#file-contention-splitting" title="Permanent link">&para;</a></h3>
+<p>When two issues in the same wave touch the same files, running them in parallel would cause merge conflicts. The system detects this automatically using the Integration Map sections of each issue file, and splits the wave into sequential sub-waves:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Wave 2 (2 issues, serialized — file overlap):
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  Step 1/2:
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    └── FEAT-002: Add middleware layer (P2)
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  Step 2/2:
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    └── FEAT-003: Update middleware config (P2)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  Contended files: src/middleware.py, src/config.py
+</code></pre></div>
+<p>Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently.</p>
+<hr />
+<h2 id="sprint-file-anatomy">Sprint File Anatomy<a class="headerlink" href="#sprint-file-anatomy" title="Permanent link">&para;</a></h2>
+<p>Sprint files live in <code>.sprints/</code> and follow a simple YAML format:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bug-fixes</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;All</span><span class="nv"> </span><span class="s">active</span><span class="nv"> </span><span class="s">P1-P2</span><span class="nv"> </span><span class="s">bug</span><span class="nv"> </span><span class="s">fixes</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">sprint&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">created</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2026-02-13T10:00:00+00:00&quot;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nt">issues</span><span class="p">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">BUG-372</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">BUG-403</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">BUG-415</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="nt">options</span><span class="p">:</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3600</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">  </span><span class="nt">max_workers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>yes</td>
+<td>Sprint identifier; used as filename (<code>&lt;name&gt;.yaml</code>)</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>no</td>
+<td>Human-readable purpose for the sprint</td>
+</tr>
+<tr>
+<td><code>created</code></td>
+<td>yes</td>
+<td>ISO 8601 timestamp; set automatically on creation</td>
+</tr>
+<tr>
+<td><code>issues</code></td>
+<td>yes</td>
+<td>List of issue IDs (e.g., <code>BUG-001</code>, <code>FEAT-010</code>)</td>
+</tr>
+<tr>
+<td><code>options.timeout</code></td>
+<td>no</td>
+<td>Per-issue timeout in seconds (default: 3600)</td>
+</tr>
+<tr>
+<td><code>options.max_workers</code></td>
+<td>no</td>
+<td>Max parallel workers per wave (default: 2)</td>
+</tr>
+<tr>
+<td><code>options.max_iterations</code></td>
+<td>no</td>
+<td>Max Claude iterations per issue (default: 100)</td>
+</tr>
+</tbody>
+</table>
+<p>Issue IDs in the sprint list are resolved to actual files at runtime. The sprint itself only stores IDs — the file search happens when you run.</p>
+<hr />
+<h2 id="creating-a-sprint">Creating a Sprint<a class="headerlink" href="#creating-a-sprint" title="Permanent link">&para;</a></h2>
+<h3 id="interactive-llcreate-sprint">Interactive: /ll:create-sprint<a class="headerlink" href="#interactive-llcreate-sprint" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>/ll:create-sprint
+</code></pre></div>
+<p>The interactive skill walks you through sprint creation:</p>
+<ol>
+<li><strong>Goal clarification</strong> — asks what you're trying to accomplish</li>
+<li><strong>Auto-grouping</strong> — proposes issue groupings based on your backlog; you select or reject each</li>
+<li><strong>Dependency validation</strong> — checks that blocked issues are included or have their blockers satisfied</li>
+<li><strong>Confirmation</strong> — shows the proposed sprint before writing the YAML</li>
+</ol>
+<p>The skill proposes six auto-grouping strategies:</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Groups issues by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Priority cluster</td>
+<td>P0-P1 together, P2-P3 together, etc.</td>
+</tr>
+<tr>
+<td>Type cluster</td>
+<td>All bugs, all features, all enhancements</td>
+</tr>
+<tr>
+<td>No-blockers sprint</td>
+<td>Only issues with no dependencies (fully parallelizable)</td>
+</tr>
+<tr>
+<td>Theme-based</td>
+<td>Keyword clusters: test coverage, performance, security, docs</td>
+</tr>
+<tr>
+<td>Component/file-based</td>
+<td>Issues touching the same files or directories</td>
+</tr>
+<tr>
+<td>Goal-aligned</td>
+<td>Mapped against <code>ll-goals.md</code> if present</td>
+</tr>
+</tbody>
+</table>
+<p>You can accept one strategy, mix strategies, or skip auto-grouping and specify issues directly.</p>
+<h3 id="direct-cli">Direct CLI<a class="headerlink" href="#direct-cli" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ll-sprint<span class="w"> </span>create<span class="w"> </span>sprint-name<span class="w"> </span>--issues<span class="w"> </span>BUG-001,FEAT-010,ENH-020
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>ll-sprint<span class="w"> </span>create<span class="w"> </span>sprint-name<span class="w"> </span>--issues<span class="w"> </span>BUG-001,FEAT-010<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Q1 fixes&quot;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>ll-sprint<span class="w"> </span>create<span class="w"> </span>sprint-name<span class="w"> </span>--issues<span class="w"> </span>BUG-001,FEAT-010<span class="w"> </span>--max-workers<span class="w"> </span><span class="m">3</span><span class="w"> </span>--timeout<span class="w"> </span><span class="m">7200</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>ll-sprint<span class="w"> </span>create<span class="w"> </span>sprint-name<span class="w"> </span>--issues<span class="w"> </span>BUG-001,FEAT-010,ENH-020<span class="w"> </span>--skip<span class="w"> </span>BUG-001<span class="w">    </span><span class="c1"># exclude specific IDs</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>ll-sprint<span class="w"> </span>create<span class="w"> </span>sprint-name<span class="w"> </span>--issues<span class="w"> </span>BUG-001,FEAT-010,ENH-020<span class="w"> </span>--type<span class="w"> </span>bug,feat<span class="w">   </span><span class="c1"># filter by issue type</span>
+</code></pre></div>
+<p>The CLI creates a sprint immediately without interactive prompting. Use this when you already know exactly which issues to include.</p>
+<hr />
+<h2 id="reviewing-before-running">Reviewing Before Running<a class="headerlink" href="#reviewing-before-running" title="Permanent link">&para;</a></h2>
+<p>Before executing a sprint, especially if issues have been refined since the sprint was created, run a health check:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>/ll:review-sprint bug-fixes
+</code></pre></div>
+<p>The skill performs a six-phase analysis:</p>
+<ol>
+<li><strong>Staleness check</strong> — are issue files still current, or have they been superseded?</li>
+<li><strong>Priority drift</strong> — have priorities changed since the sprint was built?</li>
+<li><strong>Dependency cycles</strong> — would execution deadlock?</li>
+<li><strong>File contention warnings</strong> — which issues will serialize and why?</li>
+<li><strong>Backlog scan</strong> — are there related issues not in the sprint that belong?</li>
+<li><strong>Removal proposals</strong> — issues that are completed, invalid, or out of scope</li>
+</ol>
+<p>The skill is interactive: it proposes changes and you approve or reject each one. Accepted changes are applied via <code>ll-sprint edit</code>. When you're done reviewing, the sprint is ready to run.</p>
+<blockquote>
+<p><strong>When to review</strong>: any time more than a day has passed since you built the sprint, or after running <code>/ll:refine-issue</code> or <code>/ll:verify-issues</code> on issues in the sprint.</p>
+</blockquote>
+<hr />
+<h2 id="running-a-sprint">Running a Sprint<a class="headerlink" href="#running-a-sprint" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--dry-run<span class="w">                       </span><span class="c1"># show plan without executing</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--max-workers<span class="w"> </span><span class="m">3</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--timeout<span class="w"> </span><span class="m">7200</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--skip<span class="w"> </span>BUG-010<span class="w">                  </span><span class="c1"># exclude specific issues</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--only<span class="w"> </span>BUG-001,FEAT-010<span class="w">         </span><span class="c1"># run only these issues (allowlist)</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--type<span class="w"> </span>bug,feat<span class="w">                 </span><span class="c1"># filter by issue type at run time</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--skip-analysis<span class="w">                 </span><span class="c1"># bypass pre-execution dependency analysis</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--quiet<span class="w">                         </span><span class="c1"># suppress progress output</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--handoff-threshold<span class="w"> </span><span class="m">80</span><span class="w">          </span><span class="c1"># context window handoff threshold (1–100)</span>
+</code></pre></div>
+<p>The <code>--handoff-threshold</code> flag controls when Claude Code hands off to a fresh session mid-issue. During a long-running issue, Claude's context window fills up as it reads files, runs tools, and accumulates output. When context usage reaches the threshold (expressed as a percentage from 1 to 100), the runner writes a continuation prompt and starts a new session to complete the remaining work. Lower values trigger handoff earlier and more conservatively; higher values let sessions run longer before handing off. The default is 80 (hand off at 80% context usage).</p>
+<h3 id="pre-flight">Pre-flight<a class="headerlink" href="#pre-flight" title="Permanent link">&para;</a></h3>
+<p>Before the first wave runs, <code>ll-sprint</code> validates the sprint:</p>
+<ul>
+<li>Issue files exist on disk</li>
+<li>No dependency cycles</li>
+<li>Wave structure computed and displayed</li>
+<li>Issues already in <code>completed/</code> are auto-skipped silently; if all issues are already completed, the sprint exits with success immediately</li>
+</ul>
+<p>The execution plan is printed before any work begins:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>======================================================================
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>EXECUTION PLAN (5 issues, 3 waves)
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>======================================================================
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>Wave 1 (parallel):
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  ├── FEAT-001: Add middleware layer (P2)
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  └── BUG-010: Fix null check in parser (P1)
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>Wave 2 (parallel, after Wave 1):
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>  ├── FEAT-002: Extend middleware config (P2)
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>  │   └── blocked by: FEAT-001
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>  └── FEAT-003: Update middleware tests (P2)
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>      └── blocked by: FEAT-001
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>Wave 3 (serial, after Wave 2):
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>  └── FEAT-004: Integration tests for middleware (P3)
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>      blocked by: FEAT-002, FEAT-003
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>======================================================================
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>DEPENDENCY GRAPH
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>======================================================================
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>  FEAT-001 ──→ FEAT-002 ──→ FEAT-004
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>  FEAT-001 ──→ FEAT-003 ──→ FEAT-004
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>Legend: ──→ blocks (must complete before)
+</code></pre></div>
+<p>Use <code>--dry-run</code> to see this plan without executing anything.</p>
+<h3 id="wave-execution">Wave Execution<a class="headerlink" href="#wave-execution" title="Permanent link">&para;</a></h3>
+<p>Each wave runs as follows:</p>
+<ul>
+<li><strong>Single-issue wave</strong>: <a href="/ll:manage-issue"><code>manage-issue</code></a> runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner</li>
+<li><strong>Multi-issue wave</strong>: <code>ParallelOrchestrator</code> creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results</li>
+</ul>
+<p>After each wave completes:
+- State is checkpointed to <code>.sprint-state.json</code>
+- Execution continues to the next wave</p>
+<h3 id="failed-issues">Failed Issues<a class="headerlink" href="#failed-issues" title="Permanent link">&para;</a></h3>
+<p>If an issue fails during a <strong>multi-issue parallel wave</strong>, the runner:</p>
+<ol>
+<li>Records the failure</li>
+<li>Retries once sequentially (outside the worktree)</li>
+<li>If the retry also fails, marks it as failed and continues with the next wave</li>
+</ol>
+<p>Issues that fail in a <strong>single-issue wave</strong> are immediately marked as failed — no retry is attempted.</p>
+<p>A sprint with some failures still completes — it doesn't stop at the first failure. Failed issues are reported in the summary with their reason.</p>
+<h3 id="graceful-shutdown">Graceful Shutdown<a class="headerlink" href="#graceful-shutdown" title="Permanent link">&para;</a></h3>
+<p>Send <code>Ctrl+C</code> once to request graceful shutdown. The runner finishes the current wave, saves state, and exits. Send <code>Ctrl+C</code> again to force immediate exit (state is still saved before exit).</p>
+<hr />
+<h2 id="handling-interruptions-resume">Handling Interruptions (Resume)<a class="headerlink" href="#handling-interruptions-resume" title="Permanent link">&para;</a></h2>
+<p>Sprint state persists across interruptions. The state file lives at <code>.sprint-state.json</code> in the repository root and contains:</p>
+<ul>
+<li>Sprint name and which wave is current</li>
+<li>Completed and failed issue IDs</li>
+<li>Per-issue timing</li>
+<li>Start time and last checkpoint timestamp</li>
+</ul>
+<p>State is checkpointed after each wave (not after each issue). This means:</p>
+<ul>
+<li>If execution stops mid-wave, that wave's issues restart from scratch on resume</li>
+<li>If execution stops between waves, resume starts cleanly at the next wave</li>
+</ul>
+<p>To resume an interrupted sprint:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w"> </span>--resume
+</code></pre></div>
+<p>The runner reads <code>.sprint-state.json</code>, finds the first incomplete wave, and starts there. Completed issues from earlier waves are skipped automatically.</p>
+<p>State is automatically deleted when the sprint completes successfully. If you want to force a fresh start (discarding resume state), run without <code>--resume</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>ll-sprint<span class="w"> </span>run<span class="w"> </span>sprint-name<span class="w">          </span><span class="c1"># clears state and starts over</span>
+</code></pre></div>
+<hr />
+<h2 id="editing-a-sprint">Editing a Sprint<a class="headerlink" href="#editing-a-sprint" title="Permanent link">&para;</a></h2>
+<p>Add or remove issues from an existing sprint:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>ll-sprint<span class="w"> </span>edit<span class="w"> </span>sprint-1<span class="w"> </span>--add<span class="w"> </span>BUG-099,FEAT-020<span class="w">    </span><span class="c1"># add issues</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>ll-sprint<span class="w"> </span>edit<span class="w"> </span>sprint-1<span class="w"> </span>--remove<span class="w"> </span>BUG-010<span class="w">           </span><span class="c1"># remove issues</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>ll-sprint<span class="w"> </span>edit<span class="w"> </span>sprint-1<span class="w"> </span>--prune<span class="w">                    </span><span class="c1"># remove completed/invalid refs</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>ll-sprint<span class="w"> </span>edit<span class="w"> </span>sprint-1<span class="w"> </span>--revalidate<span class="w">               </span><span class="c1"># re-run dependency analysis</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>ll-sprint<span class="w"> </span>delete<span class="w"> </span>sprint-1<span class="w">                          </span><span class="c1"># delete a sprint entirely</span>
+</code></pre></div>
+<p><code>--prune</code> scans each issue ID in the sprint and removes any that no longer have a file on disk (either completed and archived, or deleted). Use this to clean up a sprint that's been running for a while.</p>
+<p><code>--revalidate</code> re-reads the dependency graph after edits and updates any ordering implications. Run this after adding new issues to ensure wave groupings are still accurate.</p>
+<p><strong>Edit vs. recreate</strong>: Edit when you're making minor adjustments to an existing sprint. Recreate (delete + create) when the scope has changed significantly or you want <code>/ll:create-sprint</code> to re-run its auto-grouping logic.</p>
+<hr />
+<h2 id="inspecting-sprints">Inspecting Sprints<a class="headerlink" href="#inspecting-sprints" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>ll-sprint<span class="w"> </span>list<span class="w">                          </span><span class="c1"># all sprints, one per line</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>ll-sprint<span class="w"> </span>list<span class="w"> </span>--verbose<span class="w">                </span><span class="c1"># sprints with issue counts and descriptions</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>ll-sprint<span class="w"> </span>list<span class="w"> </span>--json<span class="w">                   </span><span class="c1"># output as JSON array</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>ll-sprint<span class="w"> </span>show<span class="w"> </span>sprint-1<span class="w">                 </span><span class="c1"># sprint details + wave visualization</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>ll-sprint<span class="w"> </span>show<span class="w"> </span>sprint-1<span class="w"> </span>--skip-analysis<span class="w"> </span><span class="c1"># skip dependency analysis step</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>ll-sprint<span class="w"> </span>analyze<span class="w"> </span>sprint-1<span class="w">              </span><span class="c1"># file conflict analysis</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>ll-sprint<span class="w"> </span>analyze<span class="w"> </span>sprint-1<span class="w"> </span>--format<span class="w"> </span>json
+</code></pre></div>
+<p><code>ll-sprint show</code> is the primary inspection command. It displays the sprint YAML contents, validates that all issue files exist, and renders the dependency graph and wave structure — the same execution plan you'd see at the start of a run.</p>
+<p><code>ll-sprint analyze</code> focuses specifically on file overlap. It reads each issue's Integration Map and reports which files are touched by multiple issues, which pairs would contend, and which would be forced into sub-waves. Use this when planning a sprint with many issues touching the same subsystems.</p>
+<hr />
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>Sprint behavior is configured in <code>.claude/ll-config.json</code> under the <code>sprints</code> key:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">&quot;sprints&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nt">&quot;sprints_dir&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.sprints&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nt">&quot;default_timeout&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3600</span><span class="p">,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="nt">&quot;default_max_workers&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="nt">&quot;default_max_iterations&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sprints_dir</code></td>
+<td><code>.sprints</code></td>
+<td>Directory where sprint YAML files are stored</td>
+</tr>
+<tr>
+<td><code>default_timeout</code></td>
+<td><code>3600</code></td>
+<td>Per-issue timeout in seconds (1 hour)</td>
+</tr>
+<tr>
+<td><code>default_max_workers</code></td>
+<td><code>2</code></td>
+<td>Max parallel workers per wave</td>
+</tr>
+<tr>
+<td><code>default_max_iterations</code></td>
+<td><code>100</code></td>
+<td>Max Claude iterations per issue</td>
+</tr>
+</tbody>
+</table>
+<p>Per-sprint options (in the YAML <code>options</code> block) override the project config for that sprint. CLI flags (<code>--max-workers</code>, <code>--timeout</code>) override both.</p>
+<hr />
+<h2 id="common-recipes">Common Recipes<a class="headerlink" href="#common-recipes" title="Permanent link">&para;</a></h2>
+<h3 id="quick-bug-fix-sprint">Quick Bug-Fix Sprint<a class="headerlink" href="#quick-bug-fix-sprint" title="Permanent link">&para;</a></h3>
+<p>Capture recent bugs, enrich them, and run a sprint in one session:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>1. /ll:capture-issue &quot;description of bug 1&quot;
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>   /ll:capture-issue &quot;description of bug 2&quot;
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>   /ll:capture-issue &quot;description of bug 3&quot;
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>2. /ll:format-issue --auto
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>3. /ll:refine-issue
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>4. /ll:ready-issue
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>5. /ll:create-sprint               ← pick &quot;all bugs&quot; auto-group
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>   ll-sprint run bug-sprint
+</code></pre></div>
+<h3 id="themed-sprint-test-coverage">Themed Sprint (Test Coverage)<a class="headerlink" href="#themed-sprint-test-coverage" title="Permanent link">&para;</a></h3>
+<p>Build a sprint from issues related to a specific theme:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>1. /ll:scan-codebase               ← discovers test gaps as ENH issues
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>2. /ll:prioritize-issues
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>3. /ll:tradeoff-review-issues
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>4. /ll:create-sprint               ← pick &quot;theme: test coverage&quot; auto-group
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>5. /ll:review-sprint test-sprint   ← health check before running
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>   ll-sprint run test-sprint
+</code></pre></div>
+<h3 id="sprint-with-dependencies">Sprint with Dependencies<a class="headerlink" href="#sprint-with-dependencies" title="Permanent link">&para;</a></h3>
+<p>When issues have a natural ordering, dependency-aware sprinting is the key advantage:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>1. Create issues with blocked_by fields:
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>     FEAT-010 has no blockers
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>     FEAT-011 blocked_by: [FEAT-010]
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>     FEAT-012 blocked_by: [FEAT-010]
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>     FEAT-013 blocked_by: [FEAT-011, FEAT-012]
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>2. /ll:map-dependencies            ← validates the graph, proposes missing edges
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>3. ll-sprint create feature-sprint --issues FEAT-010,FEAT-011,FEAT-012,FEAT-013
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>4. ll-sprint show feature-sprint   ← confirm wave structure:
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>     Wave 1: FEAT-010
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>     Wave 2: FEAT-011, FEAT-012 (parallel)
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>     Wave 3: FEAT-013
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>5. ll-sprint run feature-sprint
+</code></pre></div>
+<h3 id="resume-an-interrupted-sprint">Resume an Interrupted Sprint<a class="headerlink" href="#resume-an-interrupted-sprint" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a># Sprint was interrupted mid-run
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>ll-sprint run sprint-name --resume    ← finds .sprint-state.json, continues
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a># Or inspect state first
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>ll-sprint show sprint-name            ← see which issues completed/failed
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>ll-sprint run sprint-name --resume
+</code></pre></div>
+<h3 id="pre-pr-quality-sprint">Pre-PR Quality Sprint<a class="headerlink" href="#pre-pr-quality-sprint" title="Permanent link">&para;</a></h3>
+<p>Run code quality loops before opening a PR, then address any issues found:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>1. /ll:check-code all                ← run lint, types, and format checks
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>2. /ll:scan-codebase                 ← capture any issues found
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>3. /ll:create-sprint                 ← sprint the findings
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>4. ll-sprint run quality-fixes
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>5. /ll:open-pr
+</code></pre></div>
+<h3 id="full-plan-a-feature-sprint-pipeline">Full "Plan a Feature Sprint" Pipeline<a class="headerlink" href="#full-plan-a-feature-sprint-pipeline" title="Permanent link">&para;</a></h3>
+<p>The complete workflow from empty backlog to executed sprint is documented in detail in the <a href="../ISSUE_MANAGEMENT_GUIDE/">Issue Management Guide</a>. That guide covers every refinement step — discovery, enrichment, quality gates, and dependency mapping — before handing off to <code>ll-sprint</code> for execution. Start there if you are setting up a sprint from scratch.</p>
+<hr />
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../ISSUE_MANAGEMENT_GUIDE/">Issue Management Guide</a> — refinement pipeline to run before sprint creation</li>
+<li><a href="../LOOPS_GUIDE/">Loops Guide</a> — create custom FSM loops for recurring sprint workflows</li>
+<li><code>/ll:map-dependencies</code> — discover and validate cross-issue dependencies before building a sprint</li>
+<li><code>/ll:issue-size-review</code> — decompose oversized issues before adding them to a sprint</li>
+<li><code>/ll:review-sprint</code> — health check an existing sprint before running</li>
+<li><code>ll-sprint --help</code> — full CLI reference for all subcommands and flags</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

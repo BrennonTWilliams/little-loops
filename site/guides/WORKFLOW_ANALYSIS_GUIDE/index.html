@@ -1,0 +1,2821 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/guides/WORKFLOW_ANALYSIS_GUIDE/">
+      
+      
+        <link rel="prev" href="../SESSION_HANDOFF/">
+      
+      
+        <link rel="next" href="../AUTOMATIC_HARNESSING_GUIDE/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Workflow Analysis - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#workflow-analysis-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Workflow Analysis
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../claude-code/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-workflow-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is Workflow Analysis?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pipeline-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Pipeline at a Glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites-extracting-messages-ll-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites: Extracting Messages (ll-messages)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-full-pipeline-llanalyze-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Full Pipeline: /ll:analyze-workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#understanding-the-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Understanding the Outputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Understanding the Outputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-fields-in-step1-patternsyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key fields in step1-patterns.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-fields-in-step2-workflowsyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key fields in step2-workflows.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-fields-in-step3-proposalsyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key fields in step3-proposals.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-deep-dive-ll-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Deep Dive: ll-workflows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Deep Dive: ll-workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#argument-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Argument Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-the-analysis-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the Analysis Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-automation-proposer-llworkflow-automation-proposer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Automation Proposer: /ll:workflow-automation-proposer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Automation Proposer: /ll:workflow-automation-proposer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-looks-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What It Looks For
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-9-automation-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The 9 Automation Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#priority-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority Scoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#effort-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Effort Estimation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-implementation-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Implementation Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#weekly-automation-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Weekly automation review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quick-pattern-check-step-1-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick pattern check (Step 1 only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fresh-proposals-from-existing-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fresh proposals from existing data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extract-only-recent-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extract only recent messages
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-messages-by-type-skip-cli-commands-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter messages by type (--skip-cli / --commands-only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-workflow-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is Workflow Analysis?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pipeline-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Pipeline at a Glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites-extracting-messages-ll-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites: Extracting Messages (ll-messages)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-full-pipeline-llanalyze-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Full Pipeline: /ll:analyze-workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#understanding-the-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Understanding the Outputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Understanding the Outputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-fields-in-step1-patternsyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key fields in step1-patterns.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-fields-in-step2-workflowsyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key fields in step2-workflows.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-fields-in-step3-proposalsyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key fields in step3-proposals.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-deep-dive-ll-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Deep Dive: ll-workflows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Deep Dive: ll-workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#argument-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Argument Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-the-analysis-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the Analysis Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-automation-proposer-llworkflow-automation-proposer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Automation Proposer: /ll:workflow-automation-proposer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Automation Proposer: /ll:workflow-automation-proposer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-looks-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What It Looks For
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-9-automation-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The 9 Automation Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#priority-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority Scoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#effort-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Effort Estimation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-implementation-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Implementation Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#weekly-automation-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Weekly automation review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quick-pattern-check-step-1-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick pattern check (Step 1 only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fresh-proposals-from-existing-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fresh proposals from existing data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extract-only-recent-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extract only recent messages
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-messages-by-type-skip-cli-commands-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter messages by type (--skip-cli / --commands-only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="workflow-analysis-guide">Workflow Analysis Guide<a class="headerlink" href="#workflow-analysis-guide" title="Permanent link">&para;</a></h1>
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#what-is-workflow-analysis">What Is Workflow Analysis?</a></li>
+<li><a href="#the-pipeline-at-a-glance">The Pipeline at a Glance</a></li>
+<li><a href="#prerequisites-extracting-messages-ll-messages">Prerequisites: Extracting Messages (<code>ll-messages</code>)</a></li>
+<li><a href="#running-the-full-pipeline-llanalyze-workflows">Running the Full Pipeline: <code>/ll:analyze-workflows</code></a></li>
+<li><a href="#understanding-the-outputs">Understanding the Outputs</a></li>
+<li><a href="#key-fields-in-step1-patternsyaml">Key fields in <code>step1-patterns.yaml</code></a></li>
+<li><a href="#key-fields-in-step2-workflowsyaml">Key fields in <code>step2-workflows.yaml</code></a></li>
+<li><a href="#key-fields-in-step3-proposalsyaml">Key fields in <code>step3-proposals.yaml</code></a></li>
+<li><a href="#cli-deep-dive-ll-workflows">CLI Deep Dive: <code>ll-workflows</code></a></li>
+<li><a href="#argument-reference">Argument Reference</a></li>
+<li><a href="#how-the-analysis-works">How the Analysis Works</a></li>
+<li><a href="#the-automation-proposer-llworkflow-automation-proposer">The Automation Proposer: <code>/ll:workflow-automation-proposer</code></a></li>
+<li><a href="#what-it-looks-for">What It Looks For</a></li>
+<li><a href="#the-9-automation-types">The 9 Automation Types</a></li>
+<li><a href="#priority-scoring">Priority Scoring</a></li>
+<li><a href="#effort-estimation">Effort Estimation</a></li>
+<li><a href="#the-implementation-roadmap">The Implementation Roadmap</a></li>
+<li><a href="#common-recipes">Common Recipes</a></li>
+<li><a href="#weekly-automation-review">Weekly automation review</a></li>
+<li><a href="#quick-pattern-check-step-1-only">Quick pattern check (Step 1 only)</a></li>
+<li><a href="#fresh-proposals-from-existing-data">Fresh proposals from existing data</a></li>
+<li><a href="#extract-only-recent-messages">Extract only recent messages</a></li>
+<li><a href="#filter-messages-by-type---skip-cli----commands-only">Filter messages by type (<code>--skip-cli</code> / <code>--commands-only</code>)</a></li>
+<li><a href="#see-also">See Also</a></li>
+</ul>
+<h2 id="what-is-workflow-analysis">What Is Workflow Analysis?<a class="headerlink" href="#what-is-workflow-analysis" title="Permanent link">&para;</a></h2>
+<p>LLMs are stateless. Each session starts fresh with no memory of what you did last week, which multi-step processes you repeat most, or where you waste time on manual steps. The workflow analysis system closes that gap by mining your message history for patterns and turning them into concrete automation proposals.</p>
+<p>What it discovers:</p>
+<ul>
+<li><strong>Repeated sequences</strong> — the same 3-step process you run every Friday</li>
+<li><strong>Multi-session workflows</strong> — tasks that span multiple Claude sessions and need continuity</li>
+<li><strong>Friction points</strong> — debug → fix → test cycles where you're retrying the same thing</li>
+<li><strong>Automation candidates</strong> — workflows that already have, or could have, a <code>/ll:*</code> command</li>
+</ul>
+<p>What you get at the end: a prioritized list of hooks, commands, scripts, and FSM loops — each with rationale, effort estimate, and implementation sketch.</p>
+<h2 id="the-pipeline-at-a-glance">The Pipeline at a Glance<a class="headerlink" href="#the-pipeline-at-a-glance" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ll-messages       →   Step 1 (Agent)        →   Step 2 (CLI)           →   Step 3 (Skill)              →   summary.md
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>─────────────────     ────────────────────      ─────────────────────      ──────────────────────────      ───────────
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Extract user          workflow-pattern-         ll-workflows analyze       workflow-automation-            Human-readable
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>messages from         analyzer categorizes      links sessions,            proposer synthesizes            report with top
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Claude logs into      messages, detects         clusters entities,         patterns into proposals         patterns, detected
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>.jsonl file           patterns, inventories     detects workflows           with priority + effort          workflows, and
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>                      tools                                                 estimates                       proposals
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        │                 │                          │                          │                               │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        ▼                 ▼                          ▼                          ▼                               ▼
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>msgs-*.jsonl      step1-patterns.yaml       step2-workflows.yaml      step3-proposals.yaml            summary-*.md
+</code></pre></div>
+<p>Each step's output is the next step's input. Partial results are always preserved — if Step 2 fails, Step 1's output remains in <code>.claude/workflow-analysis/</code>.</p>
+<h2 id="prerequisites-extracting-messages-ll-messages">Prerequisites: Extracting Messages (<code>ll-messages</code>)<a class="headerlink" href="#prerequisites-extracting-messages-ll-messages" title="Permanent link">&para;</a></h2>
+<p>Before running the analysis pipeline, you need a JSONL file of your user messages. <code>ll-messages</code> extracts these from your Claude Code session logs.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Last 100 messages (default)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>ll-messages
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Last 200 messages</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>ll-messages<span class="w"> </span>-n<span class="w"> </span><span class="m">200</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Messages since a specific date</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>ll-messages<span class="w"> </span>--since<span class="w"> </span><span class="m">2026</span>-01-01
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># Write to a custom file</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>ll-messages<span class="w"> </span>-o<span class="w"> </span>my-messages.jsonl
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># Print to terminal instead of a file (for quick inspection)</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>ll-messages<span class="w"> </span>--stdout
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="c1"># Include metadata: tools used, files modified</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>ll-messages<span class="w"> </span>--include-response-context
+</code></pre></div>
+<p>The output is a JSONL file (one JSON object per line) at <code>.claude/user-messages-{timestamp}.jsonl</code>. Each line has at minimum a <code>content</code> field with the message text and a <code>timestamp</code> field.</p>
+<p>Key flags reference:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--limit N</code></td>
+<td><code>-n N</code></td>
+<td>Max messages to extract (default: 100)</td>
+</tr>
+<tr>
+<td><code>--since DATE</code></td>
+<td></td>
+<td>Only messages after this date (YYYY-MM-DD or ISO)</td>
+</tr>
+<tr>
+<td><code>--output FILE</code></td>
+<td><code>-o FILE</code></td>
+<td>Output file path</td>
+</tr>
+<tr>
+<td><code>--stdout</code></td>
+<td></td>
+<td>Print to terminal instead of file</td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td><code>-v</code></td>
+<td>Show progress information</td>
+</tr>
+<tr>
+<td><code>--include-response-context</code></td>
+<td></td>
+<td>Include tools used and files modified per message</td>
+</tr>
+<tr>
+<td><code>--skip-cli</code></td>
+<td></td>
+<td>Exclude CLI commands from output</td>
+</tr>
+<tr>
+<td><code>--commands-only</code></td>
+<td></td>
+<td>Extract only CLI commands, no prose messages</td>
+</tr>
+</tbody>
+</table>
+<h2 id="running-the-full-pipeline-llanalyze-workflows">Running the Full Pipeline: <code>/ll:analyze-workflows</code><a class="headerlink" href="#running-the-full-pipeline-llanalyze-workflows" title="Permanent link">&para;</a></h2>
+<p>The simplest way to run all three steps is the single orchestrating command:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Auto-detect most recent messages file in .claude/</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>/ll:analyze-workflows
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Use a specific file</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>/ll:analyze-workflows<span class="w"> </span>.claude/user-messages-20260112-111551.jsonl
+</code></pre></div>
+<p>The command creates a todo list, runs each step in sequence, and displays a formatted summary when done.</p>
+<p><strong>What happens at each step:</strong></p>
+<ol>
+<li><strong>Input detection</strong> — finds (or validates) the messages JSONL file</li>
+<li><strong>Output directory</strong> — creates <code>.claude/workflow-analysis/</code> if it doesn't exist</li>
+<li><strong>Step 1</strong> — spawns the <code>workflow-pattern-analyzer</code> agent to write <code>step1-patterns.yaml</code></li>
+<li><strong>Step 2</strong> — runs <code>ll-workflows analyze</code> CLI to write <code>step2-workflows.yaml</code></li>
+<li><strong>Step 3</strong> — invokes the <code>workflow-automation-proposer</code> skill to write <code>step3-proposals.yaml</code></li>
+<li><strong>Summary</strong> — generates <code>summary-{timestamp}.md</code> from all three outputs</li>
+</ol>
+<p>If no messages file is found, the command tells you to run <code>ll-messages</code> first.</p>
+<h2 id="understanding-the-outputs">Understanding the Outputs<a class="headerlink" href="#understanding-the-outputs" title="Permanent link">&para;</a></h2>
+<p>All outputs are written to <code>.claude/workflow-analysis/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Produced by</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>step1-patterns.yaml</code></td>
+<td>workflow-pattern-analyzer agent</td>
+<td>Category distribution, repeated phrases, tool references, entity inventory</td>
+</tr>
+<tr>
+<td><code>step2-workflows.yaml</code></td>
+<td><code>ll-workflows analyze</code> CLI</td>
+<td>Session links, entity clusters, workflow boundaries, detected workflows</td>
+</tr>
+<tr>
+<td><code>step3-proposals.yaml</code></td>
+<td>workflow-automation-proposer skill</td>
+<td>Automation proposals with priority, effort, and implementation sketches</td>
+</tr>
+<tr>
+<td><code>summary-{timestamp}.md</code></td>
+<td><code>/ll:analyze-workflows</code> command</td>
+<td>Human-readable report (tables of top patterns, workflows, proposals)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="key-fields-in-step1-patternsyaml">Key fields in <code>step1-patterns.yaml</code><a class="headerlink" href="#key-fields-in-step1-patternsyaml" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>category_distribution</code> — how messages break down by type (e.g., "code review", "debugging", "issue management")</li>
+<li><code>repeated_patterns</code> — 2-4 word phrases with frequency ≥ 3, sorted by count</li>
+<li><code>tool_references</code> — slash commands and tools mentioned in messages</li>
+<li><code>entity_inventory</code> — files, commands, and concepts referenced across messages</li>
+</ul>
+<h3 id="key-fields-in-step2-workflowsyaml">Key fields in <code>step2-workflows.yaml</code><a class="headerlink" href="#key-fields-in-step2-workflowsyaml" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>session_links</code> — cross-session continuations (same entity worked on across multiple sessions)</li>
+<li><code>entity_clusters</code> — groups of messages that operate on the same files or topics</li>
+<li><code>workflow_boundaries</code> — detected transitions between distinct workflows</li>
+<li><code>workflows</code> — named multi-step workflow patterns, each with a <code>pattern_confidence</code> score (0.0–1.0) and session count</li>
+</ul>
+<p><strong><code>pattern_confidence</code></strong> reflects how consistent the sequence is across observed instances. A score above 0.7 is strong; below 0.4 means the pattern is loosely structured and harder to automate reliably.</p>
+<p><strong><code>cohesion_score</code></strong> appears on entity clusters. It measures how tightly the messages in a cluster relate to each other (0.0–1.0). High cohesion (≥ 0.7) means messages are clearly about one thing; low cohesion means the cluster is loosely connected.</p>
+<h3 id="key-fields-in-step3-proposalsyaml">Key fields in <code>step3-proposals.yaml</code><a class="headerlink" href="#key-fields-in-step3-proposalsyaml" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>proposals</code> — the main list; each entry has <code>id</code>, <code>type</code> (see <a href="#the-9-automation-types">The 9 Automation Types</a>), <code>priority</code>, <code>effort</code>, <code>rationale</code>, and <code>implementation_sketch</code></li>
+<li><code>existing_command_suggestions</code> — patterns that already have a <code>/ll:*</code> command you may not be using</li>
+<li><code>implementation_roadmap</code> — proposals grouped into <code>immediate</code>, <code>short_term</code>, and <code>future</code> buckets</li>
+</ul>
+<h2 id="cli-deep-dive-ll-workflows">CLI Deep Dive: <code>ll-workflows</code><a class="headerlink" href="#cli-deep-dive-ll-workflows" title="Permanent link">&para;</a></h2>
+<p>You can run Step 2 independently — useful if you've run Step 1 manually or want to re-analyze with updated patterns.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ll-workflows<span class="w"> </span>analyze<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--input<span class="w"> </span>.claude/user-messages-20260112.jsonl<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--patterns<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--output<span class="w"> </span>.claude/workflow-analysis/step2-workflows.yaml
+</code></pre></div>
+<h3 id="argument-reference">Argument Reference<a class="headerlink" href="#argument-reference" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--input FILE</code></td>
+<td><code>-i FILE</code></td>
+<td>Yes</td>
+<td>Input JSONL file with user messages</td>
+</tr>
+<tr>
+<td><code>--patterns FILE</code></td>
+<td><code>-p FILE</code></td>
+<td>Yes</td>
+<td>Step 1 output YAML (from workflow-pattern-analyzer)</td>
+</tr>
+<tr>
+<td><code>--output FILE</code></td>
+<td><code>-o FILE</code></td>
+<td>No</td>
+<td>Output YAML (default: <code>.claude/workflow-analysis/step2-workflows.yaml</code>)</td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td><code>-v</code></td>
+<td>No</td>
+<td>Print detailed progress</td>
+</tr>
+</tbody>
+</table>
+<h3 id="how-the-analysis-works">How the Analysis Works<a class="headerlink" href="#how-the-analysis-works" title="Permanent link">&para;</a></h3>
+<p>The CLI performs four analyses on your messages:</p>
+<ol>
+<li>
+<p><strong>Session linking</strong> — identifies when a message in one session continues work from a prior session (by matching entity names, file paths, or explicit references). Links are scored by entity overlap.</p>
+</li>
+<li>
+<p><strong>Entity clustering</strong> — groups messages that reference the same files, commands, or named concepts. A cluster becomes a workflow candidate if it has ≥ 3 messages and a cohesion score above the threshold.</p>
+</li>
+<li>
+<p><strong>Boundary detection</strong> — finds transitions between distinct workflows by looking for topic shifts, time gaps between sessions, and changes in entity sets. These boundaries separate one workflow from the next.</p>
+</li>
+<li>
+<p><strong>Template matching</strong> — compares detected workflows against known patterns (e.g., "issue management cycle", "code review and fix", "test-fix-lint loop", "PR preparation") and scores each match. High-confidence matches get labeled with the template name.</p>
+</li>
+</ol>
+<h2 id="the-automation-proposer-llworkflow-automation-proposer">The Automation Proposer: <code>/ll:workflow-automation-proposer</code><a class="headerlink" href="#the-automation-proposer-llworkflow-automation-proposer" title="Permanent link">&para;</a></h2>
+<p>This skill reads Step 1 and Step 2 outputs and writes <code>step3-proposals.yaml</code>. Run it standalone when you already have the YAML files and want fresh proposals — for example, after manually editing <code>step2-workflows.yaml</code> or when you want to re-run proposals with a different focus.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Auto-detect inputs in .claude/workflow-analysis/</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>/ll:workflow-automation-proposer
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Explicit paths</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>/ll:workflow-automation-proposer<span class="w"> </span>.claude/workflow-analysis/step1-patterns.yaml<span class="w"> </span>.claude/workflow-analysis/step2-workflows.yaml
+</code></pre></div>
+<h3 id="what-it-looks-for">What It Looks For<a class="headerlink" href="#what-it-looks-for" title="Permanent link">&para;</a></h3>
+<p>The skill targets high-value automation candidates:</p>
+<ul>
+<li><strong>Frequency ≥ 5</strong> — patterns repeated enough to be worth automating</li>
+<li><strong>Multi-session workflows</strong> — complex processes that span multiple Claude sessions</li>
+<li><strong>Friction and retry cycles</strong> — debug → fix → test loops that show repeated manual effort</li>
+<li><strong>Multi-step workflows with ≥ 3 occurrences</strong> — candidates for slash commands</li>
+</ul>
+<p>It also checks for existing <code>/ll:*</code> commands before proposing new ones. If your pattern already has a solution, it appears in <code>existing_command_suggestions</code> rather than as a new proposal.</p>
+<h3 id="the-9-automation-types">The 9 Automation Types<a class="headerlink" href="#the-9-automation-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Use Case</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slash_command</code></td>
+<td>Multi-step workflow with 3+ occurrences</td>
+<td><code>/ll:cleanup-refs</code> for repeated reference removal</td>
+</tr>
+<tr>
+<td><code>script_python</code></td>
+<td>Complex logic, data processing, external APIs</td>
+<td>Entity extraction script with argparse</td>
+</tr>
+<tr>
+<td><code>script_bash</code></td>
+<td>Simple file operations, tool chains</td>
+<td>Batch rename script</td>
+</tr>
+<tr>
+<td><code>hook_pre_tool</code></td>
+<td>Prevent unwanted tool usage</td>
+<td>Block <code>rm -rf</code> patterns before they run</td>
+</tr>
+<tr>
+<td><code>hook_post_tool</code></td>
+<td>React to tool completions</td>
+<td>Auto-lint after every Edit</td>
+</tr>
+<tr>
+<td><code>hook_stop</code></td>
+<td>Session-end automation</td>
+<td>Commit reminder when session ends</td>
+</tr>
+<tr>
+<td><code>agent_enhancement</code></td>
+<td>Extend an existing agent's capabilities</td>
+<td>Add entity extraction to the pattern analyzer</td>
+</tr>
+<tr>
+<td><code>fsm_loop</code></td>
+<td>Repeated multi-step CLI workflows</td>
+<td><code>ll-loop</code> config for a test → fix → lint cycle</td>
+</tr>
+<tr>
+<td><code>existing_command</code></td>
+<td>User should adopt an existing command</td>
+<td>Suggest <code>/ll:commit</code> for repeated commit requests</td>
+</tr>
+</tbody>
+</table>
+<h3 id="priority-scoring">Priority Scoring<a class="headerlink" href="#priority-scoring" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Priority = (frequency × 0.4) + (workflow_count × 0.3) + (friction_score × 0.3)
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>HIGH:   score ≥ 8   →  5+ occurrences, major friction
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>MEDIUM: score ≥ 4   →  3-4 occurrences, moderate friction
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>LOW:    score &lt; 4   →  1-2 occurrences, minor friction
+</code></pre></div>
+<p>Variable definitions:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Range</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>frequency</code></td>
+<td>1–20+ (raw count)</td>
+<td>Number of times the pattern appears in the message history</td>
+</tr>
+<tr>
+<td><code>workflow_count</code></td>
+<td>1–10 (raw count)</td>
+<td>Number of distinct detected workflows that include this pattern</td>
+</tr>
+<tr>
+<td><code>friction_score</code></td>
+<td>0–10 (computed)</td>
+<td>Friction intensity: debug/fix/test cycles, retry keywords, error context, multi-session spans</td>
+</tr>
+</tbody>
+</table>
+<p>Friction indicators: debug/fix/test cycles, multiple session spans, retry keywords in messages, error keywords in context.</p>
+<blockquote>
+<p><strong>Note on LOW priority proposals</strong>: LOW priority items (score &lt; 4) are generated for patterns with 1–2 occurrences that still show friction or workflow involvement. The "Frequency ≥ 5" target in <a href="#what-it-looks-for">What It Looks For</a> is the threshold for emphasis during analysis — patterns below it may still appear as LOW priority proposals when friction or workflow signals are present.</p>
+</blockquote>
+<h3 id="effort-estimation">Effort Estimation<a class="headerlink" href="#effort-estimation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Criteria</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SMALL</code></td>
+<td>Single file, &lt; 100 lines, no new dependencies</td>
+<td>Simple slash command</td>
+</tr>
+<tr>
+<td><code>MEDIUM</code></td>
+<td>2-3 files, 100-300 lines, uses existing patterns</td>
+<td>Agent + command combo</td>
+</tr>
+<tr>
+<td><code>LARGE</code></td>
+<td>Multiple files, &gt; 300 lines, new patterns or dependencies</td>
+<td>Full pipeline feature</td>
+</tr>
+<tr>
+<td><code>NONE</code></td>
+<td>Existing command already handles this</td>
+<td>Suggest an existing solution</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-implementation-roadmap">The Implementation Roadmap<a class="headerlink" href="#the-implementation-roadmap" title="Permanent link">&para;</a></h3>
+<p>Proposals are organized into three buckets:</p>
+<ul>
+<li><strong>Immediate</strong> — <code>NONE</code> effort (existing commands) + <code>SMALL</code> effort with <code>HIGH</code> priority</li>
+<li><strong>Short-term</strong> — <code>MEDIUM</code> effort with <code>HIGH</code> or <code>MEDIUM</code> priority</li>
+<li><strong>Future</strong> — <code>LARGE</code> effort or <code>LOW</code> priority items</li>
+</ul>
+<p>Start with <code>immediate</code> — these are the highest-return actions that require the least work.</p>
+<h2 id="common-recipes">Common Recipes<a class="headerlink" href="#common-recipes" title="Permanent link">&para;</a></h2>
+<h3 id="weekly-automation-review">Weekly automation review<a class="headerlink" href="#weekly-automation-review" title="Permanent link">&para;</a></h3>
+<p>Full pipeline from extract to proposals:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>ll-messages<span class="w"> </span>-n<span class="w"> </span><span class="m">200</span><span class="w">                    </span><span class="c1"># Extract recent messages</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>/ll:analyze-workflows<span class="w">                 </span><span class="c1"># Run full pipeline (auto-detects file)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># Review: .claude/workflow-analysis/summary-*.md</span>
+</code></pre></div>
+<h3 id="quick-pattern-check-step-1-only">Quick pattern check (Step 1 only)<a class="headerlink" href="#quick-pattern-check-step-1-only" title="Permanent link">&para;</a></h3>
+<p>Run only Step 1 to get a fast category breakdown without the full pipeline. Spawn the <code>workflow-pattern-analyzer</code> agent directly with the messages file as input:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>ll-messages<span class="w">                           </span><span class="c1"># Extract messages to .claude/user-messages-{ts}.jsonl</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Then in Claude: spawn workflow-pattern-analyzer with the JSONL file path</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># Review: .claude/workflow-analysis/step1-patterns.yaml</span>
+</code></pre></div>
+<blockquote>
+<p><strong>Note</strong>: <code>/ll:analyze-workflows</code> always runs all three steps — there is no built-in mid-pipeline stop. To limit analysis to Step 1, invoke the <code>workflow-pattern-analyzer</code> agent directly or read <code>step1-patterns.yaml</code> before the remaining steps complete.</p>
+</blockquote>
+<h3 id="fresh-proposals-from-existing-data">Fresh proposals from existing data<a class="headerlink" href="#fresh-proposals-from-existing-data" title="Permanent link">&para;</a></h3>
+<p>Re-run only Step 3 when you already have <code>step1-patterns.yaml</code> and <code>step2-workflows.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>/ll:workflow-automation-proposer
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># Reads existing files, writes new step3-proposals.yaml</span>
+</code></pre></div>
+<p>Useful after manually editing <code>step2-workflows.yaml</code> to correct a detected workflow, or when you want to experiment with re-running proposals.</p>
+<h3 id="extract-only-recent-messages">Extract only recent messages<a class="headerlink" href="#extract-only-recent-messages" title="Permanent link">&para;</a></h3>
+<p>Use <code>--since</code> to analyze just the last sprint or time window:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>ll-messages<span class="w"> </span>--since<span class="w"> </span><span class="m">2026</span>-02-01<span class="w"> </span>-n<span class="w"> </span><span class="m">500</span><span class="w">   </span><span class="c1"># Since Feb 1, up to 500 messages</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>/ll:analyze-workflows<span class="w">                    </span><span class="c1"># Run pipeline on auto-detected file</span>
+</code></pre></div>
+<p>Combine with <code>-n</code> to limit volume while keeping the date filter as the primary boundary.</p>
+<h3 id="filter-messages-by-type-skip-cli-commands-only">Filter messages by type (<code>--skip-cli</code> / <code>--commands-only</code>)<a class="headerlink" href="#filter-messages-by-type-skip-cli-commands-only" title="Permanent link">&para;</a></h3>
+<p>Use these flags to narrow the message set before running the pipeline:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Exclude CLI commands — analyze only prose messages (questions, descriptions, requests)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>ll-messages<span class="w"> </span>--skip-cli
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>/ll:analyze-workflows
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="c1"># Extract only CLI commands — useful for identifying repeated shell workflows</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>ll-messages<span class="w"> </span>--commands-only
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>/ll:analyze-workflows
+</code></pre></div>
+<p><code>--skip-cli</code> is useful when your history is dominated by CLI invocations and you want to focus on conversational patterns. <code>--commands-only</code> is useful when you want to discover command-line workflow automation opportunities specifically.</p>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../LOOPS_GUIDE/">Loops Guide</a> — implement FSM loop proposals generated by the automation proposer</li>
+<li><a href="../../claude-code/automate-workflows-with-hooks/">Automate Workflows with Hooks</a> — implement hook proposals (<code>hook_pre_tool</code>, <code>hook_post_tool</code>, <code>hook_stop</code>)</li>
+<li><a href="../../reference/COMMANDS/">Command Reference</a> — full reference for all <code>/ll:*</code> commands</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

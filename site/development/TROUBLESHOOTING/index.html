@@ -1,0 +1,4022 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/development/TROUBLESHOOTING/">
+      
+      
+        <link rel="prev" href="../E2E_TESTING/">
+      
+      
+        <link rel="next" href="../MERGE-COORDINATOR/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Troubleshooting - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#troubleshooting-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Troubleshooting
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../claude-code/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config-file-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config file not found
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-json-in-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid JSON in config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type-commands-not-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type commands not running
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#config-values-not-substituting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config values not substituting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#git-worktree-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Git Worktree Problems
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Git Worktree Problems">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#worktree-creation-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree creation fails
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#worktree-permission-denied" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree permission denied
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#worktree-not-inheriting-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree not inheriting settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#too-many-worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Too many worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-cli-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude CLI Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude CLI Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-not-found-claude" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command not found: claude
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-exits-with-returncode-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude exits with returncode 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timeout-during-issue-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeout during issue processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permission-denied-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permission denied errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="State Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#state-file-corruption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State file corruption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resume-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#issues-stuck-in-attempted-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issues stuck in "attempted" state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-file-location-confusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State file location confusion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Handoff
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Session Handoff">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#context-monitor-not-triggering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context monitor not triggering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reminders-keep-appearing-after-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reminders keep appearing after handoff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resume-shows-stale-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume shows stale prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-continuation-prompt-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No continuation prompt found
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automation-not-detecting-handoff-signal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automation not detecting handoff signal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#max-continuations-reached" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Max continuations reached
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-not-seeing-context-warnings-in-non-interactive-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude not seeing context warnings in non-interactive mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#token-estimation-seems-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token estimation seems wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#priority-and-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority and Filtering
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Priority and Filtering">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-filter-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority filter not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#category-filtering-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Category filtering wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-issues-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No issues found
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Conflicts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Merge Conflicts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-fails-repeatedly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge fails repeatedly
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-changes-blocking-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local changes blocking merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#branch-not-found-after-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branch not found after merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rebase-conflicts-during-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rebase conflicts during merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#slash-command-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slash Command Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Slash Command Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command not found
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#command-uses-wrong-config-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command uses wrong config values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ready-issue-always-returns-not_ready" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ready-issue always returns NOT_READY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manage-issue-completes-but-no-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        manage-issue completes but no changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hook-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook Debugging
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hook Debugging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hook-not-executing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook not executing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-timeout-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook timeout errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-file-corruption_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State file corruption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lock-files-not-cleaned-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lock files not cleaned up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#duplicate-issue-id-not-detected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate issue ID not detected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#context-monitor-not-updating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context monitor not updating
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user-prompt-optimization-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User prompt optimization not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-individual-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing individual hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-integration-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook integration tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-lock-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common lock issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#special-character-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Special character handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diagnostic-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostic Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Diagnostic Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-issue-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check issue discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-worktree-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check worktree status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-state-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check state files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify-python-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify Python package
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting Help
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config-file-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config file not found
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-json-in-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid JSON in config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type-commands-not-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type commands not running
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#config-values-not-substituting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config values not substituting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#git-worktree-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Git Worktree Problems
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Git Worktree Problems">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#worktree-creation-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree creation fails
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#worktree-permission-denied" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree permission denied
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#worktree-not-inheriting-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree not inheriting settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#too-many-worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Too many worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-cli-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude CLI Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude CLI Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-not-found-claude" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command not found: claude
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-exits-with-returncode-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude exits with returncode 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timeout-during-issue-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeout during issue processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permission-denied-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permission denied errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="State Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#state-file-corruption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State file corruption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resume-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#issues-stuck-in-attempted-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issues stuck in "attempted" state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-file-location-confusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State file location confusion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Handoff
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Session Handoff">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#context-monitor-not-triggering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context monitor not triggering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reminders-keep-appearing-after-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reminders keep appearing after handoff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resume-shows-stale-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume shows stale prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-continuation-prompt-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No continuation prompt found
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automation-not-detecting-handoff-signal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automation not detecting handoff signal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#max-continuations-reached" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Max continuations reached
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-not-seeing-context-warnings-in-non-interactive-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude not seeing context warnings in non-interactive mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#token-estimation-seems-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token estimation seems wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#priority-and-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority and Filtering
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Priority and Filtering">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-filter-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority filter not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#category-filtering-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Category filtering wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-issues-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No issues found
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Conflicts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Merge Conflicts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-fails-repeatedly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge fails repeatedly
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-changes-blocking-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local changes blocking merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#branch-not-found-after-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branch not found after merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rebase-conflicts-during-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rebase conflicts during merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#slash-command-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slash Command Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Slash Command Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command not found
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#command-uses-wrong-config-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command uses wrong config values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ready-issue-always-returns-not_ready" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ready-issue always returns NOT_READY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manage-issue-completes-but-no-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        manage-issue completes but no changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hook-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook Debugging
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hook Debugging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hook-not-executing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook not executing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-timeout-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook timeout errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-file-corruption_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State file corruption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lock-files-not-cleaned-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lock files not cleaned up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#duplicate-issue-id-not-detected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate issue ID not detected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#context-monitor-not-updating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context monitor not updating
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user-prompt-optimization-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User prompt optimization not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-individual-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing individual hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-integration-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook integration tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-lock-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common lock issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#special-character-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Special character handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diagnostic-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostic Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Diagnostic Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-issue-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check issue discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-worktree-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check worktree status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-state-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check state files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify-python-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify Python package
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting Help
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="troubleshooting-guide">Troubleshooting Guide<a class="headerlink" href="#troubleshooting-guide" title="Permanent link">&para;</a></h1>
+<p>Common issues and solutions for little-loops.</p>
+<h2 id="quick-reference">Quick Reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#configuration-issues">Configuration Issues</a></li>
+<li><a href="#git-worktree-problems">Git Worktree Problems</a></li>
+<li><a href="#claude-cli-issues">Claude CLI Issues</a></li>
+<li><a href="#state-management">State Management</a></li>
+<li><a href="#session-handoff">Session Handoff</a></li>
+<li><a href="#priority-and-filtering">Priority and Filtering</a></li>
+<li><a href="#merge-conflicts">Merge Conflicts</a></li>
+<li><a href="#slash-command-issues">Slash Command Issues</a></li>
+<li><a href="#hook-debugging">Hook Debugging</a></li>
+<li><a href="#diagnostic-commands">Diagnostic Commands</a></li>
+</ul>
+<hr />
+<h2 id="configuration-issues">Configuration Issues<a class="headerlink" href="#configuration-issues" title="Permanent link">&para;</a></h2>
+<h3 id="config-file-not-found">Config file not found<a class="headerlink" href="#config-file-not-found" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Commands use default values instead of project config</p>
+<p><strong>Cause</strong>: Missing or mislocated <code>.claude/ll-config.json</code></p>
+<p><strong>Solution</strong>:
+1. Run <code>/ll:init</code> to create config
+2. Verify path is <code>.claude/ll-config.json</code> (not project root)
+3. Check file permissions</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Verify config exists</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>ls<span class="w"> </span>-la<span class="w"> </span>.claude/ll-config.json
+</code></pre></div>
+<h3 id="invalid-json-in-config">Invalid JSON in config<a class="headerlink" href="#invalid-json-in-config" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>JSONDecodeError</code> on startup</p>
+<p><strong>Cause</strong>: Malformed JSON syntax</p>
+<p><strong>Solution</strong>:
+1. Validate JSON syntax:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>-m<span class="w"> </span>json.tool<span class="w"> </span>.claude/ll-config.json
+</code></pre></div>
+2. Common fixes:
+   - Remove trailing commas after last items
+   - Ensure all strings use double quotes
+   - Check for missing closing braces</p>
+<h3 id="type-commands-not-running">Type commands not running<a class="headerlink" href="#type-commands-not-running" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>type_cmd</code> ignored or errors</p>
+<p><strong>Cause</strong>: Tool not installed or set to wrong value</p>
+<p><strong>Solution</strong>:
+1. Install the type checker:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>mypy<span class="w">  </span><span class="c1"># For Python</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>typescript<span class="w">  </span><span class="c1"># For TypeScript</span>
+</code></pre></div>
+2. Set <code>"type_cmd": null</code> to disable type checking
+3. Verify command works standalone:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>mypy<span class="w"> </span>src/
+</code></pre></div></p>
+<h3 id="config-values-not-substituting">Config values not substituting<a class="headerlink" href="#config-values-not-substituting" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>{{config.project.src_dir}}</code> appears literally in output</p>
+<p><strong>Cause</strong>: Variable path doesn't match config structure</p>
+<p><strong>Solution</strong>:
+1. Check available paths with:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">little_loops.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">BRConfig</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">c</span> <span class="o">=</span> <span class="n">BRConfig</span><span class="p">(</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">())</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+</code></pre></div>
+2. Use correct path (e.g., <code>config.project.src_dir</code> not <code>config.src_dir</code>)</p>
+<hr />
+<h2 id="git-worktree-problems">Git Worktree Problems<a class="headerlink" href="#git-worktree-problems" title="Permanent link">&para;</a></h2>
+<h3 id="worktree-creation-fails">Worktree creation fails<a class="headerlink" href="#worktree-creation-fails" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "Failed to create worktree" or "fatal: ... already exists" in ll-parallel</p>
+<p><strong>Cause</strong>: Branch already exists, or worktree directory locked</p>
+<p><strong>Solution</strong>:
+1. Clean up stale worktrees:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ll-parallel<span class="w"> </span>--cleanup
+</code></pre></div>
+2. Delete orphaned branches:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git<span class="w"> </span>branch<span class="w"> </span>-D<span class="w"> </span><span class="k">$(</span>git<span class="w"> </span>branch<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">&#39;parallel/&#39;</span><span class="k">)</span>
+</code></pre></div>
+3. Remove leftover directories:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rm<span class="w"> </span>-rf<span class="w"> </span>.worktrees/
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>worktree<span class="w"> </span>prune
+</code></pre></div></p>
+<h3 id="worktree-permission-denied">Worktree permission denied<a class="headerlink" href="#worktree-permission-denied" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Cannot write to worktree directory</p>
+<p><strong>Cause</strong>: Previous process left locks or wrong permissions</p>
+<p><strong>Solution</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Remove worktrees directory</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>rm<span class="w"> </span>-rf<span class="w"> </span>.worktrees/
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Prune git&#39;s worktree tracking</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>git<span class="w"> </span>worktree<span class="w"> </span>prune
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Verify cleanup</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>git<span class="w"> </span>worktree<span class="w"> </span>list
+</code></pre></div></p>
+<h3 id="worktree-not-inheriting-settings">Worktree not inheriting settings<a class="headerlink" href="#worktree-not-inheriting-settings" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Claude uses wrong model or settings in worktree</p>
+<p><strong>Cause</strong>: <code>.claude/settings.local.json</code> not present or not copied</p>
+<p><strong>Solution</strong>:
+1. Ensure main repo has <code>.claude/settings.local.json</code>
+2. The worktree should inherit this automatically
+3. Check worktree has access:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>cat<span class="w"> </span>.worktrees/worker-1/.claude/settings.local.json
+</code></pre></div></p>
+<h3 id="too-many-worktrees">Too many worktrees<a class="headerlink" href="#too-many-worktrees" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Disk space issues or "too many open files"</p>
+<p><strong>Cause</strong>: Worktrees not cleaned up after runs</p>
+<p><strong>Solution</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># List all worktrees</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>worktree<span class="w"> </span>list
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Clean up all worktrees</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>ll-parallel<span class="w"> </span>--cleanup
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># Or manually</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>git<span class="w"> </span>worktree<span class="w"> </span>remove<span class="w"> </span>.worktrees/worker-1<span class="w"> </span>--force
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>git<span class="w"> </span>worktree<span class="w"> </span>prune
+</code></pre></div></p>
+<hr />
+<h2 id="claude-cli-issues">Claude CLI Issues<a class="headerlink" href="#claude-cli-issues" title="Permanent link">&para;</a></h2>
+<h3 id="command-not-found-claude">Command not found: claude<a class="headerlink" href="#command-not-found-claude" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>FileNotFoundError</code> or "claude: command not found"</p>
+<p><strong>Cause</strong>: Claude CLI not installed or not in PATH</p>
+<p><strong>Solution</strong>:
+1. Install Claude CLI:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@anthropic-ai/claude-cli
+</code></pre></div>
+2. Verify installation:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>which<span class="w"> </span>claude
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>claude<span class="w"> </span>--version
+</code></pre></div>
+3. Check PATH includes npm global bin directory</p>
+<h3 id="claude-exits-with-returncode-1">Claude exits with returncode 1<a class="headerlink" href="#claude-exits-with-returncode-1" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Commands fail but no clear error message</p>
+<p><strong>Cause</strong>: Various - permission, timeout, API issues</p>
+<p><strong>Solution</strong>:
+1. Run command manually to see full output:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>claude<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;/ll:ready-issue BUG-001&quot;</span>
+</code></pre></div>
+2. Check if <code>--dangerously-skip-permissions</code> is working
+3. Verify API key/authentication status:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>claude<span class="w"> </span>--auth-status
+</code></pre></div></p>
+<h3 id="timeout-during-issue-processing">Timeout during issue processing<a class="headerlink" href="#timeout-during-issue-processing" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Issue processing stops after timeout_seconds</p>
+<p><strong>Cause</strong>: Complex issues or slow API responses</p>
+<p><strong>Solution</strong>:
+1. Increase timeout in config:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">&quot;automation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="nt">&quot;timeout_seconds&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">7200</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="p">}</span>
+</code></pre></div>
+2. For parallel mode:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">&quot;parallel&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="nt">&quot;timeout_per_issue&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">7200</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="p">}</span>
+</code></pre></div>
+3. Use CLI flag: <code>ll-auto --timeout 7200</code></p>
+<h3 id="permission-denied-errors">Permission denied errors<a class="headerlink" href="#permission-denied-errors" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Claude refuses to execute commands</p>
+<p><strong>Cause</strong>: Missing <code>--dangerously-skip-permissions</code> or permission not granted</p>
+<p><strong>Solution</strong>:
+1. The CLI tools add this flag automatically
+2. For manual runs, add the flag explicitly
+3. Check Claude Code permissions in your IDE settings</p>
+<hr />
+<h2 id="state-management">State Management<a class="headerlink" href="#state-management" title="Permanent link">&para;</a></h2>
+<h3 id="state-file-corruption">State file corruption<a class="headerlink" href="#state-file-corruption" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>JSONDecodeError</code> when resuming</p>
+<p><strong>Cause</strong>: Interrupted during state save (power loss, kill -9, etc.)</p>
+<p><strong>Solution</strong>:
+1. Delete the corrupted state file:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># For sequential mode</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>rm<span class="w"> </span>.auto-manage-state.json
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1"># For parallel mode</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>rm<span class="w"> </span>.parallel-manage-state.json
+</code></pre></div>
+2. Restart without <code>--resume</code></p>
+<h3 id="resume-not-working">Resume not working<a class="headerlink" href="#resume-not-working" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Reprocesses already-completed issues</p>
+<p><strong>Cause</strong>: State file deleted, wrong path, or different mode</p>
+<p><strong>Solution</strong>:
+1. Check <code>automation.state_file</code> in config
+2. Verify file exists before using <code>--resume</code>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>.auto-manage-state.json
+</code></pre></div>
+3. Ensure you're using the same mode (sequential vs parallel)</p>
+<h3 id="issues-stuck-in-attempted-state">Issues stuck in "attempted" state<a class="headerlink" href="#issues-stuck-in-attempted-state" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Issues skipped on future runs but not in completed</p>
+<p><strong>Cause</strong>: Issue failed but not recorded in failed_issues</p>
+<p><strong>Solution</strong>:
+1. View current state:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>cat<span class="w"> </span>.auto-manage-state.json<span class="w"> </span><span class="p">|</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>json.tool
+</code></pre></div>
+2. Edit state file to remove from <code>attempted_issues</code>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1"># Or just delete and restart</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>rm<span class="w"> </span>.auto-manage-state.json
+</code></pre></div></p>
+<h3 id="state-file-location-confusion">State file location confusion<a class="headerlink" href="#state-file-location-confusion" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Can't find state file or using wrong one</p>
+<p><strong>Cause</strong>: Different state files for different modes</p>
+<p><strong>Solution</strong>:
+| Mode | Default State File |
+|------|-------------------|
+| Sequential (ll-auto) | <code>.auto-manage-state.json</code> |
+| Parallel (ll-parallel) | <code>.parallel-manage-state.json</code> |</p>
+<p>Check your config for custom paths:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>grep<span class="w"> </span>state_file<span class="w"> </span>.claude/ll-config.json
+</code></pre></div></p>
+<hr />
+<h2 id="session-handoff">Session Handoff<a class="headerlink" href="#session-handoff" title="Permanent link">&para;</a></h2>
+<h3 id="context-monitor-not-triggering">Context monitor not triggering<a class="headerlink" href="#context-monitor-not-triggering" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: No warnings appear when context fills up</p>
+<p><strong>Cause</strong>: Context monitoring is disabled by default</p>
+<p><strong>Solution</strong>:
+1. Enable in <code>.claude/ll-config.json</code>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="p">{</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span><span class="nt">&quot;context_monitor&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span><span class="nt">&quot;auto_handoff_threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">80</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="p">}</span>
+</code></pre></div>
+2. Verify <code>jq</code> is installed (required for the hook):
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>which<span class="w"> </span>jq
+</code></pre></div>
+3. Check state file is being updated:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>cat<span class="w"> </span>.claude/ll-context-state.json
+</code></pre></div></p>
+<h3 id="reminders-keep-appearing-after-handoff">Reminders keep appearing after handoff<a class="headerlink" href="#reminders-keep-appearing-after-handoff" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "[ll] Context ~X% used" keeps showing after running <code>/ll:handoff</code></p>
+<p><strong>Cause</strong>: Handoff file modification time not detected correctly</p>
+<p><strong>Solution</strong>:
+1. Verify the file was created/modified:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>.claude/ll-continue-prompt.md
+</code></pre></div>
+2. Check <code>handoff_complete</code> in state file:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>cat<span class="w"> </span>.claude/ll-context-state.json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.handoff_complete&#39;</span>
+</code></pre></div>
+3. Manually mark complete if needed:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="c1"># Edit .claude/ll-context-state.json and set &quot;handoff_complete&quot;: true</span>
+</code></pre></div></p>
+<h3 id="resume-shows-stale-prompt">Resume shows stale prompt<a class="headerlink" href="#resume-shows-stale-prompt" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Warning about prompt being N hours old</p>
+<p><strong>Cause</strong>: Continuation prompt older than <code>prompt_expiry_hours</code> (default: 24)</p>
+<p><strong>Solution</strong>:
+1. Generate fresh prompt: <code>/ll:handoff</code>
+2. Increase expiry in config:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="p">{</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">  </span><span class="nt">&quot;continuation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">    </span><span class="nt">&quot;prompt_expiry_hours&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">72</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="p">}</span>
+</code></pre></div>
+3. Stale prompts are still usable - the warning is informational</p>
+<h3 id="no-continuation-prompt-found">No continuation prompt found<a class="headerlink" href="#no-continuation-prompt-found" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>/ll:resume</code> says "No continuation state found"</p>
+<p><strong>Cause</strong>: Handoff was never run or file deleted</p>
+<p><strong>Solution</strong>:
+1. Run <code>/ll:handoff</code> to create the prompt
+2. Check file location:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>.claude/ll-continue-prompt.md
+</code></pre></div>
+3. Check session state file:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>cat<span class="w"> </span>.claude/ll-session-state.json<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;No session state&quot;</span>
+</code></pre></div></p>
+<h3 id="automation-not-detecting-handoff-signal">Automation not detecting handoff signal<a class="headerlink" href="#automation-not-detecting-handoff-signal" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>ll-auto</code> or <code>ll-parallel</code> not spawning continuation sessions</p>
+<p><strong>Cause</strong>: Signal not in expected format or detection pattern mismatch</p>
+<p><strong>Solution</strong>:
+1. Verify <code>/ll:handoff</code> outputs the signal:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>CONTEXT_HANDOFF: Ready for fresh session
+</code></pre></div>
+2. Check logs for detection:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1"># Look for &quot;Detected CONTEXT_HANDOFF signal&quot; in output</span>
+</code></pre></div>
+3. Verify continuation prompt exists in worktree:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>cat<span class="w"> </span>.worktrees/worker-1/.claude/ll-continue-prompt.md
+</code></pre></div></p>
+<h3 id="max-continuations-reached">Max continuations reached<a class="headerlink" href="#max-continuations-reached" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "Reached max continuations (3), stopping"</p>
+<p><strong>Cause</strong>: Issue required more than 3 session restarts</p>
+<p><strong>Solution</strong>:
+1. Increase limit in config:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="p">{</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="w">  </span><span class="nt">&quot;continuation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="w">    </span><span class="nt">&quot;max_continuations&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span>
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="p">}</span>
+</code></pre></div>
+2. Consider splitting the issue into smaller tasks
+3. Check if issue is stuck in a loop (repeated handoffs without progress)</p>
+<h3 id="claude-not-seeing-context-warnings-in-non-interactive-mode">Claude not seeing context warnings in non-interactive mode<a class="headerlink" href="#claude-not-seeing-context-warnings-in-non-interactive-mode" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: ll-auto or ll-parallel exhausts context without triggering handoff</p>
+<p><strong>Cause</strong>: The context-monitor.sh hook must use exit code 2 with stderr to send feedback to Claude in non-interactive mode</p>
+<p><strong>Verification</strong>:
+1. Check the hook uses <code>exit 2</code> and <code>&gt;&amp;2</code>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>grep<span class="w"> </span>-A2<span class="w"> </span><span class="s2">&quot;exit 2&quot;</span><span class="w"> </span>hooks/scripts/context-monitor.sh
+</code></pre></div>
+2. Look for hook output in Claude logs showing the warning was received</p>
+<p><strong>Reference</strong>: GitHub issue #11224 documents PostToolUse hook behavior - exit code 2 with stderr is required for feedback to reach Claude</p>
+<h3 id="token-estimation-seems-wrong">Token estimation seems wrong<a class="headerlink" href="#token-estimation-seems-wrong" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Threshold triggers too early or too late</p>
+<p><strong>Cause</strong>: Default weights may not match your usage patterns</p>
+<p><strong>Solution</strong>:
+1. Adjust estimation weights:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="p">{</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="w">  </span><span class="nt">&quot;context_monitor&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a><span class="w">    </span><span class="nt">&quot;estimate_weights&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="w">      </span><span class="nt">&quot;read_per_line&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="w">      </span><span class="nt">&quot;tool_call_base&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span>
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="w">      </span><span class="nt">&quot;bash_output_per_char&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.3</span>
+<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a><span class="w">    </span><span class="nt">&quot;context_limit_estimate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000000</span>
+<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a><span class="p">}</span>
+</code></pre></div></p>
+<ol>
+<li><strong>Tool-specific costs</strong> (hardcoded in <code>hooks/scripts/context-monitor.sh</code>):</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Cost</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Read</code></td>
+<td>10 per line</td>
+<td><code>lines × read_per_line</code></td>
+</tr>
+<tr>
+<td><code>Grep</code></td>
+<td>5 per line</td>
+<td><code>output_lines × 5</code></td>
+</tr>
+<tr>
+<td><code>Glob</code></td>
+<td>20 per file</td>
+<td><code>file_count × 20</code></td>
+</tr>
+<tr>
+<td><code>Bash</code></td>
+<td>0.3 per char</td>
+<td><code>chars × bash_output_per_char</code></td>
+</tr>
+<tr>
+<td><code>Write</code>/<code>Edit</code></td>
+<td>300</td>
+<td><code>tool_call_base × 3</code></td>
+</tr>
+<tr>
+<td><code>Task</code></td>
+<td>2000</td>
+<td>Fixed overhead</td>
+</tr>
+<tr>
+<td><code>WebFetch</code></td>
+<td>1500</td>
+<td>Fixed overhead</td>
+</tr>
+<tr>
+<td><code>WebSearch</code></td>
+<td>1000</td>
+<td>Fixed overhead</td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li>Increase threshold for later warnings: <code>"auto_handoff_threshold": 85</code></li>
+<li>Check token breakdown in state file:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>cat<span class="w"> </span>.claude/ll-context-state.json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.breakdown&#39;</span>
+</code></pre></div></li>
+<li>For custom tuning, edit <code>hooks/scripts/context-monitor.sh</code> lines 56-118</li>
+</ol>
+<p>For comprehensive documentation, see <a href="../../guides/SESSION_HANDOFF/">Session Handoff Guide</a>.</p>
+<hr />
+<h2 id="priority-and-filtering">Priority and Filtering<a class="headerlink" href="#priority-and-filtering" title="Permanent link">&para;</a></h2>
+<h3 id="priority-filter-not-working">Priority filter not working<a class="headerlink" href="#priority-filter-not-working" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Wrong priority issues processed or issues skipped</p>
+<p><strong>Cause</strong>: Filename doesn't match pattern <code>P[0-5]-*</code></p>
+<p><strong>Solution</strong>:
+1. Verify filename format: <code>P1-BUG-001-description.md</code>
+2. Priority must be at the start of filename
+3. Check <code>issues.priorities</code> in config matches your prefixes:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="p">{</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="w">  </span><span class="nt">&quot;issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="w">    </span><span class="nt">&quot;priorities&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;P0&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;P1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;P2&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;P3&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;P4&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;P5&quot;</span><span class="p">]</span>
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a><span class="p">}</span>
+</code></pre></div></p>
+<h3 id="category-filtering-wrong">Category filtering wrong<a class="headerlink" href="#category-filtering-wrong" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>--category</code> flag processes wrong issue type</p>
+<p><strong>Cause</strong>: Category name mismatch with config</p>
+<p><strong>Solution</strong>:
+1. Use category keys from config: <code>"bugs"</code>, <code>"features"</code>, <code>"enhancements"</code>
+2. Not the directory name or prefix
+3. Check available categories:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">little_loops.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">BRConfig</span>
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">BRConfig</span><span class="p">(</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">())</span><span class="o">.</span><span class="n">issue_categories</span><span class="p">)</span>
+</code></pre></div></p>
+<h3 id="no-issues-found">No issues found<a class="headerlink" href="#no-issues-found" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "No issues to process" but issues exist</p>
+<p><strong>Cause</strong>: Wrong base_dir, category config, or file extension</p>
+<p><strong>Solution</strong>:
+1. Check issue directory exists:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>.issues/bugs/
+</code></pre></div>
+2. Verify files have <code>.md</code> extension
+3. Check config <code>issues.base_dir</code> matches actual location
+4. Run diagnostic:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">little_loops.issue_parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_issues</span>
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">little_loops.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">BRConfig</span>
+<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a><span class="n">issues</span> <span class="o">=</span> <span class="n">find_issues</span><span class="p">(</span><span class="n">BRConfig</span><span class="p">(</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()))</span>
+<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">issues</span><span class="p">)</span><span class="si">}</span><span class="s2"> issues&quot;</span><span class="p">)</span>
+<a id="__codelineno-41-6" name="__codelineno-41-6" href="#__codelineno-41-6"></a><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">issues</span><span class="p">[:</span><span class="mi">5</span><span class="p">]:</span>
+<a id="__codelineno-41-7" name="__codelineno-41-7" href="#__codelineno-41-7"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">i</span><span class="o">.</span><span class="n">issue_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">i</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div></p>
+<hr />
+<h2 id="merge-conflicts">Merge Conflicts<a class="headerlink" href="#merge-conflicts" title="Permanent link">&para;</a></h2>
+<h3 id="merge-fails-repeatedly">Merge fails repeatedly<a class="headerlink" href="#merge-fails-repeatedly" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "Merge conflict after N retries"</p>
+<p><strong>Cause</strong>: Parallel workers modified same files</p>
+<p><strong>Solution</strong>:
+1. Reduce workers temporarily:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>ll-parallel<span class="w"> </span>--workers<span class="w"> </span><span class="m">1</span>
+</code></pre></div>
+2. Prioritize issues to avoid overlapping changes
+3. Increase retry limit:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="p">{</span>
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a><span class="w">  </span><span class="nt">&quot;parallel&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a><span class="w">    </span><span class="nt">&quot;max_merge_retries&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span>
+<a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a><span class="p">}</span>
+</code></pre></div></p>
+<h3 id="local-changes-blocking-merge">Local changes blocking merge<a class="headerlink" href="#local-changes-blocking-merge" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "Your local changes would be overwritten"</p>
+<p><strong>Cause</strong>: Uncommitted changes in main repo</p>
+<p><strong>Solution</strong>:
+1. Commit or stash changes before running:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>git<span class="w"> </span>stash
+<a id="__codelineno-44-2" name="__codelineno-44-2" href="#__codelineno-44-2"></a>ll-parallel
+<a id="__codelineno-44-3" name="__codelineno-44-3" href="#__codelineno-44-3"></a>git<span class="w"> </span>stash<span class="w"> </span>pop
+</code></pre></div>
+2. Recent versions auto-stash, but verify:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>git<span class="w"> </span>stash<span class="w"> </span>list
+</code></pre></div></p>
+<h3 id="branch-not-found-after-merge">Branch not found after merge<a class="headerlink" href="#branch-not-found-after-merge" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Cleanup errors for already-deleted branch</p>
+<p><strong>Cause</strong>: Branch already deleted by previous cleanup</p>
+<p><strong>Solution</strong>:
+- Safe to ignore - cleanup is idempotent
+- Verify branches:
+  <div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>git<span class="w"> </span>branch<span class="w"> </span>-a<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>parallel/
+</code></pre></div></p>
+<h3 id="rebase-conflicts-during-merge">Rebase conflicts during merge<a class="headerlink" href="#rebase-conflicts-during-merge" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Merge coordinator reports rebase failure</p>
+<p><strong>Cause</strong>: Conflicting changes between workers</p>
+<p><strong>Solution</strong>:
+1. The coordinator will retry automatically
+2. If persists, check which files conflict:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>git<span class="w"> </span>diff<span class="w"> </span>--name-only<span class="w"> </span>HEAD...parallel/BUG-001-branch
+</code></pre></div>
+3. Consider processing conflicting issues sequentially</p>
+<hr />
+<h2 id="slash-command-issues">Slash Command Issues<a class="headerlink" href="#slash-command-issues" title="Permanent link">&para;</a></h2>
+<h3 id="command-not-found">Command not found<a class="headerlink" href="#command-not-found" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>/ll:command_name</code> not recognized</p>
+<p><strong>Cause</strong>: Plugin not installed or wrong prefix</p>
+<p><strong>Solution</strong>:
+1. Verify plugin is installed:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>cat<span class="w"> </span>.claude/settings.local.json<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>enabledPlugins
+</code></pre></div>
+2. Check prefix is <code>ll:</code> not <code>br:</code> (old prefix)
+3. Run <code>/ll:help</code> to see available commands</p>
+<h3 id="command-uses-wrong-config-values">Command uses wrong config values<a class="headerlink" href="#command-uses-wrong-config-values" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Command runs with default instead of project values</p>
+<p><strong>Cause</strong>: Config not loaded or variable path wrong</p>
+<p><strong>Solution</strong>:
+1. Check config file exists and is valid JSON
+2. Verify variable paths in command templates
+3. Test config loading:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">little_loops.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">BRConfig</span>
+<a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a><span class="n">c</span> <span class="o">=</span> <span class="n">BRConfig</span><span class="p">(</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">())</span>
+<a id="__codelineno-49-4" name="__codelineno-49-4" href="#__codelineno-49-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">project</span><span class="o">.</span><span class="n">test_cmd</span><span class="p">)</span>  <span class="c1"># Should show your config value</span>
+</code></pre></div></p>
+<h3 id="ready-issue-always-returns-not_ready">ready-issue always returns NOT_READY<a class="headerlink" href="#ready-issue-always-returns-not_ready" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: All issues fail validation</p>
+<p><strong>Cause</strong>: Issue file format doesn't match expected structure</p>
+<p><strong>Solution</strong>:
+1. Check issue file has required sections
+2. Verify title format: <code># ISSUE-ID: Title</code>
+3. Ensure issue describes a concrete, actionable task
+4. Run manually to see full output:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>claude<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;/ll:ready-issue BUG-001&quot;</span>
+</code></pre></div></p>
+<h3 id="manage-issue-completes-but-no-changes">manage-issue completes but no changes<a class="headerlink" href="#manage-issue-completes-but-no-changes" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Issue marked complete but code unchanged</p>
+<p><strong>Cause</strong>: Issue was deemed already fixed or invalid</p>
+<p><strong>Solution</strong>:
+1. Check issue moved to <code>completed/</code> directory
+2. Look for closure notes in the file
+3. Review git log for any commits
+4. Run with verbose output to see reasoning</p>
+<hr />
+<h2 id="hook-debugging">Hook Debugging<a class="headerlink" href="#hook-debugging" title="Permanent link">&para;</a></h2>
+<h3 id="hook-not-executing">Hook not executing<a class="headerlink" href="#hook-not-executing" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Expected hook behavior not occurring (context warnings, duplicate checks, etc.)</p>
+<p><strong>Cause</strong>: Hook disabled, missing dependencies, or execution errors</p>
+<p><strong>Solution</strong>:
+1. Check hooks are registered in <code>hooks/hooks.json</code>
+2. Verify hook script is executable:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>hooks/scripts/context-monitor.sh
+<a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>chmod<span class="w"> </span>+x<span class="w"> </span>hooks/scripts/check-duplicate-issue-id.sh
+<a id="__codelineno-51-3" name="__codelineno-51-3" href="#__codelineno-51-3"></a>chmod<span class="w"> </span>+x<span class="w"> </span>hooks/scripts/user-prompt-check.sh
+<a id="__codelineno-51-4" name="__codelineno-51-4" href="#__codelineno-51-4"></a>chmod<span class="w"> </span>+x<span class="w"> </span>hooks/scripts/precompact-state.sh
+</code></pre></div>
+3. Check <code>jq</code> is installed (required by most hooks):
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a>which<span class="w"> </span>jq<span class="w"> </span><span class="o">||</span><span class="w"> </span>brew<span class="w"> </span>install<span class="w"> </span>jq<span class="w">  </span><span class="c1"># macOS</span>
+<a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a>which<span class="w"> </span>jq<span class="w"> </span><span class="o">||</span><span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>jq<span class="w">   </span><span class="c1"># Linux</span>
+</code></pre></div></p>
+<h3 id="hook-timeout-errors">Hook timeout errors<a class="headerlink" href="#hook-timeout-errors" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "Hook exceeded timeout" or hook execution aborted</p>
+<p><strong>Cause</strong>: Lock acquisition timeout or slow file operations</p>
+<p><strong>Solution</strong>:
+1. Check for stale lock files:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a>find<span class="w"> </span>.claude<span class="w"> </span>-name<span class="w"> </span><span class="s2">&quot;*.lock&quot;</span><span class="w"> </span>-o<span class="w"> </span>-name<span class="w"> </span><span class="s2">&quot;*.lock.lock&quot;</span>
+<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>rm<span class="w"> </span>-rf<span class="w"> </span>.claude/*.lock<span class="w"> </span>.claude/*.lock.lock
+</code></pre></div>
+2. Verify hooks complete quickly (should be &lt;1s normally):
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a><span class="nb">time</span><span class="w"> </span>bash<span class="w"> </span>hooks/scripts/context-monitor.sh<span class="w"> </span>&lt;<span class="w"> </span>test-input.json
+</code></pre></div>
+3. Check hook timeout settings in <code>hooks/hooks.json</code></p>
+<h3 id="state-file-corruption_1">State file corruption<a class="headerlink" href="#state-file-corruption_1" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Hook crashes with JSON parse errors</p>
+<p><strong>Cause</strong>: Interrupted write operation or concurrent access bug</p>
+<p><strong>Solution</strong>:
+1. Check state file is valid JSON:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>jq<span class="w"> </span>empty<span class="w"> </span>.claude/ll-context-state.json<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+<a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a>jq<span class="w"> </span>empty<span class="w"> </span>.claude/ll-precompact-state.json<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</code></pre></div>
+2. Delete corrupted state files (they'll be recreated):
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>rm<span class="w"> </span>.claude/ll-context-state.json
+<a id="__codelineno-56-2" name="__codelineno-56-2" href="#__codelineno-56-2"></a>rm<span class="w"> </span>.claude/ll-precompact-state.json
+</code></pre></div>
+3. Verify <code>atomic_write_json</code> is being used (check hook scripts source <code>lib/common.sh</code>)</p>
+<h3 id="lock-files-not-cleaned-up">Lock files not cleaned up<a class="headerlink" href="#lock-files-not-cleaned-up" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Stale <code>.lock</code> files preventing hook execution</p>
+<p><strong>Cause</strong>: Hook process killed before cleanup or trap failure</p>
+<p><strong>Solution</strong>:
+1. Remove all lock files:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a><span class="c1"># Clean up hook lock files</span>
+<a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>rm<span class="w"> </span>-rf<span class="w"> </span>.claude/.*.lock
+<a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a>rm<span class="w"> </span>-rf<span class="w"> </span>.claude/.*.lock.lock
+<a id="__codelineno-57-4" name="__codelineno-57-4" href="#__codelineno-57-4"></a>rm<span class="w"> </span>-rf<span class="w"> </span>.issues/.*.lock
+<a id="__codelineno-57-5" name="__codelineno-57-5" href="#__codelineno-57-5"></a>rm<span class="w"> </span>-rf<span class="w"> </span>.issues/.*.lock.lock
+</code></pre></div>
+2. Check for hung processes:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>ps<span class="w"> </span>aux<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s1">&#39;(context-monitor|check-duplicate|user-prompt-check|precompact)&#39;</span>
+</code></pre></div>
+3. Lock files should auto-expire (4s timeout for most hooks)</p>
+<h3 id="duplicate-issue-id-not-detected">Duplicate issue ID not detected<a class="headerlink" href="#duplicate-issue-id-not-detected" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Multiple issues created with same ID despite hook</p>
+<p><strong>Cause</strong>: Race condition or hook not running on Write tool</p>
+<p><strong>Solution</strong>:
+1. Verify hook is registered for PreToolUse:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a>grep<span class="w"> </span>-A5<span class="w"> </span><span class="s2">&quot;check-duplicate-issue-id&quot;</span><span class="w"> </span>hooks/hooks.json
+</code></pre></div>
+2. Test hook manually:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;tool_name&quot;:&quot;Write&quot;,&quot;tool_input&quot;:{&quot;file_path&quot;:&quot;.issues/bugs/P2-BUG-001-test.md&quot;}}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-60-2" name="__codelineno-60-2" href="#__codelineno-60-2"></a><span class="w">  </span>bash<span class="w"> </span>hooks/scripts/check-duplicate-issue-id.sh
+</code></pre></div>
+3. Check if lock acquisition is timing out (reduce concurrent writes)</p>
+<h3 id="context-monitor-not-updating">Context monitor not updating<a class="headerlink" href="#context-monitor-not-updating" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Token counts not increasing or warnings not appearing</p>
+<p><strong>Cause</strong>: Hook not running, state file issues, or disabled</p>
+<p><strong>Solution</strong>:
+1. Enable context monitoring in config:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a><span class="p">{</span>
+<a id="__codelineno-61-2" name="__codelineno-61-2" href="#__codelineno-61-2"></a><span class="w">  </span><span class="nt">&quot;context_monitor&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-61-3" name="__codelineno-61-3" href="#__codelineno-61-3"></a><span class="w">    </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-61-4" name="__codelineno-61-4" href="#__codelineno-61-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-61-5" name="__codelineno-61-5" href="#__codelineno-61-5"></a><span class="p">}</span>
+</code></pre></div>
+2. Check state file is updating:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a>watch<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="s1">&#39;cat .claude/ll-context-state.json | jq .estimated_tokens&#39;</span>
+</code></pre></div>
+3. Verify PostToolUse hook is running:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-63-1" name="__codelineno-63-1" href="#__codelineno-63-1"></a><span class="c1"># Add this to context-monitor.sh temporarily for debugging</span>
+<a id="__codelineno-63-2" name="__codelineno-63-2" href="#__codelineno-63-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Hook triggered at </span><span class="k">$(</span>date<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>/tmp/hook-debug.log
+</code></pre></div>
+4. Test hook manually:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;tool_name&quot;:&quot;Read&quot;,&quot;tool_response&quot;:{&quot;content&quot;:&quot;test\n&quot;}}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a><span class="w">  </span>bash<span class="w"> </span>hooks/scripts/context-monitor.sh
+</code></pre></div></p>
+<h3 id="user-prompt-optimization-not-working">User prompt optimization not working<a class="headerlink" href="#user-prompt-optimization-not-working" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Prompts not being optimized despite enabled setting</p>
+<p><strong>Cause</strong>: Bypass patterns matching or template file missing</p>
+<p><strong>Solution</strong>:
+1. Check prompt doesn't start with bypass prefix (default: <code>*</code>):
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a><span class="p">{</span>
+<a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a><span class="w">  </span><span class="nt">&quot;prompt_optimization&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-65-3" name="__codelineno-65-3" href="#__codelineno-65-3"></a><span class="w">    </span><span class="nt">&quot;bypass_prefix&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;*&quot;</span>
+<a id="__codelineno-65-4" name="__codelineno-65-4" href="#__codelineno-65-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-65-5" name="__codelineno-65-5" href="#__codelineno-65-5"></a><span class="p">}</span>
+</code></pre></div>
+2. Verify template file exists:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>hooks/prompts/optimize-prompt-hook.md
+</code></pre></div>
+3. Test hook with a sample prompt:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;prompt&quot;:&quot;implement user authentication system&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a><span class="w">  </span>bash<span class="w"> </span>hooks/scripts/user-prompt-check.sh
+</code></pre></div></p>
+<h3 id="testing-individual-hooks">Testing individual hooks<a class="headerlink" href="#testing-individual-hooks" title="Permanent link">&para;</a></h3>
+<p><strong>Manual hook testing</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a><span class="c1"># Test context-monitor.sh</span>
+<a id="__codelineno-68-2" name="__codelineno-68-2" href="#__codelineno-68-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{</span>
+<a id="__codelineno-68-3" name="__codelineno-68-3" href="#__codelineno-68-3"></a><span class="s1">  &quot;tool_name&quot;: &quot;Read&quot;,</span>
+<a id="__codelineno-68-4" name="__codelineno-68-4" href="#__codelineno-68-4"></a><span class="s1">  &quot;tool_response&quot;: {&quot;content&quot;: &quot;line1\nline2\nline3\n&quot;}</span>
+<a id="__codelineno-68-5" name="__codelineno-68-5" href="#__codelineno-68-5"></a><span class="s1">}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>bash<span class="w"> </span>hooks/scripts/context-monitor.sh
+<a id="__codelineno-68-6" name="__codelineno-68-6" href="#__codelineno-68-6"></a>
+<a id="__codelineno-68-7" name="__codelineno-68-7" href="#__codelineno-68-7"></a><span class="c1"># Test check-duplicate-issue-id.sh</span>
+<a id="__codelineno-68-8" name="__codelineno-68-8" href="#__codelineno-68-8"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{</span>
+<a id="__codelineno-68-9" name="__codelineno-68-9" href="#__codelineno-68-9"></a><span class="s1">  &quot;tool_name&quot;: &quot;Write&quot;,</span>
+<a id="__codelineno-68-10" name="__codelineno-68-10" href="#__codelineno-68-10"></a><span class="s1">  &quot;tool_input&quot;: {&quot;file_path&quot;: &quot;.issues/bugs/P2-BUG-999-test.md&quot;}</span>
+<a id="__codelineno-68-11" name="__codelineno-68-11" href="#__codelineno-68-11"></a><span class="s1">}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>bash<span class="w"> </span>hooks/scripts/check-duplicate-issue-id.sh
+<a id="__codelineno-68-12" name="__codelineno-68-12" href="#__codelineno-68-12"></a>
+<a id="__codelineno-68-13" name="__codelineno-68-13" href="#__codelineno-68-13"></a><span class="c1"># Test user-prompt-check.sh</span>
+<a id="__codelineno-68-14" name="__codelineno-68-14" href="#__codelineno-68-14"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{</span>
+<a id="__codelineno-68-15" name="__codelineno-68-15" href="#__codelineno-68-15"></a><span class="s1">  &quot;prompt&quot;: &quot;add authentication to the app&quot;</span>
+<a id="__codelineno-68-16" name="__codelineno-68-16" href="#__codelineno-68-16"></a><span class="s1">}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>bash<span class="w"> </span>hooks/scripts/user-prompt-check.sh
+<a id="__codelineno-68-17" name="__codelineno-68-17" href="#__codelineno-68-17"></a>
+<a id="__codelineno-68-18" name="__codelineno-68-18" href="#__codelineno-68-18"></a><span class="c1"># Test precompact-state.sh</span>
+<a id="__codelineno-68-19" name="__codelineno-68-19" href="#__codelineno-68-19"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{</span>
+<a id="__codelineno-68-20" name="__codelineno-68-20" href="#__codelineno-68-20"></a><span class="s1">  &quot;transcript_path&quot;: &quot;/tmp/test.jsonl&quot;</span>
+<a id="__codelineno-68-21" name="__codelineno-68-21" href="#__codelineno-68-21"></a><span class="s1">}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>bash<span class="w"> </span>hooks/scripts/precompact-state.sh
+</code></pre></div>
+<h3 id="hook-integration-tests">Hook integration tests<a class="headerlink" href="#hook-integration-tests" title="Permanent link">&para;</a></h3>
+<p>Run the full integration test suite:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a><span class="c1"># Run all hook integration tests</span>
+<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>scripts/tests/test_hooks_integration.py<span class="w"> </span>-v
+<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a>
+<a id="__codelineno-69-4" name="__codelineno-69-4" href="#__codelineno-69-4"></a><span class="c1"># Run specific test class</span>
+<a id="__codelineno-69-5" name="__codelineno-69-5" href="#__codelineno-69-5"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>scripts/tests/test_hooks_integration.py::TestContextMonitor<span class="w"> </span>-v
+<a id="__codelineno-69-6" name="__codelineno-69-6" href="#__codelineno-69-6"></a>
+<a id="__codelineno-69-7" name="__codelineno-69-7" href="#__codelineno-69-7"></a><span class="c1"># Run with detailed output</span>
+<a id="__codelineno-69-8" name="__codelineno-69-8" href="#__codelineno-69-8"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>scripts/tests/test_hooks_integration.py<span class="w"> </span>-v<span class="w"> </span>-s
+</code></pre></div>
+<h3 id="common-lock-issues">Common lock issues<a class="headerlink" href="#common-lock-issues" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: "Failed to acquire lock" or timeout errors</p>
+<p><strong>Debugging</strong>:
+1. Check if <code>flock</code> is available:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a>which<span class="w"> </span>flock<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Using mkdir-based fallback locks&quot;</span>
+</code></pre></div>
+2. Verify lock timeout settings (in hook scripts):
+   - context-monitor.sh: 4s timeout
+   - check-duplicate-issue-id.sh: 3s timeout
+   - precompact-state.sh: 3s timeout
+3. Monitor lock files during operation:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a>watch<span class="w"> </span>-n<span class="w"> </span><span class="m">0</span>.1<span class="w"> </span><span class="s1">&#39;find .claude .issues -name &quot;*.lock*&quot; 2&gt;/dev/null&#39;</span>
+</code></pre></div></p>
+<h3 id="special-character-handling">Special character handling<a class="headerlink" href="#special-character-handling" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Prompts with special characters cause errors or injection</p>
+<p><strong>Verification</strong>:
+1. Test with special characters:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;prompt&quot;:&quot;test with $VAR and $(cmd) and &amp; chars&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="w">  </span>bash<span class="w"> </span>hooks/scripts/user-prompt-check.sh
+</code></pre></div>
+2. Check for sed usage (should use bash parameter expansion instead):
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;sed&quot;</span><span class="w"> </span>hooks/scripts/*.sh
+<a id="__codelineno-73-2" name="__codelineno-73-2" href="#__codelineno-73-2"></a><span class="c1"># Should only appear in comments, not active code</span>
+</code></pre></div>
+3. Run integration tests:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-74-1" name="__codelineno-74-1" href="#__codelineno-74-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>scripts/tests/test_hooks_integration.py::TestUserPromptCheck<span class="w"> </span>-v
+</code></pre></div></p>
+<hr />
+<h2 id="diagnostic-commands">Diagnostic Commands<a class="headerlink" href="#diagnostic-commands" title="Permanent link">&para;</a></h2>
+<p>These commands use the Python API directly. See <a href="../../reference/API/">API Reference</a> for full documentation.</p>
+<h3 id="check-configuration">Check configuration<a class="headerlink" href="#check-configuration" title="Permanent link">&para;</a></h3>
+<p>Uses <a href="../../reference/API/#brconfig"><code>BRConfig</code></a> to load and display resolved configuration:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-75-1" name="__codelineno-75-1" href="#__codelineno-75-1"></a><span class="c1"># View resolved config</span>
+<a id="__codelineno-75-2" name="__codelineno-75-2" href="#__codelineno-75-2"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
+<a id="__codelineno-75-3" name="__codelineno-75-3" href="#__codelineno-75-3"></a><span class="s2">from little_loops.config import BRConfig</span>
+<a id="__codelineno-75-4" name="__codelineno-75-4" href="#__codelineno-75-4"></a><span class="s2">from pathlib import Path</span>
+<a id="__codelineno-75-5" name="__codelineno-75-5" href="#__codelineno-75-5"></a><span class="s2">import json</span>
+<a id="__codelineno-75-6" name="__codelineno-75-6" href="#__codelineno-75-6"></a><span class="s2">c = BRConfig(Path.cwd())</span>
+<a id="__codelineno-75-7" name="__codelineno-75-7" href="#__codelineno-75-7"></a><span class="s2">print(json.dumps(c.to_dict(), indent=2))</span>
+<a id="__codelineno-75-8" name="__codelineno-75-8" href="#__codelineno-75-8"></a><span class="s2">&quot;</span>
+</code></pre></div>
+<h3 id="check-issue-discovery">Check issue discovery<a class="headerlink" href="#check-issue-discovery" title="Permanent link">&para;</a></h3>
+<p>Uses <a href="../../reference/API/#find_issues"><code>find_issues()</code></a> to list all discovered issues:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-76-1" name="__codelineno-76-1" href="#__codelineno-76-1"></a><span class="c1"># List all discovered issues</span>
+<a id="__codelineno-76-2" name="__codelineno-76-2" href="#__codelineno-76-2"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
+<a id="__codelineno-76-3" name="__codelineno-76-3" href="#__codelineno-76-3"></a><span class="s2">from little_loops.issue_parser import find_issues</span>
+<a id="__codelineno-76-4" name="__codelineno-76-4" href="#__codelineno-76-4"></a><span class="s2">from little_loops.config import BRConfig</span>
+<a id="__codelineno-76-5" name="__codelineno-76-5" href="#__codelineno-76-5"></a><span class="s2">from pathlib import Path</span>
+<a id="__codelineno-76-6" name="__codelineno-76-6" href="#__codelineno-76-6"></a><span class="s2">issues = find_issues(BRConfig(Path.cwd()))</span>
+<a id="__codelineno-76-7" name="__codelineno-76-7" href="#__codelineno-76-7"></a><span class="s2">for i in issues:</span>
+<a id="__codelineno-76-8" name="__codelineno-76-8" href="#__codelineno-76-8"></a><span class="s2">    print(f&#39;{i.priority} {i.issue_id}: {i.title}&#39;)</span>
+<a id="__codelineno-76-9" name="__codelineno-76-9" href="#__codelineno-76-9"></a><span class="s2">&quot;</span>
+</code></pre></div>
+<h3 id="check-worktree-status">Check worktree status<a class="headerlink" href="#check-worktree-status" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a><span class="c1"># List all worktrees</span>
+<a id="__codelineno-77-2" name="__codelineno-77-2" href="#__codelineno-77-2"></a>git<span class="w"> </span>worktree<span class="w"> </span>list
+<a id="__codelineno-77-3" name="__codelineno-77-3" href="#__codelineno-77-3"></a>
+<a id="__codelineno-77-4" name="__codelineno-77-4" href="#__codelineno-77-4"></a><span class="c1"># List parallel branches</span>
+<a id="__codelineno-77-5" name="__codelineno-77-5" href="#__codelineno-77-5"></a>git<span class="w"> </span>branch<span class="w"> </span>-a<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>parallel/
+<a id="__codelineno-77-6" name="__codelineno-77-6" href="#__codelineno-77-6"></a>
+<a id="__codelineno-77-7" name="__codelineno-77-7" href="#__codelineno-77-7"></a><span class="c1"># Check worktree directory</span>
+<a id="__codelineno-77-8" name="__codelineno-77-8" href="#__codelineno-77-8"></a>ls<span class="w"> </span>-la<span class="w"> </span>.worktrees/
+</code></pre></div>
+<h3 id="check-state-files">Check state files<a class="headerlink" href="#check-state-files" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-78-1" name="__codelineno-78-1" href="#__codelineno-78-1"></a><span class="c1"># Sequential state</span>
+<a id="__codelineno-78-2" name="__codelineno-78-2" href="#__codelineno-78-2"></a>cat<span class="w"> </span>.auto-manage-state.json<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>json.tool<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;No sequential state&quot;</span>
+<a id="__codelineno-78-3" name="__codelineno-78-3" href="#__codelineno-78-3"></a>
+<a id="__codelineno-78-4" name="__codelineno-78-4" href="#__codelineno-78-4"></a><span class="c1"># Parallel state</span>
+<a id="__codelineno-78-5" name="__codelineno-78-5" href="#__codelineno-78-5"></a>cat<span class="w"> </span>.parallel-manage-state.json<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>json.tool<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;No parallel state&quot;</span>
+</code></pre></div>
+<h3 id="verify-python-package">Verify Python package<a class="headerlink" href="#verify-python-package" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a><span class="c1"># Check installation</span>
+<a id="__codelineno-79-2" name="__codelineno-79-2" href="#__codelineno-79-2"></a>pip<span class="w"> </span>show<span class="w"> </span>little-loops<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span>pip<span class="w"> </span>show<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+<a id="__codelineno-79-3" name="__codelineno-79-3" href="#__codelineno-79-3"></a>
+<a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a><span class="c1"># Check CLI tools</span>
+<a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a>which<span class="w"> </span>ll-auto
+<a id="__codelineno-79-6" name="__codelineno-79-6" href="#__codelineno-79-6"></a>which<span class="w"> </span>ll-parallel
+<a id="__codelineno-79-7" name="__codelineno-79-7" href="#__codelineno-79-7"></a>
+<a id="__codelineno-79-8" name="__codelineno-79-8" href="#__codelineno-79-8"></a><span class="c1"># Check version</span>
+<a id="__codelineno-79-9" name="__codelineno-79-9" href="#__codelineno-79-9"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import little_loops; print(little_loops.__file__)&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="getting-help">Getting Help<a class="headerlink" href="#getting-help" title="Permanent link">&para;</a></h2>
+<p>If you're still stuck:</p>
+<ol>
+<li>Check the <a href="../README.md">README</a> for basic setup</li>
+<li>Review <a href="../../ARCHITECTURE/">ARCHITECTURE.md</a> for system understanding</li>
+<li>Check <a href="../../reference/API/">API.md</a> for module details</li>
+</ol>
+<p>For persistent issues, create a bug report with:
+- Config file (sanitized - remove any secrets)
+- Command run and full output
+- Git status output
+- Python and Claude CLI versions</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

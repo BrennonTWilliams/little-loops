@@ -1,0 +1,3230 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/claude-code/skills/">
+      
+      
+        <link rel="prev" href="../memory/">
+      
+      
+        <link rel="next" href="../custom-subagents/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Skills - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#documentation-index" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Skills
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extend-claude-with-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extend Claude with skills
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Extend Claude with skills">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting started
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-your-first-skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create your first skill
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-skills-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where skills live
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where skills live">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#automatic-discovery-from-nested-directories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic discovery from nested directories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skills-from-additional-directories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skills from additional directories
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configure-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure skills
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configure skills">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#types-of-skill-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Types of skill content
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="```yaml theme={null}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#frontmatter-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontmatter reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="```yaml theme={null}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#add-supporting-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add supporting files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additional-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additional resources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Additional resources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restrict-tool-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restrict tool access
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Advanced patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inject-dynamic-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inject dynamic context
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pull-request-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull request context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#your-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your task
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Your task">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restrict-claudes-skill-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restrict Claude's skill access
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#share-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share skills
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Share skills">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generate-visual-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generate visual output
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-visualization-shows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the visualization shows
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usrbinenv-python3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        !/usr/bin/env python3
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="!/usr/bin/env python3">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#skill-not-triggering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill not triggering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skill-triggers-too-often" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill triggers too often
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-doesnt-see-all-my-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude doesn't see all my skills
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extend-claude-with-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extend Claude with skills
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Extend Claude with skills">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting started
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-your-first-skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create your first skill
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-skills-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where skills live
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where skills live">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#automatic-discovery-from-nested-directories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic discovery from nested directories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skills-from-additional-directories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skills from additional directories
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configure-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure skills
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configure skills">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#types-of-skill-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Types of skill content
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="```yaml theme={null}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#frontmatter-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontmatter reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="```yaml theme={null}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#add-supporting-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add supporting files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additional-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additional resources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Additional resources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restrict-tool-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restrict tool access
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Advanced patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inject-dynamic-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inject dynamic context
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yaml-themenull_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ```yaml theme={null}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pull-request-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull request context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#your-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your task
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Your task">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restrict-claudes-skill-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restrict Claude's skill access
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#share-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share skills
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Share skills">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generate-visual-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generate visual output
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-visualization-shows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the visualization shows
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usrbinenv-python3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        !/usr/bin/env python3
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="!/usr/bin/env python3">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#skill-not-triggering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill not triggering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skill-triggers-too-often" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill triggers too often
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-doesnt-see-all-my-skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude doesn't see all my skills
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<blockquote>
+<h2 id="documentation-index">Documentation Index<a class="headerlink" href="#documentation-index" title="Permanent link">&para;</a></h2>
+<p>Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+Use this file to discover all available pages before exploring further.</p>
+</blockquote>
+<h1 id="extend-claude-with-skills">Extend Claude with skills<a class="headerlink" href="#extend-claude-with-skills" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Create, manage, and share skills to extend Claude's capabilities in Claude Code. Includes custom slash commands.</p>
+</blockquote>
+<p>Skills extend what Claude can do. Create a <code>SKILL.md</code> file with instructions, and Claude adds it to its toolkit. Claude uses skills when relevant, or you can invoke one directly with <code>/skill-name</code>.</p>
+<p><Note>
+  For built-in commands like <code>/help</code> and <code>/compact</code>, see <a href="/en/interactive-mode#built-in-commands">interactive mode</a>.</p>
+<p><strong>Custom slash commands have been merged into skills.</strong> A file at <code>.claude/commands/review.md</code> and a skill at <code>.claude/skills/review/SKILL.md</code> both create <code>/review</code> and work the same way. Your existing <code>.claude/commands/</code> files keep working. Skills add optional features: a directory for supporting files, frontmatter to <a href="#control-who-invokes-a-skill">control whether you or Claude invokes them</a>, and the ability for Claude to load them automatically when relevant.
+</Note></p>
+<p>Claude Code skills follow the <a href="https://agentskills.io">Agent Skills</a> open standard, which works across multiple AI tools. Claude Code extends the standard with additional features like <a href="#control-who-invokes-a-skill">invocation control</a>, <a href="#run-skills-in-a-subagent">subagent execution</a>, and <a href="#inject-dynamic-context">dynamic context injection</a>.</p>
+<h2 id="getting-started">Getting started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
+<h3 id="create-your-first-skill">Create your first skill<a class="headerlink" href="#create-your-first-skill" title="Permanent link">&para;</a></h3>
+<p>This example creates a skill that teaches Claude to explain code using visual diagrams and analogies. Since it uses default frontmatter, Claude can load it automatically when you ask how something works, or you can invoke it directly with <code>/explain-code</code>.</p>
+<p><Steps>
+  <Step title="Create the skill directory">
+    Create a directory for the skill in your personal skills folder. Personal skills are available across all your projects.</p>
+<div class="highlight"><pre><span></span><code>```bash  theme={null}
+mkdir -p ~/.claude/skills/explain-code
+```
+</code></pre></div>
+<p></Step></p>
+<p><Step title="Write SKILL.md">
+    Every skill needs a <code>SKILL.md</code> file with two parts: YAML frontmatter (between <code>---</code> markers) that tells Claude when to use the skill, and markdown content with instructions Claude follows when the skill is invoked. The <code>name</code> field becomes the <code>/slash-command</code>, and the <code>description</code> helps Claude decide when to load it automatically.</p>
+<div class="highlight"><pre><span></span><code>Create `~/.claude/skills/explain-code/SKILL.md`:
+
+```yaml  theme={null}
+---
+name: explain-code
+description: Explains code with visual diagrams and analogies. Use when explaining how code works, teaching about a codebase, or when the user asks &quot;how does this work?&quot;
+---
+
+When explaining code, always include:
+
+1. **Start with an analogy**: Compare the code to something from everyday life
+2. **Draw a diagram**: Use ASCII art to show the flow, structure, or relationships
+3. **Walk through the code**: Explain step-by-step what happens
+4. **Highlight a gotcha**: What&#39;s a common mistake or misconception?
+
+Keep explanations conversational. For complex concepts, use multiple analogies.
+```
+</code></pre></div>
+<p></Step></p>
+<p><Step title="Test the skill">
+    You can test it two ways:</p>
+<div class="highlight"><pre><span></span><code>**Let Claude invoke it automatically** by asking something that matches the description:
+
+```
+How does this code work?
+```
+
+**Or invoke it directly** with the skill name:
+
+```
+/explain-code src/auth/login.ts
+```
+
+Either way, Claude should include an analogy and ASCII diagram in its explanation.
+</code></pre></div>
+<p></Step>
+</Steps></p>
+<h3 id="where-skills-live">Where skills live<a class="headerlink" href="#where-skills-live" title="Permanent link">&para;</a></h3>
+<p>Where you store a skill determines who can use it:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Location</th>
+<th style="text-align: left;">Path</th>
+<th style="text-align: left;">Applies to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Enterprise</td>
+<td style="text-align: left;">See <a href="/en/permissions#managed-settings">managed settings</a></td>
+<td style="text-align: left;">All users in your organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">Personal</td>
+<td style="text-align: left;"><code>~/.claude/skills/&lt;skill-name&gt;/SKILL.md</code></td>
+<td style="text-align: left;">All your projects</td>
+</tr>
+<tr>
+<td style="text-align: left;">Project</td>
+<td style="text-align: left;"><code>.claude/skills/&lt;skill-name&gt;/SKILL.md</code></td>
+<td style="text-align: left;">This project only</td>
+</tr>
+<tr>
+<td style="text-align: left;">Plugin</td>
+<td style="text-align: left;"><code>&lt;plugin&gt;/skills/&lt;skill-name&gt;/SKILL.md</code></td>
+<td style="text-align: left;">Where plugin is enabled</td>
+</tr>
+</tbody>
+</table>
+<p>When skills share the same name across levels, higher-priority locations win: enterprise &gt; personal &gt; project. Plugin skills use a <code>plugin-name:skill-name</code> namespace, so they cannot conflict with other levels. If you have files in <code>.claude/commands/</code>, those work the same way, but if a skill and a command share the same name, the skill takes precedence.</p>
+<h4 id="automatic-discovery-from-nested-directories">Automatic discovery from nested directories<a class="headerlink" href="#automatic-discovery-from-nested-directories" title="Permanent link">&para;</a></h4>
+<p>When you work with files in subdirectories, Claude Code automatically discovers skills from nested <code>.claude/skills/</code> directories. For example, if you're editing a file in <code>packages/frontend/</code>, Claude Code also looks for skills in <code>packages/frontend/.claude/skills/</code>. This supports monorepo setups where packages have their own skills.</p>
+<p>Each skill is a directory with <code>SKILL.md</code> as the entrypoint:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>my-skill/
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── SKILL.md           # Main instructions (required)
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>├── template.md        # Template for Claude to fill in
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>├── examples/
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>│   └── sample.md      # Example output showing expected format
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>└── scripts/
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    └── validate.sh    # Script Claude can execute
+</code></pre></div>
+<p>The <code>SKILL.md</code> contains the main instructions and is required. Other files are optional and let you build more powerful skills: templates for Claude to fill in, example outputs showing the expected format, scripts Claude can execute, or detailed reference documentation. Reference these files from your <code>SKILL.md</code> so Claude knows what they contain and when to load them. See <a href="#add-supporting-files">Add supporting files</a> for more details.</p>
+<p><Note>
+  Files in <code>.claude/commands/</code> still work and support the same <a href="#frontmatter-reference">frontmatter</a>. Skills are recommended since they support additional features like supporting files.
+</Note></p>
+<h4 id="skills-from-additional-directories">Skills from additional directories<a class="headerlink" href="#skills-from-additional-directories" title="Permanent link">&para;</a></h4>
+<p>Skills defined in <code>.claude/skills/</code> within directories added via <code>--add-dir</code> are loaded automatically and picked up by live change detection, so you can edit them during a session without restarting.</p>
+<p><Note>
+  CLAUDE.md files from <code>--add-dir</code> directories are not loaded by default. To load them, set <code>CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1</code>. See <a href="/en/memory#load-memory-from-additional-directories">Load memory from additional directories</a>.
+</Note></p>
+<h2 id="configure-skills">Configure skills<a class="headerlink" href="#configure-skills" title="Permanent link">&para;</a></h2>
+<p>Skills are configured through YAML frontmatter at the top of <code>SKILL.md</code> and the markdown content that follows.</p>
+<h3 id="types-of-skill-content">Types of skill content<a class="headerlink" href="#types-of-skill-content" title="Permanent link">&para;</a></h3>
+<p>Skill files can contain any instructions, but thinking about how you want to invoke them helps guide what to include:</p>
+<p><strong>Reference content</strong> adds knowledge Claude applies to your current work. Conventions, patterns, style guides, domain knowledge. This content runs inline so Claude can use it alongside your conversation context.</p>
+<h2 id="yaml-themenull">```yaml  theme={null}<a class="headerlink" href="#yaml-themenull" title="Permanent link">&para;</a></h2>
+<p>name: api-conventions
+description: API design patterns for this codebase</p>
+<hr />
+<p>When writing API endpoints:
+- Use RESTful naming conventions
+- Return consistent error formats
+- Include request validation
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>**Task content** gives Claude step-by-step instructions for a specific action, like deployments, commits, or code generation. These are often actions you want to invoke directly with `/skill-name` rather than letting Claude decide when to run them. Add `disable-model-invocation: true` to prevent Claude from triggering it automatically.
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>```yaml  theme={null}
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>---
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>name: deploy
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>description: Deploy the application to production
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>context: fork
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>disable-model-invocation: true
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>---
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>Deploy the application:
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>1. Run the test suite
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>2. Build the application
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>3. Push to the deployment target
+</code></pre></div></p>
+<p>Your <code>SKILL.md</code> can contain anything, but thinking through how you want the skill invoked (by you, by Claude, or both) and where you want it to run (inline or in a subagent) helps guide what to include. For complex skills, you can also <a href="#add-supporting-files">add supporting files</a> to keep the main skill focused.</p>
+<h3 id="frontmatter-reference">Frontmatter reference<a class="headerlink" href="#frontmatter-reference" title="Permanent link">&para;</a></h3>
+<p>Beyond the markdown content, you can configure skill behavior using YAML frontmatter fields between <code>---</code> markers at the top of your <code>SKILL.md</code> file:</p>
+<h2 id="yaml-themenull_1">```yaml  theme={null}<a class="headerlink" href="#yaml-themenull_1" title="Permanent link">&para;</a></h2>
+<p>name: my-skill
+description: What this skill does
+disable-model-invocation: true
+allowed-tools: Read, Grep</p>
+<hr />
+<p>Your skill instructions here...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>All fields are optional. Only `description` is recommended so Claude knows when to use the skill.
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>| Field                      | Required    | Description                                                                                                                                           |
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>| :------------------------- | :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>| `name`                     | No          | Display name for the skill. If omitted, uses the directory name. Lowercase letters, numbers, and hyphens only (max 64 characters).                    |
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>| `description`              | Recommended | What the skill does and when to use it. Claude uses this to decide when to apply the skill. If omitted, uses the first paragraph of markdown content. |
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>| `argument-hint`            | No          | Hint shown during autocomplete to indicate expected arguments. Example: `[issue-number]` or `[filename] [format]`.                                    |
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>| `disable-model-invocation` | No          | Set to `true` to prevent Claude from automatically loading this skill. Use for workflows you want to trigger manually with `/name`. Default: `false`. |
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>| `user-invocable`           | No          | Set to `false` to hide from the `/` menu. Use for background knowledge users shouldn&#39;t invoke directly. Default: `true`.                              |
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>| `allowed-tools`            | No          | Tools Claude can use without asking permission when this skill is active.                                                                             |
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>| `model`                    | No          | Model to use when this skill is active.                                                                                                               |
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>| `context`                  | No          | Set to `fork` to run in a forked subagent context.                                                                                                    |
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>| `agent`                    | No          | Which subagent type to use when `context: fork` is set.                                                                                               |
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>| `hooks`                    | No          | Hooks scoped to this skill&#39;s lifecycle. See [Hooks in skills and agents](/en/hooks#hooks-in-skills-and-agents) for configuration format.              |
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>#### Available string substitutions
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>Skills support string substitution for dynamic values in the skill content:
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>| Variable               | Description                                                                                                                                  |
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>| :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>| `$ARGUMENTS`           | All arguments passed when invoking the skill. If `$ARGUMENTS` is not present in the content, arguments are appended as `ARGUMENTS: &lt;value&gt;`. |
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>| `$ARGUMENTS[N]`        | Access a specific argument by 0-based index, such as `$ARGUMENTS[0]` for the first argument.                                                 |
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>| `$N`                   | Shorthand for `$ARGUMENTS[N]`, such as `$0` for the first argument or `$1` for the second.                                                   |
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>| `${CLAUDE_SESSION_ID}` | The current session ID. Useful for logging, creating session-specific files, or correlating skill output with sessions.                      |
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>**Example using substitutions:**
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>```yaml  theme={null}
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>---
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>name: session-logger
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>description: Log activity for this session
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>---
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>
+<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>Log the following to logs/${CLAUDE_SESSION_ID}.log:
+<a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>
+<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>$ARGUMENTS
+</code></pre></div></p>
+<h3 id="add-supporting-files">Add supporting files<a class="headerlink" href="#add-supporting-files" title="Permanent link">&para;</a></h3>
+<p>Skills can include multiple files in their directory. This keeps <code>SKILL.md</code> focused on the essentials while letting Claude access detailed reference material only when needed. Large reference docs, API specifications, or example collections don't need to load into context every time the skill runs.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>my-skill/
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── SKILL.md (required - overview and navigation)
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>├── reference.md (detailed API docs - loaded when needed)
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>├── examples.md (usage examples - loaded when needed)
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>└── scripts/
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    └── helper.py (utility script - executed, not loaded)
+</code></pre></div>
+<p>Reference supporting files from <code>SKILL.md</code> so Claude knows what each file contains and when to load it:</p>
+<p>```markdown  theme={null}</p>
+<h2 id="additional-resources">Additional resources<a class="headerlink" href="#additional-resources" title="Permanent link">&para;</a></h2>
+<ul>
+<li>For complete API details, see <a href="reference.md">reference.md</a></li>
+<li>For usage examples, see <a href="examples.md">examples.md</a>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>&lt;Tip&gt;Keep `SKILL.md` under 500 lines. Move detailed reference material to separate files.&lt;/Tip&gt;
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>### Control who invokes a skill
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>By default, both you and Claude can invoke any skill. You can type `/skill-name` to invoke it directly, and Claude can load it automatically when relevant to your conversation. Two frontmatter fields let you restrict this:
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>* **`disable-model-invocation: true`**: Only you can invoke the skill. Use this for workflows with side effects or that you want to control timing, like `/commit`, `/deploy`, or `/send-slack-message`. You don&#39;t want Claude deciding to deploy because your code looks ready.
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>* **`user-invocable: false`**: Only Claude can invoke the skill. Use this for background knowledge that isn&#39;t actionable as a command. A `legacy-system-context` skill explains how an old system works. Claude should know this when relevant, but `/legacy-system-context` isn&#39;t a meaningful action for users to take.
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>This example creates a deploy skill that only you can trigger. The `disable-model-invocation: true` field prevents Claude from running it automatically:
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>```yaml  theme={null}
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>---
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>name: deploy
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>description: Deploy the application to production
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>disable-model-invocation: true
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>---
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>Deploy $ARGUMENTS to production:
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>1. Run the test suite
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>2. Build the application
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>3. Push to the deployment target
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>4. Verify the deployment succeeded
+</code></pre></div></li>
+</ul>
+<p>Here's how the two fields affect invocation and context loading:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Frontmatter</th>
+<th style="text-align: left;">You can invoke</th>
+<th style="text-align: left;">Claude can invoke</th>
+<th style="text-align: left;">When loaded into context</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">(default)</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Description always in context, full skill loads when invoked</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>disable-model-invocation: true</code></td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Description not in context, full skill loads when you invoke</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>user-invocable: false</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Description always in context, full skill loads when invoked</td>
+</tr>
+</tbody>
+</table>
+<p><Note>
+  In a regular session, skill descriptions are loaded into context so Claude knows what's available, but full skill content only loads when invoked. <a href="/en/sub-agents#preload-skills-into-subagents">Subagents with preloaded skills</a> work differently: the full skill content is injected at startup.
+</Note></p>
+<h3 id="restrict-tool-access">Restrict tool access<a class="headerlink" href="#restrict-tool-access" title="Permanent link">&para;</a></h3>
+<p>Use the <code>allowed-tools</code> field to limit which tools Claude can use when a skill is active. This skill creates a read-only mode where Claude can explore files but not modify them:</p>
+<h2 id="yaml-themenull_2">```yaml  theme={null}<a class="headerlink" href="#yaml-themenull_2" title="Permanent link">&para;</a></h2>
+<p>name: safe-reader
+description: Read files without making changes
+allowed-tools: Read, Grep, Glob</p>
+<hr />
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>### Pass arguments to skills
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>Both you and Claude can pass arguments when invoking a skill. Arguments are available via the `$ARGUMENTS` placeholder.
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>This skill fixes a GitHub issue by number. The `$ARGUMENTS` placeholder gets replaced with whatever follows the skill name:
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>```yaml  theme={null}
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>---
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>name: fix-issue
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>description: Fix a GitHub issue
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>disable-model-invocation: true
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>---
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>Fix GitHub issue $ARGUMENTS following our coding standards.
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>1. Read the issue description
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>2. Understand the requirements
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>3. Implement the fix
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>4. Write tests
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>5. Create a commit
+</code></pre></div>
+<p>When you run <code>/fix-issue 123</code>, Claude receives "Fix GitHub issue 123 following our coding standards..."</p>
+<p>If you invoke a skill with arguments but the skill doesn't include <code>$ARGUMENTS</code>, Claude Code appends <code>ARGUMENTS: &lt;your input&gt;</code> to the end of the skill content so Claude still sees what you typed.</p>
+<p>To access individual arguments by position, use <code>$ARGUMENTS[N]</code> or the shorter <code>$N</code>:</p>
+<h2 id="yaml-themenull_3">```yaml  theme={null}<a class="headerlink" href="#yaml-themenull_3" title="Permanent link">&para;</a></h2>
+<p>name: migrate-component
+description: Migrate a component from one framework to another</p>
+<hr />
+<p>Migrate the $ARGUMENTS[0] component from $ARGUMENTS[1] to $ARGUMENTS[2].
+Preserve all existing behavior and tests.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Running `/migrate-component SearchBar React Vue` replaces `$ARGUMENTS[0]` with `SearchBar`, `$ARGUMENTS[1]` with `React`, and `$ARGUMENTS[2]` with `Vue`. The same skill using the `$N` shorthand:
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>```yaml  theme={null}
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>---
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>name: migrate-component
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>description: Migrate a component from one framework to another
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>---
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>Migrate the $0 component from $1 to $2.
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>Preserve all existing behavior and tests.
+</code></pre></div></p>
+<h2 id="advanced-patterns">Advanced patterns<a class="headerlink" href="#advanced-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="inject-dynamic-context">Inject dynamic context<a class="headerlink" href="#inject-dynamic-context" title="Permanent link">&para;</a></h3>
+<p>The <code>!</code>command`` syntax runs shell commands before the skill content is sent to Claude. The command output replaces the placeholder, so Claude receives actual data, not the command itself.</p>
+<p>This skill summarizes a pull request by fetching live PR data with the GitHub CLI. The <code>!</code>gh pr diff`` and other commands run first, and their output gets inserted into the prompt:</p>
+<h2 id="yaml-themenull_4">```yaml  theme={null}<a class="headerlink" href="#yaml-themenull_4" title="Permanent link">&para;</a></h2>
+<p>name: pr-summary
+description: Summarize changes in a pull request
+context: fork
+agent: Explore
+allowed-tools: Bash(gh *)</p>
+<hr />
+<h2 id="pull-request-context">Pull request context<a class="headerlink" href="#pull-request-context" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PR diff: !<code>gh pr diff</code></li>
+<li>PR comments: !<code>gh pr view --comments</code></li>
+<li>Changed files: !<code>gh pr diff --name-only</code></li>
+</ul>
+<h2 id="your-task">Your task<a class="headerlink" href="#your-task" title="Permanent link">&para;</a></h2>
+<p>Summarize this pull request...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>When this skill runs:
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>1. Each `!`command\`\` executes immediately (before Claude sees anything)
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>2. The output replaces the placeholder in the skill content
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>3. Claude receives the fully-rendered prompt with actual PR data
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>This is preprocessing, not something Claude executes. Claude only sees the final result.
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>&lt;Tip&gt;
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>  To enable [extended thinking](/en/common-workflows#use-extended-thinking-thinking-mode) in a skill, include the word &quot;ultrathink&quot; anywhere in your skill content.
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>&lt;/Tip&gt;
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>### Run skills in a subagent
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>Add `context: fork` to your frontmatter when you want a skill to run in isolation. The skill content becomes the prompt that drives the subagent. It won&#39;t have access to your conversation history.
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>&lt;Warning&gt;
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>  `context: fork` only makes sense for skills with explicit instructions. If your skill contains guidelines like &quot;use these API conventions&quot; without a task, the subagent receives the guidelines but no actionable prompt, and returns without meaningful output.
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>&lt;/Warning&gt;
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>Skills and [subagents](/en/sub-agents) work together in two directions:
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>| Approach                     | System prompt                             | Task                        | Also loads                   |
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>| :--------------------------- | :---------------------------------------- | :-------------------------- | :--------------------------- |
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>| Skill with `context: fork`   | From agent type (`Explore`, `Plan`, etc.) | SKILL.md content            | CLAUDE.md                    |
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>| Subagent with `skills` field | Subagent&#39;s markdown body                  | Claude&#39;s delegation message | Preloaded skills + CLAUDE.md |
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>With `context: fork`, you write the task in your skill and pick an agent type to execute it. For the inverse (defining a custom subagent that uses skills as reference material), see [Subagents](/en/sub-agents#preload-skills-into-subagents).
+<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a>
+<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a>#### Example: Research skill using Explore agent
+<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>
+<a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a>This skill runs research in a forked Explore agent. The skill content becomes the task, and the agent provides read-only tools optimized for codebase exploration:
+<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a>
+<a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a>```yaml  theme={null}
+<a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a>---
+<a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a>name: deep-research
+<a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a>description: Research a topic thoroughly
+<a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a>context: fork
+<a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a>agent: Explore
+<a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a>---
+<a id="__codelineno-9-41" name="__codelineno-9-41" href="#__codelineno-9-41"></a>
+<a id="__codelineno-9-42" name="__codelineno-9-42" href="#__codelineno-9-42"></a>Research $ARGUMENTS thoroughly:
+<a id="__codelineno-9-43" name="__codelineno-9-43" href="#__codelineno-9-43"></a>
+<a id="__codelineno-9-44" name="__codelineno-9-44" href="#__codelineno-9-44"></a>1. Find relevant files using Glob and Grep
+<a id="__codelineno-9-45" name="__codelineno-9-45" href="#__codelineno-9-45"></a>2. Read and analyze the code
+<a id="__codelineno-9-46" name="__codelineno-9-46" href="#__codelineno-9-46"></a>3. Summarize findings with specific file references
+</code></pre></div></p>
+<p>When this skill runs:</p>
+<ol>
+<li>A new isolated context is created</li>
+<li>The subagent receives the skill content as its prompt ("Research \$ARGUMENTS thoroughly...")</li>
+<li>The <code>agent</code> field determines the execution environment (model, tools, and permissions)</li>
+<li>Results are summarized and returned to your main conversation</li>
+</ol>
+<p>The <code>agent</code> field specifies which subagent configuration to use. Options include built-in agents (<code>Explore</code>, <code>Plan</code>, <code>general-purpose</code>) or any custom subagent from <code>.claude/agents/</code>. If omitted, uses <code>general-purpose</code>.</p>
+<h3 id="restrict-claudes-skill-access">Restrict Claude's skill access<a class="headerlink" href="#restrict-claudes-skill-access" title="Permanent link">&para;</a></h3>
+<p>By default, Claude can invoke any skill that doesn't have <code>disable-model-invocation: true</code> set. Skills that define <code>allowed-tools</code> grant Claude access to those tools without per-use approval when the skill is active. Your <a href="/en/permissions">permission settings</a> still govern baseline approval behavior for all other tools. Built-in commands like <code>/compact</code> and <code>/init</code> are not available through the Skill tool.</p>
+<p>Three ways to control which skills Claude can invoke:</p>
+<p><strong>Disable all skills</strong> by denying the Skill tool in <code>/permissions</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a># Add to deny rules:
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>Skill
+</code></pre></div>
+<p><strong>Allow or deny specific skills</strong> using <a href="/en/permissions">permission rules</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a># Allow only specific skills
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>Skill(commit)
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>Skill(review-pr *)
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a># Deny specific skills
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>Skill(deploy *)
+</code></pre></div>
+<p>Permission syntax: <code>Skill(name)</code> for exact match, <code>Skill(name *)</code> for prefix match with any arguments.</p>
+<p><strong>Hide individual skills</strong> by adding <code>disable-model-invocation: true</code> to their frontmatter. This removes the skill from Claude's context entirely.</p>
+<p><Note>
+  The <code>user-invocable</code> field only controls menu visibility, not Skill tool access. Use <code>disable-model-invocation: true</code> to block programmatic invocation.
+</Note></p>
+<h2 id="share-skills">Share skills<a class="headerlink" href="#share-skills" title="Permanent link">&para;</a></h2>
+<p>Skills can be distributed at different scopes depending on your audience:</p>
+<ul>
+<li><strong>Project skills</strong>: Commit <code>.claude/skills/</code> to version control</li>
+<li><strong>Plugins</strong>: Create a <code>skills/</code> directory in your <a href="/en/plugins">plugin</a></li>
+<li><strong>Managed</strong>: Deploy organization-wide through <a href="/en/permissions#managed-settings">managed settings</a></li>
+</ul>
+<h3 id="generate-visual-output">Generate visual output<a class="headerlink" href="#generate-visual-output" title="Permanent link">&para;</a></h3>
+<p>Skills can bundle and run scripts in any language, giving Claude capabilities beyond what's possible in a single prompt. One powerful pattern is generating visual output: interactive HTML files that open in your browser for exploring data, debugging, or creating reports.</p>
+<p>This example creates a codebase explorer: an interactive tree view where you can expand and collapse directories, see file sizes at a glance, and identify file types by color.</p>
+<p>Create the Skill directory:</p>
+<p>```bash  theme={null}
+mkdir -p ~/.claude/skills/codebase-visualizer/scripts
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Create `~/.claude/skills/codebase-visualizer/SKILL.md`. The description tells Claude when to activate this Skill, and the instructions tell Claude to run the bundled script:
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>````yaml  theme={null}
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>---
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>name: codebase-visualizer
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>description: Generate an interactive collapsible tree visualization of your codebase. Use when exploring a new repo, understanding project structure, or identifying large files.
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>allowed-tools: Bash(python *)
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>---
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a># Codebase Visualizer
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>Generate an interactive HTML tree view that shows your project&#39;s file structure with collapsible directories.
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>## Usage
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>Run the visualization script from your project root:
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>```bash
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>python ~/.claude/skills/codebase-visualizer/scripts/visualize.py .
+</code></pre></div></p>
+<p>This creates <code>codebase-map.html</code> in the current directory and opens it in your default browser.</p>
+<h2 id="what-the-visualization-shows">What the visualization shows<a class="headerlink" href="#what-the-visualization-shows" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Collapsible directories</strong>: Click folders to expand/collapse</li>
+<li><strong>File sizes</strong>: Displayed next to each file</li>
+<li><strong>Colors</strong>: Different colors for different file types</li>
+<li><strong>Directory totals</strong>: Shows aggregate size of each folder
+````</li>
+</ul>
+<p>Create <code>~/.claude/skills/codebase-visualizer/scripts/visualize.py</code>. This script scans a directory tree and generates a self-contained HTML file with:</p>
+<ul>
+<li>A <strong>summary sidebar</strong> showing file count, directory count, total size, and number of file types</li>
+<li>A <strong>bar chart</strong> breaking down the codebase by file type (top 8 by size)</li>
+<li>A <strong>collapsible tree</strong> where you can expand and collapse directories, with color-coded file type indicators</li>
+</ul>
+<p>The script requires Python but uses only built-in libraries, so there are no packages to install:</p>
+<p>```python expandable theme={null}</p>
+<h1 id="usrbinenv-python3">!/usr/bin/env python3<a class="headerlink" href="#usrbinenv-python3" title="Permanent link">&para;</a></h1>
+<p>"""Generate an interactive collapsible tree visualization of a codebase."""</p>
+<p>import json
+import sys
+import webbrowser
+from pathlib import Path
+from collections import Counter</p>
+<p>IGNORE = {'.git', 'node_modules', '<strong>pycache</strong>', '.venv', 'venv', 'dist', 'build'}</p>
+<p>def scan(path: Path, stats: dict) -&gt; dict:
+    result = {"name": path.name, "children": [], "size": 0}
+    try:
+        for item in sorted(path.iterdir()):
+            if item.name in IGNORE or item.name.startswith('.'):
+                continue
+            if item.is_file():
+                size = item.stat().st_size
+                ext = item.suffix.lower() or '(no ext)'
+                result["children"].append({"name": item.name, "size": size, "ext": ext})
+                result["size"] += size
+                stats["files"] += 1
+                stats["extensions"][ext] += 1
+                stats["ext_sizes"][ext] += size
+            elif item.is_dir():
+                stats["dirs"] += 1
+                child = scan(item, stats)
+                if child["children"]:
+                    result["children"].append(child)
+                    result["size"] += child["size"]
+    except PermissionError:
+        pass
+    return result</p>
+<p>def generate_html(data: dict, stats: dict, output: Path) -&gt; None:
+    ext_sizes = stats["ext_sizes"]
+    total_size = sum(ext_sizes.values()) or 1
+    sorted_exts = sorted(ext_sizes.items(), key=lambda x: -x[1])[:8]
+    colors = {
+        '.js': '#f7df1e', '.ts': '#3178c6', '.py': '#3776ab', '.go': '#00add8',
+        '.rs': '#dea584', '.rb': '#cc342d', '.css': '#264de4', '.html': '#e34c26',
+        '.json': '#6b7280', '.md': '#083fa1', '.yaml': '#cb171e', '.yml': '#cb171e',
+        '.mdx': '#083fa1', '.tsx': '#3178c6', '.jsx': '#61dafb', '.sh': '#4eaa25',
+    }
+    lang_bars = "".join(
+        f'<div class="bar-row"><span class="bar-label">{ext}</span>'
+        f'<div class="bar" style="width:{(size/total_size)*100}%;background:{colors.get(ext,"#6b7280")}"></div>'
+        f'<span class="bar-pct">{(size/total_size)*100:.1f}%</span></div>'
+        for ext, size in sorted_exts
+    )
+    def fmt(b):
+        if b &lt; 1024: return f"{b} B"
+        if b &lt; 1048576: return f"{b/1024:.1f} KB"
+        return f"{b/1048576:.1f} MB"</p>
+<div class="highlight"><pre><span></span><code>html = f&#39;&#39;&#39;&lt;!DOCTYPE html&gt;
+</code></pre></div>
+<html><head>
+  <meta charset="utf-8"><title>Codebase Explorer</title>
+  <style>
+    body {{ font: 14px/1.5 system-ui, sans-serif; margin: 0; background: #1a1a2e; color: #eee; }}
+    .container {{ display: flex; height: 100vh; }}
+    .sidebar {{ width: 280px; background: #252542; padding: 20px; border-right: 1px solid #3d3d5c; overflow-y: auto; flex-shrink: 0; }}
+    .main {{ flex: 1; padding: 20px; overflow-y: auto; }}
+    h1 {{ margin: 0 0 10px 0; font-size: 18px; }}
+    h2 {{ margin: 20px 0 10px 0; font-size: 14px; color: #888; text-transform: uppercase; }}
+    .stat {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #3d3d5c; }}
+    .stat-value {{ font-weight: bold; }}
+    .bar-row {{ display: flex; align-items: center; margin: 6px 0; }}
+    .bar-label {{ width: 55px; font-size: 12px; color: #aaa; }}
+    .bar {{ height: 18px; border-radius: 3px; }}
+    .bar-pct {{ margin-left: 8px; font-size: 12px; color: #666; }}
+    .tree {{ list-style: none; padding-left: 20px; }}
+    details {{ cursor: pointer; }}
+    summary {{ padding: 4px 8px; border-radius: 4px; }}
+    summary:hover {{ background: #2d2d44; }}
+    .folder {{ color: #ffd700; }}
+    .file {{ display: flex; align-items: center; padding: 4px 8px; border-radius: 4px; }}
+    .file:hover {{ background: #2d2d44; }}
+    .size {{ color: #888; margin-left: auto; font-size: 12px; }}
+    .dot {{ width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }}
+  </style>
+</head><body>
+  <div class="container">
+    <div class="sidebar">
+      <h1>📊 Summary</h1>
+      <div class="stat"><span>Files</span><span class="stat-value">{stats["files"]:,}</span></div>
+      <div class="stat"><span>Directories</span><span class="stat-value">{stats["dirs"]:,}</span></div>
+      <div class="stat"><span>Total size</span><span class="stat-value">{fmt(data["size"])}</span></div>
+      <div class="stat"><span>File types</span><span class="stat-value">{len(stats["extensions"])}</span></div>
+      <h2>By file type</h2>
+      {lang_bars}
+    </div>
+    <div class="main">
+      <h1>📁 {data["name"]}</h1>
+      <ul class="tree" id="root"></ul>
+    </div>
+  </div>
+  <script>
+    const data = {json.dumps(data)};
+    const colors = {json.dumps(colors)};
+    function fmt(b) {{ if (b < 1024) return b + ' B'; if (b < 1048576) return (b/1024).toFixed(1) + ' KB'; return (b/1048576).toFixed(1) + ' MB'; }}
+    function render(node, parent) {{
+      if (node.children) {{
+        const det = document.createElement('details');
+        det.open = parent === document.getElementById('root');
+        det.innerHTML = `<summary><span class="folder">📁 ${{node.name}}</span><span class="size">${{fmt(node.size)}}</span></summary>`;
+        const ul = document.createElement('ul'); ul.className = 'tree';
+        node.children.sort((a,b) => (b.children?1:0)-(a.children?1:0) || a.name.localeCompare(b.name));
+        node.children.forEach(c => render(c, ul));
+        det.appendChild(ul);
+        const li = document.createElement('li'); li.appendChild(det); parent.appendChild(li);
+      }} else {{
+        const li = document.createElement('li'); li.className = 'file';
+        li.innerHTML = `<span class="dot" style="background:${{colors[node.ext]||'#6b7280'}}"></span>${{node.name}}<span class="size">${{fmt(node.size)}}</span>`;
+        parent.appendChild(li);
+      }}
+    }}
+    data.children.forEach(c => render(c, document.getElementById('root')));
+  </script>
+</body></html>
+<p>'''
+    output.write_text(html)</p>
+<p>if <strong>name</strong> == '<strong>main</strong>':
+    target = Path(sys.argv[1] if len(sys.argv) &gt; 1 else '.').resolve()
+    stats = {"files": 0, "dirs": 0, "extensions": Counter(), "ext_sizes": Counter()}
+    data = scan(target, stats)
+    out = Path('codebase-map.html')
+    generate_html(data, stats, out)
+    print(f'Generated {out.absolute()}')
+    webbrowser.open(f'file://{out.absolute()}')
+```</p>
+<p>To test, open Claude Code in any project and ask "Visualize this codebase." Claude runs the script, generates <code>codebase-map.html</code>, and opens it in your browser.</p>
+<p>This pattern works for any visual output: dependency graphs, test coverage reports, API documentation, or database schema visualizations. The bundled script does the heavy lifting while Claude handles orchestration.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="skill-not-triggering">Skill not triggering<a class="headerlink" href="#skill-not-triggering" title="Permanent link">&para;</a></h3>
+<p>If Claude doesn't use your skill when expected:</p>
+<ol>
+<li>Check the description includes keywords users would naturally say</li>
+<li>Verify the skill appears in <code>What skills are available?</code></li>
+<li>Try rephrasing your request to match the description more closely</li>
+<li>Invoke it directly with <code>/skill-name</code> if the skill is user-invocable</li>
+</ol>
+<h3 id="skill-triggers-too-often">Skill triggers too often<a class="headerlink" href="#skill-triggers-too-often" title="Permanent link">&para;</a></h3>
+<p>If Claude uses your skill when you don't want it:</p>
+<ol>
+<li>Make the description more specific</li>
+<li>Add <code>disable-model-invocation: true</code> if you only want manual invocation</li>
+</ol>
+<h3 id="claude-doesnt-see-all-my-skills">Claude doesn't see all my skills<a class="headerlink" href="#claude-doesnt-see-all-my-skills" title="Permanent link">&para;</a></h3>
+<p>Skill descriptions are loaded into context so Claude knows what's available. If you have many skills, they may exceed the character budget. The budget scales dynamically at 2% of the context window, with a fallback of 16,000 characters. Run <code>/context</code> to check for a warning about excluded skills.</p>
+<p>To override the limit, set the <code>SLASH_COMMAND_TOOL_CHAR_BUDGET</code> environment variable.</p>
+<h2 id="related-resources">Related resources<a class="headerlink" href="#related-resources" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><a href="/en/sub-agents">Subagents</a></strong>: delegate tasks to specialized agents</li>
+<li><strong><a href="/en/plugins">Plugins</a></strong>: package and distribute skills with other extensions</li>
+<li><strong><a href="/en/hooks">Hooks</a></strong>: automate workflows around tool events</li>
+<li><strong><a href="/en/memory">Memory</a></strong>: manage CLAUDE.md files for persistent context</li>
+<li><strong><a href="/en/interactive-mode#built-in-commands">Interactive mode</a></strong>: built-in commands and shortcuts</li>
+<li><strong><a href="/en/permissions">Permissions</a></strong>: control tool and skill access</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

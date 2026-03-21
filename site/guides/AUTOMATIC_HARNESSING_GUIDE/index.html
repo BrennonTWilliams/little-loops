@@ -1,0 +1,3310 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/guides/AUTOMATIC_HARNESSING_GUIDE/">
+      
+      
+        <link rel="prev" href="../WORKFLOW_ANALYSIS_GUIDE/">
+      
+      
+        <link rel="next" href="../../reference/CLI/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Automatic Harnessing - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#automatic-harnessing-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Automatic Harnessing
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../claude-code/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-a-harness-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is a Harness Loop?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What Is a Harness Loop?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-evaluation-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Evaluation Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-phases-explained" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluation Phases Explained
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Evaluation Phases Explained">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tool-based-gates-check_concrete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool-Based Gates (check_concrete)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-tool-gates-check_mcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP Tool Gates (check_mcp)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skill-as-judge-check_skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill-as-Judge (check_skill)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-as-judge-check_semantic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM-as-Judge (check_semantic)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diff-invariants-check_invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff Invariants (check_invariants)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-a-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use a Harness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#creating-a-harness-the-4-step-wizard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Creating a Harness: The 4-Step Wizard
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating a Harness: The 4-Step Wizard">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-h1-choose-a-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H1: Choose a Target
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-h2-work-item-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H2: Work Item Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-h3-evaluation-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H3: Evaluation Phases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-h4-iteration-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H4: Iteration Budget
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generated-fsm-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated FSM Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Generated FSM Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#variant-a-single-shot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variant A: Single-Shot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#variant-b-multi-item" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variant B: Multi-Item
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stall-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stall Detection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-the-example-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using the Example Files
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using the Example Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validate-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validate structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-interactively-dry-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run interactively (dry-run)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-for-real" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run for real
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adapt-to-your-own-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapt to your own workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example-harness-refine-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked Example: Harness refine-issue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-a-harness-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is a Harness Loop?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What Is a Harness Loop?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-evaluation-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Evaluation Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-phases-explained" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluation Phases Explained
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Evaluation Phases Explained">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tool-based-gates-check_concrete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool-Based Gates (check_concrete)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-tool-gates-check_mcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP Tool Gates (check_mcp)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skill-as-judge-check_skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill-as-Judge (check_skill)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-as-judge-check_semantic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM-as-Judge (check_semantic)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diff-invariants-check_invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff Invariants (check_invariants)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-a-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use a Harness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#creating-a-harness-the-4-step-wizard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Creating a Harness: The 4-Step Wizard
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating a Harness: The 4-Step Wizard">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-h1-choose-a-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H1: Choose a Target
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-h2-work-item-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H2: Work Item Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-h3-evaluation-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H3: Evaluation Phases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-h4-iteration-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step H4: Iteration Budget
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generated-fsm-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated FSM Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Generated FSM Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#variant-a-single-shot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variant A: Single-Shot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#variant-b-multi-item" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variant B: Multi-Item
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stall-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stall Detection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-the-example-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using the Example Files
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using the Example Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validate-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validate structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-interactively-dry-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run interactively (dry-run)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-for-real" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run for real
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adapt-to-your-own-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapt to your own workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example-harness-refine-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked Example: Harness refine-issue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="automatic-harnessing-guide">Automatic Harnessing Guide<a class="headerlink" href="#automatic-harnessing-guide" title="Permanent link">&para;</a></h1>
+<p>The hard problem in automated iteration isn't running the skill — it's knowing when the output is actually good. A harness loop is a quality evaluation pipeline that applies a skill or prompt to work items, then evaluates the result from multiple angles before advancing: mechanical tests catch regressions, LLM judgment assesses semantic quality, user-simulation skills verify the experience as a real user would, and diff invariants catch runaway changes. The wizard auto-derives this evaluation framework from your project config so you don't write it by hand.</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#what-is-a-harness-loop">What Is a Harness Loop?</a></li>
+<li><a href="#the-evaluation-pipeline">The Evaluation Pipeline</a></li>
+<li><a href="#evaluation-phases-explained">Evaluation Phases Explained</a></li>
+<li><a href="#tool-based-gates-check_concrete">Tool-Based Gates (<code>check_concrete</code>)</a></li>
+<li><a href="#mcp-tool-gates-check_mcp">MCP Tool Gates (<code>check_mcp</code>)</a></li>
+<li><a href="#skill-as-judge-check_skill">Skill-as-Judge (<code>check_skill</code>)</a></li>
+<li><a href="#llm-as-judge-check_semantic">LLM-as-Judge (<code>check_semantic</code>)</a></li>
+<li><a href="#diff-invariants-check_invariants">Diff Invariants (<code>check_invariants</code>)</a></li>
+<li><a href="#when-to-use-a-harness">When to Use a Harness</a></li>
+<li><a href="#creating-a-harness-the-4-step-wizard">Creating a Harness: The 4-Step Wizard</a></li>
+<li><a href="#step-h1-choose-a-target">Step H1: Choose a Target</a></li>
+<li><a href="#step-h2-work-item-discovery">Step H2: Work Item Discovery</a></li>
+<li><a href="#step-h3-evaluation-phases">Step H3: Evaluation Phases</a></li>
+<li><a href="#step-h4-iteration-budget">Step H4: Iteration Budget</a></li>
+<li><a href="#generated-fsm-structure">Generated FSM Structure</a></li>
+<li><a href="#variant-a-single-shot">Variant A: Single-Shot</a></li>
+<li><a href="#variant-b-multi-item">Variant B: Multi-Item</a></li>
+<li><a href="#stall-detection">Stall Detection</a></li>
+<li><a href="#using-the-example-files">Using the Example Files</a></li>
+<li><a href="#worked-example-harness-refine-issue">Worked Example: Harness <code>refine-issue</code></a></li>
+<li><a href="#tips">Tips</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#see-also">See Also</a></li>
+</ul>
+<hr />
+<h2 id="what-is-a-harness-loop">What Is a Harness Loop?<a class="headerlink" href="#what-is-a-harness-loop" title="Permanent link">&para;</a></h2>
+<p>A harness loop is a pre-structured FSM pattern that repeatedly applies a skill or prompt to a list of work items (or once in single-shot mode), evaluating success after each run through a layered quality pipeline.</p>
+<h3 id="the-evaluation-pipeline">The Evaluation Pipeline<a class="headerlink" href="#the-evaluation-pipeline" title="Permanent link">&para;</a></h3>
+<p>Each harness applies up to five evaluation phases in sequence, cheapest first:</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>What it checks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>check_concrete</code></td>
+<td>Exit code from test/lint/type command — objective, fast</td>
+</tr>
+<tr>
+<td><code>check_mcp</code></td>
+<td>MCP server tool call — deterministic external state</td>
+</tr>
+<tr>
+<td><code>check_skill</code></td>
+<td>Full agentic user simulation — did it work as a real user would?</td>
+</tr>
+<tr>
+<td><code>check_semantic</code></td>
+<td>LLM judges output quality — semantic correctness</td>
+</tr>
+<tr>
+<td><code>check_invariants</code></td>
+<td>Diff line count — catches runaway changes</td>
+</tr>
+</tbody>
+</table>
+<p>Each phase is optional; the wizard pre-selects based on your project config. All five can be active simultaneously, or you can use any subset.</p>
+<p><strong>Conceptual cycle:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>            ┌──────────────────────────────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>            │                                                  │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>            ▼                                                  │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>       ┌─────────┐     items      ┌─────────┐                 │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>       │discover │───remaining───►│ execute │                 │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>       └─────────┘                └────┬────┘                 │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>            │                         │                       │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>         no items                   next                      │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>            │                         ▼               on_no (retry)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>            ▼                  ┌──────────────┐               │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>          done ◄── terminal    │check_concrete│───────────────┤
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>                               └──────┬───────┘               │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                                   on_yes                      │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>                                      ▼                        │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>                               ┌──────────────┐               │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>                               │  check_mcp   │───────────────┤
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>                               └──────┬───────┘               │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>                                   on_yes                      │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>                                      ▼                        │
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                               ┌──────────────┐               │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>                               │ check_skill  │───────────────┤
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                               └──────┬───────┘               │
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>                                   on_yes                      │
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>                                      ▼                        │
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>                               ┌──────────────┐               │
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>                               │check_semantic│───────────────┤
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>                               └──────┬───────┘               │
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>                                   on_yes                      │
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>                                      ▼                        │
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>                               ┌──────────────────┐           │
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>                               │check_invariants  │───────────┘
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>                               └──────┬───────────┘
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>                                   on_yes
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>                                      ▼
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>                                  ┌─────────┐
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>                                  │ advance │──► discover
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>                                  └─────────┘
+</code></pre></div>
+<hr />
+<h2 id="evaluation-phases-explained">Evaluation Phases Explained<a class="headerlink" href="#evaluation-phases-explained" title="Permanent link">&para;</a></h2>
+<h3 id="tool-based-gates-check_concrete">Tool-Based Gates (<code>check_concrete</code>)<a class="headerlink" href="#tool-based-gates-check_concrete" title="Permanent link">&para;</a></h3>
+<p>Runs the highest-priority configured tool command from <code>ll-config.json</code> as a shell action with an <code>exit_code</code> evaluator. Exit code 0 = pass, non-zero = fail (retry execute).</p>
+<p>This phase provides fast, objective feedback. It runs before the LLM judge, so failures are caught cheaply.</p>
+<h3 id="mcp-tool-gates-check_mcp">MCP Tool Gates (<code>check_mcp</code>)<a class="headerlink" href="#mcp-tool-gates-check_mcp" title="Permanent link">&para;</a></h3>
+<p><code>action_type: mcp_tool</code> invokes an MCP server tool directly — not via Claude — yielding deterministic output at ~500ms latency. The <code>mcp_result</code> evaluator routes on the MCP response envelope rather than an exit code or LLM judgment. This makes it a good fit for verifying external state that the other evaluation phases cannot observe.</p>
+<p><strong><code>mcp_result</code> verdict table:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Verdict</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>success</code></td>
+<td>Tool ran and succeeded (<code>isError: false</code>)</td>
+</tr>
+<tr>
+<td><code>tool_error</code></td>
+<td>Tool ran but reported failure (<code>isError: true</code>)</td>
+</tr>
+<tr>
+<td><code>not_found</code></td>
+<td>Server or tool not registered in <code>.mcp.json</code></td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>Transport-level timeout</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Generic pattern</strong> (<code>check_mcp</code> is a naming convention, not a reserved name):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">check_mcp</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mcp_tool</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;server/tool-name&quot;</span><span class="w">              </span><span class="c1"># server_name/tool_name from .mcp.json</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;${captured.current_item.output}&quot;</span><span class="w">  </span><span class="c1"># ${variable} interpolation supported</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">capture</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mcp_result</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">route</span><span class="p">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">success</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span><span class="w">    </span><span class="c1"># or next evaluation state</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="nt">tool_error</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span><span class="w">          </span><span class="c1"># retry the execute state</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">not_found</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span><span class="w">  </span><span class="c1"># server not configured — skip this gate</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+</code></pre></div>
+<p><strong>Example: Browser UI verification</strong> (one application among many)</p>
+<p>A harness that implements a UI feature can use a playwright MCP server to check that the rendered page reflects the change before advancing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">check_mcp</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mcp_tool</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;playwright/screenshot&quot;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://localhost:3000&quot;</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">capture</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ui_result</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">route</span><span class="p">:</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">success</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="nt">tool_error</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="nt">not_found</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span><span class="w">  </span><span class="c1"># playwright not configured — skip</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span><span class="w">             </span><span class="c1"># dev server may not be up yet</span>
+</code></pre></div>
+<p><strong>Other MCP gate applications:</strong>
+- <code>database/query</code> — verify a record was written
+- <code>github/list_pull_requests</code> — confirm a PR was created
+- <code>slack/get_messages</code> — check a notification was sent
+- <code>filesystem/read_file</code> — verify a file was created at the expected path</p>
+<p><strong>Placement</strong>: <code>check_mcp</code> slots after <code>check_concrete</code> (cheap shell gates first) and before <code>check_semantic</code> / <code>check_invariants</code>. If the MCP call is expensive or optional, placing it last (just before <code>check_invariants</code>) avoids wasted cost on items that fail earlier checks.</p>
+<h3 id="skill-as-judge-check_skill">Skill-as-Judge (<code>check_skill</code>)<a class="headerlink" href="#skill-as-judge-check_skill" title="Permanent link">&para;</a></h3>
+<p><code>check_skill</code> is the highest-fidelity evaluation mode in the pipeline: it invokes a skill whose job is to <em>use</em> the feature as a real user would, then judges whether the user experience actually worked. This is the only phase that evaluates from the perspective that actually matters — a real user completing a real workflow. Browser navigation, form submission, multi-step UX flows, or any end-to-end user simulation all belong here.</p>
+<p>The skill runs as a full agentic Claude session and produces natural-language output; an <code>llm_structured</code> evaluator parses its verdict (YES/NO with rationale) and routes accordingly.</p>
+<p><strong>How it differs from <code>check_mcp</code>:</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>check_mcp</code></th>
+<th><code>check_skill</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Execution</td>
+<td>Single deterministic tool call</td>
+<td>Full agentic Claude session</td>
+</tr>
+<tr>
+<td>Latency</td>
+<td>~500ms</td>
+<td>30–300s</td>
+</tr>
+<tr>
+<td>Output</td>
+<td>Structured MCP envelope</td>
+<td>Natural-language rationale</td>
+</tr>
+<tr>
+<td>Best for</td>
+<td>Verifying discrete external state</td>
+<td>Exercising complex user flows</td>
+</tr>
+</tbody>
+</table>
+<p><strong>YAML pattern:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">check_skill</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/ll:act-as-user</span><span class="nv"> </span><span class="s">&#39;Navigate</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">/dashboard</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">verify</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">new</span><span class="nv"> </span><span class="s">filter</span><span class="nv"> </span><span class="s">works&#39;&quot;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">llm_structured</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">prompt</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">      </span><span class="no">Did the skill successfully complete the user flow without errors?</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">      </span><span class="no">Did it confirm the expected feature is present and working?</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">      </span><span class="no">Answer YES or NO with what it observed.</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">  </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">  </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+</code></pre></div>
+<p><strong><code>action_type</code> values for skill invocations:</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>action_type</code></th>
+<th>How it runs</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slash_command</code></td>
+<td>Executes the action string as a named slash command directly</td>
+<td>Use when the action is a fixed <code>/ll:&lt;name&gt;</code> slash command</td>
+</tr>
+<tr>
+<td><code>prompt</code></td>
+<td>Sends the action string as a free-form instruction to Claude</td>
+<td>Use for natural-language prompts, or when the skill name is dynamic or constructed at runtime</td>
+</tr>
+</tbody>
+</table>
+<p>For skills invoked as free-form prompts (no fixed slash command), use <code>action_type: prompt</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">check_skill</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Use</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">scrape-docs</span><span class="nv"> </span><span class="s">skill</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">fetch</span><span class="nv"> </span><span class="s">/api/users</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">confirm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">new</span><span class="nv"> </span><span class="s">&#39;role&#39;</span><span class="nv"> </span><span class="s">field</span><span class="nv"> </span><span class="s">appears</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">response&quot;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">180</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">llm_structured</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">prompt</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="no">Did the skill confirm the &#39;role&#39; field is present in the API response?</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">      </span><span class="no">Answer YES or NO with what it observed.</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+</code></pre></div>
+<p><strong>Placement</strong>: <code>check_skill</code> slots after <code>check_concrete</code> and <code>check_mcp</code> (cheap/deterministic gates first) and before <code>check_semantic</code> / <code>check_invariants</code>. When <code>check_skill</code> covers quality assessment, <code>check_semantic</code> can be omitted — the skill already provides semantic judgment from a user perspective.</p>
+<p><strong>Cost consideration</strong>: <code>check_skill</code> runs a full agentic session (30–300s, proportional cost). Use it when a skill can verify something the other phases cannot observe — actual rendered UI, end-to-end user flow, or external system state that deterministic checks can't reach.</p>
+<h3 id="llm-as-judge-check_semantic">LLM-as-Judge (<code>check_semantic</code>)<a class="headerlink" href="#llm-as-judge-check_semantic" title="Permanent link">&para;</a></h3>
+<p>Uses an <code>llm_structured</code> evaluator where Claude assesses whether the previous action achieved its intent. The evaluation prompt is auto-derived from the skill's description:</p>
+<blockquote>
+<p><strong>Why <code>echo</code> as the action?</strong> The <code>llm_structured</code> evaluator judges the <em>previous</em> state's output — not the current state's shell output. The <code>check_semantic</code> state still requires an <code>action</code> field, so a minimal <code>echo</code> satisfies the field while doing nothing meaningful. The echo output is ignored; only the <code>evaluate.prompt</code> and the captured context from the preceding state matter.</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">llm_structured</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">prompt</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="no">Did the previous action successfully complete: &lt;skill-description&gt;?</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="no">Answer YES or NO with brief rationale.</span>
+</code></pre></div>
+<p>For custom prompts, the wizard uses your "What does 'done' look like?" answer as the evaluation criterion.</p>
+<h3 id="diff-invariants-check_invariants">Diff Invariants (<code>check_invariants</code>)<a class="headerlink" href="#diff-invariants-check_invariants" title="Permanent link">&para;</a></h3>
+<p>Runs <code>git diff --stat HEAD | wc -l | tr -d ' '</code> and checks that the line count is less than 50 using an <code>output_numeric</code> evaluator. This catches runaway changes — if a skill modifies far more than expected, the loop retries rather than advancing.</p>
+<p>Adjust the <code>target</code> value for skills that intentionally make large changes.</p>
+<hr />
+<p><strong>Full 5-phase ordering (with all phases active):</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>check_concrete   → cheapest (exit code, &lt;1s)
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>check_mcp        → deterministic tool call (~500ms)
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>check_skill      → agentic user simulation (30–300s)
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>check_semantic   → LLM text quality judgment (can omit when check_skill covers it)
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>check_invariants → diff size (cheapest final gate)
+</code></pre></div>
+<p><strong>Decision guide — when to reach for each phase:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Use when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>check_concrete</code> (shell)</td>
+<td>A CLI tool exit-codes on pass/fail</td>
+</tr>
+<tr>
+<td><code>check_mcp</code> (mcp_tool)</td>
+<td>An MCP server can deterministically verify the result</td>
+</tr>
+<tr>
+<td><code>check_skill</code> (slash_command + llm_structured)</td>
+<td>A skill can exercise the feature end-to-end as a user would</td>
+</tr>
+<tr>
+<td><code>check_semantic</code> (LLM judge)</td>
+<td>You need judgment about output quality</td>
+</tr>
+<tr>
+<td><code>check_invariants</code> (diff size)</td>
+<td>You want to catch runaway changes</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="when-to-use-a-harness">When to Use a Harness<a class="headerlink" href="#when-to-use-a-harness" title="Permanent link">&para;</a></h2>
+<p>Use a harness loop when you want to:</p>
+<ul>
+<li><strong>Wrap a skill in quality gates</strong> — ensure tests pass and the LLM confirms success before advancing to the next item</li>
+<li><strong>Run a skill repeatedly over a list</strong> — refining every open issue, checking every file, processing a batch of items in priority order</li>
+<li><strong>Set up a single polished iteration</strong> — execute a skill once with full evaluation rather than just calling it manually</li>
+</ul>
+<p>Compare to hand-authoring a loop:</p>
+<table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>Effort</th>
+<th>Evaluators</th>
+<th>Stall protection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Harness wizard</td>
+<td>~2 min</td>
+<td>Auto-derived</td>
+<td>Available as add-on</td>
+</tr>
+<tr>
+<td>Hand-authored YAML</td>
+<td>30–60 min</td>
+<td>Manual</td>
+<td>Manual</td>
+</tr>
+</tbody>
+</table>
+<p>If your workflow is highly custom (e.g., multi-branch routing, complex captured-variable logic), hand-author using the <a href="../../skills/create-loop/reference.md">FSM reference</a>. Otherwise, use the harness wizard.</p>
+<hr />
+<h2 id="creating-a-harness-the-4-step-wizard">Creating a Harness: The 4-Step Wizard<a class="headerlink" href="#creating-a-harness-the-4-step-wizard" title="Permanent link">&para;</a></h2>
+<p>Run <code>/ll:create-loop</code> and select <strong>"Harness a skill or prompt"</strong> when prompted for loop type.</p>
+<h3 id="step-h1-choose-a-target">Step H1: Choose a Target<a class="headerlink" href="#step-h1-choose-a-target" title="Permanent link">&para;</a></h3>
+<p>The wizard scans <code>skills/*/SKILL.md</code> and presents every available skill with its description. Pick one, or choose <strong>"Custom prompt"</strong> to enter free-form natural language.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>What do you want to harness?
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  ○ refine-issue       — Refine issue files with codebase-driven research
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  ○ format-issue       — Format issue files to align with template v2.0
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  ○ check-code         — Run code quality checks (lint, format, types, build)
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  ○ audit-docs         — Audit documentation for accuracy and completeness
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  ○ ...                — (all discovered skills listed)
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  ○ Custom prompt      — Enter a free-form natural language prompt to repeat
+</code></pre></div>
+<p>If you pick <strong>Custom prompt</strong>, you'll also be asked: <em>"What does 'done' look like?"</em> — this answer drives the LLM-as-judge evaluation prompt.</p>
+<hr />
+<h3 id="step-h2-work-item-discovery">Step H2: Work Item Discovery<a class="headerlink" href="#step-h2-work-item-discovery" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>How are work items discovered?
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  ○ Single-shot (no item iteration)      — Run once; no discover state
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  ○ Active issues list (Recommended for issue skills) — ll-issues list --json
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  ○ File glob pattern                    — Find files matching a pattern
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>  ○ Manual list                          — Hard-code items in the loop
+</code></pre></div>
+<p>If you pick <strong>File glob pattern</strong>, you'll be prompted for the glob (e.g., <code>.issues/**/*.md</code>).
+If you pick <strong>Manual list</strong>, you'll enter comma-separated items.</p>
+<p><strong>Discovery commands generated per mode:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Discovery Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Active issues list</td>
+<td><code>ll-issues list --json \| python3 -c "..."</code> <em>(filters for <code>status == 'open'</code>, prints first issue ID, exits 1 when empty — see Variant B for full command)</em></td>
+</tr>
+<tr>
+<td>File glob pattern</td>
+<td><code>find . -name '&lt;pattern&gt;' -not -path './.git/*' \| sort \| head -1</code></td>
+</tr>
+<tr>
+<td>Manual list</td>
+<td><code>python3 -c "items='&lt;item1&gt;,&lt;item2&gt;,...'.split(','); print(items[0])"</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="step-h3-evaluation-phases">Step H3: Evaluation Phases<a class="headerlink" href="#step-h3-evaluation-phases" title="Permanent link">&para;</a></h3>
+<p>The wizard reads <code>.claude/ll-config.json</code> to detect configured tool commands and presents only relevant options. All available phases are pre-selected. (See <a href="#evaluation-phases-explained">Evaluation Phases Explained</a> above for what each phase does.)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>Which evaluation phases should be included? (multi-select)
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  ☑ Tool-based gates (Recommended)   — Shell checks using test/lint/type commands
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  ☑ LLM-as-judge                     — Claude assesses output against skill description
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  ☑ Diff invariants                  — git diff --stat line count &lt; 50
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>  ○ Skill-based evaluation (Optional) — Invoke a skill to exercise and verify the feature as a user would
+</code></pre></div>
+<blockquote>
+<p><strong>Note</strong>: <code>check_mcp</code> is not offered by the wizard. If your harness requires an MCP tool call for evaluation, add a <code>check_mcp</code> state manually to the generated YAML after wizard completion. See <a href="#mcp-tool-gates-check_mcp"><code>check_mcp</code></a> in the Evaluation Phases Explained section for the required fields.</p>
+</blockquote>
+<p><strong>Tool-gate priority order</strong> (highest-priority configured command wins):
+1. <code>test_cmd</code> — most comprehensive
+2. <code>lint_cmd</code> — fast feedback
+3. <code>type_cmd</code> — type safety
+4. If none configured: <code>check_concrete</code> state is omitted entirely</p>
+<hr />
+<h3 id="step-h4-iteration-budget">Step H4: Iteration Budget<a class="headerlink" href="#step-h4-iteration-budget" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>How many retries per item before giving up?
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  ○ 3 retries (Recommended)   — Good balance for most skills
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  ○ 5 retries                 — For complex or slow-converging skills
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  ○ 1 retry (strict)          — Fail fast; skip items that don&#39;t resolve immediately
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>What is the total iteration budget?
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>  ○ 50 (Recommended)    — For up to ~15 items with 3 retries each
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>  ○ 100                 — For larger item sets
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>  ○ 200                 — For long-running batch operations
+</code></pre></div>
+<p><strong>Convergence defaults by skill category:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Skill category</th>
+<th>Suggested max_iterations</th>
+<th>Per-item retries</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Issue refinement / analysis</td>
+<td>200</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Code quality / fix</td>
+<td>50</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Documentation</td>
+<td>100</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Custom prompt</td>
+<td>50</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="generated-fsm-structure">Generated FSM Structure<a class="headerlink" href="#generated-fsm-structure" title="Permanent link">&para;</a></h2>
+<h3 id="variant-a-single-shot">Variant A: Single-Shot<a class="headerlink" href="#variant-a-single-shot" title="Permanent link">&para;</a></h3>
+<p>Generated when work item mode is <strong>"Single-shot"</strong>. Starts directly at <code>execute</code> with no discovery loop.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;harness-check-code&quot;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nt">initial</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">          </span><span class="c1"># = per-item retries</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span><span class="nt">execute</span><span class="p">:</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/ll:check-code --auto</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slash_command</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_concrete</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">  </span><span class="nt">check_concrete</span><span class="p">:</span><span class="w">            </span><span class="c1"># present if tool-based gates selected</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python -m pytest scripts/tests/ -q --tb=no</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_semantic</span>
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="w">  </span><span class="nt">check_semantic</span><span class="p">:</span><span class="w">            </span><span class="c1"># present if LLM-as-judge selected</span>
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">echo &#39;Evaluating output quality&#39;</span>
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">llm_structured</span>
+<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="w">      </span><span class="nt">prompt</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a><span class="w">        </span><span class="no">Did the previous action successfully complete the code quality check?</span>
+<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="w">        </span><span class="no">Answer YES or NO with brief rationale.</span>
+<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span>
+<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>
+<a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a><span class="w">  </span><span class="nt">check_invariants</span><span class="p">:</span><span class="w">          </span><span class="c1"># present if diff invariants selected</span>
+<a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;git</span><span class="nv"> </span><span class="s">diff</span><span class="nv"> </span><span class="s">--stat</span><span class="nv"> </span><span class="s">HEAD</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">wc</span><span class="nv"> </span><span class="s">-l</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">tr</span><span class="nv"> </span><span class="s">-d</span><span class="nv"> </span><span class="s">&#39;</span><span class="nv"> </span><span class="s">&#39;&quot;</span>
+<a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">output_numeric</span>
+<a id="__codelineno-11-35" name="__codelineno-11-35" href="#__codelineno-11-35"></a><span class="w">      </span><span class="nt">operator</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lt</span>
+<a id="__codelineno-11-36" name="__codelineno-11-36" href="#__codelineno-11-36"></a><span class="w">      </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+<a id="__codelineno-11-37" name="__codelineno-11-37" href="#__codelineno-11-37"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">done</span>
+<a id="__codelineno-11-38" name="__codelineno-11-38" href="#__codelineno-11-38"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-11-39" name="__codelineno-11-39" href="#__codelineno-11-39"></a>
+<a id="__codelineno-11-40" name="__codelineno-11-40" href="#__codelineno-11-40"></a><span class="w">  </span><span class="nt">done</span><span class="p">:</span>
+<a id="__codelineno-11-41" name="__codelineno-11-41" href="#__codelineno-11-41"></a><span class="w">    </span><span class="nt">terminal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<blockquote>
+<p><strong>Ready-to-run example</strong>: <a href="../../loops/harness-single-shot.yaml"><code>loops/harness-single-shot.yaml</code></a> is a fully annotated version of this variant, including commented-out <code>check_mcp</code> and <code>check_skill</code> optional gates. See <a href="#using-the-example-files">Using the Example Files</a> below.</p>
+</blockquote>
+<hr />
+<h3 id="variant-b-multi-item">Variant B: Multi-Item<a class="headerlink" href="#variant-b-multi-item" title="Permanent link">&para;</a></h3>
+<p>Generated for <strong>Active issues list</strong>, <strong>File glob pattern</strong>, or <strong>Manual list</strong>. Adds <code>discover</code> and <code>advance</code> states around the evaluation chain.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;harness-refine-issue&quot;</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">initial</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discover</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span><span class="w">        </span><span class="c1"># total budget across all items</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">  </span><span class="nt">discover</span><span class="p">:</span><span class="w">                  </span><span class="c1"># shell command pops the next item</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ll-issues</span><span class="nv"> </span><span class="s">list</span><span class="nv"> </span><span class="s">--json</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">python3</span><span class="nv"> </span><span class="s">-c</span><span class="nv"> </span><span class="s">...&quot;</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="nt">capture</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;current_item&quot;</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span><span class="w">          </span><span class="c1"># item found → process it</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">done</span><span class="w">              </span><span class="c1"># no items left → finished</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="w">  </span><span class="nt">execute</span><span class="p">:</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/ll:refine-issue ${captured.current_item.output} --auto</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="w">    </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span><span class="w">           </span><span class="c1"># prevents a stuck item from exhausting the budget</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="w">    </span><span class="nt">on_retry_exhausted</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_concrete</span>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>
+<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="w">  </span><span class="nt">check_concrete</span><span class="p">:</span>
+<a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python -m pytest scripts/tests/ -q --tb=no</span>
+<a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_semantic</span>
+<a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a>
+<a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a><span class="w">  </span><span class="nt">check_semantic</span><span class="p">:</span>
+<a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">echo &#39;Evaluating refinement quality&#39;</span>
+<a id="__codelineno-12-32" name="__codelineno-12-32" href="#__codelineno-12-32"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-12-33" name="__codelineno-12-33" href="#__codelineno-12-33"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-12-34" name="__codelineno-12-34" href="#__codelineno-12-34"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">llm_structured</span>
+<a id="__codelineno-12-35" name="__codelineno-12-35" href="#__codelineno-12-35"></a><span class="w">      </span><span class="nt">prompt</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<a id="__codelineno-12-36" name="__codelineno-12-36" href="#__codelineno-12-36"></a><span class="w">        </span><span class="no">Did the previous action successfully refine the issue?</span>
+<a id="__codelineno-12-37" name="__codelineno-12-37" href="#__codelineno-12-37"></a><span class="w">        </span><span class="no">Answer YES or NO with brief rationale.</span>
+<a id="__codelineno-12-38" name="__codelineno-12-38" href="#__codelineno-12-38"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span>
+<a id="__codelineno-12-39" name="__codelineno-12-39" href="#__codelineno-12-39"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-12-40" name="__codelineno-12-40" href="#__codelineno-12-40"></a>
+<a id="__codelineno-12-41" name="__codelineno-12-41" href="#__codelineno-12-41"></a><span class="w">  </span><span class="nt">check_invariants</span><span class="p">:</span>
+<a id="__codelineno-12-42" name="__codelineno-12-42" href="#__codelineno-12-42"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;git</span><span class="nv"> </span><span class="s">diff</span><span class="nv"> </span><span class="s">--stat</span><span class="nv"> </span><span class="s">HEAD</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">wc</span><span class="nv"> </span><span class="s">-l</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">tr</span><span class="nv"> </span><span class="s">-d</span><span class="nv"> </span><span class="s">&#39;</span><span class="nv"> </span><span class="s">&#39;&quot;</span>
+<a id="__codelineno-12-43" name="__codelineno-12-43" href="#__codelineno-12-43"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-12-44" name="__codelineno-12-44" href="#__codelineno-12-44"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-12-45" name="__codelineno-12-45" href="#__codelineno-12-45"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">output_numeric</span>
+<a id="__codelineno-12-46" name="__codelineno-12-46" href="#__codelineno-12-46"></a><span class="w">      </span><span class="nt">operator</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lt</span>
+<a id="__codelineno-12-47" name="__codelineno-12-47" href="#__codelineno-12-47"></a><span class="w">      </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+<a id="__codelineno-12-48" name="__codelineno-12-48" href="#__codelineno-12-48"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span>
+<a id="__codelineno-12-49" name="__codelineno-12-49" href="#__codelineno-12-49"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-12-50" name="__codelineno-12-50" href="#__codelineno-12-50"></a>
+<a id="__codelineno-12-51" name="__codelineno-12-51" href="#__codelineno-12-51"></a><span class="w">  </span><span class="nt">advance</span><span class="p">:</span><span class="w">                   </span><span class="c1"># mark item done, loop back to discover</span>
+<a id="__codelineno-12-52" name="__codelineno-12-52" href="#__codelineno-12-52"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">echo &#39;Item complete&#39;</span>
+<a id="__codelineno-12-53" name="__codelineno-12-53" href="#__codelineno-12-53"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-12-54" name="__codelineno-12-54" href="#__codelineno-12-54"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discover</span>
+<a id="__codelineno-12-55" name="__codelineno-12-55" href="#__codelineno-12-55"></a>
+<a id="__codelineno-12-56" name="__codelineno-12-56" href="#__codelineno-12-56"></a><span class="w">  </span><span class="nt">done</span><span class="p">:</span>
+<a id="__codelineno-12-57" name="__codelineno-12-57" href="#__codelineno-12-57"></a><span class="w">    </span><span class="nt">terminal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<blockquote>
+<p><strong><code>max_retries</code> + <code>on_retry_exhausted</code></strong>: Adding these to <code>execute</code> is the key safeguard in multi-item loops. Without them, one item that never passes evaluation will consume the entire <code>max_iterations</code> budget. With them, the loop skips the stuck item and moves on after <code>max_retries</code> attempts.</p>
+<p><strong>Ready-to-run example</strong>: <a href="../../loops/harness-multi-item.yaml"><code>loops/harness-multi-item.yaml</code></a> is a fully annotated version of this variant with all five evaluation phases active, including <code>check_mcp</code> and <code>check_skill</code>. See <a href="#using-the-example-files">Using the Example Files</a> below.</p>
+</blockquote>
+<hr />
+<h2 id="stall-detection">Stall Detection<a class="headerlink" href="#stall-detection" title="Permanent link">&para;</a></h2>
+<p>Add a <code>check_stall</code> state when a skill might loop without making any code changes. This is especially important for prompt-based skills that sometimes conclude "nothing to do" — without stall detection, they exhaust <code>max_iterations</code> silently.</p>
+<p><strong>When to add stall detection:</strong>
+- The action uses <code>action_type: prompt</code> and may no-op
+- You see a harness exhausting <code>max_iterations</code> without git commits
+- The skill being harnessed sometimes returns "already done"</p>
+<p><strong>Placement</strong>: Insert <code>check_stall</code> between <code>check_invariants</code> and <code>advance</code> (as shown in the example below). Alternatively, insert it between <code>execute</code> and the first check state — in that placement, use <code>on_yes: check_concrete</code> (or whichever check state comes first) instead of <code>on_yes: advance</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">check_stall</span><span class="p">:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;echo</span><span class="nv"> </span><span class="s">&#39;checking</span><span class="nv"> </span><span class="s">stall&#39;&quot;</span><span class="w">     </span><span class="c1"># output ignored by diff_stall</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">diff_stall</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">    </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;scripts/&quot;</span><span class="p p-Indicator">]</span><span class="w">    </span><span class="c1"># optional: limit diff to specific paths</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">    </span><span class="nt">max_stall</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w">           </span><span class="c1"># optional: consecutive no-change iterations before stall</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">  </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span><span class="w">          </span><span class="c1"># progress detected — move on</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">  </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">skip_item</span><span class="w">         </span><span class="c1"># stalled — skip without consuming more iterations</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="nt">skip_item</span><span class="p">:</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">echo &quot;Skipping ${captured.current_item.output} after stall detection&quot;</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">  </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">  </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discover</span>
+</code></pre></div>
+<p><strong><code>diff_stall</code> field reference:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scope</code></td>
+<td><code>list[str]</code></td>
+<td><em>(entire repo)</em></td>
+<td>Paths to limit <code>git diff --stat</code> to</td>
+</tr>
+<tr>
+<td><code>max_stall</code></td>
+<td><code>int</code></td>
+<td><code>1</code></td>
+<td>Consecutive no-change iterations before failure verdict</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Verdicts:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Verdict</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>yes</code></td>
+<td>Progress detected (diff changed)</td>
+</tr>
+<tr>
+<td><code>no</code></td>
+<td>Stalled — no changes for <code>max_stall</code> consecutive iterations</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>git unavailable or command failed</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="using-the-example-files">Using the Example Files<a class="headerlink" href="#using-the-example-files" title="Permanent link">&para;</a></h2>
+<p>Two annotated example harness loops are built in to <code>loops/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Variant</th>
+<th>Phases included</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../loops/harness-single-shot.yaml"><code>loops/harness-single-shot.yaml</code></a></td>
+<td>A — Single-shot</td>
+<td><code>check_stall</code>, <code>check_concrete</code>, <code>check_semantic</code>, <code>check_invariants</code>; <code>check_mcp</code> and <code>check_skill</code> as commented-out optional gates</td>
+</tr>
+<tr>
+<td><a href="../../loops/harness-multi-item.yaml"><code>loops/harness-multi-item.yaml</code></a></td>
+<td>B — Multi-item</td>
+<td>All five phases active: <code>check_concrete</code>, <code>check_mcp</code>, <code>check_skill</code>, <code>check_semantic</code>, <code>check_invariants</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each state in both files has an <code># EXAMPLE:</code> comment explaining its pedagogical purpose.</p>
+<h3 id="validate-structure">Validate structure<a class="headerlink" href="#validate-structure" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>ll-loop<span class="w"> </span>validate<span class="w"> </span>harness-single-shot
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>ll-loop<span class="w"> </span>validate<span class="w"> </span>harness-multi-item
+</code></pre></div>
+<h3 id="run-interactively-dry-run">Run interactively (dry-run)<a class="headerlink" href="#run-interactively-dry-run" title="Permanent link">&para;</a></h3>
+<p><code>ll-loop test</code> walks through every state and lets you choose simulated verdicts — useful for understanding the FSM transitions without executing the real skill:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>ll-loop<span class="w"> </span><span class="nb">test</span><span class="w"> </span>harness-single-shot
+</code></pre></div>
+<h3 id="run-for-real">Run for real<a class="headerlink" href="#run-for-real" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>harness-single-shot
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>ll-loop<span class="w"> </span>run<span class="w"> </span>harness-multi-item
+</code></pre></div>
+<p>The multi-item example discovers open issues via <code>ll-issues list</code> and runs <code>/ll:manage-issue</code> on each one. Make sure you have open issues before running it.</p>
+<h3 id="adapt-to-your-own-workflow">Adapt to your own workflow<a class="headerlink" href="#adapt-to-your-own-workflow" title="Permanent link">&para;</a></h3>
+<p>The recommended approach is to copy, rename, and edit rather than modifying the originals (so they remain usable as references):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>ll-loop<span class="w"> </span>install<span class="w"> </span>harness-single-shot<span class="w">   </span><span class="c1"># copies to .loops/harness-single-shot.yaml</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>cp<span class="w"> </span>.loops/harness-single-shot.yaml<span class="w"> </span>.loops/my-harness.yaml
+</code></pre></div>
+<p>Key fields to change:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to change it to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>A descriptive name for your loop</td>
+</tr>
+<tr>
+<td><code>execute.action</code></td>
+<td>Your skill or prompt (e.g., <code>/ll:check-code --auto</code>)</td>
+</tr>
+<tr>
+<td><code>check_concrete.action</code></td>
+<td>Your test/lint command, or remove the state entirely</td>
+</tr>
+<tr>
+<td><code>check_semantic.evaluate.prompt</code></td>
+<td>A description of what "done" looks like for your skill</td>
+</tr>
+<tr>
+<td><code>check_invariants.evaluate.target</code></td>
+<td>Increase if your skill makes large diffs legitimately</td>
+</tr>
+<tr>
+<td><code>discover.action</code></td>
+<td>Your item discovery command (multi-item only)</td>
+</tr>
+</tbody>
+</table>
+<p>After editing, validate with <code>ll-loop validate &lt;your-file&gt;</code> before running.</p>
+<hr />
+<h2 id="worked-example-harness-refine-issue">Worked Example: Harness <code>refine-issue</code><a class="headerlink" href="#worked-example-harness-refine-issue" title="Permanent link">&para;</a></h2>
+<p>The following is a production-ready harness that refines all active issues. It is the canonical output of running the wizard with: target = <code>refine-issue</code>, discovery = active issues, all evaluation phases enabled, 3 retries, 200 iterations.</p>
+<blockquote>
+<p><strong>See also</strong>: <a href="../../loops/harness-multi-item.yaml"><code>loops/harness-multi-item.yaml</code></a> is a runnable annotated variant of this pattern with all five evaluation phases active, including <code>check_mcp</code> and <code>check_skill</code>.</p>
+<p><strong>Note</strong>: This example includes <code>check_concrete</code> and <code>check_semantic</code> but omits <code>check_mcp</code> and <code>check_skill</code>. The <code>check_mcp</code> gate is not generated by the wizard (add it manually if needed — see <a href="#mcp-tool-gates-check_mcp">MCP Tool Gates</a>). The <code>check_skill</code> gate is optional and only applies when a user-simulation skill is available for the workflow; it is omitted here to keep the example minimal.</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;harness-refine-issue&quot;</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nt">initial</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discover</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14400</span><span class="w">                    </span><span class="c1"># 4-hour wall clock limit (seconds)</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">  </span><span class="nt">discover</span><span class="p">:</span><span class="w">                       </span><span class="c1"># pop the next open issue ID</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="w">      </span><span class="no">ll-issues list --json | python3 -c &quot;</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="w">      </span><span class="no">import json, sys</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">      </span><span class="no">issues = json.load(sys.stdin)</span>
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">      </span><span class="no">open_issues = [i for i in issues if i.get(&#39;status&#39;) == &#39;open&#39;]</span>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">      </span><span class="no">if not open_issues:</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="w">          </span><span class="no">sys.exit(1)</span>
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="w">      </span><span class="no">print(open_issues[0][&#39;id&#39;])</span>
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="w">      </span><span class="no">&quot;</span>
+<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="w">    </span><span class="nt">capture</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;current_item&quot;</span><span class="w">       </span><span class="c1"># stored as ${captured.current_item.output}</span>
+<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">done</span><span class="w">                   </span><span class="c1"># empty list → all issues processed</span>
+<a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a>
+<a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a><span class="w">  </span><span class="nt">execute</span><span class="p">:</span><span class="w">                        </span><span class="c1"># invoke the skill with the captured issue ID</span>
+<a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/ll:refine-issue ${captured.current_item.output} --auto</span>
+<a id="__codelineno-18-26" name="__codelineno-18-26" href="#__codelineno-18-26"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prompt</span>
+<a id="__codelineno-18-27" name="__codelineno-18-27" href="#__codelineno-18-27"></a><span class="w">    </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span><span class="w">                </span><span class="c1"># prevents a stuck issue from exhausting max_iterations</span>
+<a id="__codelineno-18-28" name="__codelineno-18-28" href="#__codelineno-18-28"></a><span class="w">    </span><span class="nt">on_retry_exhausted</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span>
+<a id="__codelineno-18-29" name="__codelineno-18-29" href="#__codelineno-18-29"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_concrete</span>
+<a id="__codelineno-18-30" name="__codelineno-18-30" href="#__codelineno-18-30"></a>
+<a id="__codelineno-18-31" name="__codelineno-18-31" href="#__codelineno-18-31"></a><span class="w">  </span><span class="nt">check_concrete</span><span class="p">:</span><span class="w">                 </span><span class="c1"># run tests to confirm no regressions</span>
+<a id="__codelineno-18-32" name="__codelineno-18-32" href="#__codelineno-18-32"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python -m pytest scripts/tests/ -q --tb=no</span>
+<a id="__codelineno-18-33" name="__codelineno-18-33" href="#__codelineno-18-33"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-18-34" name="__codelineno-18-34" href="#__codelineno-18-34"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-18-35" name="__codelineno-18-35" href="#__codelineno-18-35"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exit_code</span>
+<a id="__codelineno-18-36" name="__codelineno-18-36" href="#__codelineno-18-36"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_semantic</span>
+<a id="__codelineno-18-37" name="__codelineno-18-37" href="#__codelineno-18-37"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-18-38" name="__codelineno-18-38" href="#__codelineno-18-38"></a>
+<a id="__codelineno-18-39" name="__codelineno-18-39" href="#__codelineno-18-39"></a><span class="w">  </span><span class="nt">check_semantic</span><span class="p">:</span><span class="w">                 </span><span class="c1"># LLM confirms the issue was actually refined</span>
+<a id="__codelineno-18-40" name="__codelineno-18-40" href="#__codelineno-18-40"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">echo &#39;Evaluating refinement quality&#39;</span>
+<a id="__codelineno-18-41" name="__codelineno-18-41" href="#__codelineno-18-41"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-18-42" name="__codelineno-18-42" href="#__codelineno-18-42"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-18-43" name="__codelineno-18-43" href="#__codelineno-18-43"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">llm_structured</span>
+<a id="__codelineno-18-44" name="__codelineno-18-44" href="#__codelineno-18-44"></a><span class="w">      </span><span class="nt">prompt</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<a id="__codelineno-18-45" name="__codelineno-18-45" href="#__codelineno-18-45"></a><span class="w">        </span><span class="no">Did the previous /ll:refine-issue action successfully refine the issue?</span>
+<a id="__codelineno-18-46" name="__codelineno-18-46" href="#__codelineno-18-46"></a><span class="w">        </span><span class="no">Check that: the issue file was updated with new content, confidence scores</span>
+<a id="__codelineno-18-47" name="__codelineno-18-47" href="#__codelineno-18-47"></a><span class="w">        </span><span class="no">were added or improved, and no errors occurred. Answer YES or NO.</span>
+<a id="__codelineno-18-48" name="__codelineno-18-48" href="#__codelineno-18-48"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">check_invariants</span>
+<a id="__codelineno-18-49" name="__codelineno-18-49" href="#__codelineno-18-49"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-18-50" name="__codelineno-18-50" href="#__codelineno-18-50"></a>
+<a id="__codelineno-18-51" name="__codelineno-18-51" href="#__codelineno-18-51"></a><span class="w">  </span><span class="nt">check_invariants</span><span class="p">:</span><span class="w">               </span><span class="c1"># catch runaway edits (&gt; 50 diff lines)</span>
+<a id="__codelineno-18-52" name="__codelineno-18-52" href="#__codelineno-18-52"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;git</span><span class="nv"> </span><span class="s">diff</span><span class="nv"> </span><span class="s">--stat</span><span class="nv"> </span><span class="s">HEAD</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">wc</span><span class="nv"> </span><span class="s">-l</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">tr</span><span class="nv"> </span><span class="s">-d</span><span class="nv"> </span><span class="s">&#39;</span><span class="nv"> </span><span class="s">&#39;&quot;</span>
+<a id="__codelineno-18-53" name="__codelineno-18-53" href="#__codelineno-18-53"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-18-54" name="__codelineno-18-54" href="#__codelineno-18-54"></a><span class="w">    </span><span class="nt">evaluate</span><span class="p">:</span>
+<a id="__codelineno-18-55" name="__codelineno-18-55" href="#__codelineno-18-55"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">output_numeric</span>
+<a id="__codelineno-18-56" name="__codelineno-18-56" href="#__codelineno-18-56"></a><span class="w">      </span><span class="nt">operator</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lt</span>
+<a id="__codelineno-18-57" name="__codelineno-18-57" href="#__codelineno-18-57"></a><span class="w">      </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+<a id="__codelineno-18-58" name="__codelineno-18-58" href="#__codelineno-18-58"></a><span class="w">    </span><span class="nt">on_yes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">advance</span>
+<a id="__codelineno-18-59" name="__codelineno-18-59" href="#__codelineno-18-59"></a><span class="w">    </span><span class="nt">on_no</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">execute</span>
+<a id="__codelineno-18-60" name="__codelineno-18-60" href="#__codelineno-18-60"></a>
+<a id="__codelineno-18-61" name="__codelineno-18-61" href="#__codelineno-18-61"></a><span class="w">  </span><span class="nt">advance</span><span class="p">:</span><span class="w">                        </span><span class="c1"># mark item done, loop back for the next one</span>
+<a id="__codelineno-18-62" name="__codelineno-18-62" href="#__codelineno-18-62"></a><span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">echo &#39;Issue refined&#39;</span>
+<a id="__codelineno-18-63" name="__codelineno-18-63" href="#__codelineno-18-63"></a><span class="w">    </span><span class="nt">action_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shell</span>
+<a id="__codelineno-18-64" name="__codelineno-18-64" href="#__codelineno-18-64"></a><span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discover</span>
+<a id="__codelineno-18-65" name="__codelineno-18-65" href="#__codelineno-18-65"></a>
+<a id="__codelineno-18-66" name="__codelineno-18-66" href="#__codelineno-18-66"></a><span class="w">  </span><span class="nt">done</span><span class="p">:</span>
+<a id="__codelineno-18-67" name="__codelineno-18-67" href="#__codelineno-18-67"></a><span class="w">    </span><span class="nt">terminal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<hr />
+<h2 id="tips">Tips<a class="headerlink" href="#tips" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Route <code>not_found</code> to the next phase</strong>, not back to <code>execute</code>, in <code>check_mcp</code> states. If the MCP server isn't configured in <code>.mcp.json</code>, retrying the execute state won't fix it — skip to the next evaluation gate instead.</li>
+<li><strong>Start with single-shot</strong> to validate the skill works end-to-end before adding discovery. Use <code>ll-loop run &lt;file&gt;</code> with a single item to test the evaluation chain.</li>
+<li><strong>Use <code>ll-loop validate</code></strong> to check the FSM structure before full execution — it validates YAML syntax, transition completeness, and terminal reachability.</li>
+<li><strong>Add stall detection</strong> for prompt-based skills (especially custom prompts) that may no-op. A skill that says "already done" on every item will silently exhaust your budget without it.</li>
+<li><strong>Check <code>ll-config.json</code></strong> has at least one tool command (<code>test_cmd</code>, <code>lint_cmd</code>, or <code>type_cmd</code>) to get the concrete <code>check_concrete</code> gate. Without it, the wizard omits the tool phase and your loop has no objective quality check.</li>
+<li><strong>Tune <code>target: 50</code></strong> in <code>check_invariants</code> if your skill intentionally makes large changes (e.g., a doc rewrite skill). Increase to 150–200 for documentation-heavy skills.</li>
+<li><strong>Set <code>timeout</code></strong> on the loop-level (seconds) for long-running batch operations to avoid unbounded runs.</li>
+</ul>
+<hr />
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Loop exhausts <code>max_iterations</code> without finishing</td>
+<td>No stall detection; one item looping forever</td>
+<td>Add <code>check_stall</code> state; or add <code>max_retries</code> + <code>on_retry_exhausted</code> on <code>execute</code></td>
+</tr>
+<tr>
+<td>LLM-judge always returns NO</td>
+<td>Evaluation prompt too strict or vague</td>
+<td>Edit <code>check_semantic.evaluate.prompt</code> to match actual skill output characteristics</td>
+</tr>
+<tr>
+<td><code>check_concrete</code> state missing from generated YAML</td>
+<td>No tool commands in <code>ll-config.json</code></td>
+<td>Run <code>/ll:configure</code> to set <code>test_cmd</code>, <code>lint_cmd</code>, or <code>type_cmd</code></td>
+</tr>
+<tr>
+<td><code>discover</code> exits immediately with no items</td>
+<td>Discovery command filter too narrow</td>
+<td>Check that issues have <code>status: open</code>; verify <code>ll-issues list</code> returns results</td>
+</tr>
+<tr>
+<td><code>check_invariants</code> always fails</td>
+<td>Skill makes large diffs legitimately</td>
+<td>Increase <code>target</code> from 50 to a value appropriate for the skill</td>
+</tr>
+<tr>
+<td>Loop runs but nothing changes across iterations</td>
+<td>Skill is idempotent / "already done"</td>
+<td>Add <code>check_stall</code> with <code>max_stall: 1</code> to skip no-op items</td>
+</tr>
+<tr>
+<td><code>check_mcp</code> always routes to <code>not_found</code></td>
+<td>Server not registered in <code>.mcp.json</code></td>
+<td>Add the MCP server entry to <code>.mcp.json</code> or route <code>not_found</code> to the next phase to skip gracefully</td>
+</tr>
+<tr>
+<td><code>check_skill</code> always returns NO</td>
+<td>Skill prompt too broad or skill has no browser/nav capability</td>
+<td>Narrow the skill instruction; ensure the skill has access to the target system; check timeout is long enough</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../LOOPS_GUIDE/">LOOPS_GUIDE.md</a> — Full FSM loops reference: evaluators, state fields, CLI commands</li>
+<li><a href="../../skills/create-loop/loop-types.md"><code>skills/create-loop/loop-types.md</code></a> — Wizard implementation: Harness Questions section (lines 548–914)</li>
+<li><a href="../../skills/create-loop/reference.md"><code>skills/create-loop/reference.md</code></a> — FSM field reference, evaluator catalog, harness state diagrams</li>
+<li><a href="../../loops/issue-refinement.yaml"><code>loops/issue-refinement.yaml</code></a> — Real-world harness-like loop: multi-skill pipeline over active issues with commit cadence</li>
+<li><a href="../../loops/harness-single-shot.yaml"><code>loops/harness-single-shot.yaml</code></a> — Runnable Variant A example: single-shot harness with all evaluation phases annotated</li>
+<li><a href="../../loops/harness-multi-item.yaml"><code>loops/harness-multi-item.yaml</code></a> — Runnable Variant B example: multi-item harness including <code>check_mcp</code> and <code>check_skill</code> gates</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

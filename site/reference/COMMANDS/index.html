@@ -1,0 +1,3707 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/reference/COMMANDS/">
+      
+      
+        <link rel="prev" href="../CLI/">
+      
+      
+        <link rel="next" href="../CONFIGURATION/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Commands - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#command-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Commands
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../claude-code/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#flag-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flag Conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup &amp; Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup &amp; Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llhelp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:help
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llconfigure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:configure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prompt-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompt Optimization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Prompt Optimization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lltoggle-autoprompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:toggle-autoprompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code Quality
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Code Quality">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcheck-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:check-code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llrun-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:run-tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llfind-dead-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:find-dead-code
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#issue-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Issue Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcapture-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:capture-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llformat-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:format-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llscan-codebase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:scan-codebase
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llscan-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:scan-product
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llprioritize-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:prioritize-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llready-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:ready-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llverify-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:verify-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llalign-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:align-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llnormalize-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:normalize-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llsync-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:sync-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llmanage-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:manage-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lliterate-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:iterate-plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llrefine-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:refine-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lltradeoff-review-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:tradeoff-review-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llproduct-analyzer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:product-analyzer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llconfidence-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:confidence-check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llissue-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:issue-workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llissue-size-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:issue-size-review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llgo-no-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:go-no-go
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llmap-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:map-dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sprint-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sprint Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sprint Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcreate-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:create-sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llreview-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:review-sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auditing-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auditing &amp; Analysis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Auditing &amp; Analysis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llaudit-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:audit-architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llaudit-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:audit-docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llupdate-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:update-docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llaudit-claude-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:audit-claude-config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llanalyze-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:analyze-workflows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llanalyze-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:analyze-history
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#git-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Git &amp; Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Git &amp; Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcommit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:commit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lldescribe-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:describe-pr
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llopen-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:open-pr
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llcleanup-worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:cleanup-worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llmanage-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:manage-release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Session Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llhandoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:handoff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llresume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automation-loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automation Loops
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automation Loops">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcreate-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:create-loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llloop-suggester" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:loop-suggester
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llreview-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:review-loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llanalyze-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:analyze-loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llworkflow-automation-proposer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:workflow-automation-proposer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#flag-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flag Conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup &amp; Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup &amp; Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llhelp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:help
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llconfigure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:configure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prompt-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompt Optimization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Prompt Optimization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lltoggle-autoprompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:toggle-autoprompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code Quality
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Code Quality">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcheck-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:check-code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llrun-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:run-tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llfind-dead-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:find-dead-code
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#issue-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Issue Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcapture-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:capture-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llformat-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:format-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llscan-codebase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:scan-codebase
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llscan-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:scan-product
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llprioritize-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:prioritize-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llready-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:ready-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llverify-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:verify-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llalign-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:align-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llnormalize-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:normalize-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llsync-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:sync-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llmanage-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:manage-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lliterate-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:iterate-plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llrefine-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:refine-issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lltradeoff-review-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:tradeoff-review-issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llproduct-analyzer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:product-analyzer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llconfidence-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:confidence-check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llissue-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:issue-workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llissue-size-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:issue-size-review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llgo-no-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:go-no-go
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llmap-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:map-dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sprint-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sprint Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sprint Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcreate-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:create-sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llreview-sprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:review-sprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auditing-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auditing &amp; Analysis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Auditing &amp; Analysis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llaudit-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:audit-architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llaudit-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:audit-docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llupdate-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:update-docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llaudit-claude-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:audit-claude-config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llanalyze-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:analyze-workflows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llanalyze-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:analyze-history
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#git-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Git &amp; Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Git &amp; Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcommit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:commit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lldescribe-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:describe-pr
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llopen-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:open-pr
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llcleanup-worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:cleanup-worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llmanage-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:manage-release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Session Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llhandoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:handoff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llresume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automation-loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automation Loops
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automation Loops">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#llcreate-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:create-loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llloop-suggester" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:loop-suggester
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llreview-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:review-loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llanalyze-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:analyze-loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llworkflow-automation-proposer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /ll:workflow-automation-proposer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="command-reference">Command Reference<a class="headerlink" href="#command-reference" title="Permanent link">&para;</a></h1>
+<p>Complete reference for all <code>/ll:</code> commands. Run <code>/ll:help</code> in Claude Code for an interactive version.</p>
+<h2 id="flag-conventions">Flag Conventions<a class="headerlink" href="#flag-conventions" title="Permanent link">&para;</a></h2>
+<p>Commands and skills support optional <code>--flag</code> modifiers passed after arguments. These are standard flags used across the project:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Behavior</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--quick</code></td>
+<td>Reduce analysis depth for faster results</td>
+<td><code>scan-codebase</code>, <code>manage-issue</code>, <code>capture-issue</code></td>
+</tr>
+<tr>
+<td><code>--deep</code></td>
+<td>Increase thoroughness, accept longer execution</td>
+<td><code>scan-codebase</code>, <code>audit-architecture</code>, <code>handoff</code>, <code>ready-issue</code></td>
+</tr>
+<tr>
+<td><code>--focus [area]</code></td>
+<td>Narrow scope to a specific area</td>
+<td><code>scan-codebase</code></td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show what would happen without making changes</td>
+<td><code>manage-issue</code>, <code>align-issues</code>, <code>refine-issue</code>, <code>format-issue</code>, <code>manage-release</code></td>
+</tr>
+<tr>
+<td><code>--auto</code></td>
+<td>Non-interactive mode (no prompts)</td>
+<td><code>refine-issue</code>, <code>prioritize-issues</code>, <code>format-issue</code>, <code>confidence-check</code>, <code>verify-issues</code>, <code>map-dependencies</code>, <code>issue-size-review</code></td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td>Include detailed output</td>
+<td><code>align-issues</code></td>
+</tr>
+<tr>
+<td><code>--all</code></td>
+<td>Process all items instead of a single item</td>
+<td><code>align-issues</code>, <code>format-issue</code>, <code>confidence-check</code></td>
+</tr>
+</tbody>
+</table>
+<p>Not all commands support all flags. See individual command documentation for supported flags.</p>
+<hr />
+<h2 id="setup-configuration">Setup &amp; Configuration<a class="headerlink" href="#setup-configuration" title="Permanent link">&para;</a></h2>
+<h3 id="llinit"><code>/ll:init</code><a class="headerlink" href="#llinit" title="Permanent link">&para;</a></h3>
+<p>Initialize little-loops configuration for a project.</p>
+<p><strong>Flags:</strong> <code>--interactive</code>, <code>--yes</code>, <code>--force</code></p>
+<h3 id="llhelp"><code>/ll:help</code><a class="headerlink" href="#llhelp" title="Permanent link">&para;</a></h3>
+<p>List all available little-loops commands with descriptions.</p>
+<h3 id="llconfigure"><code>/ll:configure</code><a class="headerlink" href="#llconfigure" title="Permanent link">&para;</a></h3>
+<p>Interactively configure specific areas in ll-config.json.</p>
+<p><strong>Arguments:</strong>
+- <code>area</code> (optional): <code>project</code>, <code>issues</code>, <code>parallel</code>, <code>automation</code>, <code>documents</code>, <code>continuation</code>, <code>context</code>, <code>prompt</code>, <code>scan</code>, <code>workflow</code></p>
+<p><strong>Flags:</strong> <code>--list</code>, <code>--show</code>, <code>--reset</code></p>
+<hr />
+<h2 id="prompt-optimization">Prompt Optimization<a class="headerlink" href="#prompt-optimization" title="Permanent link">&para;</a></h2>
+<h3 id="lltoggle-autoprompt"><code>/ll:toggle-autoprompt</code><a class="headerlink" href="#lltoggle-autoprompt" title="Permanent link">&para;</a></h3>
+<p>Toggle automatic prompt optimization settings.</p>
+<p><strong>Settings:</strong> <code>enabled</code>, <code>mode</code>, <code>confirm</code>, <code>status</code> (default: status)</p>
+<hr />
+<h2 id="code-quality">Code Quality<a class="headerlink" href="#code-quality" title="Permanent link">&para;</a></h2>
+<h3 id="llcheck-code"><code>/ll:check-code</code><a class="headerlink" href="#llcheck-code" title="Permanent link">&para;</a></h3>
+<p>Run code quality checks (lint, format, types).</p>
+<p><strong>Modes:</strong> <code>lint</code>, <code>format</code>, <code>types</code>, <code>all</code>, <code>fix</code></p>
+<h3 id="llrun-tests"><code>/ll:run-tests</code><a class="headerlink" href="#llrun-tests" title="Permanent link">&para;</a></h3>
+<p>Run test suites with common patterns.</p>
+<p><strong>Arguments:</strong>
+- <code>scope</code>: <code>unit</code>, <code>integration</code>, <code>all</code>, <code>affected</code>
+- <code>pattern</code>: optional pytest -k filter</p>
+<h3 id="llfind-dead-code"><code>/ll:find-dead-code</code><a class="headerlink" href="#llfind-dead-code" title="Permanent link">&para;</a></h3>
+<p>Analyze codebase for deprecated, unused, or dead code.</p>
+<hr />
+<h2 id="issue-management">Issue Management<a class="headerlink" href="#issue-management" title="Permanent link">&para;</a></h2>
+<h3 id="llcapture-issue"><code>/ll:capture-issue</code><a class="headerlink" href="#llcapture-issue" title="Permanent link">&para;</a></h3>
+<p>Capture issues from conversation or natural language description.</p>
+<p><strong>Arguments:</strong> <code>input</code> (optional) - natural language description</p>
+<h3 id="llformat-issue"><code>/ll:format-issue</code><a class="headerlink" href="#llformat-issue" title="Permanent link">&para;</a></h3>
+<p>Format issue files to align with template v2.0 structure through section renaming, structural gap-filling, and boilerplate inference. Interactive by default, with optional <code>--auto</code> mode for non-interactive formatting.</p>
+<p><strong>Arguments:</strong>
+- <code>issue_id</code> (optional): Issue ID to format (e.g., BUG-071, FEAT-225)
+- <code>flags</code> (optional):
+  - <code>--auto</code> - Non-interactive auto-format mode
+  - <code>--all</code> - Process all active issues
+  - <code>--dry-run</code> - Preview changes without applying</p>
+<h3 id="llscan-codebase"><code>/ll:scan-codebase</code><a class="headerlink" href="#llscan-codebase" title="Permanent link">&para;</a></h3>
+<p>Scan codebase to identify bugs, enhancements, and features (technical analysis).</p>
+<p><strong>Flags:</strong> <code>--quick</code> (single-agent scan), <code>--deep</code> (extra verification), <code>--focus [area]</code> (narrow scope)</p>
+<h3 id="llscan-product"><code>/ll:scan-product</code><a class="headerlink" href="#llscan-product" title="Permanent link">&para;</a></h3>
+<p>Scan codebase for product-focused issues based on goals document (requires <code>product.enabled: true</code>).</p>
+<p><strong>Prerequisites:</strong>
+- Product analysis enabled in config
+- Goals file exists (<code>.claude/ll-goals.md</code> by default)</p>
+<h3 id="llprioritize-issues"><code>/ll:prioritize-issues</code><a class="headerlink" href="#llprioritize-issues" title="Permanent link">&para;</a></h3>
+<p>Analyze issues and assign priority levels (P0-P5).</p>
+<h3 id="llready-issue"><code>/ll:ready-issue</code><a class="headerlink" href="#llready-issue" title="Permanent link">&para;</a></h3>
+<p>Validate issue file for accuracy and auto-correct problems.</p>
+<p><strong>Arguments:</strong> <code>issue_id</code> (optional)</p>
+<h3 id="llverify-issues"><code>/ll:verify-issues</code><a class="headerlink" href="#llverify-issues" title="Permanent link">&para;</a></h3>
+<p>Verify all issue files against current codebase state.</p>
+<p><strong>Flags:</strong> <code>--auto</code> (non-interactive: skips user approval, does not move resolved issues)</p>
+<h3 id="llalign-issues"><code>/ll:align-issues</code><a class="headerlink" href="#llalign-issues" title="Permanent link">&para;</a></h3>
+<p>Validate active issues against key documents for relevance and alignment.</p>
+<p><strong>Arguments:</strong>
+- <code>category</code>: Document category (<code>architecture</code>, <code>product</code>, or <code>--all</code>)
+- <code>flags</code> (optional): <code>--verbose</code> (detailed analysis), <code>--dry-run</code> (report only, no auto-fixing)</p>
+<p><strong>Prerequisites:</strong> Configure document tracking via <code>/ll:init --interactive</code></p>
+<h3 id="llnormalize-issues"><code>/ll:normalize-issues</code><a class="headerlink" href="#llnormalize-issues" title="Permanent link">&para;</a></h3>
+<p>Find and fix issue filenames lacking valid IDs (BUG-001, etc.).</p>
+<h3 id="llsync-issues"><code>/ll:sync-issues</code><a class="headerlink" href="#llsync-issues" title="Permanent link">&para;</a></h3>
+<p>Sync local issues with GitHub Issues (push/pull/status).</p>
+<p><strong>Arguments:</strong> <code>mode</code> (optional) - <code>push</code>, <code>pull</code>, or <code>status</code></p>
+<h3 id="llmanage-issue"><code>/ll:manage-issue</code><a class="headerlink" href="#llmanage-issue" title="Permanent link">&para;</a></h3>
+<p>Autonomously manage issues - plan, implement, verify, complete.</p>
+<p><strong>Arguments:</strong>
+- <code>type</code>: <code>bug</code>, <code>feature</code>, <code>enhancement</code>
+- <code>action</code>: <code>fix</code>, <code>implement</code>, <code>improve</code>, <code>verify</code>, <code>plan</code>
+- <code>issue_id</code> (optional)</p>
+<p><strong>Flags:</strong> <code>--plan-only</code>, <code>--dry-run</code> (alias for --plan-only), <code>--resume</code>, <code>--gates</code>, <code>--quick</code> (skip deep research), <code>--force-implement</code> (bypass confidence gate)</p>
+<h3 id="lliterate-plan"><code>/ll:iterate-plan</code><a class="headerlink" href="#lliterate-plan" title="Permanent link">&para;</a></h3>
+<p>Iterate on existing implementation plans with updates.</p>
+<p><strong>Arguments:</strong> <code>plan_path</code> (optional)</p>
+<h3 id="llrefine-issue"><code>/ll:refine-issue</code><a class="headerlink" href="#llrefine-issue" title="Permanent link">&para;</a></h3>
+<p>Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation. Unlike <code>/ll:format-issue</code> (which aligns structure) or <code>/ll:ready-issue</code> (which validates accuracy), this command researches the codebase to identify and fill knowledge gaps.</p>
+<p><strong>Arguments:</strong>
+- <code>issue_id</code> (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
+- <code>flags</code> (optional): <code>--auto</code> (non-interactive), <code>--dry-run</code> (preview)</p>
+<h3 id="lltradeoff-review-issues"><code>/ll:tradeoff-review-issues</code><a class="headerlink" href="#lltradeoff-review-issues" title="Permanent link">&para;</a></h3>
+<p>Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.</p>
+<p><strong>Trigger keywords:</strong> "tradeoff review", "review issues", "prune backlog", "sense check issues"</p>
+<h3 id="llproduct-analyzer"><code>/ll:product-analyzer</code><a class="headerlink" href="#llproduct-analyzer" title="Permanent link">&para;</a></h3>
+<p>Analyze codebase against product goals to identify feature gaps, user experience improvements, and business value opportunities.</p>
+<p><strong>Prerequisites:</strong>
+- Product analysis enabled in config (<code>product.enabled: true</code>)
+- Goals file exists (<code>.claude/ll-goals.md</code> by default)</p>
+<h3 id="llconfidence-check"><code>/ll:confidence-check</code><a class="headerlink" href="#llconfidence-check" title="Permanent link">&para;</a></h3>
+<p>Pre-implementation confidence check that validates readiness and estimates outcome confidence before coding begins. Produces dual scores: a Readiness Score (go/no-go) and an Outcome Confidence Score (implementation risk).</p>
+<p><strong>Arguments:</strong>
+- <code>issue_id</code> (optional): Specific issue to check</p>
+<p><strong>Flags:</strong> <code>--auto</code> (non-interactive), <code>--all</code> (batch all active issues)</p>
+<h3 id="llissue-workflow"><code>/ll:issue-workflow</code><a class="headerlink" href="#llissue-workflow" title="Permanent link">&para;</a></h3>
+<p>Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.</p>
+<p><strong>Trigger keywords:</strong> "issue workflow", "issue lifecycle", "what commands for issues"</p>
+<h3 id="llissue-size-review"><code>/ll:issue-size-review</code><a class="headerlink" href="#llissue-size-review" title="Permanent link">&para;</a></h3>
+<p>Evaluate the size and complexity of active issues and propose decomposition for large ones.</p>
+<p><strong>Flags:</strong> <code>--auto</code> (non-interactive: auto-decomposes issues scoring &gt;=8 only)</p>
+<p><strong>Trigger keywords:</strong> "issue size review", "decompose issues", "split large issues"</p>
+<h3 id="llgo-no-go"><code>/ll:go-no-go</code><a class="headerlink" href="#llgo-no-go" title="Permanent link">&para;</a></h3>
+<p>Evaluate whether one or more issues should be implemented using an adversarial debate format. Launches two isolated background agents concurrently — one arguing for implementation, one against — each grounded in real codebase research. A third judge agent delivers a final GO or NO-GO verdict with structured reasoning, key arguments from both sides, and a deciding factor.</p>
+<p><strong>Arguments:</strong>
+- <code>issue-id</code> (optional): One or more comma-separated issue IDs, or a sprint name. Defaults to the highest-priority open issue.</p>
+<p><strong>Flags:</strong>
+- <code>--check</code>: Exit 0 on all GO, exit 1 on any NO-GO — enables FSM loop gating via <code>evaluate: type: exit_code</code>
+- <code>--auto</code>: Non-interactive mode</p>
+<p><strong>Trigger keywords:</strong> "go no go", "should I implement", "adversarial review", "worth implementing", "debate this issue"</p>
+<h3 id="llmap-dependencies"><code>/ll:map-dependencies</code><a class="headerlink" href="#llmap-dependencies" title="Permanent link">&para;</a></h3>
+<p>Analyze active issues to discover cross-issue dependencies based on file overlap, validate existing dependency references, and propose new relationships. Delegates to <code>ll-deps</code> CLI subcommands.</p>
+<p><strong>Flags:</strong> <code>--auto</code> (non-interactive: applies only HIGH-confidence proposals)</p>
+<p><strong>Trigger keywords:</strong> "map dependencies", "dependency mapping", "find dependencies"</p>
+<hr />
+<h2 id="sprint-management">Sprint Management<a class="headerlink" href="#sprint-management" title="Permanent link">&para;</a></h2>
+<h3 id="llcreate-sprint"><code>/ll:create-sprint</code><a class="headerlink" href="#llcreate-sprint" title="Permanent link">&para;</a></h3>
+<p>Create a sprint definition with a curated list of issues.</p>
+<p><strong>Arguments:</strong>
+- <code>name</code> (required): Sprint name (e.g., "sprint-1", "q1-bug-fixes")
+- <code>description</code> (optional): Description of the sprint's purpose
+- <code>issues</code> (optional): Comma-separated list of issue IDs (e.g., "BUG-001,FEAT-010")</p>
+<p><strong>Modes:</strong>
+- <strong>Explicit</strong>: Pass <code>--issues "BUG-001,FEAT-010"</code> to create a sprint with specific issues
+- <strong>Auto-Grouping</strong>: When <code>issues</code> is omitted, suggests natural sprint groupings:
+  - Priority cluster (P0-P1 critical), type cluster (bugs/features/enhancements)
+  - Parallelizable (no blockers), theme cluster (test, performance, security)
+- <strong>Manual Selection</strong>: Choose "Select manually" to pick issues interactively</p>
+<p><strong>Output:</strong> Creates <code>.sprints/&lt;name&gt;.yaml</code> with issue list and execution options.</p>
+<h3 id="llreview-sprint"><code>/ll:review-sprint</code><a class="headerlink" href="#llreview-sprint" title="Permanent link">&para;</a></h3>
+<p>AI-guided sprint health check that analyzes a sprint's current state and suggests improvements.</p>
+<p><strong>Arguments:</strong>
+- <code>sprint_name</code> (optional): Sprint name to review (e.g., "my-sprint"). If omitted, lists available sprints.</p>
+<p><strong>Trigger keywords:</strong> "review sprint", "sprint health", "sprint review", "check sprint", "sprint suggestions", "optimize sprint"</p>
+<p><strong>Output:</strong> Recommendations for removing stale issues, adding related backlog issues, and resolving dependency or contention problems.</p>
+<hr />
+<h2 id="auditing-analysis">Auditing &amp; Analysis<a class="headerlink" href="#auditing-analysis" title="Permanent link">&para;</a></h2>
+<h3 id="llaudit-architecture"><code>/ll:audit-architecture</code><a class="headerlink" href="#llaudit-architecture" title="Permanent link">&para;</a></h3>
+<p>Analyze codebase architecture for patterns and improvements.</p>
+<p><strong>Focus:</strong> <code>large-files</code>, <code>integration</code>, <code>patterns</code>, <code>organization</code>, <code>all</code></p>
+<p><strong>Flags:</strong> <code>--deep</code> (spawn sub-agents for thorough analysis)</p>
+<h3 id="llaudit-docs"><code>/ll:audit-docs</code><a class="headerlink" href="#llaudit-docs" title="Permanent link">&para;</a></h3>
+<p>Audit documentation for accuracy and completeness. Auto-fixable findings (wrong counts, outdated paths, broken links) can be fixed directly during the audit.</p>
+<p><strong>Scope:</strong> <code>full</code>, <code>readme</code>, <code>file:&lt;path&gt;</code></p>
+<p><strong>Flags:</strong> <code>--fix</code> (auto-apply fixable corrections without prompting)</p>
+<h3 id="llupdate-docs"><code>/ll:update-docs</code><a class="headerlink" href="#llupdate-docs" title="Permanent link">&para;</a></h3>
+<p>Identify stale or missing documentation by analyzing git commits and completed issues since a given reference. Detects <em>coverage gaps</em> from recent work — complements <code>/ll:audit-docs</code> (which validates accuracy of existing content).</p>
+<p><strong>Arguments:</strong>
+- <code>--since</code> (optional): Change window start — date (<code>YYYY-MM-DD</code>) or git ref (commit hash or branch). Defaults to last commit touching a doc file, or the watermark in <code>.claude/ll-update-docs.watermark</code> if present.</p>
+<p><strong>Flags:</strong> <code>--fix</code> (draft stub documentation sections inline for all gaps rather than prompting)</p>
+<p><strong>Trigger keywords:</strong> "update docs", "stale docs", "missing docs", "docs since sprint", "doc coverage", "documentation gaps"</p>
+<h3 id="llaudit-claude-config"><code>/ll:audit-claude-config</code><a class="headerlink" href="#llaudit-claude-config" title="Permanent link">&para;</a></h3>
+<p>Comprehensive audit of Claude Code plugin configuration with parallel sub-agents.</p>
+<p><strong>Scope:</strong> <code>all</code>, <code>global</code>, <code>project</code>, <code>hooks</code>, <code>mcp</code>, <code>agents</code>, <code>commands</code>, <code>skills</code></p>
+<p><strong>Flags:</strong> <code>--non-interactive</code>, <code>--fix</code></p>
+<h3 id="llanalyze-workflows"><code>/ll:analyze-workflows</code><a class="headerlink" href="#llanalyze-workflows" title="Permanent link">&para;</a></h3>
+<p>Analyze user message history to identify patterns, workflows, and automation opportunities.</p>
+<p><strong>Arguments:</strong>
+- <code>file</code> (optional): Path to user-messages JSONL file (auto-detected if omitted)</p>
+<h3 id="llanalyze-history"><code>/ll:analyze-history</code><a class="headerlink" href="#llanalyze-history" title="Permanent link">&para;</a></h3>
+<p>Analyze issue history to understand project health, trends, and progress. Delegates to <code>ll-history</code> CLI subcommands (<code>summary</code>, <code>analyze</code>, <code>export</code>). The <code>export</code> subcommand compiles topic-filtered issue excerpts from completed issue history.</p>
+<p><strong>Trigger keywords:</strong> "analyze history", "velocity report", "bug trends", "project health"</p>
+<hr />
+<h2 id="git-workflow">Git &amp; Workflow<a class="headerlink" href="#git-workflow" title="Permanent link">&para;</a></h2>
+<h3 id="llcommit"><code>/ll:commit</code><a class="headerlink" href="#llcommit" title="Permanent link">&para;</a></h3>
+<p>Create git commits with user approval (no Claude attribution).</p>
+<h3 id="lldescribe-pr"><code>/ll:describe-pr</code><a class="headerlink" href="#lldescribe-pr" title="Permanent link">&para;</a></h3>
+<p>Generate comprehensive PR descriptions from branch changes.</p>
+<h3 id="llopen-pr"><code>/ll:open-pr</code><a class="headerlink" href="#llopen-pr" title="Permanent link">&para;</a></h3>
+<p>Open a pull request for the current branch.</p>
+<p><strong>Arguments:</strong>
+- <code>target_branch</code> (optional): Target branch for the PR (default: auto-detect)</p>
+<p><strong>Flags:</strong> <code>--draft</code> (create as draft PR)</p>
+<h3 id="llcleanup-worktrees"><code>/ll:cleanup-worktrees</code><a class="headerlink" href="#llcleanup-worktrees" title="Permanent link">&para;</a></h3>
+<p>Clean up stale git worktrees and branches from parallel processing.</p>
+<p><strong>Arguments:</strong>
+- <code>mode</code>: <code>run</code> (default), <code>dry-run</code></p>
+<h3 id="llmanage-release"><code>/ll:manage-release</code><a class="headerlink" href="#llmanage-release" title="Permanent link">&para;</a></h3>
+<p>Manage releases — create git tags, generate changelogs, and create GitHub releases.</p>
+<p><strong>Arguments:</strong>
+- <code>action</code> (optional): <code>tag</code>, <code>changelog</code>, <code>release</code>, <code>bump</code>, <code>full</code> (interactive if omitted)
+- <code>version</code> (optional): <code>vX.Y.Z</code>, <code>patch</code>, <code>minor</code>, <code>major</code> (auto-detects if omitted)</p>
+<p><strong>Flags:</strong> <code>--dry-run</code>, <code>--push</code>, <code>--draft</code></p>
+<hr />
+<h2 id="session-management">Session Management<a class="headerlink" href="#session-management" title="Permanent link">&para;</a></h2>
+<h3 id="llhandoff"><code>/ll:handoff</code><a class="headerlink" href="#llhandoff" title="Permanent link">&para;</a></h3>
+<p>Generate continuation prompt for session handoff.</p>
+<p><strong>Arguments:</strong>
+- <code>context</code> (optional): Description of current work context</p>
+<h3 id="llresume"><code>/ll:resume</code><a class="headerlink" href="#llresume" title="Permanent link">&para;</a></h3>
+<p>Resume from a previous session's continuation prompt.</p>
+<p><strong>Arguments:</strong>
+- <code>prompt_file</code> (optional): Path to continuation prompt (default: <code>.claude/ll-continue-prompt.md</code>)</p>
+<hr />
+<h2 id="automation-loops">Automation Loops<a class="headerlink" href="#automation-loops" title="Permanent link">&para;</a></h2>
+<h3 id="llcreate-loop"><code>/ll:create-loop</code><a class="headerlink" href="#llcreate-loop" title="Permanent link">&para;</a></h3>
+<p>Create FSM loop configurations interactively.</p>
+<p><strong>Workflow:</strong>
+1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
+2. Configure type-specific parameters
+3. Name and preview the FSM YAML
+4. Save to <code>.loops/&lt;name&gt;.yaml</code> and validate</p>
+<p><strong>See also:</strong> <code>docs/generalized-fsm-loop.md</code> for FSM schema details.</p>
+<h3 id="llloop-suggester"><code>/ll:loop-suggester</code><a class="headerlink" href="#llloop-suggester" title="Permanent link">&para;</a></h3>
+<p>Analyze user message history to suggest FSM loop configurations automatically.</p>
+<p><strong>Arguments:</strong>
+- <code>file</code> (optional): Path to ll-messages JSONL file (runs extraction if omitted)
+- <code>--from-commands</code> (optional flag): Analyze the command/skill catalog instead of message history — works on fresh installations with no session history</p>
+<p><strong>Features:</strong>
+- Detects repeated tool sequences (check-fix cycles, multi-constraint patterns)
+- Maps patterns to appropriate loop types (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
+- Generates ready-to-use loop YAML with confidence scores
+- Outputs to <code>.claude/loop-suggestions/</code></p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Analyze recent messages (auto-extracts)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>/ll:loop-suggester
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Analyze specific JSONL file</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>/ll:loop-suggester<span class="w"> </span>messages.jsonl
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Suggest loops from available commands/skills catalog (no history required)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>/ll:loop-suggester<span class="w"> </span>--from-commands
+</code></pre></div></p>
+<p><strong>Trigger keywords:</strong> "suggest loops", "loop from history", "automate workflow", "suggest loops from commands", "loop from catalog"</p>
+<h3 id="llreview-loop"><code>/ll:review-loop</code><a class="headerlink" href="#llreview-loop" title="Permanent link">&para;</a></h3>
+<p>Review an existing FSM loop configuration for quality, correctness, consistency, and potential improvements. Analyzes all states and transitions, reports findings by severity (Error/Warning/Suggestion), proposes concrete fixes with before/after diffs, and applies approved changes.</p>
+<p><strong>Arguments:</strong>
+- <code>loop_name</code> (optional): Name or path of the loop to review. If omitted, lists available loops to pick from.</p>
+<p><strong>Flags:</strong> <code>--auto</code> (apply safe fixes automatically), <code>--dry-run</code> (report only, no changes)</p>
+<p><strong>See also:</strong> <code>/ll:create-loop</code>, <code>ll-loop validate</code>, <code>ll-loop show</code></p>
+<h3 id="llanalyze-loop"><code>/ll:analyze-loop</code><a class="headerlink" href="#llanalyze-loop" title="Permanent link">&para;</a></h3>
+<p>Analyze loop execution history to synthesize actionable issues from failure patterns, SIGKILL terminations, retry floods, and performance anomalies. Auto-selects the most recently interrupted/failed loop, or analyzes a named loop when specified.</p>
+<p><strong>Arguments:</strong>
+- <code>loop_name</code> (optional): Loop name to analyze. If omitted, auto-selects the most recently updated interrupted/failed loop.
+- <code>tail</code> (optional): Limit history events analyzed to the N most recent (default 200)</p>
+<p><strong>Signal detection rules:</strong>
+- Action <code>exit_code ≠ 0</code> repeated 3+ times on same state → BUG P2
+- <code>loop_complete.terminated_by == "signal"</code> (SIGKILL) → BUG P2
+- <code>loop_complete.terminated_by == "error"</code> (FATAL_ERROR) → BUG P2
+- True retry state (has <code>on_retry</code>/<code>max_retries</code>) entered 5+ times, or <code>retry_exhausted</code> event present → ENH P3; intentional cycling state (no retry config) noted informally unless &gt;20 consecutive re-entries → ENH P4
+- Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
+- <code>evaluate.verdict == "fail"</code> 3+ times on same state → BUG P3</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Auto-select most recent interrupted loop</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>/ll:analyze-loop
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Analyze a specific loop</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>/ll:analyze-loop<span class="w"> </span>issue-fixer
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Limit events analyzed</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>/ll:analyze-loop<span class="w"> </span>issue-fixer<span class="w"> </span>--tail<span class="w"> </span><span class="m">100</span>
+</code></pre></div></p>
+<p><strong>Trigger keywords:</strong> "analyze loop", "loop issues", "loop failures", "loop history issues"</p>
+<p><strong>See also:</strong> <code>/ll:review-loop</code>, <code>/ll:create-loop</code>, <code>ll-loop history</code></p>
+<h3 id="llworkflow-automation-proposer"><code>/ll:workflow-automation-proposer</code><a class="headerlink" href="#llworkflow-automation-proposer" title="Permanent link">&para;</a></h3>
+<p>Synthesize workflow patterns into concrete automation proposals. Final step (Step 3) of the <code>/ll:analyze-workflows</code> pipeline.</p>
+<p><strong>Arguments:</strong>
+- <code>step1_file step2_file</code> (optional): Paths to step 1 and step 2 YAML files (auto-detected if omitted)</p>
+<hr />
+<h2 id="quick-reference">Quick Reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init</code>^</td>
+<td>Initialize project configuration</td>
+</tr>
+<tr>
+<td><code>help</code></td>
+<td>Show command help</td>
+</tr>
+<tr>
+<td><code>configure</code>^</td>
+<td>Interactive configuration editor</td>
+</tr>
+<tr>
+<td><code>toggle-autoprompt</code></td>
+<td>Toggle automatic prompt optimization</td>
+</tr>
+<tr>
+<td><code>check-code</code></td>
+<td>Run lint, format, type checks</td>
+</tr>
+<tr>
+<td><code>run-tests</code></td>
+<td>Execute test suites</td>
+</tr>
+<tr>
+<td><code>find-dead-code</code></td>
+<td>Identify unused code</td>
+</tr>
+<tr>
+<td><code>capture-issue</code>^</td>
+<td>Capture issues from conversation or description</td>
+</tr>
+<tr>
+<td><code>format-issue</code>^</td>
+<td>Format issue files (interactive or --auto mode)</td>
+</tr>
+<tr>
+<td><code>scan-codebase</code></td>
+<td>Find issues in code (technical analysis)</td>
+</tr>
+<tr>
+<td><code>scan-product</code></td>
+<td>Find issues in code (product-focused analysis)</td>
+</tr>
+<tr>
+<td><code>product-analyzer</code>^</td>
+<td>Analyze codebase against product goals for feature gaps</td>
+</tr>
+<tr>
+<td><code>prioritize-issues</code></td>
+<td>Assign P0-P5 priorities</td>
+</tr>
+<tr>
+<td><code>ready-issue</code></td>
+<td>Validate and fix issue files</td>
+</tr>
+<tr>
+<td><code>verify-issues</code></td>
+<td>Check issues against code</td>
+</tr>
+<tr>
+<td><code>align-issues</code></td>
+<td>Validate issues against key documents</td>
+</tr>
+<tr>
+<td><code>normalize-issues</code></td>
+<td>Fix issue filenames lacking valid IDs</td>
+</tr>
+<tr>
+<td><code>sync-issues</code></td>
+<td>Sync local issues with GitHub Issues</td>
+</tr>
+<tr>
+<td><code>manage-issue</code>^</td>
+<td>Full issue lifecycle management</td>
+</tr>
+<tr>
+<td><code>iterate-plan</code></td>
+<td>Update implementation plans</td>
+</tr>
+<tr>
+<td><code>confidence-check</code>^</td>
+<td>Pre-implementation confidence check for readiness</td>
+</tr>
+<tr>
+<td><code>refine-issue</code></td>
+<td>Refine issues with codebase-driven research</td>
+</tr>
+<tr>
+<td><code>tradeoff-review-issues</code></td>
+<td>Evaluate issues for utility vs complexity</td>
+</tr>
+<tr>
+<td><code>issue-workflow</code>^</td>
+<td>Quick reference for issue management workflow</td>
+</tr>
+<tr>
+<td><code>issue-size-review</code>^</td>
+<td>Evaluate issue size/complexity and propose decomposition</td>
+</tr>
+<tr>
+<td><code>map-dependencies</code>^</td>
+<td>Analyze cross-issue dependencies based on file overlap</td>
+</tr>
+<tr>
+<td><code>go-no-go</code>^</td>
+<td>Adversarial go/no-go debate for issue implementation decisions</td>
+</tr>
+<tr>
+<td><code>audit-architecture</code></td>
+<td>Analyze code structure</td>
+</tr>
+<tr>
+<td><code>audit-docs</code>^</td>
+<td>Check documentation accuracy</td>
+</tr>
+<tr>
+<td><code>update-docs</code>^</td>
+<td>Identify stale or missing docs from recent commits and completed issues</td>
+</tr>
+<tr>
+<td><code>audit-claude-config</code>^</td>
+<td>Comprehensive config audit</td>
+</tr>
+<tr>
+<td><code>analyze-workflows</code></td>
+<td>Analyze user message patterns for automation</td>
+</tr>
+<tr>
+<td><code>analyze-history</code>^</td>
+<td>Analyze issue history for project health and trends</td>
+</tr>
+<tr>
+<td><code>commit</code></td>
+<td>Create git commits</td>
+</tr>
+<tr>
+<td><code>describe-pr</code></td>
+<td>Generate PR descriptions</td>
+</tr>
+<tr>
+<td><code>open-pr</code></td>
+<td>Open a pull request for current branch</td>
+</tr>
+<tr>
+<td><code>cleanup-worktrees</code></td>
+<td>Clean up stale worktrees and branches</td>
+</tr>
+<tr>
+<td><code>manage-release</code></td>
+<td>Manage releases, tags, and changelogs</td>
+</tr>
+<tr>
+<td><code>handoff</code></td>
+<td>Generate session handoff prompt</td>
+</tr>
+<tr>
+<td><code>resume</code></td>
+<td>Resume from continuation prompt</td>
+</tr>
+<tr>
+<td><code>create-loop</code>^</td>
+<td>Interactive FSM loop creation</td>
+</tr>
+<tr>
+<td><code>loop-suggester</code></td>
+<td>Suggest loops from message history</td>
+</tr>
+<tr>
+<td><code>review-loop</code>^</td>
+<td>Review and improve existing FSM loop configurations</td>
+</tr>
+<tr>
+<td><code>analyze-loop</code>^</td>
+<td>Analyze loop execution history and synthesize issues from failure patterns</td>
+</tr>
+<tr>
+<td><code>workflow-automation-proposer</code>^</td>
+<td>Synthesize workflow patterns into automation proposals</td>
+</tr>
+<tr>
+<td><code>create-sprint</code></td>
+<td>Create sprint with curated issue list</td>
+</tr>
+<tr>
+<td><code>review-sprint</code></td>
+<td>Review sprint health and suggest improvements</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="common-workflows">Common Workflows<a class="headerlink" href="#common-workflows" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Get started with a new project</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>/ll:init
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Run all code quality checks</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>/ll:check-code
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Find and fix issues automatically</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>/ll:scan-codebase<span class="w">            </span><span class="c1"># Technical analysis</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>/ll:scan-product<span class="w">             </span><span class="c1"># Product analysis (if enabled)</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>/ll:normalize-issues
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>/ll:prioritize-issues
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>/ll:format-issue<span class="w"> </span>--all<span class="w"> </span>--auto<span class="w">  </span><span class="c1"># Auto-format all issues (template v2.0 alignment)</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>/ll:manage-issue<span class="w"> </span>bug<span class="w"> </span>fix
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="c1"># Prepare for a pull request</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>/ll:run-tests<span class="w"> </span>all
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>/ll:check-code
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>/ll:commit
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>/ll:open-pr
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

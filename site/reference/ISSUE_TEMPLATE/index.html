@@ -1,0 +1,3873 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/reference/ISSUE_TEMPLATE/">
+      
+      
+        <link rel="prev" href="../API/">
+      
+      
+        <link rel="next" href="../OUTPUT_STYLING/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Issue Template - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#issue-template-guide-v20" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Issue Template
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../claude-code/cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-sections-all-issue-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Sections (All Issue Types)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type-specific-sections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type-Specific Sections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deprecated-sections-still-supported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deprecated Sections (Still Supported)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#section-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section Details
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Section Details">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#current-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expected-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#motivation-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Motivation ⭐ NEW
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#proposed-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposed Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-map-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Map ⭐ NEW
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation-steps-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Steps ⭐ NEW
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#impact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Impact
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#root-cause-new-bug-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root Cause ⭐ NEW (BUG only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#apiinterface-new-featenh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API/Interface ⭐ NEW (FEAT/ENH)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quality-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quality Checks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quality Checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bug-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BUG-Specific
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feat-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FEAT-Specific
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enh-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ENH-Specific
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Guide
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migration Guide">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-new-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For New Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-existing-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Existing Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#complete-bug-issue-v20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete BUG Issue (v2.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Map
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration Map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files-to-modify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files to Modify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependent-files-callersimporters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependent Files (Callers/Importers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#similar-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Similar Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#steps-to-reproduce" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps to Reproduce
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#actual-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actual Behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#impact_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Impact
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-map_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Map
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration Map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files-to-modify_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files to Modify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependent-files-callersimporters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependent Files (Callers/Importers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#similar-patterns_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Similar Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tests_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#documentation_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-steps_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acceptance-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acceptance Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apiinterface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API/Interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#impact_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Impact
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/custom-subagents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-code/structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-sections-all-issue-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Sections (All Issue Types)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type-specific-sections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type-Specific Sections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deprecated-sections-still-supported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deprecated Sections (Still Supported)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#section-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section Details
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Section Details">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#current-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expected-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#motivation-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Motivation ⭐ NEW
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#proposed-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposed Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-map-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Map ⭐ NEW
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation-steps-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Steps ⭐ NEW
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#impact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Impact
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#root-cause-new-bug-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root Cause ⭐ NEW (BUG only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#apiinterface-new-featenh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API/Interface ⭐ NEW (FEAT/ENH)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quality-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quality Checks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quality Checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bug-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BUG-Specific
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feat-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FEAT-Specific
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enh-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ENH-Specific
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Guide
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migration Guide">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-new-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For New Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-existing-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Existing Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#complete-bug-issue-v20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete BUG Issue (v2.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Map
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration Map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files-to-modify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files to Modify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependent-files-callersimporters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependent Files (Callers/Importers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#similar-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Similar Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#steps-to-reproduce" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps to Reproduce
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#actual-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actual Behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#impact_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Impact
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-map_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Map
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration Map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files-to-modify_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files to Modify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependent-files-callersimporters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependent Files (Callers/Importers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#similar-patterns_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Similar Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tests_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#documentation_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-steps_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acceptance-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acceptance Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apiinterface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API/Interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#impact_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Impact
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="issue-template-guide-v20">Issue Template Guide (v2.0)<a class="headerlink" href="#issue-template-guide-v20" title="Permanent link">&para;</a></h1>
+<p><strong>Last Updated</strong>: 2026-02-10
+<strong>Template Version</strong>: 2.0 (Optimized for AI Implementation)</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>The little-loops issue template has been optimized to maximize value for both AI agents during implementation and human reviewers. Version 2.0 reduces cognitive overhead by <strong>removing 8 low-value sections</strong> and <strong>adding 4 high-impact sections</strong> that appear in best-practice issues.</p>
+<p><strong>Key Changes</strong>:
+- 21 sections → 17 sections (-19%)
+- Enhanced AI implementation guidance
+- Anchor-based code references (no more line number drift)
+- Integration Map to identify all affected files/components
+- High-level Implementation Steps (agents expand into detailed plans)
+- Consolidated redundant sections</p>
+<h2 id="quick-reference">Quick Reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<h3 id="common-sections-all-issue-types">Common Sections (All Issue Types)<a class="headerlink" href="#common-sections-all-issue-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Required</th>
+<th>AI Usage</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Summary</strong></td>
+<td>✓</td>
+<td>HIGH</td>
+<td>One-sentence what/why</td>
+</tr>
+<tr>
+<td><strong>Current Behavior</strong></td>
+<td>✓</td>
+<td>HIGH</td>
+<td>What happens now</td>
+</tr>
+<tr>
+<td><strong>Expected Behavior</strong></td>
+<td>✓</td>
+<td>HIGH</td>
+<td>What should happen</td>
+</tr>
+<tr>
+<td><strong>Motivation</strong></td>
+<td></td>
+<td>MEDIUM</td>
+<td>Why this matters (NEW v2.0)</td>
+</tr>
+<tr>
+<td><strong>Proposed Solution</strong></td>
+<td></td>
+<td>HIGH</td>
+<td>HOW to fix with code examples</td>
+</tr>
+<tr>
+<td><strong>Integration Map</strong></td>
+<td></td>
+<td>HIGH</td>
+<td>All affected files/components (NEW v2.0)</td>
+</tr>
+<tr>
+<td><strong>Implementation Steps</strong></td>
+<td></td>
+<td>HIGH</td>
+<td>High-level outline (NEW v2.0)</td>
+</tr>
+<tr>
+<td><strong>Impact</strong></td>
+<td>✓</td>
+<td>HIGH</td>
+<td>Priority/Effort/Risk with justifications</td>
+</tr>
+<tr>
+<td><strong>Related Key Documentation</strong></td>
+<td></td>
+<td>LOW</td>
+<td>Links to docs</td>
+</tr>
+<tr>
+<td><strong>Labels</strong></td>
+<td>✓</td>
+<td>MEDIUM</td>
+<td>Categorization</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>✓</td>
+<td>HIGH</td>
+<td>Status footer</td>
+</tr>
+</tbody>
+</table>
+<h3 id="type-specific-sections">Type-Specific Sections<a class="headerlink" href="#type-specific-sections" title="Permanent link">&para;</a></h3>
+<p><strong>BUG</strong>: Steps to Reproduce, Actual Behavior, Root Cause (NEW), Error Messages, Location
+<strong>FEAT</strong>: Use Case (renamed from User Story), Acceptance Criteria, API/Interface (NEW)
+<strong>ENH</strong>: Success Metrics, Scope Boundaries</p>
+<h3 id="deprecated-sections-still-supported">Deprecated Sections (Still Supported)<a class="headerlink" href="#deprecated-sections-still-supported" title="Permanent link">&para;</a></h3>
+<p>Context, Current Pain Point, Environment, Frequency, UI/UX Details, Data/API Impact, Edge Cases, Backwards Compatibility</p>
+<blockquote>
+<p><strong>Note</strong>: Deprecated sections are still parsed for backward compatibility but should not be used in new issues.</p>
+</blockquote>
+<hr />
+<h2 id="section-details">Section Details<a class="headerlink" href="#section-details" title="Permanent link">&para;</a></h2>
+<h3 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h3>
+<p><strong>Required for all types | AI Usage: HIGH</strong></p>
+<p>One-sentence description combining WHAT and WHY.</p>
+<p><strong>Good</strong>:
+- BUG: "Sprint runner crashes when processing issues with merge conflicts, blocking automated workflows"
+- FEAT: "Add user authentication to protect admin endpoints"
+- ENH: "Add retry logic to sprint runner to handle transient failures"</p>
+<p><strong>Bad</strong>:
+- "Fix the bug" (no context)
+- "Implement user authentication using OAuth 2.0 with JWT tokens and refresh token rotation" (too detailed)</p>
+<hr />
+<h3 id="current-behavior">Current Behavior<a class="headerlink" href="#current-behavior" title="Permanent link">&para;</a></h3>
+<p><strong>Required for all types | AI Usage: HIGH</strong></p>
+<p>Describe what currently happens. Be specific and concrete.</p>
+<p><strong>Example (BUG)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gu">## Current Behavior</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>When <span class="sb">`ll-sprint run`</span> encounters an issue with merge conflicts:
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">1.</span> The orchestrator processes the issue
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">2.</span> Merge fails with <span class="sb">`MERGE_FAILED`</span> status
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">3.</span> Issue is marked as failed
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">4.</span> Sprint continues with remaining issues
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="k">5.</span> Failed issue is not retried
+</code></pre></div></p>
+<p><strong>Example (FEAT)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="gu">## Current Behavior</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>Admin endpoints (<span class="sb">`/admin/*`</span>) are publicly accessible. Any user can:
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">-</span><span class="w"> </span>View all user data
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">-</span><span class="w"> </span>Modify system settings
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="k">-</span><span class="w"> </span>Delete content
+</code></pre></div></p>
+<hr />
+<h3 id="expected-behavior">Expected Behavior<a class="headerlink" href="#expected-behavior" title="Permanent link">&para;</a></h3>
+<p><strong>Required for all types | AI Usage: HIGH</strong></p>
+<p>Describe what should happen instead.</p>
+<p><strong>Example (BUG)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="gu">## Expected Behavior</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>After initial processing completes, failed issues should be:
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">1.</span> Identified from <span class="sb">`orchestrator.queue.failed_ids`</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">2.</span> Retried sequentially using existing safe processing path
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">3.</span> Updated in sprint state with retry results
+</code></pre></div></p>
+<hr />
+<h3 id="motivation-new">Motivation ⭐ NEW<a class="headerlink" href="#motivation-new" title="Permanent link">&para;</a></h3>
+<p><strong>Optional for all types | AI Usage: MEDIUM | Human Value: HIGH</strong></p>
+<p>Explain WHY this issue matters. Quantify impact where possible.</p>
+<p><strong>Good Examples</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="gu">## Motivation</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>Sprint reliability is currently 60%. This enhancement would:
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">-</span><span class="w"> </span>Increase reliability to &gt;90% by handling transient failures
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">-</span><span class="w"> </span>Save ~2 hours/week in manual reprocessing
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="k">-</span><span class="w"> </span>Enable unattended overnight sprint runs
+</code></pre></div></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="gu">## Motivation</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>Public admin endpoints represent a critical security vulnerability affecting all users. Current production deployment is at risk until this is addressed.
+</code></pre></div>
+<p><strong>Bad Example</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="gu">## Motivation</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>This would be better.
+</code></pre></div></p>
+<p><strong>Replaces</strong>: "Current Pain Point" (ENH only) → now all issue types can express motivation</p>
+<hr />
+<h3 id="proposed-solution">Proposed Solution<a class="headerlink" href="#proposed-solution" title="Permanent link">&para;</a></h3>
+<p><strong>Optional for all types | AI Usage: HIGH | Human Value: HIGH</strong></p>
+<p>Suggested approach with <strong>code examples</strong> and <strong>anchor-based references</strong>.</p>
+<p><strong>Key Guidelines</strong>:
+- ✅ Use anchor-based references (function/class names)
+- ❌ Avoid line numbers (they drift)
+- ✅ Include code examples or pseudocode
+- ✅ Reference existing utilities to reuse
+- ✅ Provide 2-3 approaches if multiple options exist</p>
+<p><strong>Example (with anchors)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="gu">## Proposed Solution</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>Add retry logic in <span class="sb">`sprint_runner.py`</span>:
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="gs">**Location**</span>: <span class="sb">`_cmd_sprint_run()`</span>, after the <span class="sb">`orchestrator.run()`</span> block
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>```python
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="gh"># After orchestrator completes</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>failed_ids = set(orchestrator.queue.failed_ids)
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>if failed_ids:
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    for issue in wave:
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>        if issue.issue_id in failed_ids:
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>            retry_result = process_issue_inplace(issue, config, logger)
+</code></pre></div></p>
+<p><strong>Reuse</strong>: Existing <code>process_issue_inplace()</code> from <code>issue_manager.py</code> (function anchor: <code>def process_issue_inplace</code>)</p>
+<p><strong>Alternative</strong>: Could use <code>IssueOrchestrator</code> retry mode, but sequential retry is simpler and reuses tested code path.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>**Bad Example (line numbers)**:
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>```markdown
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>## Proposed Solution
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>In sprint_runner.py at line 1847, add the retry code.
+</code></pre></div></p>
+<blockquote>
+<p>❌ Line 1847 will drift as code changes</p>
+</blockquote>
+<hr />
+<h3 id="integration-map-new">Integration Map ⭐ NEW<a class="headerlink" href="#integration-map-new" title="Permanent link">&para;</a></h3>
+<p><strong>Optional for all types | AI Usage: HIGH | Human Value: HIGH</strong></p>
+<p>Comprehensive enumeration of all files, components, and systems affected by this change. <strong>Critical for preventing isolated changes that break other parts of the codebase.</strong></p>
+<p><strong>Purpose</strong>: Answer the question "What else needs to change?" before writing code.</p>
+<p><strong>Structure</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="gu">## Integration Map</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="gu">### Files to Modify</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">-</span><span class="w"> </span><span class="sb">`path/to/main_file.py`</span> - Primary change location
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">-</span><span class="w"> </span><span class="sb">`path/to/related_file.py`</span> - Related changes needed
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="gu">### Dependent Files (Callers/Importers)</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="k">-</span><span class="w"> </span><span class="sb">`path/to/caller1.py`</span> - Imports <span class="sb">`function_name()`</span>, needs update
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="k">-</span><span class="w"> </span><span class="sb">`path/to/caller2.py`</span> - Calls <span class="sb">`ClassName`</span>, verify compatibility
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Use `grep -r &quot;function_</span>name&quot; .` to find all references_
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="gu">### Similar Patterns</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="k">-</span><span class="w"> </span><span class="sb">`path/to/similar1.py`</span> - Uses same pattern, update for consistency
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="k">-</span><span class="w"> </span><span class="sb">`path/to/similar2.py`</span> - Similar logic, consider refactoring together
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Search for similar code to keep codebase consistent_</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="gu">### Tests</span>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/test_main.py`</span> - Update existing tests
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/test_integration.py`</span> - Add integration tests for callers
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Ensure test coverage for all affected components_</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="gu">### Documentation</span>
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="k">-</span><span class="w"> </span><span class="sb">`docs/API.md`</span> - Update function signature documentation
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="k">-</span><span class="w"> </span><span class="sb">`README.md`</span> - Update usage examples if public API changed
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Keep documentation in sync with code changes_</span>
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a><span class="gu">### Configuration</span>
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a><span class="k">-</span><span class="w"> </span><span class="sb">`config/settings.yaml`</span> - Update defaults/options
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a><span class="k">-</span><span class="w"> </span><span class="sb">`constants.py`</span> - Update related constants
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a><span class="k">-</span><span class="w"> </span>N/A - No configuration changes needed
+</code></pre></div></p>
+<p><strong>Quality Guidelines</strong>:
+- ✅ Use grep/search to find ALL callers/importers (don't guess)
+- ✅ Identify similar patterns for consistency
+- ✅ List EVERY test file that needs updates
+- ✅ Include docs that reference changed behavior
+- ✅ Note config files, even if "no change" (shows you considered it)
+- ✅ Use "N/A" for categories with no changes (don't leave blank or "TBD")
+- ❌ Don't leave as "TBD - requires investigation" in final issue</p>
+<p><strong>Example (BUG)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="gu">## Integration Map</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="gu">### Files to Modify</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">-</span><span class="w"> </span><span class="sb">`auth/token_validator.py`</span> - Add expiry check in <span class="sb">`validate_token()`</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="gu">### Dependent Files (Callers/Importers)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="k">-</span><span class="w"> </span><span class="sb">`api/middleware/auth_middleware.py`</span> - Handle new <span class="sb">`TokenExpiredError`</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="k">-</span><span class="w"> </span><span class="sb">`api/routes/admin.py`</span> - Catch <span class="sb">`TokenExpiredError`</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="k">-</span><span class="w"> </span><span class="sb">`api/routes/user.py`</span> - Catch <span class="sb">`TokenExpiredError`</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="k">-</span><span class="w"> </span><span class="sb">`services/background_tasks.py`</span> - Validate tokens for async jobs
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Found via: `grep -r &quot;validate_</span>token&quot; api/ services/`_
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="gu">### Similar Patterns</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="k">-</span><span class="w"> </span><span class="sb">`auth/refresh_token_validator.py`</span> - Has SAME bug, fix here too
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="k">-</span><span class="w"> </span><span class="sb">`auth/api_key_validator.py`</span> - Different pattern, verify expiry logic
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Pattern: `grep -r &quot;jwt.decode&quot; auth/` found similar validators_</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="gu">### Tests</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/auth/test_token_validator.py`</span> - Add test for expired tokens
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/api/test_auth_middleware.py`</span> - Test TokenExpiredError handling
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/integration/test_admin_routes.py`</span> - Test admin rejects expired
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/integration/test_user_routes.py`</span> - Test user rejects expired
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="gu">### Documentation</span>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="k">-</span><span class="w"> </span><span class="sb">`docs/API.md`</span> - Document TokenExpiredError in auth section
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="k">-</span><span class="w"> </span><span class="sb">`docs/SECURITY.md`</span> - Update security practices
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="k">-</span><span class="w"> </span><span class="sb">`README.md`</span> - N/A (internal change)
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>
+<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a><span class="gu">### Configuration</span>
+<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a><span class="k">-</span><span class="w"> </span><span class="sb">`config/security.yaml`</span> - Consider adding <span class="sb">`token_expiry_buffer_seconds`</span>
+<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a><span class="k">-</span><span class="w"> </span>N/A - No constant changes needed
+</code></pre></div></p>
+<p><strong>Example (FEAT)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="gu">## Integration Map</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="gu">### Files to Modify</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="k">-</span><span class="w"> </span><span class="sb">`services/user_service.py`</span> - Add <span class="sb">`@cache_with_redis`</span> decorator
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">-</span><span class="w"> </span><span class="sb">`utils/cache.py`</span> - Create cache decorator (NEW FILE)
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="gu">### Dependent Files (Callers/Importers)</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="k">-</span><span class="w"> </span><span class="sb">`api/routes/user.py`</span> - No changes (caching transparent)
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="k">-</span><span class="w"> </span><span class="sb">`api/routes/admin.py`</span> - No changes (caching transparent)
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="k">-</span><span class="w"> </span><span class="sb">`services/notification_service.py`</span> - No changes
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Found via: `grep -r &quot;get_</span>user_profile&quot; .`_
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="gu">### Cache Invalidation Points (CRITICAL)</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="k">-</span><span class="w"> </span><span class="sb">`services/user_service.py:update_user_profile()`</span> - Invalidate cache
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="k">-</span><span class="w"> </span><span class="sb">`services/user_service.py:delete_user()`</span> - Invalidate cache
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="k">-</span><span class="w"> </span><span class="sb">`admin/bulk_operations.py:bulk_update_users()`</span> - Invalidate cache
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Every write operation needs cache invalidation!_</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="gu">### Similar Patterns</span>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="k">-</span><span class="w"> </span><span class="sb">`services/org_service.py`</span> - Should add caching (same pattern)
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a><span class="k">-</span><span class="w"> </span><span class="sb">`services/team_service.py`</span> - Should add caching (same pattern)
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a><span class="k">-</span><span class="w"> </span><span class="ge">_Opportunity: Apply pattern consistently_</span>
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>
+<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a><span class="gu">### Tests</span>
+<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/services/test_user_service.py`</span> - Add cache hit/miss tests
+<a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/utils/test_cache.py`</span> - Test cache decorator (NEW)
+<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a><span class="k">-</span><span class="w"> </span><span class="sb">`tests/integration/test_cache_invalidation.py`</span> - Critical! (NEW)
+<a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a>
+<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a><span class="gu">### Documentation</span>
+<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a><span class="k">-</span><span class="w"> </span><span class="sb">`docs/ARCHITECTURE.md`</span> - Add caching layer to architecture diagram
+<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a><span class="k">-</span><span class="w"> </span><span class="sb">`docs/CACHING.md`</span> - Document caching strategy (NEW)
+<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a><span class="k">-</span><span class="w"> </span><span class="sb">`README.md`</span> - Add Redis to installation instructions
+<a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>
+<a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a><span class="gu">### Configuration</span>
+<a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a><span class="k">-</span><span class="w"> </span><span class="sb">`config/cache.yaml`</span> - Redis connection settings (NEW)
+<a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a><span class="k">-</span><span class="w"> </span><span class="sb">`docker-compose.yml`</span> - Add Redis service
+<a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a><span class="k">-</span><span class="w"> </span><span class="sb">`.env.example`</span> - Add REDIS_URL example
+</code></pre></div></p>
+<p><strong>Why This Section Matters</strong>:</p>
+<p>Common failure pattern WITHOUT Integration Map:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>Fix auth.py → Deploy → Breaks API routes → Breaks background jobs →
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>Stale tests pass → Docs outdated → Users confused
+</code></pre></div></p>
+<p>Success pattern WITH Integration Map:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Identify all 4 callers → Fix all 4 → Update all 4 tests →
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>Update docs → Complete change → No breakage
+</code></pre></div></p>
+<p><strong>Pro tip</strong>: If you find yourself saying "I'll just fix this one file", you're missing integration points. Use grep to be sure.</p>
+<hr />
+<h3 id="implementation-steps-new">Implementation Steps ⭐ NEW<a class="headerlink" href="#implementation-steps-new" title="Permanent link">&para;</a></h3>
+<p><strong>Optional for all types | AI Usage: HIGH | Human Value: MEDIUM</strong></p>
+<p>High-level outline that guides the implementation agent. Keep it to 3-8 major phases.</p>
+<p><strong>Important</strong>: This is NOT a replacement for the detailed implementation plan that <code>/ll:manage-issue</code> creates. Think of it as an outline the agent will expand.</p>
+<p><strong>Good Example (High-Level)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="gu">## Implementation Steps</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="k">1.</span> Add retry logic after orchestrator completes
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="k">2.</span> Identify failed issues and retry sequentially
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="k">3.</span> Update sprint state with retry results
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="k">4.</span> Add tests for retry behavior
+</code></pre></div></p>
+<p><strong>Bad Example (Too Detailed)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="gu">## Implementation Steps</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="k">1.</span> In sprint_runner.py, locate the <span class="ge">_cmd_</span>sprint_run() function at line 1847
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="k">2.</span> After the orchestrator.run() call, insert a new code block
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="k">3.</span> Call orchestrator.queue.failed_ids to get the set of failed IDs
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="k">4.</span> Create a for loop that iterates over the wave variable
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="k">5.</span> Inside the loop, check if issue.issue_id is in the failed_ids set
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="k">6.</span> If true, call process_issue_inplace() with parameters: issue, config, logger
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="k">7.</span> Capture the return value in a variable called retry_result
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>... (12 more steps)
+</code></pre></div></p>
+<blockquote>
+<p>❌ Too granular - this is what the agent creates during planning</p>
+</blockquote>
+<hr />
+<h3 id="impact">Impact<a class="headerlink" href="#impact" title="Permanent link">&para;</a></h3>
+<p><strong>Required for all types | AI Usage: HIGH | Human Value: HIGH</strong></p>
+<p>Priority, effort, and risk assessment <strong>with justifications</strong>.</p>
+<p><strong>New Format (v2.0)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="gu">## Impact</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Priority**</span>: P2 - Blocks sprint reliability; affects daily workflow
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Effort**</span>: Small-Medium - Reuses existing <span class="sb">`process_issue_inplace()`</span>, adds ~15 LOC
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Risk**</span>: Low - Sequential retry uses existing safe code path, no concurrency concerns
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Breaking Change**</span>: No
+</code></pre></div></p>
+<p><strong>Quality Guidelines</strong>:
+- ✅ Justify priority: Why P0? Why P2? What's the urgency?
+- ✅ Justify effort: Reuses code? New patterns? Estimated LOC?
+- ✅ Justify risk: Breaking change? Well-tested path? Edge cases?</p>
+<p><strong>Bad Example</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="gu">## Impact</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Priority**</span>: P2
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Effort**</span>: Medium
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Risk**</span>: Low
+</code></pre></div></p>
+<blockquote>
+<p>❌ No justifications</p>
+</blockquote>
+<hr />
+<h3 id="root-cause-new-bug-only">Root Cause ⭐ NEW (BUG only)<a class="headerlink" href="#root-cause-new-bug-only" title="Permanent link">&para;</a></h3>
+<p><strong>Conditional for BUG | AI Usage: HIGH | Human Value: HIGH</strong></p>
+<p>Identify WHERE and WHY the bug occurs using anchor-based references.</p>
+<p><strong>Format</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="gu">## Root Cause</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="k">-</span><span class="w"> </span><span class="gs">**File**</span>: <span class="sb">`scripts/little_loops/sprint_runner.py`</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Anchor**</span>: <span class="sb">`in function _cmd_sprint_run()`</span>, after orchestrator execution
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Cause**</span>: Orchestrator marks issues as failed but doesn&#39;t trigger retry. The function returns after first processing pass without checking for retryable failures.
+</code></pre></div></p>
+<p><strong>Quality Guidelines</strong>:
+- ✅ Use function/class anchors, not line numbers
+- ✅ Explain WHY the bug happens (logic error, missing check, race condition, etc.)
+- ✅ Reference specific code patterns or control flow</p>
+<hr />
+<h3 id="apiinterface-new-featenh">API/Interface ⭐ NEW (FEAT/ENH)<a class="headerlink" href="#apiinterface-new-featenh" title="Permanent link">&para;</a></h3>
+<p><strong>Conditional for FEAT/ENH | AI Usage: HIGH | Human Value: MEDIUM</strong></p>
+<p>Document public API contracts, interface changes, or CLI arguments.</p>
+<p><strong>Example (Function Signature)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="gu">## API/Interface</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>```python
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>def authenticate_user(username: str, password: str) -&gt; AuthToken:
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>    &quot;&quot;&quot;Authenticate user and return session token.
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>    Args:
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>        username: User&#39;s login name
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>        password: User&#39;s password (will be hashed)
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>    Returns:
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>        AuthToken with expiry and permissions
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a>    Raises:
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>        AuthenticationError: If credentials are invalid
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a>    &quot;&quot;&quot;
+</code></pre></div></p>
+<p><strong>Example (CLI Change)</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="gu">## API/Interface</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>New CLI flag for <span class="sb">`ll-sprint`</span>:
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>```bash
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>ll-sprint run --retry-failed
+</code></pre></div></p>
+<ul>
+<li><strong>Flag</strong>: <code>--retry-failed</code> / <code>-r</code></li>
+<li><strong>Type</strong>: boolean (default: false)</li>
+<li><strong>Behavior</strong>: Retry failed issues sequentially after initial processing</li>
+<li><strong>Breaking Change</strong>: No (opt-in flag)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>**Consolidates**: &quot;Data/API Impact&quot; (deprecated)
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>---
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>### Use Case (FEAT only) - Renamed from &quot;User Story&quot;
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>**Required for FEAT | AI Usage: HIGH | Human Value: HIGH**
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>Describe a **concrete scenario** showing who uses this and what they achieve.
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>**Good Example**:
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>```markdown
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>## Use Case
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>**Who**: DevOps engineer running overnight sprint processing
+<a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a>
+<a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a>**Context**: They&#39;ve configured a sprint with 50 issues and want to run it unattended overnight.
+<a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a>
+<a id="__codelineno-20-18" name="__codelineno-20-18" href="#__codelineno-20-18"></a>**Goal**: When transient failures occur (network timeouts, temporary merge conflicts), the sprint should automatically retry failed issues instead of requiring manual intervention the next morning.
+<a id="__codelineno-20-19" name="__codelineno-20-19" href="#__codelineno-20-19"></a>
+<a id="__codelineno-20-20" name="__codelineno-20-20" href="#__codelineno-20-20"></a>**Outcome**: Sprint completes with 95%+ success rate, failed issues are logged for review, and engineer has actionable results in the morning.
+</code></pre></div></li>
+</ul>
+<p><strong>Bad Example</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="gu">## Use Case</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>As a user, I want the sprint to retry failures so that I don&#39;t have to manually reprocess.
+</code></pre></div></p>
+<blockquote>
+<p>❌ Generic template, no concrete context</p>
+</blockquote>
+<hr />
+<h2 id="quality-checks">Quality Checks<a class="headerlink" href="#quality-checks" title="Permanent link">&para;</a></h2>
+<h3 id="all-issues">All Issues<a class="headerlink" href="#all-issues" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Impact includes justifications for priority, effort, and risk</li>
+<li>[ ] Proposed Solution uses anchor-based references (function/class names) not line numbers</li>
+<li>[ ] Implementation Steps (if present) are high-level outline, not detailed plan</li>
+<li>[ ] Summary is one sentence combining WHAT and WHY</li>
+</ul>
+<h3 id="bug-specific">BUG-Specific<a class="headerlink" href="#bug-specific" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Steps to Reproduce has numbered concrete steps (not "do the thing")</li>
+<li>[ ] Expected vs Actual describe different specific behaviors (not just "it should work")</li>
+<li>[ ] Error messages include actual error text, not just "there's an error"</li>
+<li>[ ] Root Cause identifies file + function anchor + explanation (not just "investigate")</li>
+</ul>
+<h3 id="feat-specific">FEAT-Specific<a class="headerlink" href="#feat-specific" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Use Case describes a concrete scenario with context, not a generic template</li>
+<li>[ ] Acceptance Criteria are individually testable with clear pass/fail</li>
+<li>[ ] API/Interface documents signatures/schemas if introducing public contracts</li>
+<li>[ ] Proposed Solution includes code examples or pseudocode</li>
+</ul>
+<h3 id="enh-specific">ENH-Specific<a class="headerlink" href="#enh-specific" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Motivation explains WHY with quantified impact where possible</li>
+<li>[ ] Success Metrics have numeric targets or clear before/after comparison</li>
+<li>[ ] Scope Boundaries list specific exclusions, not just "keep it simple"</li>
+<li>[ ] Proposed Solution references existing utilities/patterns to reuse</li>
+</ul>
+<hr />
+<h2 id="migration-guide">Migration Guide<a class="headerlink" href="#migration-guide" title="Permanent link">&para;</a></h2>
+<h3 id="for-new-issues">For New Issues<a class="headerlink" href="#for-new-issues" title="Permanent link">&para;</a></h3>
+<p>Use <code>/ll:capture-issue</code> or <code>/ll:format-issue</code> - they automatically use the v2.0 template.</p>
+<h3 id="for-existing-issues">For Existing Issues<a class="headerlink" href="#for-existing-issues" title="Permanent link">&para;</a></h3>
+<p>Existing issues continue to work without changes. Deprecated sections are still parsed.</p>
+<p>To upgrade an existing issue to v2.0:
+1. Run <code>/ll:format-issue &lt;issue-file&gt;</code> - it will offer to add new sections
+2. Manually migrate:
+   - Add "Motivation" if you had "Current Pain Point" (ENH)
+   - Add "Implementation Steps" if you want to guide the agent
+   - Add "Root Cause" if you know where/why the bug occurs (BUG)
+   - Rename "User Story" to "Use Case" and enhance with concrete scenario (FEAT)
+   - Replace line numbers in "Proposed Solution" with function/class anchors
+   - Add justifications to "Impact" section</p>
+<hr />
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<h3 id="complete-bug-issue-v20">Complete BUG Issue (v2.0)<a class="headerlink" href="#complete-bug-issue-v20" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="gh"># BUG: Sprint runner doesn&#39;t retry failed issues</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="gu">## Summary</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>Sprint runner marks issues as failed but doesn&#39;t retry them, requiring manual reprocessing and reducing automation reliability.
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="gu">## Current Behavior</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>When <span class="sb">`ll-sprint run`</span> encounters an issue with merge conflicts or transient errors:
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="k">1.</span> The orchestrator processes the issue
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="k">2.</span> Issue fails with <span class="sb">`MERGE_FAILED`</span> or error status
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a><span class="k">3.</span> Issue is marked as failed in sprint state
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="k">4.</span> Sprint continues with remaining issues
+<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a><span class="k">5.</span> Failed issue is never retried
+<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a>
+<a id="__codelineno-22-16" name="__codelineno-22-16" href="#__codelineno-22-16"></a><span class="gu">## Expected Behavior</span>
+<a id="__codelineno-22-17" name="__codelineno-22-17" href="#__codelineno-22-17"></a>
+<a id="__codelineno-22-18" name="__codelineno-22-18" href="#__codelineno-22-18"></a>After initial processing completes:
+<a id="__codelineno-22-19" name="__codelineno-22-19" href="#__codelineno-22-19"></a><span class="k">1.</span> Failed issues are identified from <span class="sb">`orchestrator.queue.failed_ids`</span>
+<a id="__codelineno-22-20" name="__codelineno-22-20" href="#__codelineno-22-20"></a><span class="k">2.</span> Each failed issue is retried sequentially
+<a id="__codelineno-22-21" name="__codelineno-22-21" href="#__codelineno-22-21"></a><span class="k">3.</span> Sprint state is updated with retry results
+<a id="__codelineno-22-22" name="__codelineno-22-22" href="#__codelineno-22-22"></a><span class="k">4.</span> Final summary shows original failures vs retry successes
+<a id="__codelineno-22-23" name="__codelineno-22-23" href="#__codelineno-22-23"></a>
+<a id="__codelineno-22-24" name="__codelineno-22-24" href="#__codelineno-22-24"></a><span class="gu">## Motivation</span>
+<a id="__codelineno-22-25" name="__codelineno-22-25" href="#__codelineno-22-25"></a>
+<a id="__codelineno-22-26" name="__codelineno-22-26" href="#__codelineno-22-26"></a>Sprint reliability is currently 60% due to transient merge conflicts. This enhancement would:
+<a id="__codelineno-22-27" name="__codelineno-22-27" href="#__codelineno-22-27"></a><span class="k">-</span><span class="w"> </span>Increase reliability to &gt;90% by handling transient failures
+<a id="__codelineno-22-28" name="__codelineno-22-28" href="#__codelineno-22-28"></a><span class="k">-</span><span class="w"> </span>Save ~2 hours/week in manual reprocessing
+<a id="__codelineno-22-29" name="__codelineno-22-29" href="#__codelineno-22-29"></a><span class="k">-</span><span class="w"> </span>Enable unattended overnight sprint runs
+<a id="__codelineno-22-30" name="__codelineno-22-30" href="#__codelineno-22-30"></a>
+<a id="__codelineno-22-31" name="__codelineno-22-31" href="#__codelineno-22-31"></a><span class="gu">## Root Cause</span>
+<a id="__codelineno-22-32" name="__codelineno-22-32" href="#__codelineno-22-32"></a>
+<a id="__codelineno-22-33" name="__codelineno-22-33" href="#__codelineno-22-33"></a><span class="k">-</span><span class="w"> </span><span class="gs">**File**</span>: <span class="sb">`scripts/little_loops/sprint_runner.py`</span>
+<a id="__codelineno-22-34" name="__codelineno-22-34" href="#__codelineno-22-34"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Anchor**</span>: <span class="sb">`in function _cmd_sprint_run()`</span>, after orchestrator execution
+<a id="__codelineno-22-35" name="__codelineno-22-35" href="#__codelineno-22-35"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Cause**</span>: Orchestrator marks issues as failed but doesn&#39;t trigger retry. Function returns after first processing pass without checking for retryable failures.
+<a id="__codelineno-22-36" name="__codelineno-22-36" href="#__codelineno-22-36"></a>
+<a id="__codelineno-22-37" name="__codelineno-22-37" href="#__codelineno-22-37"></a><span class="gu">## Proposed Solution</span>
+<a id="__codelineno-22-38" name="__codelineno-22-38" href="#__codelineno-22-38"></a>
+<a id="__codelineno-22-39" name="__codelineno-22-39" href="#__codelineno-22-39"></a>Add retry logic in <span class="sb">`sprint_runner.py`</span>:
+<a id="__codelineno-22-40" name="__codelineno-22-40" href="#__codelineno-22-40"></a>
+<a id="__codelineno-22-41" name="__codelineno-22-41" href="#__codelineno-22-41"></a><span class="gs">**Location**</span>: <span class="sb">`_cmd_sprint_run()`</span>, after the <span class="sb">`orchestrator.run()`</span> block
+<a id="__codelineno-22-42" name="__codelineno-22-42" href="#__codelineno-22-42"></a>
+<a id="__codelineno-22-43" name="__codelineno-22-43" href="#__codelineno-22-43"></a>```python
+<a id="__codelineno-22-44" name="__codelineno-22-44" href="#__codelineno-22-44"></a><span class="gh"># After orchestrator completes</span>
+<a id="__codelineno-22-45" name="__codelineno-22-45" href="#__codelineno-22-45"></a>failed_ids = set(orchestrator.queue.failed_ids)
+<a id="__codelineno-22-46" name="__codelineno-22-46" href="#__codelineno-22-46"></a>if failed_ids:
+<a id="__codelineno-22-47" name="__codelineno-22-47" href="#__codelineno-22-47"></a>    logger.info(f&quot;Retrying {len(failed_ids)} failed issues sequentially...&quot;)
+<a id="__codelineno-22-48" name="__codelineno-22-48" href="#__codelineno-22-48"></a>    for issue in wave:
+<a id="__codelineno-22-49" name="__codelineno-22-49" href="#__codelineno-22-49"></a>        if issue.issue_id in failed_ids:
+<a id="__codelineno-22-50" name="__codelineno-22-50" href="#__codelineno-22-50"></a>            retry_result = process_issue_inplace(issue, config, logger)
+<a id="__codelineno-22-51" name="__codelineno-22-51" href="#__codelineno-22-51"></a>            # Update sprint state with retry result
+</code></pre></div>
+<p><strong>Reuse</strong>: Existing <code>process_issue_inplace()</code> from <code>issue_manager.py</code></p>
+<h2 id="integration-map">Integration Map<a class="headerlink" href="#integration-map" title="Permanent link">&para;</a></h2>
+<h3 id="files-to-modify">Files to Modify<a class="headerlink" href="#files-to-modify" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>scripts/little_loops/sprint_runner.py</code> - Add retry logic in <code>_cmd_sprint_run()</code></li>
+</ul>
+<h3 id="dependent-files-callersimporters">Dependent Files (Callers/Importers)<a class="headerlink" href="#dependent-files-callersimporters" title="Permanent link">&para;</a></h3>
+<ul>
+<li>N/A - Sprint runner is top-level command, no callers in codebase</li>
+</ul>
+<h3 id="similar-patterns">Similar Patterns<a class="headerlink" href="#similar-patterns" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>scripts/little_loops/cli.py</code> - Consider adding retry to <code>ll-auto</code> as well</li>
+<li><em>Pattern: Sequential processing of issues appears in multiple commands</em></li>
+</ul>
+<h3 id="tests">Tests<a class="headerlink" href="#tests" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>scripts/tests/test_sprint.py</code> - Add test for retry behavior after failures</li>
+<li><code>scripts/tests/integration/test_sprint_reliability.py</code> - Integration test (NEW)</li>
+</ul>
+<h3 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>docs/CLI-TOOLS-AUDIT.md</code> - Update ll-sprint capabilities</li>
+<li><code>README.md</code> - Update ll-sprint feature list</li>
+</ul>
+<h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<ul>
+<li>N/A - No configuration changes needed</li>
+</ul>
+<h2 id="implementation-steps">Implementation Steps<a class="headerlink" href="#implementation-steps" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Add retry logic after orchestrator completes</li>
+<li>Identify failed issues and retry sequentially</li>
+<li>Update sprint state with retry results</li>
+<li>Add tests for retry behavior</li>
+</ol>
+<h2 id="steps-to-reproduce">Steps to Reproduce<a class="headerlink" href="#steps-to-reproduce" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Create a sprint with an issue that has merge conflicts</li>
+<li>Run <code>ll-sprint run sprint-name</code></li>
+<li>Observe orchestrator fails the issue</li>
+<li>Check sprint state - issue marked as failed, no retry</li>
+</ol>
+<h2 id="actual-behavior">Actual Behavior<a class="headerlink" href="#actual-behavior" title="Permanent link">&para;</a></h2>
+<p>Issue is marked as failed, sprint continues, no retry occurs.</p>
+<h2 id="impact_1">Impact<a class="headerlink" href="#impact_1" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Priority</strong>: P2 - Blocks sprint reliability; affects daily workflow</li>
+<li><strong>Effort</strong>: Small-Medium - Reuses existing function, adds ~15 LOC</li>
+<li><strong>Risk</strong>: Low - Sequential retry uses existing safe code path</li>
+<li><strong>Breaking Change</strong>: No</li>
+</ul>
+<h2 id="labels">Labels<a class="headerlink" href="#labels" title="Permanent link">&para;</a></h2>
+<p><code>bug</code>, <code>sprint</code>, <code>reliability</code></p>
+<h2 id="status">Status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h2>
+<p><strong>Open</strong> | Created: 2026-02-10 | Priority: P2
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>### Complete FEAT Issue (v2.0)
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>```markdown
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a># FEAT: Add user authentication to admin endpoints
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>## Summary
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>Add authentication to admin endpoints to prevent unauthorized access to sensitive operations.
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>## Current Behavior
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a>
+<a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a>Admin endpoints (`/admin/*`) are publicly accessible without authentication.
+<a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a>
+<a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a>## Expected Behavior
+<a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a>
+<a id="__codelineno-23-16" name="__codelineno-23-16" href="#__codelineno-23-16"></a>Admin endpoints require valid authentication token. Unauthorized requests return 401.
+<a id="__codelineno-23-17" name="__codelineno-23-17" href="#__codelineno-23-17"></a>
+<a id="__codelineno-23-18" name="__codelineno-23-18" href="#__codelineno-23-18"></a>## Motivation
+<a id="__codelineno-23-19" name="__codelineno-23-19" href="#__codelineno-23-19"></a>
+<a id="__codelineno-23-20" name="__codelineno-23-20" href="#__codelineno-23-20"></a>Public admin endpoints represent a critical security vulnerability. Current production deployment is at risk until this is addressed. Affects all users (potential data breach).
+<a id="__codelineno-23-21" name="__codelineno-23-21" href="#__codelineno-23-21"></a>
+<a id="__codelineno-23-22" name="__codelineno-23-22" href="#__codelineno-23-22"></a>## Use Case
+<a id="__codelineno-23-23" name="__codelineno-23-23" href="#__codelineno-23-23"></a>
+<a id="__codelineno-23-24" name="__codelineno-23-24" href="#__codelineno-23-24"></a>**Who**: System administrator managing user accounts
+<a id="__codelineno-23-25" name="__codelineno-23-25" href="#__codelineno-23-25"></a>
+<a id="__codelineno-23-26" name="__codelineno-23-26" href="#__codelineno-23-26"></a>**Context**: Admin needs to access user management dashboard to ban a spam account. They should authenticate with their admin credentials before accessing sensitive operations.
+<a id="__codelineno-23-27" name="__codelineno-23-27" href="#__codelineno-23-27"></a>
+<a id="__codelineno-23-28" name="__codelineno-23-28" href="#__codelineno-23-28"></a>**Goal**: Securely access admin dashboard, verify identity, perform user management tasks.
+<a id="__codelineno-23-29" name="__codelineno-23-29" href="#__codelineno-23-29"></a>
+<a id="__codelineno-23-30" name="__codelineno-23-30" href="#__codelineno-23-30"></a>**Outcome**: Only authenticated admins can access sensitive endpoints. Audit log records who performed what action.
+<a id="__codelineno-23-31" name="__codelineno-23-31" href="#__codelineno-23-31"></a>
+<a id="__codelineno-23-32" name="__codelineno-23-32" href="#__codelineno-23-32"></a>## Proposed Solution
+<a id="__codelineno-23-33" name="__codelineno-23-33" href="#__codelineno-23-33"></a>
+<a id="__codelineno-23-34" name="__codelineno-23-34" href="#__codelineno-23-34"></a>Add JWT-based authentication:
+<a id="__codelineno-23-35" name="__codelineno-23-35" href="#__codelineno-23-35"></a>
+<a id="__codelineno-23-36" name="__codelineno-23-36" href="#__codelineno-23-36"></a>1. **Auth middleware**: Create `auth_middleware.py` (see `existing_middleware.py` for pattern)
+<a id="__codelineno-23-37" name="__codelineno-23-37" href="#__codelineno-23-37"></a>2. **Token validation**: Reuse existing `verify_jwt_token()` from `auth_utils.py`
+<a id="__codelineno-23-38" name="__codelineno-23-38" href="#__codelineno-23-38"></a>3. **Protected routes**: Apply `@require_auth` decorator to admin endpoints
+<a id="__codelineno-23-39" name="__codelineno-23-39" href="#__codelineno-23-39"></a>
+<a id="__codelineno-23-40" name="__codelineno-23-40" href="#__codelineno-23-40"></a>```python
+<a id="__codelineno-23-41" name="__codelineno-23-41" href="#__codelineno-23-41"></a>from functools import wraps
+<a id="__codelineno-23-42" name="__codelineno-23-42" href="#__codelineno-23-42"></a>from auth_utils import verify_jwt_token
+<a id="__codelineno-23-43" name="__codelineno-23-43" href="#__codelineno-23-43"></a>
+<a id="__codelineno-23-44" name="__codelineno-23-44" href="#__codelineno-23-44"></a>def require_auth(f):
+<a id="__codelineno-23-45" name="__codelineno-23-45" href="#__codelineno-23-45"></a>    @wraps(f)
+<a id="__codelineno-23-46" name="__codelineno-23-46" href="#__codelineno-23-46"></a>    def decorated(*args, **kwargs):
+<a id="__codelineno-23-47" name="__codelineno-23-47" href="#__codelineno-23-47"></a>        token = request.headers.get(&#39;Authorization&#39;)
+<a id="__codelineno-23-48" name="__codelineno-23-48" href="#__codelineno-23-48"></a>        if not token or not verify_jwt_token(token):
+<a id="__codelineno-23-49" name="__codelineno-23-49" href="#__codelineno-23-49"></a>            return jsonify({&#39;error&#39;: &#39;Unauthorized&#39;}), 401
+<a id="__codelineno-23-50" name="__codelineno-23-50" href="#__codelineno-23-50"></a>        return f(*args, **kwargs)
+<a id="__codelineno-23-51" name="__codelineno-23-51" href="#__codelineno-23-51"></a>    return decorated
+<a id="__codelineno-23-52" name="__codelineno-23-52" href="#__codelineno-23-52"></a>
+<a id="__codelineno-23-53" name="__codelineno-23-53" href="#__codelineno-23-53"></a>@app.route(&#39;/admin/users&#39;)
+<a id="__codelineno-23-54" name="__codelineno-23-54" href="#__codelineno-23-54"></a>@require_auth
+<a id="__codelineno-23-55" name="__codelineno-23-55" href="#__codelineno-23-55"></a>def admin_users():
+<a id="__codelineno-23-56" name="__codelineno-23-56" href="#__codelineno-23-56"></a>    # existing logic
+</code></pre></div></p>
+<h2 id="integration-map_1">Integration Map<a class="headerlink" href="#integration-map_1" title="Permanent link">&para;</a></h2>
+<h3 id="files-to-modify_1">Files to Modify<a class="headerlink" href="#files-to-modify_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>api/middleware/auth_middleware.py</code> - Create auth middleware (NEW FILE)</li>
+<li><code>api/routes/admin.py</code> - Apply <code>@require_auth</code> decorator</li>
+<li><code>api/routes/users.py</code> - Apply decorator to user management routes</li>
+</ul>
+<h3 id="dependent-files-callersimporters_1">Dependent Files (Callers/Importers)<a class="headerlink" href="#dependent-files-callersimporters_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>All admin route handlers - Need to import and apply decorator</li>
+<li><em>Found via: <code>grep -r "@app.route('/admin" api/</code></em></li>
+</ul>
+<h3 id="similar-patterns_1">Similar Patterns<a class="headerlink" href="#similar-patterns_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>api/middleware/rate_limit.py</code> - Similar decorator pattern, reuse structure</li>
+<li>Other protected routes - Consider applying consistent auth pattern</li>
+</ul>
+<h3 id="tests_1">Tests<a class="headerlink" href="#tests_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>tests/api/test_auth_middleware.py</code> - Test middleware functionality (NEW)</li>
+<li><code>tests/api/test_admin_routes.py</code> - Update to include auth token in requests</li>
+<li><code>tests/api/test_users_routes.py</code> - Update to test auth rejection</li>
+<li><code>tests/integration/test_admin_security.py</code> - End-to-end security test (NEW)</li>
+</ul>
+<h3 id="documentation_1">Documentation<a class="headerlink" href="#documentation_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>docs/API.md</code> - Document authentication requirements</li>
+<li><code>docs/SECURITY.md</code> - Add authentication section</li>
+<li><code>README.md</code> - Update setup instructions for JWT configuration</li>
+</ul>
+<h3 id="configuration_1">Configuration<a class="headerlink" href="#configuration_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>config/auth.yaml</code> - Add JWT secret and token settings (NEW)</li>
+<li><code>.env.example</code> - Add JWT_SECRET example</li>
+<li><code>docker-compose.yml</code> - No changes needed</li>
+</ul>
+<h2 id="implementation-steps_1">Implementation Steps<a class="headerlink" href="#implementation-steps_1" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Create authentication middleware</li>
+<li>Add JWT token verification</li>
+<li>Apply @require_auth decorator to admin routes</li>
+<li>Add authentication tests</li>
+<li>Update API documentation</li>
+</ol>
+<h2 id="acceptance-criteria">Acceptance Criteria<a class="headerlink" href="#acceptance-criteria" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] All <code>/admin/*</code> endpoints require valid JWT token</li>
+<li>[ ] Requests without token return 401 Unauthorized</li>
+<li>[ ] Requests with invalid token return 401 Unauthorized</li>
+<li>[ ] Requests with valid token proceed normally</li>
+<li>[ ] Audit log records authenticated admin actions</li>
+</ul>
+<h2 id="apiinterface">API/Interface<a class="headerlink" href="#apiinterface" title="Permanent link">&para;</a></h2>
+<p><strong>Protected Endpoints</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>GET  /admin/users     - Requires: Bearer token
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>POST /admin/users/:id - Requires: Bearer token + admin role
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>DELETE /admin/content - Requires: Bearer token + admin role
+</code></pre></div></p>
+<p><strong>Authentication Header</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>Authorization: Bearer &lt;jwt-token&gt;
+</code></pre></div></p>
+<p><strong>Error Response</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="p">{</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Unauthorized&quot;</span><span class="p">,</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Valid authentication token required&quot;</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="p">}</span>
+</code></pre></div></p>
+<h2 id="impact_2">Impact<a class="headerlink" href="#impact_2" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Priority</strong>: P0 - Critical security vulnerability in production</li>
+<li><strong>Effort</strong>: Small - Reuses existing JWT utilities, adds decorator pattern (~50 LOC)</li>
+<li><strong>Risk</strong>: Medium - Changes authentication flow, requires careful testing</li>
+<li><strong>Breaking Change</strong>: Yes - Clients must include auth token (migration plan needed)</li>
+</ul>
+<h2 id="labels_1">Labels<a class="headerlink" href="#labels_1" title="Permanent link">&para;</a></h2>
+<p><code>feature</code>, <code>security</code>, <code>authentication</code>, <code>breaking-change</code></p>
+<h2 id="status_1">Status<a class="headerlink" href="#status_1" title="Permanent link">&para;</a></h2>
+<p><strong>Open</strong> | Created: 2026-02-10 | Priority: P0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>---
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>## Template Variants
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>### Full Template (v2.0)
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>Includes all non-deprecated sections. Use for important issues.
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>**Sections**: Summary, Current Behavior, Expected Behavior, Motivation, Proposed Solution, Implementation Steps, Impact, Related Key Documentation, Labels, Status + type-specific sections
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>### Minimal Template
+<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a>Core sections only. Use for quick captures that will be refined later.
+<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>
+<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>**Sections**: Summary, Current Behavior, Expected Behavior, Impact, Status
+<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>
+<a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a>### Legacy Template
+<a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a>Backward compatible with v1.0. Includes deprecated sections.
+<a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>
+<a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a>**Use only if**: You need to maintain exact compatibility with old tooling
+<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a>
+<a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a>---
+<a id="__codelineno-27-21" name="__codelineno-27-21" href="#__codelineno-27-21"></a>
+<a id="__codelineno-27-22" name="__codelineno-27-22" href="#__codelineno-27-22"></a>## Best Practices
+<a id="__codelineno-27-23" name="__codelineno-27-23" href="#__codelineno-27-23"></a>
+<a id="__codelineno-27-24" name="__codelineno-27-24" href="#__codelineno-27-24"></a>### For AI Implementation
+<a id="__codelineno-27-25" name="__codelineno-27-25" href="#__codelineno-27-25"></a>1. **Use anchors, not line numbers**: `in function foo()` not `at line 42`
+<a id="__codelineno-27-26" name="__codelineno-27-26" href="#__codelineno-27-26"></a>2. **Show code examples**: Agents work better with concrete examples
+<a id="__codelineno-27-27" name="__codelineno-27-27" href="#__codelineno-27-27"></a>3. **Reference existing patterns**: Point to code to reuse
+<a id="__codelineno-27-28" name="__codelineno-27-28" href="#__codelineno-27-28"></a>4. **High-level steps**: Let the agent create the detailed plan
+<a id="__codelineno-27-29" name="__codelineno-27-29" href="#__codelineno-27-29"></a>
+<a id="__codelineno-27-30" name="__codelineno-27-30" href="#__codelineno-27-30"></a>### For Human Reviewers
+<a id="__codelineno-27-31" name="__codelineno-27-31" href="#__codelineno-27-31"></a>1. **Quantify impact**: &quot;affects 100 users&quot; not &quot;affects users&quot;
+<a id="__codelineno-27-32" name="__codelineno-27-32" href="#__codelineno-27-32"></a>2. **Concrete scenarios**: Show real use cases, not templates
+<a id="__codelineno-27-33" name="__codelineno-27-33" href="#__codelineno-27-33"></a>3. **Justify decisions**: Why P0? Why high effort?
+<a id="__codelineno-27-34" name="__codelineno-27-34" href="#__codelineno-27-34"></a>4. **Link docs**: Help reviewers find context quickly
+<a id="__codelineno-27-35" name="__codelineno-27-35" href="#__codelineno-27-35"></a>
+<a id="__codelineno-27-36" name="__codelineno-27-36" href="#__codelineno-27-36"></a>### For Issue Quality
+<a id="__codelineno-27-37" name="__codelineno-27-37" href="#__codelineno-27-37"></a>1. **PASS /ll:ready-issue**: Auto-validation catches common issues
+<a id="__codelineno-27-38" name="__codelineno-27-38" href="#__codelineno-27-38"></a>2. **Use /ll:format-issue**: Interactive Q&amp;A improves quality
+<a id="__codelineno-27-39" name="__codelineno-27-39" href="#__codelineno-27-39"></a>3. **Include Motivation**: Helps prioritization and buy-in
+<a id="__codelineno-27-40" name="__codelineno-27-40" href="#__codelineno-27-40"></a>4. **Write Implementation Steps**: Guides the agent, speeds implementation
+<a id="__codelineno-27-41" name="__codelineno-27-41" href="#__codelineno-27-41"></a>
+<a id="__codelineno-27-42" name="__codelineno-27-42" href="#__codelineno-27-42"></a>---
+<a id="__codelineno-27-43" name="__codelineno-27-43" href="#__codelineno-27-43"></a>
+<a id="__codelineno-27-44" name="__codelineno-27-44" href="#__codelineno-27-44"></a>## FAQ
+<a id="__codelineno-27-45" name="__codelineno-27-45" href="#__codelineno-27-45"></a>
+<a id="__codelineno-27-46" name="__codelineno-27-46" href="#__codelineno-27-46"></a>**Q: Are old issues still valid?**
+<a id="__codelineno-27-47" name="__codelineno-27-47" href="#__codelineno-27-47"></a>A: Yes. Deprecated sections are still parsed for backward compatibility.
+<a id="__codelineno-27-48" name="__codelineno-27-48" href="#__codelineno-27-48"></a>
+<a id="__codelineno-27-49" name="__codelineno-27-49" href="#__codelineno-27-49"></a>**Q: Should I migrate all existing issues?**
+<a id="__codelineno-27-50" name="__codelineno-27-50" href="#__codelineno-27-50"></a>A: No. Only migrate when actively working on them. `/ll:format-issue` offers optional migration.
+<a id="__codelineno-27-51" name="__codelineno-27-51" href="#__codelineno-27-51"></a>
+<a id="__codelineno-27-52" name="__codelineno-27-52" href="#__codelineno-27-52"></a>**Q: What happened to &quot;User Story&quot;?**
+<a id="__codelineno-27-53" name="__codelineno-27-53" href="#__codelineno-27-53"></a>A: Renamed to &quot;Use Case&quot; to encourage concrete scenarios over generic templates.
+<a id="__codelineno-27-54" name="__codelineno-27-54" href="#__codelineno-27-54"></a>
+<a id="__codelineno-27-55" name="__codelineno-27-55" href="#__codelineno-27-55"></a>**Q: Why remove &quot;Context&quot;?**
+<a id="__codelineno-27-56" name="__codelineno-27-56" href="#__codelineno-27-56"></a>A: 0% usage by agents during implementation. Keep it in &quot;Related Key Documentation&quot; if needed.
+<a id="__codelineno-27-57" name="__codelineno-27-57" href="#__codelineno-27-57"></a>
+<a id="__codelineno-27-58" name="__codelineno-27-58" href="#__codelineno-27-58"></a>**Q: Difference between &quot;Implementation Steps&quot; and agent&#39;s implementation plan?**
+<a id="__codelineno-27-59" name="__codelineno-27-59" href="#__codelineno-27-59"></a>A: Implementation Steps = high-level outline (3-8 phases). Agent&#39;s plan = detailed execution (20+ steps with code). Think: outline vs full plan.
+<a id="__codelineno-27-60" name="__codelineno-27-60" href="#__codelineno-27-60"></a>
+<a id="__codelineno-27-61" name="__codelineno-27-61" href="#__codelineno-27-61"></a>**Q: When to use &quot;Root Cause&quot; vs &quot;Location&quot;?**
+<a id="__codelineno-27-62" name="__codelineno-27-62" href="#__codelineno-27-62"></a>A: Both! &quot;Location&quot; = where (file/line/code from scan). &quot;Root Cause&quot; = why (explanation of the bug logic).
+<a id="__codelineno-27-63" name="__codelineno-27-63" href="#__codelineno-27-63"></a>
+<a id="__codelineno-27-64" name="__codelineno-27-64" href="#__codelineno-27-64"></a>---
+<a id="__codelineno-27-65" name="__codelineno-27-65" href="#__codelineno-27-65"></a>
+<a id="__codelineno-27-66" name="__codelineno-27-66" href="#__codelineno-27-66"></a>## Frontmatter Fields
+<a id="__codelineno-27-67" name="__codelineno-27-67" href="#__codelineno-27-67"></a>
+<a id="__codelineno-27-68" name="__codelineno-27-68" href="#__codelineno-27-68"></a>Issue files may include a YAML frontmatter block at the top of the file. The following fields are recognized:
+<a id="__codelineno-27-69" name="__codelineno-27-69" href="#__codelineno-27-69"></a>
+<a id="__codelineno-27-70" name="__codelineno-27-70" href="#__codelineno-27-70"></a>| Field | Type | Default | Purpose |
+<a id="__codelineno-27-71" name="__codelineno-27-71" href="#__codelineno-27-71"></a>|-------|------|---------|---------|
+<a id="__codelineno-27-72" name="__codelineno-27-72" href="#__codelineno-27-72"></a>| `discovered_date` | ISO 8601 datetime | — | When the issue was identified |
+<a id="__codelineno-27-73" name="__codelineno-27-73" href="#__codelineno-27-73"></a>| `discovered_by` | string | — | Tool or person that created the issue |
+<a id="__codelineno-27-74" name="__codelineno-27-74" href="#__codelineno-27-74"></a>| `confidence_score` | int (0–100) | absent | Readiness score from `/ll:confidence-check` |
+<a id="__codelineno-27-75" name="__codelineno-27-75" href="#__codelineno-27-75"></a>| `outcome_confidence` | int (0–100) | absent | Outcome confidence score from `/ll:confidence-check` |
+<a id="__codelineno-27-76" name="__codelineno-27-76" href="#__codelineno-27-76"></a>| `testable` | bool | absent (= true) | Set to `false` to skip Phase 3a (Write Tests — Red) when `tdd_mode: true` |
+<a id="__codelineno-27-77" name="__codelineno-27-77" href="#__codelineno-27-77"></a>
+<a id="__codelineno-27-78" name="__codelineno-27-78" href="#__codelineno-27-78"></a>### `testable: false`
+<a id="__codelineno-27-79" name="__codelineno-27-79" href="#__codelineno-27-79"></a>
+<a id="__codelineno-27-80" name="__codelineno-27-80" href="#__codelineno-27-80"></a>When `tdd_mode: true` is enabled in `ll-config.json`, `manage-issue` normally writes failing tests (Phase 3a) before implementation. For issues where automated testing is not applicable — such as documentation-only changes, prompt-file edits, or configuration-only updates — set `testable: false` in the issue frontmatter to skip Phase 3a automatically.
+<a id="__codelineno-27-81" name="__codelineno-27-81" href="#__codelineno-27-81"></a>
+<a id="__codelineno-27-82" name="__codelineno-27-82" href="#__codelineno-27-82"></a>**Absence means testable**: only set `testable: false` explicitly for issues that opt out of the test phase. Do not set `testable: true` — it is the default.
+<a id="__codelineno-27-83" name="__codelineno-27-83" href="#__codelineno-27-83"></a>
+<a id="__codelineno-27-84" name="__codelineno-27-84" href="#__codelineno-27-84"></a>```yaml
+<a id="__codelineno-27-85" name="__codelineno-27-85" href="#__codelineno-27-85"></a>---
+<a id="__codelineno-27-86" name="__codelineno-27-86" href="#__codelineno-27-86"></a>discovered_date: 2026-03-17T00:00:00Z
+<a id="__codelineno-27-87" name="__codelineno-27-87" href="#__codelineno-27-87"></a>discovered_by: capture-issue
+<a id="__codelineno-27-88" name="__codelineno-27-88" href="#__codelineno-27-88"></a>testable: false
+<a id="__codelineno-27-89" name="__codelineno-27-89" href="#__codelineno-27-89"></a>---
+</code></pre></div></p>
+<p><code>manage-issue</code> will log <code>"⏭ Phase 3a skipped: testable: false in issue frontmatter"</code> and proceed directly to implementation.</p>
+<hr />
+<h2 id="related-documentation">Related Documentation<a class="headerlink" href="#related-documentation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../CONTRIBUTING.md">CONTRIBUTING.md</a> - Issue creation workflow</li>
+<li><a href="../API/">API.md</a> - Python module reference for issue parsing</li>
+<li><a href="../../ARCHITECTURE/">ARCHITECTURE.md</a> - System design and issue lifecycle</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

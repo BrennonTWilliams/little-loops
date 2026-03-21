@@ -1,0 +1,2992 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Development workflow toolkit for Claude Code — issue management, code quality, and automation">
+      
+      
+      
+        <link rel="canonical" href="https://docs.little-loops.ai/claude-code/custom-subagents/">
+      
+      
+        <link rel="prev" href="../skills/">
+      
+      
+        <link rel="next" href="../run-agent-teams/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Custom Subagents - little-loops</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#documentation-index" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="little-loops" class="md-header__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            little-loops
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Custom Subagents
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../INDEX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/GETTING_STARTED/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/CLI/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/TESTING/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ARCHITECTURE/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../cli-reference/" class="md-tabs__link">
+          
+  
+  
+  Claude Code Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="little-loops" class="md-nav__button md-logo" aria-label="little-loops" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    little-loops
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BrennonTWilliams/little-loops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BrennonTWilliams/little-loops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../INDEX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ISSUE_MANAGEMENT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SPRINT_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/LOOPS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loops Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/SESSION_HANDOFF/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session Handoff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/WORKFLOW_ANALYSIS_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/AUTOMATIC_HARNESSING_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic Harnessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/COMMANDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ISSUE_TEMPLATE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Issue Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/OUTPUT_STYLING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Styling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/E2E_TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/MERGE-COORDINATOR/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Merge Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generalized-fsm-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FSM Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../automate-workflows-with-hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automate with Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Subagents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automate-workflows-with-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automate workflows with hooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automate workflows with hooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#set-up-your-first-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set up your first hook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-you-can-automate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you can automate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you can automate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-notified-when-claude-needs-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get notified when Claude needs input
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auto-format-code-after-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-format code after edits
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-hooks-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How hooks work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How hooks work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-input-and-return-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read input and return output
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Read input and return output">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hook-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook input
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-json-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured JSON output
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configure-hook-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure hook location
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prompt-based-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompt-based hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations-and-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations and troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Limitations and troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-not-firing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook not firing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-error-in-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook error in output
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hooks-shows-no-hooks-configured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /hooks shows no hooks configured
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stop-hook-runs-forever" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stop hook runs forever
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#binbash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        !/bin/bash
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rest-of-your-hook-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ... rest of your hook logic
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="... rest of your hook logic">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#debug-techniques" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug techniques
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#learn-more" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Learn more
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../run-agent-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run Agent Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create a Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-programmatic-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Programmatic Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../checkpointing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../structured-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structured Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automate-workflows-with-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automate workflows with hooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automate workflows with hooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#set-up-your-first-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set up your first hook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-you-can-automate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you can automate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you can automate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-notified-when-claude-needs-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get notified when Claude needs input
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auto-format-code-after-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-format code after edits
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-hooks-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How hooks work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How hooks work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-input-and-return-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read input and return output
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Read input and return output">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hook-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook input
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-json-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured JSON output
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configure-hook-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure hook location
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prompt-based-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompt-based hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations-and-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations and troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Limitations and troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-not-firing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook not firing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-error-in-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook error in output
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hooks-shows-no-hooks-configured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /hooks shows no hooks configured
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stop-hook-runs-forever" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stop hook runs forever
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#binbash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        !/bin/bash
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rest-of-your-hook-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ... rest of your hook logic
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="... rest of your hook logic">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#debug-techniques" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug techniques
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#learn-more" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Learn more
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<blockquote>
+<h2 id="documentation-index">Documentation Index<a class="headerlink" href="#documentation-index" title="Permanent link">&para;</a></h2>
+<p>Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+Use this file to discover all available pages before exploring further.</p>
+</blockquote>
+<h1 id="automate-workflows-with-hooks">Automate workflows with hooks<a class="headerlink" href="#automate-workflows-with-hooks" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Run shell commands automatically when Claude Code edits files, finishes tasks, or needs input. Format code, send notifications, validate commands, and enforce project rules.</p>
+</blockquote>
+<p>Hooks are user-defined shell commands that execute at specific points in Claude Code's lifecycle. They provide deterministic control over Claude Code's behavior, ensuring certain actions always happen rather than relying on the LLM to choose to run them. Use hooks to enforce project rules, automate repetitive tasks, and integrate Claude Code with your existing tools.</p>
+<p>For decisions that require judgment rather than deterministic rules, you can also use <a href="#prompt-based-hooks">prompt-based hooks</a> or <a href="#agent-based-hooks">agent-based hooks</a> that use a Claude model to evaluate conditions.</p>
+<p>For other ways to extend Claude Code, see <a href="/en/skills">skills</a> for giving Claude additional instructions and executable commands, <a href="/en/sub-agents">subagents</a> for running tasks in isolated contexts, and <a href="/en/plugins">plugins</a> for packaging extensions to share across projects.</p>
+<p><Tip>
+  This guide covers common use cases and how to get started. For full event schemas, JSON input/output formats, and advanced features like async hooks and MCP tool hooks, see the <a href="/en/hooks">Hooks reference</a>.
+</Tip></p>
+<h2 id="set-up-your-first-hook">Set up your first hook<a class="headerlink" href="#set-up-your-first-hook" title="Permanent link">&para;</a></h2>
+<p>The fastest way to create a hook is through the <code>/hooks</code> interactive menu in Claude Code. This walkthrough creates a desktop notification hook, so you get alerted whenever Claude is waiting for your input instead of watching the terminal.</p>
+<p><Steps>
+  <Step title="Open the hooks menu">
+    Type <code>/hooks</code> in the Claude Code CLI. You'll see a list of all available hook events, plus an option to disable all hooks. Each event corresponds to a point in Claude's lifecycle where you can run custom code. Select <code>Notification</code> to create a hook that fires when Claude needs your attention.
+  </Step></p>
+<p><Step title="Configure the matcher">
+    The menu shows a list of matchers, which filter when the hook fires. Set the matcher to <code>*</code> to fire on all notification types. You can narrow it later by changing the matcher to a specific value like <code>permission_prompt</code> or <code>idle_prompt</code>.
+  </Step></p>
+<p><Step title="Add your command">
+    Select <code>+ Add new hook…</code>. The menu prompts you for a shell command to run when the event fires. Hooks run any shell command you provide, so you can use your platform's built-in notification tool. Copy the command for your OS:</p>
+<div class="highlight"><pre><span></span><code>&lt;Tabs&gt;
+  &lt;Tab title=&quot;macOS&quot;&gt;
+    Uses [`osascript`](https://ss64.com/mac/osascript.html) to trigger a native macOS notification through AppleScript:
+
+    ```
+    osascript -e &#39;display notification &quot;Claude Code needs your attention&quot; with title &quot;Claude Code&quot;&#39;
+    ```
+  &lt;/Tab&gt;
+
+  &lt;Tab title=&quot;Linux&quot;&gt;
+    Uses `notify-send`, which is pre-installed on most Linux desktops with a notification daemon:
+
+    ```
+    notify-send &#39;Claude Code&#39; &#39;Claude Code needs your attention&#39;
+    ```
+  &lt;/Tab&gt;
+
+  &lt;Tab title=&quot;Windows (PowerShell)&quot;&gt;
+    Uses PowerShell to show a native message box through .NET&#39;s Windows Forms:
+
+    ```
+    powershell.exe -Command &quot;[System.Reflection.Assembly]::LoadWithPartialName(&#39;System.Windows.Forms&#39;); [System.Windows.Forms.MessageBox]::Show(&#39;Claude Code needs your attention&#39;, &#39;Claude Code&#39;)&quot;
+    ```
+  &lt;/Tab&gt;
+&lt;/Tabs&gt;
+</code></pre></div>
+<p></Step></p>
+<p><Step title="Choose a storage location">
+    The menu asks where to save the hook configuration. Select <code>User settings</code> to store it in <code>~/.claude/settings.json</code>, which applies the hook to all your projects. You could also choose <code>Project settings</code> to scope it to the current project. See <a href="#configure-hook-location">Configure hook location</a> for all available scopes.
+  </Step></p>
+<p><Step title="Test the hook">
+    Press <code>Esc</code> to return to the CLI. Ask Claude to do something that requires permission, then switch away from the terminal. You should receive a desktop notification.
+  </Step>
+</Steps></p>
+<h2 id="what-you-can-automate">What you can automate<a class="headerlink" href="#what-you-can-automate" title="Permanent link">&para;</a></h2>
+<p>Hooks let you run code at key points in Claude Code's lifecycle: format files after edits, block commands before they execute, send notifications when Claude needs input, inject context at session start, and more. For the full list of hook events, see the <a href="/en/hooks#hook-lifecycle">Hooks reference</a>.</p>
+<p>Each example includes a ready-to-use configuration block that you add to a <a href="#configure-hook-location">settings file</a>. The most common patterns:</p>
+<ul>
+<li><a href="#get-notified-when-claude-needs-input">Get notified when Claude needs input</a></li>
+<li><a href="#auto-format-code-after-edits">Auto-format code after edits</a></li>
+<li><a href="#block-edits-to-protected-files">Block edits to protected files</a></li>
+<li><a href="#re-inject-context-after-compaction">Re-inject context after compaction</a></li>
+</ul>
+<h3 id="get-notified-when-claude-needs-input">Get notified when Claude needs input<a class="headerlink" href="#get-notified-when-claude-needs-input" title="Permanent link">&para;</a></h3>
+<p>Get a desktop notification whenever Claude finishes working and needs your input, so you can switch to other tasks without checking the terminal.</p>
+<p>This hook uses the <code>Notification</code> event, which fires when Claude is waiting for input or permission. Each tab below uses the platform's native notification command. Add this to <code>~/.claude/settings.json</code>, or use the <a href="#set-up-your-first-hook">interactive walkthrough</a> above to configure it with <code>/hooks</code>:</p>
+<p><Tabs>
+  <Tab title="macOS">
+    <code>json  theme={null}
+    {
+      "hooks": {
+        "Notification": [
+          {
+            "matcher": "",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "osascript -e 'display notification \"Claude Code needs your attention\" with title \"Claude Code\"'"
+              }
+            ]
+          }
+        ]
+      }
+    }</code>
+  </Tab></p>
+<p><Tab title="Linux">
+    <code>json  theme={null}
+    {
+      "hooks": {
+        "Notification": [
+          {
+            "matcher": "",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "notify-send 'Claude Code' 'Claude Code needs your attention'"
+              }
+            ]
+          }
+        ]
+      }
+    }</code>
+  </Tab></p>
+<p><Tab title="Windows (PowerShell)">
+    <code>json  theme={null}
+    {
+      "hooks": {
+        "Notification": [
+          {
+            "matcher": "",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "powershell.exe -Command \"[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('Claude Code needs your attention', 'Claude Code')\""
+              }
+            ]
+          }
+        ]
+      }
+    }</code>
+  </Tab>
+</Tabs></p>
+<h3 id="auto-format-code-after-edits">Auto-format code after edits<a class="headerlink" href="#auto-format-code-after-edits" title="Permanent link">&para;</a></h3>
+<p>Automatically run <a href="https://prettier.io/">Prettier</a> on every file Claude edits, so formatting stays consistent without manual intervention.</p>
+<p>This hook uses the <code>PostToolUse</code> event with an <code>Edit|Write</code> matcher, so it runs only after file-editing tools. The command extracts the edited file path with <a href="https://jqlang.github.io/jq/"><code>jq</code></a> and passes it to Prettier. Add this to <code>.claude/settings.json</code> in your project root:</p>
+<p>```json  theme={null}
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | xargs npx prettier --write"
+          }
+        ]
+      }
+    ]
+  }
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>&lt;Note&gt;
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  The Bash examples on this page use `jq` for JSON parsing. Install it with `brew install jq` (macOS), `apt-get install jq` (Debian/Ubuntu), or see [`jq` downloads](https://jqlang.github.io/jq/download/).
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>&lt;/Note&gt;
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>### Block edits to protected files
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>Prevent Claude from modifying sensitive files like `.env`, `package-lock.json`, or anything in `.git/`. Claude receives feedback explaining why the edit was blocked, so it can adjust its approach.
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>This example uses a separate script file that the hook calls. The script checks the target file path against a list of protected patterns and exits with code 2 to block the edit.
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>&lt;Steps&gt;
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>  &lt;Step title=&quot;Create the hook script&quot;&gt;
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    Save this to `.claude/hooks/protect-files.sh`:
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>    ```bash  theme={null}
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    #!/bin/bash
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    # protect-files.sh
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>    INPUT=$(cat)
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>    FILE_PATH=$(echo &quot;$INPUT&quot; | jq -r &#39;.tool_input.file_path // empty&#39;)
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    PROTECTED_PATTERNS=(&quot;.env&quot; &quot;package-lock.json&quot; &quot;.git/&quot;)
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>
+<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    for pattern in &quot;${PROTECTED_PATTERNS[@]}&quot;; do
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>      if [[ &quot;$FILE_PATH&quot; == *&quot;$pattern&quot;* ]]; then
+<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>        echo &quot;Blocked: $FILE_PATH matches protected pattern &#39;$pattern&#39;&quot; &gt;&amp;2
+<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>        exit 2
+<a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>      fi
+<a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>    done
+<a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>
+<a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a>    exit 0
+<a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a>    ```
+<a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a>  &lt;/Step&gt;
+<a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a>
+<a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a>  &lt;Step title=&quot;Make the script executable (macOS/Linux)&quot;&gt;
+<a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a>    Hook scripts must be executable for Claude Code to run them:
+<a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a>
+<a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a>    ```bash  theme={null}
+<a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a>    chmod +x .claude/hooks/protect-files.sh
+<a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a>    ```
+<a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a>  &lt;/Step&gt;
+<a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a>
+<a id="__codelineno-3-43" name="__codelineno-3-43" href="#__codelineno-3-43"></a>  &lt;Step title=&quot;Register the hook&quot;&gt;
+<a id="__codelineno-3-44" name="__codelineno-3-44" href="#__codelineno-3-44"></a>    Add a `PreToolUse` hook to `.claude/settings.json` that runs the script before any `Edit` or `Write` tool call:
+<a id="__codelineno-3-45" name="__codelineno-3-45" href="#__codelineno-3-45"></a>
+<a id="__codelineno-3-46" name="__codelineno-3-46" href="#__codelineno-3-46"></a>    ```json  theme={null}
+<a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a>    {
+<a id="__codelineno-3-48" name="__codelineno-3-48" href="#__codelineno-3-48"></a>      &quot;hooks&quot;: {
+<a id="__codelineno-3-49" name="__codelineno-3-49" href="#__codelineno-3-49"></a>        &quot;PreToolUse&quot;: [
+<a id="__codelineno-3-50" name="__codelineno-3-50" href="#__codelineno-3-50"></a>          {
+<a id="__codelineno-3-51" name="__codelineno-3-51" href="#__codelineno-3-51"></a>            &quot;matcher&quot;: &quot;Edit|Write&quot;,
+<a id="__codelineno-3-52" name="__codelineno-3-52" href="#__codelineno-3-52"></a>            &quot;hooks&quot;: [
+<a id="__codelineno-3-53" name="__codelineno-3-53" href="#__codelineno-3-53"></a>              {
+<a id="__codelineno-3-54" name="__codelineno-3-54" href="#__codelineno-3-54"></a>                &quot;type&quot;: &quot;command&quot;,
+<a id="__codelineno-3-55" name="__codelineno-3-55" href="#__codelineno-3-55"></a>                &quot;command&quot;: &quot;\&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/protect-files.sh&quot;
+<a id="__codelineno-3-56" name="__codelineno-3-56" href="#__codelineno-3-56"></a>              }
+<a id="__codelineno-3-57" name="__codelineno-3-57" href="#__codelineno-3-57"></a>            ]
+<a id="__codelineno-3-58" name="__codelineno-3-58" href="#__codelineno-3-58"></a>          }
+<a id="__codelineno-3-59" name="__codelineno-3-59" href="#__codelineno-3-59"></a>        ]
+<a id="__codelineno-3-60" name="__codelineno-3-60" href="#__codelineno-3-60"></a>      }
+<a id="__codelineno-3-61" name="__codelineno-3-61" href="#__codelineno-3-61"></a>    }
+<a id="__codelineno-3-62" name="__codelineno-3-62" href="#__codelineno-3-62"></a>    ```
+<a id="__codelineno-3-63" name="__codelineno-3-63" href="#__codelineno-3-63"></a>  &lt;/Step&gt;
+<a id="__codelineno-3-64" name="__codelineno-3-64" href="#__codelineno-3-64"></a>&lt;/Steps&gt;
+<a id="__codelineno-3-65" name="__codelineno-3-65" href="#__codelineno-3-65"></a>
+<a id="__codelineno-3-66" name="__codelineno-3-66" href="#__codelineno-3-66"></a>### Re-inject context after compaction
+<a id="__codelineno-3-67" name="__codelineno-3-67" href="#__codelineno-3-67"></a>
+<a id="__codelineno-3-68" name="__codelineno-3-68" href="#__codelineno-3-68"></a>When Claude&#39;s context window fills up, compaction summarizes the conversation to free space. This can lose important details. Use a `SessionStart` hook with a `compact` matcher to re-inject critical context after every compaction.
+<a id="__codelineno-3-69" name="__codelineno-3-69" href="#__codelineno-3-69"></a>
+<a id="__codelineno-3-70" name="__codelineno-3-70" href="#__codelineno-3-70"></a>Any text your command writes to stdout is added to Claude&#39;s context. This example reminds Claude of project conventions and recent work. Add this to `.claude/settings.json` in your project root:
+<a id="__codelineno-3-71" name="__codelineno-3-71" href="#__codelineno-3-71"></a>
+<a id="__codelineno-3-72" name="__codelineno-3-72" href="#__codelineno-3-72"></a>```json  theme={null}
+<a id="__codelineno-3-73" name="__codelineno-3-73" href="#__codelineno-3-73"></a>{
+<a id="__codelineno-3-74" name="__codelineno-3-74" href="#__codelineno-3-74"></a>  &quot;hooks&quot;: {
+<a id="__codelineno-3-75" name="__codelineno-3-75" href="#__codelineno-3-75"></a>    &quot;SessionStart&quot;: [
+<a id="__codelineno-3-76" name="__codelineno-3-76" href="#__codelineno-3-76"></a>      {
+<a id="__codelineno-3-77" name="__codelineno-3-77" href="#__codelineno-3-77"></a>        &quot;matcher&quot;: &quot;compact&quot;,
+<a id="__codelineno-3-78" name="__codelineno-3-78" href="#__codelineno-3-78"></a>        &quot;hooks&quot;: [
+<a id="__codelineno-3-79" name="__codelineno-3-79" href="#__codelineno-3-79"></a>          {
+<a id="__codelineno-3-80" name="__codelineno-3-80" href="#__codelineno-3-80"></a>            &quot;type&quot;: &quot;command&quot;,
+<a id="__codelineno-3-81" name="__codelineno-3-81" href="#__codelineno-3-81"></a>            &quot;command&quot;: &quot;echo &#39;Reminder: use Bun, not npm. Run bun test before committing. Current sprint: auth refactor.&#39;&quot;
+<a id="__codelineno-3-82" name="__codelineno-3-82" href="#__codelineno-3-82"></a>          }
+<a id="__codelineno-3-83" name="__codelineno-3-83" href="#__codelineno-3-83"></a>        ]
+<a id="__codelineno-3-84" name="__codelineno-3-84" href="#__codelineno-3-84"></a>      }
+<a id="__codelineno-3-85" name="__codelineno-3-85" href="#__codelineno-3-85"></a>    ]
+<a id="__codelineno-3-86" name="__codelineno-3-86" href="#__codelineno-3-86"></a>  }
+<a id="__codelineno-3-87" name="__codelineno-3-87" href="#__codelineno-3-87"></a>}
+</code></pre></div></p>
+<p>You can replace the <code>echo</code> with any command that produces dynamic output, like <code>git log --oneline -5</code> to show recent commits. For injecting context on every session start, consider using <a href="/en/memory">CLAUDE.md</a> instead. For environment variables, see <a href="/en/hooks#persist-environment-variables"><code>CLAUDE_ENV_FILE</code></a> in the reference.</p>
+<h2 id="how-hooks-work">How hooks work<a class="headerlink" href="#how-hooks-work" title="Permanent link">&para;</a></h2>
+<p>Hook events fire at specific lifecycle points in Claude Code. When an event fires, all matching hooks run in parallel, and identical hook commands are automatically deduplicated. The table below shows each event and when it triggers:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Event</th>
+<th style="text-align: left;">When it fires</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>SessionStart</code></td>
+<td style="text-align: left;">When a session begins or resumes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UserPromptSubmit</code></td>
+<td style="text-align: left;">When you submit a prompt, before Claude processes it</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PreToolUse</code></td>
+<td style="text-align: left;">Before a tool call executes. Can block it</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PermissionRequest</code></td>
+<td style="text-align: left;">When a permission dialog appears</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PostToolUse</code></td>
+<td style="text-align: left;">After a tool call succeeds</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PostToolUseFailure</code></td>
+<td style="text-align: left;">After a tool call fails</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Notification</code></td>
+<td style="text-align: left;">When Claude Code sends a notification</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SubagentStart</code></td>
+<td style="text-align: left;">When a subagent is spawned</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SubagentStop</code></td>
+<td style="text-align: left;">When a subagent finishes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Stop</code></td>
+<td style="text-align: left;">When Claude finishes responding</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TeammateIdle</code></td>
+<td style="text-align: left;">When an <a href="/en/agent-teams">agent team</a> teammate is about to go idle</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TaskCompleted</code></td>
+<td style="text-align: left;">When a task is being marked as completed</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PreCompact</code></td>
+<td style="text-align: left;">Before context compaction</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SessionEnd</code></td>
+<td style="text-align: left;">When a session terminates</td>
+</tr>
+</tbody>
+</table>
+<p>Each hook has a <code>type</code> that determines how it runs. Most hooks use <code>"type": "command"</code>, which runs a shell command. Two other options use a Claude model to make decisions: <code>"type": "prompt"</code> for single-turn evaluation and <code>"type": "agent"</code> for multi-turn verification with tool access. See <a href="#prompt-based-hooks">Prompt-based hooks</a> and <a href="#agent-based-hooks">Agent-based hooks</a> for details.</p>
+<h3 id="read-input-and-return-output">Read input and return output<a class="headerlink" href="#read-input-and-return-output" title="Permanent link">&para;</a></h3>
+<p>Hooks communicate with Claude Code through stdin, stdout, stderr, and exit codes. When an event fires, Claude Code passes event-specific data as JSON to your script's stdin. Your script reads that data, does its work, and tells Claude Code what to do next via the exit code.</p>
+<h4 id="hook-input">Hook input<a class="headerlink" href="#hook-input" title="Permanent link">&para;</a></h4>
+<p>Every event includes common fields like <code>session_id</code> and <code>cwd</code>, but each event type adds different data. For example, when Claude runs a Bash command, a <code>PreToolUse</code> hook receives something like this on stdin:</p>
+<p>```json  theme={null}
+{
+  "session_id": "abc123",          // unique ID for this session
+  "cwd": "/Users/sarah/myproject", // working directory when the event fired
+  "hook_event_name": "PreToolUse", // which event triggered this hook
+  "tool_name": "Bash",             // the tool Claude is about to use
+  "tool_input": {                  // the arguments Claude passed to the tool
+    "command": "npm test"          // for Bash, this is the shell command
+  }
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Your script can parse that JSON and act on any of those fields. `UserPromptSubmit` hooks get the `prompt` text instead, `SessionStart` hooks get the `source` (startup, resume, compact), and so on. See [Common input fields](/en/hooks#common-input-fields) in the reference for shared fields, and each event&#39;s section for event-specific schemas.
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>#### Hook output
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>Your script tells Claude Code what to do next by writing to stdout or stderr and exiting with a specific code. For example, a `PreToolUse` hook that wants to block a command:
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>```bash  theme={null}
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>#!/bin/bash
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>INPUT=$(cat)
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>COMMAND=$(echo &quot;$INPUT&quot; | jq -r &#39;.tool_input.command&#39;)
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>if echo &quot;$COMMAND&quot; | grep -q &quot;drop table&quot;; then
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>  echo &quot;Blocked: dropping tables is not allowed&quot; &gt;&amp;2  # stderr becomes Claude&#39;s feedback
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  exit 2                                               # exit 2 = block the action
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>fi
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>exit 0  # exit 0 = let it proceed
+</code></pre></div></p>
+<p>The exit code determines what happens next:</p>
+<ul>
+<li><strong>Exit 0</strong>: the action proceeds. For <code>UserPromptSubmit</code> and <code>SessionStart</code> hooks, anything you write to stdout is added to Claude's context.</li>
+<li><strong>Exit 2</strong>: the action is blocked. Write a reason to stderr, and Claude receives it as feedback so it can adjust.</li>
+<li><strong>Any other exit code</strong>: the action proceeds. Stderr is logged but not shown to Claude. Toggle verbose mode with <code>Ctrl+O</code> to see these messages in the transcript.</li>
+</ul>
+<h4 id="structured-json-output">Structured JSON output<a class="headerlink" href="#structured-json-output" title="Permanent link">&para;</a></h4>
+<p>Exit codes give you two options: allow or block. For more control, exit 0 and print a JSON object to stdout instead.</p>
+<p><Note>
+  Use exit 2 to block with a stderr message, or exit 0 with JSON for structured control. Don't mix them: Claude Code ignores JSON when you exit 2.
+</Note></p>
+<p>For example, a <code>PreToolUse</code> hook can deny a tool call and tell Claude why, or escalate it to the user for approval:</p>
+<p>```json  theme={null}
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "Use rg instead of grep for better performance"
+  }
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Claude Code reads `permissionDecision` and cancels the tool call, then feeds `permissionDecisionReason` back to Claude as feedback. These three options are specific to `PreToolUse`:
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>* `&quot;allow&quot;`: proceed without showing a permission prompt
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>* `&quot;deny&quot;`: cancel the tool call and send the reason to Claude
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>* `&quot;ask&quot;`: show the permission prompt to the user as normal
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>Other events use different decision patterns. For example, `PostToolUse` and `Stop` hooks use a top-level `decision: &quot;block&quot;` field, while `PermissionRequest` uses `hookSpecificOutput.decision.behavior`. See the [summary table](/en/hooks#decision-control) in the reference for a full breakdown by event.
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>For `UserPromptSubmit` hooks, use `additionalContext` instead to inject text into Claude&#39;s context. Prompt-based hooks (`type: &quot;prompt&quot;`) handle output differently: see [Prompt-based hooks](#prompt-based-hooks).
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>### Filter hooks with matchers
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>Without a matcher, a hook fires on every occurrence of its event. Matchers let you narrow that down. For example, if you want to run a formatter only after file edits (not after every tool call), add a matcher to your `PostToolUse` hook:
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>```json  theme={null}
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>{
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>  &quot;hooks&quot;: {
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>    &quot;PostToolUse&quot;: [
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>      {
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>        &quot;matcher&quot;: &quot;Edit|Write&quot;,
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        &quot;hooks&quot;: [
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>          { &quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;prettier --write ...&quot; }
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>        ]
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>      }
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    ]
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>  }
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>}
+</code></pre></div></p>
+<p>The <code>"Edit|Write"</code> matcher is a regex pattern that matches the tool name. The hook only fires when Claude uses the <code>Edit</code> or <code>Write</code> tool, not when it uses <code>Bash</code>, <code>Read</code>, or any other tool.</p>
+<p>Each event type matches on a specific field. Matchers support exact strings and regex patterns:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Event</th>
+<th style="text-align: left;">What the matcher filters</th>
+<th style="text-align: left;">Example matcher values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>PreToolUse</code>, <code>PostToolUse</code>, <code>PostToolUseFailure</code>, <code>PermissionRequest</code></td>
+<td style="text-align: left;">tool name</td>
+<td style="text-align: left;"><code>Bash</code>, <code>Edit\|Write</code>, <code>mcp__.*</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SessionStart</code></td>
+<td style="text-align: left;">how the session started</td>
+<td style="text-align: left;"><code>startup</code>, <code>resume</code>, <code>clear</code>, <code>compact</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SessionEnd</code></td>
+<td style="text-align: left;">why the session ended</td>
+<td style="text-align: left;"><code>clear</code>, <code>logout</code>, <code>prompt_input_exit</code>, <code>bypass_permissions_disabled</code>, <code>other</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Notification</code></td>
+<td style="text-align: left;">notification type</td>
+<td style="text-align: left;"><code>permission_prompt</code>, <code>idle_prompt</code>, <code>auth_success</code>, <code>elicitation_dialog</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SubagentStart</code></td>
+<td style="text-align: left;">agent type</td>
+<td style="text-align: left;"><code>Bash</code>, <code>Explore</code>, <code>Plan</code>, or custom agent names</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PreCompact</code></td>
+<td style="text-align: left;">what triggered compaction</td>
+<td style="text-align: left;"><code>manual</code>, <code>auto</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UserPromptSubmit</code>, <code>Stop</code>, <code>TeammateIdle</code>, <code>TaskCompleted</code></td>
+<td style="text-align: left;">no matcher support</td>
+<td style="text-align: left;">always fires on every occurrence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SubagentStop</code></td>
+<td style="text-align: left;">agent type</td>
+<td style="text-align: left;">same values as <code>SubagentStart</code></td>
+</tr>
+</tbody>
+</table>
+<p>A few more examples showing matchers on different event types:</p>
+<p><Tabs>
+  <Tab title="Log every Bash command">
+    Match only <code>Bash</code> tool calls and log each command to a file. The <code>PostToolUse</code> event fires after the command completes, so <code>tool_input.command</code> contains what ran. The hook receives the event data as JSON on stdin, and <code>jq -r '.tool_input.command'</code> extracts just the command string, which <code>&gt;&gt;</code> appends to the log file:</p>
+<div class="highlight"><pre><span></span><code>```json  theme={null}
+{
+  &quot;hooks&quot;: {
+    &quot;PostToolUse&quot;: [
+      {
+        &quot;matcher&quot;: &quot;Bash&quot;,
+        &quot;hooks&quot;: [
+          {
+            &quot;type&quot;: &quot;command&quot;,
+            &quot;command&quot;: &quot;jq -r &#39;.tool_input.command&#39; &gt;&gt; ~/.claude/command-log.txt&quot;
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+</code></pre></div>
+<p></Tab></p>
+<p><Tab title="Match MCP tools">
+    MCP tools use a different naming convention than built-in tools: <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>, where <code>&lt;server&gt;</code> is the MCP server name and <code>&lt;tool&gt;</code> is the tool it provides. For example, <code>mcp__github__search_repositories</code> or <code>mcp__filesystem__read_file</code>. Use a regex matcher to target all tools from a specific server, or match across servers with a pattern like <code>mcp__.*__write.*</code>. See <a href="/en/hooks#match-mcp-tools">Match MCP tools</a> in the reference for the full list of examples.</p>
+<div class="highlight"><pre><span></span><code>The command below extracts the tool name from the hook&#39;s JSON input with `jq` and writes it to stderr, where it shows up in verbose mode (`Ctrl+O`):
+
+```json  theme={null}
+{
+  &quot;hooks&quot;: {
+    &quot;PreToolUse&quot;: [
+      {
+        &quot;matcher&quot;: &quot;mcp__github__.*&quot;,
+        &quot;hooks&quot;: [
+          {
+            &quot;type&quot;: &quot;command&quot;,
+            &quot;command&quot;: &quot;echo \&quot;GitHub tool called: $(jq -r &#39;.tool_name&#39;)\&quot; &gt;&amp;2&quot;
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+</code></pre></div>
+<p></Tab></p>
+<p><Tab title="Clean up on session end">
+    The <code>SessionEnd</code> event supports matchers on the reason the session ended. This hook only fires on <code>clear</code> (when you run <code>/clear</code>), not on normal exits:</p>
+<div class="highlight"><pre><span></span><code>```json  theme={null}
+{
+  &quot;hooks&quot;: {
+    &quot;SessionEnd&quot;: [
+      {
+        &quot;matcher&quot;: &quot;clear&quot;,
+        &quot;hooks&quot;: [
+          {
+            &quot;type&quot;: &quot;command&quot;,
+            &quot;command&quot;: &quot;rm -f /tmp/claude-scratch-*.txt&quot;
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+</code></pre></div>
+<p></Tab>
+</Tabs></p>
+<p>For full matcher syntax, see the <a href="/en/hooks#configuration">Hooks reference</a>.</p>
+<h3 id="configure-hook-location">Configure hook location<a class="headerlink" href="#configure-hook-location" title="Permanent link">&para;</a></h3>
+<p>Where you add a hook determines its scope:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Location</th>
+<th style="text-align: left;">Scope</th>
+<th style="text-align: left;">Shareable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>~/.claude/settings.json</code></td>
+<td style="text-align: left;">All your projects</td>
+<td style="text-align: left;">No, local to your machine</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>.claude/settings.json</code></td>
+<td style="text-align: left;">Single project</td>
+<td style="text-align: left;">Yes, can be committed to the repo</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>.claude/settings.local.json</code></td>
+<td style="text-align: left;">Single project</td>
+<td style="text-align: left;">No, gitignored</td>
+</tr>
+<tr>
+<td style="text-align: left;">Managed policy settings</td>
+<td style="text-align: left;">Organization-wide</td>
+<td style="text-align: left;">Yes, admin-controlled</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="/en/plugins">Plugin</a> <code>hooks/hooks.json</code></td>
+<td style="text-align: left;">When plugin is enabled</td>
+<td style="text-align: left;">Yes, bundled with the plugin</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="/en/skills">Skill</a> or <a href="/en/sub-agents">agent</a> frontmatter</td>
+<td style="text-align: left;">While the skill or agent is active</td>
+<td style="text-align: left;">Yes, defined in the component file</td>
+</tr>
+</tbody>
+</table>
+<p>You can also use the <a href="/en/hooks#the-hooks-menu"><code>/hooks</code> menu</a> in Claude Code to add, delete, and view hooks interactively. To disable all hooks at once, use the toggle at the bottom of the <code>/hooks</code> menu or set <code>"disableAllHooks": true</code> in your settings file.</p>
+<p>Hooks added through the <code>/hooks</code> menu take effect immediately. If you edit settings files directly while Claude Code is running, the changes won't take effect until you review them in the <code>/hooks</code> menu or restart your session.</p>
+<h2 id="prompt-based-hooks">Prompt-based hooks<a class="headerlink" href="#prompt-based-hooks" title="Permanent link">&para;</a></h2>
+<p>For decisions that require judgment rather than deterministic rules, use <code>type: "prompt"</code> hooks. Instead of running a shell command, Claude Code sends your prompt and the hook's input data to a Claude model (Haiku by default) to make the decision. You can specify a different model with the <code>model</code> field if you need more capability.</p>
+<p>The model's only job is to return a yes/no decision as JSON:</p>
+<ul>
+<li><code>"ok": true</code>: the action proceeds</li>
+<li><code>"ok": false</code>: the action is blocked. The model's <code>"reason"</code> is fed back to Claude so it can adjust.</li>
+</ul>
+<p>This example uses a <code>Stop</code> hook to ask the model whether all requested tasks are complete. If the model returns <code>"ok": false</code>, Claude keeps working and uses the <code>reason</code> as its next instruction:</p>
+<p>```json  theme={null}
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if all tasks are complete. If not, respond with {\"ok\": false, \"reason\": \"what remains to be done\"}."
+          }
+        ]
+      }
+    ]
+  }
+}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>For full configuration options, see [Prompt-based hooks](/en/hooks#prompt-based-hooks) in the reference.
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>## Agent-based hooks
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>When verification requires inspecting files or running commands, use `type: &quot;agent&quot;` hooks. Unlike prompt hooks which make a single LLM call, agent hooks spawn a subagent that can read files, search code, and use other tools to verify conditions before returning a decision.
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>Agent hooks use the same `&quot;ok&quot;` / `&quot;reason&quot;` response format as prompt hooks, but with a longer default timeout of 60 seconds and up to 50 tool-use turns.
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>This example verifies that tests pass before allowing Claude to stop:
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>```json  theme={null}
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>{
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>  &quot;hooks&quot;: {
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    &quot;Stop&quot;: [
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>      {
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>        &quot;hooks&quot;: [
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>          {
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>            &quot;type&quot;: &quot;agent&quot;,
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>            &quot;prompt&quot;: &quot;Verify that all unit tests pass. Run the test suite and check the results. $ARGUMENTS&quot;,
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>            &quot;timeout&quot;: 120
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>          }
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>        ]
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>      }
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>    ]
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>  }
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>}
+</code></pre></div></p>
+<p>Use prompt hooks when the hook input data alone is enough to make a decision. Use agent hooks when you need to verify something against the actual state of the codebase.</p>
+<p>For full configuration options, see <a href="/en/hooks#agent-based-hooks">Agent-based hooks</a> in the reference.</p>
+<h2 id="limitations-and-troubleshooting">Limitations and troubleshooting<a class="headerlink" href="#limitations-and-troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Hooks communicate through stdout, stderr, and exit codes only. They cannot trigger slash commands or tool calls directly.</li>
+<li>Hook timeout is 10 minutes by default, configurable per hook with the <code>timeout</code> field (in seconds).</li>
+<li><code>PostToolUse</code> hooks cannot undo actions since the tool has already executed.</li>
+<li><code>PermissionRequest</code> hooks do not fire in <a href="/en/headless">non-interactive mode</a> (<code>-p</code>). Use <code>PreToolUse</code> hooks for automated permission decisions.</li>
+<li><code>Stop</code> hooks fire whenever Claude finishes responding, not only at task completion. They do not fire on user interrupts.</li>
+</ul>
+<h3 id="hook-not-firing">Hook not firing<a class="headerlink" href="#hook-not-firing" title="Permanent link">&para;</a></h3>
+<p>The hook is configured but never executes.</p>
+<ul>
+<li>Run <code>/hooks</code> and confirm the hook appears under the correct event</li>
+<li>Check that the matcher pattern matches the tool name exactly (matchers are case-sensitive)</li>
+<li>Verify you're triggering the right event type (e.g., <code>PreToolUse</code> fires before tool execution, <code>PostToolUse</code> fires after)</li>
+<li>If using <code>PermissionRequest</code> hooks in non-interactive mode (<code>-p</code>), switch to <code>PreToolUse</code> instead</li>
+</ul>
+<h3 id="hook-error-in-output">Hook error in output<a class="headerlink" href="#hook-error-in-output" title="Permanent link">&para;</a></h3>
+<p>You see a message like "PreToolUse hook error: ..." in the transcript.</p>
+<ul>
+<li>Your script exited with a non-zero code unexpectedly. Test it manually by piping sample JSON:
+  <code>bash  theme={null}
+  echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | ./my-hook.sh
+  echo $?  # Check the exit code</code></li>
+<li>If you see "command not found", use absolute paths or <code>$CLAUDE_PROJECT_DIR</code> to reference scripts</li>
+<li>If you see "jq: command not found", install <code>jq</code> or use Python/Node.js for JSON parsing</li>
+<li>If the script isn't running at all, make it executable: <code>chmod +x ./my-hook.sh</code></li>
+</ul>
+<h3 id="hooks-shows-no-hooks-configured"><code>/hooks</code> shows no hooks configured<a class="headerlink" href="#hooks-shows-no-hooks-configured" title="Permanent link">&para;</a></h3>
+<p>You edited a settings file but the hooks don't appear in the menu.</p>
+<ul>
+<li>Restart your session or open <code>/hooks</code> to reload. Hooks added through the <code>/hooks</code> menu take effect immediately, but manual file edits require a reload.</li>
+<li>Verify your JSON is valid (trailing commas and comments are not allowed)</li>
+<li>Confirm the settings file is in the correct location: <code>.claude/settings.json</code> for project hooks, <code>~/.claude/settings.json</code> for global hooks</li>
+</ul>
+<h3 id="stop-hook-runs-forever">Stop hook runs forever<a class="headerlink" href="#stop-hook-runs-forever" title="Permanent link">&para;</a></h3>
+<p>Claude keeps working in an infinite loop instead of stopping.</p>
+<p>Your Stop hook script needs to check whether it already triggered a continuation. Parse the <code>stop_hook_active</code> field from the JSON input and exit early if it's <code>true</code>:</p>
+<p>```bash  theme={null}</p>
+<h1 id="binbash">!/bin/bash<a class="headerlink" href="#binbash" title="Permanent link">&para;</a></h1>
+<p>INPUT=$(cat)
+if [ "$(echo "$INPUT" | jq -r '.stop_hook_active')" = "true" ]; then
+  exit 0  # Allow Claude to stop
+fi</p>
+<h1 id="rest-of-your-hook-logic">... rest of your hook logic<a class="headerlink" href="#rest-of-your-hook-logic" title="Permanent link">&para;</a></h1>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>### JSON validation failed
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>Claude Code shows a JSON parsing error even though your hook script outputs valid JSON.
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>When Claude Code runs a hook, it spawns a shell that sources your profile (`~/.zshrc` or `~/.bashrc`). If your profile contains unconditional `echo` statements, that output gets prepended to your hook&#39;s JSON:
+</code></pre></div>
+Shell ready on arm64
+{"decision": "block", "reason": "Not allowed"}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Claude Code tries to parse this as JSON and fails. To fix this, wrap echo statements in your shell profile so they only run in interactive shells:
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>```bash  theme={null}
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a># In ~/.zshrc or ~/.bashrc
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>if [[ $- == *i* ]]; then
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  echo &quot;Shell ready&quot;
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>fi
+</code></pre></div></p>
+<p>The <code>$-</code> variable contains shell flags, and <code>i</code> means interactive. Hooks run in non-interactive shells, so the echo is skipped.</p>
+<h3 id="debug-techniques">Debug techniques<a class="headerlink" href="#debug-techniques" title="Permanent link">&para;</a></h3>
+<p>Toggle verbose mode with <code>Ctrl+O</code> to see hook output in the transcript, or run <code>claude --debug</code> for full execution details including which hooks matched and their exit codes.</p>
+<h2 id="learn-more">Learn more<a class="headerlink" href="#learn-more" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="/en/hooks">Hooks reference</a>: full event schemas, JSON output format, async hooks, and MCP tool hooks</li>
+<li><a href="/en/hooks#security-considerations">Security considerations</a>: review before deploying hooks in shared or production environments</li>
+<li><a href="https://github.com/anthropics/claude-code/blob/main/examples/hooks/bash_command_validator_example.py">Bash command validator example</a>: complete reference implementation</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
