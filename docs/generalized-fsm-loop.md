@@ -518,6 +518,27 @@ evaluate:
 
 Result details: `{ current: <number>, previous: <number>, target: <number>, delta: <number> }`
 
+#### `diff_stall`
+
+Detect when a fix loop is spinning without making filesystem changes by comparing `git diff --stat` between iterations.
+
+```yaml
+evaluate:
+  type: diff_stall
+  scope: ["src/", "tests/"]    # Optional: paths to pass to git diff --stat (default: entire repo)
+  max_stall: 1                  # Optional: consecutive no-change iterations before `no` verdict
+```
+
+| Scenario | Verdict |
+|----------|---------|
+| First call (no prior snapshot) | `yes` |
+| Diff changed since last iteration | `yes` |
+| Diff unchanged, stall count < max_stall | `yes` |
+| Diff unchanged, stall count >= max_stall | `no` |
+| git unavailable or command failed | `error` |
+
+Result details: `{ stall_count: <int>, max_stall: <int>, diff_changed: <bool> }`
+
 ---
 
 ### Tier 2: LLM Evaluator
@@ -701,6 +722,46 @@ def evaluate_llm_structured(
 | Cost per evaluation | ~$0.001 |
 | Latency | 300-800ms |
 | Context used | ~4000 tokens max |
+
+---
+
+### Tier 3: MCP Evaluator
+
+Evaluates results from `action_type: mcp_tool` states. Unlike Tier 1 (deterministic) and Tier 2 (LLM-based) evaluators, this evaluator invokes an external MCP process and parses its protocol envelope — it is neither a simple exit-code check nor an LLM call.
+
+#### `mcp_result`
+
+Evaluate an MCP tool call result. All inputs (`output` and `exit_code`) are injected by the executor from the MCP subprocess — `type: mcp_result` is the entire YAML config; there are no user-configurable fields.
+
+```yaml
+evaluate:
+  type: mcp_result
+```
+
+| Scenario | Verdict |
+|----------|---------|
+| Tool ran successfully (isError: false) | `success` |
+| Tool returned an error (isError: true) | `tool_error` |
+| Server or tool not in `.mcp.json` (exit 127) | `not_found` |
+| Transport-level timeout (exit 124) | `timeout` |
+
+Result details: `{ exit_code: <int>, envelope: <object> }`
+
+> **Important**: `mcp_result` is the only built-in evaluator that returns `success` as a verdict (not `yes`). The `on_yes`/`on_no` shorthand will not match any of its verdicts. A full `route:` table is required:
+
+```yaml
+states:
+  call_tool:
+    action_type: mcp_tool
+    # ... mcp_tool config ...
+    evaluate:
+      type: mcp_result
+    route:
+      success: "next_state"
+      tool_error: "handle_error"
+      not_found: "abort"
+      timeout: "retry"
+```
 
 ---
 
