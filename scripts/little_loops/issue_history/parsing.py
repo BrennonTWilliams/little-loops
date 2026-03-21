@@ -7,6 +7,7 @@ extract file paths from issue content.
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date
 from pathlib import Path
@@ -15,6 +16,8 @@ from typing import Any
 from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_history.models import CompletedIssue
 from little_loops.text_utils import extract_file_paths
+
+logger = logging.getLogger(__name__)
 
 
 def parse_completed_issue(file_path: Path) -> CompletedIssue:
@@ -212,8 +215,8 @@ def scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]:
         try:
             issue = parse_completed_issue(file_path)
             issues.append(issue)
-        except Exception:
-            # Skip unparseable files
+        except Exception as e:
+            logger.warning("Failed to parse %s: %s", file_path, e)
             continue
 
     return issues
@@ -366,8 +369,8 @@ def scan_active_issues(
                 content = file_path.read_text(encoding="utf-8")
                 fm = parse_frontmatter(content)
                 discovered_date = _parse_discovered_date(fm)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to parse %s: %s", file_path, e)
 
             results.append((file_path, issue_type, priority, discovered_date))
 

@@ -102,7 +102,11 @@ logger = logging.getLogger(__name__)
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Resolved** | Created: 2026-03-19 | Resolved: 2026-03-21 | Priority: P4
+
+## Resolution
+
+Added `import logging` and `logger = logging.getLogger(__name__)` to `parsing.py`. Replaced bare `except Exception: pass` with `except Exception as e: logger.warning("Failed to parse %s: %s", file_path, e)` in both `scan_active_issues` and `scan_completed_issues`. Added `test_scan_logs_warning_on_unreadable_file` to `TestScanActiveIssues` covering the error path. All 13 tests pass.
 
 
 ## Verification Notes
@@ -119,6 +123,7 @@ logger = logging.getLogger(__name__)
 **Confidence**: High — bug is present as described.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-21T05:42:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/14b8e9d4-e27f-42d8-a87f-d834967f0481.jsonl`
 - `/ll:confidence-check` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efa64e6e-a28f-45eb-90fd-043b8de33bd9.jsonl`
 - `/ll:refine-issue` - 2026-03-21T05:23:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/621a3297-4081-4bfe-b4a1-2b49dda927c5.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:46:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

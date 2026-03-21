@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from little_loops.issue_history import (
     parse_completed_issue,
@@ -197,3 +200,19 @@ class TestScanActiveIssues:
 
         result = scan_active_issues(issues_dir)
         assert len(result) == 1
+
+    def test_scan_logs_warning_on_unreadable_file(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        """Parse errors are logged at WARNING level; issue still appears in results."""
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001\n")
+
+        with caplog.at_level("WARNING", logger="little_loops.issue_history.parsing"):
+            with patch.object(Path, "read_text", side_effect=PermissionError("access denied")):
+                result = scan_active_issues(tmp_path / ".issues")
+
+        assert len(result) == 1
+        assert "Failed to parse" in caplog.text
+        assert "access denied" in caplog.text
