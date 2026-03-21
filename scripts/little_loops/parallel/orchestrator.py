@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import signal
+import subprocess
 import tempfile
 import threading
 import time
@@ -269,14 +270,20 @@ class ParallelOrchestrator:
                 if worktree_path.exists():
                     shutil.rmtree(worktree_path, ignore_errors=True)
 
-                # Try to delete the associated branch
-                # Branch name format: parallel/<issue-id>-<timestamp>
-                branch_name = worktree_path.name.replace("worker-", "parallel/")
-                self._git_lock.run(
-                    ["branch", "-D", branch_name],
-                    cwd=self.repo_path,
-                    timeout=10,
+                # Try to delete the associated branch using the actual branch name
+                branch_result = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=worktree_path,
+                    capture_output=True,
+                    text=True,
                 )
+                branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
+                if branch_name and branch_name.startswith("parallel/"):
+                    self._git_lock.run(
+                        ["branch", "-D", branch_name],
+                        cwd=self.repo_path,
+                        timeout=10,
+                    )
             except Exception as e:
                 self.logger.warning(f"Failed to clean up {worktree_path.name}: {e}")
 
@@ -297,9 +304,18 @@ class ParallelOrchestrator:
             PendingWorktreeInfo if inspection succeeded, None if failed
         """
         try:
-            # Extract branch name from worktree path
-            # worker-bug-045-20260117-143022 -> parallel/bug-045-20260117-143022
-            branch_name = worktree_path.name.replace("worker-", "parallel/")
+            # Read actual branch name from worktree via rev-parse
+            branch_result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+            )
+            if branch_result.returncode == 0:
+                branch_name = branch_result.stdout.strip()
+            else:
+                # Fall back to string derivation if rev-parse fails
+                branch_name = worktree_path.name.replace("worker-", "parallel/")
 
             # Extract issue ID (e.g., bug-045 -> BUG-045)
             # Pattern: worker-<issue-id>-<timestamp>

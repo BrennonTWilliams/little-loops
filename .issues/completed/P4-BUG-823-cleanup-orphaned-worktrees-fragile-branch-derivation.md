@@ -16,7 +16,7 @@ outcome_confidence: 100
 ## Location
 
 - **File**: `scripts/little_loops/parallel/orchestrator.py`
-- **Line(s)**: 271-278 (at scan commit: 8c6cf90)
+- **Line(s)**: 274-279 (at scan commit: 8c6cf90)
 - **Anchor**: `in method ParallelOrchestrator._cleanup_orphaned_worktrees`
 - **Code**:
 ```python
@@ -65,7 +65,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Tests
 - `scripts/tests/test_orchestrator.py:348` — `TestOrphanedWorktreeCleanup` class covers existing behavior; add test cases for rev-parse success/failure paths and the `parallel/` prefix guard
-- `scripts/tests/test_worker_pool.py:754` — `TestWorktreeCleanup` shows the mock pattern: `patch("subprocess.run")` for the bare `rev-parse` call alongside `patch.object(..._git_lock, "run")` for GitLock calls
+- `scripts/tests/test_worker_pool.py:754` — `TestWorkerPoolWorktreeManagement` shows the mock pattern: `patch("subprocess.run")` for the bare `rev-parse` call alongside `patch.object(..._git_lock, "run")` for GitLock calls
 
 ### Configuration
 - None required — worktree naming convention (`worker-<id>-<timestamp>` / `parallel/<id>-<timestamp>`) defined at `worker_pool.py:241-245`
@@ -93,9 +93,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `bug`, `parallel`, `cleanup`
 
+## Resolution
+
+- `_cleanup_orphaned_worktrees`: replaced `str.replace` derivation with `subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree_path)`. Branch deletion now gated on `branch_name.startswith("parallel/")`, matching `worker_pool.py:679`.
+- `_inspect_worktree`: same `rev-parse` approach with fallback to string derivation if the worktree isn't a valid git repo.
+- Added 3 tests to `TestOrphanedWorktreeCleanup`: rev-parse success, rev-parse failure (skip deletion), non-parallel branch (skip deletion).
+
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Completed** | Created: 2026-03-19 | Resolved: 2026-03-21 | Priority: P4
 
 
 ## Verification Notes
@@ -113,6 +119,7 @@ branch_name = worktree_path.name.replace("worker-", "parallel/")
 **Update needed**: Change the `## Current Behavior` comparison reference from `(line 679)` to `worker_pool.py:_cleanup_worktree (line 641)`.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-21T05:36:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74cd69e1-66b2-4bb5-bf13-330f4de54da8.jsonl`
 - `/ll:refine-issue` - 2026-03-21T05:23:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/356af2e8-db65-4a06-a82f-a7cc1aa781aa.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:49:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

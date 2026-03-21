@@ -457,6 +457,96 @@ class TestOrphanedWorktreeCleanup:
             not stale_dir.exists()
         ), "Stale worktree with dead PID marker should be removed"
 
+    def test_deletes_branch_via_rev_parse(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Deletes branch using name from rev-parse, not string derivation (BUG-823)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        orphan = worktree_base / "worker-bug-001-20260101-120000"
+        orphan.mkdir()
+
+        deleted_branches: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["branch", "-D"]:
+                deleted_branches.append(args[2])
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "parallel/bug-001-20260101-120000\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert deleted_branches == ["parallel/bug-001-20260101-120000"]
+
+    def test_skips_branch_deletion_when_rev_parse_fails(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Skips branch -D when rev-parse cannot determine branch name (BUG-823)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        orphan = worktree_base / "worker-bug-002-20260101-120000"
+        orphan.mkdir()
+
+        deleted_branches: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["branch", "-D"]:
+                deleted_branches.append(args[2])
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 128
+        rev_parse_result.stdout = ""
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert deleted_branches == [], "branch -D should not be called when rev-parse fails"
+
+    def test_skips_branch_deletion_for_non_parallel_branch(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Does not delete a branch that does not start with 'parallel/' (BUG-823)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        orphan = worktree_base / "worker-bug-003-20260101-120000"
+        orphan.mkdir()
+
+        deleted_branches: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["branch", "-D"]:
+                deleted_branches.append(args[2])
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "main\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert deleted_branches == [], "branch -D should not be called for non-parallel branches"
+
 
 class TestCheckPendingWorktrees:
     """Tests for _check_pending_worktrees method."""
