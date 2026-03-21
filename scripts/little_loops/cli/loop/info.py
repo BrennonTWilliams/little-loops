@@ -427,6 +427,38 @@ def cmd_history(
     w = terminal_width()
     if not verbose:
         events = [e for e in events if e.get("event") != "action_output"]
+
+    # Apply optional filters (before --tail slice)
+    event_filter = getattr(args, "event", None)
+    if event_filter:
+        events = [e for e in events if e.get("event") == event_filter]
+
+    state_filter = getattr(args, "state", None)
+    if state_filter:
+        events = [
+            e
+            for e in events
+            if (
+                e.get("state") == state_filter
+                or e.get("from") == state_filter
+                or e.get("to") == state_filter
+            )
+        ]
+
+    since_str = getattr(args, "since", None)
+    if since_str:
+        from datetime import timedelta
+
+        from little_loops.text_utils import parse_duration
+
+        cutoff = datetime.now() - timedelta(seconds=parse_duration(since_str))
+        events = [
+            e
+            for e in events
+            if datetime.fromisoformat(e["ts"].replace("Z", "+00:00")).replace(tzinfo=None)
+            >= cutoff
+        ]
+
     if as_json:
         print_json(events[-tail:])
         return 0

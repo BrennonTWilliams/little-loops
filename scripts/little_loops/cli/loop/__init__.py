@@ -245,6 +245,23 @@ Examples:
         help="Show untruncated prompts and output (implies --verbose)",
     )
     history_parser.add_argument("--json", action="store_true", help="Output events as JSON array")
+    history_parser.add_argument(
+        "--event", "-e", type=str, default=None, help="Filter by event type (e.g. evaluate, route)"
+    )
+    history_parser.add_argument(
+        "--state",
+        "-s",
+        type=str,
+        default=None,
+        help="Filter by state name (matches state, from, or to fields)",
+    )
+    history_parser.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        metavar="DURATION",
+        help="Filter to events within time window (e.g. 1h, 30m, 2d)",
+    )
 
     # Test subcommand
     test_parser = subparsers.add_parser(

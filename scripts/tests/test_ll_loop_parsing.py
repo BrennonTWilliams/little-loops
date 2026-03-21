@@ -341,3 +341,58 @@ class TestResolveLoopPath:
 
         assert not direct.exists()
         assert not loops_path.exists()
+
+
+class TestParseDuration:
+    """Tests for the parse_duration() utility in text_utils."""
+
+    def test_hours(self) -> None:
+        """1h parses to 3600 seconds."""
+        from little_loops.text_utils import parse_duration
+
+        assert parse_duration("1h") == 3600
+
+    def test_minutes(self) -> None:
+        """30m parses to 1800 seconds."""
+        from little_loops.text_utils import parse_duration
+
+        assert parse_duration("30m") == 1800
+
+    def test_days(self) -> None:
+        """2d parses to 172800 seconds."""
+        from little_loops.text_utils import parse_duration
+
+        assert parse_duration("2d") == 172800
+
+    def test_seconds(self) -> None:
+        """45s parses to 45 seconds."""
+        from little_loops.text_utils import parse_duration
+
+        assert parse_duration("45s") == 45
+
+    def test_multi_digit(self) -> None:
+        """12h parses to 43200 seconds."""
+        from little_loops.text_utils import parse_duration
+
+        assert parse_duration("12h") == 43200
+
+    def test_invalid_unit_raises(self) -> None:
+        """Unknown unit raises ValueError."""
+        from little_loops.text_utils import parse_duration
+
+        with pytest.raises(ValueError, match="Invalid duration"):
+            parse_duration("1w")
+
+    def test_empty_string_raises(self) -> None:
+        """Empty string raises ValueError."""
+        from little_loops.text_utils import parse_duration
+
+        with pytest.raises(ValueError, match="Invalid duration"):
+            parse_duration("")
+
+    def test_missing_number_raises(self) -> None:
+        """Missing numeric part raises ValueError."""
+        from little_loops.text_utils import parse_duration
+
+        with pytest.raises(ValueError, match="Invalid duration"):
+            parse_duration("h")

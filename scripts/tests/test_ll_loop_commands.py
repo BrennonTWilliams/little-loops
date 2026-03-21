@@ -2192,3 +2192,165 @@ class TestCmdShowJson:
         out = capsys.readouterr().out
         assert "my-loop" in out
         assert "Diagram:" in out
+
+
+class TestHistoryFiltering:
+    """Tests for --event, --state, --since filtering in ll-loop history."""
+
+    @pytest.fixture
+    def mixed_events_file(self, tmp_path: Path) -> Path:
+        """Create an archived events file with a variety of event types and states."""
+        from datetime import datetime, timedelta
+
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
+
+        now = datetime.now()
+        old_ts = (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%S")
+        recent_ts = (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%S")
+
+        events = [
+            {"event": "state_enter", "ts": old_ts, "state": "check", "iteration": 1},
+            {"event": "action_start", "ts": old_ts, "state": "check", "action": "echo hi"},
+            {"event": "evaluate", "ts": old_ts, "state": "check", "verdict": "no"},
+            {"event": "route", "ts": old_ts, "from": "check", "to": "fix"},
+            {"event": "state_enter", "ts": recent_ts, "state": "fix", "iteration": 2},
+            {"event": "evaluate", "ts": recent_ts, "state": "fix", "verdict": "yes"},
+            {"event": "route", "ts": recent_ts, "from": "fix", "to": "done"},
+            {"event": "loop_complete", "ts": recent_ts, "final_state": "done"},
+        ]
+
+        with open(events_file, "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+        return events_file
+
+    def test_event_filter_evaluate(
+        self,
+        tmp_path: Path,
+        mixed_events_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--event evaluate returns only evaluate events."""
+        from little_loops.cli.loop.info import cmd_history
+
+        args = argparse.Namespace(
+            tail=50, verbose=False, json=True, full=False,
+            event="evaluate", state=None, since=None,
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert all(e["event"] == "evaluate" for e in data)
+        assert len(data) == 2
+
+    def test_state_filter_check(
+        self,
+        tmp_path: Path,
+        mixed_events_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--state check returns events where state, from, or to field equals 'check'."""
+        from little_loops.cli.loop.info import cmd_history
+
+        args = argparse.Namespace(
+            tail=50, verbose=False, json=True, full=False,
+            event=None, state="check", since=None,
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        # state_enter(check), action_start(check), evaluate(check), route(from=check)
+        assert len(data) == 4
+        for e in data:
+            matches = (
+                e.get("state") == "check"
+                or e.get("from") == "check"
+                or e.get("to") == "check"
+            )
+            assert matches, f"Event {e} does not match --state check"
+
+    def test_since_filter_excludes_old_events(
+        self,
+        tmp_path: Path,
+        mixed_events_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--since 1h excludes events older than 1 hour."""
+        from little_loops.cli.loop.info import cmd_history
+
+        args = argparse.Namespace(
+            tail=50, verbose=False, json=True, full=False,
+            event=None, state=None, since="1h",
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        # Only the 4 recent events (30m old) should survive; old events (3h old) excluded
+        assert len(data) == 4
+
+    def test_combined_event_and_state_filter(
+        self,
+        tmp_path: Path,
+        mixed_events_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--event route --state check returns only route events touching state 'check'."""
+        from little_loops.cli.loop.info import cmd_history
+
+        args = argparse.Namespace(
+            tail=50, verbose=False, json=True, full=False,
+            event="route", state="check", since=None,
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert data[0]["event"] == "route"
+        assert data[0]["from"] == "check"
+
+    def test_tail_applied_after_filter(
+        self,
+        tmp_path: Path,
+        mixed_events_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--tail applies as the final limit after --event filter."""
+        from little_loops.cli.loop.info import cmd_history
+
+        args = argparse.Namespace(
+            tail=1, verbose=False, json=True, full=False,
+            event="state_enter", state=None, since=None,
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        # 2 state_enter events exist, but --tail 1 limits to last 1
+        assert len(data) == 1
+        assert data[0]["state"] == "fix"
+
+    def test_no_filter_behavior_unchanged(
+        self,
+        tmp_path: Path,
+        mixed_events_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """No filter flags: shows all non-action_output events (existing behavior)."""
+        from little_loops.cli.loop.info import cmd_history
+
+        args = argparse.Namespace(
+            tail=50, verbose=False, json=True, full=False,
+            event=None, state=None, since=None,
+        )
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 8

@@ -162,6 +162,32 @@ def calculate_word_overlap(words1: set[str], words2: set[str]) -> float:
     return len(intersection) / len(union)
 
 
+# =============================================================================
+# Duration Parsing
+# =============================================================================
+
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+_DURATION_RE = re.compile(r"^(\d+)([smhd])$")
+
+
+def parse_duration(s: str) -> int:
+    """Parse a duration string like '1h', '30m', '2d', '45s' into seconds.
+
+    Args:
+        s: Duration string with a numeric value followed by a unit (s/m/h/d)
+
+    Returns:
+        Number of seconds represented by the duration
+
+    Raises:
+        ValueError: If the string does not match the expected format
+    """
+    m = _DURATION_RE.match(s)
+    if not m:
+        raise ValueError(f"Invalid duration: {s!r}. Use e.g. 1h, 30m, 2d, 45s")
+    return int(m.group(1)) * _DURATION_UNITS[m.group(2)]
+
+
 def score_bm25(
     query_words: set[str],
     doc_words: set[str],
