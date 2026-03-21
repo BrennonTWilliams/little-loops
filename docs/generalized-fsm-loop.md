@@ -357,8 +357,9 @@ states:                         # State definitions
     
     # --- Evaluation Layer ---
     evaluate:                   # How to evaluate the action result
-      type: string              # exit_code, output_numeric, output_json, 
-                                # output_contains, llm_structured, convergence
+      type: string              # exit_code, output_numeric, output_json,
+                                # output_contains, llm_structured, convergence,
+                                # diff_stall, mcp_result
       # ... type-specific fields (see Evaluator Types)
     
     # --- Routing Layer ---
@@ -510,8 +511,8 @@ states:
     evaluate:
       type: llm_structured
     route:
-      success: "verify"
-      failure: "fix"
+      yes: "verify"
+      no: "fix"
       blocked: "escalate"
       partial: "probe"
       _: "fix"              # Default for any other verdict
@@ -707,8 +708,8 @@ states:
       type: llm_structured
       min_confidence: 0.7
     route:
-      success: "verify"
-      failure: "fix"
+      yes: "verify"
+      no: "fix"
       blocked: "escalate"
       partial: "probe"
       _: "fix"
@@ -727,10 +728,10 @@ states:
       # e.g., "yes" → "yes_uncertain"
       uncertain_suffix: true
     route:
-      success: "verify"
-      success_uncertain: "probe"    # High confidence success → verify, low → probe
-      failure: "fix"
-      failure_uncertain: "probe"
+      yes: "verify"
+      yes_uncertain: "probe"    # High confidence yes → verify, low → probe
+      no: "fix"
+      no_uncertain: "probe"
       blocked: "escalate"
       _: "fix"
 ```
@@ -836,8 +837,8 @@ states:
       operator: eq
       target: 0
     route:
-      success: "done"
-      failure: "fix"
+      yes: "done"
+      no: "fix"
 ```
 
 This enables **decision states** that branch without executing an action.
@@ -916,8 +917,8 @@ states:
     evaluate:
       type: llm_structured
     route:
-      success: "log_success"
-      failure: "log_failure"
+      yes: "log_success"
+      no: "log_failure"
       _: "fix"
 
   log_success:
@@ -1020,8 +1021,8 @@ states:
       type: llm_structured
       min_confidence: 0.7
     route:
-      success: "verify"
-      failure: "fix"
+      yes: "verify"
+      no: "fix"
       blocked: "escalate"
       partial: "probe"
       _: "fix"
@@ -1034,8 +1035,8 @@ states:
       operator: eq
       target: 0
     route:
-      success: "done"
-      failure: "fix"
+      yes: "done"
+      no: "fix"
 
   verify:
     action: "pytest tests/"
@@ -1156,9 +1157,9 @@ states:
       min_confidence: 0.8
       uncertain_suffix: true
     route:
-      success: "verify"
-      success_uncertain: "manual_check"
-      failure: "refactor"
+      yes: "verify"
+      yes_uncertain: "manual_check"
+      no: "refactor"
       blocked: "rollback"
       _: "refactor"
 
@@ -1191,8 +1192,8 @@ timeout: 1800
 
 | Outcome | Trigger | Default Behavior |
 |---------|---------|------------------|
-| **Success** | Evaluator returns success verdict | Route via `success` or `on_yes` |
-| **Failure** | Evaluator returns failure verdict | Route via `failure` or `on_no` |
+| **Success** | Evaluator returns `yes` verdict | Route via `yes` key or `on_yes` |
+| **Failure** | Evaluator returns `no` verdict | Route via `no` key or `on_no` |
 | **Error** | Execution crash, timeout, eval error | Route via `_error` or terminate loop |
 
 ### Customizing Error Handling
@@ -1209,8 +1210,8 @@ states:
   check:
     action: "pytest"
     route:
-      success: "deploy"
-      failure: "fix"
+      yes: "deploy"
+      no: "fix"
       _error: "alert"
 ```
 
@@ -1223,8 +1224,8 @@ states:
   flaky_test:
     action: "pytest tests/integration/"
     route:
-      success: "done"
-      failure: "$current"      # Retry this state
+      yes: "done"
+      no: "$current"           # Retry this state
       _error: "$current"       # Also retry on errors
 ```
 
@@ -1244,8 +1245,8 @@ states:
     evaluate:
       type: llm_structured
     route:
-      success: "verify"
-      failure: "fix"
+      yes: "verify"
+      no: "fix"
       _error: "probe"          # Fall back to deterministic on LLM failure
 ```
 
