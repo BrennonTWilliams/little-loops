@@ -140,7 +140,7 @@ Read the issue file completely. Extract and note:
 
 ### Step 3b: Launch Adversarial Agents
 
-In a **single message**, launch both agents concurrently using the `Agent` tool with `run_in_background: true` and `isolation: "worktree"`.
+In a **single message**, launch both agents concurrently using the `Agent` tool with `run_in_background: true`.
 
 **IMPORTANT**: Both agent calls MUST appear in the same message to run concurrently. Do not send them in separate messages.
 
