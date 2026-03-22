@@ -1143,6 +1143,40 @@ class TestCompleteIssueLifecycle:
         content = completed.read_text()
         assert "**Action**: implement" in content  # features category action
 
+    def test_appends_session_log_on_successful_move(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """append_session_log_entry is called after a successful move to completed."""
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src = Path(cmd[2])
+                dst = Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with (
+            patch("subprocess.run", side_effect=mock_run),
+            patch("little_loops.issue_lifecycle.append_session_log_entry") as mock_log,
+        ):
+            result = complete_issue_lifecycle(sample_issue_info, sample_config, mock_logger)
+
+        assert result is True
+        mock_log.assert_called_once()
+        call_args = mock_log.call_args
+        assert call_args.args[1] == "ll-auto"
+
 
 # =============================================================================
 # Defer / Undefer Tests

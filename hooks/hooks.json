@@ -50,6 +50,17 @@
             "statusMessage": "Monitoring context usage..."
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/issue-completion-log.sh",
+            "timeout": 5,
+            "statusMessage": "Logging session to completed issue..."
+          }
+        ]
       }
     ],
     "Stop": [

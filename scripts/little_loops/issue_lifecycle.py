@@ -18,6 +18,7 @@ from pathlib import Path
 from little_loops.config import BRConfig
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger
+from little_loops.session_log import append_session_log_entry
 
 # =============================================================================
 # Failure Classification
@@ -644,6 +645,7 @@ def complete_issue_lifecycle(
 
         # Move to completed directory
         _move_issue_to_completed(original_path, completed_path, content, logger)
+        append_session_log_entry(completed_path, "ll-auto")
 
         # Commit the completion
         commit_body = f"""implement {info.issue_id}

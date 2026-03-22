@@ -161,20 +161,20 @@ The hook script (`issue-completion-log.sh`) is an internal infrastructure compon
 
 ## Acceptance Criteria
 
-- [ ] New hook script `hooks/scripts/issue-completion-log.sh` exists and is executable
-- [ ] Hook is registered in `hooks/hooks.json` under `PostToolUse` with matcher `Bash`
-- [ ] Hook fires when a Bash tool call contains `git mv ... completed/`
-- [ ] Hook does NOT fire for unrelated Bash tool calls
-- [ ] Appended entry follows the `## Session Log` format used by other commands
-- [ ] If `## Session Log` already exists, new entry is appended (not duplicated or replaced)
-- [ ] If `## Session Log` does not exist, section is inserted before `## Status` footer
-- [ ] Hook exits cleanly (non-blocking) if JSONL cannot be found
-- [ ] Hook handles multi-command Bash strings (e.g., `git add ... && git mv ...`)
-- [ ] `manage-issue` Phase 5 Step 1.5 session log step can be simplified or removed (hook covers it)
-- [ ] `issue_lifecycle.py:complete_issue_lifecycle()` calls `append_session_log_entry(completed_path, "ll-auto")` after `_move_issue_to_completed()` returns `True`
-- [ ] `orchestrator.py:_complete_issue_lifecycle_if_needed()` calls `append_session_log_entry(completed_path, "ll-parallel")` after git mv succeeds
-- [ ] `scripts/tests/test_issue_lifecycle.py` has a test verifying the session log call (with mock)
-- [ ] `scripts/tests/test_orchestrator.py` has a test verifying the session log call (with mock)
+- [x] New hook script `hooks/scripts/issue-completion-log.sh` exists and is executable
+- [x] Hook is registered in `hooks/hooks.json` under `PostToolUse` with matcher `Bash`
+- [x] Hook fires when a Bash tool call contains `git mv ... completed/`
+- [x] Hook does NOT fire for unrelated Bash tool calls
+- [x] Appended entry follows the `## Session Log` format used by other commands
+- [x] If `## Session Log` already exists, new entry is appended (not duplicated or replaced)
+- [x] If `## Session Log` does not exist, section is inserted before `## Status` footer
+- [x] Hook exits cleanly (non-blocking) if JSONL cannot be found
+- [x] Hook handles multi-command Bash strings (e.g., `git add ... && git mv ...`)
+- [x] `manage-issue` Phase 5 Step 1.5 session log step can be simplified or removed (hook covers it)
+- [x] `issue_lifecycle.py:complete_issue_lifecycle()` calls `append_session_log_entry(completed_path, "ll-auto")` after `_move_issue_to_completed()` returns `True`
+- [x] `orchestrator.py:_complete_issue_lifecycle_if_needed()` calls `append_session_log_entry(completed_path, "ll-parallel")` after git mv succeeds
+- [x] `scripts/tests/test_issue_lifecycle.py` has a test verifying the session log call (with mock)
+- [x] `scripts/tests/test_orchestrator.py` has a test verifying the session log call (with mock)
 
 ## Implementation Steps
 
@@ -505,6 +505,7 @@ Previously: Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 - **Implementation note**: `ll-auto`, `ll-parallel`, and `ll-sprint` complete issues via Python subprocess `git mv` (see `scripts/little_loops/issue_lifecycle.py:291` and `parallel/orchestrator.py`), **not** via Claude's Bash tool call. A PostToolUse hook on `Bash` would NOT fire for those paths. Only `manage-issue` (which uses the Bash tool for `git mv`) would be covered. Implementation should consider a Python-level callback in `issue_lifecycle.py` or a separate approach (e.g., a git post-move hook or lifecycle callback) to cover all paths.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-22T03:13:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db2e31e7-84dc-4379-9211-d8a88c643e6f.jsonl`
 - `/ll:confidence-check` - 2026-03-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deef223c-a8ad-4193-a339-d0649ec406aa.jsonl`
 - `/ll:refine-issue` - 2026-03-22T03:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67c676ba-82ac-4237-b939-729e88d85e2f.jsonl`
 - `/ll:format-issue` - 2026-03-14T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d48379d-c159-454c-aff3-e9b297f8024c.jsonl`
@@ -609,3 +610,23 @@ Previously: Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 ## Blocked By
 ## Blocks
 - ENH-493
+
+---
+
+## Resolution
+
+**Status**: Completed
+**Action**: implement
+**Completed**: 2026-03-21
+
+### Changes Made
+
+- `hooks/scripts/issue-completion-log.sh` — new PostToolUse hook script that detects `git mv ... completed/` Bash calls and appends a `## Session Log` entry via `append_session_log_entry()`. Reads `transcript_path` directly from the hook stdin JSON payload.
+- `hooks/hooks.json` — registered new `PostToolUse` hook with `Bash` matcher alongside existing `context-monitor.sh` entry.
+- `scripts/little_loops/issue_lifecycle.py` — added `append_session_log_entry(completed_path, "ll-auto")` call in `complete_issue_lifecycle()` after `_move_issue_to_completed()` succeeds (covers `ll-auto` path).
+- `scripts/little_loops/parallel/orchestrator.py` — added `append_session_log_entry(completed_path, "ll-parallel")` call in `_complete_issue_lifecycle_if_needed()` after successful git mv (covers `ll-parallel`/`ll-sprint` path).
+- `scripts/tests/test_issue_lifecycle.py` — added `test_appends_session_log_on_successful_move` test.
+- `scripts/tests/test_orchestrator.py` — added `test_appends_session_log_after_successful_git_mv` test.
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-22T03:23:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8a09d59-082e-4a88-9c5d-eda0b75e5447.jsonl`

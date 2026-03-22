@@ -1549,6 +1549,43 @@ class TestCompleteIssueLifecycle:
         result = orchestrator._complete_issue_lifecycle_if_needed("BUG-001")
         assert result is True
 
+    def test_appends_session_log_after_successful_git_mv(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """append_session_log_entry is called with 'll-parallel' after successful git mv."""
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("# BUG-001: Test\n\n## Resolution\n\nDone.\n")
+        mock_issue.path = original_path
+        mock_issue.issue_type = "bugs"
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        # Mock git lock to simulate successful git mv
+        git_mv_result = MagicMock()
+        git_mv_result.returncode = 0
+
+        def mock_git_lock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if cmd[0] == "mv":
+                src = Path(cmd[1])
+                dst = Path(cmd[2])
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                if src.exists():
+                    src.rename(dst)
+            return git_mv_result
+
+        orchestrator._git_lock.run = mock_git_lock_run  # type: ignore[method-assign]
+
+        with patch(
+            "little_loops.parallel.orchestrator.append_session_log_entry"
+        ) as mock_log:
+            orchestrator._complete_issue_lifecycle_if_needed("BUG-001")
+
+        mock_log.assert_called_once()
+        call_args = mock_log.call_args
+        assert call_args.args[1] == "ll-parallel"
+
 
 class TestCleanup:
     """Tests for _cleanup method."""

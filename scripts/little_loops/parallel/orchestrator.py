@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
+from little_loops.session_log import append_session_log_entry
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.merge_coordinator import MergeCoordinator
 from little_loops.parallel.overlap_detector import OverlapDetector
@@ -1144,6 +1145,7 @@ class ParallelOrchestrator:
             else:
                 # git mv succeeded, write updated content
                 completed_path.write_text(content)
+                append_session_log_entry(completed_path, "ll-parallel")
 
             # Stage and commit
             self._git_lock.run(
