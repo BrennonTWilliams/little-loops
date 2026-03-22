@@ -161,7 +161,8 @@ All outputs are written to `.claude/workflow-analysis/`:
 You can run Step 2 independently — useful if you've run Step 1 manually or want to re-analyze with updated patterns.
 
 ```bash
-# Shortest form — works when ll-messages wrote to the conventional default path
+# Shortest form — assumes step1-patterns.yaml already exists from a prior Step 1 agent run;
+# sets the --input path to the default so ll-workflows can find it automatically
 ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
 ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
 

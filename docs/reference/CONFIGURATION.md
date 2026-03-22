@@ -247,7 +247,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `command_prefix` | `/ll:` | Prefix for slash commands |
 | `ready_command` | `ready-issue {{issue_id}}` | Ready command template |
 | `manage_command` | `manage-issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
-| `worktree_copy_files` | `[".env"]` | Files to copy to worktrees (.claude/ is always copied automatically) |
+| `worktree_copy_files` | `[".claude/settings.local.json", ".env"]` | Files to copy to worktrees |
 | `remote_name` | `"origin"` | Git remote name for fetch/pull operations. Set if your remote is not named `origin` (e.g., `"upstream"`). |
 
 ### `product`
@@ -339,7 +339,7 @@ Sprint management settings (ll-sprint, `/ll:create-sprint`):
 |-----|---------|-------------|
 | `sprints_dir` | `.sprints` | Directory for sprint definitions |
 | `default_timeout` | `3600` | Default timeout per issue in seconds |
-| `default_max_workers` | `4` | Worker count for parallel execution within waves (1-8) |
+| `default_max_workers` | `2` | Worker count for parallel execution within waves (1-8) |
 
 ### `sync`
 

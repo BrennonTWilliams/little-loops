@@ -320,9 +320,11 @@ If you pick **Manual list**, you'll enter comma-separated items.
 
 | Mode | Discovery Command |
 |------|------------------|
-| Active issues list | `ll-issues list --json \| python3 -c "..."` *(filters for `status == 'open'`, prints first issue ID, exits 1 when empty — see Variant B for full command)* |
+| Active issues list | `ll-issues list --json \| python3 -c "..."` |
 | File glob pattern | `find . -name '<pattern>' -not -path './.git/*' \| sort \| head -1` |
 | Manual list | `python3 -c "items='<item1>,<item2>,...'.split(','); print(items[0])"` |
+
+The active issues command filters for `status == 'open'`, prints the first issue ID, and exits 1 when the list is empty. See Variant B below for the full Python snippet.
 
 ---
 

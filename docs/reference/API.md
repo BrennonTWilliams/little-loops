@@ -187,7 +187,7 @@ def get_deferred_dir(self) -> Path
 
 Get the path to the deferred issues directory.
 
-**Returns:** `Path` to completed directory
+**Returns:** `Path` to the deferred issues directory
 
 ##### get_issue_prefix
 
@@ -307,6 +307,7 @@ Project-level configuration dataclass.
 class ProjectConfig:
     name: str = ""
     src_dir: str = "src/"
+    test_dir: str = "tests"
     test_cmd: str = "pytest"
     lint_cmd: str = "ruff check ."
     type_cmd: str | None = "mypy"
