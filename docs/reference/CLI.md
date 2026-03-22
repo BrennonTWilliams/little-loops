@@ -435,6 +435,7 @@ Suggest a dependency-ordered implementation sequence.
 
 | Flag | Description |
 |------|-------------|
+| `--type` | Filter by issue type: `BUG`, `FEAT`, `ENH` |
 | `--limit` | Maximum issues to show (default: 10) |
 | `--json` | Output sequence as JSON array |
 | `--config` | Path to project root |
@@ -580,6 +581,8 @@ Full analysis with trends, subsystems, and debt metrics.
 | `--directory` | `-d` | Path to issues directory |
 | `--period` | `-p` | Trend grouping: `weekly`, `monthly` (default), `quarterly` |
 | `--compare` | `-c` | Compare last N days to previous N days |
+| `--since` | | Only analyze issues completed on or after DATE (YYYY-MM-DD) |
+| `--until` | | Only analyze issues completed on or before DATE (YYYY-MM-DD) |
 
 #### `ll-history export <topic>`
 

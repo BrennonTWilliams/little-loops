@@ -868,6 +868,24 @@ flowchart TB
 - `.claude/ll-continue-prompt.md` - Generated continuation prompt
 - `subprocess_utils.py` - Handoff detection and continuation reading
 
+### Session Log Auto-Linking
+
+When an issue is moved to `.issues/completed/` via a `git mv` Bash call, a PostToolUse hook automatically appends a Session Log entry to the completed issue file. This ensures session logs are linked regardless of which path completed the issue.
+
+**Trigger**: Any `Bash` tool call whose command matches `git mv .+ completed/`.
+
+**Covered completion paths**:
+- `manage-issue` skill (Phase 5)
+- `ll-auto` (sequential batch)
+- `ll-parallel` (concurrent worktree)
+- `ll-sprint` (dependency-ordered)
+- Manual `git mv` during a Claude session
+
+**Implementation**:
+- Hook script: `hooks/scripts/issue-completion-log.sh`
+- Uses `little_loops.session_log.append_session_log_entry()` with source `hook:posttooluse-git-mv`
+- Session JSONL path is read directly from the `transcript_path` field in the PostToolUse stdin payload
+
 ---
 
 ## Data Flow Summary
