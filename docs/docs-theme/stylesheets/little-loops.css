@@ -121,22 +121,20 @@
   --md-footer-fg-color--lighter:      #807870;
 }
 
-/* ─── Logo color ──────────────────────────────────────────── */
-[data-md-color-scheme="default"] .md-header__button.md-logo img,
-[data-md-color-scheme="default"] .md-header__button.md-logo svg {
-  filter: brightness(0) invert(1);
-}
-
-[data-md-color-scheme="slate"] .md-header__button.md-logo img,
-[data-md-color-scheme="slate"] .md-header__button.md-logo svg {
-  filter: brightness(0);
-}
-
 /* ─── Home page logo color ────────────────────────────────── */
-[data-md-color-scheme="default"] .home-logo {
-  filter: none;
+
+/* Fallback: system dark mode before JS sets data-md-color-scheme */
+@media (prefers-color-scheme: dark) {
+  .home-logo {
+    filter: brightness(0) invert(1);
+  }
 }
 
+/* Explicit toggle overrides (higher specificity than @media rule) */
 [data-md-color-scheme="slate"] .home-logo {
   filter: brightness(0) invert(1);
+}
+
+[data-md-color-scheme="default"] .home-logo {
+  filter: none;
 }
