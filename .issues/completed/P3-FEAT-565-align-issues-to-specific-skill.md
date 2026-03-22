@@ -85,7 +85,7 @@ The `skill` subcommand is mutually exclusive with category-based alignment (e.g.
 
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Won't Do** | Created: 2026-03-04 | Closed: 2026-03-21 | Priority: P3
 
 
 ## Blocked By
