@@ -114,6 +114,7 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:tradeoff-review-issues` - 2026-03-22T05:05:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
@@ -180,4 +181,21 @@ Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708
 
 ### Recommendation
 Update first — Implement ENH-493 (rewrite skill descriptions as trigger documents) first. Only after trigger descriptions are finalized should content be split into `references/` directories, so that reorganized reference material matches the new description style. Scope remains well-bounded (only 2 skills exceed 500 lines). Implementation is straightforward once ENH-493 resolves.
+
+## Tradeoff Review Note (2026-03-22 Update)
+
+**Reviewed**: 2026-03-22 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - Blocked by ENH-493 (rewrite skill descriptions as trigger documents). Content must be split into `references/` directories only after the trigger description style is finalized, so reorganized reference material is consistent with the new description style. Scope has grown to 3 violating skills (audit-claude-config: 708L, confidence-check: 604L, manage-issue: 513L). Implementation is straightforward once ENH-493 resolves.
+
 ## Blocks

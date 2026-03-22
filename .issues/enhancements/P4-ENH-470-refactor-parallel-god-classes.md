@@ -201,6 +201,7 @@ The `issue_history/` sub-package (introduced to decompose `issue_history/formatt
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:tradeoff-review-issues` - 2026-03-22T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
@@ -261,3 +262,21 @@ Third review confirms prior assessment. The dependency audit is now complete (de
 
 ## Blocked By
 - ENH-665
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-03-22 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | HIGH |
+| Complexity added | HIGH |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - HIGH effort with MEDIUM utility ratio for live concurrency code. The issue is now well-specified (method-level extraction table, thread safety checklist, extraction order). However, the HIGH effort and concurrency risk (14+ test patches may need path updates, lock ownership must be preserved) warrants an explicit `/ll:go-no-go` before starting. Three prior tradeoff reviews have consistently recommended update-first. Proceed only after running go/no-go and confirming bandwidth for careful concurrency refactoring.
