@@ -330,7 +330,7 @@ def run_foreground(
                     elapsed_str = f"{elapsed_int}s"
                 else:
                     elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
-            if clear_screen and sys.stdout.isatty():
+            if clear_screen and sys.stdout.isatty() and depth == 0:
                 print("\033[2J\033[H", end="", flush=True)
             if depth == 0:
                 last_parent_state[0] = state

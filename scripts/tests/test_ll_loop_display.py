@@ -1708,6 +1708,19 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "\033[2J" not in out
 
+    def test_clear_flag_suppressed_for_sub_loop_state_enter(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--clear flag does NOT emit clear-screen for depth>0 (sub-loop) state_enter events."""
+        events = [
+            {"event": "state_enter", "state": "child_state", "iteration": 1, "depth": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args(clear=True))
+        out = capsys.readouterr().out
+        assert "\033[2J" not in out
+
     def test_sub_loop_diagram_keeps_parent_state_highlighted(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

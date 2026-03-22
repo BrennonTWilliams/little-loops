@@ -135,14 +135,30 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `ll-loop`, `clear`, `sub-loop`, `display`, `captured`
 
+## Resolution
+
+**Status**: Completed
+**Date**: 2026-03-21
+**Commit**: pending
+
+### Changes Made
+- `scripts/little_loops/cli/loop/_helpers.py` line 333: Added `and depth == 0` to the clear condition, guarding screen clears to parent FSM state entries only.
+- `scripts/tests/test_ll_loop_display.py`: Added `test_clear_flag_suppressed_for_sub_loop_state_enter` to `TestDisplayProgressEvents`.
+
+### Verification
+- All 3 clear-related tests pass (including new test)
+- Full test suite: 3836 passed, 4 skipped
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-22T03:05:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ebfedbf-1df4-4f14-aa6e-f6182b365215.jsonl`
 - `/ll:confidence-check` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67c676ba-82ac-4237-b939-729e88d85e2f.jsonl`
 - `/ll:refine-issue` - 2026-03-22T03:00:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2366b16-8efd-4448-a7f8-095332982c3d.jsonl`
 - `/ll:format-issue` - 2026-03-22T02:56:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a86c9d2-b725-4d32-b86b-f32c9bdd6720.jsonl`
 - `/ll:capture-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbb74e23-bb67-47cf-ae22-17dea4c26b9f.jsonl`
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-21 | Priority: P3
+**Completed** | Created: 2026-03-21 | Priority: P3

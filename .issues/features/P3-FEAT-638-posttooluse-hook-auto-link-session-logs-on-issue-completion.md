@@ -1,7 +1,7 @@
 ---
 discovered_date: 2026-03-07
 discovered_by: capture-issue
-confidence_score: 95
+confidence_score: 100
 outcome_confidence: 79
 ---
 
@@ -183,10 +183,11 @@ The hook script (`issue-completion-log.sh`) is an internal infrastructure compon
    - After `_move_issue_to_completed()` returns `True`, call `append_session_log_entry(completed_path, "ll-auto")` — non-blocking (returns `False` on failure)
    - This covers the `ll-auto` path and any direct caller of `complete_issue_lifecycle()`
 
-2. **Python: `orchestrator.py:_complete_issue_lifecycle_if_needed()`** (~line 1096)
+2. **Python: `orchestrator.py:_complete_issue_lifecycle_if_needed()`** (line 1071)
    - Import `append_session_log_entry` from `little_loops.session_log`
-   - After the git mv succeeds (and after `completed_path.write_text(content)`), call `append_session_log_entry(completed_path, "ll-parallel")`
+   - After the git mv succeeds (and after `completed_path.write_text(content)` at line 1146), call `append_session_log_entry(completed_path, "ll-parallel")`
    - This covers `ll-parallel` and `ll-sprint` (which both use `ParallelOrchestrator`)
+   - Note: `completed_path.write_text(content)` appears in BOTH the failure branch (line 1141) and the success branch (line 1146); insert after the success branch only
 
 3. **Hook script: `hooks/scripts/issue-completion-log.sh`**
    - Use `INPUT=$(cat)` for stdin (not `$1`)
@@ -231,7 +232,7 @@ The hook script (`issue-completion-log.sh`) is an internal infrastructure compon
 ### Dependent Files (Callers/Importers)
 - `skills/manage-issue/SKILL.md:385-389` — Phase 5 Step 1.5 session log step; can be noted as now covered by hook (but leave in place as belt-and-suspenders)
 - `scripts/little_loops/issue_lifecycle.py:285-346` — `_move_issue_to_completed()` does the subprocess `git mv`; then `complete_issue_lifecycle()` at line 603 orchestrates the full flow
-- `scripts/little_loops/parallel/orchestrator.py:1035-1134` — `_complete_issue_lifecycle_if_needed()` handles the orchestrator's git mv at line 1096
+- `scripts/little_loops/parallel/orchestrator.py:1071-1184` — `_complete_issue_lifecycle_if_needed()` handles the orchestrator's git mv at lines 1132-1135
 - `scripts/little_loops/issue_manager.py:584-649` — `ll-auto`'s verification/fallback completion logic calls `complete_issue_lifecycle()`
 
 ### Reusable Infrastructure (already exists, just needs to be called)
@@ -263,14 +264,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Completion path inventory** (with session log status):
 | Path | Git mv mechanism | Session log? | PostToolUse fires? |
 |---|---|---|---|
-| `manage-issue` skill | Claude Bash tool (`SKILL.md:396-402`) | Yes — Phase 5 Step 1.5 (`SKILL.md:385-389`) | Yes |
+| `manage-issue` skill | Claude Bash tool (`SKILL.md:398-402`) | Yes — Phase 5 Step 1.5 (`SKILL.md:398`) | Yes |
 | `ll-auto` / `AutoManager` | `subprocess.run()` in `issue_lifecycle.py:319-324` | No | No |
-| `ll-parallel` / `ll-sprint` orchestrator | `self._git_lock.run(["mv", ...])` in `orchestrator.py:1096` | No | No |
+| `ll-parallel` / `ll-sprint` orchestrator | `self._git_lock.run(["mv", ...])` in `orchestrator.py:1132-1135` | No | No |
 | Orchestrator `close_issue()` | `_move_issue_to_completed()` via `subprocess.run()` | No | No |
 
 **PostToolUse stdin schema** (from `docs/claude-code/hooks-reference.md:899-916`): The payload includes `transcript_path` — the full absolute path to the active session JSONL — meaning the hook script can read `jq -r '.transcript_path'` directly rather than doing the `~/.claude/projects/` path-encoding lookup. This simplifies the hook script significantly.
 
 **Correct stdin convention**: `INPUT=$(cat)` (not `$1` as shown in the proposed bash script). Confirmed by `context-monitor.sh:17`.
+
+**Line number update (verified 2026-03-21)**:
+- `_complete_issue_lifecycle_if_needed()` defined at **line 1071** (not ~1044 as noted earlier)
+- git mv operation at **lines 1132-1135** (not ~1096/1104): `self._git_lock.run(["mv", str(original_path), str(completed_path)], cwd=self.repo_path)`
+- `completed_path.write_text(content)` has TWO call sites: failure branch at **line 1141** and success branch at **line 1146** — `append_session_log_entry` should be called after line 1146 (success branch)
+- `manage-issue` Phase 5 Step 1.5 is now at **lines 398-402** (not 385-389)
+
+**`close_issue()` is also an untracked completion path**: `issue_lifecycle.py:524` defines `close_issue()` which also calls `_move_issue_to_completed()` and has no `append_session_log_entry` call. It is invoked from the orchestrator at lines 836-855 (parallel) and 914-930 (sequential) via `result.should_close`. This path covers issues closed by `ready-issue`, `verify-issues`, etc. via automation. Whether to include `close_issue()` in this feature's scope is a design decision — current issue scope only covers implemented completions, consistent with `manage-issue`'s existing behavior.
 
 ## Related Key Documentation
 
@@ -496,6 +505,8 @@ Previously: Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 - **Implementation note**: `ll-auto`, `ll-parallel`, and `ll-sprint` complete issues via Python subprocess `git mv` (see `scripts/little_loops/issue_lifecycle.py:291` and `parallel/orchestrator.py`), **not** via Claude's Bash tool call. A PostToolUse hook on `Bash` would NOT fire for those paths. Only `manage-issue` (which uses the Bash tool for `git mv`) would be covered. Implementation should consider a Python-level callback in `issue_lifecycle.py` or a separate approach (e.g., a git post-move hook or lifecycle callback) to cover all paths.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deef223c-a8ad-4193-a339-d0649ec406aa.jsonl`
+- `/ll:refine-issue` - 2026-03-22T03:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67c676ba-82ac-4237-b939-729e88d85e2f.jsonl`
 - `/ll:format-issue` - 2026-03-14T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d48379d-c159-454c-aff3-e9b297f8024c.jsonl`
 - `/ll:verify-issues` - 2026-03-14T19:19:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — VALID: all code claims confirmed; `issue-completion-log.sh` absent ✓; line numbers stable ✓; ENH-493 backlink valid ✓
 - `/ll:format-issue` - 2026-03-14T19:19:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
