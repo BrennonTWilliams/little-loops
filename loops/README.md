@@ -36,6 +36,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | Loop | Description |
 |---|---|
 | `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
+| `context-health-monitor` | Monitor context health via scratch file accumulation and session log size; compact scratch files and archive stale outputs when pressure is detected |
 
 ## Reinforcement Learning (RL)
 
