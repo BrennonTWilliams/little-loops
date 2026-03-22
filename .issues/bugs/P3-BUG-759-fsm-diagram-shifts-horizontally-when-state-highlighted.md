@@ -36,13 +36,13 @@ The horizontal jitter makes the `--show-diagrams --clear` animation visually bro
 ## Root Cause
 
 - **File**: `scripts/little_loops/cli/loop/layout.py`
-- **Anchor**: `in _render_layered_diagram()` (lines 1308–1309)
+- **Anchor**: `in _render_layered_diagram()` (lines 1414–1415 current; was 1308–1309 at scan commit)
 - **Cause**: After assembling the grid into string lines (`lines = ["".join(row).rstrip() for row in grid]`), the centering logic computes `max_line_len = max((len(ln) for ln in lines), default=0)`. When `_draw_box()` writes ANSI-colored strings into grid cells for the highlighted state (e.g., `┌` → `\033[32m┌\033[0m`), `"".join(row)` contains multi-byte escape sequences that inflate `len(ln)` far beyond the visual width. This makes `(tw - max_line_len)` smaller (or negative, clamped to 0) on highlighted frames, reducing the indent and causing the leftward shift.
 
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/layout.py`
-- **Line(s)**: 1308–1309 (at scan commit: b8dad90)
+- **Line(s)**: 1414–1415 (at scan commit: b8dad90; shifted since original scan)
 - **Anchor**: `in _render_layered_diagram()`
 - **Code**:
 ```python
@@ -110,7 +110,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `fsm-diagram`, `ansi`, `rendering`, `captured`
 
+## Verification Notes
+
+- **Date**: 2026-03-21
+- **Verdict**: NEEDS_UPDATE → VALID (line numbers corrected)
+- `max_line_len` / `diagram_indent` bug confirmed present at lines **1414–1415** in current codebase (shifted from 1308–1309 at original scan commit b8dad90). Bug still exists; fix not yet applied.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-22T02:49:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8bfb19-1675-49ac-9d46-6c3933a7cb31.jsonl`
+- `/ll:verify-issues` - 2026-03-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:verify-issues` - 2026-03-16T19:47:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:verify-issues` - 2026-03-16T19:47:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

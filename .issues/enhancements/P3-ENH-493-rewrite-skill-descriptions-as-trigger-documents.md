@@ -74,7 +74,7 @@ _Added by `/ll:refine-issue` — Skill description audit:_
 - `skills/manage-issue/SKILL.md` — "Autonomously manage issues - plan, implement, verify, and complete"
 - ~~`skills/workflow-automation-proposer/SKILL.md`~~ — **Already has trigger keywords** (verified 2026-03-03): description now includes `Trigger keywords: "propose automations", "workflow proposals", "automation suggestions", "step 3 workflow analysis"`
 
-**Implementation scope: 7 skills need description rewrites** (workflow-automation-proposer already done; the 7 already trigger-phrase-oriented are lower priority but may still benefit from refinement)
+**Implementation scope: 10 skills need description rewrites** (workflow-automation-proposer already done; the 7 already trigger-phrase-oriented are lower priority but may still benefit from refinement; 3 new skills added since last audit also need rewrites — see below)
 
 **No `references/` subdirectories exist** — supplemental content uses flat filenames (`templates.md`, `paradigms.md`, etc.) alongside `SKILL.md`
 
@@ -120,6 +120,7 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 `enhancement`, `skills`, `context-engineering`, `ux`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-22T02:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6354e86b-8019-4171-939d-aba670876e1f.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Audited all 15 SKILL.md descriptions; identified 8 needing rewrite (summary-style) and 7 already trigger-phrase-oriented
@@ -139,9 +140,10 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 
 ## Verification Notes
 
-- **Date**: 2026-03-13
-- **Verdict**: VALID
-- All 7 skills identified as needing rewrites (`audit-claude-config`, `audit-docs`, `configure`, `create-loop`, `format-issue`, `init`, `manage-issue`) still have summary-style descriptions (confirmed by grepping `description:` in each SKILL.md). The skill count is now 16 (not 15 — `review-loop` added). Issue scope remains at 7 skills needing rewrites.
+- **Date**: 2026-03-21
+- **Verdict**: NEEDS_UPDATE
+- All 7 originally identified skills still have summary-style descriptions (`audit-claude-config`, `audit-docs`, `configure`, `create-loop`, `format-issue`, `init`, `manage-issue`) — confirmed.
+- **Scope expanded**: 3 new skills added since last audit also use summary-style descriptions and need rewrites: `analyze-loop`, `go-no-go`, `update-docs`. Total skill count is now **19** (was 16). Scope updated from 7 to **10** skills needing trigger-phrase description rewrites.
 
 ## Status
 

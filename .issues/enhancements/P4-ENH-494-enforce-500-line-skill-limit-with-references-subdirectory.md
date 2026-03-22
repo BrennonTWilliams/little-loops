@@ -58,8 +58,8 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 **Current line counts (descending):**
 ```
 708  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 208 lines
-554  skills/confidence-check/SKILL.md     ← EXCEEDS by 54 lines
-500  skills/manage-issue/SKILL.md         ← AT the 500-line limit
+604  skills/confidence-check/SKILL.md     ← EXCEEDS by 104 lines (was 554)
+513  skills/manage-issue/SKILL.md         ← EXCEEDS by 13 lines (was 500 at boundary)
 386  skills/init/SKILL.md
 371  skills/capture-issue/SKILL.md
 356  skills/format-issue/SKILL.md
@@ -74,11 +74,10 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 116  skills/analyze-history/SKILL.md
 ```
 
-**Only 2 skills exceed 500 lines** — scope is smaller than expected:
+**3 skills now exceed 500 lines** (was 2):
 - `audit-claude-config/SKILL.md` (708 lines) — extract wave definitions, sub-agent prompt templates, or audit checklists to `references/`
-- `confidence-check/SKILL.md` (533 lines) — extract scoring rubrics or evaluation criteria to `references/`
-
-Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary but not exceeding.
+- `confidence-check/SKILL.md` (604 lines, was 533) — extract scoring rubrics or evaluation criteria to `references/`
+- `manage-issue/SKILL.md` (513 lines, was 500) — extract phase details or reference patterns to `references/`
 
 **No `references/` subdirectories exist yet** — this PR establishes the convention from scratch
 
@@ -115,6 +114,7 @@ Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Completed skill line count audit; 2 skills exceed 500 lines: audit-claude-config (708) and confidence-check (524)
@@ -133,9 +133,9 @@ Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary
 
 ## Verification Notes
 
-- **Date**: 2026-03-13
-- **Verdict**: VALID
-- `audit-claude-config/SKILL.md` = 708 lines and `confidence-check/SKILL.md` = 554 lines — both still exceed 500 lines. No `references/` subdirectories exist under any skill directory. `manage-issue/SKILL.md` = 500 lines (at boundary). Enhancement not yet applied.
+- **Date**: 2026-03-21
+- **Verdict**: NEEDS_UPDATE
+- `audit-claude-config/SKILL.md` = **708 lines** (unchanged), `confidence-check/SKILL.md` = **604 lines** (was 554 — grew 50 lines), `manage-issue/SKILL.md` = **513 lines** (was 500 — now exceeds limit). No `references/` subdirectories exist. Enhancement scope now covers **3 skills** exceeding 500 lines (was 2).
 
 ## Status
 
