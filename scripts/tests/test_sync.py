@@ -1086,7 +1086,7 @@ class TestDiffIssue:
     def test_diff_all_summary(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """diff_all shows summary for multiple issues."""
+        """diff_all batch-fetches all issue bodies in a single gh call."""
         bug_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
         bug_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nLocal body.\n")
         feat_file = tmp_path / ".issues" / "features" / "P2-FEAT-002-test-feat.md"
@@ -1096,27 +1096,90 @@ class TestDiffIssue:
 
         manager = GitHubSyncManager(mock_config, mock_logger)
 
-        def gh_side_effect(
-            args: list[str], logger: MagicMock, **kwargs: object
-        ) -> subprocess.CompletedProcess[str]:
-            # Return different body for #42, same for #43
-            if "42" in args:
-                return subprocess.CompletedProcess(
-                    args=[], returncode=0, stdout="Different body.\n", stderr=""
-                )
-            return subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="Same body.", stderr=""
-            )
+        batch_response = json.dumps([
+            {"number": 42, "body": "Different body."},
+            {"number": 43, "body": "Same body."},
+        ])
 
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
             mock_auth.return_value = True
             with patch("little_loops.sync._run_gh_command") as mock_run:
-                mock_run.side_effect = gh_side_effect
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=batch_response, stderr=""
+                )
                 result = manager.diff_all()
+
+        # A single batch call should replace per-issue calls
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "list" in call_args
+        assert "--state" in call_args
+        assert "all" in call_args
 
         assert result.success is True
         assert len(result.updated) == 1  # BUG-001 differs
         assert len(result.skipped) == 1  # FEAT-002 in sync
+
+    def test_diff_all_batch_fetch_failure(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """diff_all returns failure when the batch fetch errors."""
+        bug_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        bug_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nLocal body.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="API error")
+                result = manager.diff_all()
+
+        assert result.success is False
+        assert any("batch-fetch" in e for e in result.errors)
+
+    def test_diff_all_issue_not_in_batch(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """diff_all records failure for issue numbers absent from batch result."""
+        bug_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        bug_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nLocal body.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        batch_response = json.dumps([{"number": 99, "body": "Something else."}])
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=batch_response, stderr=""
+                )
+                result = manager.diff_all()
+
+        assert result.success is False
+        assert len(result.failed) == 1
+        assert result.failed[0][0] == "BUG-001"
+
+    def test_diff_all_no_synced_issues(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """diff_all skips the batch call when no issues have github_issue frontmatter."""
+        bug_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        bug_file.write_text("---\n---\n\n# BUG-001: Test Bug\n\nLocal body.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                result = manager.diff_all()
+
+        mock_run.assert_not_called()
+        assert result.success is True
+        assert not result.updated
+        assert not result.skipped
+        assert not result.failed
 
 
 class TestCloseIssue:

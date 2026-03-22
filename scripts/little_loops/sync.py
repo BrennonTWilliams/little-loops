@@ -835,6 +835,8 @@ class GitHubSyncManager:
 
         local_issues = self._get_local_issues()
 
+        # First pass: collect all issues that have been synced to GitHub
+        synced: list[tuple[str, int, str]] = []  # (issue_id, github_number, content)
         for issue_path in local_issues:
             issue_id = self._extract_issue_id(issue_path.name)
             if not issue_id:
@@ -847,17 +849,37 @@ class GitHubSyncManager:
             if github_number is None:
                 continue
 
-            try:
-                cmd_result = _run_gh_command(
-                    ["issue", "view", str(int(github_number)), "--json", "body", "-q", ".body"],
-                    self.logger,
-                )
-                github_body = cmd_result.stdout.rstrip("\n")
-            except subprocess.CalledProcessError as e:
-                result.failed.append((issue_id, f"Failed to fetch #{github_number}: {e.stderr}"))
+            synced.append((issue_id, int(github_number), content))
+
+        if not synced:
+            return result
+
+        # Batch-fetch all GitHub issue bodies in a single API call
+        try:
+            cmd_result = _run_gh_command(
+                ["issue", "list", "--json", "number,body", "--limit", "500", "--state", "all"],
+                self.logger,
+            )
+            github_bodies: dict[int, str] = {
+                item["number"]: item["body"] for item in json.loads(cmd_result.stdout)
+            }
+        except subprocess.CalledProcessError as e:
+            result.success = False
+            result.errors.append(f"Failed to batch-fetch GitHub issues: {e.stderr}")
+            return result
+        except Exception as e:
+            result.success = False
+            result.errors.append(f"Failed to batch-fetch GitHub issues: {e}")
+            return result
+
+        # Compare local vs GitHub bodies using the batch-fetched data
+        for issue_id, github_number, content in synced:
+            if github_number not in github_bodies:
+                result.failed.append((issue_id, f"Issue #{github_number} not found in GitHub"))
                 continue
 
             local_body = _get_issue_body(content)
+            github_body = github_bodies[github_number]
 
             if local_body.strip() != github_body.strip():
                 result.updated.append(f"{issue_id} (#{github_number}): differs")
