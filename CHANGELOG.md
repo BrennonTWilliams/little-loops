@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.61.0] - 2026-03-23
+
+### Added
+
+- **`ll-issues next-action` subcommand** — ENH-860: New CLI subcommand that suggests the next recommended action for the highest-priority active issue
+- **Duplicate detection config** — ENH-842: Implement `duplicate_detection` configuration for `IssuesConfig` to control duplicate issue detection behavior
+- **Definition-of-done state in general-task loop** — Add a `done` state to the built-in general-task FSM loop for explicit completion tracking (672cdf99)
+- **Hooks area in `/ll:configure`** — feat(configure): Add `hooks` management area with `show`, `install`, and `validate` sub-commands (2db66f7b)
+
+### Fixed
+
+- **Parallel config `timeout_per_issue` key silently ignored** — BUG-843: Fix `automation.py` reading wrong config key, causing per-issue timeouts to be ignored
+- **Deprecated fields in CLI docs and issue-refinement loop** — Remove stale deprecated field references causing confusion (b49fa5a1)
+
+### Changed
+
+- **review-loop and create-loop prefer ll- CLI commands** — ENH-861: Update skill docs to recommend ll-cli commands and the Glob tool over raw bash patterns
+
 ## [1.60.0] - 2026-03-23
 
 ### Added
@@ -111,6 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.61.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.60.0...v1.61.0
 [1.60.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.59.0...v1.60.0
 [1.59.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.58.0...v1.59.0
 [1.58.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.57.0...v1.58.0
