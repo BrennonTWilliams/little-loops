@@ -189,7 +189,19 @@ Evaluate whether one or more issues should be implemented using an adversarial d
 
 **Flags:**
 - `--check`: Exit 0 on all GO, exit 1 on any NO-GO — enables FSM loop gating via `evaluate: type: exit_code`
-- `--auto`: Non-interactive mode
+- `--auto`: Non-interactive mode (skips write-back prompt; writes findings directly)
+
+**NO-GO REASON sub-classification:** When the verdict is NO-GO, a structured reason is included indicating the recommended next action:
+
+| Reason | Meaning | Recommended action |
+|--------|---------|-------------------|
+| `CLOSE` | Issue is invalid, already covered, or misdirected | Close or move to `completed/` |
+| `REFINE` | Issue is valid but under-specified or needs more research | Run `/ll:refine-issue` or `/ll:ready-issue` |
+| `SKIP` | Good idea but poorly timed or lower priority than active work | Keep open, deprioritize, or remove from sprint |
+
+The reason appears inline in verdict output (`NO-GO ✗ (CLOSE)`), batch summaries, and `--check` mode per-issue lines.
+
+**Findings write-back:** After rendering a verdict, go-no-go checks whether the judge's output references specific files or functions not already in the issue body. If significant new information is found, it offers to insert a `## Go/No-Go Findings` section into the issue file (before `## Session Log`). In `--auto` mode the write happens without prompting; in `--check` mode writes are skipped entirely.
 
 **Trigger keywords:** "go no go", "should I implement", "adversarial review", "worth implementing", "debate this issue"
 
