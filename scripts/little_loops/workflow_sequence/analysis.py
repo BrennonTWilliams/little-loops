@@ -491,6 +491,20 @@ def _get_message_category(msg_uuid: str, patterns: dict[str, Any]) -> str | None
     return None
 
 
+def _build_category_index(patterns: dict[str, Any]) -> dict[str, str]:
+    """Build a flat UUID → category mapping from patterns category_distribution."""
+    index: dict[str, str] = {}
+    for category_info in patterns.get("category_distribution", []):
+        category = category_info.get("category")
+        if not isinstance(category, str):
+            continue
+        for example in category_info.get("example_messages", []):
+            uuid = example.get("uuid")
+            if uuid:
+                index[uuid] = category
+    return index
+
+
 def _detect_workflows(
     messages: list[dict[str, Any]],
     boundaries: list[WorkflowBoundary],
@@ -507,6 +521,9 @@ def _detect_workflows(
     boundary_before: dict[str, bool] = {}
     for b in boundaries:
         boundary_before[b.msg_b] = b.is_boundary
+
+    # Build category index (uuid -> category) for O(1) lookups
+    category_index = _build_category_index(patterns)
 
     # Segment messages by boundaries
     segments: list[list[dict[str, Any]]] = []
@@ -530,7 +547,7 @@ def _detect_workflows(
         # Get categories for segment messages (from patterns)
         segment_categories: list[str] = []
         for msg in segment:
-            cat = _get_message_category(msg.get("uuid", ""), patterns)
+            cat = category_index.get(msg.get("uuid", ""))
             if cat:
                 segment_categories.append(cat)
 
@@ -580,7 +597,7 @@ def _detect_workflows(
                     messages=[
                         {
                             "uuid": msg.get("uuid", ""),
-                            "category": _get_message_category(msg.get("uuid", ""), patterns),
+                            "category": category_index.get(msg.get("uuid", "")),
                             "step": i + 1,
                         }
                         for i, msg in enumerate(segment)

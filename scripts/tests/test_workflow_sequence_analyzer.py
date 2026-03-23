@@ -28,6 +28,7 @@ from little_loops.workflow_sequence import (
     semantic_similarity,
 )
 from little_loops.workflow_sequence.analysis import (
+    _build_category_index,
     _cluster_by_entities,
     _compute_boundaries,
     _detect_handoff,
@@ -1857,6 +1858,74 @@ class TestGetMessageCategory:
     def test_empty_patterns(self) -> None:
         """Returns None when patterns dict is empty."""
         assert _get_message_category("msg-1", {}) is None
+
+
+class TestBuildCategoryIndex:
+    """Tests for _build_category_index function."""
+
+    def _patterns(self) -> dict:
+        return {
+            "category_distribution": [
+                {
+                    "category": "fix",
+                    "example_messages": [{"uuid": "msg-1"}, {"uuid": "msg-2"}],
+                },
+                {
+                    "category": "review",
+                    "example_messages": [{"uuid": "msg-3"}],
+                },
+            ]
+        }
+
+    def test_builds_flat_index(self) -> None:
+        """Returns a flat UUID→category dict for all valid entries."""
+        result = _build_category_index(self._patterns())
+        assert result == {"msg-1": "fix", "msg-2": "fix", "msg-3": "review"}
+
+    def test_empty_patterns(self) -> None:
+        """Returns empty dict when patterns has no category_distribution."""
+        assert _build_category_index({}) == {}
+
+    def test_skips_non_str_category(self) -> None:
+        """Skips entries where category is not a string."""
+        patterns: dict = {
+            "category_distribution": [
+                {
+                    "category": 42,
+                    "example_messages": [{"uuid": "msg-x"}],
+                }
+            ]
+        }
+        assert _build_category_index(patterns) == {}
+
+    def test_skips_empty_uuid(self) -> None:
+        """Skips example messages where uuid is empty or missing."""
+        patterns: dict = {
+            "category_distribution": [
+                {
+                    "category": "fix",
+                    "example_messages": [{"uuid": ""}, {"content": "no uuid"}],
+                }
+            ]
+        }
+        assert _build_category_index(patterns) == {}
+
+    def test_uuid_collision_last_wins(self) -> None:
+        """When same UUID appears in multiple categories, last category wins."""
+        patterns: dict = {
+            "category_distribution": [
+                {
+                    "category": "fix",
+                    "example_messages": [{"uuid": "msg-1"}],
+                },
+                {
+                    "category": "review",
+                    "example_messages": [{"uuid": "msg-1"}],
+                },
+            ]
+        }
+        result = _build_category_index(patterns)
+        assert result["msg-1"] == "review"
 
 
 class TestParseTimestamps:

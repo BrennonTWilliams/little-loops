@@ -39,7 +39,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.doc_counts` | Documentation count verification |
 | `little_loops.link_checker` | Link validation for markdown docs |
 | `little_loops.user_messages` | User message extraction from Claude logs |
-| `little_loops.workflow_sequence_analyzer` | Workflow sequence analysis for multi-step patterns |
+| `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
