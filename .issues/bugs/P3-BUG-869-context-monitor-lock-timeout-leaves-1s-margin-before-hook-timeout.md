@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-869: context-monitor.sh lock timeout leaves only 1s before hook timeout
@@ -53,25 +55,30 @@ Alternatively, increase the hook timeout in `hooks.json` from 5 to 8 seconds (bu
 - `hooks/scripts/context-monitor.sh` — reduce `acquire_lock` timeout argument
 
 ### Dependent Files (Callers/Importers)
-- `hooks/hooks.json` — defines the 5s `PostToolUse` timeout for this hook
+- `hooks/hooks.json:49` — defines the 5s `PostToolUse` timeout for this hook (`matcher: "*"`, fires on every tool call)
+- `hooks/scripts/lib/common.sh:8-38` — defines `acquire_lock()` (flock + mkdir fallback); `common.sh:59-85` defines `atomic_write_json()` used by `write_state()`
 
 ### Similar Patterns
-- N/A — `acquire_lock` pattern is unique to `context-monitor.sh`
+- `hooks/scripts/precompact-state.sh:72-79` — PreCompact hook (also 5s timeout) uses `acquire_lock "$STATE_LOCK" 3`; identical pattern, correct 2s margin
+- `hooks/scripts/check-duplicate-issue-id.sh:92-99` — PreToolUse hook (also 5s timeout) uses `acquire_lock "$ISSUE_LOCK" 3` with fail-open fallback
+- Both sibling scripts already use 3s — the 4s in `context-monitor.sh` is an outlier
 
 ### Tests
-- TBD — test that hook completes within timeout under simulated lock contention
+- `scripts/tests/test_hooks_integration.py:38-92` — `TestContextMonitor.test_concurrent_updates` fires 10 simultaneous invocations via `ThreadPoolExecutor(max_workers=10)` and asserts all 10 state updates are recorded; uses `subprocess.run(..., timeout=6)` (1s above the hook timeout); this is the direct coverage for lock contention
+- No test currently simulates slow lock acquisition (e.g., deliberately holding the lock for 3-4s to trigger the tight margin); the existing concurrent test exercises the happy path but not the near-timeout path
 
 ### Documentation
-- N/A
+- `docs/development/TROUBLESHOOTING.md` — references the 4s lock timeout and PostToolUse debugging; should be updated after fix to reflect 3s
 
 ### Configuration
-- `hooks/hooks.json` — PostToolUse timeout (5s) is the constraint; no change needed if lock timeout is reduced
+- `hooks/hooks.json:49` — `"timeout": 5` for the PostToolUse `context-monitor.sh` entry; no change needed if lock timeout is reduced
 
 ## Implementation Steps
 
-1. Change `acquire_lock "$STATE_LOCK" 4` to `acquire_lock "$STATE_LOCK" 3` in `context-monitor.sh`
-2. Optionally add a comment noting the intentional margin: `# 3s leave ~2s for post-acquisition ops within 5s hook timeout`
-3. Verify in a long session that state file updates consistently
+1. In `hooks/scripts/context-monitor.sh:226`, change `acquire_lock "$STATE_LOCK" 4` → `acquire_lock "$STATE_LOCK" 3`
+2. Update the comment at `context-monitor.sh:224` from `# Acquire lock for state file read-modify-write (4s timeout, hook timeout is 5s)` to `# Acquire lock for state file read-modify-write (3s timeout, ~2s margin within 5s hook timeout)`
+3. Update `docs/development/TROUBLESHOOTING.md` to reflect the new 3s lock timeout (search for "4s" in that file)
+4. Run `python -m pytest scripts/tests/test_hooks_integration.py::TestContextMonitor -v` to verify concurrent access tests still pass
 
 ## Impact
 
@@ -89,6 +96,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `bug`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:58:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:42:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9850963-0ae2-487e-9014-ade593329bce.jsonl`
 
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`

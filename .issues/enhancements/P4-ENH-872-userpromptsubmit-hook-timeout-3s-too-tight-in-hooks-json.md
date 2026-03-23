@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 75
 ---
 
 # ENH-872: UserPromptSubmit hook timeout 3s too tight in hooks.json
@@ -43,13 +45,13 @@ A tight timeout here means the plugin's prompt optimization feature fails interm
 ## Integration Map
 
 ### Files to Modify
-- `hooks/hooks.json` — update `UserPromptSubmit` timeout
+- `hooks/hooks.json:23` — `"timeout": 3` in the `UserPromptSubmit` hook entry
 
 ### Dependent Files (Callers/Importers)
 - N/A — timeout is consumed by the Claude Code harness
 
 ### Similar Patterns
-- `hooks/hooks.json` — all other hooks use 5–15s; this should match
+- `hooks/hooks.json` — all other hooks: `SessionStart` (5s), `PreToolUse` (5s), `PostToolUse` (5s, 5s), `Stop` (15s), `PreCompact` (5s)
 
 ### Tests
 - N/A — timeout value is a configuration parameter
@@ -59,6 +61,14 @@ A tight timeout here means the plugin's prompt optimization feature fails interm
 
 ### Configuration
 - `hooks/hooks.json` — the only file to change
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `hooks/hooks.json:17-28` — full `UserPromptSubmit` block; only `timeout` on line 23 needs changing
+- `hooks/scripts/user-prompt-check.sh` — sources `hooks/scripts/lib/common.sh` (233 lines) via `ll_resolve_config`, which reads and parses `ll-config.json` with `jq`; this is the primary cold-start overhead source
+- `hooks/prompts/optimize-prompt-hook.md` — 96 lines (the template file read at end of script); note: the script references this via `${CLAUDE_PLUGIN_ROOT}/prompts/optimize-prompt-hook.md` but the actual path is `hooks/prompts/optimize-prompt-hook.md` — this path discrepancy is tracked separately as BUG-868
 
 ## Implementation Steps
 
@@ -86,6 +96,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `enhancement`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b17f620-f2da-44e2-8f69-81831236e135.jsonl`
+- `/ll:refine-issue` - 2026-03-23T23:00:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ae56235-5e0d-486f-88e4-8d835df079c9.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:42:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1072ecd2-d140-48fe-a825-c355ae538fff.jsonl`
 
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`

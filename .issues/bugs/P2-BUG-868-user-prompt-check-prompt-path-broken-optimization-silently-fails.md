@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-868: user-prompt-check.sh prompt path broken — optimization silently fails
@@ -56,10 +58,16 @@ This matches how other scripts in `hooks/scripts/` resolve sibling paths and is 
 - `hooks/hooks.json` — registers this script as the `UserPromptSubmit` handler
 
 ### Similar Patterns
-- Other scripts in `hooks/scripts/` that reference `$SCRIPT_DIR` or `$CLAUDE_PLUGIN_ROOT` — verify path patterns are consistent
+- `hooks/scripts/context-monitor.sh:13-14` — uses `SCRIPT_DIR` exclusively; sources `${SCRIPT_DIR}/lib/common.sh`
+- `hooks/scripts/precompact-state.sh:13-14` — same pattern
+- `hooks/scripts/check-duplicate-issue-id.sh:13-14` — same pattern
+- `hooks/scripts/issue-completion-log.sh:12-13` — same pattern
+- `user-prompt-check.sh` is the **only** script that uses `CLAUDE_PLUGIN_ROOT` to resolve a file path; all other scripts use only `SCRIPT_DIR`
 
 ### Tests
-- TBD — add test that path resolves to an existing file
+- `scripts/tests/test_hooks_integration.py:439-441` — `TestUserPromptCheck.hook_script` fixture (existing test class for this script)
+- `scripts/tests/test_hooks_integration.py:443-450` — `TestUserPromptCheck.test_config` fixture pattern to follow
+- Add a test to `TestUserPromptCheck` that runs the script with a prompt >10 chars and asserts output is non-empty (i.e., optimization template was injected); use `_run_bash` or `subprocess.run([str(hook_script)], input=json.dumps({...}))` pattern from line 460+
 
 ### Documentation
 - N/A
@@ -69,9 +77,10 @@ This matches how other scripts in `hooks/scripts/` resolve sibling paths and is 
 
 ## Implementation Steps
 
-1. Fix `HOOK_PROMPT_FILE` assignment in `user-prompt-check.sh`
+1. Fix `HOOK_PROMPT_FILE` assignment in `hooks/scripts/user-prompt-check.sh:81`
 2. Verify the resolved path exists: `ls "${SCRIPT_DIR}/../prompts/optimize-prompt-hook.md"`
-3. Test by submitting a prompt and confirming optimization template content appears in context
+3. Add regression test to `TestUserPromptCheck` in `scripts/tests/test_hooks_integration.py` — run the hook with a qualifying prompt and assert output is non-empty
+4. Run `python -m pytest scripts/tests/test_hooks_integration.py::TestUserPromptCheck -v`
 
 ## Impact
 
@@ -89,6 +98,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `bug`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11d3fbe6-350d-468f-8c22-27df726df3ea.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:57:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8abe37ac-d35f-4eda-a4e9-ca0e44b84ecc.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:42:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
 
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
