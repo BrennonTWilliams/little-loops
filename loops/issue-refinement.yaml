@@ -101,6 +101,5 @@ states:
   done:
     terminal: true
 max_iterations: 200
-default_timeout: 3600
 timeout: 86400
 on_handoff: spawn

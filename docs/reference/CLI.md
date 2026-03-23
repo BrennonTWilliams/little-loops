@@ -382,7 +382,6 @@ List active issues with optional filters.
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
-| `--include-completed` | Include completed issues (alias for `--status all`) |
 | `--flat` | Output flat list for scripting |
 | `--json` | Output as JSON array |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
