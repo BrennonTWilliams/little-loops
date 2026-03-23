@@ -270,6 +270,7 @@ Evaluate these dimensions:
 Produce your verdict in this EXACT format (do not add any other text):
 
 VERDICT: [GO | NO-GO]
+NO-GO REASON: [CLOSE | REFINE | SKIP]
 
 RATIONALE:
 [2-4 sentences explaining why you reached this verdict, referencing the strongest arguments from both sides]
@@ -285,12 +286,18 @@ KEY ARGUMENTS AGAINST:
 DECIDING FACTOR:
 [Single most important consideration that tipped the verdict in this direction]
 
+`NO-GO REASON` rules:
+- Include this line ONLY when VERDICT is NO-GO. Omit it entirely when VERDICT is GO.
+- `CLOSE` — The issue is invalid, already covered by existing functionality, or fundamentally misdirected. Recommended next action: close or archive the issue.
+- `REFINE` — The issue is valid but under-specified, ambiguous, or needs additional research before it can be implemented. Recommended next action: run `/ll:refine-issue` or `/ll:ready-issue`.
+- `SKIP` — The issue is good but poorly timed: competing priorities, missing prerequisites, or lower value relative to other active work. Recommended next action: keep open, deprioritize, or remove from sprint.
+
 Be decisive. Output ONLY the structured verdict above.
 ```
 
 ### Step 3e: Format and Display Verdict
 
-After receiving the judge's output, parse the VERDICT line and display using the `=` separator convention:
+After receiving the judge's output, parse the `VERDICT` line and, when the verdict is `NO-GO`, also parse the `NO-GO REASON` line immediately following it. Display using the `=` separator convention:
 
 ```
 ================================================================================
@@ -303,7 +310,8 @@ GO/NO-GO: [ISSUE-ID] — [ISSUE-TITLE]
 ### Against (Con-Implementation)
 [Condensed con arguments — 3-5 bullet points from KEY ARGUMENTS AGAINST and TOP 3 REASONS]
 
-### Judge Verdict: GO ✓    (or: NO-GO ✗)
+### Judge Verdict: GO ✓           (when verdict is GO)
+### Judge Verdict: NO-GO ✗ (CLOSE | REFINE | SKIP)    (when verdict is NO-GO — show the parsed reason)
 
 **Rationale**: [RATIONALE from judge]
 
@@ -312,7 +320,7 @@ GO/NO-GO: [ISSUE-ID] — [ISSUE-TITLE]
 ================================================================================
 ```
 
-Store the verdict (`GO` or `NO-GO`) for each issue for use in Phase 4 and Phase 5.
+Store both the verdict (`GO` or `NO-GO`) and, when applicable, the reason (`CLOSE`, `REFINE`, or `SKIP`) for each issue for use in Phase 4 and Phase 5.
 
 ### Step 3f: Go/No-Go Findings Write-Back
 
@@ -369,10 +377,10 @@ When **more than one issue** was evaluated, append a summary table after all ind
 GO/NO-GO SUMMARY
 ================================================================================
 
-| Issue ID | Title (truncated to 40 chars) | Verdict   | Deciding Factor |
-|----------|-------------------------------|-----------|-----------------|
-| FEAT-808 | go-no-go skill adversarial... | GO ✓      | Fits patterns   |
-| ENH-712  | ...                           | NO-GO ✗   | Already covered |
+| Issue ID | Title (truncated to 40 chars) | Verdict          | Deciding Factor |
+|----------|-------------------------------|------------------|-----------------|
+| FEAT-808 | go-no-go skill adversarial... | GO ✓             | Fits patterns   |
+| ENH-712  | ...                           | NO-GO ✗ (CLOSE)  | Already covered |
 
 ================================================================================
 ```
@@ -386,7 +394,8 @@ When `CHECK_MODE` is true, after all verdicts are displayed:
 ```
 IF any issue received NO-GO:
     for each NO-GO issue:
-        print "[ID] no-go: [deciding factor from judge]"
+        print "[ID] no-go ([REASON]): [deciding factor from judge]"
+        # REASON is the parsed NO-GO REASON value: CLOSE, REFINE, or SKIP
     print "[N] issue(s) received NO-GO verdict"
     exit 1
 
