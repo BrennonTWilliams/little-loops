@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 75
 ---
 
 # ENH-864: Init and Configure Should Auto-Update Pip Package When Outdated
@@ -68,6 +70,33 @@ Users frequently run `/ll:init` once and then rely on `/ll:configure` for day-to
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`skills/init/SKILL.md` — key locations:**
+- `skills/init/SKILL.md:19` — `<!-- PLUGIN_VERSION: 1.50.0 -->` version anchor (currently stale vs `1.61.1` in `scripts/little_loops/__init__.py:26`; update this alongside or after the enhancement)
+- `skills/init/SKILL.md:5–10` — `allowed-tools` frontmatter: only `Bash(which:*)` is listed for Bash; add `Bash(python3:*)` and `Bash(pip:*)` to support the auto-install path in `--yes` mode
+- `skills/init/SKILL.md:327–377` — full Step 9.5 content; the warn-only "versions differ" branch is at lines 370–374
+- `skills/init/SKILL.md:41–54` — `--yes` flag parsing: `if [[ "$FLAGS" == *"--yes"* ]]; then YES=true; fi` — use `$YES` to gate auto-install vs interactive prompt
+
+**`skills/configure/SKILL.md` — key locations:**
+- `skills/configure/SKILL.md:4–7` — `allowed-tools` frontmatter: only `Bash(mkdir:*)` for Bash; add `Bash(python3:*)` and `Bash(pip:*)` here too; also add `AskUserQuestion` (not listed in either skill's frontmatter currently — `skills/init/SKILL.md:4–10` likewise omits it, though init uses AskUserQuestion in practice)
+- `skills/configure/SKILL.md:27–39` — Step 1: Parse Arguments (flag parsing); insert pip check logic immediately after this block, before any `--list`/`--show`/`--reset` mode branching
+- `skills/configure/SKILL.md:137+` — Interactive mode / Step 1: Area Selection; pip check precedes this
+- No `PLUGIN_VERSION` comment exists — add `<!-- PLUGIN_VERSION: X.Y.Z -->` after the `# Configure` heading at line 17 (mirror `skills/init/SKILL.md:19`)
+- Configure has **no `--yes` flag** (flags are `--list`, `--show`, `--reset` only) — pip check in configure is always interactive
+
+**Version sources:**
+- `scripts/little_loops/__init__.py:26` — `__version__ = "1.61.1"` (authoritative)
+- `scripts/pyproject.toml:7` — `version = "1.61.1"` (matches)
+- `skills/init/SKILL.md:19` — `<!-- PLUGIN_VERSION: 1.50.0 -->` (currently stale)
+
+**Detection one-liner to reuse in configure (from `skills/init/SKILL.md:366`):**
+```bash
+python3 -c "import importlib.metadata; print(importlib.metadata.version('little-loops'))" 2>/dev/null
+```
+
 ## Implementation Steps
 
 1. Open `skills/init/SKILL.md`, locate step 9.5, find the "If versions differ → warn" branch
@@ -75,6 +104,21 @@ Users frequently run `/ll:init` once and then rely on `/ll:configure` for day-to
 3. Add success/failure output for the install step
 4. Open `skills/configure/SKILL.md`, add a new step "0.5 Pip Package Check" (before the config area menu) with the same detection + update logic
 5. Verify both skills reference the same `PLUGIN_VERSION` comment format for comparison
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+Refined steps with exact file locations:
+
+1. **`skills/init/SKILL.md:5–10`** — Add `Bash(python3:*)` and `Bash(pip:*)` to `allowed-tools` (required for `--yes` auto-install to run without user approval dialogs)
+2. **`skills/init/SKILL.md:370–374`** — Replace the warn-only block:
+   - If `$YES == true` → run `pip install --upgrade little-loops` (or `pip install -e "./scripts"` if `./scripts/` exists locally) via Bash; confirm with success/failure message before continuing
+   - Else (interactive) → use `AskUserQuestion` with yes/no to confirm before running the same install command
+3. **`skills/configure/SKILL.md:4–7`** — Add `Bash(python3:*)` and `Bash(pip:*)` to `allowed-tools`
+4. **`skills/configure/SKILL.md:17`** — Add `<!-- PLUGIN_VERSION: 1.61.1 -->` after the `# Configure` heading (same convention as `skills/init/SKILL.md:19`)
+5. **`skills/configure/SKILL.md:27–39`** — After flag parsing (Step 1), insert a "Pip Package Check" using the detection one-liner from `skills/init/SKILL.md:366`; since configure has no `--yes` flag this is always interactive; skip check if `LIST_MODE`, `SHOW_MODE`, or `RESET_MODE` is true (only relevant during a live configure session)
+6. **Optional follow-up**: Update `skills/init/SKILL.md:19` PLUGIN_VERSION from `1.50.0` to `1.61.1` to match `scripts/little_loops/__init__.py:26`
 
 ## API/Interface
 
@@ -96,5 +140,7 @@ enhancement, init, configure, pip, package-management
 Active
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5a9a29b-78e5-4330-acde-d4161d5e76d6.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:22:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba226300-17d6-4c1b-a577-f8f3208d00a9.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:16:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/795fcb4e-b6a9-48e6-b5c4-307257454953.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90e70c91-9459-4013-8a64-c4fa530434f9.jsonl`
