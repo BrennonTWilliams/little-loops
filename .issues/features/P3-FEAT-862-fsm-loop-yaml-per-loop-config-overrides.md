@@ -17,6 +17,25 @@ Add an optional `config` block to the loop YAML definition that allows a loop to
 
 Currently the only way to override `LL_HANDOFF_THRESHOLD` for a loop run is via `ll-loop run --handoff-threshold N` (added in ENH-768). There is no mechanism to bake the override into the loop YAML itself, so operators must re-specify it every time or wrap `ll-loop run` in a script. For confidence gate thresholds (`readiness_threshold`, `outcome_threshold`), there are no per-run override flags at all — only global ll-config settings.
 
+## Current Behavior
+
+Loop configuration values such as `handoff_threshold`, `readiness_threshold`, and `outcome_threshold` can only be set via:
+1. Global `ll-config.json` settings (applies to all loops)
+2. CLI flags at invocation time: `ll-loop run --handoff-threshold N`
+
+There is no mechanism to embed these overrides in the loop YAML itself. Operators must re-specify CLI flags on every `ll-loop run` invocation or wrap the command in a script. For confidence gate thresholds (`readiness_threshold`, `outcome_threshold`), there are no per-run override flags at all — only global `ll-config` settings apply.
+
+## Expected Behavior
+
+Loop YAML files support an optional top-level `config` block that embeds per-loop overrides for `ll-config` values. When `ll-loop run <loop-name>` is invoked, the `config` block overrides the global `ll-config` for the session. CLI flags take highest precedence and override both the YAML config block and global settings.
+
+## Motivation
+
+- **Self-contained loops**: Loop authors can ship YAML files that encode their own configuration requirements without burdening users with CLI flag documentation.
+- **Eliminates error-prone re-specification**: Operators no longer need to re-specify `--handoff-threshold` on every invocation; the intent is captured in the loop definition.
+- **Fills a configuration gap**: Confidence gate thresholds (`readiness_threshold`, `outcome_threshold`) have no per-run CLI override at all — only global config. This provides the missing per-loop escape hatch.
+- **Consistent resume behavior**: `ll-loop resume` respects the same YAML config block, ensuring resumed loops behave identically to fresh runs.
+
 ## Use Case
 
 A loop author wants to ship a loop YAML that always uses a lower handoff threshold (e.g., 60 instead of 80) and relaxed confidence thresholds because it is designed for exploratory, multi-step tasks. Rather than documenting "run with `--handoff-threshold 60`", they embed it directly:
@@ -174,6 +193,13 @@ class ConfidenceGateConfig:
 | architecture | docs/ARCHITECTURE.md | FSM loop execution model and config loading |
 | guidelines | .claude/CLAUDE.md | CLI tools and config schema reference |
 
+## Impact
+
+- **Priority**: P3 — Quality-of-life improvement for loop authors; no blocking dependency on other work
+- **Effort**: Medium — Requires changes across 7+ files (schema, validation, run, resume, info), but follows the established `LLMConfig` dataclass pattern; prerequisite `ConfidenceGateConfig` extension can be deferred
+- **Risk**: Low — Additive change; existing loops without a `config:` block are unaffected; schema validation ensures invalid values are warned but don't break execution
+- **Breaking Change**: No
+
 ## Labels
 
 `feat`, `fsm`, `loops`, `config`, `captured`
@@ -197,6 +223,7 @@ _Added by `/ll:confidence-check` on 2026-03-23_
 **Open** | Created: 2026-03-23 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-23T21:07:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9db96889-7141-4c7a-9208-51f9a202e218.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87d63032-1c5a-48a2-bbbb-58a14a066171.jsonl`
 - `/ll:refine-issue` - 2026-03-23T19:44:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4128aee-3c7e-4973-884d-baaf30142c8f.jsonl`
 - `/ll:refine-issue` - 2026-03-23T19:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96b5e822-aa37-416b-9c6d-1f4c72316bb4.jsonl`
