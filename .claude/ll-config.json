@@ -5,7 +5,6 @@
     "src_dir": "scripts/",
     "test_cmd": "python -m pytest scripts/tests/",
     "lint_cmd": "ruff check scripts/",
-    "type_cmd": "python -m mypy scripts/little_loops/",
     "format_cmd": "ruff format scripts/"
   },
   "issues": {
@@ -13,13 +12,26 @@
   },
   "scan": {
     "focus_dirs": ["scripts/"],
-    "exclude_patterns": ["**/__pycache__/**", "**/.git/**", "**/.venv/**", "**/dist/**", "**/build/**"]
+    "exclude_patterns": [
+      "**/__pycache__/**",
+      "**/.venv/**",
+      "**/venv/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/*.egg-info/**"
+    ]
   },
   "context_monitor": {
     "enabled": true
   },
-  "scratch_pad": {
-    "enabled": false
+  "commands": {
+    "confidence_gate": {
+      "enabled": true
+    },
+    "tdd_mode": true
+  },
+  "sprints": {
+    "default_max_workers": 2
   },
   "documents": {
     "enabled": true,
@@ -32,34 +44,6 @@
         "description": "Development guidelines and conventions",
         "files": [".claude/CLAUDE.md", "CONTRIBUTING.md"]
       }
-    }
-  },
-  "commands": {
-    "confidence_gate": {
-      "enabled": false,
-      "readiness_threshold": 85,
-      "outcome_threshold": 70
-    },
-    "tdd_mode": true
-  },
-  "parallel": {
-    "worktree_copy_files": [".claude/settings.local.json", ".env"]
-  },
-  "sprints": {
-    "sprints_dir": ".sprints",
-    "default_timeout": 3600,
-    "default_max_workers": 2
-  },
-  "sync": {
-    "enabled": true,
-    "github": {
-      "label_mapping": {
-        "BUG": "bug",
-        "FEAT": "enhancement",
-        "ENH": "enhancement"
-      },
-      "priority_labels": true,
-      "sync_completed": false
     }
   }
 }

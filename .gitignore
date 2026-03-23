@@ -79,3 +79,7 @@ docs/demo
 
 # Debug output files
 deepcodebase-*.txt
+
+# little-loops context/sync state files
+.claude/ll-context-state.json
+.claude/ll-sync-state.json
