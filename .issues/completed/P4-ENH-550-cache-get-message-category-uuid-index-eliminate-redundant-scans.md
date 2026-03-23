@@ -140,6 +140,7 @@ _(ENH-840 removed — completed via commit 97870cfd; `workflow_sequence_analyzer
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a33da7f-6dc1-4101-a62c-c07c4786fb89.jsonl`
 - `/ll:ready-issue` - 2026-03-23T05:43:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/117eda3f-f381-423a-a235-0a8dda325b52.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6a36166-5e73-45bb-938b-edeb0b423ed7.jsonl`
 - `/ll:refine-issue` - 2026-03-23T05:38:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37e2d58e-d5ca-4ed9-a92e-52148240513f.jsonl`
@@ -162,6 +163,22 @@ _(ENH-840 removed — completed via commit 97870cfd; `workflow_sequence_analyzer
 
 ---
 
+## Resolution
+
+**Completed**: 2026-03-23
+
+### Changes Made
+
+- `scripts/little_loops/workflow_sequence/analysis.py`: Added `_build_category_index(patterns)` after `_get_message_category`; updated `_detect_workflows` to build the index once at the top (following the `boundary_before` pattern) and replaced the two `_get_message_category` call sites (lines 533, 583) with `category_index.get(msg.get("uuid", ""))`.
+- `scripts/tests/test_workflow_sequence_analyzer.py`: Added `_build_category_index` to import; added `TestBuildCategoryIndex` class with 5 tests (flat index, empty patterns, non-str category, empty uuid, uuid collision).
+
+### Verification
+
+- TDD Red → Green: 2 assertion failures on stub, all 9 tests pass on implementation
+- Full suite: 3846 passed, 4 skipped
+- `ruff check`: all checks passed
+- `mypy`: no new errors (pre-existing wcwidth issue unrelated)
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Priority: P4
