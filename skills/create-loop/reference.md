@@ -712,7 +712,7 @@ max_iterations: 20
 ```yaml
 states:
   scan:
-    action: "ll-issues list --status open --format ids"
+    action: "ll-issues list --json"
     capture: open_issues
   apply:
     action: "/ll:manage-issue feature implement ${captured.open_issues.output}"

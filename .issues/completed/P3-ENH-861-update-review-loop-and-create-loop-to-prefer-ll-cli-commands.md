@@ -2,7 +2,7 @@
 id: ENH-861
 type: ENH
 priority: P3
-status: open
+status: completed
 title: "Update review-loop and create-loop skills to prefer ll- CLI commands"
 discovered_date: "2026-03-23"
 discovered_by: capture-issue
@@ -131,13 +131,13 @@ print(issues[0]['id'])
 
 ## Acceptance Criteria
 
-- [ ] Both skills explicitly prefer `ll-` CLI commands for issue-related operations
-- [ ] No raw `ls .issues/` or manual grep for issue state where a CLI equivalent exists
-- [ ] CLI command usage is consistent with documented interface in CLAUDE.md and `docs/reference/API.md`
-- [ ] `review-loop/SKILL.md` confirmed compliant (no changes needed)
-- [ ] `create-loop/loop-types.md:795` and `:861` discovery commands use `ll-issues list --json` without broken `status=='open'` filter
-- [ ] `create-loop/loop-types.md:557` skill discovery uses Glob tool instead of `ls | sed`
-- [ ] `create-loop/reference.md:715` example uses valid `ll-issues list` flags (`--json` instead of `--status open --format ids`)
+- [x] Both skills explicitly prefer `ll-` CLI commands for issue-related operations
+- [x] No raw `ls .issues/` or manual grep for issue state where a CLI equivalent exists
+- [x] CLI command usage is consistent with documented interface in CLAUDE.md and `docs/reference/API.md`
+- [x] `review-loop/SKILL.md` confirmed compliant (no changes needed)
+- [x] `create-loop/loop-types.md:795` and `:861` discovery commands use `ll-issues list --json` without broken `status=='open'` filter
+- [x] `create-loop/loop-types.md:557` skill discovery uses Glob tool instead of `ls | sed`
+- [x] `create-loop/reference.md:715` example uses valid `ll-issues list` flags (`--json` instead of `--status open --format ids`)
 
 ## Success Metrics
 
@@ -161,7 +161,18 @@ N/A — No public API changes. Modifications are to skill instruction markdown f
 
 `enhancement`, `skills`, `cli`
 
+## Resolution
+
+Fixed 4 locations across 2 files:
+- `skills/create-loop/loop-types.md:556–558` — Replaced `ls skills/*/SKILL.md | sed ...` bash block with Glob tool instruction
+- `skills/create-loop/loop-types.md:795` — Removed broken `status=='open'` filter; `ll-issues list --json` already returns only active issues
+- `skills/create-loop/loop-types.md:861–868` — Same fix in embedded YAML template example
+- `skills/create-loop/reference.md:715` — Fixed invalid flags `--status open --format ids` → `--json`
+
+All 3863 tests pass.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T18:29:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa97f181-0c89-48a7-90d1-c20a0ffe9cd8.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7754065d-d79f-4df1-9b8e-8e6c7e070b2c.jsonl`
 - `/ll:format-issue` - 2026-03-23T18:09:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4be9bd15-4ea4-4d36-846c-df93dbbf77e9.jsonl`
 - `/ll:refine-issue` - 2026-03-23T17:13:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce5d0bc6-5ac2-4aae-8e31-43ca6876d26e.jsonl`

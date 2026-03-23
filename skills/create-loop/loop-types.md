@@ -553,9 +553,7 @@ If user selected "Harness a skill or prompt":
 
 Before asking questions, scan the skills directory:
 
-```bash
-ls skills/*/SKILL.md 2>/dev/null | sed 's|skills/||' | sed 's|/SKILL.md||'
-```
+Use the Glob tool with pattern `skills/*/SKILL.md` to list available skills.
 
 For each skill found, read its `SKILL.md` to extract the first line of the `description:` frontmatter field.
 
@@ -792,7 +790,7 @@ states:
 
 | Mode | Discovery Command |
 |------|------------------|
-| Active issues list | `ll-issues list --json \| python3 -c "import json,sys; issues=[i for i in json.load(sys.stdin) if i.get('status')=='open']; print(issues[0]['id']) if issues else sys.exit(1)"` |
+| Active issues list | `ll-issues list --json \| python3 -c "import json,sys; issues=json.load(sys.stdin); print(issues[0]['id']) if issues else sys.exit(1)"` |
 | File glob pattern | `find . -name '<pattern>' -not -path './.git/*' \| sort \| head -1` |
 | Manual list | `python3 -c "import os; os.makedirs('.loops/tmp', exist_ok=True); items='<item1>,<item2>,...'.split(','); [open('.loops/tmp/harness-items.txt','w').write('\n'.join(items))]; print(items[0])"` (first-run seeding) |
 
@@ -861,10 +859,9 @@ states:
       ll-issues list --json | python3 -c "
       import json, sys
       issues = json.load(sys.stdin)
-      open_issues = [i for i in issues if i.get('status') == 'open']
-      if not open_issues:
+      if not issues:
           sys.exit(1)
-      print(open_issues[0]['id'])
+      print(issues[0]['id'])
       "
     action_type: shell
     capture: "current_item"

@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-03-12
 discovered_by: capture-issue
-confidence_score: 98
-outcome_confidence: 71
+confidence_score: 100
+outcome_confidence: 85
 ---
 
 # FEAT-706: Hook management tooling for target projects
@@ -68,12 +68,15 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 1. **Settings.json schema is already documented** — `docs/claude-code/hooks-reference.md` contains the full hook schema. The structure is identical to `hooks/hooks.json`. No separate research needed.
 
-2. **Register `hooks` area in `skills/configure/SKILL.md`** — Three edits required:
-   - Area Mapping table (lines 46-60): add `hooks` row → reads/writes `.claude/settings.json` like `allowed-tools`
-   - Interactive area selection (lines 141-207): add `hooks` option to Batch 4 (the terminal batch with `context`, `prompt`, `allowed-tools`)
-   - Arguments list (lines 257-279): add `hooks` bullet
+2. **Register `hooks` area in `skills/configure/SKILL.md`** — Six edits required:
+   - Frontmatter `description` field (line 10): append `|hooks` to the pipe-delimited area list
+   - Area Mapping table (line 59→60): add `hooks` row → reads/writes `.claude/settings.json` like `allowed-tools`
+   - `--list` mode output (line 85→86): add `hooks [DEFAULT]` line; status detection checks `hooks` key in settings files, not `ll-config.json`
+   - Batch 3 "More areas..." description (line 190): update from `"Show context, prompt"` → `"Show context, prompt, hooks"`
+   - Interactive area selection Batch 4 (lines 195-207): add `hooks` option to the final batch alongside `context`, `prompt`, `allowed-tools`
+   - Arguments list (line 273→274): add `hooks` bullet
 
-3. **Create `skills/configure/areas.md` section `## Area: hooks`** — Append after the `allowed-tools` section (line 792). Follow the `allowed-tools` pattern (lines 736-792) exactly: detect current state, display table, interactive round, merge JSON, write result.
+3. **Append `## Area: hooks` to `skills/configure/areas.md`** — Append after the `allowed-tools` section (after line 792, current EOF). Follow the `allowed-tools` pattern (lines 736-792) exactly: detect current state, display table, interactive round, merge JSON, write result. **Do NOT create a separate `hooks.md` file** — all area logic lives in `areas.md`.
 
 4. **Implement `show` mode**: Read `hooks/hooks.json` (plugin hooks, always present) + `.claude/settings.json` (may not exist). Display unified table with columns: Source (`[Plugin]`/`[Project]`/`[Local]`), Event, Matcher, Script, Timeout, Status (exists/missing). Flag broken script paths.
 
@@ -88,13 +91,11 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 ## Integration Map
 
 ### Files to Modify
-- `skills/configure/SKILL.md` — add `hooks` subcommand dispatch
-- `skills/configure/hooks.md` — new file implementing hook management logic
-- `hooks/hooks.json` — source of truth for plugin hook definitions (read-only from this tool)
+- `skills/configure/SKILL.md` — add `hooks` to: Area Mapping table (line 60, after `allowed-tools`), `--list` output (line 85, after `allowed-tools`), Batch 4 interactive selection (line 206, before the closing `\`\`\``), Arguments list (line 274, after `allowed-tools`)
+- `skills/configure/areas.md` — append new `## Area: hooks` section after line 792 (current EOF), following the `allowed-tools` pattern exactly
 
-### Dependent Files (Callers/Importers)
-- `skills/configure/SKILL.md` — dispatcher that routes to sub-commands
-- `hooks/hooks.json` — source of truth for plugin hook definitions (read-only)
+### Dependent Files (Read-Only)
+- `hooks/hooks.json` — source of truth for plugin hook definitions (read-only; do not modify)
 
 ### Similar Patterns
 - Existing `/ll:configure` sub-command dispatch pattern
@@ -116,9 +117,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 #### Exact integration points in `skills/configure/SKILL.md`
 
-- **Line 46-60** (Area Mapping table): Add a `hooks` row pointing to a new area description. Pattern to follow is the `allowed-tools` row at line 59: `| \`allowed-tools\` | \`permissions.allow\` in \`.claude/settings.json\`... | ll- CLI tool allow entries |`. Hooks writes to `.claude/settings.json` similarly.
-- **Lines 138-207** (interactive area selection batches): Add `hooks` option to one of the "More areas..." batches.
-- **Lines 261-273** (Arguments list): Add `hooks` to the bullet list of valid areas.
+- **Line 10** (frontmatter `description` field): Append `|hooks` to the pipe-delimited area list: `"project|issues|...allowed-tools|hooks (optional - prompts if omitted)"`
+- **Line 59→60** (Area Mapping table, lines 46-59): Add `hooks` row after `allowed-tools`. Pattern: `| \`hooks\` | \`hooks\` in \`.claude/settings.json\` or \`.claude/settings.local.json\` | ll- lifecycle hook configuration |`
+- **Line 85→86** (`--list` mode output, lines 71-90): Add `hooks` line after `allowed-tools`. Pattern: `  hooks         [DEFAULT]     ll- hook configuration in settings.json/settings.local.json`. Status detection: check `.claude/settings.json` and `.claude/settings.local.json` for a `hooks` key (not `ll-config.json`).
+- **Line 190** (Batch 3 "More areas..." description): Update description from `"Show context, prompt"` to `"Show context, prompt, hooks"` so users know `hooks` is available in Batch 4.
+- **Lines 195-207** (Batch 4, the final interactive area selection batch): Add `hooks` option alongside `context`, `prompt`, `allowed-tools`. This batch currently has 3 options; `hooks` makes it 4 — still within the standard batch size, no additional "More areas..." needed.
+- **Lines 261-273** (Arguments list): Add `hooks` bullet at line 274 after `allowed-tools`.
 
 #### Exact integration points in `skills/configure/areas.md`
 
@@ -211,6 +215,8 @@ Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(inp
 **Open** | Created: 2026-03-12 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T18:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa97f181-0c89-48a7-90d1-c20a0ffe9cd8.jsonl`
+- `/ll:refine-issue` - 2026-03-23T18:25:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c741821-281c-470e-a210-3206e80affa1.jsonl`
 - `/ll:confidence-check` - 2026-03-23T18:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbb81656-ef71-4079-a8b7-1bf83a1c6364.jsonl`
 - `/ll:refine-issue` - 2026-03-23T18:12:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/500f7108-96bd-4385-b940-17a9e320101e.jsonl`
 - `/ll:refine-issue` - 2026-03-19T02:51:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f2bd1a9-9196-4775-a221-228c31d6c262.jsonl`
