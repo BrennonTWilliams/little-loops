@@ -14,6 +14,7 @@ TOTAL = 5     # Working total (mandatory rounds: 1, 2, 3a, 6, 11)
               # Round 3b is silent (automation always enabled, no user prompt)
               # Round 5a is conditional (only if parallel processing selected)
               # Round 7 is silent (advanced settings always skipped)
+              # Hooks are always active via the plugin system — no installation round needed
 ```
 
 Before each round's `AskUserQuestion` call, increment STEP and output:
@@ -669,58 +670,9 @@ questions:
 
 ---
 
-## Round 12: Install Hooks — ALWAYS RUNS
-
-**CRITICAL**: You MUST execute this round. This is the final interactive round. The wizard is NOT complete until you have asked the user about hook installation.
-
-Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Install Hooks
-
-**First, detect existing settings files:**
-
-```bash
-SETTINGS_JSON_EXISTS=false
-SETTINGS_LOCAL_EXISTS=false
-[ -f ".claude/settings.json" ] && SETTINGS_JSON_EXISTS=true
-[ -f ".claude/settings.local.json" ] && SETTINGS_LOCAL_EXISTS=true
-```
-
-**Present a SINGLE AskUserQuestion call asking about loading method:**
-
-```yaml
-questions:
-  - header: "Hook Loading Method"
-    question: "How is little-loops loaded in this project? (determines whether hooks need to be installed)"
-    options:
-      - label: "Via CLAUDE.md (install hooks)"
-        description: "little-loops is referenced in CLAUDE.md — hooks need to be installed to settings.json to activate"
-      - label: "As a registered Claude Code plugin (skip)"
-        description: "Hooks are already active via the plugin system — no installation needed"
-      - label: "Skip"
-        description: "Configure hooks later with: /ll:configure hooks install"
-    multiSelect: false
-```
-
-If "Via CLAUDE.md" selected, immediately follow up with target file selection:
-
-```yaml
-questions:
-  - header: "Target File"
-    question: "Which settings file should receive the ll- hook entries?"
-    options:
-      - label: "settings.local.json (Recommended)"
-        description: "Gitignored by default — keeps ll- hooks out of version control"
-      - label: "settings.json"
-        description: "Tracked in version control — shared with all project contributors"
-    multiSelect: false
-```
-
-**Record the result** (loading method + chosen target file, or "skip") — used by SKILL.md Step 10.5 to perform the actual hook merge.
-
----
-
 ## Interactive Mode Summary
 
-**Total interaction rounds: 6–7 (7 only if parallel processing selected)**
+**Total interaction rounds: 5–6 (6 only if parallel processing selected)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -735,7 +687,6 @@ questions:
 | 9 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
 | 10 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
 | **11** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
-| **12** | **Install Hooks** | **plugin loading mode (CLAUDE.md / plugin / skip), target settings file** | **Always** |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next

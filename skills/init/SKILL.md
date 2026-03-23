@@ -425,59 +425,6 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
    - Create `.claude/` directory first if needed
    - Write result back with 2-space indent, preserving all top-level keys (`$schema`, `env`, etc.)
 
-### 10.5. Install Hooks
-
-Merge ll- hook entries from `hooks/hooks.json` into the user's chosen settings file.
-
-**If `--dry-run` is set, skip this step** (already shown in dry-run preview).
-
-1. Determine loading method and target file:
-   - **`--yes` mode**: Always install to `.claude/settings.local.json` without prompting (do not attempt to detect plugin vs CLAUDE.md loading — detection is unreliable; installing when already a plugin user is harmless since the merge is additive)
-   - **`--interactive` mode**: Use the choice recorded in Round 12 of the wizard (loading method + target file)
-   - **Otherwise**, use `AskUserQuestion` inline:
-
-     ```yaml
-     questions:
-       - header: "Hook Loading Method"
-         question: "How is little-loops loaded in this project?"
-         options:
-           - label: "Via CLAUDE.md (install hooks)"
-             description: "little-loops is referenced in CLAUDE.md — hooks need to be installed to settings.json to activate"
-           - label: "As a registered Claude Code plugin (skip)"
-             description: "Hooks are already active via the plugin system — no installation needed"
-           - label: "Skip"
-             description: "Configure hooks later with: /ll:configure hooks install"
-         multiSelect: false
-     ```
-
-     If "Via CLAUDE.md" selected, then ask:
-
-     ```yaml
-     questions:
-       - header: "Target File"
-         question: "Which settings file should receive the ll- hook entries?"
-         options:
-           - label: "settings.local.json (Recommended)"
-             description: "Gitignored by default — keeps ll- hooks out of version control"
-           - label: "settings.json"
-             description: "Tracked in version control — shared with all project contributors"
-         multiSelect: false
-     ```
-
-2. If user chose "As a registered Claude Code plugin (skip)" or "Skip", proceed to Step 11 without changes. Set `HOOKS_INSTALLED=false`.
-
-3. Perform merge into the chosen target file:
-   - Read target file, or start with `{}` if absent
-   - Read `hooks/hooks.json` — use only the `hooks` key (ignore `description` field)
-   - Resolve `${CLAUDE_PLUGIN_ROOT}` in hook commands:
-     - Run `bash -c 'pwd'` to get the absolute plugin root path
-     - Replace every occurrence of `${CLAUDE_PLUGIN_ROOT}` in all hook command strings with this absolute path
-     - If the path contains spaces, wrap it in single quotes when substituting (e.g., `bash '/path with spaces/hooks/scripts/session-cleanup.sh'`)
-   - Merge the `hooks` key additively: for each event in plugin hooks, append its hook groups to the existing list for that event (do not remove or overwrite existing non-ll entries)
-   - Create `.claude/` directory first if needed
-   - Write result back with 2-space indent, preserving all top-level keys
-   - Set `HOOKS_INSTALLED=true` and record the target filename
-
 ### 11. Display Completion Message
 
 ```
@@ -490,7 +437,6 @@ Created: .claude/ll-goals.md (product goals template)  # Only show if product en
 Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
 Updated: .gitignore (added state file exclusions)
 Updated: .claude/settings.local.json (added ll- CLI tool permissions)  # Only show if user opted in
-Updated: .claude/settings.json (added ll- hooks)                       # Only show if HOOKS_INSTALLED=true
 
 Next steps:
   1. Review and customize: .claude/ll-config.json
@@ -501,7 +447,6 @@ Next steps:
   6. Run sprint processing: ll-sprint run [sprint-file]   # Only show if sprint management selected
   7. Run FSM loop: ll-loop run [loop-file]               # Only show if FSM loops selected
   8. Run sequential automation: ll-auto                  # Only show if sequential automation selected
-  9. Configure hooks: /ll:configure hooks                 # Only show if HOOKS_INSTALLED=false (user skipped Step 10.5)
 
 Additional settings for sprints, loops, and automation can be customized via:
   /ll:configure                                          # Only show if any automation feature selected
