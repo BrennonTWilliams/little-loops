@@ -469,6 +469,10 @@ Merge ll- hook entries from `hooks/hooks.json` into the user's chosen settings f
 3. Perform merge into the chosen target file:
    - Read target file, or start with `{}` if absent
    - Read `hooks/hooks.json` — use only the `hooks` key (ignore `description` field)
+   - Resolve `${CLAUDE_PLUGIN_ROOT}` in hook commands:
+     - Run `bash -c 'pwd'` to get the absolute plugin root path
+     - Replace every occurrence of `${CLAUDE_PLUGIN_ROOT}` in all hook command strings with this absolute path
+     - If the path contains spaces, wrap it in single quotes when substituting (e.g., `bash '/path with spaces/hooks/scripts/session-cleanup.sh'`)
    - Merge the `hooks` key additively: for each event in plugin hooks, append its hook groups to the existing list for that event (do not remove or overwrite existing non-ll entries)
    - Create `.claude/` directory first if needed
    - Write result back with 2-space indent, preserving all top-level keys

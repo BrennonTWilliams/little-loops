@@ -148,15 +148,23 @@ This will fail at execution. The fix should wrap the resolved path in quotes whe
 
 `bug`, `hooks`, `init`, `captured`
 
+## Resolution
+
+**Fixed** in `skills/init/SKILL.md:469-479` and `skills/configure/areas.md:901-910`.
+
+Added a `${CLAUDE_PLUGIN_ROOT}` resolution step in both merge blocks. Before writing hooks to the settings file, the skill now runs `bash -c 'pwd'` to obtain the absolute plugin root and replaces every occurrence of `${CLAUDE_PLUGIN_ROOT}` in all hook command strings with that value. Paths containing spaces are wrapped in single quotes.
+
 ## Status
 
-**Open** | Created: 2026-03-23 | Priority: P2
+**Completed** | Created: 2026-03-23 | Resolved: 2026-03-23 | Priority: P2
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T21:06:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/175d1c25-3bc3-4807-a0b7-0511897a7a1a.jsonl`
 - `/ll:refine-issue` - 2026-03-23T21:03:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9347f1dd-86de-45fe-80c1-0777f09e8214.jsonl`
 - `/ll:confidence-check` - 2026-03-23T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/866bb962-c943-47d7-87e5-7be36e498342.jsonl`
 - `/ll:refine-issue` - 2026-03-23T20:53:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35b87f24-5f70-4b60-a5a7-ff0addd4adc0.jsonl`
 - `/ll:format-issue` - 2026-03-23T20:48:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6481bfd-325d-45f8-883c-848fa8beaa77.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/855beb9e-af12-4065-bc95-c436eff3069d.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

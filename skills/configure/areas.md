@@ -901,9 +901,13 @@ questions:
 **Step 3 — Perform merge into chosen target file**:
 1. Read target file, or start with `{}` if absent
 2. Read `hooks/hooks.json` — use the `hooks` key (the top-level object, not the `description` field)
-3. Merge the `hooks` key additively: for each event in the plugin hooks, append its hook groups to the existing list for that event (do not overwrite or remove existing non-ll entries)
-4. Create `.claude/` directory first if needed
-5. Write result back with 2-space indent, preserving all top-level keys
+3. Resolve `${CLAUDE_PLUGIN_ROOT}` in hook commands:
+   - Run `bash -c 'pwd'` to get the absolute plugin root path
+   - Replace every occurrence of `${CLAUDE_PLUGIN_ROOT}` in all hook command strings with this absolute path
+   - If the path contains spaces, wrap it in single quotes when substituting (e.g., `bash '/path with spaces/hooks/scripts/session-cleanup.sh'`)
+4. Merge the `hooks` key additively: for each event in the plugin hooks, append its hook groups to the existing list for that event (do not overwrite or remove existing non-ll entries)
+5. Create `.claude/` directory first if needed
+6. Write result back with 2-space indent, preserving all top-level keys
 
 **Configuration result**: Report what was written:
 
