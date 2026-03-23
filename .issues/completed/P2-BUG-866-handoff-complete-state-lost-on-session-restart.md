@@ -132,12 +132,22 @@ This ensures a new session with an existing handoff file starts with `handoff_co
 `hooks`, `context-monitor`, `handoff`, `captured`
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-03-23T23:21:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/166208b7-c2e1-40b1-b750-5e80e5d0394f.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:18:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10fea9ef-903a-4f02-8988-b04b2fa4891f.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ee74ad8-9f45-4b40-a214-05d98a619dea.jsonl`
 - `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c9326c8-7686-429c-831f-0b844c3f85aa.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:29:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8e2d522-d473-46a2-8169-228e476ec976.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/520e79f8-0528-4c6d-92c0-e09d2d2aa372.jsonl`
 
+## Resolution
+
+**Fixed** in `hooks/scripts/context-monitor.sh` — `read_state()` now checks for `.claude/ll-continue-prompt.md` when creating fresh state. If the file exists, `handoff_complete` is initialized to `true`, preventing the hook from re-firing reminders on session restart.
+
+Two new tests added to `scripts/tests/test_hooks_integration.py::TestContextMonitor`:
+- `test_fresh_state_with_handoff_file_sets_handoff_complete_true`
+- `test_fresh_state_without_handoff_file_sets_handoff_complete_false`
+
 ---
 
-**Open** | Created: 2026-03-23 | Priority: P2
+**Closed** | Created: 2026-03-23 | Resolved: 2026-03-23 | Priority: P2

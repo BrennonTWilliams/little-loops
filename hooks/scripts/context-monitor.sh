@@ -151,6 +151,12 @@ read_state() {
     else
         # Ensure directory exists
         mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
+        # If a handoff file already exists from a prior session, start with handoff_complete=true
+        # so the hook does not re-fire reminders for a handoff that was already completed.
+        local handoff_complete="false"
+        if [ -f ".claude/ll-continue-prompt.md" ]; then
+            handoff_complete="true"
+        fi
         local init_state
         init_state=$(cat <<EOF
 {
@@ -158,7 +164,7 @@ read_state() {
     "estimated_tokens": 0,
     "tool_calls": 0,
     "threshold_crossed_at": null,
-    "handoff_complete": false,
+    "handoff_complete": ${handoff_complete},
     "breakdown": {}
 }
 EOF

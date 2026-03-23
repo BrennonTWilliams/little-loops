@@ -528,6 +528,87 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
+    def test_fresh_state_with_handoff_file_sets_handoff_complete_true(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Fresh state initializes handoff_complete=true when ll-continue-prompt.md exists."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # Create the handoff file (simulates a prior-session handoff)
+            (tmp_path / ".claude" / "ll-continue-prompt.md").write_text("Continue from here.")
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "output\n" * 10},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+
+            state_file = tmp_path / "ll-context-state.json"
+            assert state_file.exists()
+            state = json.loads(state_file.read_text())
+            assert state["handoff_complete"] is True, (
+                f"Expected handoff_complete=true when handoff file exists, got: {state['handoff_complete']}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_fresh_state_without_handoff_file_sets_handoff_complete_false(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Fresh state initializes handoff_complete=false when ll-continue-prompt.md is absent."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # No handoff file exists
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "output\n" * 10},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+
+            state_file = tmp_path / "ll-context-state.json"
+            assert state_file.exists()
+            state = json.loads(state_file.read_text())
+            assert state["handoff_complete"] is False, (
+                f"Expected handoff_complete=false when no handoff file, got: {state['handoff_complete']}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
     def test_reminder_fires_again_after_cooldown_expires(
         self, hook_script: Path, test_config: Path, tmp_path: Path
     ):
