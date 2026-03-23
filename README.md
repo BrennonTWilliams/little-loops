@@ -480,7 +480,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/development/TROUBLESHOO
 ## Documentation
 
 - [**docs.little-loops.ai**](https://docs.little-loops.ai) - Hosted documentation site (searchable, dark mode, mobile-friendly)
-- [**Documentation Index**](docs/INDEX.md) - Complete reference for all documentation
+- [**Documentation Index**](docs/index.md) - Complete reference for all documentation
 - [Configuration Reference](docs/reference/CONFIGURATION.md) - Full config options and examples
 - [Command Reference](docs/reference/COMMANDS.md) - All slash commands with usage
 - [CLI Reference](docs/reference/CLI.md) - All `ll-` CLI tools with flags and examples
