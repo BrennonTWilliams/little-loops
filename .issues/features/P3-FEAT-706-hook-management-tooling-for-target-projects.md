@@ -2,7 +2,7 @@
 discovered_date: 2026-03-12
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 85
+outcome_confidence: 71
 ---
 
 # FEAT-706: Hook management tooling for target projects
@@ -92,7 +92,7 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
    - **Detect loading method**: Do NOT use `[ -n "$CLAUDE_PLUGIN_ROOT" ]` (unreliable in Bash tool context — see Codebase Research Findings). Instead, use an explicit `AskUserQuestion` asking "Via CLAUDE.md (install hooks)" vs "As a registered plugin (skip)". In `--interactive` mode, use the answer recorded in Round 12.
    - Ask which target file: `.claude/settings.local.json` (recommended, gitignored) or `.claude/settings.json` (tracked) — same `AskUserQuestion` pattern as Step 10 / `allowed-tools` in `areas.md:760-783`
    - Merge the `hooks` key from `hooks/hooks.json` into the chosen file additively (read target or start with `{}`; merge `hooks` key without overwriting existing non-ll hooks; write with 2-space indent)
-   - **`--yes` mode**: use `.claude/settings.local.json` without prompting (skip if plugin user)
+   - **`--yes` mode**: always install to `.claude/settings.local.json` without prompting — do not attempt to detect plugin vs CLAUDE.md loading (detection is unreliable; installing when already a plugin user is harmless since the merge is additive)
    - **`--dry-run` mode**: skip this step (already previewed in dry-run output)
    - Track whether hooks were installed for use in the completion message
 
@@ -263,6 +263,7 @@ Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(inp
 **Open** | Created: 2026-03-12 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efd644e4-14f1-4e4c-878f-5865a95de11c.jsonl`
 - `/ll:refine-issue` - 2026-03-23T18:44:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ae65570-dc4b-4ae8-8212-fe007eafcff6.jsonl`
 - `/ll:confidence-check` - 2026-03-23T18:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa97f181-0c89-48a7-90d1-c20a0ffe9cd8.jsonl`
 - `/ll:refine-issue` - 2026-03-23T18:25:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c741821-281c-470e-a210-3206e80affa1.jsonl`
