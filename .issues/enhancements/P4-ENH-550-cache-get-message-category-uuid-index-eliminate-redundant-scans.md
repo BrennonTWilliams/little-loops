@@ -3,8 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
-confidence_score: 90
-outcome_confidence: 93
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-550: Cache `_get_message_category` UUID→category index to eliminate O(C×E) scans repeated per message
@@ -15,13 +15,13 @@ outcome_confidence: 93
 
 ## Location
 
-- **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 664 (function), 713, 763 (call sites) — updated 2026-03-22; was 600–607, 649, 704 at scan commit a574ea0
+- **File**: `scripts/little_loops/workflow_sequence/analysis.py`
+- **Line(s)**: 484 (function), 533, 583 (call sites) — updated 2026-03-23 after ENH-840 split `workflow_sequence_analyzer.py` into the `workflow_sequence/` package; was 664, 713, 763 prior to split
 - **Anchor**: `function _get_message_category`, `_detect_workflows` call sites
-- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L600-L607)
 - **Code**:
 ```python
 def _get_message_category(msg_uuid: str, patterns: dict[str, Any]) -> str | None:
+    """Look up message category from Step 1 patterns."""
     for category_info in patterns.get("category_distribution", []):
         for example in category_info.get("example_messages", []):
             if example.get("uuid") == msg_uuid:
@@ -30,7 +30,7 @@ def _get_message_category(msg_uuid: str, patterns: dict[str, Any]) -> str | None
     return None
 ```
 
-Called at line 649 and again at line 704 — twice per message in every matched segment.
+Called at line 533 (building `segment_categories`) and line 583 (inside `Workflow(...)` messages list comprehension) — twice per message in every matched segment.
 
 ## Current Behavior
 
@@ -77,20 +77,20 @@ def _detect_workflows(...):
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/workflow_sequence_analyzer.py` — add `_build_category_index`, update `_detect_workflows`
+- `scripts/little_loops/workflow_sequence/analysis.py` — add `_build_category_index` near `_get_message_category` (line 484), update `_detect_workflows` (line 494)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/tests/test_workflow_sequence_analyzer.py:26` — imports `_get_message_category` by name; add `_build_category_index` to the same import line
-- `scripts/tests/test_workflow_sequence_analyzer.py:1818-1858` — `TestGetMessageCategory` class tests `_get_message_category` directly; **do not remove the function** (it has direct test coverage)
+- `scripts/tests/test_workflow_sequence_analyzer.py:35` — imports `_get_message_category` from `little_loops.workflow_sequence.analysis`; add `_build_category_index` to the same import line
+- `scripts/tests/test_workflow_sequence_analyzer.py:1819` — `TestGetMessageCategory` class tests `_get_message_category` directly; **do not remove the function** (it has direct test coverage at lines 1836, 1841, 1845, 1857)
 
 ### Similar Patterns
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/little_loops/workflow_sequence_analyzer.py:686-697` — `boundary_before: dict[str, bool]` is built at the top of `_detect_workflows` using the same build-once/query-N-times pattern. Follow this convention exactly: typed annotation on empty dict, plain `for` loop to populate, comment above block, `.get(key, default)` at call sites.
+- `scripts/little_loops/workflow_sequence/analysis.py:507-509` — `boundary_before: dict[str, bool]` is built at the top of `_detect_workflows` using the same build-once/query-N-times pattern. Follow this convention exactly: typed annotation on empty dict, plain `for` loop to populate, `.get(key, default)` at call sites.
 
 ### Tests
-- `scripts/tests/test_workflow_sequence_analyzer.py` — add `TestBuildCategoryIndex` unit test; follow the `TestGetMessageCategory` structure (lines 1818-1858): stateless class, private `_patterns()` helper method (not a `@pytest.fixture`), single-verb docstrings, edge cases: empty input, non-str category, UUID collision
+- `scripts/tests/test_workflow_sequence_analyzer.py` — add `TestBuildCategoryIndex` unit test; follow the `TestGetMessageCategory` structure (lines 1819–1862): stateless class, private `_patterns()` helper method (not a `@pytest.fixture`), single-verb docstrings, edge cases: empty input, non-str category, UUID collision
 
 ### Documentation
 - N/A
@@ -100,10 +100,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `_build_category_index(patterns)` near `_get_message_category`
-2. At start of `_detect_workflows`, call `category_index = _build_category_index(patterns)`
-3. Replace both `_get_message_category(...)` call sites with `category_index.get(...)`
-4. Keep `_get_message_category` — it has no production callers after this change, but `TestGetMessageCategory` (test_workflow_sequence_analyzer.py:1818) tests it directly; removing it would break existing tests without benefit
+1. In `scripts/little_loops/workflow_sequence/analysis.py`, add `_build_category_index(patterns)` near `_get_message_category` (line 484)
+2. At the start of `_detect_workflows` (line 494), add `category_index = _build_category_index(patterns)` following the `boundary_before` pattern at lines 507–509
+3. Replace the call at line 533 and line 583 with `category_index.get(msg.get("uuid", ""))`
+4. Keep `_get_message_category` — it has no production callers after this change, but `TestGetMessageCategory` (test_workflow_sequence_analyzer.py:1819) tests it directly; removing it would break existing tests without benefit
+5. In `scripts/tests/test_workflow_sequence_analyzer.py`, add `_build_category_index` to the import at line 35 and add `TestBuildCategoryIndex` following the `TestGetMessageCategory` structure
 
 ## Impact
 
@@ -117,6 +118,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **2026-03-05** — VALID. `_get_message_category` confirmed at line 611 (was 600–607 at scan commit a574ea0); two call sites in `_detect_workflows` at lines 660 and 720 (was 649, 704). Function body unchanged. No `_build_category_index` exists yet. Dependency backlinks verified: FEAT-558 and ENH-551 both list `Blocked By: ENH-550`; FEAT-556 lists `Blocks: ENH-550`.
 - **2026-03-21** — DEP_ISSUES → VALID. Removed broken `Blocks: ENH-554` reference — ENH-554 does not exist in active or completed issues.
 - **2026-03-22** — VALID. Location section updated to line 664 (function), 713 and 763 (call sites in `_detect_workflows`). No `_build_category_index` exists. ENH-551 `Blocked By: ENH-550` backlink confirmed. Enhancement not yet applied.
+- **2026-03-23** — VALID (BLOCKER RESOLVED). ENH-840 completed (commit 97870cfd). `workflow_sequence_analyzer.py` is now the `workflow_sequence/` package; `_get_message_category` is at `analysis.py:484`, `_detect_workflows` at `analysis.py:494`, call sites at lines 533 and 583. No `_build_category_index` exists. Test file unchanged at `test_workflow_sequence_analyzer.py`; `TestGetMessageCategory` at line 1819; import from `little_loops.workflow_sequence.analysis` at line 35. All file paths and line numbers updated. Blocked By: ENH-840 removed.
 
 ## Related Key Documentation
 
@@ -131,13 +133,15 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 
 ## Blocked By
 
-- ENH-840
+_(ENH-840 removed — completed via commit 97870cfd; `workflow_sequence_analyzer.py` is now the `workflow_sequence/` package)_
 
 ## Labels
 
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6a36166-5e73-45bb-938b-edeb0b423ed7.jsonl`
+- `/ll:refine-issue` - 2026-03-23T05:38:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37e2d58e-d5ca-4ed9-a92e-52148240513f.jsonl`
 - `/ll:go-no-go` - 2026-03-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a632870-cb24-4a1a-8138-d42ee91025d7.jsonl` — NO-GO: ENH-840 (P3) remains open with zero implementation commits; implementing ENH-550 now guarantees rework when ENH-840 splits the monolith; previous NO-GO verdict unchanged.
 - `/ll:refine-issue` - 2026-03-23T03:54:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9de232c9-07da-4ba3-978b-405f2c3dd345.jsonl`
 - `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
