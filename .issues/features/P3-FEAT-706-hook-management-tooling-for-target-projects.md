@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-03-12
 discovered_by: capture-issue
-confidence_score: 93
-outcome_confidence: 78
+confidence_score: 98
+outcome_confidence: 71
 ---
 
 # FEAT-706: Hook management tooling for target projects
@@ -211,6 +211,7 @@ Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(inp
 **Open** | Created: 2026-03-12 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T18:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbb81656-ef71-4079-a8b7-1bf83a1c6364.jsonl`
 - `/ll:refine-issue` - 2026-03-23T18:12:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/500f7108-96bd-4385-b940-17a9e320101e.jsonl`
 - `/ll:refine-issue` - 2026-03-19T02:51:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f2bd1a9-9196-4775-a221-228c31d6c262.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`

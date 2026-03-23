@@ -6,6 +6,8 @@ status: open
 title: "Update review-loop and create-loop skills to prefer ll- CLI commands"
 discovered_date: "2026-03-23"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-861: Update review-loop and create-loop skills to prefer ll- CLI commands
@@ -160,6 +162,7 @@ N/A — No public API changes. Modifications are to skill instruction markdown f
 `enhancement`, `skills`, `cli`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7754065d-d79f-4df1-9b8e-8e6c7e070b2c.jsonl`
 - `/ll:format-issue` - 2026-03-23T18:09:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4be9bd15-4ea4-4d36-846c-df93dbbf77e9.jsonl`
 - `/ll:refine-issue` - 2026-03-23T17:13:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce5d0bc6-5ac2-4aae-8e31-43ca6876d26e.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06fdc033-986b-4b59-b280-3505ad02d65c.jsonl`

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-23
 discovered_by: /ll:capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-860: Add `ll-issues next-action` subcommand
@@ -159,9 +161,17 @@ ll-issues next-action [--refine-cap N] [--ready-threshold N] [--outcome-threshol
 ## Implementation Steps
 
 1. Create `scripts/little_loops/cli/issues/next_action.py` with `cmd_next_action`
-2. Register `next-action` (alias `na`) in `__init__.py` with `--refine-cap`, `--ready-threshold`, `--outcome-threshold` args
-3. Update `loops/issue-refinement.yaml` `evaluate` state to use `ll-issues next-action`
-4. Add unit tests covering all four `NEEDS_*` branches and `ALL_DONE`
+   - Follow the `count_cmd.py` shape: module docstring, `TYPE_CHECKING` guard, `import argparse` at top, deferred domain imports inside the function
+   - Use `getattr(args, "refine_cap", 5)` etc. for safe arg access
+2. Register `next-action` (alias `na`) in `scripts/little_loops/cli/issues/__init__.py`:
+   - Add `from little_loops.cli.issues.next_action import cmd_next_action` to the import block at lines 17–25
+   - Add `subs.add_parser("next-action", aliases=["na"], ...)` + `.set_defaults(command="next-action")` in the parser block (lines 29–276)
+   - Add three `add_argument` calls (`--refine-cap`, `--ready-threshold`, `--outcome-threshold`) then `add_config_arg(next_action_p)` last
+   - Add `if args.command == "next-action": return cmd_next_action(config, args)` to the dispatch chain (lines 290–308)
+3. Update `loops/issue-refinement.yaml` evaluate state (lines 12–48): replace the `ll-issues refine-status --json | python3 -c "..."` block (lines 14–41) with `action: ll-issues next-action`
+4. Create `scripts/tests/test_next_action.py`:
+   - Class `TestIssuesCLINextAction`; use `temp_project_dir`, `sample_config`, `issues_dir` from conftest; copy `_make_issue()` from `test_refine_status.py:19–53`
+   - One test per branch: `NEEDS_FORMAT` (unformatted issue), `NEEDS_VERIFY` (no `/ll:verify-issues` in session log), `NEEDS_SCORE` (missing confidence fields), `NEEDS_REFINE` (scores below threshold), `ALL_DONE` (all graduated)
 
 ## Impact
 
@@ -187,5 +197,7 @@ Active
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd212742-4759-4df9-a71a-5ef5be2730f6.jsonl`
+- `/ll:refine-issue` - 2026-03-23T18:12:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5fa1144-2913-4f9f-933b-4f7f5b56008b.jsonl`
 - `/ll:format-issue` - 2026-03-23T18:07:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6707ae34-6988-4f2d-9043-0625567bfb1c.jsonl`
 - `/ll:capture-issue` - 2026-03-23T17:02:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06fdc033-986b-4b59-b280-3505ad02d65c.jsonl`
