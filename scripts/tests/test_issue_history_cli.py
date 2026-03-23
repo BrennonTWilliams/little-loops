@@ -335,8 +335,16 @@ class TestMainHistoryAnalyze:
         with patch.object(
             sys,
             "argv",
-            ["ll-history", "analyze", "--since", "2026-01-01", "--format", "json",
-             "-d", str(tmp_path / ".issues")],
+            [
+                "ll-history",
+                "analyze",
+                "--since",
+                "2026-01-01",
+                "--format",
+                "json",
+                "-d",
+                str(tmp_path / ".issues"),
+            ],
         ):
             from little_loops.cli import main_history
 
@@ -363,8 +371,16 @@ class TestMainHistoryAnalyze:
         with patch.object(
             sys,
             "argv",
-            ["ll-history", "analyze", "--until", "2026-03-31", "--format", "json",
-             "-d", str(tmp_path / ".issues")],
+            [
+                "ll-history",
+                "analyze",
+                "--until",
+                "2026-03-31",
+                "--format",
+                "json",
+                "-d",
+                str(tmp_path / ".issues"),
+            ],
         ):
             from little_loops.cli import main_history
 
@@ -394,8 +410,18 @@ class TestMainHistoryAnalyze:
         with patch.object(
             sys,
             "argv",
-            ["ll-history", "analyze", "--since", "2026-01-01", "--until", "2026-03-31",
-             "--format", "json", "-d", str(tmp_path / ".issues")],
+            [
+                "ll-history",
+                "analyze",
+                "--since",
+                "2026-01-01",
+                "--until",
+                "2026-03-31",
+                "--format",
+                "json",
+                "-d",
+                str(tmp_path / ".issues"),
+            ],
         ):
             from little_loops.cli import main_history
 
@@ -416,8 +442,16 @@ class TestMainHistoryAnalyze:
         with patch.object(
             sys,
             "argv",
-            ["ll-history", "analyze", "--compare", "30", "--since", "2026-01-01",
-             "-d", str(tmp_path / ".issues")],
+            [
+                "ll-history",
+                "analyze",
+                "--compare",
+                "30",
+                "--since",
+                "2026-01-01",
+                "-d",
+                str(tmp_path / ".issues"),
+            ],
         ):
             from little_loops.cli import main_history
 
@@ -434,9 +468,7 @@ class TestAnalyzeDateArgParsing:
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
 
-        with patch.object(
-            sys, "argv", ["ll-history", "analyze", "-d", str(tmp_path / ".issues")]
-        ):
+        with patch.object(sys, "argv", ["ll-history", "analyze", "-d", str(tmp_path / ".issues")]):
             from little_loops.cli import main_history
 
             result = main_history()
@@ -451,8 +483,7 @@ class TestAnalyzeDateArgParsing:
         with patch.object(
             sys,
             "argv",
-            ["ll-history", "analyze", "--since", "2026-01-01",
-             "-d", str(tmp_path / ".issues")],
+            ["ll-history", "analyze", "--since", "2026-01-01", "-d", str(tmp_path / ".issues")],
         ):
             from little_loops.cli import main_history
 
@@ -468,8 +499,7 @@ class TestAnalyzeDateArgParsing:
         with patch.object(
             sys,
             "argv",
-            ["ll-history", "analyze", "--until", "2026-03-31",
-             "-d", str(tmp_path / ".issues")],
+            ["ll-history", "analyze", "--until", "2026-03-31", "-d", str(tmp_path / ".issues")],
         ):
             from little_loops.cli import main_history
 

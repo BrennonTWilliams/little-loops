@@ -123,7 +123,9 @@ def calculate_analysis(
     regression_analysis = analyze_regression_clustering(completed_issues, contents=issue_contents)
 
     # Test gap analysis
-    test_gap_analysis = analyze_test_gaps(completed_issues, hotspot_analysis, project_root=project_root)
+    test_gap_analysis = analyze_test_gaps(
+        completed_issues, hotspot_analysis, project_root=project_root
+    )
 
     # Rejection rate analysis
     rejection_analysis = analyze_rejection_rates(completed_issues, contents=issue_contents)

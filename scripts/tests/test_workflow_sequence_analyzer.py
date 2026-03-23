@@ -1968,4 +1968,6 @@ class TestMainDefaultInput:
             try:
                 main()
             except SystemExit as exc:
-                pytest.fail(f"argparse raised SystemExit({exc.code}) — --input is still required=True")
+                pytest.fail(
+                    f"argparse raised SystemExit({exc.code}) — --input is still required=True"
+                )

@@ -212,7 +212,8 @@ Examples:
         until_date = date_type.fromisoformat(args.until) if args.until else None
         if since_date or until_date:
             issues = [
-                i for i in issues
+                i
+                for i in issues
                 if i.completed_date is not None
                 and (since_date is None or i.completed_date >= since_date)
                 and (until_date is None or i.completed_date <= until_date)

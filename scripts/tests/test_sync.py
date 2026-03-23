@@ -1096,10 +1096,12 @@ class TestDiffIssue:
 
         manager = GitHubSyncManager(mock_config, mock_logger)
 
-        batch_response = json.dumps([
-            {"number": 42, "body": "Different body."},
-            {"number": 43, "body": "Same body."},
-        ])
+        batch_response = json.dumps(
+            [
+                {"number": 42, "body": "Different body."},
+                {"number": 43, "body": "Same body."},
+            ]
+        )
 
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
             mock_auth.return_value = True

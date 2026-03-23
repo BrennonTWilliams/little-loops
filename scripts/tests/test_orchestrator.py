@@ -1577,9 +1577,7 @@ class TestCompleteIssueLifecycle:
 
         orchestrator._git_lock.run = mock_git_lock_run  # type: ignore[method-assign]
 
-        with patch(
-            "little_loops.parallel.orchestrator.append_session_log_entry"
-        ) as mock_log:
+        with patch("little_loops.parallel.orchestrator.append_session_log_entry") as mock_log:
             orchestrator._complete_issue_lifecycle_if_needed("BUG-001")
 
         mock_log.assert_called_once()

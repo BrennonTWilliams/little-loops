@@ -108,7 +108,9 @@ def analyze_test_gaps(
 
     # Identify untested bug magnets (from hotspot analysis)
     untested_magnets = [
-        h.path for h in hotspots.bug_magnets if _find_test_file(h.path, project_root=project_root) is None
+        h.path
+        for h in hotspots.bug_magnets
+        if _find_test_file(h.path, project_root=project_root) is None
     ]
 
     # Priority test targets: untested files sorted by bug count

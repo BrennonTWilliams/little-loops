@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any
 
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
-from little_loops.session_log import append_session_log_entry
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.merge_coordinator import MergeCoordinator
 from little_loops.parallel.overlap_detector import OverlapDetector
@@ -33,6 +32,7 @@ from little_loops.parallel.types import (
     WorkerResult,
 )
 from little_loops.parallel.worker_pool import WorkerPool
+from little_loops.session_log import append_session_log_entry
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
