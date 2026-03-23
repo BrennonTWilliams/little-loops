@@ -95,7 +95,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `hooks`, `enhancement`, `captured`
 
+## Resolution
+
+**Status**: Completed
+**Resolved**: 2026-03-23
+**Solution**: Updated `UserPromptSubmit` timeout from `3` to `5` in `hooks/hooks.json` (line 23), aligning it with all other hooks in the file (`SessionStart`, `PreToolUse`, `PostToolUse`, `PreCompact`: all 5s).
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-03-23T23:56:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f85bff9-29c4-4d23-8a05-9243546279e4.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:55:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4381959c-d3bb-4756-a38d-b3ed71b5a1d8.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b17f620-f2da-44e2-8f69-81831236e135.jsonl`
 - `/ll:refine-issue` - 2026-03-23T23:00:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ae56235-5e0d-486f-88e4-8d835df079c9.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:42:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1072ecd2-d140-48fe-a825-c355ae538fff.jsonl`
