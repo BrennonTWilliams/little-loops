@@ -122,6 +122,27 @@
           "enum": ["full", "minimal", "legacy"],
           "description": "Creation variant for issues assembled by skills (capture-issue, format-issue, ready-issue)",
           "default": "full"
+        },
+        "duplicate_detection": {
+          "type": "object",
+          "description": "Thresholds for duplicate issue detection",
+          "properties": {
+            "exact_threshold": {
+              "type": "number",
+              "description": "Jaccard similarity threshold above which a finding is treated as an exact duplicate (skip)",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.8
+            },
+            "similar_threshold": {
+              "type": "number",
+              "description": "Jaccard similarity threshold above which a finding is treated as similar (update existing issue)",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.5
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

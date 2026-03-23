@@ -330,6 +330,18 @@ class IssuesConfig:
     priorities: list[str]  # ["P0", "P1", ...]
     templates_dir: str | None = None
     capture_template: str = "full"
+    duplicate_detection: DuplicateDetectionConfig  # thresholds for skip/update/create
+```
+
+### DuplicateDetectionConfig
+
+Thresholds controlling duplicate issue detection behavior.
+
+```python
+@dataclass
+class DuplicateDetectionConfig:
+    exact_threshold: float = 0.8   # score >= this → skip (duplicate)
+    similar_threshold: float = 0.5  # score >= this → update existing issue
 ```
 
 ### CategoryConfig

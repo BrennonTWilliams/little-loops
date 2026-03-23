@@ -21,6 +21,7 @@ from little_loops.config import (
     CommandsConfig,
     ConfidenceGateConfig,
     DependencyMappingConfig,
+    DuplicateDetectionConfig,
     GitHubSyncConfig,
     IssuesConfig,
     ParallelAutomationConfig,
@@ -162,6 +163,62 @@ class TestIssuesConfig:
         assert config.priorities == ["P0", "P1", "P2", "P3", "P4", "P5"]
         assert config.templates_dir is None
         assert config.capture_template == "full"
+        assert config.duplicate_detection.exact_threshold == 0.8
+        assert config.duplicate_detection.similar_threshold == 0.5
+
+
+class TestDuplicateDetectionConfig:
+    """Tests for DuplicateDetectionConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        """Test default values match documented defaults."""
+        config = DuplicateDetectionConfig()
+        assert config.exact_threshold == 0.8
+        assert config.similar_threshold == 0.5
+
+    def test_from_dict_with_values(self) -> None:
+        """Test creating DuplicateDetectionConfig from dictionary."""
+        config = DuplicateDetectionConfig.from_dict({"exact_threshold": 0.9, "similar_threshold": 0.6})
+        assert config.exact_threshold == 0.9
+        assert config.similar_threshold == 0.6
+
+    def test_from_dict_with_empty_dict(self) -> None:
+        """Test that empty dict yields defaults."""
+        config = DuplicateDetectionConfig.from_dict({})
+        assert config.exact_threshold == 0.8
+        assert config.similar_threshold == 0.5
+
+    def test_issues_config_parses_duplicate_detection(self) -> None:
+        """Test that IssuesConfig.from_dict reads duplicate_detection block."""
+        data = {
+            "duplicate_detection": {
+                "exact_threshold": 0.95,
+                "similar_threshold": 0.4,
+            }
+        }
+        config = IssuesConfig.from_dict(data)
+        assert config.duplicate_detection.exact_threshold == 0.95
+        assert config.duplicate_detection.similar_threshold == 0.4
+
+    def test_finding_match_uses_custom_thresholds(self) -> None:
+        """Test that FindingMatch properties use configured thresholds."""
+        from little_loops.issue_discovery.matching import FindingMatch
+
+        # With default thresholds
+        match = FindingMatch(issue_path=None, match_type="none", match_score=0.75)
+        assert match.should_skip is False   # 0.75 < 0.8
+        assert match.should_update is True  # 0.5 <= 0.75 < 0.8
+
+        # With custom exact_threshold=0.7: score 0.75 should now skip
+        match_custom = FindingMatch(
+            issue_path=None,
+            match_type="none",
+            match_score=0.75,
+            exact_threshold=0.7,
+            similar_threshold=0.5,
+        )
+        assert match_custom.should_skip is True   # 0.75 >= 0.7
+        assert match_custom.should_update is False
 
 
 class TestAutomationConfig:

@@ -71,6 +71,8 @@ class FindingMatch:
         matched_terms: Terms that matched (for debugging)
         classification: How to classify this match (regression, duplicate, etc.)
         regression_evidence: Evidence supporting regression classification
+        exact_threshold: Score at or above which a finding is a duplicate (skip)
+        similar_threshold: Score at or above which a finding should update an existing issue
     """
 
     issue_path: Path | None
@@ -80,26 +82,28 @@ class FindingMatch:
     matched_terms: list[str] = field(default_factory=list)
     classification: MatchClassification = MatchClassification.NEW_ISSUE
     regression_evidence: RegressionEvidence | None = None
+    exact_threshold: float = 0.8
+    similar_threshold: float = 0.5
 
     @property
     def should_skip(self) -> bool:
         """Return True if finding is a duplicate and should be skipped."""
-        return self.match_score >= 0.8
+        return self.match_score >= self.exact_threshold
 
     @property
     def should_update(self) -> bool:
         """Return True if finding should update the existing issue."""
-        return 0.5 <= self.match_score < 0.8
+        return self.similar_threshold <= self.match_score < self.exact_threshold
 
     @property
     def should_create(self) -> bool:
         """Return True if a new issue should be created."""
-        return self.match_score < 0.5
+        return self.match_score < self.similar_threshold
 
     @property
     def should_reopen(self) -> bool:
         """Return True if a completed issue should be reopened."""
-        return self.is_completed and self.match_score >= 0.5
+        return self.is_completed and self.match_score >= self.similar_threshold
 
     @property
     def should_reopen_as_regression(self) -> bool:
@@ -109,7 +113,7 @@ class FindingMatch:
         """
         return (
             self.is_completed
-            and self.match_score >= 0.5
+            and self.match_score >= self.similar_threshold
             and self.classification == MatchClassification.REGRESSION
         )
 
@@ -121,7 +125,7 @@ class FindingMatch:
         """
         return (
             self.is_completed
-            and self.match_score >= 0.5
+            and self.match_score >= self.similar_threshold
             and self.classification == MatchClassification.INVALID_FIX
         )
 
@@ -134,7 +138,7 @@ class FindingMatch:
         """
         return (
             self.is_completed
-            and self.match_score >= 0.5
+            and self.match_score >= self.similar_threshold
             and self.classification == MatchClassification.UNVERIFIED
         )
 

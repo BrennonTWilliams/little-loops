@@ -177,10 +177,15 @@ def find_existing_issue(
         FindingMatch with best match details, including classification and
         regression evidence for completed issue matches
     """
+    exact_threshold = config.issues.duplicate_detection.exact_threshold
+    similar_threshold = config.issues.duplicate_detection.similar_threshold
+
     best_match = FindingMatch(
         issue_path=None,
         match_type="none",
         match_score=0.0,
+        exact_threshold=exact_threshold,
+        similar_threshold=similar_threshold,
     )
 
     # Pass 1: Exact file path match
@@ -211,6 +216,8 @@ def find_existing_issue(
                         matched_terms=[file_path],
                         classification=classification,
                         regression_evidence=evidence,
+                        exact_threshold=exact_threshold,
+                        similar_threshold=similar_threshold,
                     )
             except Exception:
                 continue
@@ -256,10 +263,12 @@ def find_existing_issue(
                 matched_terms=matched_terms,
                 classification=classification,
                 regression_evidence=evidence,
+                exact_threshold=exact_threshold,
+                similar_threshold=similar_threshold,
             )
 
     # Pass 3: Content analysis
-    if best_match.match_score < 0.5:
+    if best_match.match_score < similar_threshold:
         content_matches = search_issues_by_content(
             config,
             [finding_title, finding_content],
@@ -287,6 +296,8 @@ def find_existing_issue(
                 is_completed=is_completed,
                 classification=classification,
                 regression_evidence=evidence,
+                exact_threshold=exact_threshold,
+                similar_threshold=similar_threshold,
             )
 
     # If no match found, classification is NEW_ISSUE (the default)

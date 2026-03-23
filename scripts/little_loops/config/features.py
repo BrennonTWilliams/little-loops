@@ -41,6 +41,22 @@ class CategoryConfig:
 
 
 @dataclass
+class DuplicateDetectionConfig:
+    """Thresholds for duplicate issue detection."""
+
+    exact_threshold: float = 0.8
+    similar_threshold: float = 0.5
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DuplicateDetectionConfig:
+        """Create DuplicateDetectionConfig from dictionary."""
+        return cls(
+            exact_threshold=data.get("exact_threshold", 0.8),
+            similar_threshold=data.get("similar_threshold", 0.5),
+        )
+
+
+@dataclass
 class IssuesConfig:
     """Issue management configuration."""
 
@@ -51,6 +67,7 @@ class IssuesConfig:
     priorities: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
     templates_dir: str | None = None
     capture_template: str = "full"
+    duplicate_detection: DuplicateDetectionConfig = field(default_factory=DuplicateDetectionConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
@@ -78,6 +95,9 @@ class IssuesConfig:
             priorities=data.get("priorities", ["P0", "P1", "P2", "P3", "P4", "P5"]),
             templates_dir=data.get("templates_dir"),
             capture_template=data.get("capture_template", "full"),
+            duplicate_detection=DuplicateDetectionConfig.from_dict(
+                data.get("duplicate_detection", {})
+            ),
         )
 
     def get_category_by_prefix(self, prefix: str) -> CategoryConfig | None:
