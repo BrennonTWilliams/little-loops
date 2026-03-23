@@ -136,6 +136,7 @@ Convert to a `workflow_sequence/` package (or similar):
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:go-no-go` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be2c3ceb-8e4a-4973-8a3b-747037b4083f.jsonl`
 - `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:verify-issues` - 2026-03-19T22:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:format-issue` - 2026-03-19T22:53:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
