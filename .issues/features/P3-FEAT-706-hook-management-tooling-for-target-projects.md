@@ -88,11 +88,27 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 8. **Implement `hooks --show` display inline in `areas.md`**: Follow the `allowed-tools` pattern (areas.md:738-758) — define state detection bash block + display table directly in the `## Area: hooks` section. Do NOT add a section to `show-output.md`; `allowed-tools` has no entry there either, and hooks follows the same inline approach.
 
+9. **Add Step 10.5 (Install Hooks) to `skills/init/SKILL.md`**: Insert a new step between Step 10 (Update Allowed Tools) and Step 11 (Display Completion Message). Pattern mirrors Step 10 exactly:
+   - Detect whether little-loops is loaded as a **plugin** (skip — hooks are already active via `hooks/hooks.json`) or via **CLAUDE.md** (proceed with installation)
+   - To detect plugin vs CLAUDE.md loading: check whether `${CLAUDE_PLUGIN_ROOT}` is set in the environment (`[ -n "$CLAUDE_PLUGIN_ROOT" ]`)
+   - Ask which target file: `.claude/settings.local.json` (recommended, gitignored) or `.claude/settings.json` (tracked) — same `AskUserQuestion` pattern as Step 10 / `allowed-tools` in `areas.md:760-783`
+   - Merge the `hooks` key from `hooks/hooks.json` into the chosen file additively (read target or start with `{}`; merge `hooks` key without overwriting existing non-ll hooks; write with 2-space indent)
+   - **`--yes` mode**: use `.claude/settings.local.json` without prompting (skip if plugin user)
+   - **`--dry-run` mode**: skip this step (already previewed in dry-run output)
+   - Track whether hooks were installed for use in the completion message
+
+10. **Update Step 11 (completion message) in `skills/init/SKILL.md`**: Add a conditional line to the "Created/Updated" block:
+    ```
+    Updated: .claude/settings.json (added ll- hooks)   # Only show if hooks were installed in Step 10.5
+    ```
+    Add a conditional next step: `Configure hooks: /ll:configure hooks` — only shown if user skipped hook installation in Step 10.5.
+
 ## Integration Map
 
 ### Files to Modify
 - `skills/configure/SKILL.md` — add `hooks` to: Area Mapping table (line 60, after `allowed-tools`), `--list` output (line 85, after `allowed-tools`), Batch 4 interactive selection (line 206, before the closing `\`\`\``), Arguments list (line 274, after `allowed-tools`)
 - `skills/configure/areas.md` — append new `## Area: hooks` section after line 792 (current EOF), following the `allowed-tools` pattern exactly
+- `skills/init/SKILL.md` — add Step 10.5 (Install Hooks) between Step 10 and Step 11; update Step 11 completion message to show hooks installation status and conditional next-step hint
 
 ### Dependent Files (Read-Only)
 - `hooks/hooks.json` — source of truth for plugin hook definitions (read-only; do not modify)
@@ -189,7 +205,7 @@ The `allowed-tools` area uses this exact pattern — directly reusable:
 Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(input_data), ...)` directly against shell scripts. The hooks skill itself is a Claude Code skill (markdown), so new tests would be manual integration tests; no Python unit test pattern to follow for skill behavior itself.
 
 ### Related Issues
-- ENH-705: Init should validate plugin loading and hook activation (complementary — ENH-705 warns, this FEAT fixes)
+- ENH-705: Init should validate plugin loading and hook activation (complementary — ENH-705 warns, this FEAT fixes). If ENH-705 is implemented before FEAT-706, its warning for inactive hooks must reference `/ll:configure hooks install` as the remediation path. Once FEAT-706's Step 10.5 lands in `/ll:init`, the ENH-705 warning becomes largely redundant for new installs (hooks are installed during init); ENH-705 retains value only for projects initialized before FEAT-706 was available.
 
 ## Impact
 
