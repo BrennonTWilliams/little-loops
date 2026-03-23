@@ -1,9 +1,28 @@
 name: "general-task"
-initial: plan
+initial: define_done
 max_iterations: 100
 on_handoff: spawn
 
 states:
+  define_done:
+    action: >
+      Your task is: ${context.input}
+
+      Before planning or executing anything, write a concrete Definition of Done
+      to ${env.PWD}/.loops/tmp/general-task-dod.md in this format:
+      ```
+      # Definition of Done
+      ## Verification Criteria
+      - [ ] <Specific, verifiable criterion>
+      - [ ] <Another criterion — e.g., "File X exists", "Tests pass", "Output contains Y">
+      ```
+
+      Each criterion must be independently verifiable by checking files, running commands,
+      or reading outputs. Do NOT start any work. Only write the DoD file.
+    action_type: prompt
+    next: plan
+    on_error: failed
+
   plan:
     action: >
       Your task is: ${context.input}
@@ -38,16 +57,21 @@ states:
     on_error: failed
 
   check_done:
-    action: "echo 'Evaluating task completion'"
-    action_type: shell
+    action: >
+      Read the Definition of Done at ${env.PWD}/.loops/tmp/general-task-dod.md.
+      For EACH criterion, actively verify it is met by checking the actual state of
+      the filesystem, running relevant commands, or reading relevant files.
+      Do NOT assume — verify by evidence.
+
+      Update the DoD file, marking each criterion [x] if verified or leaving [ ]
+      with a one-line note explaining what is missing.
+    action_type: prompt
     evaluate:
       type: llm_structured
       prompt: >
-        Was the following task fully and completely fulfilled?
-        Task: ${context.input}
-
-        Review all work done so far. Answer YES only if the task is entirely
-        complete with no remaining steps. Answer NO if there is still work to do.
+        Read ${env.PWD}/.loops/tmp/general-task-dod.md.
+        Are ALL criteria marked [x]?
+        Answer YES only if every criterion is checked off. Answer NO if any remain unchecked.
     on_yes: done
     on_no: continue_work
     on_error: failed
