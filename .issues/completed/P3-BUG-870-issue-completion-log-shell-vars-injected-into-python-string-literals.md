@@ -102,7 +102,7 @@ Environment variable values are never interpreted as Python syntax, making this 
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- **Test class to model**: `TestUserPromptCheck` at `test_hooks_integration.py:435-502` — `@pytest.mark.parametrize` with special-character inputs including `"Prompt with \"quotes\" and 'apostrophes'"`, uses `subprocess.run([str(hook_script)], input=json.dumps(input_data), capture_output=True, text=True, timeout=5)` invocation pattern
+- **Test class to model**: `TestUserPromptCheck` at `test_hooks_integration.py:673-797` — `@pytest.mark.parametrize` with special-character inputs including `"Prompt with \"quotes\" and 'apostrophes'"`, uses `subprocess.run([str(hook_script)], input=json.dumps(input_data), capture_output=True, text=True, timeout=5)` invocation pattern
 - **Env-var injection in tests**: `TestContextMonitor` at `test_hooks_integration.py:229-266` — `env = os.environ.copy(); env["VAR"] = "value"; subprocess.run(..., env=env)` pattern; use this to verify the fixed script correctly reads `DEST_PATH`/`TRANSCRIPT_PATH` from environment
 - **Suggested new test parametrize values**: `"path/with'quote.md"`, `"it's-fixed.md"`, `"O'Brien/issue.md"` as `$DEST_PATH`; combine with a valid `$TRANSCRIPT_PATH` in a temp dir to confirm no Python `SyntaxError`
 
@@ -157,7 +157,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `hooks`, `bug`, `captured`
 
+## Resolution
+
+Pass `$DEST_PATH` and `$TRANSCRIPT_PATH` via environment variables instead of interpolating them into Python string literals. Replaced the `python3 -c "...dest = Path('$DEST_PATH')..."` block with `DEST_PATH="$DEST_PATH" TRANSCRIPT_PATH="$TRANSCRIPT_PATH" python3 -c "...dest = Path(os.environ['DEST_PATH'])..."`. Added `TestIssueCompletionLog` integration tests covering normal paths and single-quote paths (`O'Brien-transcript.jsonl`, `it's-fixed.jsonl`).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:42:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/036ebce9-d5c5-4017-aae4-d45329680116.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b17f620-f2da-44e2-8f69-81831236e135.jsonl`
 - `/ll:refine-issue` - 2026-03-23T23:00:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8abe37ac-d35f-4eda-a4e9-ca0e44b84ecc.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:43:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9850963-0ae2-487e-9014-ade593329bce.jsonl`
@@ -166,4 +172,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-03-23 | Priority: P3
+**Completed** | Created: 2026-03-23 | Resolved: 2026-03-23 | Priority: P3

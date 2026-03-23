@@ -795,6 +795,75 @@ class TestUserPromptCheck:
             os.chdir(original_dir)
 
 
+class TestIssueCompletionLog:
+    """Test issue-completion-log.sh path injection safety."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to issue-completion-log.sh."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/issue-completion-log.sh"
+
+    def _make_input(self, dest_path: str, transcript_path: str) -> str:
+        """Build JSON stdin for the hook simulating a git mv to completed/."""
+        return json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": f"git mv .issues/bugs/P3-BUG-870.md {dest_path}"},
+                "transcript_path": transcript_path,
+            }
+        )
+
+    @pytest.mark.parametrize(
+        "transcript_name",
+        [
+            "normal-transcript.jsonl",
+            "O'Brien-transcript.jsonl",
+            "it's-fixed.jsonl",
+        ],
+    )
+    def test_single_quote_in_transcript_path_appends_log(
+        self, hook_script: Path, tmp_path: Path, transcript_name: str
+    ):
+        """Session log entry is appended even when transcript path contains single quotes.
+
+        Before the fix, shell interpolation of $TRANSCRIPT_PATH into a Python string
+        literal caused a SyntaxError for paths with single quotes. The error was
+        swallowed by || true so returncode stayed 0 but no entry was written.
+        """
+        import os
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        issue_file = completed_dir / "P3-BUG-870-test.md"
+        issue_file.write_text("---\ndiscovered_date: 2026-01-01\n---\n# Test\n\n## Session Log\n")
+
+        transcript_dir = tmp_path / "transcripts"
+        transcript_dir.mkdir()
+        transcript_file = transcript_dir / transcript_name
+        transcript_file.write_text("")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(issue_file), str(transcript_file)),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            assert result.returncode == 0, f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
+            content = issue_file.read_text()
+            assert "hook:posttooluse-git-mv" in content, (
+                f"Session log entry not appended for transcript path {transcript_name!r}. "
+                "Likely a Python SyntaxError was silently swallowed."
+            )
+        finally:
+            os.chdir(original_dir)
+
+
 class TestDuplicateIssueId:
     """Test check-duplicate-issue-id.sh race condition handling."""
 

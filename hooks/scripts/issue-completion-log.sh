@@ -36,12 +36,13 @@ DEST_PATH=$(echo "$CMD" | grep -oE 'git mv [^ ]+ [^ ]+' | tail -1 | awk '{print 
 [ -z "$DEST_PATH" ] && exit 0
 
 # Append session log entry using Python (leverages existing session_log module)
-python3 -c "
-import sys
+# Pass paths via environment variables to avoid Python SyntaxErrors from single quotes in paths
+DEST_PATH="$DEST_PATH" TRANSCRIPT_PATH="$TRANSCRIPT_PATH" python3 -c "
+import os
 from pathlib import Path
 from little_loops.session_log import append_session_log_entry
-dest = Path('$DEST_PATH')
-jsonl = Path('$TRANSCRIPT_PATH')
+dest = Path(os.environ['DEST_PATH'])
+jsonl = Path(os.environ['TRANSCRIPT_PATH'])
 if dest.exists():
     append_session_log_entry(dest, 'hook:posttooluse-git-mv', session_jsonl=jsonl)
 " 2>/dev/null || true
