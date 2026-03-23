@@ -45,14 +45,16 @@ When `ll-loop run exploratory-refactor` is invoked, these values override the gl
 
 1. **Extend `FSMLoop` schema** (`scripts/little_loops/fsm/schema.py`): Add an optional `config` field (dict or typed dataclass) that maps recognized ll-config keys to their override values. Model after `LLMConfig` (lines 346-386): a nested `@dataclass` with `from_dict`/`to_dict` and a field on `FSMLoop`. Validate recognized keys on load; warn (don't fail) on unknown keys.
 
-2. **Define recognized override keys**: Start with the subset most useful for loop authors:
+2. **Update `fsm-loop-schema.json`** (`scripts/little_loops/fsm/fsm-loop-schema.json`): Add a `config` property definition at the top level. The schema currently has `additionalProperties: false`, which means any YAML with a `config:` block will **fail schema validation (hard error)** until this file is updated. Define the `config` object with optional fields matching the recognized override keys: `handoff_threshold` (integer, 1–100), nested `commands.confidence_gate` with `readiness_threshold` and `outcome_threshold` (integers), and nested `automation`/`continuation` with `max_continuations` (integer ≥1). Set `additionalProperties: false` inside the `config` object to keep the schema strict.
+
+3. **Define recognized override keys**: Start with the subset most useful for loop authors:
    - `handoff_threshold` (int, 1–100) → sets `LL_HANDOFF_THRESHOLD` env var
    - `commands.confidence_gate.readiness_threshold` (int, 1–100) ← requires Prerequisite
    - `commands.confidence_gate.outcome_threshold` (int, 1–100) ← requires Prerequisite
    - `automation.max_continuations` (int, ≥1)
    - `continuation.max_continuations` (int, ≥1)
 
-3. **Apply overrides in `ll-loop run`** (`scripts/little_loops/cli/loop/run.py`): Inject YAML config overrides in two places so CLI flags always win:
+4. **Apply overrides in `ll-loop run`** (`scripts/little_loops/cli/loop/run.py`): Inject YAML config overrides in two places so CLI flags always win:
    - **FSM object mutations** (e.g., `max_continuations`): after line 41 (`load_and_validate`) and before line 49 (CLI override block) — YAML sets the field, CLI overwrites it.
    - **Env var overrides** (e.g., `handoff_threshold`): after line 65 (context injection) and before line 67 (CLI `--handoff-threshold` check) — YAML sets `LL_HANDOFF_THRESHOLD`, CLI overwrites it.
    ```python
@@ -61,15 +63,15 @@ When `ll-loop run exploratory-refactor` is invoked, these values override the gl
        os.environ["LL_HANDOFF_THRESHOLD"] = str(fsm.config.handoff_threshold)
    ```
 
-4. **Apply overrides in `ll-loop resume`** (`scripts/little_loops/cli/loop/lifecycle.py:cmd_resume`): The resume path (`lifecycle.py:143-212`) loads the FSM via `load_loop()` but currently only applies `--context` (line 183) and `--delay` (line 189). It **silently ignores `--handoff-threshold`** despite having the arg registered (via `add_handoff_threshold_arg` in `__init__.py:221`). This must be fixed as part of this feature: apply YAML config overrides after line 190, then apply the CLI `--handoff-threshold` arg on top.
+5. **Apply overrides in `ll-loop resume`** (`scripts/little_loops/cli/loop/lifecycle.py:cmd_resume`): The resume path (`lifecycle.py:143-212`) loads the FSM via `load_loop()` but currently only applies `--context` (line 183) and `--delay` (line 189). It **silently ignores `--handoff-threshold`** despite having the arg registered (via `add_handoff_threshold_arg` in `__init__.py:221`). This must be fixed as part of this feature: apply YAML config overrides after line 190, then apply the CLI `--handoff-threshold` arg on top.
 
-5. **Update `ll-loop info`** (`scripts/little_loops/cli/loop/info.py`): Display any config overrides in loop info output.
+6. **Update `ll-loop info`** (`scripts/little_loops/cli/loop/info.py`): Display any config overrides in loop info output.
 
-6. **Update schema validation** (`scripts/little_loops/fsm/validation.py`): Add `"config"` to `KNOWN_TOP_LEVEL_KEYS` frozenset (line 76-91). Without this, any YAML with a `config:` block will emit a WARNING on every load.
+7. **Update schema validation** (`scripts/little_loops/fsm/validation.py`): Add `"config"` to `KNOWN_TOP_LEVEL_KEYS` frozenset (line 76-91). Without this, any YAML with a `config:` block will emit a WARNING on every load.
 
-7. **Update `ll-loop create` / create-loop skill**: Prompt for config overrides during interactive loop creation.
+8. **Update `ll-loop create` / create-loop skill**: Prompt for config overrides during interactive loop creation.
 
-8. **Tests**: Add unit tests for schema parsing with `config` block, override application, and CLI flag precedence. See **Acceptance Criteria** below.
+9. **Tests**: Add unit tests for schema parsing with `config` block, override application, and CLI flag precedence. See **Acceptance Criteria** below.
 
 ## Acceptance Criteria
 
@@ -112,6 +114,7 @@ Precedence (highest to lowest):
 
 ### Files to Modify
 - `scripts/little_loops/fsm/schema.py` — Add `LoopConfigOverrides` dataclass and `config` field to `FSMLoop`; update `from_dict` and `to_dict`
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — Add `config` property to top-level schema; schema has `additionalProperties: false` so this is a hard requirement (YAML with `config:` block fails validation without it)
 - `scripts/little_loops/cli/loop/run.py` — Inject YAML config overrides after line 65, before CLI `--handoff-threshold` check at line 67; see Step 3 above
 - `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume` (line 143): fix silent ignore of `--handoff-threshold`; add YAML config override application after line 190 (delay override); add CLI `--handoff-threshold` handling on top
 - `scripts/little_loops/cli/loop/info.py` — Display config overrides in `cmd_show` header block (lines 638-661)
@@ -120,7 +123,7 @@ Precedence (highest to lowest):
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/__init__.py:8` — imports `add_handoff_threshold_arg`; defines the `--handoff-threshold` CLI arg registered at line 153
-- `scripts/little_loops/cli/loop/_helpers.py:256-258` — forwards `handoff_threshold` arg to background subprocess in `run_background()`; must also forward config-derived threshold when no CLI flag is present
+- `scripts/little_loops/cli/loop/_helpers.py:256-258` — forwards `args.handoff_threshold` to the background subprocess via CLI flag. `subprocess.Popen` at line 264 has **no** `env=` kwarg, so the child inherits the parent process environment. YAML-derived `LL_HANDOFF_THRESHOLD` set via `os.environ` in `run.py` before `run_background()` is called will be inherited automatically — **no changes to `_helpers.py` are required**. The CLI flag path (lines 256-258) still correctly overrides when `--handoff-threshold` is explicitly passed.
 - `scripts/little_loops/cli_args.py` — contains `add_handoff_threshold_arg`; referenced pattern for how threshold args are added
 
 ### Similar Patterns
@@ -144,7 +147,6 @@ Precedence (highest to lowest):
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/little_loops/fsm/fsm-loop-schema.json` — **also needs updating**: this is the separate JSON schema for the loop YAML format itself (distinct from `config-schema.json`); must add a `config` block definition here so the schema reflects the new field
 - `hooks/scripts/context-monitor.sh:26` — **critical data flow**: this is where `LL_HANDOFF_THRESHOLD` is actually consumed (`THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"`); the Python executor never reads the env var directly — it only detects the `CONTEXT_HANDOFF:` signal that the hook emits
 - `scripts/little_loops/fsm/validation.py:76-92` — `KNOWN_TOP_LEVEL_KEYS` frozenset must have `"config"` added; without it, YAML files with a `config:` block will emit a WARNING on every load
 - `scripts/little_loops/cli/loop/__init__.py:221` — `ll-loop resume` also registers `add_handoff_threshold_arg`; if resume re-starts a paused loop, it should also apply YAML config block overrides
