@@ -75,6 +75,7 @@ if issue.completed_date:
 `enhancement`, `refactoring`, `issue-history`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T01:35:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2281d203-9afd-4a20-9f62-e801643ffa71.jsonl`
 - `/ll:verify-issues` - 2026-03-23T00:58:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
@@ -84,7 +85,13 @@ if issue.completed_date:
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P4
+**Completed** | Created: 2026-03-13 | Priority: P4
+
+## Resolution
+
+- **Action**: improve
+- **Date**: 2026-03-22
+- **Outcome**: Extracted `_update_rejection_metrics(metrics, category)` helper (quality.py:126) and replaced three 5-branch dispatch blocks with single-line calls. `total_closed += 1` left at each call site. All 3841 tests pass.
 
 ## Verification Notes
 
