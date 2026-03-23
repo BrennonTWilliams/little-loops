@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-03-23
 discovered_by: capture-issue
-confidence_score: 85
-outcome_confidence: 64
+confidence_score: 92
+outcome_confidence: 79
 ---
 
 # FEAT-862: FSM loop YAML per-loop config overrides
@@ -195,6 +195,7 @@ _Added by `/ll:confidence-check` on 2026-03-23_
 **Open** | Created: 2026-03-23 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87d63032-1c5a-48a2-bbbb-58a14a066171.jsonl`
 - `/ll:refine-issue` - 2026-03-23T19:44:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4128aee-3c7e-4973-884d-baaf30142c8f.jsonl`
 - `/ll:refine-issue` - 2026-03-23T19:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96b5e822-aa37-416b-9c6d-1f4c72316bb4.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/345cc7c0-0969-446e-b124-5aecd9852207.jsonl`
