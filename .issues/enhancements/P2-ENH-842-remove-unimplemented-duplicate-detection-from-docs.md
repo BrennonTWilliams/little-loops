@@ -1,13 +1,15 @@
 ---
 discovered_date: 2026-03-22T00:00:00Z
 discovered_by: audit-docs
+confidence_score: 95
+outcome_confidence: 86
 ---
 
-# ENH: Remove unimplemented `duplicate_detection` config from documentation
+# ENH: Implement `duplicate_detection` config for `IssuesConfig`
 
 ## Summary
 
-`CONFIGURATION.md` documents a `duplicate_detection` config section with `exact_threshold` and `similar_threshold` fields that don't exist anywhere in the codebase, misleading users into configuring values that have no effect.
+`CONFIGURATION.md` documents a `duplicate_detection` config section with `exact_threshold` and `similar_threshold` fields that are never read by the Python config system. The underlying thresholds exist as hardcoded constants in `issue_discovery/matching.py:87,92`. The skill files (`skills/capture-issue/SKILL.md`, `templates.md`) already reference these as `{{config.issues.duplicate_detection.*}}` template variables. The fix is to implement the config wiring — making the thresholds user-configurable as designed.
 
 ## Current Behavior
 
@@ -29,46 +31,54 @@ discovered_by: audit-docs
 
 ## Expected Behavior
 
-Either:
-- **Option A**: Remove the `duplicate_detection` documentation entirely (if the feature was abandoned)
-- **Option B**: Implement the feature in `IssuesConfig.from_dict` and `config-schema.json`, then use it in `issue_discovery/`
+Users can set `issues.duplicate_detection.exact_threshold` and `issues.duplicate_detection.similar_threshold` in `ll-config.json` and have the values take effect in duplicate detection. `IssuesConfig` reads the values, `config-schema.json` validates them, and `FindingMatch` properties in `matching.py` use them instead of hardcoded constants.
 
 ## Root Cause
 
-- **File**: `docs/reference/CONFIGURATION.md`
-- **Anchor**: `issues` config section
-- **Cause**: Documentation was written for a planned feature that was never implemented. `IssuesConfig` (`config/features.py`) has no `duplicate_detection` field. `config-schema.json` has no `duplicate_detection` entry. Zero matches for `duplicate_detection`, `exact_threshold`, or `similar_threshold` in `scripts/little_loops/`.
+- **File**: `scripts/little_loops/config/features.py`
+- **Anchor**: `IssuesConfig.from_dict` (lines 56-81) and `IssuesConfig` dataclass (lines 43-53)
+- **Cause**: The config plumbing was never implemented. `IssuesConfig` has no `duplicate_detection` field and `from_dict` never reads it. Meanwhile the thresholds exist as hardcoded literals in `issue_discovery/matching.py`: `should_skip` (line 87) uses `>= 0.8` and `should_update` (line 92) uses `0.5 <= score < 0.8` — exactly the documented default values. Additionally, `config-schema.json` (root-level) has `"additionalProperties": false` in the `issues` block (line 127), so any user-supplied `duplicate_detection` key would be rejected by schema validation. The skill files (`skills/capture-issue/SKILL.md`, `skills/capture-issue/templates.md`) already correctly reference `{{config.issues.duplicate_detection.exact_threshold}}` and `{{config.issues.duplicate_detection.similar_threshold}}` — they are wired correctly on the prompt side, waiting for the Python config to back them.
 
 ## Integration Map
 
 ### Files to Modify
-- `docs/reference/CONFIGURATION.md` — remove `duplicate_detection` from JSON example and issues table
+- `scripts/little_loops/config/features.py` — add `DuplicateDetectionConfig` dataclass; add `duplicate_detection` field to `IssuesConfig`; update `from_dict` (line 73 block) to parse it
+- `config-schema.json` (root-level, line 127) — add `duplicate_detection` object to `issues.properties` before `"additionalProperties": false`
+- `scripts/little_loops/issue_discovery/matching.py` — replace hardcoded `0.8` (line 87) and `0.5` (lines 92, 97, 102) in `FindingMatch` properties with configurable fields
+- `scripts/little_loops/issue_discovery/search.py` — thread `IssuesConfig` into `find_existing_issue` and pass thresholds to the 4 `FindingMatch(...)` instantiation sites (lines 180, 206, 251, 283)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/config/features.py` — would need new field if implementing
-- `scripts/little_loops/config-schema.json` — would need new entry if implementing
-- `scripts/little_loops/issue_discovery/` — where the logic would live if implementing
+- `scripts/little_loops/config/__init__.py` — export `DuplicateDetectionConfig` alongside existing exports
+- `scripts/little_loops/config/core.py` — imports `IssuesConfig`; no change needed (field is added transparently)
+
+### No Changes Needed (Already Correct)
+- `docs/reference/CONFIGURATION.md` — already documents `duplicate_detection` correctly at lines 37-40 (JSON example) and 204-205 (reference table)
+- `skills/capture-issue/SKILL.md` — already references `{{config.issues.duplicate_detection.exact_threshold}}` (6 times)
+- `skills/capture-issue/templates.md` — already references these config vars (3 times)
 
 ### Tests
-- N/A for removal; new tests if implementing
+- `scripts/tests/test_config.py` — `TestIssuesConfig` (line 108); add `TestDuplicateDetectionConfig` cases for default values and `from_dict` parsing
+- New test: verify that custom thresholds propagate to `FindingMatch` decision properties
 
 ### Documentation
-- `docs/reference/API.md` — `IssuesConfig` would need update if implementing
-
-### Configuration
-- `config-schema.json` — needs update either way (add entry or confirm absent)
+- `docs/reference/API.md` — add `DuplicateDetectionConfig` to `IssuesConfig` entry
 
 ## Implementation Steps
 
-1. Decide: remove docs (fast) or implement feature (substantial)
-2. If removing: delete the two `duplicate_detection` blocks from `CONFIGURATION.md`
-3. If implementing: add `DuplicateDetectionConfig` dataclass, wire into `IssuesConfig.from_dict`, add to `config-schema.json`, use in `issue_discovery/matching.py`
+1. **Add `DuplicateDetectionConfig` dataclass** to `config/features.py` — follow the `CategoryConfig` pattern (lines 25-40): `exact_threshold: float = 0.8`, `similar_threshold: float = 0.5`, with a `from_dict` classmethod
+2. **Add field to `IssuesConfig`** — add `duplicate_detection: DuplicateDetectionConfig = field(default_factory=DuplicateDetectionConfig)` and update `from_dict` line 73 block to call `DuplicateDetectionConfig.from_dict(data.get("duplicate_detection", {}))`
+3. **Export from `config/__init__.py`** — add `DuplicateDetectionConfig` to the public exports
+4. **Update `config-schema.json`** (root-level) — insert `duplicate_detection` object into `issues.properties` (before line 127) with `exact_threshold` (number, 0.0-1.0, default 0.8) and `similar_threshold` (number, 0.0-1.0, default 0.5) properties
+5. **Update `matching.py` `FindingMatch`** — add `exact_threshold: float = 0.8` and `similar_threshold: float = 0.5` fields to the dataclass; update `should_skip` (line 87) to use `self.exact_threshold`, `should_update` (line 92) and `should_create` (line 97) to use `self.exact_threshold`/`self.similar_threshold`, `should_reopen` (line 102) to use `self.similar_threshold`
+6. **Thread config through `search.py` `find_existing_issue`** — accept optional `issues_config: IssuesConfig | None = None`; extract thresholds from config if provided; pass to the 4 `FindingMatch(...)` calls at lines 180, 206, 251, 283
+7. **Add tests** — in `test_config.py` alongside `TestIssuesConfig`: default values, custom values via `from_dict`, schema validation; confirm `FindingMatch` uses configured thresholds
+8. **Verify** — `python -m pytest scripts/tests/test_config.py -v -k "duplicate" && python -m pytest scripts/tests/ -v`
 
 ## Impact
 
-- **Priority**: P2 — actively misleads users who read the config reference
-- **Effort**: Tiny (removal) or Large (implementation)
-- **Risk**: Low (removal) or Medium (implementation — affects issue capture workflows)
+- **Priority**: P2 — config docs describe fields users can't actually use; skill templates reference config values that are never read
+- **Effort**: Small — ~40 lines of Python across 4 files; schema update; tests
+- **Risk**: Low — backward-compatible: `DuplicateDetectionConfig` defaults (0.8, 0.5) preserve current hardcoded behavior exactly
 - **Breaking Change**: No
 
 ## Labels
@@ -78,3 +88,8 @@ Either:
 ## Status
 
 **Open** | Created: 2026-03-22 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-03-23T16:03:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d106e83-f07c-4417-a00b-467c82f88f42.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/834df235-fade-4c5c-9680-95839070d795.jsonl`
