@@ -31,18 +31,28 @@ The flood of "hook error" messages is disruptive and erodes trust in the hook sy
 ## Root Cause
 
 - **File**: `hooks/scripts/context-monitor.sh`
-- **Anchor**: `main()` → exit 2 block (after `HANDOFF_COMPLETE` check)
-- **Cause**: No `last_reminder_at` tracking. Every call that passes the threshold and fails the `HANDOFF_COMPLETE` check unconditionally reaches `exit 2`. The `HANDOFF_COMPLETE = true` short-circuit (line 302) only fires after `/ll:handoff` is explicitly run.
+- **Anchor**: `main()` → exit 2 block at lines 334-335 (after `HANDOFF_COMPLETE` check)
+- **Cause**: No `last_reminder_at` tracking. Every call that passes the threshold and fails the `HANDOFF_COMPLETE` check unconditionally reaches `exit 2`. The `HANDOFF_COMPLETE = true` short-circuit (lines 302-306) only fires after `/ll:handoff` is explicitly run.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `context-monitor.sh:302-306` — `HANDOFF_COMPLETE` guard: only exits early if `handoff_complete` state field is `true` (set by the handoff file mtime check at lines 310-323)
+- `context-monitor.sh:325-335` — exit 2 block; comment at 325-327 explains `exit 2` is used so stderr reaches Claude in non-interactive mode; the echo+exit path is unconditional once past line 306
+- `context-monitor.sh:242-245` — state extraction block; `LAST_REMINDER_AT` extraction goes immediately after line 245, following the identical `$(echo "$STATE" | jq -r '.field // ""')` pattern
+- `to_epoch` confirmed in `hooks/scripts/lib/common.sh:90-117`; returns `0` for empty input, which safely short-circuits the cooldown check when `last_reminder_at` is absent
+- `last_reminder_at` field does NOT exist in the current state schema — confirmed absent from initial state literal (lines 155-163) and all `NEW_STATE` mutation sites
 
 ## Proposed Solution
 
 Add a `last_reminder_at` field to state. Before `exit 2`, check if 60 seconds have elapsed since the last reminder. If not, write state and `exit 0` silently.
 
 ```bash
-# After extracting HANDOFF_COMPLETE (~line 245), extract:
+# After line 245 (HANDOFF_COMPLETE extraction), add:
 LAST_REMINDER_AT=$(echo "$STATE" | jq -r '.last_reminder_at // ""')
 
-# Before exit 2 block, add cooldown check:
+# Before the comment at line 325, add cooldown check:
 NOW_EPOCH=$(date +%s)
 LAST_EPOCH=$(to_epoch "${LAST_REMINDER_AT:-}")
 if [ "$LAST_EPOCH" -gt 0 ] && [ $((NOW_EPOCH - LAST_EPOCH)) -lt 60 ]; then
@@ -50,9 +60,21 @@ if [ "$LAST_EPOCH" -gt 0 ] && [ $((NOW_EPOCH - LAST_EPOCH)) -lt 60 ]; then
     release_lock "$STATE_LOCK"
     exit 0
 fi
-# Update last_reminder_at before exit 2:
+# Before line 334 (the echo), update last_reminder_at:
 NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.last_reminder_at = $t')
 ```
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The `jq` amendment pattern is identical to `context-monitor.sh:298` (`threshold_crossed_at` assignment):
+```bash
+NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$THRESHOLD_CROSSED_AT" '.threshold_crossed_at = $t')
+```
+Replace `$THRESHOLD_CROSSED_AT` with `$(date -u +%Y-%m-%dT%H:%M:%SZ)` inline (same format as all existing timestamp writes at lines 157, 297).
+
+The `write_state` + `release_lock` + `exit 0` sequence mirrors the existing early-exit pattern at lines 303-305.
 
 ## Integration Map
 
@@ -63,7 +85,8 @@ NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.la
 - `hooks/hooks.json` — registers context-monitor.sh as PostToolUse hook
 
 ### Similar Patterns
-- `hooks/scripts/user-prompt-check.sh` — similar exit 2 pattern, may benefit from same treatment
+- `hooks/scripts/precompact-state.sh:82-84` — only other hook using `exit 2`; unconditional, no rate-limiting needed (fires once per compaction event by design)
+- **Note**: `user-prompt-check.sh` does NOT use `exit 2` (only `exit 0`) — no similar treatment needed there
 
 ### Tests
 - No existing shell tests for context-monitor.sh; verify manually per plan verification steps
@@ -76,10 +99,10 @@ NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.la
 
 ## Implementation Steps
 
-1. Extract `LAST_REMINDER_AT` from state after `HANDOFF_COMPLETE` extraction
-2. Add 60-second cooldown check before the `exit 2` block
-3. Update `last_reminder_at` in `NEW_STATE` before emitting the reminder
-4. Verify: trigger 10+ Read calls above threshold, confirm only 1 "hook error" in 60s window
+1. In `context-monitor.sh` after line 245, add: `LAST_REMINDER_AT=$(echo "$STATE" | jq -r '.last_reminder_at // ""')`
+2. Before the comment at line 325, insert the `NOW_EPOCH`/`LAST_EPOCH` cooldown guard that calls `write_state "$NEW_STATE"` + `release_lock "$STATE_LOCK"` + `exit 0` when within 60s
+3. Before line 334 (the `echo` that emits the reminder), add the `NEW_STATE` amendment: `NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.last_reminder_at = $t')`
+4. Verify: trigger 10+ Read calls above threshold, confirm only 1 "hook error" appears in a 60s window
 
 ## Impact
 
@@ -97,6 +120,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `context-monitor`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:33:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19fd35ab-9270-4420-96ba-b9bf29365721.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:29:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8e2d522-d473-46a2-8169-228e476ec976.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/520e79f8-0528-4c6d-92c0-e09d2d2aa372.jsonl`
 
 ---

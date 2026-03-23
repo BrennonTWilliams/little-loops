@@ -54,13 +54,18 @@ No other changes needed — the existing `[ -z "$TOOL_NAME" ] && exit 0` guard h
 
 ### Files to Modify
 - `hooks/scripts/context-monitor.sh` — lines 45-46, add `2>/dev/null || echo` fallbacks
+- `hooks/scripts/issue-completion-log.sh` — lines 19, 23, 29: same gap, same fix needed
 
 ### Dependent Files (Callers/Importers)
 - `hooks/hooks.json` — registers context-monitor.sh as PostToolUse hook; no changes needed
 
-### Similar Patterns
-- `hooks/scripts/user-prompt-check.sh` — audit for same pattern (may have same gap)
-- `hooks/scripts/session-start.sh` — uses jq; check for similar missing fallbacks
+### Also Affected
+- `hooks/scripts/issue-completion-log.sh` — lines 19, 23, 29 all lack `2>/dev/null || echo ""` fallbacks with `set -euo pipefail` active
+
+### Similar Patterns (Already Correct — No Changes Needed)
+- `hooks/scripts/user-prompt-check.sh:34` — uses correct pattern: `jq -r '...' 2>/dev/null || echo ""`
+- `hooks/scripts/session-start.sh` — uses `2>/dev/null` on all jq calls
+- `hooks/scripts/precompact-state.sh:25` — stdin parsing uses correct pattern
 
 ### Tests
 - Manual: `echo "" | bash hooks/scripts/context-monitor.sh` should exit 0 after fix
@@ -73,10 +78,12 @@ No other changes needed — the existing `[ -z "$TOOL_NAME" ] && exit 0` guard h
 
 ## Implementation Steps
 
-1. Add `2>/dev/null || echo ""` to line 45 (`TOOL_NAME`)
-2. Add `2>/dev/null || echo '{}'` to line 46 (`TOOL_RESPONSE`)
-3. Audit `user-prompt-check.sh` and `session-start.sh` for the same gap
+1. Add `2>/dev/null || echo ""` to `context-monitor.sh` line 45 (`TOOL_NAME`)
+2. Add `2>/dev/null || echo '{}'` to `context-monitor.sh` line 46 (`TOOL_RESPONSE`)
+3. Fix `issue-completion-log.sh` lines 19, 23, 29 with the same pattern (`|| echo ""` for all three)
 4. Verify: `echo "" | bash hooks/scripts/context-monitor.sh` exits 0
+5. Verify: `echo "" | bash hooks/scripts/issue-completion-log.sh` exits 0
+6. (No changes needed for `user-prompt-check.sh`, `session-start.sh`, `precompact-state.sh` — already use correct pattern)
 
 ## Impact
 
@@ -94,6 +101,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `context-monitor`, `robustness`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:32:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/667ecdfb-f85c-42f2-aa72-56e3ee0847e1.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:29:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cf4d369-abe8-4923-9eda-5c52bf33e224.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/520e79f8-0528-4c6d-92c0-e09d2d2aa372.jsonl`
 
 ---
