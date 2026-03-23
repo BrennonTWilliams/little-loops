@@ -22,6 +22,7 @@
   - [apo-opro](#apo-opro--opro-style-history-guided-optimization)
   - [apo-beam](#apo-beam--beam-search-optimization)
   - [apo-textgrad](#apo-textgrad--textgrad-example-driven-gradient-descent)
+  - [examples-miner](#examples-miner--co-evolutionary-corpus-mining)
   - [Choosing Between APO Loops](#choosing-between-apo-loops)
   - [Tips for APO Loops](#tips-for-apo-loops)
 - [Harness Loops](#harness-loops)
@@ -265,6 +266,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 | `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
+| `examples-miner` | Co-evolutionary corpus mining — harvest completed issue sessions, quality-gate, calibrate difficulty band, synthesize adversarial examples; runs `apo-textgrad` as a child loop |
 
 **Harness Examples**
 

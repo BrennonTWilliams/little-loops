@@ -21,7 +21,7 @@
   - [The Implementation Roadmap](#the-implementation-roadmap)
 - [Common Recipes](#common-recipes)
   - [Weekly automation review](#weekly-automation-review)
-  - [Quick pattern check (Step 1 only)](#quick-pattern-check-step-1-only)
+  - [Quick pattern check (Step 1 patterns only)](#quick-pattern-check-step-1-patterns-only)
   - [Fresh proposals from existing data](#fresh-proposals-from-existing-data)
   - [Extract only recent messages](#extract-only-recent-messages)
   - [Filter messages by type (`--skip-cli` / `--commands-only`)](#filter-messages-by-type---skip-cli----commands-only)
@@ -284,7 +284,7 @@ ll-messages -n 200                    # Extract recent messages
 # Review: .claude/workflow-analysis/summary-*.md
 ```
 
-### Quick pattern check (Step 1 only)
+### Quick pattern check (Step 1 patterns only)
 
 Run only Step 1 to get a fast category breakdown without the full pipeline. Spawn the `workflow-pattern-analyzer` agent directly with the messages file as input:
 
