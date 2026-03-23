@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 85
+outcome_confidence: 64
 ---
 
 # FEAT-862: FSM loop YAML per-loop config overrides
@@ -149,6 +151,18 @@ class ConfidenceGateConfig:
 
 ---
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-03-23_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Concerns
+- **ConfidenceGateConfig prerequisite**: `automation.py:91-104` only has a single `threshold` field; the new `readiness_threshold`/`outcome_threshold` override keys require extending this class first. This is documented in "Schema Divergence" but missing from the numbered implementation steps — add as a prerequisite or scope those keys out of v1.
+- **No acceptance criteria**: Missing explicit test scenarios for edge cases (e.g., "given YAML `config.handoff_threshold: 60` and CLI default 80, effective threshold must be 60"). Without these, flag-vs-YAML precedence may be incompletely tested.
+- **`ll-loop resume` not in implementation steps**: The refine-issue findings note `ll-loop resume` (line 221 in `__init__.py`) also registers `--handoff-threshold` and should apply YAML config overrides, but Step 3 only covers `ll-loop run`.
+
 ## Status
 
 **Open** | Created: 2026-03-23 | Priority: P3
@@ -156,3 +170,4 @@ class ConfidenceGateConfig:
 ## Session Log
 - `/ll:refine-issue` - 2026-03-23T19:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96b5e822-aa37-416b-9c6d-1f4c72316bb4.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/345cc7c0-0969-446e-b124-5aecd9852207.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d420b221-a92a-4a4a-ac2a-b4d27643c447.jsonl`
