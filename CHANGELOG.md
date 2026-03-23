@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.60.0] - 2026-03-23
+
+### Added
+
+- **Session log auto-linking hook** — Automatically link session logs on issue completion via all code paths (ad2e346a)
+- **go-no-go findings write-back** — Write significant findings back to issue file during go-no-go analysis (606ea658)
+- **go-no-go NO-GO sub-classification** — Add NO-GO REASON sub-classification to verdict output for clearer feedback (f6a7fdf2)
+
+### Fixed
+
+- **Loop `--clear` screen flush** — Guard screen flush to depth-0 `state_enter` events only, preventing spurious clears (6fb5f96f)
+- **Docs index link case** — Correct docs index link case in README (5d6bd5d8)
+
+### Changed
+
+- **Workflow sequence category index** — ENH-550: Cache UUID→category index for O(1) lookups, eliminating repeated O(C×E) scans per message
+- **Boundary computation optimization** — ENH-551: Pre-compute entity sets in `_compute_boundaries` to reduce `extract_entities` calls from 2*(N-1) to N
+- **GitHub sync performance** — Batch-fetch GitHub issue bodies in `diff_all` for faster sync (d9318e40)
+- **Workflow sequence module** — Refactored into a package for improved organization (97870cfd)
+
+### Documentation
+
+- **Context-health-monitor loop** — Added to README with updated loop count (3b2428b1)
+- **Session log auto-linking hook** — Documented new hook and associated CLI flags (5bde3449)
+- **go-no-go verdict** — Documented NO-GO REASON sub-classification and findings write-back behavior (b0c5638d)
+
 ## [1.59.0] - 2026-03-21
 
 ### Added
@@ -85,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.60.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.59.0...v1.60.0
 [1.59.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.58.0...v1.59.0
 [1.58.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.57.0...v1.58.0
 [1.57.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.56.0...v1.57.0
