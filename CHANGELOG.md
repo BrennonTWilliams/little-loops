@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.61.1] - 2026-03-23
+
+### Fixed
+
+- **`${CLAUDE_PLUGIN_ROOT}` not resolved in hooks installed to settings files** — BUG-863: Resolve variable before writing hooks to settings files in both `init` and `configure` entry points
+
+### Changed
+
+- **Simplified `ll-config.json`** — Remove unused fields and add state files to `.gitignore`
+
 ## [1.61.0] - 2026-03-23
 
 ### Added
@@ -129,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.61.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.0...v1.61.1
 [1.61.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.60.0...v1.61.0
 [1.60.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.59.0...v1.60.0
 [1.59.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.58.0...v1.59.0
