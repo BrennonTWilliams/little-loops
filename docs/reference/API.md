@@ -481,7 +481,8 @@ Configuration for the `ll-issues refine-status` display.
 ```python
 @dataclass
 class RefineStatusConfig:
-    columns: list[str] = []    # Column names to include (empty = all default columns)
+    columns: list[str] = []       # Column names to include (empty = all default columns)
+    elide_order: list[str] = []   # Column drop sequence for narrow terminals (empty = default order)
 ```
 
 ---

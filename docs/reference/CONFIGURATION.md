@@ -59,7 +59,7 @@ For interactive editing, use `/ll:configure`.
     "command_prefix": "/ll:",
     "ready_command": "ready-issue {{issue_id}}",
     "manage_command": "manage-issue {{issue_type}} {{action}} {{issue_id}}",
-    "worktree_copy_files": [".env"]
+    "worktree_copy_files": [".claude/settings.local.json", ".env"]
   },
 
   "commands": {
@@ -117,7 +117,7 @@ For interactive editing, use `/ll:configure`.
   "sprints": {
     "sprints_dir": ".sprints",
     "default_timeout": 3600,
-    "default_max_workers": 4
+    "default_max_workers": 2
   },
 
   "sync": {

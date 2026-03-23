@@ -80,13 +80,17 @@ def _detect_workflows(...):
 - `scripts/little_loops/workflow_sequence_analyzer.py` — add `_build_category_index`, update `_detect_workflows`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/tests/test_workflow_sequence_analyzer.py` — imports `_get_message_category` for testing; may need update if function is removed
+- `scripts/tests/test_workflow_sequence_analyzer.py:26` — imports `_get_message_category` by name; add `_build_category_index` to the same import line
+- `scripts/tests/test_workflow_sequence_analyzer.py:1818-1858` — `TestGetMessageCategory` class tests `_get_message_category` directly; **do not remove the function** (it has direct test coverage)
 
 ### Similar Patterns
-- N/A
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/workflow_sequence_analyzer.py:686-697` — `boundary_before: dict[str, bool]` is built at the top of `_detect_workflows` using the same build-once/query-N-times pattern. Follow this convention exactly: typed annotation on empty dict, plain `for` loop to populate, comment above block, `.get(key, default)` at call sites.
 
 ### Tests
-- `scripts/tests/test_workflow_sequence_analyzer.py` — add `TestBuildCategoryIndex` unit test
+- `scripts/tests/test_workflow_sequence_analyzer.py` — add `TestBuildCategoryIndex` unit test; follow the `TestGetMessageCategory` structure (lines 1818-1858): stateless class, private `_patterns()` helper method (not a `@pytest.fixture`), single-verb docstrings, edge cases: empty input, non-str category, UUID collision
 
 ### Documentation
 - N/A
@@ -99,7 +103,7 @@ def _detect_workflows(...):
 1. Add `_build_category_index(patterns)` near `_get_message_category`
 2. At start of `_detect_workflows`, call `category_index = _build_category_index(patterns)`
 3. Replace both `_get_message_category(...)` call sites with `category_index.get(...)`
-4. Keep or remove `_get_message_category` based on whether it has other callers
+4. Keep `_get_message_category` — it has no production callers after this change, but `TestGetMessageCategory` (test_workflow_sequence_analyzer.py:1818) tests it directly; removing it would break existing tests without benefit
 
 ## Impact
 
@@ -134,6 +138,7 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-23T03:54:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9de232c9-07da-4ba3-978b-405f2c3dd345.jsonl`
 - `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:go-no-go` - 2026-03-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dae687ee-b9b3-4550-a249-d0875a127443.jsonl` — NO-GO: ENH-840 (P3) is a higher-priority open refactor that moves `_detect_workflows` to its final location; implement ENH-550 after ENH-840.
 - `/ll:verify-issues` - 2026-03-23T00:58:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
