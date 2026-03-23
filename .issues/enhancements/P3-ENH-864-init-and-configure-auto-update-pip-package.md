@@ -49,8 +49,24 @@ Users frequently run `/ll:init` once and then rely on `/ll:configure` for day-to
 
 ## Integration Map
 
+### Files to Modify
 - `skills/init/SKILL.md` — extend step 9.5 version-mismatch branch with update prompt/action
 - `skills/configure/SKILL.md` — add new pip package check step
+
+### Dependent Files (Callers/Importers)
+- N/A — skill `.md` files are not imported or called programmatically
+
+### Similar Patterns
+- `skills/init/SKILL.md` step 9.5 — existing version detection bash logic to reuse in configure
+
+### Tests
+- N/A — no Python script changes; skill behavior verified by manual testing
+
+### Documentation
+- N/A — the modified skill files are themselves the documentation
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -60,11 +76,16 @@ Users frequently run `/ll:init` once and then rely on `/ll:configure` for day-to
 4. Open `skills/configure/SKILL.md`, add a new step "0.5 Pip Package Check" (before the config area menu) with the same detection + update logic
 5. Verify both skills reference the same `PLUGIN_VERSION` comment format for comparison
 
+## API/Interface
+
+N/A — No public API changes; this enhancement modifies skill markdown files only.
+
 ## Impact
 
-- **Scope**: `skills/init/SKILL.md`, `skills/configure/SKILL.md`
-- **Risk**: Low — non-blocking; only adds an opt-in update step
+- **Priority**: P3 — Low priority; improves UX for users who update the plugin but don't remember to run `pip install`
 - **Effort**: Small — text edits to two skill files, no Python changes
+- **Risk**: Low — non-blocking; only adds an opt-in update step
+- **Breaking Change**: No
 
 ## Labels
 
@@ -75,4 +96,5 @@ enhancement, init, configure, pip, package-management
 Active
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-23T22:16:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/795fcb4e-b6a9-48e6-b5c4-307257454953.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90e70c91-9459-4013-8a64-c4fa530434f9.jsonl`
