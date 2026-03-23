@@ -113,13 +113,34 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Step 3 model**: Follow `confidence-check/SKILL.md:397-453` — `HAS_FINDINGS` boolean gate (line 401), `CHECK_MODE` skip guard (line 403), `AskUserQuestion` in interactive mode (line 408), direct write in auto mode (line 413), `Edit` insertion with "before `## Status`" fallback (line 417)
 - **Step 4 correction**: Session log format is unchanged; the only new behavior is Phase 3f running before the session log append
 
+## Impact
+
+- **Priority**: P3 - Useful improvement to issue quality and research persistence; not blocking any critical workflows
+- **Effort**: Small - Modifies only `skills/go-no-go/SKILL.md` (prose); no Python or test changes required
+- **Risk**: Low - Additive new phase; existing session log, check mode, and verdict behavior are unchanged
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `go-no-go`, `skill`
+
+## Resolution
+
+Implemented by `/ll:manage-issue` on 2026-03-22.
+
+**Changes made**:
+- `skills/go-no-go/SKILL.md`: Added `Edit` and `AskUserQuestion` to `allowed-tools` frontmatter
+- `skills/go-no-go/SKILL.md`: Added Phase 3f (Go/No-Go Findings Write-Back) after Step 3e — implements novelty heuristic, interactive/auto mode gating, and `## Go/No-Go Findings` section write-back
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T02:19:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54ad326d-246f-4fab-9297-e3498f587df3.jsonl`
 - `/ll:refine-issue` - 2026-03-23T01:55:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9359449-731d-43e3-ba00-6082cc3bba84.jsonl`
 - `/ll:capture-issue` - 2026-03-22T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b57f667-bbed-4765-ac10-65a94b63e0d9.jsonl`
 - `/ll:confidence-check` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26736631-f9f6-4a51-9124-5b5503a68625.jsonl`
+- `/ll:manage-issue` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a675b2b4-23de-4f29-88aa-2fb2faf7e761.jsonl`
 
 ---
 
 ## Status
 
-Active — not yet started.
+Completed — 2026-03-22.

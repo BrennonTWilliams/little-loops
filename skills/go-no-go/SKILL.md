@@ -15,6 +15,8 @@ allowed-tools:
   - Bash(cat:*)
   - Bash(git:*)
   - Agent
+  - Edit
+  - AskUserQuestion
 ---
 
 # Go/No-Go — Adversarial Issue Assessment
@@ -311,6 +313,50 @@ GO/NO-GO: [ISSUE-ID] — [ISSUE-TITLE]
 ```
 
 Store the verdict (`GO` or `NO-GO`) for each issue for use in Phase 4 and Phase 5.
+
+### Step 3f: Go/No-Go Findings Write-Back
+
+**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
+
+After displaying the verdict, determine whether there are significant findings to write back. Track `HAS_FINDINGS=false`; set to `true` if the judge output contains specific files, functions, or concrete evidence in KEY ARGUMENTS FOR or KEY ARGUMENTS AGAINST that are **not already present** in the issue body.
+
+**Novelty heuristic**: Findings are significant if they mention specific file paths, function names, or concrete risks/feasibility points not already referenced in the issue body text.
+
+**Interactive mode** (`AUTO_MODE` is false):
+
+If `HAS_FINDINGS` is true, use `AskUserQuestion` to ask:
+> "Should I update the issue file with the go/no-go findings (verdict rationale, key arguments, and deciding factor)?"
+
+Options: Yes / No
+
+**Auto mode bypass**: When `AUTO_MODE` is true and `HAS_FINDINGS` is true, skip the `AskUserQuestion` prompt and proceed automatically.
+
+**No findings case**: When `HAS_FINDINGS` is false (judge output contains no novel file/function references beyond what the issue already documents): Skip (no update needed).
+
+If the user confirms (interactive) or `AUTO_MODE` is true with findings, use the `Edit` tool to insert a `## Go/No-Go Findings` section into the issue file. Insert before `## Session Log` (or before `## Status` if no session log section exists):
+
+```markdown
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on [YYYY-MM-DD]_ — **[GO | NO-GO]**
+
+**Deciding Factor**: [DECIDING FACTOR from judge]
+
+### Key Arguments For
+- [bullet from KEY ARGUMENTS FOR]
+
+### Key Arguments Against
+- [bullet from KEY ARGUMENTS AGAINST]
+
+### Rationale
+[RATIONALE from judge]
+```
+
+After writing findings (or skipping), stage the updated issue file:
+
+```bash
+git add "[issue-file-path]"
+```
 
 ---
 
