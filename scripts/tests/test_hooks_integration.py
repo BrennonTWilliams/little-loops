@@ -740,6 +740,61 @@ class TestUserPromptCheck:
             os.chdir(original_dir)
 
 
+    @pytest.fixture
+    def enabled_config(self, tmp_path: Path) -> Path:
+        """Create test config with prompt optimization enabled."""
+        config = {"prompt_optimization": {"enabled": True, "mode": "quick", "confirm": "true"}}
+        config_file = tmp_path / ".claude" / "ll-config.json"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(json.dumps(config, indent=2))
+        return config_file
+
+    def test_optimization_template_injected_when_claude_plugin_root_set(
+        self, hook_script: Path, enabled_config: Path, tmp_path: Path
+    ):
+        """Regression test: prompt optimization must not silently fail when CLAUDE_PLUGIN_ROOT is set.
+
+        The bug: HOOK_PROMPT_FILE used CLAUDE_PLUGIN_ROOT which resolves to
+        $CLAUDE_PLUGIN_ROOT/prompts/ — a path that doesn't exist.
+        Fix: always use SCRIPT_DIR/../prompts/ instead.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(enabled_config.read_text())
+
+            input_data = {"prompt": "This is a qualifying prompt that is longer than ten characters"}
+
+            # Set CLAUDE_PLUGIN_ROOT to the project root (not hooks/ dir) to reproduce the bug.
+            # With the bug: path resolves to $CLAUDE_PLUGIN_ROOT/prompts/ (no such dir) → empty output.
+            # After fix: path uses SCRIPT_DIR/../prompts/ → template injected → non-empty output.
+            project_root = str(hook_script.parent.parent.parent)
+            env = os.environ.copy()
+            env["CLAUDE_PLUGIN_ROOT"] = project_root
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=env,
+            )
+
+            assert result.returncode == 0, f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
+            assert result.stdout.strip(), (
+                "Prompt optimization produced no output — template was not injected. "
+                "HOOK_PROMPT_FILE path is likely wrong when CLAUDE_PLUGIN_ROOT is set."
+            )
+        finally:
+            os.chdir(original_dir)
+
+
 class TestDuplicateIssueId:
     """Test check-duplicate-issue-id.sh race condition handling."""
 

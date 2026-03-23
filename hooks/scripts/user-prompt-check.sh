@@ -78,7 +78,7 @@ fi
 # All checks passed - output the optimization hook prompt
 # The hook prompt file uses {{VARIABLE}} placeholders that we substitute
 
-HOOK_PROMPT_FILE="${CLAUDE_PLUGIN_ROOT:-$SCRIPT_DIR/..}/prompts/optimize-prompt-hook.md"
+HOOK_PROMPT_FILE="${SCRIPT_DIR}/../prompts/optimize-prompt-hook.md"
 
 # Validate file exists
 if [ ! -f "$HOOK_PROMPT_FILE" ]; then
