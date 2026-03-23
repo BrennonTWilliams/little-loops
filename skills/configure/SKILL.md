@@ -7,7 +7,7 @@ allowed-tools:
   - Bash(mkdir:*)
 arguments:
   - name: area
-    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools (optional - prompts if omitted)"
+    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -57,6 +57,7 @@ Map argument names to config sections:
 | `scan` | `scan` | Focus dirs, exclude patterns |
 | `sync` | `sync` | GitHub Issues sync: enabled, label mapping, priorities |
 | `allowed-tools` | `permissions.allow` in `.claude/settings.json` or `.claude/settings.local.json` | ll- CLI tool allow entries (Note: writes to Claude Code settings files, not ll-config.json) |
+| `hooks` | `hooks` in `.claude/settings.json` or `.claude/settings.local.json` | ll- lifecycle hook configuration (Note: writes to Claude Code settings files, not ll-config.json) |
 
 ---
 
@@ -83,6 +84,7 @@ Configuration Areas
   scan          [CONFIGURED]  Focus dirs, exclude patterns
   sync          [DEFAULT]     GitHub Issues sync: enabled, label mapping, priorities
   allowed-tools [DEFAULT]     ll- CLI tool allow entries in settings.json/settings.local.json
+  hooks         [DEFAULT]     ll- hook configuration in settings.json/settings.local.json
 
 Configure: /ll:configure <area>
 Show:      /ll:configure <area> --show
@@ -187,7 +189,7 @@ questions:
       - label: "continuation"
         description: "Session handoff: auto-detect, includes, expiry"
       - label: "More areas..."
-        description: "Show context, prompt"
+        description: "Show context, prompt, hooks"
 ```
 
 If "More areas..." selected again:
@@ -204,6 +206,8 @@ questions:
         description: "Prompt optimization: mode, confirm, bypass"
       - label: "allowed-tools"
         description: "ll- CLI tool allow entries in settings.json/settings.local.json"
+      - label: "hooks"
+        description: "ll- lifecycle hook configuration in settings.json/settings.local.json"
 ```
 
 ### Step 2: Interactive Configuration
@@ -271,6 +275,7 @@ $ARGUMENTS
   - `scan` - Focus dirs, exclude patterns
   - `sync` - GitHub Issues sync: enabled, label mapping, priorities
   - `allowed-tools` - ll- CLI tool allow entries in settings.json/settings.local.json
+  - `hooks` - ll- lifecycle hook configuration in settings.json/settings.local.json
 
 - **flags** (optional): Command behavior flags
   - `--list` - Display all configuration areas with status

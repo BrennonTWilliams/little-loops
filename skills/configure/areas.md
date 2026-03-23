@@ -790,3 +790,154 @@ questions:
 5. Write result back with 2-space indent, preserving all top-level keys
 
 If "Skip / Remove entries" selected, remove all `Bash(ll-` entries and any `Write(.claude/ll-continue-prompt.md)` entry from both files (if they exist) and skip writing.
+
+---
+
+## Area: hooks
+
+**Note**: This area writes to `.claude/settings.json` or `.claude/settings.local.json` (Claude Code native settings files), not to `ll-config.json`. The `--reset` mode removes all ll- hook entries from the chosen file rather than resetting a config section.
+
+### Current Values
+
+First, detect and display current state:
+
+```bash
+SETTINGS_JSON_EXISTS=false
+SETTINGS_LOCAL_EXISTS=false
+[ -f ".claude/settings.json" ] && SETTINGS_JSON_EXISTS=true
+[ -f ".claude/settings.local.json" ] && SETTINGS_LOCAL_EXISTS=true
+```
+
+Display a unified table of all hooks from both sources:
+
+```
+Current Hook Configuration
+--------------------------
+  Source     Event             Matcher        Script                          Timeout  Status
+  [Plugin]   SessionStart      *              session-start.sh                5s       [exists/MISSING]
+  [Plugin]   UserPromptSubmit  (no matcher)   user-prompt-check.sh            3s       [exists/MISSING]
+  [Plugin]   PreToolUse        Write|Edit     check-duplicate-issue-id.sh     5s       [exists/MISSING]
+  [Plugin]   PostToolUse       *              context-monitor.sh              5s       [exists/MISSING]
+  [Plugin]   PostToolUse       Bash           issue-completion-log.sh         5s       [exists/MISSING]
+  [Plugin]   Stop              (no matcher)   session-cleanup.sh              15s      [exists/MISSING]
+  [Plugin]   PreCompact        *              precompact-state.sh             5s       [exists/MISSING]
+  [Project]  ...               ...            ...                             ...      [exists/MISSING]
+  [Local]    ...               ...            ...                             ...      [exists/MISSING]
+
+  Source key: [Plugin] = hooks/hooks.json  [Project] = .claude/settings.json  [Local] = .claude/settings.local.json
+  Status: exists = script path resolves  MISSING = script path not found (⚠ hook will fail)
+```
+
+Read `hooks/hooks.json` (plugin hooks, always present) for `[Plugin]` rows. Read `.claude/settings.json` and `.claude/settings.local.json` for `[Project]` and `[Local]` rows (may not exist — show "(none)" if absent or if `hooks` key is absent).
+
+For each hook entry, check whether the script path resolves by expanding `${CLAUDE_PLUGIN_ROOT}` or treating relative paths as relative to the project root.
+
+### Sub-command: show
+
+When `/ll:configure hooks show` is invoked (or `show` mode is entered interactively):
+- Display the unified hook table (above)
+- Flag any hooks with MISSING status
+- Stop here
+
+### Sub-command: validate
+
+When `/ll:configure hooks validate` is invoked:
+- For each hook in all sources, check:
+  - **ERROR**: Script path does not exist (`[ -f <resolved_path> ]` fails)
+  - **WARNING**: Script exists but is not executable (`[ -x <resolved_path> ]` fails)
+  - **WARNING**: Timeout exceeds 30s for a blocking hook (UserPromptSubmit, PreToolUse)
+- Report findings by severity:
+
+```
+Hook Validation Report
+----------------------
+  ERROR    [Plugin] PostToolUse/context-monitor.sh — script not found at resolved path
+  WARNING  [Project] Stop/my-cleanup.sh — script exists but is not executable (chmod +x to fix)
+  WARNING  [Project] UserPromptSubmit/slow-check.sh — timeout 60s exceeds 30s recommended for blocking hooks
+
+  1 error, 2 warnings
+```
+
+If no issues: `All hooks validated successfully.`
+
+### Sub-command: install
+
+When `/ll:configure hooks install` (or `--yes` mode) is invoked:
+
+**Step 1 — Check `--dry-run`**: If `--dry-run` is set, show what would be installed without making changes:
+
+```
+Dry run — no changes made. The following hooks would be installed:
+
+  SessionStart      *              bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start.sh
+  UserPromptSubmit  (no matcher)   bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-check.sh
+  PreToolUse        Write|Edit     bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-duplicate-issue-id.sh
+  PostToolUse       *              bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-monitor.sh
+  PostToolUse       Bash           bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/issue-completion-log.sh
+  Stop              (no matcher)   bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-cleanup.sh
+  PreCompact        *              bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/precompact-state.sh
+
+To install: /ll:configure hooks install
+```
+
+**Step 2 — Select target file** using a SINGLE AskUserQuestion call:
+
+### Round 1 (2 questions)
+
+```yaml
+questions:
+  - header: "Target File"
+    question: "Which settings file should receive the ll- hook entries?"
+    options:
+      - label: "settings.local.json (Recommended)"
+        description: "Gitignored by default — keeps ll- hooks out of version control"
+      - label: "settings.json"
+        description: "Tracked in version control — shared with all project contributors"
+      - label: "Skip"
+        description: "Skip hook installation (configure later with /ll:configure hooks install)"
+    multiSelect: false
+```
+
+**Step 3 — Perform merge into chosen target file**:
+1. Read target file, or start with `{}` if absent
+2. Read `hooks/hooks.json` — use the `hooks` key (the top-level object, not the `description` field)
+3. Merge the `hooks` key additively: for each event in the plugin hooks, append its hook groups to the existing list for that event (do not overwrite or remove existing non-ll entries)
+4. Create `.claude/` directory first if needed
+5. Write result back with 2-space indent, preserving all top-level keys
+
+**Configuration result**: Report what was written:
+
+```
+Updated: .claude/settings.local.json
+
+Added ll- hooks:
+  SessionStart      *              session-start.sh
+  UserPromptSubmit  (no matcher)   user-prompt-check.sh
+  PreToolUse        Write|Edit     check-duplicate-issue-id.sh
+  PostToolUse       *              context-monitor.sh
+  PostToolUse       Bash           issue-completion-log.sh
+  Stop              (no matcher)   session-cleanup.sh
+  PreCompact        *              precompact-state.sh
+
+Existing non-ll hooks preserved. To review: /ll:configure hooks show
+```
+
+### Interactive Mode
+
+When no sub-command is provided (`/ll:configure hooks`), present options:
+
+```yaml
+questions:
+  - header: "Hooks"
+    question: "What would you like to do with hook configuration?"
+    options:
+      - label: "show — display current hook configuration"
+        description: "Show all hooks from plugin, settings.json, and settings.local.json"
+      - label: "install — add ll- hooks to a settings file"
+        description: "Merge plugin hooks into .claude/settings.local.json or .claude/settings.json"
+      - label: "validate — check hooks for issues"
+        description: "Verify script paths exist, are executable, and timeouts are reasonable"
+    multiSelect: false
+```
+
+Then execute the chosen sub-command.

@@ -108,7 +108,7 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 - `skills/configure/SKILL.md` — add `hooks` to: Area Mapping table (line 60, after `allowed-tools`), `--list` output (line 85, after `allowed-tools`), Batch 4 interactive selection (line 206, before the closing `\`\`\``), Arguments list (line 274, after `allowed-tools`)
 - `skills/configure/areas.md` — append new `## Area: hooks` section after line 792 (current EOF), following the `allowed-tools` pattern exactly
 - `skills/init/SKILL.md` — add Step 10.5 (Install Hooks) between Step 10 (line 379) and Step 11 (line 428); update Step 11 completion message to show hooks installation status and conditional next-step hint; in `--interactive` mode, reference the choice recorded in Round 12 of the wizard (analogous to Step 10's reference to "Round 11")
-- `skills/init/interactive.md` — add `## Round 12: Install Hooks — ALWAYS RUNS` section after the Round 11 EOF (currently line 669 `---`); update the Interactive Mode Summary table (line 688) to add a Round 12 row: `| **12** | **Install Hooks** | **plugin vs CLAUDE.md loading, target settings file** | **Always** |`; increment "Total interaction rounds" count from "5–6" to "6–7"
+- `skills/init/interactive.md` — add `## Round 12: Install Hooks — ALWAYS RUNS` section after the Round 11 EOF (currently line 670 `---`); update the Interactive Mode Summary table (line 688) to add a Round 12 row: `| **12** | **Install Hooks** | **plugin vs CLAUDE.md loading, target settings file** | **Always** |`; increment "Total interaction rounds" count from "5–6" to "6–7"
 
 ### Dependent Files (Read-Only)
 - `hooks/hooks.json` — source of truth for plugin hook definitions (read-only; do not modify)
@@ -202,7 +202,7 @@ The `allowed-tools` area uses this exact pattern — directly reusable:
 
 #### `skills/init/interactive.md` — Round 12 pattern (694 lines, EOF at line 694)
 
-Round 11 (Allowed Tools) is defined at `interactive.md:603-669` and corresponds 1:1 with SKILL.md Step 10. A new Round 12 (Install Hooks) must follow the identical structure:
+Round 11 (Allowed Tools) is defined at `interactive.md:603-670` and corresponds 1:1 with SKILL.md Step 10. A new Round 12 (Install Hooks) must follow the identical structure:
 1. **State detection bash block**: Check `[ -f ".claude/settings.json" ]` and `[ -f ".claude/settings.local.json" ]` (same as Round 11)
 2. **`AskUserQuestion`**: Ask whether to install hooks (show/skip options), plus target file selection if installing — AND whether loaded as plugin or CLAUDE.md (see detection risk below)
 3. **Record result**: Store plugin-loading answer + target file choice for SKILL.md Step 10.5 to use in `--interactive` mode
@@ -258,11 +258,33 @@ Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(inp
 - **Verdict**: VALID
 - `hooks/hooks.json` exists and is the described source of truth. No `skills/configure/hooks.md` file exists. The `skills/configure/SKILL.md` has no `hooks` subcommand dispatch. Feature not yet implemented.
 
+## Resolution
+
+**Completed**: 2026-03-23
+
+### Changes Made
+
+- `skills/configure/SKILL.md`: Added `hooks` to argument description, Area Mapping table, `--list` output, Batch 3 "More areas..." description, Batch 4 interactive options, and Arguments list
+- `skills/configure/areas.md`: Appended new `## Area: hooks` section with `show`, `install`, `validate`, and interactive modes — following the `allowed-tools` pattern exactly
+- `skills/init/SKILL.md`: Added Step 10.5 (Install Hooks) between Step 10 and Step 11; updated Step 11 completion message with conditional hooks installation status and next-step hint
+- `skills/init/interactive.md`: Added Round 12 (Install Hooks); updated Round 11 "final round" note; updated Summary table (rounds 6–7, Round 12 row)
+
+### Acceptance Criteria Verification
+
+- [x] A command or skill can display current hook configuration (both plugin-level and target `.claude/settings.json`) — `show` mode in `## Area: hooks`
+- [x] A command or skill can install little-loops hook entries into a target project's settings file — `install` mode
+- [x] The user is prompted to choose target file: `.claude/settings.local.json` (recommended, gitignored) or `.claude/settings.json` (tracked) — Round 1 question in install mode
+- [x] Installed hooks correctly reference plugin scripts via `${CLAUDE_PLUGIN_ROOT}` — command strings from hooks.json pass through unchanged
+- [x] The tool validates that referenced script paths exist before installing — `validate` sub-command covers this; `show` flags MISSING status
+- [x] Existing hooks in the target file are preserved (additive, not destructive) — additive merge logic documented
+- [x] A `--dry-run` flag shows what would be installed without making changes — Step 1 of install mode
+
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Completed** | Created: 2026-03-12 | Completed: 2026-03-23 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T18:56:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/573acea8-7bca-4ac2-aae6-df0070afa0c5.jsonl`
 - `/ll:confidence-check` - 2026-03-23T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efd644e4-14f1-4e4c-878f-5865a95de11c.jsonl`
 - `/ll:refine-issue` - 2026-03-23T18:44:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ae65570-dc4b-4ae8-8212-fe007eafcff6.jsonl`
 - `/ll:confidence-check` - 2026-03-23T18:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa97f181-0c89-48a7-90d1-c20a0ffe9cd8.jsonl`
