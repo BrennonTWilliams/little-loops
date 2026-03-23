@@ -760,7 +760,7 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
    ```bash
    ps aux | grep -E '(context-monitor|check-duplicate|user-prompt-check|precompact)'
    ```
-3. Lock files should auto-expire (4s timeout for most hooks)
+3. Lock files should auto-expire (3s timeout for all hooks)
 
 ### Duplicate issue ID not detected
 
@@ -888,7 +888,7 @@ python -m pytest scripts/tests/test_hooks_integration.py -v -s
    which flock || echo "Using mkdir-based fallback locks"
    ```
 2. Verify lock timeout settings (in hook scripts):
-   - context-monitor.sh: 4s timeout
+   - context-monitor.sh: 3s timeout
    - check-duplicate-issue-id.sh: 3s timeout
    - precompact-state.sh: 3s timeout
 3. Monitor lock files during operation:

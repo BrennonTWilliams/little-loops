@@ -1246,3 +1246,25 @@ class TestPrecompactState:
 
         finally:
             os.chdir(original_dir)
+
+
+class TestContextMonitorLockTimeout:
+    """Test that context-monitor.sh uses correct lock timeout value."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to context-monitor.sh."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/context-monitor.sh"
+
+    def test_lock_timeout_leaves_adequate_margin(self, hook_script: Path):
+        """context-monitor.sh lock timeout must be 3s to leave ~2s margin within 5s hook timeout.
+
+        The PostToolUse hook timeout is 5s. Using a 4s lock timeout leaves only 1s for
+        post-acquisition operations, which is insufficient under I/O load. The timeout
+        must be 3s to match precompact-state.sh and check-duplicate-issue-id.sh.
+        """
+        content = hook_script.read_text()
+        assert 'acquire_lock "$STATE_LOCK" 3' in content, (
+            "context-monitor.sh must use a 3s lock timeout (not 4s) to leave ~2s margin "
+            "within the 5s PostToolUse hook timeout"
+        )

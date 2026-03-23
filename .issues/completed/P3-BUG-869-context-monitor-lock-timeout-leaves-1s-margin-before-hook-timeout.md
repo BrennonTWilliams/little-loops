@@ -75,8 +75,8 @@ Alternatively, increase the hook timeout in `hooks.json` from 5 to 8 seconds (bu
 
 ## Implementation Steps
 
-1. In `hooks/scripts/context-monitor.sh:226`, change `acquire_lock "$STATE_LOCK" 4` → `acquire_lock "$STATE_LOCK" 3`
-2. Update the comment at `context-monitor.sh:224` from `# Acquire lock for state file read-modify-write (4s timeout, hook timeout is 5s)` to `# Acquire lock for state file read-modify-write (3s timeout, ~2s margin within 5s hook timeout)`
+1. In `hooks/scripts/context-monitor.sh:232`, change `acquire_lock "$STATE_LOCK" 4` → `acquire_lock "$STATE_LOCK" 3`
+2. Update the comment at `context-monitor.sh:230` from `# Acquire lock for state file read-modify-write (4s timeout, hook timeout is 5s)` to `# Acquire lock for state file read-modify-write (3s timeout, ~2s margin within 5s hook timeout)`
 3. Update `docs/development/TROUBLESHOOTING.md` to reflect the new 3s lock timeout (search for "4s" in that file)
 4. Run `python -m pytest scripts/tests/test_hooks_integration.py::TestContextMonitor -v` to verify concurrent access tests still pass
 
@@ -91,17 +91,34 @@ Alternatively, increase the hook timeout in `hooks.json` from 5 to 8 seconds (bu
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Status**: Fixed
+**Fixed in**: `hooks/scripts/context-monitor.sh`
+**Date**: 2026-03-23
+
+### Changes Made
+1. `hooks/scripts/context-monitor.sh:230-232` — Reduced `acquire_lock "$STATE_LOCK"` timeout from `4` to `3`, updated inline comment to reflect `~2s margin within 5s hook timeout`
+2. `docs/development/TROUBLESHOOTING.md:763,891` — Updated two references from "4s timeout" to "3s timeout" to match actual value
+3. `scripts/tests/test_hooks_integration.py` — Added `TestContextMonitorLockTimeout.test_lock_timeout_leaves_adequate_margin` to guard against regression
+
+### Verification
+- All 14 `TestContextMonitor` + `TestContextMonitorLockTimeout` tests pass
+- `context-monitor.sh` now matches the 3s pattern used by `precompact-state.sh` and `check-duplicate-issue-id.sh`
+
 ## Labels
 
 `hooks`, `bug`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T23:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/893efa4a-09c9-483d-9d94-69848cadde3e.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:58:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:42:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9850963-0ae2-487e-9014-ade593329bce.jsonl`
 
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-23 | Priority: P3
+**Completed** | Created: 2026-03-23 | Resolved: 2026-03-23 | Priority: P3

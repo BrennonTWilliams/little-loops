@@ -227,9 +227,9 @@ main() {
     # Estimate tokens for this tool call
     TOKENS=$(estimate_tokens "$TOOL_NAME" "$TOOL_RESPONSE")
 
-    # Acquire lock for state file read-modify-write (4s timeout, hook timeout is 5s)
+    # Acquire lock for state file read-modify-write (3s timeout, ~2s margin within 5s hook timeout)
     STATE_LOCK="${STATE_FILE}.lock"
-    if ! acquire_lock "$STATE_LOCK" 4; then
+    if ! acquire_lock "$STATE_LOCK" 3; then
         # Timeout - exit gracefully without blocking
         exit 0
     fi
