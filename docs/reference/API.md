@@ -3064,15 +3064,17 @@ Entry point for `ll-check-links` command. Check markdown documentation for broke
 
 ---
 
-## little_loops.workflow_sequence_analyzer
+## little_loops.workflow_sequence
 
 Step 2 of a 3-step workflow analysis pipeline. Analyzes user message patterns to identify multi-step workflows, link related sessions, and detect workflow boundaries.
+
+> **Note**: Previously exposed as `little_loops.workflow_sequence_analyzer` (monolithic module). Refactored in ENH-840 into a sub-package at `little_loops/workflow_sequence/`. The public API is unchanged — import from `little_loops.workflow_sequence`.
 
 ### Quick Example
 
 ```python
 from pathlib import Path
-from little_loops.workflow_sequence_analyzer import analyze_workflows
+from little_loops.workflow_sequence import analyze_workflows
 
 # Analyze messages from Step 1 output
 result = analyze_workflows(
@@ -3216,7 +3218,7 @@ Main entry point for workflow sequence analysis (Step 2 of pipeline).
 **Example:**
 ```python
 from pathlib import Path
-from little_loops.workflow_sequence_analyzer import analyze_workflows
+from little_loops.workflow_sequence import analyze_workflows
 
 result = analyze_workflows(
     messages_file=Path(".claude/user-messages.jsonl"),
@@ -3246,7 +3248,7 @@ Extract entities from message content using regex patterns.
 
 **Example:**
 ```python
-from little_loops.workflow_sequence_analyzer import extract_entities
+from little_loops.workflow_sequence import extract_entities
 
 entities = extract_entities("Fix BUG-123 in src/utils.py using /ll:manage-issue")
 # Returns: {"BUG-123", "src/utils.py", "/ll:manage-issue"}
@@ -3383,7 +3385,7 @@ from little_loops.user_messages import (
 )
 
 # Workflow analysis
-from little_loops.workflow_sequence_analyzer import (
+from little_loops.workflow_sequence import (
     analyze_workflows,
     SessionLink,
     EntityCluster,

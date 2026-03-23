@@ -463,6 +463,31 @@ The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-
 
 **Narrow terminal support**: When the table exceeds the available terminal width, columns are automatically elided in priority order. The default drop sequence is `source` → `norm` → `fmt` → `confidence` → `ready` → `total`; any remaining command columns are then dropped rightmost-first. `id`, `priority`, and `title` are always pinned. The `title` column maintains a minimum width of 20 characters. The drop order is configurable via `refine_status.elide_order` in `ll-config.json` — see [CONFIGURATION.md](CONFIGURATION.md#refine_status).
 
+#### `ll-issues next-action` / `ll-issues na`
+
+<!-- TODO: update-docs stub — ENH-860 — drafted 2026-03-23 -->
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+Print the next refinement action needed across all active issues. Designed for FSM loop integration — exits 1 when work remains, exits 0 when all issues are ready.
+
+Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
+
+| Action token | Meaning |
+|--------------|---------|
+| `NEEDS_FORMAT` | Issue file does not match template v2.0 structure |
+| `NEEDS_VERIFY` | `/ll:verify-issues` has not been run on this issue |
+| `NEEDS_SCORE` | Confidence/outcome score is missing |
+| `NEEDS_REFINE` | Score is below threshold and refine-cap not reached |
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--refine-cap N` | `5` | Max `/ll:refine-issue` runs before moving on |
+| `--ready-threshold N` | `85` | Minimum readiness score to consider issue ready |
+| `--outcome-threshold N` | `70` | Minimum outcome confidence score to consider issue ready |
+
+<!-- END TODO stub -->
+
 #### `ll-issues append-log <issue_path> <log_command>` / `ll-issues al`
 
 Append a session log entry to an issue file.
@@ -496,6 +521,9 @@ ll-issues impact-effort
 ll-issues impact-effort --type BUG    # Only bugs
 ll-issues refine-status
 ll-issues refine-status --type BUG --format json
+ll-issues next-action                            # Next refinement action needed (exits 1 if work remains)
+ll-issues next-action --refine-cap 3             # Lower the refine-cap
+ll-issues next-action --ready-threshold 90       # Stricter readiness threshold
 ll-issues append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
 ```
 

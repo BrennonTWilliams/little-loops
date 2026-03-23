@@ -217,7 +217,11 @@ little-loops/
         │   └── operations.py    #   File mutation operations
         ├── session_log.py       # Session log linking for issues
         ├── user_messages.py     # User message extraction
-        ├── workflow_sequence_analyzer.py  # Workflow analysis (ll-workflows)
+        ├── workflow_sequence/   # Workflow analysis (ll-workflows, sub-package)
+        │   ├── __init__.py      #   Re-exports: analyze_workflows, models
+        │   ├── analysis.py      #   Core analysis: boundaries, entity clustering
+        │   ├── models.py        #   Data models (Workflow, SessionLink, etc.)
+        │   └── io.py            #   YAML/JSON input-output helpers
         ├── fsm/                  # FSM loop system
         │   ├── __init__.py
         │   ├── schema.py
