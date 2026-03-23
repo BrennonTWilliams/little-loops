@@ -431,6 +431,163 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
+    def test_reminder_rate_limited_second_call(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Second call above threshold within 60s exits 0 silently (rate-limited).
+
+        First call should produce exit 2 with stderr. Second call within 60s should
+        produce exit 0 with no stderr — the cooldown suppresses the reminder.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x" * 500},
+            }
+            env = os.environ.copy()
+            env["LL_HANDOFF_THRESHOLD"] = "1"  # trigger immediately
+
+            def run_hook() -> subprocess.CompletedProcess:
+                return subprocess.run(
+                    [str(hook_script)],
+                    input=json.dumps(input_data),
+                    capture_output=True,
+                    text=True,
+                    timeout=6,
+                    env=env,
+                )
+
+            # First call: should trigger reminder (exit 2)
+            first = run_hook()
+            assert first.returncode == 2, (
+                f"Expected first call to exit 2 (trigger reminder), got {first.returncode}. "
+                f"stderr: {first.stderr}"
+            )
+
+            # Second call: within 60s cooldown — should be silent (exit 0)
+            second = run_hook()
+            assert second.returncode == 0, (
+                f"Expected second call within 60s to exit 0 (rate-limited), got {second.returncode}. "
+                f"stderr: {second.stderr}"
+            )
+            assert second.stderr == "", (
+                f"Expected no stderr on rate-limited call, got: {second.stderr!r}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_state_contains_last_reminder_at_after_exit2(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """State file contains last_reminder_at timestamp after exit 2 fires."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x" * 500},
+            }
+            env = os.environ.copy()
+            env["LL_HANDOFF_THRESHOLD"] = "1"
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+                env=env,
+            )
+            assert result.returncode == 2, f"Expected exit 2, got {result.returncode}"
+
+            state_file = tmp_path / "ll-context-state.json"
+            state = json.loads(state_file.read_text())
+            assert "last_reminder_at" in state, (
+                f"Expected 'last_reminder_at' in state after exit 2, got keys: {list(state.keys())}"
+            )
+            assert state["last_reminder_at"] is not None
+            assert state["last_reminder_at"] != ""
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_reminder_fires_again_after_cooldown_expires(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Reminder fires again (exit 2) when last_reminder_at is more than 60s ago."""
+        import os
+        from datetime import UTC, datetime, timedelta
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # Pre-write state with last_reminder_at 2 minutes ago
+            old_ts = (datetime.now(UTC) - timedelta(seconds=120)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            state_file = tmp_path / "ll-context-state.json"
+            state_file.write_text(
+                json.dumps(
+                    {
+                        "session_start": old_ts,
+                        "estimated_tokens": 0,
+                        "tool_calls": 5,
+                        "threshold_crossed_at": old_ts,
+                        "handoff_complete": False,
+                        "last_reminder_at": old_ts,
+                        "breakdown": {},
+                    }
+                )
+            )
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x" * 500},
+            }
+            env = os.environ.copy()
+            env["LL_HANDOFF_THRESHOLD"] = "1"
+            env["LL_CONTEXT_LIMIT"] = "1000"  # tiny limit ensures threshold is crossed
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+                env=env,
+            )
+
+            # Cooldown expired (120s > 60s) — should fire again
+            assert result.returncode == 2, (
+                f"Expected exit 2 after cooldown expires (120s > 60s), got {result.returncode}. "
+                f"stderr: {result.stderr}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
 
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""

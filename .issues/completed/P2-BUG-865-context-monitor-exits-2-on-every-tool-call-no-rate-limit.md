@@ -138,7 +138,19 @@ _Added by `/ll:go-no-go` on 2026-03-23_ — **GO**
 ### Rationale
 BUG-865 is a valid, well-scoped P2 issue with a mechanical ~10-line fix that follows established patterns precisely. The CON side's strongest arguments — BUG-866 making the fix ineffective across session boundaries, and worsening BUG-869's lock margin — are real but overstated: BUG-865 reduces within-session flooding independently of BUG-866 (the bugs are additive, not blocking-ordered), and three lightweight shell operations in an already-acquired lock path do not materially change BUG-869's risk profile.
 
+## Resolution
+
+**Status**: Fixed
+
+**Changes**:
+- `hooks/scripts/context-monitor.sh`: Added `LAST_REMINDER_AT` state extraction, 60-second cooldown guard before `exit 2`, and `last_reminder_at` timestamp update on each reminder fire
+- `scripts/tests/test_hooks_integration.py`: Added 3 new tests covering rate-limiting: second-call suppression, state persistence of `last_reminder_at`, and re-fire after cooldown expiry
+
+**Verification**: 3866 tests pass; all 11 `TestContextMonitor` tests pass including 3 new rate-limiting tests.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-23T23:11:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:07:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe663ea5-f115-4a0c-b4fe-602c5e25dbfc.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/487809cc-1022-4d6d-8f9a-60e6bf5a5ff3.jsonl`
 - `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:33:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19fd35ab-9270-4420-96ba-b9bf29365721.jsonl`
@@ -148,4 +160,4 @@ BUG-865 is a valid, well-scoped P2 issue with a mechanical ~10-line fix that fol
 
 ---
 
-**Open** | Created: 2026-03-23 | Priority: P2
+**Completed** | Created: 2026-03-23 | Resolved: 2026-03-23 | Priority: P2

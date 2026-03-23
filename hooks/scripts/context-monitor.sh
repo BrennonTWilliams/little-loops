@@ -243,6 +243,7 @@ main() {
     CURRENT_CALLS=$(echo "$STATE" | jq -r '.tool_calls // 0')
     THRESHOLD_CROSSED_AT=$(echo "$STATE" | jq -r '.threshold_crossed_at // ""')
     HANDOFF_COMPLETE=$(echo "$STATE" | jq -r '.handoff_complete // false')
+    LAST_REMINDER_AT=$(echo "$STATE" | jq -r '.last_reminder_at // ""')
 
     # Get transcript baseline if enabled (API-exact, one-turn lag)
     TRANSCRIPT_BASELINE=0
@@ -322,9 +323,19 @@ main() {
             fi
         fi
 
+        # Rate-limit reminders: suppress if within 60s of last reminder
+        NOW_EPOCH=$(date +%s)
+        LAST_EPOCH=$(to_epoch "${LAST_REMINDER_AT:-}")
+        if [ "$LAST_EPOCH" -gt 0 ] && [ $((NOW_EPOCH - LAST_EPOCH)) -lt 60 ]; then
+            write_state "$NEW_STATE"
+            release_lock "$STATE_LOCK"
+            exit 0
+        fi
+
         # Handoff not complete - output reminder to Claude
         # Use exit 2 with stderr to ensure feedback reaches Claude in non-interactive mode
         # Reference: https://github.com/anthropics/claude-code/issues/11224
+        NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.last_reminder_at = $t')
         if ! write_state "$NEW_STATE"; then
             # State write failed - release lock and exit
             release_lock "$STATE_LOCK"
