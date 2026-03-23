@@ -16,7 +16,7 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 600–607, 649, 704 (at scan commit: a574ea0)
+- **Line(s)**: 664 (function), 713, 763 (call sites) — updated 2026-03-22; was 600–607, 649, 704 at scan commit a574ea0
 - **Anchor**: `function _get_message_category`, `_detect_workflows` call sites
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L600-L607)
 - **Code**:
@@ -112,6 +112,7 @@ def _detect_workflows(...):
 
 - **2026-03-05** — VALID. `_get_message_category` confirmed at line 611 (was 600–607 at scan commit a574ea0); two call sites in `_detect_workflows` at lines 660 and 720 (was 649, 704). Function body unchanged. No `_build_category_index` exists yet. Dependency backlinks verified: FEAT-558 and ENH-551 both list `Blocked By: ENH-550`; FEAT-556 lists `Blocks: ENH-550`.
 - **2026-03-21** — DEP_ISSUES → VALID. Removed broken `Blocks: ENH-554` reference — ENH-554 does not exist in active or completed issues.
+- **2026-03-22** — NEEDS_UPDATE. `_get_message_category` now at line 664 (was 611); call sites in `_detect_workflows` now at lines 713 and 763 (was 660, 720). No `_build_category_index` exists. ENH-551 `Blocked By: ENH-550` backlink confirmed. Update Location section to line 664, call sites 713/763.
 
 ## Related Key Documentation
 
@@ -131,6 +132,7 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T00:58:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no _build_category_index helper exists
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: no `_build_category_index` exists; two `_get_message_category` call sites still in `_detect_workflows`; removed stale Blocks: FEAT-558 (completed)

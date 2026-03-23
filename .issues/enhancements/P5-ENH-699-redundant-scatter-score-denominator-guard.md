@@ -20,7 +20,7 @@ A guard that can never be reached is dead code that misleads readers into thinki
 ## Location
 
 - **File**: `scripts/little_loops/issue_history/debt.py`
-- **Line(s)**: 109-114 (at scan commit: 3e9beea)
+- **Line(s)**: 106-111 (updated 2026-03-22; was 109-114 at scan commit: 3e9beea)
 - **Anchor**: `in function detect_cross_cutting_smells()`
 
 ## Current Behavior
@@ -58,6 +58,7 @@ Simplify line 114 to `scatter_score = len(dirs) / total_dirs` and add a test doc
 `enhancement`, `code-quality`, `issue-history`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T00:58:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
@@ -72,3 +73,6 @@ Simplify line 114 to `scatter_score = len(dirs) / total_dirs` and add a test doc
 - **Date**: 2026-03-13
 - **Verdict**: VALID
 - `scripts/little_loops/issue_history/debt.py` lines 109 and 114 confirm: line 109 sets `total_dirs = len(all_directories) if all_directories else 1` (guarantees total_dirs >= 1), and line 114 still has `scatter_score = len(dirs) / total_dirs if total_dirs > 0 else 0.0` (the else branch is unreachable by construction). Enhancement not yet applied.
+- **Date**: 2026-03-22
+- **Verdict**: NEEDS_UPDATE
+- Line numbers shifted: `total_dirs` guard is now line 106 (was 109), `scatter_score` ternary is now line 111 (was 114). Logic unchanged — redundant guard still present. Function definition at line 46. Update Location section to lines 106-111.
