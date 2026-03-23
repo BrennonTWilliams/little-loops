@@ -86,7 +86,7 @@ When `ll-loop run exploratory-refactor` is invoked, these values override the gl
 
 6. **Update `ll-loop info`** (`scripts/little_loops/cli/loop/info.py`): Display any config overrides in loop info output.
 
-7. **Update schema validation** (`scripts/little_loops/fsm/validation.py`): Add `"config"` to `KNOWN_TOP_LEVEL_KEYS` frozenset (line 76-91). Without this, any YAML with a `config:` block will emit a WARNING on every load.
+7. **Update schema validation** (`scripts/little_loops/fsm/validation.py`): Add `"config"` to `KNOWN_TOP_LEVEL_KEYS` frozenset (lines 76-92). Without this, any YAML with a `config:` block will emit a WARNING on every load.
 
 8. **Update `ll-loop create` / create-loop skill**: Prompt for config overrides during interactive loop creation.
 
@@ -137,7 +137,7 @@ Precedence (highest to lowest):
 - `scripts/little_loops/cli/loop/run.py` — Inject YAML config overrides after line 65, before CLI `--handoff-threshold` check at line 67; see Step 3 above
 - `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume` (line 143): fix silent ignore of `--handoff-threshold`; add YAML config override application after line 190 (delay override); add CLI `--handoff-threshold` handling on top
 - `scripts/little_loops/cli/loop/info.py` — Display config overrides in `cmd_show` header block (lines 638-661)
-- `scripts/little_loops/fsm/validation.py` — Add `"config"` to `KNOWN_TOP_LEVEL_KEYS` frozenset (line 76-91); add validation for recognized override keys
+- `scripts/little_loops/fsm/validation.py` — Add `"config"` to `KNOWN_TOP_LEVEL_KEYS` frozenset (lines 76-92); add validation for recognized override keys
 - `scripts/little_loops/config/automation.py` — `ConfidenceGateConfig` (lines 91-104): currently only has `enabled` and `threshold`; to support `readiness_threshold`/`outcome_threshold` as separate overridable fields, this class needs two new fields (see **Schema Divergence** below; can be deferred if v1 ships only `handoff_threshold`)
 
 ### Dependent Files (Callers/Importers)
@@ -171,6 +171,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/loop/__init__.py:221` — `ll-loop resume` also registers `add_handoff_threshold_arg`; if resume re-starts a paused loop, it should also apply YAML config block overrides
 - `scripts/tests/test_cli_loop_background.py` and `scripts/tests/test_ll_loop_parsing.py` — also test `handoff_threshold`/`LL_HANDOFF_THRESHOLD` behavior; need updates for YAML config block tests
 - `loops/` directory (26 YAML files) — at least one live loop already uses `handoff_threshold` and `max_continuations` in context variables; review `loops/sprint-build-and-validate.yaml` as a model for operator usage patterns
+- `scripts/little_loops/cli/loop/info.py:657` — pre-existing display inconsistency: `llm.timeout != 30` is used to suppress showing the timeout in output, but `LLMConfig.timeout` defaults to `1800` (schema.py:361); unrelated to this feature but worth noting if touching `cmd_show`
 
 ### Schema Divergence (Important for Implementer)
 
@@ -223,6 +224,7 @@ _Added by `/ll:confidence-check` on 2026-03-23_
 **Open** | Created: 2026-03-23 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-23T21:26:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07d161e2-659e-4958-84f2-8dc2ec15fb6d.jsonl`
 - `/ll:format-issue` - 2026-03-23T21:07:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9db96889-7141-4c7a-9208-51f9a202e218.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87d63032-1c5a-48a2-bbbb-58a14a066171.jsonl`
 - `/ll:refine-issue` - 2026-03-23T19:44:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4128aee-3c7e-4973-884d-baaf30142c8f.jsonl`

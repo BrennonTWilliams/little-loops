@@ -52,20 +52,29 @@ diagram_indent = max(0, (tw - max_line_len) // 2)
 
 ## Proposed Solution
 
-Replace the flawed `max_line_len` computation with `total_width`, which is already computed earlier in `_render_layered_diagram()` (line 871) as the true visual column-count of the grid:
+> **Note**: The original `total_width` substitution was incorrect — see Go/No-Go Findings below. Use ANSI-stripped measurement instead.
+
+Strip ANSI escape codes before measuring line width. `layout.py` already imports `re` (line 12), so no new imports are needed. Add a module-level compiled pattern and replace the two centering lines:
 
 ```python
-# Before
+# Add near top of module (after existing imports, before first function)
+_ANSI_ESCAPE_RE = re.compile(r"\033\[[0-9;]*m")
+
+# In _render_layered_diagram(), replace lines 1414–1415:
+# Before (buggy)
 max_line_len = max((len(ln) for ln in lines), default=0)
 diagram_indent = max(0, (tw - max_line_len) // 2)
 
-# After
-diagram_indent = max(0, (tw - total_width) // 2)
+# After (correct)
+max_line_len = max((len(_ANSI_ESCAPE_RE.sub("", ln)) for ln in lines), default=0)
+diagram_indent = max(0, (tw - max_line_len) // 2)
 ```
 
-`total_width` is computed as `max(total_content_w + right_edge_margin + 4, tw)` — the intended visual width independent of ANSI coloring. This makes `diagram_indent` a stable constant for a given FSM topology.
+**Why `len()` is sufficient** (not `_wcswidth`): The grid cells contain only ASCII and box-drawing characters (`─ │ ┌ ┐ └ ┘ ▶ ▲`), all of which have wcwidth=1. Using `len()` on ANSI-stripped strings gives the correct visual width.
 
-Note: `_render_horizontal_simple()` is not affected — it uses `(tw - (x + 4)) // 2` where `x` is a raw integer column index.
+**Why `total_width` is wrong**: `total_width` is computed as `max(total_content_w + right_edge_margin + 4, tw)`, which clamps to a minimum of `tw`. Substituting it into `max(0, (tw - total_width) // 2)` always produces 0, silently removing all centering.
+
+Note: `_render_horizontal_simple()` is not affected — it uses `(tw - (x + 4)) // 2` where `x` is a raw integer column index, never string length.
 
 ## Integration Map
 
@@ -91,9 +100,18 @@ Note: `_render_horizontal_simple()` is not affected — it uses `(tw - (x + 4)) 
 ## Implementation Steps
 
 1. Open `scripts/little_loops/cli/loop/layout.py`
-2. At lines 1308–1309, delete the `max_line_len = ...` line and replace `max_line_len` in the `diagram_indent` expression with `total_width`
-3. Run `python -m pytest scripts/tests/test_ll_loop_display.py -v` to verify no regressions
-4. Manually verify with `ll-loop run loops/issue-refinement.yaml --show-diagrams --clear` — diagram should stay horizontally fixed across all state transitions
+2. Add `_ANSI_ESCAPE_RE = re.compile(r"\033\[[0-9;]*m")` near the top of the module, after the existing imports (e.g., after line 16 where `_wcwidth` is imported)
+3. At lines 1414–1415, replace:
+   ```python
+   max_line_len = max((len(ln) for ln in lines), default=0)
+   ```
+   with:
+   ```python
+   max_line_len = max((len(_ANSI_ESCAPE_RE.sub("", ln)) for ln in lines), default=0)
+   ```
+   Leave `diagram_indent = max(0, (tw - max_line_len) // 2)` unchanged
+4. Run `python -m pytest scripts/tests/test_ll_loop_display.py -v` to verify no regressions
+5. Manually verify with `ll-loop run loops/issue-refinement.yaml --show-diagrams --clear` — diagram should stay horizontally fixed across all state transitions
 
 ## Impact
 
@@ -134,6 +152,8 @@ _Added by `/ll:go-no-go` on 2026-03-23_ — **NO-GO (REFINE)**
 The bug is real and fixing it is clearly valuable, but the proposed solution is mathematically wrong. The correct fix must use ANSI-aware width measurement rather than `total_width`. The issue should be updated to specify `_strip_ansi()` or `_wcswidth` before implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24372921-3a00-4768-88b4-ef90d1d5064f.jsonl`
+- `/ll:refine-issue` - 2026-03-23T21:22:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b5430f1-ebbd-470d-a185-8171502097ea.jsonl`
 - `/ll:go-no-go` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a533c1a2-57c6-484f-bd02-5153708e92fd.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8bfb19-1675-49ac-9d46-6c3933a7cb31.jsonl`
 - `/ll:verify-issues` - 2026-03-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
