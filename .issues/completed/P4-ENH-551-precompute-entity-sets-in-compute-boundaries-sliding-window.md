@@ -15,8 +15,8 @@ outcome_confidence: 100
 
 ## Location
 
-- **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 636–637 (was 551–574 at scan commit: a574ea0)
+- **File**: `scripts/little_loops/workflow_sequence/analysis.py`
+- **Line(s)**: 456–457 (was 636–637 after refactor, was 551–574 at scan commit: a574ea0; module split in commit 97870cfd moved to package)
 - **Anchor**: `in function _compute_boundaries`, sliding window loop
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L551-L574)
 - **Code**:
@@ -65,7 +65,7 @@ for i in range(len(sorted_msgs) - 1):
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/workflow_sequence_analyzer.py` — `_compute_boundaries` loop setup
+- `scripts/little_loops/workflow_sequence/analysis.py` — `_compute_boundaries` loop setup
 
 ### Dependent Files (Callers/Importers)
 - N/A — internal change only
@@ -104,13 +104,14 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 
 ## Blocked By
 
-- ENH-550
+_(none — ENH-550 completed)_
 
 ## Labels
 
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T05:56:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9126c24b-3b13-4d23-b5ce-cfbdd9d25883.jsonl`
 - `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
@@ -135,6 +136,16 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 - **Date**: 2026-03-21 — DEP_ISSUES → VALID. Removed broken `Blocks: ENH-554` reference — ENH-554 does not exist in active or completed issues.
 - **Date**: 2026-03-22 — OUTDATED. Lines shifted: `extract_entities` calls in `_compute_boundaries` were at 551–574 (scan commit a574ea0); now at **636–637**. No pre-computed entity list exists. Enhancement not yet applied. Updated Location section.
 
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-03-23
+- **Implementation**: Pre-computed `all_entities` list before the sliding-window loop in `_compute_boundaries`. Replaced per-pair `extract_entities` calls with O(1) index lookups.
+- **Files Changed**:
+  - `scripts/little_loops/workflow_sequence/analysis.py` — added `all_entities` list comprehension after sort; replaced lines 456–457 with index lookups
+  - `scripts/tests/test_workflow_sequence_analyzer.py` — added `test_extract_entities_called_once_per_message` to assert N calls for N messages
+- **Tests**: All 3847 tests pass; new test verifies exactly N calls for N messages
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Completed: 2026-03-23 | Priority: P4

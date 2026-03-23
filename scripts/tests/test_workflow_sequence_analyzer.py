@@ -1461,6 +1461,22 @@ class TestComputeBoundaries:
         assert len(result) == 1
         assert result[0].time_gap_seconds == 300
 
+    def test_extract_entities_called_once_per_message(self) -> None:
+        """extract_entities is called exactly N times for N messages, not 2*(N-1)."""
+        messages = [
+            {"content": f"Fix file{i}.py", "uuid": f"msg-{i}", "timestamp": f"2026-01-15T10:0{i}:00"}
+            for i in range(5)
+        ]
+        with patch(
+            "little_loops.workflow_sequence.analysis.extract_entities",
+            wraps=extract_entities,
+        ) as mock_extract:
+            _compute_boundaries(messages)
+        assert mock_extract.call_count == len(messages), (
+            f"extract_entities called {mock_extract.call_count} times for {len(messages)} messages; "
+            f"expected exactly {len(messages)} (once per message, not {2 * (len(messages) - 1)})"
+        )
+
 
 class TestDetectWorkflows:
     """Tests for _detect_workflows internal function."""

@@ -438,6 +438,9 @@ def _compute_boundaries(
     # Sort by timestamp
     sorted_msgs = sorted(messages, key=lambda m: m.get("timestamp", ""))
 
+    # Pre-compute entity sets once per message (avoids re-extracting per sliding-window pair)
+    all_entities = [extract_entities(m.get("content", "")) for m in sorted_msgs]
+
     for i in range(len(sorted_msgs) - 1):
         msg_a = sorted_msgs[i]
         msg_b = sorted_msgs[i + 1]
@@ -452,9 +455,9 @@ def _compute_boundaries(
         # Calculate time gap weight
         time_weight = calculate_boundary_weight(gap_seconds)
 
-        # Calculate entity overlap
-        entities_a = extract_entities(msg_a.get("content", ""))
-        entities_b = extract_entities(msg_b.get("content", ""))
+        # Calculate entity overlap using pre-computed sets
+        entities_a = all_entities[i]
+        entities_b = all_entities[i + 1]
         overlap = entity_overlap(entities_a, entities_b)
 
         # Adjust for entity overlap (reduce boundary weight if same topic)
