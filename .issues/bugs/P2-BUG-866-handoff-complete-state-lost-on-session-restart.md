@@ -2,6 +2,8 @@
 id: BUG-866
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-866: handoff_complete state lost on session restart
@@ -130,6 +132,7 @@ This ensures a new session with an existing handoff file starts with `handoff_co
 `hooks`, `context-monitor`, `handoff`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ee74ad8-9f45-4b40-a214-05d98a619dea.jsonl`
 - `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c9326c8-7686-429c-831f-0b844c3f85aa.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:29:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8e2d522-d473-46a2-8169-228e476ec976.jsonl`

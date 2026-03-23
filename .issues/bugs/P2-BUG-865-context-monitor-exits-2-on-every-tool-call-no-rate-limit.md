@@ -2,6 +2,8 @@
 id: BUG-865
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-865: context-monitor exits 2 on every tool call after threshold (no rate-limit)
@@ -120,6 +122,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `context-monitor`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/487809cc-1022-4d6d-8f9a-60e6bf5a5ff3.jsonl`
 - `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:33:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19fd35ab-9270-4420-96ba-b9bf29365721.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:29:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8e2d522-d473-46a2-8169-228e476ec976.jsonl`

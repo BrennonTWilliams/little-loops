@@ -2,6 +2,8 @@
 id: BUG-867
 discovered_date: 2026-03-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 85
 ---
 
 # BUG-867: context-monitor.sh missing jq fallbacks on tool input parsing
@@ -101,6 +103,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `context-monitor`, `robustness`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T22:50:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
 - `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:32:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/667ecdfb-f85c-42f2-aa72-56e3ee0847e1.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:29:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cf4d369-abe8-4923-9eda-5c52bf33e224.jsonl`
