@@ -5,8 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-15
 discovered_by: capture-issue
-confidence_score: 100
-outcome_confidence: 86
+confidence_score: 98
+outcome_confidence: 100
 ---
 
 # BUG-759: FSM Diagram Shifts Horizontally When State Is Highlighted
@@ -38,6 +38,15 @@ The horizontal jitter makes the `--show-diagrams --clear` animation visually bro
 - **File**: `scripts/little_loops/cli/loop/layout.py`
 - **Anchor**: `in _render_layered_diagram()` (lines 1414–1415 current; was 1308–1309 at scan commit)
 - **Cause**: After assembling the grid into string lines (`lines = ["".join(row).rstrip() for row in grid]`), the centering logic computes `max_line_len = max((len(ln) for ln in lines), default=0)`. When `_draw_box()` writes ANSI-colored strings into grid cells for the highlighted state (e.g., `┌` → `\033[32m┌\033[0m`), `"".join(row)` contains multi-byte escape sequences that inflate `len(ln)` far beyond the visual width. This makes `(tw - max_line_len)` smaller (or negative, clamped to 0) on highlighted frames, reducing the indent and causing the leftward shift.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **ANSI injection path**: `_draw_box()` (`layout.py:546`) contains `_bc()` at line 564–565: `return colorize(ch, highlight_color) if is_highlighted else ch`. Every box-drawing character (┌, ─, ┐, │, └, ┘) written into the grid cell becomes an ANSI-colored string (e.g. `\033[32m┌\033[0m`) when `is_highlighted=True`.
+- **`_colorize_diagram_labels()` is NOT the source**: It is called at line 1419 — AFTER the centering block at lines 1413–1417 — and operates on the final `"\n".join(lines)` string. Edge label ANSI codes from `_colorize_diagram_labels()` do not affect `max_line_len` measurement. Only `_draw_box()`'s box-character colorization does.
+- **`re` is already imported** at `layout.py:12`. No new import needed for the fix.
+- **`_wcswidth` is imported** at `layout.py:15` (`from wcwidth import wcswidth as _wcswidth`). No module-level ANSI regex is currently defined in `layout.py`.
 
 ## Location
 
@@ -100,8 +109,8 @@ Note: `_render_horizontal_simple()` is not affected — it uses `(tw - (x + 4)) 
 ## Implementation Steps
 
 1. Open `scripts/little_loops/cli/loop/layout.py`
-2. Add `_ANSI_ESCAPE_RE = re.compile(r"\033\[[0-9;]*m")` near the top of the module, after the existing imports (e.g., after line 16 where `_wcwidth` is imported)
-3. At lines 1414–1415, replace:
+2. Add `_ANSI_ESCAPE_RE = re.compile(r"\033\[[0-9;]*m")` after the import block — after line 19 (`from little_loops.fsm.schema import FSMLoop, StateConfig`), before the first function definition
+3. At line 1414, replace:
    ```python
    max_line_len = max((len(ln) for ln in lines), default=0)
    ```
@@ -109,9 +118,10 @@ Note: `_render_horizontal_simple()` is not affected — it uses `(tw - (x + 4)) 
    ```python
    max_line_len = max((len(_ANSI_ESCAPE_RE.sub("", ln)) for ln in lines), default=0)
    ```
-   Leave `diagram_indent = max(0, (tw - max_line_len) // 2)` unchanged
+   Leave `diagram_indent = max(0, (tw - max_line_len) // 2)` at line 1415 unchanged
 4. Run `python -m pytest scripts/tests/test_ll_loop_display.py -v` to verify no regressions
-5. Manually verify with `ll-loop run loops/issue-refinement.yaml --show-diagrams --clear` — diagram should stay horizontally fixed across all state transitions
+5. **Consider adding a centering assertion**: The existing test suite has zero assertions about `diagram_indent` consistency. A regression test rendering the same FSM with and without `highlight_state` and asserting equal left-indent would prevent future regressions (model after existing patterns in `test_ll_loop_display.py`)
+6. Manually verify with `ll-loop run loops/issue-refinement.yaml --show-diagrams --clear` — diagram should stay horizontally fixed across all state transitions
 
 ## Impact
 
@@ -152,6 +162,8 @@ _Added by `/ll:go-no-go` on 2026-03-23_ — **NO-GO (REFINE)**
 The bug is real and fixing it is clearly valuable, but the proposed solution is mathematically wrong. The correct fix must use ANSI-aware width measurement rather than `total_width`. The issue should be updated to specify `_strip_ansi()` or `_wcswidth` before implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c2e0332-088f-4fa7-a7f5-c437b25f8efa.jsonl`
+- `/ll:refine-issue` - 2026-03-23T21:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e396250c-81bc-42fa-9e39-b83a9269bb20.jsonl`
 - `/ll:confidence-check` - 2026-03-23T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24372921-3a00-4768-88b4-ef90d1d5064f.jsonl`
 - `/ll:refine-issue` - 2026-03-23T21:22:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b5430f1-ebbd-470d-a185-8171502097ea.jsonl`
 - `/ll:go-no-go` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a533c1a2-57c6-484f-bd02-5153708e92fd.jsonl`
