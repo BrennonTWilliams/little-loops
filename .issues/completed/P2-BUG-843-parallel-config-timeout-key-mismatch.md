@@ -101,11 +101,19 @@ The `data.get("timeout_seconds", ...)` fallback maintains backward-compatibility
 
 `bug`, `configuration`, `parallel`
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/config/automation.py` — `ParallelAutomationConfig.from_dict` now reads `timeout_per_issue` first, falling back to `timeout_seconds` for backward compatibility.
+
+**Tests added** in `scripts/tests/test_config.py` — three new cases verifying `timeout_per_issue` is respected, the `timeout_seconds` fallback works, and `timeout_per_issue` takes precedence when both keys are present.
+
 ## Status
 
-**Open** | Created: 2026-03-22 | Priority: P2
+**Completed** | Created: 2026-03-22 | Resolved: 2026-03-23 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T17:04:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70acc466-5948-445b-ba9e-e29a96cf4fe3.jsonl`
 - `/ll:format-issue` - 2026-03-23T16:58:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06fdc033-986b-4b59-b280-3505ad02d65c.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a7e8878-823c-4c12-8f4f-537e18afd73d.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

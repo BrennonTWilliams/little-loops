@@ -307,6 +307,23 @@ class TestParallelAutomationConfig:
         assert config.worktree_copy_files == [".claude/settings.local.json", ".env"]
         assert config.require_code_changes is True
 
+    def test_timeout_per_issue_key_is_respected(self) -> None:
+        """Test that the documented timeout_per_issue key sets the per-issue timeout."""
+        config = ParallelAutomationConfig.from_dict({"timeout_per_issue": 7200})
+        assert config.base.timeout_seconds == 7200
+
+    def test_timeout_seconds_fallback(self) -> None:
+        """Test that timeout_seconds still works as a fallback key."""
+        config = ParallelAutomationConfig.from_dict({"timeout_seconds": 1800})
+        assert config.base.timeout_seconds == 1800
+
+    def test_timeout_per_issue_takes_precedence_over_timeout_seconds(self) -> None:
+        """Test that timeout_per_issue wins when both keys are present."""
+        config = ParallelAutomationConfig.from_dict(
+            {"timeout_per_issue": 7200, "timeout_seconds": 900}
+        )
+        assert config.base.timeout_seconds == 7200
+
 
 class TestConfidenceGateConfig:
     """Tests for ConfidenceGateConfig dataclass."""

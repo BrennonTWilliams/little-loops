@@ -65,7 +65,7 @@ class ParallelAutomationConfig:
         - stream_output: False
         """
         base = AutomationConfig(
-            timeout_seconds=data.get("timeout_seconds", 3600),
+            timeout_seconds=data.get("timeout_per_issue", data.get("timeout_seconds", 3600)),
             state_file=data.get("state_file", ".parallel-manage-state.json"),
             worktree_base=data.get("worktree_base", ".worktrees"),
             max_workers=data.get("max_workers", 2),
