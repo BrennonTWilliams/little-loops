@@ -127,11 +127,14 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 
 ## Blocked By
 
+- ENH-840
+
 ## Labels
 
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:go-no-go` - 2026-03-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dae687ee-b9b3-4550-a249-d0875a127443.jsonl` — NO-GO: ENH-840 (P3) is a higher-priority open refactor that moves `_detect_workflows` to its final location; implement ENH-550 after ENH-840.
 - `/ll:verify-issues` - 2026-03-23T00:58:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no _build_category_index helper exists
