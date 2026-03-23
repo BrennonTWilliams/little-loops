@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-22T00:00:00Z
 discovered_by: audit-docs
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # BUG: Parallel config `timeout_per_issue` key silently ignored
@@ -24,6 +26,16 @@ Gets the default 3600s timeout instead. No warning is emitted.
 ## Expected Behavior
 
 Setting `"timeout_per_issue"` in the `parallel` config section should apply that timeout per issue during parallel processing.
+
+## Steps to Reproduce
+
+1. Add `"timeout_per_issue": 7200` to the `"parallel"` section of `.claude/ll-config.json`
+2. Run `ll-parallel` to process issues in parallel
+3. Observe: the per-issue timeout is 3600s (the default), not the configured 7200s — no warning is emitted
+
+## Motivation
+
+This bug silently discards user configuration. Any user who reads `CONFIGURATION.md` or `config-schema.json` and sets `timeout_per_issue` gets no feedback that their setting is ignored. It makes the documented interface non-functional and impossible to tune parallel timeouts without editing source code.
 
 ## Root Cause
 
@@ -61,6 +73,9 @@ The `data.get("timeout_seconds", ...)` fallback maintains backward-compatibility
 - `scripts/little_loops/config/core.py` — calls `ParallelAutomationConfig.from_dict` (no change needed)
 - `scripts/little_loops/cli/parallel.py` — reads `config.parallel.base.timeout_seconds` at runtime (no change needed)
 
+### Similar Patterns
+- N/A — single-key fix in one `from_dict` method; no other config sections with documented/code key mismatches identified
+
 ### Tests
 - `scripts/tests/test_config.py` — add test verifying `timeout_per_issue` key is respected
 
@@ -89,3 +104,8 @@ The `data.get("timeout_seconds", ...)` fallback maintains backward-compatibility
 ## Status
 
 **Open** | Created: 2026-03-22 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-03-23T16:58:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06fdc033-986b-4b59-b280-3505ad02d65c.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a7e8878-823c-4c12-8f4f-537e18afd73d.jsonl`
