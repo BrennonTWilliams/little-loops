@@ -106,8 +106,8 @@ Shared utility:
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/tests/test_hooks_integration.py:505-603` — `TestDuplicateIssueId` class covers `check-duplicate-issue-id.sh` with concurrent Write attempts; does **not** currently test config file fallback
-- `scripts/tests/test_hooks_integration.py:605-728` — `TestSharedConfigFunctions` class tests `ll_resolve_config` directly including `test_resolve_config_finds_root_fallback` (line 624); use as model for new test case
+- `scripts/tests/test_hooks_integration.py:867` — `TestDuplicateIssueId` class covers `check-duplicate-issue-id.sh` with concurrent Write attempts; does **not** currently test config file fallback
+- `scripts/tests/test_hooks_integration.py:967` — `TestSharedConfigFunctions` class tests `ll_resolve_config` directly including `test_resolve_config_finds_root_fallback` (line 997); use as model for new test case
 - New test needed: `TestDuplicateIssueId` should add a test that places config at `ll-config.json` (not `.claude/ll-config.json`) and verifies `ISSUES_BASE_DIR` is read correctly
 
 ### Documentation
@@ -129,7 +129,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - Edge case: if `LL_CONFIG_FILE` is empty (neither file exists), `jq` will fail and the `|| echo ".issues"` default is correct
 
 2. Add a test case to `scripts/tests/test_hooks_integration.py:TestDuplicateIssueId`:
-   - Model after `test_resolve_config_finds_root_fallback` in `TestSharedConfigFunctions:624`
+   - Model after `test_resolve_config_finds_root_fallback` in `TestSharedConfigFunctions:997`
    - Set up config at `ll-config.json` (not `.claude/ll-config.json`) with a custom `issues.base_dir`
    - Verify the script reads the correct `base_dir` from `ll-config.json`
 
@@ -156,12 +156,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `enhancement`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T23:50:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f7fbcea-525d-4652-8284-cea6f618964c.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2136e4cf-cc6c-4f72-94b8-567ca85f0bb1.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:58:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28a4fa2e-a84b-4c4a-a10a-2ed013e02491.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:44:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9850963-0ae2-487e-9014-ade593329bce.jsonl`
 
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
 
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
 ---
 
-**Open** | Created: 2026-03-23 | Priority: P4
+## Resolution
+
+**Status**: Completed 2026-03-23
+
+**Changes made**:
+- `hooks/scripts/check-duplicate-issue-id.sh` lines 45–46: replaced hardcoded `CONFIG_FILE=".claude/ll-config.json"` with `ll_resolve_config` call (already available via `common.sh` sourced at line 14), then used `$LL_CONFIG_FILE` for the `jq` lookup
+- `scripts/tests/test_hooks_integration.py`: added `test_config_fallback_to_root_ll_config` to `TestDuplicateIssueId` — verifies script reads custom `issues.base_dir` from `ll-config.json` at root
+
+**Verification**: All 3 `TestDuplicateIssueId` tests pass; full suite 3874 passed; `ruff check` clean.
+
+---
+
+**Completed** | Created: 2026-03-23 | Priority: P4

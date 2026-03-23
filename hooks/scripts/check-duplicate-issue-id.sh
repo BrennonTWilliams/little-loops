@@ -42,8 +42,8 @@ if [[ -z "$FILE_PATH" ]]; then
 fi
 
 # Read issues base dir from config, with fallback default
-CONFIG_FILE=".claude/ll-config.json"
-ISSUES_BASE_DIR=$(jq -r '.issues.base_dir // ".issues"' "$CONFIG_FILE" 2>/dev/null || echo ".issues")
+ll_resolve_config
+ISSUES_BASE_DIR=$(jq -r '.issues.base_dir // ".issues"' "$LL_CONFIG_FILE" 2>/dev/null || echo ".issues")
 
 # Only check files in issues directory (uses configured path)
 if [[ "$FILE_PATH" != *"${ISSUES_BASE_DIR}/"* ]]; then

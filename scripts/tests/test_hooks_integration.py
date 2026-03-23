@@ -927,6 +927,46 @@ class TestDuplicateIssueId:
         finally:
             os.chdir(original_dir)
 
+    def test_config_fallback_to_root_ll_config(self, hook_script: Path, tmp_path: Path):
+        """Test that script reads issues.base_dir from ll-config.json when .claude/ config absent."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            # Config at root ll-config.json only (no .claude/ll-config.json)
+            custom_base = "myissues"
+            config = {"issues": {"base_dir": custom_base}}
+            (tmp_path / "ll-config.json").write_text(json.dumps(config))
+
+            # Create custom issues directory
+            issues_dir = tmp_path / custom_base / "bugs"
+            issues_dir.mkdir(parents=True)
+
+            # Create an existing issue in the custom directory
+            (issues_dir / "P2-BUG-010-existing.md").write_text("# Existing issue")
+
+            # Try to create a duplicate — should be denied (custom base_dir was read)
+            input_data = {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(issues_dir / "P2-BUG-010-duplicate.md")},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            assert "deny" in result.stdout.lower(), (
+                f"Expected deny when duplicate exists in custom base_dir '{custom_base}'. "
+                f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
     def test_null_byte_in_filename(self, hook_script: Path, tmp_path: Path):
         """Test that null-terminated find handles unusual filenames correctly."""
         import os
