@@ -18,6 +18,8 @@ from wcwidth import wcwidth as _wcwidth
 from little_loops.cli.output import colorize, terminal_width
 from little_loops.fsm.schema import FSMLoop, StateConfig
 
+_ANSI_ESCAPE_RE = re.compile(r"\033\[[0-9;]*m")
+
 # ---------------------------------------------------------------------------
 # Edge label colorization
 # ---------------------------------------------------------------------------
@@ -1411,7 +1413,7 @@ def _render_layered_diagram(
         lines.pop()
 
     # Center diagram
-    max_line_len = max((len(ln) for ln in lines), default=0)
+    max_line_len = max((len(_ANSI_ESCAPE_RE.sub("", ln)) for ln in lines), default=0)
     diagram_indent = max(0, (tw - max_line_len) // 2)
     if diagram_indent > 0:
         lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]

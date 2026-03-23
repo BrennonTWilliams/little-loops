@@ -88,7 +88,7 @@ Note: `_render_horizontal_simple()` is not affected — it uses `(tw - (x + 4)) 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/layout.py` — lines 1308–1309 (the only change needed)
+- `scripts/little_loops/cli/loop/layout.py` — lines 1414–1415 (the only change needed)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/layout.py` — `_render_layered_diagram()` is called from `render_fsm_diagram()`
@@ -126,8 +126,8 @@ Note: `_render_horizontal_simple()` is not affected — it uses `(tw - (x + 4)) 
 ## Impact
 
 - **Priority**: P3 - Visual rendering bug; breaks the animation effect of `--show-diagrams --clear` but no functional impact
-- **Effort**: Small - One line change, `total_width` already in scope
-- **Risk**: Low - Purely cosmetic fix; `total_width` is the semantically correct variable
+- **Effort**: Small - One line change, `re` already imported at line 12
+- **Risk**: Low - Purely cosmetic fix; ANSI-stripping before `len()` is the correct approach
 - **Breaking Change**: No
 
 ## Related Key Documentation
@@ -162,6 +162,7 @@ _Added by `/ll:go-no-go` on 2026-03-23_ — **NO-GO (REFINE)**
 The bug is real and fixing it is clearly valuable, but the proposed solution is mathematically wrong. The correct fix must use ANSI-aware width measurement rather than `total_width`. The issue should be updated to specify `_strip_ansi()` or `_wcswidth` before implementation.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T21:42:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4986fda-2e18-4e55-9175-6ebf32ea568f.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c2e0332-088f-4fa7-a7f5-c437b25f8efa.jsonl`
 - `/ll:refine-issue` - 2026-03-23T21:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e396250c-81bc-42fa-9e39-b83a9269bb20.jsonl`
 - `/ll:confidence-check` - 2026-03-23T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24372921-3a00-4768-88b4-ef90d1d5064f.jsonl`
@@ -178,6 +179,12 @@ The bug is real and fixing it is clearly valuable, but the proposed solution is 
 
 ---
 
+## Resolution
+
+**Fixed** on 2026-03-23.
+
+Added `_ANSI_ESCAPE_RE = re.compile(r"\033\[[0-9;]*m")` as a module-level constant in `layout.py` (after imports) and replaced `max_line_len = max((len(ln) for ln in lines), default=0)` with `max_line_len = max((len(_ANSI_ESCAPE_RE.sub("", ln)) for ln in lines), default=0)` in `_render_layered_diagram()`. This strips ANSI escape codes before measuring line width so the centering indent is consistent across all frames regardless of which state is highlighted. All 122 existing tests pass.
+
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Closed** | Created: 2026-03-15 | Priority: P3
