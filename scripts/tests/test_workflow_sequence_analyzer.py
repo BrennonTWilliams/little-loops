@@ -13,22 +13,12 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from little_loops.workflow_sequence_analyzer import (
+from little_loops.workflow_sequence import (
     EntityCluster,
     SessionLink,
     Workflow,
     WorkflowAnalysis,
     WorkflowBoundary,
-    _cluster_by_entities,
-    _compute_boundaries,
-    _detect_handoff,
-    _detect_workflows,
-    _get_message_category,
-    _group_by_session,
-    _link_sessions,
-    _load_messages,
-    _load_patterns,
-    _parse_timestamps,
     analyze_workflows,
     calculate_boundary_weight,
     entity_overlap,
@@ -37,6 +27,17 @@ from little_loops.workflow_sequence_analyzer import (
     main,
     semantic_similarity,
 )
+from little_loops.workflow_sequence.analysis import (
+    _cluster_by_entities,
+    _compute_boundaries,
+    _detect_handoff,
+    _detect_workflows,
+    _get_message_category,
+    _group_by_session,
+    _link_sessions,
+    _parse_timestamps,
+)
+from little_loops.workflow_sequence.io import _load_messages, _load_patterns
 
 
 class TestExtractEntities:

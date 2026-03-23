@@ -1,52 +1,24 @@
-"""ll-workflows: Identify multi-step workflow patterns from user message history.
-
-Identifies multi-step workflows and cross-session patterns using:
-- Entity-based clustering
-- Time-gap weighted boundaries
-- Semantic similarity scoring
-- Workflow template matching
-
-Usage as CLI:
-    ll-workflows analyze --input messages.jsonl --patterns step1.yaml
-    ll-workflows analyze -i messages.jsonl -p patterns.yaml -o output.yaml
-
-Usage as library:
-    from little_loops.workflow_sequence_analyzer import analyze_workflows
-
-    result = analyze_workflows(
-        messages_file=Path("user-messages.jsonl"),
-        patterns_file=Path("step1-patterns.yaml"),
-        output_file=Path("step2-workflows.yaml"),
-    )
-"""
+"""Analysis functions for workflow sequence detection."""
 
 from __future__ import annotations
 
 import json
 import re
 import sys
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-__all__ = [
-    "analyze_workflows",
-    "SessionLink",
-    "EntityCluster",
-    "WorkflowBoundary",
-    "Workflow",
-    "WorkflowAnalysis",
-    "extract_entities",
-    "calculate_boundary_weight",
-    "entity_overlap",
-    "get_verb_class",
-    "semantic_similarity",
-]
-
-_DEFAULT_INPUT_PATH = Path(".claude/workflow-analysis/step1-patterns.jsonl")
+from little_loops.workflow_sequence.io import _load_messages, _load_patterns
+from little_loops.workflow_sequence.models import (
+    EntityCluster,
+    SessionLink,
+    Workflow,
+    WorkflowAnalysis,
+    WorkflowBoundary,
+)
 
 # Module-level compiled regex patterns
 FILE_PATTERN = re.compile(r"[\w./-]+\.(?:md|py|json|yaml|yml|js|ts|tsx|jsx|sh|toml)", re.IGNORECASE)
@@ -85,133 +57,6 @@ _CONTENT_CATEGORY_MAP: dict[str, list[str]] = {
     "code_review": ["review", "inspect", "audit", "read", "examine"],
     "file_write": ["create", "generate", "scaffold", "write", "add"],
 }
-
-
-# -----------------------------------------------------------------------------
-# Data Classes
-# -----------------------------------------------------------------------------
-
-
-@dataclass
-class SessionLink:
-    """Link between related sessions."""
-
-    link_id: str
-    sessions: list[dict[str, Any]]  # session_id, position, link_evidence
-    unified_workflow: dict[str, Any]  # name, total_messages, span_hours
-    confidence: float
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for YAML serialization."""
-        return {
-            "link_id": self.link_id,
-            "sessions": self.sessions,
-            "unified_workflow": self.unified_workflow,
-            "confidence": self.confidence,
-        }
-
-
-@dataclass
-class EntityCluster:
-    """Cluster of messages sharing entities."""
-
-    cluster_id: str
-    primary_entities: list[str]
-    all_entities: set[str] = field(default_factory=set)
-    messages: list[dict[str, Any]] = field(default_factory=list)
-    span: dict[str, Any] | None = None
-    inferred_workflow: str | None = None
-    cohesion_score: float = 0.0
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for YAML serialization."""
-        return {
-            "cluster_id": self.cluster_id,
-            "primary_entities": self.primary_entities,
-            "all_entities": sorted(self.all_entities),
-            "messages": self.messages,
-            "span": self.span,
-            "inferred_workflow": self.inferred_workflow,
-            "cohesion_score": round(self.cohesion_score, 2),
-        }
-
-
-@dataclass
-class WorkflowBoundary:
-    """Boundary between workflows based on time gaps and entity overlap."""
-
-    msg_a: str
-    msg_b: str
-    time_gap_seconds: int
-    time_gap_weight: float
-    entity_overlap: float
-    final_boundary_score: float
-    is_boundary: bool
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for YAML serialization."""
-        return {
-            "between": {"msg_a": self.msg_a, "msg_b": self.msg_b},
-            "time_gap_seconds": self.time_gap_seconds,
-            "time_gap_weight": round(self.time_gap_weight, 2),
-            "entity_overlap": round(self.entity_overlap, 2),
-            "final_boundary_score": round(self.final_boundary_score, 2),
-            "is_boundary": self.is_boundary,
-        }
-
-
-@dataclass
-class Workflow:
-    """Identified multi-step workflow."""
-
-    workflow_id: str
-    name: str
-    pattern: str
-    pattern_confidence: float
-    messages: list[dict[str, Any]]
-    session_span: list[str]
-    entity_cluster: str | None = None
-    semantic_cluster: str | None = None
-    duration_minutes: int = 0
-    handoff_points: list[dict[str, Any]] = field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for YAML serialization."""
-        return {
-            "workflow_id": self.workflow_id,
-            "name": self.name,
-            "pattern": self.pattern,
-            "pattern_confidence": round(self.pattern_confidence, 2),
-            "messages": self.messages,
-            "session_span": self.session_span,
-            "entity_cluster": self.entity_cluster,
-            "semantic_cluster": self.semantic_cluster,
-            "duration_minutes": self.duration_minutes,
-            "handoff_points": self.handoff_points,
-        }
-
-
-@dataclass
-class WorkflowAnalysis:
-    """Complete workflow analysis output."""
-
-    metadata: dict[str, Any]
-    session_links: list[SessionLink] = field(default_factory=list)
-    entity_clusters: list[EntityCluster] = field(default_factory=list)
-    workflow_boundaries: list[WorkflowBoundary] = field(default_factory=list)
-    workflows: list[Workflow] = field(default_factory=list)
-    handoff_analysis: dict[str, Any] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for YAML serialization."""
-        return {
-            "analysis_metadata": self.metadata,
-            "session_links": [s.to_dict() for s in self.session_links],
-            "entity_clusters": [c.to_dict() for c in self.entity_clusters],
-            "workflow_boundaries": [b.to_dict() for b in self.workflow_boundaries],
-            "workflows": [w.to_dict() for w in self.workflows],
-            "handoff_analysis": self.handoff_analysis,
-        }
 
 
 # -----------------------------------------------------------------------------
@@ -358,42 +203,6 @@ def semantic_similarity(
 # -----------------------------------------------------------------------------
 
 
-def _load_messages(messages_file: Path) -> list[dict[str, Any]]:
-    """Load messages from JSONL file."""
-    messages = []
-    skipped = 0
-    with open(messages_file, encoding="utf-8") as f:
-        for line_num, raw_line in enumerate(f, 1):
-            line = raw_line.strip()
-            if not line:
-                continue
-            try:
-                messages.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                skipped += 1
-                print(f"Warning: skipping malformed line {line_num}: {e}", file=sys.stderr)
-    if skipped:
-        print(f"Warning: skipped {skipped} malformed line(s) in {messages_file}", file=sys.stderr)
-    return messages
-
-
-def _load_patterns(patterns_file: Path) -> dict[str, Any]:
-    """Load patterns from Step 1 YAML output."""
-    with open(patterns_file, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def _group_by_session(messages: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    """Group messages by session_id."""
-    sessions: dict[str, list[dict[str, Any]]] = {}
-    for msg in messages:
-        session_id = msg.get("session_id", "unknown")
-        if session_id not in sessions:
-            sessions[session_id] = []
-        sessions[session_id].append(msg)
-    return sessions
-
-
 def _detect_handoff(content: str) -> bool:
     """Check if message indicates a session handoff."""
     handoff_markers = [
@@ -421,6 +230,17 @@ def _parse_timestamps(messages: list[dict[str, Any]]) -> list[datetime]:
             except (ValueError, AttributeError, TypeError):
                 pass
     return timestamps
+
+
+def _group_by_session(messages: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group messages by session_id."""
+    sessions: dict[str, list[dict[str, Any]]] = {}
+    for msg in messages:
+        session_id = msg.get("session_id", "unknown")
+        if session_id not in sessions:
+            sessions[session_id] = []
+        sessions[session_id].append(msg)
+    return sessions
 
 
 def _link_sessions(sessions: dict[str, list[dict[str, Any]]]) -> list[SessionLink]:
@@ -906,174 +726,3 @@ def analyze_workflows(
                 yaml.dump(analysis.to_dict(), f, default_flow_style=False, sort_keys=False)
 
     return analysis
-
-
-# -----------------------------------------------------------------------------
-# CLI
-# -----------------------------------------------------------------------------
-
-
-def main() -> int:
-    """Entry point for ll-workflows command.
-
-    Analyze workflows from user messages and Step 1 patterns.
-
-    Returns:
-        Exit code (0 = success, 1 = failure)
-    """
-    import argparse
-    import sys
-
-    parser = argparse.ArgumentParser(
-        description="Identify multi-step workflow patterns from user message history",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
-  %(prog)s analyze -i messages.jsonl -p patterns.yaml -o output.yaml
-  %(prog)s analyze --input .claude/user-messages.jsonl \\
-                   --patterns .claude/workflow-analysis/step1-patterns.yaml
-
-Pipeline (--input defaults to .claude/workflow-analysis/step1-patterns.jsonl):
-  ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
-  %(prog)s analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
-""",
-    )
-
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-
-    # analyze subcommand
-    analyze_parser = subparsers.add_parser(
-        "analyze",
-        help="Analyze workflows from messages and patterns",
-    )
-    analyze_parser.add_argument(
-        "-i",
-        "--input",
-        type=Path,
-        default=_DEFAULT_INPUT_PATH,
-        help=(
-            "Input JSONL file with user messages"
-            " (default: .claude/workflow-analysis/step1-patterns.jsonl)"
-        ),
-    )
-    analyze_parser.add_argument(
-        "-p",
-        "--patterns",
-        type=Path,
-        required=True,
-        help="Input YAML file from Step 1 (workflow-pattern-analyzer)",
-    )
-    analyze_parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        help="Output file (default: .claude/workflow-analysis/step2-workflows.yaml or .json)",
-    )
-    analyze_parser.add_argument(
-        "-f",
-        "--format",
-        choices=["yaml", "json"],
-        default="yaml",
-        help="Output format (default: yaml)",
-    )
-    analyze_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Print verbose progress information",
-    )
-    analyze_parser.add_argument(
-        "--overlap-threshold",
-        type=float,
-        default=0.3,
-        metavar="FLOAT",
-        help="Minimum entity overlap to cluster messages together (default: 0.3)",
-    )
-    analyze_parser.add_argument(
-        "--boundary-threshold",
-        type=float,
-        default=0.6,
-        metavar="FLOAT",
-        help="Minimum boundary score to split workflow segments (default: 0.6)",
-    )
-
-    args = parser.parse_args()
-
-    if args.command is None:
-        parser.print_help()
-        return 1
-
-    if args.command == "analyze":
-        # Validate input files
-        if not args.input.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            if args.input == _DEFAULT_INPUT_PATH:
-                print(
-                    "  Run 'll-messages' first to generate the input file.",
-                    file=sys.stderr,
-                )
-            return 1
-
-        if not args.patterns.exists():
-            print(f"Error: Patterns file not found: {args.patterns}", file=sys.stderr)
-            return 1
-
-        # Validate threshold ranges
-        if not (0.0 <= args.overlap_threshold <= 1.0):
-            print(
-                f"Error: --overlap-threshold must be in [0.0, 1.0], got {args.overlap_threshold}",
-                file=sys.stderr,
-            )
-            return 1
-
-        if not (0.0 <= args.boundary_threshold <= 1.0):
-            print(
-                f"Error: --boundary-threshold must be in [0.0, 1.0], got {args.boundary_threshold}",
-                file=sys.stderr,
-            )
-            return 1
-
-        # Set default output path
-        output_path = args.output
-        if output_path is None:
-            if args.format == "json":
-                output_path = Path(".claude/workflow-analysis/step2-workflows.json")
-            else:
-                output_path = Path(".claude/workflow-analysis/step2-workflows.yaml")
-
-        if args.verbose:
-            print(f"Input: {args.input}")
-            print(f"Patterns: {args.patterns}")
-            print(f"Output: {output_path}")
-
-        try:
-            analysis = analyze_workflows(
-                messages_file=args.input,
-                patterns_file=args.patterns,
-                output_file=output_path,
-                overlap_threshold=args.overlap_threshold,
-                boundary_threshold=args.boundary_threshold,
-                verbose=args.verbose,
-                output_format=args.format,
-            )
-
-            if args.verbose:
-                print(f"Analyzed {analysis.metadata['message_count']} messages")
-                print(f"Found {len(analysis.session_links)} session links")
-                print(f"Found {len(analysis.entity_clusters)} entity clusters")
-                print(f"Detected {len(analysis.workflows)} workflows")
-            print(f"Output written to: {output_path}")
-
-            return 0
-
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-    return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

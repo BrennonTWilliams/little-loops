@@ -19,7 +19,7 @@ Architectural issue found by `/ll:audit-architecture`.
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 1-1065 (entire file)
+- **Line(s)**: 1-1079 (entire file)
 - **Module**: `little_loops.workflow_sequence_analyzer`
 
 ## Current Behavior
@@ -68,12 +68,12 @@ Convert to a `workflow_sequence/` package (or similar):
 2. Extract IO/loading functions to `workflow_sequence/io.py`
 3. Keep analysis functions in `workflow_sequence/analysis.py`
 4. Move CLI `main()` to the package `__init__.py` or a dedicated entry point
-5. Update the `ll-workflows` CLI entry point reference in `setup.cfg`/`pyproject.toml`
+5. Update the `ll-workflows` CLI entry point reference in `scripts/pyproject.toml`
 
 ## Scope Boundaries
 
 - **In scope**: Splitting `workflow_sequence_analyzer.py` into a `workflow_sequence/` package with `models.py`, `io.py`, `analysis.py`, and entry point
-- **In scope**: Updating the `ll-workflows` CLI entry point reference in `pyproject.toml`/`setup.cfg`
+- **In scope**: Updating the `ll-workflows` CLI entry point reference in `scripts/pyproject.toml`
 - **Out of scope**: Changes to analysis logic or function signatures
 - **Out of scope**: Renaming any public functions or classes
 - **Out of scope**: Adding new functionality or tests beyond what is needed for the refactor
@@ -92,7 +92,6 @@ Convert to a `workflow_sequence/` package (or similar):
 
 ### Tests
 - `scripts/tests/test_workflow_sequence_analyzer.py` — primary unit tests
-- `scripts/tests/test_workflow_integration.py` — integration tests
 - `scripts/tests/test_issue_workflow_integration.py` — issue/workflow integration tests
 
 ### Documentation
@@ -100,7 +99,7 @@ Convert to a `workflow_sequence/` package (or similar):
 - `docs/reference/API.md:42,2997,3005,3149,3179,3316` — module documented with function signatures and usage examples
 
 ### Configuration
-- `scripts/setup.cfg:55` — `ll-workflows = "little_loops.workflow_sequence_analyzer:main"` (confirmed in setup.cfg, not pyproject.toml)
+- `scripts/pyproject.toml:55` — `ll-workflows = "little_loops.workflow_sequence_analyzer:main"`
 
 ## Implementation Steps
 
@@ -108,7 +107,7 @@ Convert to a `workflow_sequence/` package (or similar):
 2. Extract 5 dataclasses to `workflow_sequence/models.py`
 3. Extract IO/loading functions to `workflow_sequence/io.py`
 4. Move analysis functions to `workflow_sequence/analysis.py`
-5. Move CLI `main()` to entry point module; update `pyproject.toml`/`setup.cfg` entry point reference
+5. Move CLI `main()` to entry point module; update `scripts/pyproject.toml` entry point reference
 6. Run tests and verify `ll-workflows` CLI continues to function identically
 
 ## Impact
@@ -123,19 +122,44 @@ Convert to a `workflow_sequence/` package (or similar):
 **Verdict: NEEDS_UPDATE** — Verified 2026-03-19; re-verified 2026-03-22
 
 - **File exists**: `scripts/little_loops/workflow_sequence_analyzer.py` now **1,079 lines** (was 1,065 at 2026-03-19) ✓
-- **Dataclasses (5)**: `SessionLink` (L94), `EntityCluster` (L113), `WorkflowBoundary` (L138), `Workflow` (L162), `WorkflowAnalysis` (L193) — all confirmed ✓
+- **Dataclasses (5)**: `SessionLink` (L96), `EntityCluster` (L115), `WorkflowBoundary` (L140), `Workflow` (L164), `WorkflowAnalysis` (L195) — all confirmed ✓
 - **Analysis functions**: All listed confirmed (plus unlisted `get_verb_class` L289, `_detect_handoff` L395 as minor omissions)
 - **IO/loading functions**: All listed confirmed ✓
-- **CLI entry point**: `main()` at L914; registered in `scripts/setup.cfg:55` as `ll-workflows = "little_loops.workflow_sequence_analyzer:main"` ✓ (line may have shifted — re-verify before implementing)
+- **CLI entry point**: `main()` at L916; registered in `scripts/pyproject.toml:55` as `ll-workflows = "little_loops.workflow_sequence_analyzer:main"` ✓
 - **No existing package**: `workflow_sequence/` package does not yet exist — issue is still valid ✓
 - **Integration Map**: Populated TBDs with verified callers, test files, and documentation references
-- **Action needed**: Update line count in Summary/Location (1-1079); re-verify `main()` line number
+- **Note**: `test_workflow_integration.py` reference removed — file does not exist
 
 ## Labels
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
+## Resolution
+
+**Status**: COMPLETED — 2026-03-22
+
+**Approach**: Converted `workflow_sequence_analyzer.py` (1,079 lines) to a `workflow_sequence/` package with four focused modules:
+- `models.py` — 5 dataclasses (`SessionLink`, `EntityCluster`, `WorkflowBoundary`, `Workflow`, `WorkflowAnalysis`)
+- `io.py` — file I/O helpers (`_load_messages`, `_load_patterns`)
+- `analysis.py` — constants, all analysis/grouping functions, `analyze_workflows`
+- `__init__.py` — public re-exports, `_DEFAULT_INPUT_PATH`, `main()` CLI entry point
+
+**Architecture note**: `_group_by_session`, `_parse_timestamps`, `_link_sessions` placed in `analysis.py` (not `io.py` as prescribed) to avoid circular imports — they are data-processing functions, not file I/O.
+
+**Files changed**:
+- Created `scripts/little_loops/workflow_sequence/__init__.py`
+- Created `scripts/little_loops/workflow_sequence/models.py`
+- Created `scripts/little_loops/workflow_sequence/io.py`
+- Created `scripts/little_loops/workflow_sequence/analysis.py`
+- Deleted `scripts/little_loops/workflow_sequence_analyzer.py`
+- Updated `scripts/pyproject.toml`: `ll-workflows = "little_loops.workflow_sequence:main"`
+- Updated `scripts/tests/test_workflow_sequence_analyzer.py`: split imports across submodules
+
+**Verification**: 3,841 tests pass, ruff clean, mypy clean (0 issues in 4 source files).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-23T04:22:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1213522d-2cad-4322-af56-638e7b93f2f2.jsonl`
 - `/ll:go-no-go` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be2c3ceb-8e4a-4973-8a3b-747037b4083f.jsonl`
 - `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:verify-issues` - 2026-03-19T22:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
