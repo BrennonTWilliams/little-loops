@@ -4,7 +4,10 @@ argument-hint: "[area]"
 allowed-tools:
   - Read
   - Edit
+  - AskUserQuestion
   - Bash(mkdir:*)
+  - Bash(python3:*)
+  - Bash(pip:*)
 arguments:
   - name: area
     description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks (optional - prompts if omitted)"
@@ -15,6 +18,8 @@ arguments:
 ---
 
 # Configure
+
+<!-- PLUGIN_VERSION: 1.61.1 -->
 
 Interactively configure specific areas of `.claude/ll-config.json` without re-running the full `/ll:init` wizard.
 
@@ -38,6 +43,45 @@ if [[ "$FLAGS" == *"--list"* ]]; then LIST_MODE=true; fi
 if [[ "$FLAGS" == *"--show"* ]]; then SHOW_MODE=true; fi
 if [[ "$FLAGS" == *"--reset"* ]]; then RESET_MODE=true; fi
 ```
+
+### 1.5. Pip Package Check
+
+**Skip this step if** `LIST_MODE`, `SHOW_MODE`, or `RESET_MODE` is `true` (these modes are informational or destructive, not configuration sessions where a version mismatch matters).
+
+Check whether the installed `little-loops` pip package is aligned with this plugin version. This is a **non-blocking** check — display warnings but always proceed. Since configure has no `--yes` flag, this check is always interactive.
+
+1. Read the `PLUGIN_VERSION` from the `<!-- PLUGIN_VERSION: X.Y.Z -->` comment near the top of this file.
+
+2. Detect the installed package version:
+   ```bash
+   python3 -c "import importlib.metadata; print(importlib.metadata.version('little-loops'))" 2>/dev/null
+   ```
+
+3. Evaluate the result:
+   - If the command fails (package not installed):
+     ```
+     Warning: 'little-loops' pip package not installed — ll-* CLI tools unavailable
+     Install: pip install -e "./scripts"
+     ```
+     Always proceed.
+   - If installed and versions match → no output (silent success).
+   - If installed and versions differ:
+     - Determine install command:
+       ```bash
+       [ -d "./scripts" ] && INSTALL_CMD="pip install -e './scripts'" || INSTALL_CMD="pip install --upgrade little-loops"
+       ```
+     - Use `AskUserQuestion`:
+       ```
+       The installed little-loops package (X.Y.Z) is out of date (plugin: A.B.C).
+       Update now?
+       Options: Yes / No
+       ```
+     - If user confirms: run `$INSTALL_CMD` via Bash
+       - On success: `✓ little-loops updated to A.B.C`
+       - On failure: `Warning: pip package update failed — run manually: $INSTALL_CMD`
+     - If user declines: `Warning: pip package version mismatch — run: $INSTALL_CMD`
+
+**Always proceed to Step 2 regardless of results.**
 
 ### 2. Area Mapping
 

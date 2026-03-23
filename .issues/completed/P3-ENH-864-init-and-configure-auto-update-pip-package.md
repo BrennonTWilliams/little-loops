@@ -135,12 +135,22 @@ N/A — No public API changes; this enhancement modifies skill markdown files on
 
 enhancement, init, configure, pip, package-management
 
+## Resolution
+
+- **Status**: Completed
+- **Date**: 2026-03-23
+- **Changes**:
+  - `skills/init/SKILL.md`: Added `AskUserQuestion`, `Bash(python3:*)`, `Bash(pip:*)` to `allowed-tools`; updated `PLUGIN_VERSION` from `1.50.0` to `1.61.1`; replaced warn-only version-mismatch branch with conditional auto-update logic (`--yes` → silent install, interactive → `AskUserQuestion` prompt)
+  - `skills/configure/SKILL.md`: Added `AskUserQuestion`, `Bash(python3:*)`, `Bash(pip:*)` to `allowed-tools`; added `<!-- PLUGIN_VERSION: 1.61.1 -->` comment; added Step 1.5 Pip Package Check (interactive, skipped in `--list`/`--show`/`--reset` modes)
+
 ## Status
 
-Active
+Completed
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T22:30:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19fd35ab-9270-4420-96ba-b9bf29365721.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5a9a29b-78e5-4330-acde-d4161d5e76d6.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:22:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba226300-17d6-4c1b-a577-f8f3208d00a9.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:16:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/795fcb4e-b6a9-48e6-b5c4-307257454953.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90e70c91-9459-4013-8a64-c4fa530434f9.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

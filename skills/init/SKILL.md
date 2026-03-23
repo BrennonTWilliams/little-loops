@@ -6,8 +6,11 @@ allowed-tools:
   - Glob
   - Write
   - Edit
+  - AskUserQuestion
   - Bash(mkdir:*)
   - Bash(which:*)
+  - Bash(python3:*)
+  - Bash(pip:*)
 arguments:
   - name: flags
     description: Optional flags (--interactive, --yes, --force, --dry-run)
@@ -16,7 +19,7 @@ arguments:
 
 # Initialize Configuration
 
-<!-- PLUGIN_VERSION: 1.50.0 -->
+<!-- PLUGIN_VERSION: 1.61.1 -->
 
 You are tasked with initializing little-loops configuration for a project by creating `.claude/ll-config.json`.
 
@@ -367,11 +370,22 @@ Run the following checks via Bash:
    ```
    - If the command fails → warn: `'little-loops' pip package not installed — ll-* CLI tools unavailable. Install: pip install -e "./scripts"`
    - If installed → compare returned version against the `PLUGIN_VERSION` embedded in this skill (the `<!-- PLUGIN_VERSION: X.Y.Z -->` comment near the top, updated at each release alongside plugin.json, pyproject.toml, `__init__.py`, and CHANGELOG.md)
-   - If versions differ → warn:
-     ```
-     Warning: pip package version (X.Y.Z) does not match plugin version (A.B.C)
-     Run: pip install --upgrade little-loops   (or: pip install -e "./scripts" for development)
-     ```
+   - If versions differ:
+     - Determine install command:
+       ```bash
+       [ -d "./scripts" ] && INSTALL_CMD="pip install -e './scripts'" || INSTALL_CMD="pip install --upgrade little-loops"
+       ```
+     - If `$YES == true` (auto mode): run `$INSTALL_CMD` via Bash
+       - On success: `✓ little-loops updated to A.B.C`
+       - On failure: `Warning: pip package update failed — run manually: $INSTALL_CMD`
+     - Otherwise (interactive mode): use `AskUserQuestion`:
+       ```
+       The installed little-loops package (X.Y.Z) is out of date (plugin: A.B.C).
+       Update now?
+       Options: Yes / No
+       ```
+       - If user confirms: run `$INSTALL_CMD`; report success/failure as above
+       - If user declines: `Warning: pip package version mismatch — run: $INSTALL_CMD`
    - If versions match → no output (silent success)
 
 **Always proceed to Step 10 regardless of results.**
