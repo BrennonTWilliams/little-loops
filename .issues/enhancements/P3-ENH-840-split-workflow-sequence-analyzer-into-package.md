@@ -14,7 +14,7 @@ outcome_confidence: 71
 
 Architectural issue found by `/ll:audit-architecture`.
 
-`workflow_sequence_analyzer.py` is 1,065 lines containing 5 dataclasses, analysis functions, IO/loading helpers, and a CLI `main()` entry point all in a single root-level module.
+`workflow_sequence_analyzer.py` is 1,079 lines containing 5 dataclasses, analysis functions, IO/loading helpers, and a CLI `main()` entry point all in a single root-level module.
 
 ## Location
 
@@ -35,7 +35,7 @@ The file mixes four concern areas:
 
 ### Impact
 
-- **Development velocity**: Contributors must read 1,065 lines to understand any single concern
+- **Development velocity**: Contributors must read 1,079 lines to understand any single concern
 - **Maintainability**: Model changes, analysis logic, and IO are coupled in one file
 - **Risk**: Low runtime risk
 
@@ -53,7 +53,7 @@ Each module is independently readable and testable. The `ll-workflows` CLI entry
 ## Motivation
 
 This enhancement would:
-- **Reduce cognitive load**: Contributors must navigate 1,065 lines to understand any single concern (models, IO, analysis, or CLI)
+- **Reduce cognitive load**: Contributors must navigate 1,079 lines to understand any single concern (models, IO, analysis, or CLI)
 - **Enable targeted testing**: Isolated modules can be independently tested and mocked without loading the entire monolith
 - **Lower maintenance risk**: Model changes, analysis logic, and IO are coupled — a change to one risks unintended side effects in others
 - **Improve onboarding**: New contributors can understand the package structure at a glance via module names
@@ -120,26 +120,32 @@ Convert to a `workflow_sequence/` package (or similar):
 
 ## Verification Notes
 
-**Verdict: VALID** — Verified 2026-03-19
+**Verdict: NEEDS_UPDATE** — Verified 2026-03-19; re-verified 2026-03-22
 
-- **File exists**: `scripts/little_loops/workflow_sequence_analyzer.py` confirmed at exactly 1,065 lines ✓
+- **File exists**: `scripts/little_loops/workflow_sequence_analyzer.py` now **1,079 lines** (was 1,065 at 2026-03-19) ✓
 - **Dataclasses (5)**: `SessionLink` (L94), `EntityCluster` (L113), `WorkflowBoundary` (L138), `Workflow` (L162), `WorkflowAnalysis` (L193) — all confirmed ✓
 - **Analysis functions**: All listed confirmed (plus unlisted `get_verb_class` L289, `_detect_handoff` L395 as minor omissions)
 - **IO/loading functions**: All listed confirmed ✓
-- **CLI entry point**: `main()` at L914; registered in `scripts/setup.cfg:55` as `ll-workflows = "little_loops.workflow_sequence_analyzer:main"` ✓
+- **CLI entry point**: `main()` at L914; registered in `scripts/setup.cfg:55` as `ll-workflows = "little_loops.workflow_sequence_analyzer:main"` ✓ (line may have shifted — re-verify before implementing)
 - **No existing package**: `workflow_sequence/` package does not yet exist — issue is still valid ✓
 - **Integration Map**: Populated TBDs with verified callers, test files, and documentation references
+- **Action needed**: Update line count in Summary/Location (1-1079); re-verify `main()` line number
 
 ## Labels
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:verify-issues` - 2026-03-19T22:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:format-issue` - 2026-03-19T22:53:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 
 ---
+
+## Blocks
+
+- ENH-550
 
 ## Status
 

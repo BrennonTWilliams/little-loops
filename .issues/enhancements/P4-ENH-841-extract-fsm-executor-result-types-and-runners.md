@@ -12,11 +12,11 @@ outcome_confidence: 70
 
 ## Summary
 
-`fsm/executor.py` is 1,050 lines combining three distinct concerns: result types (`ExecutionResult`, `ActionResult`), runner implementations (`ActionRunner` protocol + `DefaultActionRunner` + `SimulationActionRunner`), and the core `FSMExecutor` class. Splitting into focused modules reduces file size and clarifies dependency boundaries.
+`fsm/executor.py` is 1,070 lines combining three distinct concerns: result types (`ExecutionResult`, `ActionResult`), runner implementations (`ActionRunner` protocol + `DefaultActionRunner` + `SimulationActionRunner`), and the core `FSMExecutor` class. Splitting into focused modules reduces file size and clarifies dependency boundaries.
 
 ## Current Behavior
 
-`scripts/little_loops/fsm/executor.py` (1,050 lines) contains 6 classes across three unrelated concerns:
+`scripts/little_loops/fsm/executor.py` (1,070 lines) contains 6 classes across three unrelated concerns:
 
 1. **Result types** (lines ~44-128): `ExecutionResult`, `ActionResult` dataclasses
 2. **Runner implementations** (lines ~106-325): `ActionRunner` protocol, `DefaultActionRunner` (subprocess-based), `SimulationActionRunner` (test/dry-run)
@@ -30,7 +30,7 @@ The runner implementations are independent of the executor and are already consu
 
 ## Motivation
 
-- Navigating runner behavior requires scrolling through 1,050 lines of unrelated executor logic
+- Navigating runner behavior requires scrolling through 1,070 lines of unrelated executor logic
 - `fsm/persistence.py` importing result types from `executor.py` creates an indirect coupling — `fsm/types.py` would clarify the dependency
 - Runner classes (`DefaultActionRunner`, `SimulationActionRunner`) are already consumed independently in test setups; extraction improves testability without requiring the full executor module
 
@@ -104,7 +104,7 @@ Split into focused modules within the existing `fsm/` package:
 
 **Verdict**: VALID — Verified 2026-03-19
 
-- `executor.py` is exactly 1,050 lines (confirmed)
+- `executor.py` is exactly 1,070 lines (confirmed)
 - `ExecutionResult` at line 44, `ActionResult` at line 86 (within stated ~44-128 range)
 - `ActionRunner` at line 106, `DefaultActionRunner` at line 130, `SimulationActionRunner` at line 216 (within stated ~106-325 range)
 - `FSMExecutor` at line 337 (exactly matches stated ~337-1050)
@@ -127,6 +127,7 @@ _Added by `/ll:confidence-check` on 2026-03-19_
 - **Patch path breakage**: 14 test patches targeting `little_loops.fsm.executor.subprocess.*` and `little_loops.fsm.executor.time.*` will break once those modules move to `runners.py`. Step 5 acknowledges this, but the scope is broader than "minor" — `test_ll_loop_execution.py` alone has ~10 affected patches across `subprocess.Popen` and `subprocess.run`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:57:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:format-issue` - 2026-03-19T23:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

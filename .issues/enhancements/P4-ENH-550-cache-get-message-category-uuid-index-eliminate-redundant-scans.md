@@ -112,7 +112,7 @@ def _detect_workflows(...):
 
 - **2026-03-05** — VALID. `_get_message_category` confirmed at line 611 (was 600–607 at scan commit a574ea0); two call sites in `_detect_workflows` at lines 660 and 720 (was 649, 704). Function body unchanged. No `_build_category_index` exists yet. Dependency backlinks verified: FEAT-558 and ENH-551 both list `Blocked By: ENH-550`; FEAT-556 lists `Blocks: ENH-550`.
 - **2026-03-21** — DEP_ISSUES → VALID. Removed broken `Blocks: ENH-554` reference — ENH-554 does not exist in active or completed issues.
-- **2026-03-22** — NEEDS_UPDATE. `_get_message_category` now at line 664 (was 611); call sites in `_detect_workflows` now at lines 713 and 763 (was 660, 720). No `_build_category_index` exists. ENH-551 `Blocked By: ENH-550` backlink confirmed. Update Location section to line 664, call sites 713/763.
+- **2026-03-22** — VALID. Location section updated to line 664 (function), 713 and 763 (call sites in `_detect_workflows`). No `_build_category_index` exists. ENH-551 `Blocked By: ENH-550` backlink confirmed. Enhancement not yet applied.
 
 ## Related Key Documentation
 
@@ -134,6 +134,7 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:go-no-go` - 2026-03-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dae687ee-b9b3-4550-a249-d0875a127443.jsonl` — NO-GO: ENH-840 (P3) is a higher-priority open refactor that moves `_detect_workflows` to its final location; implement ENH-550 after ENH-840.
 - `/ll:verify-issues` - 2026-03-23T00:58:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`

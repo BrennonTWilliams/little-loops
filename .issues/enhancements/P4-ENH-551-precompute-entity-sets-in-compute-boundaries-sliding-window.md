@@ -16,7 +16,7 @@ outcome_confidence: 100
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 551–574 (at scan commit: a574ea0)
+- **Line(s)**: 636–637 (was 551–574 at scan commit: a574ea0)
 - **Anchor**: `in function _compute_boundaries`, sliding window loop
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L551-L574)
 - **Code**:
@@ -111,6 +111,7 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: sliding-window redundancy at lines 592-593
@@ -132,6 +133,7 @@ _(FEAT-558 removed from Blocks — completed; ENH-554 removed — does not exist
 - **Verdict**: VALID
 - `scripts/little_loops/workflow_sequence_analyzer.py` lines 592-593 confirm `extract_entities(msg_a.get("content", ""))` and `extract_entities(msg_b.get("content", ""))` are both called inside the sliding-window loop in `_compute_boundaries`, causing every interior message to be processed twice. No pre-computed entity list exists. Enhancement not yet applied.
 - **Date**: 2026-03-21 — DEP_ISSUES → VALID. Removed broken `Blocks: ENH-554` reference — ENH-554 does not exist in active or completed issues.
+- **Date**: 2026-03-22 — OUTDATED. Lines shifted: `extract_entities` calls in `_compute_boundaries` were at 551–574 (scan commit a574ea0); now at **636–637**. No pre-computed entity list exists. Enhancement not yet applied. Updated Location section.
 
 ## Status
 
