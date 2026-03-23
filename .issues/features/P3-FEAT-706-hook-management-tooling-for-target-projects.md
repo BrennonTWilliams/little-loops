@@ -70,8 +70,8 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 2. **Register `hooks` area in `skills/configure/SKILL.md`** — Three edits required:
    - Area Mapping table (lines 46-60): add `hooks` row → reads/writes `.claude/settings.json` like `allowed-tools`
-   - Interactive area selection (lines 138-207): add `hooks` option to the appropriate "More areas..." batch
-   - Arguments list (lines 261-273): add `hooks` bullet
+   - Interactive area selection (lines 141-207): add `hooks` option to Batch 4 (the terminal batch with `context`, `prompt`, `allowed-tools`)
+   - Arguments list (lines 257-279): add `hooks` bullet
 
 3. **Create `skills/configure/areas.md` section `## Area: hooks`** — Append after the `allowed-tools` section (line 792). Follow the `allowed-tools` pattern (lines 736-792) exactly: detect current state, display table, interactive round, merge JSON, write result.
 
@@ -83,7 +83,7 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 7. **Add `--dry-run` support for `install`**: Show what entries would be added without writing. Follow the `--dry-run` pattern already established in the issue's Acceptance Criteria.
 
-8. **Add `hooks --show` format to `skills/configure/show-output.md`**: Follow the pattern of existing show sections (e.g., lines 5-21 for `project --show`).
+8. **Implement `hooks --show` display inline in `areas.md`**: Follow the `allowed-tools` pattern (areas.md:738-758) — define state detection bash block + display table directly in the `## Area: hooks` section. Do NOT add a section to `show-output.md`; `allowed-tools` has no entry there either, and hooks follows the same inline approach.
 
 ## Integration Map
 
@@ -122,26 +122,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 #### Exact integration points in `skills/configure/areas.md`
 
-- Append a new `## Area: hooks` section at the end of the file (after the `allowed-tools` section at line 736). Model after `## Area: allowed-tools` (lines 736-792) — same pattern: detect/display current state, interactive round, JSON merge logic, write result.
+- Append a new `## Area: hooks` section at the end of the file (after the `allowed-tools` section which runs lines 736-793). Model after `## Area: allowed-tools` (lines 736-793) — same pattern: detect/display current state, interactive round, JSON merge logic, write result. New section begins at line 794.
 
-#### New file: `skills/configure/show-output.md`
+#### `skills/configure/show-output.md` — no entry needed for hooks
 
-- Add a `## hooks --show` section following the pattern of existing show sections (e.g., `## issues --show`, `## parallel --show`).
+- `show-output.md` has 171 lines covering 11 areas (project through sync). `allowed-tools` has no entry there — it displays state inline in areas.md. **Hooks follows the same pattern**: implement the display table directly in the `## Area: hooks` section of areas.md (state detection bash block + display table), not in show-output.md.
 
-#### `hooks/hooks.json` — complete hook inventory (6 hooks across 6 events)
+#### `hooks/hooks.json` — complete hook inventory (7 hook objects across 6 event types)
 
-All scripts use `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/` prefix. When installed to `.claude/settings.json`, these command strings remain valid since `${CLAUDE_PLUGIN_ROOT}` resolves at runtime:
+All scripts use `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/` prefix. When installed to `.claude/settings.json`, these command strings remain valid since `${CLAUDE_PLUGIN_ROOT}` resolves at runtime.
+
+**Important**: `UserPromptSubmit` and `Stop` event groups have **no `matcher` field** (not even `"*"`). `PostToolUse` has two separate groups with different matchers. Show/install/validate must handle the absence of `matcher` gracefully.
 
 | Event | Matcher | Script | Timeout |
 |-------|---------|--------|---------|
 | `SessionStart` | `*` | `session-start.sh` | 5s |
-| `UserPromptSubmit` | (none) | `user-prompt-check.sh` | 3s |
+| `UserPromptSubmit` | _(no matcher)_ | `user-prompt-check.sh` | 3s |
 | `PreToolUse` | `Write\|Edit` | `check-duplicate-issue-id.sh` | 5s |
 | `PostToolUse` | `*` | `context-monitor.sh` | 5s |
-| `Stop` | (none) | `session-cleanup.sh` | 15s |
+| `PostToolUse` | `Bash` | `issue-completion-log.sh` | 5s |
+| `Stop` | _(no matcher)_ | `session-cleanup.sh` | 15s |
 | `PreCompact` | `*` | `precompact-state.sh` | 5s |
 
-Scripts live at `hooks/scripts/`: `session-start.sh`, `user-prompt-check.sh`, `check-duplicate-issue-id.sh`, `context-monitor.sh`, `session-cleanup.sh`, `precompact-state.sh` (+ `lib/common.sh`).
+Scripts live at `hooks/scripts/`: `session-start.sh`, `user-prompt-check.sh`, `check-duplicate-issue-id.sh`, `context-monitor.sh`, `issue-completion-log.sh`, `session-cleanup.sh`, `precompact-state.sh` (+ `lib/common.sh`).
 
 #### `.claude/settings.json` hook schema (from `docs/claude-code/hooks-reference.md`)
 
@@ -208,6 +211,7 @@ Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(inp
 **Open** | Created: 2026-03-12 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-23T18:12:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/500f7108-96bd-4385-b940-17a9e320101e.jsonl`
 - `/ll:refine-issue` - 2026-03-19T02:51:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f2bd1a9-9196-4775-a221-228c31d6c262.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`

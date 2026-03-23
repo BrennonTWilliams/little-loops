@@ -46,6 +46,17 @@ All downstream states (`parse_id`, `route_format`, `route_verify`, `route_score`
 - **Readable**: The loop YAML drops ~28 lines of inline script to 1 line
 - **Configurable path**: Thresholds and the refine cap can later be wired to config without touching YAML
 
+## Success Metrics
+
+- **Loop complexity**: `evaluate` state in `loops/issue-refinement.yaml` reduces from ~28 lines of inline Python → 1 CLI call
+- **Test coverage**: Unit tests cover all five branches (`NEEDS_FORMAT`, `NEEDS_VERIFY`, `NEEDS_SCORE`, `NEEDS_REFINE`, `ALL_DONE`)
+- **Reusability**: `ll-issues next-action` callable from other loops or scripts without copy-pasting classification logic
+
+## Scope Boundaries
+
+- **In scope**: `next_action.py` subcommand; CLI registration in `__init__.py`; `evaluate` state update in `loops/issue-refinement.yaml`; unit tests in `scripts/tests/test_next_action.py`
+- **Out of scope**: Changes to `ll-issues refine-status` JSON output format; threshold defaults used elsewhere; modification of any loop other than `issue-refinement.yaml`
+
 ## Proposed Solution
 
 Add `next-action` (alias `na`) subcommand to `scripts/little_loops/cli/issues/__init__.py` and implement `scripts/little_loops/cli/issues/next_action.py`:
@@ -100,6 +111,51 @@ def cmd_next_action(config: BRConfig, args: argparse.Namespace) -> int:
 | Loop simplification | `loops/issue-refinement.yaml` | Replace 28-line inline Python with `ll-issues next-action` |
 | Tests | `scripts/tests/test_next_action.py` | Create |
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Files to modify:**
+
+- `scripts/little_loops/cli/issues/__init__.py` — three insertion points:
+  1. **Lines 17–25** (import block inside `main_issues()`): add `from little_loops.cli.issues.next_action import cmd_next_action`
+  2. **Lines 29–276** (subparser registration block): add `next-action` parser after the last `add_parser` call (currently `append-log`)
+  3. **Lines 290–308** (dispatch `if`-chain): add `if args.command == "next-action": return cmd_next_action(config, args)`
+- `loops/issue-refinement.yaml` — **lines 12–48** contain the `evaluate` state; lines 14–41 are the inline Python to replace
+
+**Sibling implementations to model after:**
+
+- `scripts/little_loops/cli/issues/count_cmd.py` — best pattern match: `cmd_count(config, args)` with `getattr(args, "attr", default)` for optional flags, early JSON branch, `return 0`/`return 1` exit codes
+- `scripts/little_loops/cli/issues/next_id.py` — minimal `cmd_*` shape (no args), deferred runtime imports, `TYPE_CHECKING` guard
+
+**Data source fields confirmed** (`scripts/little_loops/cli/issues/refine_status.py:282–300`):
+- All fields used by `cmd_next_action` exist on `IssueInfo`: `priority_int` (computed property, `issue_parser.py:241`), `issue_id`, `confidence_score`, `outcome_confidence`, `session_commands` (list of distinct `/ll:*` commands), `session_command_counts` (dict of counts)
+- `is_formatted(issue.path)` confirmed at `scripts/little_loops/issue_parser.py:45–96`
+- `find_issues(config)` confirmed at `scripts/little_loops/issue_parser.py:612–618`; follows same call pattern as `cmd_refine_status`
+
+**Tests — existing fixtures and patterns:**
+
+- `scripts/tests/conftest.py` — use `temp_project_dir`, `sample_config`, `issues_dir` fixtures
+- `scripts/tests/test_refine_status.py:19–53` — copy `_make_issue()` helper to build issue files with custom `confidence_score`, `outcome_confidence`, and Session Log entries
+- Core test invocation: `patch.object(sys, "argv", ["ll-issues", "next-action", "--config", str(temp_project_dir)])` + `main_issues()` (pattern from `test_issues_cli.py:29–36`)
+- Model test class as `TestIssuesCLINextAction` (convention from `test_issues_cli.py`)
+
+## API/Interface
+
+```bash
+ll-issues next-action [--refine-cap N] [--ready-threshold N] [--outcome-threshold N]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--refine-cap N` | 5 | Max refinements before graduating an issue |
+| `--ready-threshold N` | 85 | Minimum `confidence_score` to pass |
+| `--outcome-threshold N` | 70 | Minimum `outcome_confidence` to pass |
+
+**Output + exit codes:**
+- Exit 1 + `NEEDS_FORMAT|NEEDS_VERIFY|NEEDS_SCORE|NEEDS_REFINE <id>` — work remains on highest-priority issue
+- Exit 0 + `ALL_DONE` — all active issues have graduated
+
 ## Implementation Steps
 
 1. Create `scripts/little_loops/cli/issues/next_action.py` with `cmd_next_action`
@@ -131,4 +187,5 @@ Active
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-23T18:07:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6707ae34-6988-4f2d-9043-0625567bfb1c.jsonl`
 - `/ll:capture-issue` - 2026-03-23T17:02:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06fdc033-986b-4b59-b280-3505ad02d65c.jsonl`
