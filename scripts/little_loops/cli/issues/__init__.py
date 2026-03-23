@@ -16,9 +16,9 @@ def main_issues() -> int:
     """
     from little_loops.cli.issues.append_log import cmd_append_log
     from little_loops.cli.issues.count_cmd import cmd_count
-    from little_loops.cli.issues.next_action import cmd_next_action
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
+    from little_loops.cli.issues.next_action import cmd_next_action
     from little_loops.cli.issues.next_id import cmd_next_id
     from little_loops.cli.issues.refine_status import cmd_refine_status
     from little_loops.cli.issues.search import cmd_search
