@@ -123,6 +123,19 @@ def analyze_test_gaps(
     )
 
 
+def _update_rejection_metrics(metrics: RejectionMetrics, category: str) -> None:
+    if category == "completed":
+        metrics.completed_count += 1
+    elif category == "rejected":
+        metrics.rejected_count += 1
+    elif category == "invalid":
+        metrics.invalid_count += 1
+    elif category == "duplicate":
+        metrics.duplicate_count += 1
+    elif category == "deferred":
+        metrics.deferred_count += 1
+
+
 def analyze_rejection_rates(
     issues: list[CompletedIssue],
     contents: dict[Path, str] | None = None,
@@ -154,32 +167,14 @@ def analyze_rejection_rates(
         overall.total_closed += 1
 
         # Update overall counts
-        if category == "completed":
-            overall.completed_count += 1
-        elif category == "rejected":
-            overall.rejected_count += 1
-        elif category == "invalid":
-            overall.invalid_count += 1
-        elif category == "duplicate":
-            overall.duplicate_count += 1
-        elif category == "deferred":
-            overall.deferred_count += 1
+        _update_rejection_metrics(overall, category)
 
         # By type
         if issue.issue_type not in by_type:
             by_type[issue.issue_type] = RejectionMetrics()
         type_metrics = by_type[issue.issue_type]
         type_metrics.total_closed += 1
-        if category == "rejected":
-            type_metrics.rejected_count += 1
-        elif category == "invalid":
-            type_metrics.invalid_count += 1
-        elif category == "duplicate":
-            type_metrics.duplicate_count += 1
-        elif category == "deferred":
-            type_metrics.deferred_count += 1
-        elif category == "completed":
-            type_metrics.completed_count += 1
+        _update_rejection_metrics(type_metrics, category)
 
         # By month
         if issue.completed_date:
@@ -188,16 +183,7 @@ def analyze_rejection_rates(
                 by_month[month_key] = RejectionMetrics()
             month_metrics = by_month[month_key]
             month_metrics.total_closed += 1
-            if category == "rejected":
-                month_metrics.rejected_count += 1
-            elif category == "invalid":
-                month_metrics.invalid_count += 1
-            elif category == "duplicate":
-                month_metrics.duplicate_count += 1
-            elif category == "deferred":
-                month_metrics.deferred_count += 1
-            elif category == "completed":
-                month_metrics.completed_count += 1
+            _update_rejection_metrics(month_metrics, category)
 
         # Extract reason for rejection/invalid
         if category in ("rejected", "invalid", "duplicate", "deferred"):
