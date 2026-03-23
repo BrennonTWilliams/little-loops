@@ -193,11 +193,27 @@ ll-issues next-action [--refine-cap N] [--ready-threshold N] [--outcome-threshol
 ## Status
 
 ---
-Active
+Completed
+
+## Resolution
+
+Implemented `ll-issues next-action` (alias `na`) subcommand that replaces the 28-line inline
+Python classifier in `loops/issue-refinement.yaml` with a single CLI call.
+
+**Changes:**
+- Created `scripts/little_loops/cli/issues/next_action.py` with `cmd_next_action`
+- Registered `next-action` / `na` in `scripts/little_loops/cli/issues/__init__.py`
+- Replaced inline Python block in `loops/issue-refinement.yaml` evaluate state with `ll-issues next-action`
+- Created `scripts/tests/test_next_action.py` with 8 tests covering all 5 branches + custom thresholds + refine cap graduation + no-issues case
+
+All 8 tests pass.
 
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-03-23T18:27:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adb3e1f6-4e8e-4140-b117-20479db0d3dc.jsonl`
+- `/ll:ready-issue` - 2026-03-23T18:20:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e46a36d2-a5ff-432a-aa3b-3314d7109620.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd212742-4759-4df9-a71a-5ef5be2730f6.jsonl`
 - `/ll:refine-issue` - 2026-03-23T18:12:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5fa1144-2913-4f9f-933b-4f7f5b56008b.jsonl`
 - `/ll:format-issue` - 2026-03-23T18:07:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6707ae34-6988-4f2d-9043-0625567bfb1c.jsonl`
 - `/ll:capture-issue` - 2026-03-23T17:02:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06fdc033-986b-4b59-b280-3505ad02d65c.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

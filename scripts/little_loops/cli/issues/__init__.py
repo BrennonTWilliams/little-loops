@@ -16,6 +16,7 @@ def main_issues() -> int:
     """
     from little_loops.cli.issues.append_log import cmd_append_log
     from little_loops.cli.issues.count_cmd import cmd_count
+    from little_loops.cli.issues.next_action import cmd_next_action
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
     from little_loops.cli.issues.next_id import cmd_next_id
@@ -41,6 +42,7 @@ Sub-commands:
   impact-effort  Display impact vs effort matrix for active issues
   refine-status  Show refinement depth table sorted by commands touched
   append-log     Append a session log entry to an issue file
+  next-action    Print the next refinement action for the highest-priority active issue
 
 Examples:
   %(prog)s next-id
@@ -274,6 +276,38 @@ Examples:
     al.add_argument("log_command", help="Command name (e.g., /ll:refine-issue)")
     add_config_arg(al)
 
+    na = subs.add_parser(
+        "next-action",
+        aliases=["na"],
+        help="Print the next refinement action for the highest-priority active issue",
+    )
+    na.set_defaults(command="next-action")
+    na.add_argument(
+        "--refine-cap",
+        type=int,
+        default=5,
+        dest="refine_cap",
+        metavar="N",
+        help="Max refinements before graduating an issue (default: 5)",
+    )
+    na.add_argument(
+        "--ready-threshold",
+        type=int,
+        default=85,
+        dest="ready_threshold",
+        metavar="N",
+        help="Minimum confidence_score to pass (default: 85)",
+    )
+    na.add_argument(
+        "--outcome-threshold",
+        type=int,
+        default=70,
+        dest="outcome_threshold",
+        metavar="N",
+        help="Minimum outcome_confidence to pass (default: 70)",
+    )
+    add_config_arg(na)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -305,4 +339,6 @@ Examples:
         return cmd_refine_status(config, args)
     if args.command == "append-log":
         return cmd_append_log(config, args)
+    if args.command == "next-action":
+        return cmd_next_action(config, args)
     return 1

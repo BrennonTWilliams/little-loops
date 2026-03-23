@@ -10,35 +10,7 @@ states:
     action_type: shell
     next: evaluate
   evaluate:
-    action: |
-      ll-issues refine-status --json | python3 -c "
-      import json, sys
-      issues = json.load(sys.stdin)
-      issues.sort(key=lambda i: (int(i['priority'][1]), -int(i['id'].split('-')[1])))
-      for issue in issues:
-          cmds = issue.get('commands', [])
-          has_verify = '/ll:verify-issues' in cmds
-          if not issue.get('formatted', False):
-              print(f'NEEDS_FORMAT {issue[\"id\"]}')
-              sys.exit(1)
-          if not has_verify:
-              print(f'NEEDS_VERIFY {issue[\"id\"]}')
-              sys.exit(1)
-          cs = issue.get('confidence_score')
-          oc = issue.get('outcome_confidence')
-          if cs is None or oc is None:
-              print(f'NEEDS_SCORE {issue[\"id\"]}')
-              sys.exit(1)
-          rc = issue.get('refine_count', 0)
-          # Hard cap: graduate after 5 refinements regardless of score.
-          # Prevents a stubborn issue from consuming the entire iteration budget.
-          if rc >= 5:
-              continue
-          if cs < 85 or oc < 70:
-              print(f'NEEDS_REFINE {issue[\"id\"]}')
-              sys.exit(1)
-      print('ALL_DONE')
-      "
+    action: ll-issues next-action
     action_type: shell
     capture: "classify"
     evaluate:
