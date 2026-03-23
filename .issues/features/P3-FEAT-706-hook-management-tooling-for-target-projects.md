@@ -88,9 +88,8 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 8. **Implement `hooks --show` display inline in `areas.md`**: Follow the `allowed-tools` pattern (areas.md:738-758) — define state detection bash block + display table directly in the `## Area: hooks` section. Do NOT add a section to `show-output.md`; `allowed-tools` has no entry there either, and hooks follows the same inline approach.
 
-9. **Add Step 10.5 (Install Hooks) to `skills/init/SKILL.md`**: Insert a new step between Step 10 (Update Allowed Tools) and Step 11 (Display Completion Message). Pattern mirrors Step 10 exactly:
-   - Detect whether little-loops is loaded as a **plugin** (skip — hooks are already active via `hooks/hooks.json`) or via **CLAUDE.md** (proceed with installation)
-   - To detect plugin vs CLAUDE.md loading: check whether `${CLAUDE_PLUGIN_ROOT}` is set in the environment (`[ -n "$CLAUDE_PLUGIN_ROOT" ]`)
+9. **Add Step 10.5 (Install Hooks) to `skills/init/SKILL.md`** and **add Round 12 to `skills/init/interactive.md`**: Insert a new step between Step 10 (Update Allowed Tools, line 379) and Step 11 (Display Completion Message, line 428). Pattern mirrors Step 10 exactly:
+   - **Detect loading method**: Do NOT use `[ -n "$CLAUDE_PLUGIN_ROOT" ]` (unreliable in Bash tool context — see Codebase Research Findings). Instead, use an explicit `AskUserQuestion` asking "Via CLAUDE.md (install hooks)" vs "As a registered plugin (skip)". In `--interactive` mode, use the answer recorded in Round 12.
    - Ask which target file: `.claude/settings.local.json` (recommended, gitignored) or `.claude/settings.json` (tracked) — same `AskUserQuestion` pattern as Step 10 / `allowed-tools` in `areas.md:760-783`
    - Merge the `hooks` key from `hooks/hooks.json` into the chosen file additively (read target or start with `{}`; merge `hooks` key without overwriting existing non-ll hooks; write with 2-space indent)
    - **`--yes` mode**: use `.claude/settings.local.json` without prompting (skip if plugin user)
@@ -108,7 +107,8 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 ### Files to Modify
 - `skills/configure/SKILL.md` — add `hooks` to: Area Mapping table (line 60, after `allowed-tools`), `--list` output (line 85, after `allowed-tools`), Batch 4 interactive selection (line 206, before the closing `\`\`\``), Arguments list (line 274, after `allowed-tools`)
 - `skills/configure/areas.md` — append new `## Area: hooks` section after line 792 (current EOF), following the `allowed-tools` pattern exactly
-- `skills/init/SKILL.md` — add Step 10.5 (Install Hooks) between Step 10 and Step 11; update Step 11 completion message to show hooks installation status and conditional next-step hint
+- `skills/init/SKILL.md` — add Step 10.5 (Install Hooks) between Step 10 (line 379) and Step 11 (line 428); update Step 11 completion message to show hooks installation status and conditional next-step hint; in `--interactive` mode, reference the choice recorded in Round 12 of the wizard (analogous to Step 10's reference to "Round 11")
+- `skills/init/interactive.md` — add `## Round 12: Install Hooks — ALWAYS RUNS` section after the Round 11 EOF (currently line 669 `---`); update the Interactive Mode Summary table (line 688) to add a Round 12 row: `| **12** | **Install Hooks** | **plugin vs CLAUDE.md loading, target settings file** | **Always** |`; increment "Total interaction rounds" count from "5–6" to "6–7"
 
 ### Dependent Files (Read-Only)
 - `hooks/hooks.json` — source of truth for plugin hook definitions (read-only; do not modify)
@@ -200,6 +200,38 @@ The `allowed-tools` area uses this exact pattern — directly reusable:
 3. Append new entries
 4. Write result with 2-space indent, preserving all top-level keys
 
+#### `skills/init/interactive.md` — Round 12 pattern (694 lines, EOF at line 694)
+
+Round 11 (Allowed Tools) is defined at `interactive.md:603-669` and corresponds 1:1 with SKILL.md Step 10. A new Round 12 (Install Hooks) must follow the identical structure:
+1. **State detection bash block**: Check `[ -f ".claude/settings.json" ]` and `[ -f ".claude/settings.local.json" ]` (same as Round 11)
+2. **`AskUserQuestion`**: Ask whether to install hooks (show/skip options), plus target file selection if installing — AND whether loaded as plugin or CLAUDE.md (see detection risk below)
+3. **Record result**: Store plugin-loading answer + target file choice for SKILL.md Step 10.5 to use in `--interactive` mode
+4. **Summary table update** at `interactive.md:688`: Add `| **12** | **Install Hooks** | plugin loading mode, target file | Always |` row; update "Total interaction rounds" count (line 674) from "5–6" to "6–7"
+
+#### `$CLAUDE_PLUGIN_ROOT` detection reliability risk
+
+**Risk**: `${CLAUDE_PLUGIN_ROOT}` is injected by Claude Code specifically for hook execution contexts (and MCP servers). In Bash tool calls made during skill execution, this variable is **not guaranteed to be in the environment** — the check `[ -n "$CLAUDE_PLUGIN_ROOT" ]` may always return empty regardless of how little-loops is loaded.
+
+**Confirmed**: `session-start.sh` does not set or export `CLAUDE_PLUGIN_ROOT` to any persistent location. No existing skill (including `skills/init/SKILL.md`) uses `$CLAUDE_PLUGIN_ROOT` for detection. The init SKILL.md uses Bash checks like `[ -f ".claude/settings.json" ]` but no Claude-injected env vars.
+
+**Recommended implementation approach for Step 10.5 / Round 12**: Instead of silently checking `$CLAUDE_PLUGIN_ROOT`, use an explicit `AskUserQuestion`:
+
+```yaml
+questions:
+  - header: "Hook Loading Method"
+    question: "How is little-loops loaded in this project?"
+    options:
+      - label: "Via CLAUDE.md (install hooks)"
+        description: "little-loops is referenced in CLAUDE.md — hooks need to be installed to settings.json to activate"
+      - label: "As a registered Claude Code plugin (skip)"
+        description: "Hooks are already active via the plugin system — no installation needed"
+      - label: "Skip"
+        description: "Configure hooks later with: /ll:configure hooks"
+    multiSelect: false
+```
+
+This is safer than env-var detection and educates the user about the distinction at init time.
+
 #### Test pattern (from `scripts/tests/test_hooks_integration.py`)
 
 Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(input_data), ...)` directly against shell scripts. The hooks skill itself is a Claude Code skill (markdown), so new tests would be manual integration tests; no Python unit test pattern to follow for skill behavior itself.
@@ -231,6 +263,7 @@ Existing hook tests use `subprocess.run([str(hook_script)], input=json.dumps(inp
 **Open** | Created: 2026-03-12 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-23T18:44:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ae65570-dc4b-4ae8-8212-fe007eafcff6.jsonl`
 - `/ll:confidence-check` - 2026-03-23T18:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa97f181-0c89-48a7-90d1-c20a0ffe9cd8.jsonl`
 - `/ll:refine-issue` - 2026-03-23T18:25:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c741821-281c-470e-a210-3206e80affa1.jsonl`
 - `/ll:confidence-check` - 2026-03-23T18:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbb81656-ef71-4079-a8b7-1bf83a1c6364.jsonl`
