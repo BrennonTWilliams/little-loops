@@ -1464,7 +1464,11 @@ class TestComputeBoundaries:
     def test_extract_entities_called_once_per_message(self) -> None:
         """extract_entities is called exactly N times for N messages, not 2*(N-1)."""
         messages = [
-            {"content": f"Fix file{i}.py", "uuid": f"msg-{i}", "timestamp": f"2026-01-15T10:0{i}:00"}
+            {
+                "content": f"Fix file{i}.py",
+                "uuid": f"msg-{i}",
+                "timestamp": f"2026-01-15T10:0{i}:00",
+            }
             for i in range(5)
         ]
         with patch(

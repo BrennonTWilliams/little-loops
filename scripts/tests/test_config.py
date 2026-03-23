@@ -178,7 +178,9 @@ class TestDuplicateDetectionConfig:
 
     def test_from_dict_with_values(self) -> None:
         """Test creating DuplicateDetectionConfig from dictionary."""
-        config = DuplicateDetectionConfig.from_dict({"exact_threshold": 0.9, "similar_threshold": 0.6})
+        config = DuplicateDetectionConfig.from_dict(
+            {"exact_threshold": 0.9, "similar_threshold": 0.6}
+        )
         assert config.exact_threshold == 0.9
         assert config.similar_threshold == 0.6
 
@@ -206,7 +208,7 @@ class TestDuplicateDetectionConfig:
 
         # With default thresholds
         match = FindingMatch(issue_path=None, match_type="none", match_score=0.75)
-        assert match.should_skip is False   # 0.75 < 0.8
+        assert match.should_skip is False  # 0.75 < 0.8
         assert match.should_update is True  # 0.5 <= 0.75 < 0.8
 
         # With custom exact_threshold=0.7: score 0.75 should now skip
@@ -217,7 +219,7 @@ class TestDuplicateDetectionConfig:
             exact_threshold=0.7,
             similar_threshold=0.5,
         )
-        assert match_custom.should_skip is True   # 0.75 >= 0.7
+        assert match_custom.should_skip is True  # 0.75 >= 0.7
         assert match_custom.should_update is False
 
 
