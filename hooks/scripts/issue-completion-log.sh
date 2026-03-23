@@ -16,17 +16,17 @@ source "${SCRIPT_DIR}/lib/common.sh"
 INPUT=$(cat)
 
 # Only process Bash tool calls
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
 [ "$TOOL_NAME" != "Bash" ] && exit 0
 
 # Extract the command from tool_input
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
+CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
 
 # Check if this is a git mv to completed/
 echo "$CMD" | grep -qE 'git mv .+completed/' || exit 0
 
 # transcript_path is provided directly in PostToolUse stdin — no path lookup needed
-TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
 [ -z "$TRANSCRIPT_PATH" ] && exit 0
 
 # Extract destination path from git mv command

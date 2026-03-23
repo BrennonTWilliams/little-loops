@@ -42,8 +42,8 @@ POST_COMPACT_PERCENT=$(ll_config_value "context_monitor.post_compaction_percent"
 USE_TRANSCRIPT_BASELINE=$(ll_config_value "context_monitor.use_transcript_baseline" "true")
 
 # Extract tool information from input
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
-TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}')
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
+TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}' 2>/dev/null || echo '{}')
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
 DETECTED_MODEL=""
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
