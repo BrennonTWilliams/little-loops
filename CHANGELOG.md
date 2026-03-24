@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.63.0] - 2026-03-23
+
+### Added
+
+- **`use_feature_branches` config boolean for `ll-parallel` and `ll-sprint`** — Opt-in feature branch isolation per worker; each issue gets its own branch when enabled (795160cb)
+- **Per-loop config overrides in FSM loop YAML** — Individual loop definitions can now override global config fields without affecting other loops (0d66fc81)
+
+### Changed
+
+- **Throttle orchestrator `_save_state` writes to 5-second intervals** — Reduces I/O overhead during high-frequency loop execution (8b0a239b)
+
 ## [1.62.0] - 2026-03-23
 
 ### Added
@@ -162,6 +173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.63.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.62.0...v1.63.0
 [1.62.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.1...v1.62.0
 [1.61.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.0...v1.61.1
 [1.61.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.60.0...v1.61.0
