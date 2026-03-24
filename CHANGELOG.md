@@ -12,6 +12,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.62.0] - 2026-03-23
+
+### Added
+
+- **`init` and `configure` auto-update pip package** — ENH-864: Auto-update the little-loops pip package when an outdated version is detected at startup
+
+### Fixed
+
+- **FSM diagram horizontal shift on state highlight** — BUG-759: Strip ANSI codes before measuring diagram line width to prevent layout shifts
+- **`/ll:init` prompts hook loading method for plugin users** — BUG-864: Remove hook installation step for plugin users in init flow
+- **context-monitor exits 2 on every tool call after threshold** — BUG-865: Rate-limit exit 2 reminders to once per 60 seconds
+- **handoff_complete state lost on session restart** — BUG-866: Preserve handoff_complete flag across session restarts in context-monitor
+- **context-monitor.sh missing jq fallbacks on tool input parsing** — BUG-867: Add jq fallbacks to prevent exit on malformed input
+- **optimize-prompt-hook.md path broken in user-prompt-check.sh** — BUG-868: Use SCRIPT_DIR to resolve optimize-prompt-hook.md path
+- **context-monitor.sh lock timeout leaves only 1s before hook timeout** — BUG-869: Reduce context-monitor lock timeout from 4s to 3s
+- **issue-completion-log.sh shell vars injected into Python string literals** — BUG-870: Pass paths via env vars instead of shell variable interpolation
+
+### Changed
+
+- **check-duplicate-issue-id.sh config resolution** — ENH-871: Use `ll_resolve_config` for consistent config file fallback
+- **UserPromptSubmit hook timeout increased** — ENH-872: Increase timeout from 3s to 5s to reduce false timeouts
+- Update `init` and `configure` command reference docs
+
 ## [1.61.1] - 2026-03-23
 
 ### Fixed
@@ -139,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.62.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.1...v1.62.0
 [1.61.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.0...v1.61.1
 [1.61.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.60.0...v1.61.0
 [1.60.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.59.0...v1.60.0
