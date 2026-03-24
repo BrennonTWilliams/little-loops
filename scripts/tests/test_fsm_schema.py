@@ -1758,7 +1758,9 @@ class TestLoopConfigOverrides:
 
     def test_from_dict_confidence_gate_fields(self) -> None:
         """from_dict parses nested commands.confidence_gate.*."""
-        data = {"commands": {"confidence_gate": {"readiness_threshold": 70, "outcome_threshold": 55}}}
+        data = {
+            "commands": {"confidence_gate": {"readiness_threshold": 70, "outcome_threshold": 55}}
+        }
         cfg = LoopConfigOverrides.from_dict(data)
 
         assert cfg.readiness_threshold == 70

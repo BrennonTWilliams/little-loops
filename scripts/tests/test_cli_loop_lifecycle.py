@@ -759,7 +759,9 @@ class TestCmdRunHandoffThreshold:
 class TestCmdRunYAMLConfigOverrides:
     """Tests for YAML config block override in cmd_run (FEAT-862)."""
 
-    def _make_args(self, handoff_threshold: int | None = None, **kwargs: object) -> argparse.Namespace:
+    def _make_args(
+        self, handoff_threshold: int | None = None, **kwargs: object
+    ) -> argparse.Namespace:
         defaults = {
             "input": None,
             "context": [],

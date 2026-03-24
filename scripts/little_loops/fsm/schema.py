@@ -441,8 +441,12 @@ class LoopConfigOverrides:
 
         return cls(
             handoff_threshold=data.get("handoff_threshold"),
-            readiness_threshold=confidence_gate.get("readiness_threshold") if isinstance(confidence_gate, dict) else None,
-            outcome_threshold=confidence_gate.get("outcome_threshold") if isinstance(confidence_gate, dict) else None,
+            readiness_threshold=confidence_gate.get("readiness_threshold")
+            if isinstance(confidence_gate, dict)
+            else None,
+            outcome_threshold=confidence_gate.get("outcome_threshold")
+            if isinstance(confidence_gate, dict)
+            else None,
             max_continuations=max_continuations,
         )
 
