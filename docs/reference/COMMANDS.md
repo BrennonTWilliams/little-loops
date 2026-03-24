@@ -12,7 +12,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release` |
-| `--auto` | Non-interactive mode (no prompts) | `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review` |
+| `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
 
