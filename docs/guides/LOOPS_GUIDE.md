@@ -515,10 +515,7 @@ On resume (manual or automatic), the engine re-enters the state where the handof
 
 For interactive session handoff details see [Session Handoff](SESSION_HANDOFF.md).
 
-<!-- TODO: update-docs stub — FEAT-862 — drafted 2026-03-23 -->
 ### Per-Loop Config Overrides
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
 
 Loop YAML files support an optional top-level `config:` block that embeds per-loop overrides for `ll-config` values. When `ll-loop run <loop-name>` is invoked, the `config:` block overrides the global `ll-config.json` for the session.
 
@@ -554,11 +551,11 @@ states:
 | `commands.confidence_gate.readiness_threshold` | Override readiness gate threshold (1-100) |
 | `commands.confidence_gate.outcome_threshold` | Override outcome confidence threshold (1-100) |
 | `automation.max_continuations` | Override max continuation count (≥1) |
+| `continuation.max_continuations` | Alias for `automation.max_continuations` — either key is accepted |
 
 Config overrides apply equally to `ll-loop run` and `ll-loop resume`. CLI flags always take highest precedence and override both the YAML config block and global settings.
 
 Use `ll-loop show <loop-name>` to verify which overrides are active — the header line displays any non-default config values.
-<!-- END TODO stub -->
 
 ### Scope-Based Concurrency
 
