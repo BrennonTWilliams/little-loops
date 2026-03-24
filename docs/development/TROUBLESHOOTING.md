@@ -427,6 +427,21 @@ grep state_file .claude/ll-config.json
 2. Consider splitting the issue into smaller tasks
 3. Check if issue is stuck in a loop (repeated handoffs without progress)
 
+### Output appears delayed or missing in external projects
+
+**Symptom**: Progress output from `ll-auto`, `ll-parallel`, or `ll-sprint` appears delayed, batched, or not shown at all when running little-loops as a plugin from another project's directory.
+
+**Cause**: Python's `print()` buffers output when stdout is not a TTY (e.g., when output is piped or redirected). The `Logger` class and `ParallelOrchestrator` use `flush=True` on all print calls to force immediate output, but earlier versions did not.
+
+**Solution**: Upgrade to the version containing the fix (`fix(logger): add flush=True to all print() calls for non-TTY output`).
+
+**Verification**: If you still see delayed output, check whether any direct `print()` calls in custom hooks or scripts are missing `flush=True`:
+```bash
+grep -rn "print(" hooks/ scripts/ | grep -v "flush=True"
+```
+
+---
+
 ### Claude not seeing context warnings in non-interactive mode
 
 **Symptom**: ll-auto or ll-parallel exhausts context without triggering handoff
