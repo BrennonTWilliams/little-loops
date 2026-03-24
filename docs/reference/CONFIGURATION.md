@@ -172,6 +172,18 @@ For interactive editing, use `/ll:configure`.
       "__init__.py", "pyproject.toml", "setup.py",
       "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"
     ]
+  },
+
+  "refine_status": {
+    "columns": [],
+    "elide_order": []
+  },
+
+  "cli": {
+    "color": true,
+    "colors": {
+      "fsm_edge_labels": {}
+    }
   }
 }
 ```
