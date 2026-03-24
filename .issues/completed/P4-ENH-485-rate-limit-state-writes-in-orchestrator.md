@@ -112,6 +112,46 @@ _Added by `/ll:confidence-check` on 2026-03-17_
 - Minor ambiguity: two approaches mentioned (time-based throttle vs. write-on-change). Time-based (5s, matching `_maybe_report_status`) is the implied choice from the code sample and should be selected.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-24T03:35:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e6afd359-50e7-4fcd-a994-8d1a0d45502a.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/389dc9de-04e3-4aed-b74a-55808ef8e195.jsonl`
+- `/ll:refine-issue` - 2026-03-24T03:30:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b4320d8-11e5-4d53-b53f-70e2739aaa27.jsonl`
+- `/ll:ready-issue` - 2026-03-23T05:59:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ab2782e-8c44-4dec-88a6-f477947d6c5a.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9126c24b-3b13-4d23-b5ce-cfbdd9d25883.jsonl`
+- `/ll:verify-issues` - 2026-03-23T05:52:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a33da7f-6dc1-4101-a62c-c07c4786fb89.jsonl`
+- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca080b1f-e730-4767-86a3-c18f8cc098f4.jsonl`
+- `/ll:refine-issue` - 2026-03-18T01:52:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/998bd9aa-1a49-4ab2-921c-6c64f9a90554.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with specific line references and code sample; no knowledge gaps identified
+- `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-441
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
+- `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 320, 763) to Related Key Documentation
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `agent:refine-issue` - 2026-03-06T21:30:00Z - Comprehensive codebase-driven refinement. Verified problem (100ms loop = ~10 writes/sec), confirmed pattern from `_maybe_report_status` (lines 558-569), checked shutdown safety, verified no external dependencies. Issue ready for implementation. Ready score: 86/100 → outcome confidence: 87/100. Both exceed thresholds; no additional cycles needed.
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: _save_state() called every 100ms tick, no throttle
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `_save_state()` still unthrottled in main orchestrator loop
+- `/ll:verify-issues` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca080b1f-e730-4767-86a3-c18f8cc098f4.jsonl` — VALID: Problem confirmed. Line numbers have shifted since last verification — `_save_state()` now at line 519 (was 494), called at line 717 (was 683), `_maybe_report_status()` at line 592 (was 558), `_last_status_time` init at line 118 (was 113), sleep at line 723. No `_last_save_time` attribute exists — fix still needed.
+- `/ll:refine-issue` - 2026-03-23T00:00:00Z - BLOCKER RESOLVED: ENH-665 completed and merged. Current line numbers: `_save_state()` at line 521, called at line 719, `_maybe_report_status()` at line 594, `_last_status_time` init at line 120, sleep at line 725. Issue is now unblocked and ready for implementation.
+
+---
+
+## Resolution
+
+**Implemented** on 2026-03-23.
+
+Added time-based throttle to `_save_state()` in `orchestrator.py`, matching the existing `_maybe_report_status()` pattern:
+
+- Added `self._last_save_time: float = 0.0` attribute in `__init__` (line 123)
+- Added `force: bool = False` parameter and 5-second throttle guard at the top of `_save_state()` — skips write if fewer than 5 seconds have elapsed since the last save
+- Updated `_cleanup()` to call `_save_state(force=True)` to guarantee final state is persisted on shutdown regardless of throttle
+- Added 5 new tests in `TestStateManagement` and `TestCleanup` covering throttle skip, throttle write, force bypass, timestamp update, and cleanup force behavior
+
+Result: ~10 writes/second during merge-waiting phase reduced to at most 1 write per 5 seconds.
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-24T03:35:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e6afd359-50e7-4fcd-a994-8d1a0d45502a.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/389dc9de-04e3-4aed-b74a-55808ef8e195.jsonl`
 - `/ll:refine-issue` - 2026-03-24T03:30:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b4320d8-11e5-4d53-b53f-70e2739aaa27.jsonl`
 - `/ll:ready-issue` - 2026-03-23T05:59:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ab2782e-8c44-4dec-88a6-f477947d6c5a.jsonl`
@@ -137,4 +177,4 @@ _Added by `/ll:confidence-check` on 2026-03-17_
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Completed** | Created: 2026-02-24 | Priority: P4

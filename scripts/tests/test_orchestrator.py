@@ -930,6 +930,61 @@ class TestStateManagement:
         # Should not raise
         orchestrator._cleanup_state()
 
+    def test_save_state_throttle_skips_within_interval(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_save_state skips write when called within the 5-second throttle window."""
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+
+        # Set _last_save_time to now so the next call is within the throttle window
+        orchestrator._last_save_time = time.time()
+
+        orchestrator._save_state()
+
+        assert not state_file.exists(), "File should not be written within throttle interval"
+
+    def test_save_state_throttle_writes_after_interval(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_save_state writes when the throttle interval has elapsed."""
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+
+        # Default _last_save_time is 0.0 — far in the past, so write fires immediately
+        orchestrator._save_state()
+
+        assert state_file.exists(), "File should be written when throttle interval has elapsed"
+
+    def test_save_state_force_bypasses_throttle(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_save_state(force=True) writes even within the throttle window."""
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+
+        # Set _last_save_time to now to be within throttle window
+        orchestrator._last_save_time = time.time()
+
+        orchestrator._save_state(force=True)
+
+        assert state_file.exists(), "File should be written with force=True regardless of throttle"
+
+    def test_save_state_updates_last_save_time(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_save_state updates _last_save_time after a successful write."""
+        before = time.time()
+        orchestrator._save_state()
+        after = time.time()
+
+        assert before <= orchestrator._last_save_time <= after
+
 
 class TestRunMethod:
     """Tests for the main run() method."""
@@ -1600,6 +1655,24 @@ class TestCleanup:
         orchestrator._cleanup()
 
         # State should have been saved (mocked)
+
+    def test_cleanup_saves_state_force(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_cleanup saves state with force=True to bypass throttle."""
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+        orchestrator.queue.completed_ids = []  # type: ignore[misc]
+        orchestrator.queue.failed_ids = []  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
+
+        # Throttle should NOT prevent cleanup from saving state
+        orchestrator._last_save_time = time.time()
+
+        orchestrator._cleanup()
+
+        assert state_file.exists(), "_cleanup must save state even within throttle window"
 
     def test_cleanup_shuts_down_components(
         self,

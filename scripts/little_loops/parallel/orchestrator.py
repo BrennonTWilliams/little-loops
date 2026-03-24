@@ -119,6 +119,8 @@ class ParallelOrchestrator:
         # Track last status report time for progress visibility (ENH-262)
         self._last_status_time: float = 0.0
         self._last_status_line: str = ""
+        # Track last state save time to throttle disk writes (ENH-485)
+        self._last_save_time: float = 0.0
 
     @property
     def execution_duration(self) -> float:
@@ -518,8 +520,17 @@ class ParallelOrchestrator:
             self.logger.warning(f"Could not load state: {e}")
             self.state.started_at = datetime.now().isoformat()
 
-    def _save_state(self) -> None:
-        """Save current state to file using an atomic write."""
+    def _save_state(self, force: bool = False) -> None:
+        """Save current state to file using an atomic write.
+
+        Writes are throttled to at most once every 5 seconds to reduce filesystem I/O
+        during high-frequency loop ticks (e.g., merge-waiting phase). Pass force=True
+        to bypass the throttle, e.g., on shutdown.
+        """
+        now = time.time()
+        if not force and now - self._last_save_time < 5.0:
+            return
+        self._last_save_time = now
         with self._state_lock:
             self.state.last_checkpoint = datetime.now().isoformat()
             self.state.completed_issues = self.queue.completed_ids
@@ -1208,8 +1219,8 @@ Title: {info.title}
         """Clean up resources."""
         self.logger.info("Cleaning up...")
 
-        # Save final state
-        self._save_state()
+        # Save final state (force=True bypasses throttle to ensure shutdown state is persisted)
+        self._save_state(force=True)
 
         # Shutdown components
         self.worker_pool.shutdown(wait=True)
