@@ -243,10 +243,17 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     """
     from little_loops.issue_parser import find_issues, is_formatted, is_normalized
 
-    type_prefixes = {args.type} if getattr(args, "type", None) else None
+    issue_id_filter = getattr(args, "issue_id", None)
+    type_prefixes = {args.type} if (not issue_id_filter and getattr(args, "type", None)) else None
     issues = find_issues(config, type_prefixes=type_prefixes)
 
+    if issue_id_filter:
+        issues = [i for i in issues if i.issue_id == issue_id_filter]
+
     if not issues:
+        if issue_id_filter:
+            print(f"Error: issue '{issue_id_filter}' not found in active issues.")
+            return 1
         print("No active issues found.")
         return 0
 
@@ -279,24 +286,23 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     fmt = getattr(args, "format", "table")
 
     if use_json_array:
-        print_json(
-            [
-                {
-                    "id": issue.issue_id,
-                    "priority": issue.priority,
-                    "title": issue.title,
-                    "source": issue.discovered_by,
-                    "commands": issue.session_commands,
-                    "confidence_score": issue.confidence_score,
-                    "outcome_confidence": issue.outcome_confidence,
-                    "total": len(issue.session_commands),
-                    "normalized": is_normalized(issue.path.name),
-                    "formatted": is_formatted(issue.path),
-                    "refine_count": issue.session_command_counts.get("/ll:refine-issue", 0),
-                }
-                for issue in sorted_issues
-            ]
-        )
+        records = [
+            {
+                "id": issue.issue_id,
+                "priority": issue.priority,
+                "title": issue.title,
+                "source": issue.discovered_by,
+                "commands": issue.session_commands,
+                "confidence_score": issue.confidence_score,
+                "outcome_confidence": issue.outcome_confidence,
+                "total": len(issue.session_commands),
+                "normalized": is_normalized(issue.path.name),
+                "formatted": is_formatted(issue.path),
+                "refine_count": issue.session_command_counts.get("/ll:refine-issue", 0),
+            }
+            for issue in sorted_issues
+        ]
+        print_json(records[0] if issue_id_filter else records)
         return 0
 
     if fmt == "json":

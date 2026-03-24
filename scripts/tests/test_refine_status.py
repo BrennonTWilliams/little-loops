@@ -1658,3 +1658,235 @@ class TestColumnElision:
             assert len(line) <= terminal_cols, (
                 f"Line width {len(line)} exceeds terminal {terminal_cols}: {line!r}"
             )
+
+
+class TestRefineStatusSingleIssue:
+    """Tests for refine-status with an optional ISSUE-ID positional filter."""
+
+    def _setup_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> Path:
+        """Write config and create issue dirs; return features dir."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "bugs").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+        return features_dir
+
+    def test_single_issue_table_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """refine-status FEAT-873 prints a one-row table for the specified issue."""
+        features_dir = self._setup_dir(temp_project_dir, sample_config)
+        _make_issue(
+            features_dir,
+            "P3-FEAT-873-test-issue.md",
+            "Test Feature Issue",
+            confidence_score=82,
+            outcome_confidence=74,
+            session_commands=["/ll:refine-issue"],
+        )
+        # Add a second issue to confirm only one row is shown
+        _make_issue(
+            features_dir,
+            "P2-FEAT-900-other-issue.md",
+            "Other Issue",
+            confidence_score=50,
+            outcome_confidence=50,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "FEAT-873", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        non_empty = [ln for ln in out.splitlines() if ln.strip()]
+        # header + separator + data row = 3 non-empty lines (key section may follow)
+        data_lines = [ln for ln in non_empty if not ln.startswith("-") and "─" not in ln]
+        assert any("FEAT-873" in ln for ln in data_lines), (
+            f"FEAT-873 should appear in output: {out!r}"
+        )
+        assert not any("FEAT-900" in ln for ln in data_lines), (
+            f"FEAT-900 should not appear in output: {out!r}"
+        )
+
+    def test_single_issue_not_found(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """refine-status with a non-existent ID prints error and exits 1."""
+        features_dir = self._setup_dir(temp_project_dir, sample_config)
+        _make_issue(features_dir, "P3-FEAT-873-test-issue.md", "Test Feature Issue")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "FEAT-999", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "not found" in out, f"Expected 'not found' in output: {out!r}"
+        assert "FEAT-999" in out, f"Expected issue ID in error message: {out!r}"
+
+    def test_single_issue_json_flag(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """refine-status FEAT-873 --json outputs a single JSON object, not an array."""
+        features_dir = self._setup_dir(temp_project_dir, sample_config)
+        _make_issue(
+            features_dir,
+            "P3-FEAT-873-test-issue.md",
+            "Test Feature Issue",
+            confidence_score=82,
+            outcome_confidence=74,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "refine-status",
+                "FEAT-873",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert isinstance(data, dict), f"Expected JSON object, got {type(data)}: {out!r}"
+        assert data["id"] == "FEAT-873"
+
+    def test_single_issue_format_json(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """refine-status FEAT-873 --format json outputs one NDJSON line."""
+        features_dir = self._setup_dir(temp_project_dir, sample_config)
+        _make_issue(
+            features_dir,
+            "P3-FEAT-873-test-issue.md",
+            "Test Feature Issue",
+            confidence_score=82,
+            outcome_confidence=74,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "refine-status",
+                "FEAT-873",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        lines = [ln for ln in out.splitlines() if ln.strip()]
+        assert len(lines) == 1, f"Expected 1 NDJSON line, got {len(lines)}: {out!r}"
+        record = json.loads(lines[0])
+        assert record["id"] == "FEAT-873"
+
+    def test_single_issue_no_key(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """refine-status FEAT-873 --no-key suppresses the key section."""
+        features_dir = self._setup_dir(temp_project_dir, sample_config)
+        _make_issue(
+            features_dir,
+            "P3-FEAT-873-test-issue.md",
+            "Test Feature Issue",
+            confidence_score=82,
+            outcome_confidence=74,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "refine-status",
+                "FEAT-873",
+                "--no-key",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Key" not in out and "key" not in out.lower().replace("no-key", "").replace(
+            "no_key", ""
+        ), f"Key section should be suppressed: {out!r}"
+
+    def test_type_filter_unaffected_without_id(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--type filter without ISSUE-ID still works as before."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "P1-BUG-001-bug-one.md", "Bug One")
+        _make_issue(features_dir, "P3-FEAT-873-feature.md", "Feature")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--type", "BUG", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "BUG-001" in out
+        assert "FEAT-873" not in out

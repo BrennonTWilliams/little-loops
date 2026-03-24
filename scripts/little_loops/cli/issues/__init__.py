@@ -58,6 +58,7 @@ Examples:
   %(prog)s impact-effort
   %(prog)s impact-effort --type BUG
   %(prog)s refine-status
+  %(prog)s refine-status FEAT-873
   %(prog)s refine-status --type BUG
   %(prog)s refine-status --format json
   %(prog)s refine-status --json
@@ -263,6 +264,13 @@ Examples:
         action="store_true",
         default=False,
         help="Output as JSON array. Matches ll-issues list --json interface. (--format json outputs NDJSON instead)",
+    )
+    refine_s.add_argument(
+        "issue_id",
+        nargs="?",
+        metavar="ISSUE-ID",
+        default=None,
+        help="Filter to a single issue by ID (e.g. FEAT-873, BUG-525)",
     )
     add_config_arg(refine_s)
 

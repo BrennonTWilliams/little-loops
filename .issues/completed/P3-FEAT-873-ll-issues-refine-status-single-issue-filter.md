@@ -125,7 +125,7 @@ Add the single-issue filter **between line 247 and line 249** (after `find_issue
 - Recommendation: **use stdout** to stay consistent with `show.py`, and update the acceptance criteria error note accordingly. Use: `print(f"Error: issue '{args.issue_id}' not found in active issues.")`.
 
 **JSON single-object convention**:
-- `show.py:378-381` calls `print_json(fields)` with a `dict` → emits a single JSON object (not array). `test_issues_cli.py:1397` asserts `isinstance(data, dict)`.
+- `show.py:378-381` calls `print_json(fields)` with a `dict` → emits a single JSON object (not array). `test_issues_cli.py:1402` asserts `isinstance(data, dict)`.
 - `print_json` is in `scripts/little_loops/cli/output.py:97-99`.
 - For `--json` + ISSUE-ID: emit `print_json(record_dict)` instead of `print_json([record_dict])`.
 - For `--format json` + ISSUE-ID: behavior unchanged (NDJSON emits one line per issue anyway; a single issue naturally produces one line).
@@ -193,15 +193,33 @@ Add the single-issue filter **between line 247 and line 249** (after `find_issue
 | `.claude/CLAUDE.md` | guidelines | CLI tool conventions and dev workflow |
 | `docs/reference/API.md` | architecture | ll-issues CLI reference |
 
+## Resolution
+
+**Status**: Completed
+**Completed**: 2026-03-24
+
+### Changes Made
+
+- `scripts/little_loops/cli/issues/__init__.py` — added optional positional `issue_id` arg (`nargs="?"`) to `refine-status` subparser; added `%(prog)s refine-status FEAT-873` epilog example.
+- `scripts/little_loops/cli/issues/refine_status.py` — after `find_issues()`, filter issues to single match when `issue_id_filter` is set; contextual error message + `return 1` for not-found case; `--json` with ISSUE-ID emits a single dict instead of an array.
+- `scripts/tests/test_refine_status.py` — added `TestRefineStatusSingleIssue` class with 6 tests covering all acceptance criteria.
+
+### Verification
+
+- All 47 tests pass (`python -m pytest scripts/tests/test_refine_status.py`)
+- `ruff check` passes on all changed files
+
 ## Labels
 
 `feature`, `cli`, `ll-issues`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-24T18:24:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ace4e01f-4c8d-4421-be0c-70020100086c.jsonl`
 - `/ll:refine-issue` - 2026-03-24T18:13:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee327176-76a1-4c19-ab0a-e4d93de266c2.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61ffe931-e9d1-47a8-a026-62fbb9ca756f.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/134f1b03-a3a9-4307-be17-0dfb2df69a25.jsonl`
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-24 | Priority: P3
+**Completed** | Created: 2026-03-24 | Priority: P3
