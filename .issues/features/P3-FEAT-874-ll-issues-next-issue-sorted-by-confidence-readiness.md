@@ -6,6 +6,8 @@ priority: P3
 status: open
 discovered_date: 2026-03-24
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # FEAT-874: ll-issues next-issue command sorted by confidence and readiness
@@ -176,6 +178,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 - `/ll:refine-issue` - 2026-03-24T18:16:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/134f1b03-a3a9-4307-be17-0dfb2df69a25.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/123be0f8-c950-4f44-830e-69b04d0e686c.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63d71b4c-9315-4b47-a4ae-d35a8ba619c4.jsonl`
 
 ---
 
