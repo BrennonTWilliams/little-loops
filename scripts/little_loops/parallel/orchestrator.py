@@ -881,9 +881,7 @@ class ParallelOrchestrator:
                         self.state.corrections[result.issue_id] = result.corrections
             if self.parallel_config.use_feature_branches:
                 # Feature branch mode: skip auto-merge, branch stays alive for a PR (ENH-665)
-                self.logger.info(
-                    f"{result.issue_id}: feature branch ready — {result.branch_name}"
-                )
+                self.logger.info(f"{result.issue_id}: feature branch ready — {result.branch_name}")
                 self.queue.mark_completed(result.issue_id)
                 self._complete_issue_lifecycle_if_needed(result.issue_id)
                 with self._state_lock:
