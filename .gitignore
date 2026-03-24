@@ -83,3 +83,4 @@ deepcodebase-*.txt
 # little-loops context/sync state files
 .claude/ll-context-state.json
 .claude/ll-sync-state.json
+loop-catalog.*

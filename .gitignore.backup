@@ -53,6 +53,7 @@ temp/
 .claude/ll.local.md
 .claude/loop-suggestions/
 .claude/skills/
+.claude/ll-continue-prompt.md
 .mcp.json
 
 # Python
@@ -72,3 +73,13 @@ scripts/.parallel-manage-state.json
 *-state.json
 
 docs/demo
+.loops/.running/
+.loops/.history/
+*.Cast
+
+# Debug output files
+deepcodebase-*.txt
+
+# little-loops context/sync state files
+.claude/ll-context-state.json
+.claude/ll-sync-state.json
