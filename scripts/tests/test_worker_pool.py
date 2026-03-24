@@ -2080,6 +2080,51 @@ CORRECTED
         assert result.success is True
         assert result.changed_files == ["scripts/fix.py"]
 
+    def test_process_issue_uses_feature_branch_name_when_enabled(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        """_process_issue() uses feature/<id>-<slug> branch name when use_feature_branches=True."""
+        feature_config = ParallelConfig(
+            **{**default_parallel_config.to_dict(), "use_feature_branches": True}
+        )
+        pool = WorkerPool(
+            parallel_config=feature_config,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+        )
+
+        issue = MagicMock()
+        issue.issue_id = "ENH-665"
+        issue.issue_type = "enhancements"
+        issue.path = Path(".issues/enhancements/P3-ENH-665-add-feature.md")
+        issue.title = "Add Feature Branch Config"
+
+        captured: list[str] = []
+
+        def capture_setup(worktree_path: Path, branch_name: str) -> None:
+            captured.append(branch_name)
+
+        with patch.object(pool, "_setup_worktree", side_effect=capture_setup):
+            with patch.object(pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(pool, "_get_main_head_sha", return_value="abc123"):
+                    with patch.object(pool, "_run_claude_command") as mock_run:
+                        mock_run.return_value = subprocess.CompletedProcess(
+                            [], 1, "", "ready-issue failed"
+                        )
+                        pool._process_issue(issue)
+
+        assert len(captured) == 1
+        assert captured[0].startswith("feature/")
+        assert "enh-665" in captured[0]
+        assert "add-feature-branch-config" in captured[0]
+
 
 class TestWorkerPoolRunClaudeCommand:
     """Tests for _run_claude_command()."""

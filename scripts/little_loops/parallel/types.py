@@ -334,6 +334,7 @@ class ParallelConfig:
     type_prefixes: set[str] | None = None
     # Validation settings
     require_code_changes: bool = True  # If False, allow changes to only excluded dirs
+    use_feature_branches: bool = False  # If True, create feature/<id>-<slug> branch instead of parallel/
     # Additional files to copy from main repo to worktrees
     # Note: .claude/ directory is always copied automatically (see worker_pool.py)
     worktree_copy_files: list[str] = field(
@@ -405,6 +406,7 @@ class ParallelConfig:
             "skip_ids": list(self.skip_ids) if self.skip_ids else None,
             "type_prefixes": list(self.type_prefixes) if self.type_prefixes else None,
             "require_code_changes": self.require_code_changes,
+            "use_feature_branches": self.use_feature_branches,
             "merge_pending": self.merge_pending,
             "clean_start": self.clean_start,
             "ignore_pending": self.ignore_pending,
@@ -444,6 +446,7 @@ class ParallelConfig:
             skip_ids=set(skip_ids_data) if skip_ids_data else None,
             type_prefixes=set(type_prefixes_data) if type_prefixes_data else None,
             require_code_changes=data.get("require_code_changes", True),
+            use_feature_branches=data.get("use_feature_branches", False),
             merge_pending=data.get("merge_pending", False),
             clean_start=data.get("clean_start", False),
             ignore_pending=data.get("ignore_pending", False),

@@ -169,6 +169,7 @@ enhancement, config, ll-parallel, ll-sprint
 Active
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-24T02:56:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e44ebfe-f83d-445a-a181-9ab066a50540.jsonl`
 - `/ll:refine-issue` - 2026-03-24T02:45:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f55ddb5-9f42-4fd3-81cb-591c4d42d468.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eec31a4c-27c6-4b78-bafd-8496b3a68d4a.jsonl`
@@ -182,6 +183,29 @@ Active
 - **Date**: 2026-03-13
 - **Verdict**: VALID
 - `config-schema.json` does not contain a `use_feature_branches` key (not implemented). Referenced files `scripts/little_loops/parallel.py` and `scripts/little_loops/sprint.py` exist. Feature is not yet implemented.
+
+## Resolution
+
+**Status**: Completed
+**Action**: improve
+**Date**: 2026-03-23
+
+### Changes Made
+
+- `config-schema.json`: Added `use_feature_branches` boolean property to `parallel` section (default: `false`)
+- `scripts/little_loops/config/automation.py`: Added `use_feature_branches: bool = False` field to `ParallelAutomationConfig` and wired in `from_dict()`
+- `scripts/little_loops/parallel/types.py`: Added `use_feature_branches: bool = False` to `ParallelConfig`, `to_dict()`, and `from_dict()`
+- `scripts/little_loops/config/core.py`: Threaded `use_feature_branches=self._parallel.use_feature_branches` through `create_parallel_config()`
+- `scripts/little_loops/parallel/worker_pool.py`: Conditional branch naming — `feature/<id>-<slug>` when `use_feature_branches=True`, `parallel/<id>-<timestamp>` otherwise (existing deletion guard naturally preserves `feature/` branches)
+- `scripts/little_loops/parallel/orchestrator.py`: Skip `queue_merge` when `use_feature_branches=True`; mark issue completed immediately; track PR-ready branches in `_pr_ready_branches`; report them in `_report_results()`
+- `docs/reference/CONFIGURATION.md`: Documented `require_code_changes` and `use_feature_branches` in the `parallel` table
+- Tests: Added `use_feature_branches` assertions to `test_parallel_types.py` (default value + roundtrip) and new `test_process_issue_uses_feature_branch_name_when_enabled` in `test_worker_pool.py`
+
+### Verification
+
+- 3891 tests pass (0 failures)
+- `ruff check`: All checks passed
+- `mypy`: No issues found in 110 source files
 
 ## Blocked By
 ## Blocks

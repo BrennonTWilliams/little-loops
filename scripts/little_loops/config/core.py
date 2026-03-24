@@ -319,6 +319,7 @@ class BRConfig:
             type_prefixes=type_prefixes,
             worktree_copy_files=self._parallel.worktree_copy_files,
             require_code_changes=self._parallel.require_code_changes,
+            use_feature_branches=self._parallel.use_feature_branches,
             merge_pending=merge_pending,
             clean_start=clean_start,
             ignore_pending=ignore_pending,

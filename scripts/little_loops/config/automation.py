@@ -54,6 +54,7 @@ class ParallelAutomationConfig:
         default_factory=lambda: [".claude/settings.local.json", ".env"]
     )
     require_code_changes: bool = True
+    use_feature_branches: bool = False
     remote_name: str = "origin"
 
     @classmethod
@@ -84,6 +85,7 @@ class ParallelAutomationConfig:
                 "worktree_copy_files", [".claude/settings.local.json", ".env"]
             ),
             require_code_changes=data.get("require_code_changes", True),
+            use_feature_branches=data.get("use_feature_branches", False),
             remote_name=data.get("remote_name", "origin"),
         )
 

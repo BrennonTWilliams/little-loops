@@ -238,7 +238,12 @@ class WorkerPool:
         """
         start_time = time.time()
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        branch_name = f"parallel/{issue.issue_id.lower()}-{timestamp}"
+        if self.parallel_config.use_feature_branches:
+            from little_loops.issue_parser import slugify
+
+            branch_name = f"feature/{issue.issue_id.lower()}-{slugify(issue.title)}"
+        else:
+            branch_name = f"parallel/{issue.issue_id.lower()}-{timestamp}"
         worktree_path = (
             self.repo_path
             / self.parallel_config.worktree_base

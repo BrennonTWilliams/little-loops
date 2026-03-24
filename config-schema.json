@@ -266,6 +266,11 @@
           "description": "Require worktree to produce code changes before merging. Skips no-op runs.",
           "default": true
         },
+        "use_feature_branches": {
+          "type": "boolean",
+          "description": "Create a dedicated feature branch per issue (e.g., feature/ENH-123-slug) instead of the default parallel/<id>-<timestamp> branch. When true, auto-merge to main is skipped and branches survive as PR-ready. Use for PR-based CI/CD workflows.",
+          "default": false
+        },
         "remote_name": {
           "type": "string",
           "description": "Git remote name used for fetch/pull operations in parallel runs. Use if your remote is not named 'origin'.",

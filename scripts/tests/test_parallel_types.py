@@ -749,6 +749,7 @@ class TestParallelConfig:
         assert config.clean_start is False
         assert config.ignore_pending is False
         assert config.remote_name == "origin"
+        assert config.use_feature_branches is False
 
     def test_creation_with_custom_values(self) -> None:
         """ParallelConfig can be created with custom values."""
@@ -986,6 +987,7 @@ class TestParallelConfig:
             only_ids={"A", "B"},
             skip_ids={"C"},
             require_code_changes=False,
+            use_feature_branches=True,
             merge_pending=True,
             clean_start=True,
             ignore_pending=True,
@@ -1014,6 +1016,7 @@ class TestParallelConfig:
         assert restored.only_ids == original.only_ids
         assert restored.skip_ids == original.skip_ids
         assert restored.require_code_changes == original.require_code_changes
+        assert restored.use_feature_branches == original.use_feature_branches
         assert restored.merge_pending == original.merge_pending
         assert restored.clean_start == original.clean_start
         assert restored.ignore_pending == original.ignore_pending

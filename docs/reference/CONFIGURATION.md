@@ -248,6 +248,8 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `ready_command` | `ready-issue {{issue_id}}` | Ready command template |
 | `manage_command` | `manage-issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
 | `worktree_copy_files` | `[".claude/settings.local.json", ".env"]` | Files to copy to worktrees |
+| `require_code_changes` | `true` | Require worktree to produce code changes before merging. Skips no-op runs. |
+| `use_feature_branches` | `false` | Create a `feature/<id>-<slug>` branch per issue instead of `parallel/<id>-<timestamp>`. When `true`, auto-merge is skipped and branches survive as PR-ready. Use for PR-based CI/CD workflows. |
 | `remote_name` | `"origin"` | Git remote name for fetch/pull operations. Set if your remote is not named `origin` (e.g., `"upstream"`). |
 
 ### `product`

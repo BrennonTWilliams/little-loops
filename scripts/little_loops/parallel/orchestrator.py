@@ -105,6 +105,8 @@ class ParallelOrchestrator:
         self._issue_info_by_id: dict[str, IssueInfo] = {}
         # Track interrupted issues separately from failures (ENH-036)
         self._interrupted_issues: list[str] = []
+        # Track PR-ready branches when use_feature_branches=True (ENH-665)
+        self._pr_ready_branches: dict[str, str] = {}  # issue_id -> branch_name
 
         # Overlap detection (ENH-143)
         self.overlap_detector: OverlapDetector | None = (
@@ -866,12 +868,22 @@ class ParallelOrchestrator:
                 if result.corrections:
                     with self._state_lock:
                         self.state.corrections[result.issue_id] = result.corrections
-            self.merge_coordinator.queue_merge(result)
-            # Wait for merge to complete before returning from callback.
-            # This prevents dispatch of next worker while merge is in progress,
-            # avoiding race conditions between worktree creation and merge ops.
-            # (BUG-140: Race condition between worktree creation and merge)
-            self.merge_coordinator.wait_for_completion(timeout=120)
+            if self.parallel_config.use_feature_branches:
+                # Feature branch mode: skip auto-merge, branch stays alive for a PR (ENH-665)
+                self.logger.info(
+                    f"{result.issue_id}: feature branch ready — {result.branch_name}"
+                )
+                self.queue.mark_completed(result.issue_id)
+                self._complete_issue_lifecycle_if_needed(result.issue_id)
+                with self._state_lock:
+                    self._pr_ready_branches[result.issue_id] = result.branch_name
+            else:
+                self.merge_coordinator.queue_merge(result)
+                # Wait for merge to complete before returning from callback.
+                # This prevents dispatch of next worker while merge is in progress,
+                # avoiding race conditions between worktree creation and merge ops.
+                # (BUG-140: Race condition between worktree creation and merge)
+                self.merge_coordinator.wait_for_completion(timeout=120)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
             self.queue.mark_failed(result.issue_id)
@@ -1015,6 +1027,13 @@ class ParallelOrchestrator:
             self.logger.info(f"Interrupted: {len(self._interrupted_issues)} (can retry)")
             for issue_id in self._interrupted_issues:
                 self.logger.info(f"  - {issue_id}")
+
+        # Report PR-ready branches when use_feature_branches=True (ENH-665)
+        if self._pr_ready_branches:
+            self.logger.info("")
+            self.logger.info(f"PR-ready: {len(self._pr_ready_branches)} branch(es)")
+            for issue_id, branch in self._pr_ready_branches.items():
+                self.logger.info(f"  - {issue_id}: {branch}")
 
         # Report correction statistics for quality tracking (ENH-010)
         if corrections_snapshot:
