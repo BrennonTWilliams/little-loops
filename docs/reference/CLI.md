@@ -453,10 +453,12 @@ Display an impact vs. effort matrix for active issues.
 
 Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title, source, norm, fmt, per-command session indicators (✓/—), Ready (confidence score), conf (outcome confidence), total.
 
-| Flag | Description |
-|------|-------------|
-| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
-| `--format` | Output format: `table` (default), `json` |
+| Argument/Flag | Description |
+|---------------|-------------|
+| `ISSUE-ID` | (Optional) Filter to a single issue by ID (e.g. `FEAT-873`, `BUG-525`). Ignores `--type` when set. Exits 1 if the issue is not found. |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` (ignored when `ISSUE-ID` is provided) |
+| `--format` | Output format: `table` (default), `json` (NDJSON) |
+| `--json` | Output as JSON array; with `ISSUE-ID` outputs a single JSON object instead |
 | `--no-key` | Suppress the key/legend section at the bottom of output |
 | `--config` | Path to project root |
 
@@ -488,6 +490,20 @@ Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
 | `--outcome-threshold N` | `70` | Minimum outcome confidence score to consider issue ready |
 
 <!-- END TODO stub -->
+
+#### `ll-issues next-issue` / `ll-issues nx`
+
+Print the issue ranked highest by outcome confidence and readiness score. Designed for FSM loop integration — use this to pick the best issue to work on next based on implementation readiness rather than raw priority.
+
+**Sort order:** `outcome_confidence` (desc), `confidence_score` (desc), `priority` (asc). Issues without scores are ranked below all scored issues.
+
+**Exit codes:** 0 = issue found, 1 = no active issues.
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}` |
+| `--path` | Output only the file path (useful for shell scripting: `$(ll-issues next-issue --path)`) |
+| `--config` | Path to project root |
 
 #### `ll-issues append-log <issue_path> <log_command>` / `ll-issues al`
 
@@ -521,10 +537,15 @@ ll-issues sequence --json             # Ordered sequence as JSON
 ll-issues impact-effort
 ll-issues impact-effort --type BUG    # Only bugs
 ll-issues refine-status
+ll-issues refine-status FEAT-873              # Single-issue view
+ll-issues refine-status FEAT-873 --json       # Single issue as JSON object
 ll-issues refine-status --type BUG --format json
 ll-issues next-action                            # Next refinement action needed (exits 1 if work remains)
 ll-issues next-action --refine-cap 3             # Lower the refine-cap
 ll-issues next-action --ready-threshold 90       # Stricter readiness threshold
+ll-issues next-issue                             # Highest-confidence issue ID
+ll-issues next-issue --json                      # As JSON: {id, path, outcome_confidence, confidence_score, priority}
+ll-issues next-issue --path                      # File path only (for shell scripting)
 ll-issues append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
 ```
 
