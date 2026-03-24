@@ -174,7 +174,7 @@ git worktree prune
 **Solution**:
 1. Install Claude CLI:
    ```bash
-   npm install -g @anthropic-ai/claude-cli
+   npm install -g @anthropic-ai/claude-code
    ```
 2. Verify installation:
    ```bash
@@ -1011,7 +1011,7 @@ python -c "import little_loops; print(little_loops.__file__)"
 
 If you're still stuck:
 
-1. Check the [README](../README.md) for basic setup
+1. Check the [README](../../README.md) for basic setup
 2. Review [ARCHITECTURE.md](../ARCHITECTURE.md) for system understanding
 3. Check [API.md](../reference/API.md) for module details
 
