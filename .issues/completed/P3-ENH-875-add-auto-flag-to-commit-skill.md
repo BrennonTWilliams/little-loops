@@ -2,7 +2,7 @@
 id: ENH-875
 type: ENH
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
@@ -150,7 +150,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Status**: Completed
+**Date**: 2026-03-24
+
+### Changes Made
+
+- `commands/commit.md`: Added `### 0. Parse Flags` section with `AUTO_MODE` flag parsing (detects `--auto` and `--dangerously-skip-permissions`/`DANGEROUSLY_SKIP_PERMISSIONS` env var). Added auto mode bypass guard before `AskUserQuestion` in step 1.5. Updated Examples section to show `--auto` usage.
+- `docs/reference/COMMANDS.md`: Updated `/ll:commit` description and table entry to mention `--auto` flag.
+
+### Verification
+
+- Lint: `ruff check scripts/` — all checks passed
+- No Python source changes; command file is tested by manual/E2E
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-03-24T20:48:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbd6e5e2-23b2-4749-9295-bd8ea6cec991.jsonl`
+- `/ll:ready-issue` - 2026-03-24T20:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b7d7039-058d-463b-be7f-c78bea08e164.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15148437-fb49-4726-959b-9737cdcdbbb3.jsonl`
 - `/ll:refine-issue` - 2026-03-24T19:12:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72a47170-0c22-4892-ab2d-b86daed6ab09.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c23589c-5619-4975-90e9-77c587e90773.jsonl`

@@ -8,6 +8,19 @@ allowed-tools:
 
 You are tasked with creating git commits for the changes made during this session.
 
+### 0. Parse Flags
+
+```bash
+AUTO_MODE=false
+
+# Auto-enable in automation contexts
+if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
+    AUTO_MODE=true
+fi
+
+if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+```
+
 ## Process:
 
 1. **Think about what changed:**
@@ -30,7 +43,8 @@ You are tasked with creating git commits for the changes made during this sessio
         - Files: {comma-separated list of matched files}
         - Description: {description}
         ```
-     b. Use `AskUserQuestion` tool to get user approval:
+     b. **Auto mode bypass**: If `AUTO_MODE` is true, skip the `AskUserQuestion` prompt and skip gitignore updates entirely. Proceed directly to step 2.
+     c. Use `AskUserQuestion` tool to get user approval (interactive mode only):
         ```yaml
         questions:
           - header: "Gitignore Suggestions"
@@ -42,10 +56,10 @@ You are tasked with creating git commits for the changes made during this sessio
                 description: "Proceed with commit without updating .gitignore"
             multiSelect: false
         ```
-     c. Handle user response:
+     d. Handle user response:
         - **"Yes, add all"**: Extract pattern strings from `result.patterns`, call `add_patterns_to_gitignore()`, show confirmation
         - **"No, skip"**: Continue with commit workflow
-     d. If patterns were added, run `git status` again to show updated state
+     e. If patterns were added, run `git status` again to show updated state
 
 2. **Plan your commit(s):**
    - Identify which files belong together
@@ -83,6 +97,9 @@ You are tasked with creating git commits for the changes made during this sessio
 ```bash
 # Commit changes from current session
 /ll:commit
+
+# Non-interactive commit from automation context
+/ll:commit --auto
 ```
 
 ---

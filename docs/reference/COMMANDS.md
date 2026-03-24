@@ -302,7 +302,7 @@ Analyze issue history to understand project health, trends, and progress. Delega
 ## Git & Workflow
 
 ### `/ll:commit`
-Create git commits with user approval (no Claude attribution).
+Create git commits with user approval (no Claude attribution). Supports `--auto` flag for non-interactive use in automation contexts.
 
 ### `/ll:describe-pr`
 Generate comprehensive PR descriptions from branch changes.
@@ -474,7 +474,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `audit-claude-config`^ | Comprehensive config audit |
 | `analyze-workflows` | Analyze user message patterns for automation |
 | `analyze-history`^ | Analyze issue history for project health and trends |
-| `commit` | Create git commits |
+| `commit` | Create git commits (supports `--auto` for non-interactive use) |
 | `describe-pr` | Generate PR descriptions |
 | `open-pr` | Open a pull request for current branch |
 | `cleanup-worktrees` | Clean up stale worktrees and branches |
