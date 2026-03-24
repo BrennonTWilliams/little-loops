@@ -59,7 +59,10 @@ For interactive editing, use `/ll:configure`.
     "command_prefix": "/ll:",
     "ready_command": "ready-issue {{issue_id}}",
     "manage_command": "manage-issue {{issue_type}} {{action}} {{issue_id}}",
-    "worktree_copy_files": [".claude/settings.local.json", ".env"]
+    "worktree_copy_files": [".claude/settings.local.json", ".env"],
+    "require_code_changes": true,
+    "use_feature_branches": false,
+    "remote_name": "origin"
   },
 
   "commands": {
@@ -68,7 +71,9 @@ For interactive editing, use `/ll:configure`.
     "custom_verification": [],
     "confidence_gate": {
       "enabled": false,
-      "threshold": 85
+      "threshold": 85,
+      "readiness_threshold": 85,
+      "outcome_threshold": 70
     },
     "tdd_mode": false
   },
@@ -111,7 +116,8 @@ For interactive editing, use `/ll:configure`.
   "context_monitor": {
     "enabled": false,
     "auto_handoff_threshold": 80,
-    "context_limit_estimate": 1000000
+    "context_limit_estimate": 1000000,
+    "use_transcript_baseline": true
   },
 
   "sprints": {

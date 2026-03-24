@@ -25,7 +25,7 @@ These flags appear across multiple tools:
 | `--timeout` | `-t` | Timeout in seconds per issue | `ll-parallel`, `ll-sprint run` |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--context-limit` | | Override context window token estimate (default: from config or model-detected) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
-| `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-sprint analyze`, `ll-verify-docs`, `ll-check-links` |
+| `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-verify-docs`, `ll-check-links` |
 
 ---
 
