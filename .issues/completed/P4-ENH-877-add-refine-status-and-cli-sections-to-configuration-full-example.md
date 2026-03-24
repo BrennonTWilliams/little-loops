@@ -1,3 +1,6 @@
+---
+testable: false
+---
 # ENH: Add `refine_status` and `cli` sections to Full Configuration Example
 
 ## Summary
@@ -46,6 +49,13 @@ The `cli.colors.logger`, `cli.colors.priority`, and `cli.colors.type` sub-keys c
 ### Configuration
 - N/A
 
+## Scope Boundaries
+
+- Only the Full Configuration Example JSON block in CONFIGURATION.md is in scope
+- Do NOT change the config schema (`config-schema.json`) or any Python implementation
+- Do NOT document sub-keys beyond `fsm_edge_labels` for `cli.colors` (detailed defaults live in API.md)
+- Do NOT modify the per-section documentation below the example
+
 ## Impact
 
 - **Priority**: P4 — cosmetic completeness; no functional impact
@@ -59,4 +69,12 @@ The `cli.colors.logger`, `cli.colors.priority`, and `cli.colors.type` sub-keys c
 
 ## Status
 
-**Open** | Created: 2026-03-24 | Priority: P4
+**Completed** | Created: 2026-03-24 | Priority: P4
+
+## Resolution
+
+Added `refine_status` and `cli` blocks to the Full Configuration Example in `docs/reference/CONFIGURATION.md` after the `dependency_mapping` block, matching the proposed solution exactly.
+
+## Session Log
+- `/ll:ready-issue` - 2026-03-24T22:11:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6bec1f70-ffc3-4abf-a70e-8a5dafe5b029.jsonl`
+- `/ll:manage-issue enh improve ENH-877` - 2026-03-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6bec1f70-ffc3-4abf-a70e-8a5dafe5b029.jsonl`
