@@ -53,14 +53,14 @@ A developer runs `ll-loop` with a `manage_issue` loop. The loop calls `ll-issues
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues next-issue` prints a single issue ID to stdout
-- [ ] Sort order: `outcome_confidence` desc → `confidence_score` desc → `priority_int` asc
-- [ ] Issues missing both scores rank last (treated as score = -1 for both)
-- [ ] `--json` flag outputs a JSON object with `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`
-- [ ] `--path` flag outputs only the file path (useful in shell pipelines)
-- [ ] Exit 0 when an issue is found, exit 1 when no active issues exist
-- [ ] Command is listed in `ll-issues --help` epilog and registered in `__init__.py`
-- [ ] Alias `ni2` or `nx` for scripting convenience (optional)
+- [x] `ll-issues next-issue` prints a single issue ID to stdout
+- [x] Sort order: `outcome_confidence` desc → `confidence_score` desc → `priority_int` asc
+- [x] Issues missing both scores rank last (treated as score = -1 for both)
+- [x] `--json` flag outputs a JSON object with `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`
+- [x] `--path` flag outputs only the file path (useful in shell pipelines)
+- [x] Exit 0 when an issue is found, exit 1 when no active issues exist
+- [x] Command is listed in `ll-issues --help` epilog and registered in `__init__.py`
+- [x] Alias `nx` for scripting convenience
 
 ## API/Interface
 
@@ -117,9 +117,9 @@ The `--json` flag can reuse the same JSON serialization pattern as `cmd_show`.
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **`__init__.py` specific locations:**
-- Subparser registration block: `__init__.py:68-309` — insert new `next-issue` subparser here, after `next-action` block (~line 309)
-- Dispatch chain: `__init__.py:324-344` — add `elif args.command == "next-issue": return cmd_next_issue(config, args)` here
-- Epilog (help text): `__init__.py:35-65` — add `next-issue` to the `Sub-commands:` and `Examples:` sections
+- Subparser registration block: `__init__.py:68-317` — insert new `next-issue` subparser here, after `next-action` block (~line 317)
+- Dispatch chain: `__init__.py:332-351` — add `if args.command == "next-issue": return cmd_next_issue(config, args)` here (use `if`, not `elif` — pattern in this file uses `if` chains)
+- Epilog (help text): `__init__.py:34-66` — add `next-issue` to the `Sub-commands:` and `Examples:` sections
 
 **Required subparser setup calls (both mandatory):**
 - `nx.set_defaults(command="next-issue")` — required for alias `nx` to resolve correctly
@@ -141,10 +141,10 @@ Use `getattr(args, "json", False)` (defensive), `print_json` from `little_loops.
 
 **`--path` flag convention note**: No existing `--path` flag exists in the issues CLI. The established pattern for path output is including `"path": str(issue.path)` in the `--json` dict. A `--path` plain-text flag is novel here — implement it by checking `getattr(args, "path", False)` and printing `str(issue.path)`, following the same pattern as `--json` short-circuits.
 
-**`IssueInfo` fields** (`issue_parser.py:201-248`):
+**`IssueInfo` fields** (`issue_parser.py:202-248`):
 - `outcome_confidence: int | None` — frontmatter key `outcome_confidence`
 - `confidence_score: int | None` — frontmatter key `confidence_score`
-- `priority_int: int` — `@property` at line 241; parses `^P(\d+)$` from `self.priority`, returns 99 for unknown
+- `priority_int: int` — `@property` at line 242; parses `^P(\d+)$` from `self.priority`, returns 99 for unknown
 - `issue_id: str`, `path: Path`
 
 **Test patterns:**
@@ -176,10 +176,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `cli`, `ll-issues`, `automation`, `captured`
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-03-24T18:39:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f120a405-1dbe-489e-8f05-ef1b6c0cc034.jsonl`
+- `/ll:ready-issue` - 2026-03-24T18:35:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dfd19a0-16f2-474a-a5c7-2f75e73d0042.jsonl`
 - `/ll:refine-issue` - 2026-03-24T18:16:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/134f1b03-a3a9-4307-be17-0dfb2df69a25.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/123be0f8-c950-4f44-830e-69b04d0e686c.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63d71b4c-9315-4b47-a4ae-d35a8ba619c4.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-24 | Priority: P3
+## Resolution
+
+Implemented `ll-issues next-issue` (alias `nx`) with sort key `(-(outcome_confidence or -1), -(confidence_score or -1), priority_int)`.
+
+- New: `scripts/little_loops/cli/issues/next_issue.py`
+- Modified: `scripts/little_loops/cli/issues/__init__.py` (import, subparser, dispatch, epilog)
+- New: `scripts/tests/test_next_issue.py` (10 tests covering sort order, flags, edge cases)
+
+All 10 new tests pass. All 83 existing issues CLI tests pass.
+
+**Completed** | Created: 2026-03-24 | Priority: P3

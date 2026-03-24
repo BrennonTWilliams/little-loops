@@ -20,6 +20,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.list_cmd import cmd_list
     from little_loops.cli.issues.next_action import cmd_next_action
     from little_loops.cli.issues.next_id import cmd_next_id
+    from little_loops.cli.issues.next_issue import cmd_next_issue
     from little_loops.cli.issues.refine_status import cmd_refine_status
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
@@ -43,6 +44,7 @@ Sub-commands:
   refine-status  Show refinement depth table sorted by commands touched
   append-log     Append a session log entry to an issue file
   next-action    Print the next refinement action for the highest-priority active issue
+  next-issue     Print the issue ID ranked highest by outcome confidence and readiness
 
 Examples:
   %(prog)s next-id
@@ -63,6 +65,9 @@ Examples:
   %(prog)s refine-status --format json
   %(prog)s refine-status --json
   %(prog)s append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
+  %(prog)s next-issue
+  %(prog)s next-issue --json
+  %(prog)s next-issue --path
 """,
     )
 
@@ -316,6 +321,16 @@ Examples:
     )
     add_config_arg(na)
 
+    nx = subs.add_parser(
+        "next-issue",
+        aliases=["nx"],
+        help="Print the issue ranked highest by outcome confidence and readiness",
+    )
+    nx.set_defaults(command="next-issue")
+    nx.add_argument("--json", action="store_true", help="Output as JSON object")
+    nx.add_argument("--path", action="store_true", help="Output only the file path")
+    add_config_arg(nx)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -349,4 +364,6 @@ Examples:
         return cmd_append_log(config, args)
     if args.command == "next-action":
         return cmd_next_action(config, args)
+    if args.command == "next-issue":
+        return cmd_next_issue(config, args)
     return 1
