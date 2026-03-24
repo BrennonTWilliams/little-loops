@@ -18,6 +18,7 @@ from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
     LLMConfig,
+    LoopConfigOverrides,
     RouteConfig,
     StateConfig,
 )
@@ -1707,3 +1708,116 @@ class TestSubLoopStateConfig:
         errors = validate_fsm(fsm)
         error_messages = [str(e) for e in errors]
         assert not any("no transition" in m.lower() for m in error_messages)
+
+
+class TestLoopConfigOverrides:
+    """Tests for LoopConfigOverrides dataclass (FEAT-862)."""
+
+    def test_defaults(self) -> None:
+        """All fields default to None."""
+        cfg = LoopConfigOverrides()
+
+        assert cfg.handoff_threshold is None
+        assert cfg.readiness_threshold is None
+        assert cfg.outcome_threshold is None
+        assert cfg.max_continuations is None
+
+    def test_to_dict_empty_for_defaults(self) -> None:
+        """to_dict returns empty dict when all fields are None."""
+        cfg = LoopConfigOverrides()
+
+        assert cfg.to_dict() == {}
+
+    def test_to_dict_with_handoff_threshold(self) -> None:
+        """to_dict includes handoff_threshold when set."""
+        cfg = LoopConfigOverrides(handoff_threshold=60)
+
+        assert cfg.to_dict() == {"handoff_threshold": 60}
+
+    def test_to_dict_with_confidence_gate_fields(self) -> None:
+        """to_dict nests readiness/outcome under commands.confidence_gate."""
+        cfg = LoopConfigOverrides(readiness_threshold=70, outcome_threshold=55)
+        result = cfg.to_dict()
+
+        assert result == {
+            "commands": {"confidence_gate": {"readiness_threshold": 70, "outcome_threshold": 55}}
+        }
+
+    def test_to_dict_with_max_continuations(self) -> None:
+        """to_dict nests max_continuations under automation."""
+        cfg = LoopConfigOverrides(max_continuations=5)
+
+        assert cfg.to_dict() == {"automation": {"max_continuations": 5}}
+
+    def test_from_dict_handoff_threshold(self) -> None:
+        """from_dict parses handoff_threshold."""
+        cfg = LoopConfigOverrides.from_dict({"handoff_threshold": 60})
+
+        assert cfg.handoff_threshold == 60
+        assert cfg.readiness_threshold is None
+
+    def test_from_dict_confidence_gate_fields(self) -> None:
+        """from_dict parses nested commands.confidence_gate.*."""
+        data = {"commands": {"confidence_gate": {"readiness_threshold": 70, "outcome_threshold": 55}}}
+        cfg = LoopConfigOverrides.from_dict(data)
+
+        assert cfg.readiness_threshold == 70
+        assert cfg.outcome_threshold == 55
+        assert cfg.handoff_threshold is None
+
+    def test_from_dict_max_continuations(self) -> None:
+        """from_dict parses nested automation.max_continuations."""
+        cfg = LoopConfigOverrides.from_dict({"automation": {"max_continuations": 5}})
+
+        assert cfg.max_continuations == 5
+
+    def test_roundtrip(self) -> None:
+        """from_dict → to_dict is lossless for all fields."""
+        original = LoopConfigOverrides(
+            handoff_threshold=60,
+            readiness_threshold=70,
+            outcome_threshold=55,
+            max_continuations=5,
+        )
+        restored = LoopConfigOverrides.from_dict(original.to_dict())
+
+        assert restored.handoff_threshold == 60
+        assert restored.readiness_threshold == 70
+        assert restored.outcome_threshold == 55
+        assert restored.max_continuations == 5
+
+    def test_fsm_loop_config_field_defaults_to_none(self) -> None:
+        """FSMLoop.config is None when no config block in YAML."""
+        fsm = make_fsm()
+
+        assert fsm.config is None
+
+    def test_fsm_loop_from_dict_with_config_block(self) -> None:
+        """FSMLoop.from_dict parses config block correctly."""
+        data = {
+            "name": "test-loop",
+            "initial": "done",
+            "states": {"done": {"terminal": True}},
+            "config": {"handoff_threshold": 60},
+        }
+        fsm = FSMLoop.from_dict(data)
+
+        assert fsm.config is not None
+        assert fsm.config.handoff_threshold == 60
+
+    def test_fsm_loop_to_dict_includes_config(self) -> None:
+        """FSMLoop.to_dict includes config block when non-default."""
+        fsm = make_fsm()
+        fsm.config = LoopConfigOverrides(handoff_threshold=60)
+        result = fsm.to_dict()
+
+        assert "config" in result
+        assert result["config"] == {"handoff_threshold": 60}
+
+    def test_fsm_loop_to_dict_omits_empty_config(self) -> None:
+        """FSMLoop.to_dict omits config key when all fields are defaults."""
+        fsm = make_fsm()
+        fsm.config = LoopConfigOverrides()
+        result = fsm.to_dict()
+
+        assert "config" not in result

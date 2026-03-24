@@ -64,6 +64,10 @@ def cmd_run(
         key, _, value = kv.partition("=")
         fsm.context[key.strip()] = value.strip()
 
+    # Apply YAML loop config env-var overrides (CLI flags below overwrite these)
+    if fsm.config is not None and isinstance(fsm.config.handoff_threshold, int):
+        os.environ["LL_HANDOFF_THRESHOLD"] = str(fsm.config.handoff_threshold)
+
     if getattr(args, "handoff_threshold", None) is not None:
         if not (1 <= args.handoff_threshold <= 100):
             raise SystemExit("--handoff-threshold must be between 1 and 100")

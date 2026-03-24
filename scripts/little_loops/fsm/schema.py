@@ -387,6 +387,67 @@ class LLMConfig:
 
 
 @dataclass
+class LoopConfigOverrides:
+    """Per-loop ll-config overrides embedded in the loop YAML definition.
+
+    All fields are optional (None = use global ll-config default).
+    Precedence: CLI flags > YAML config block > global ll-config > schema defaults.
+
+    Attributes:
+        handoff_threshold: Override for LL_HANDOFF_THRESHOLD env var (1-100)
+        readiness_threshold: Override for commands.confidence_gate.readiness_threshold (1-100)
+        outcome_threshold: Override for commands.confidence_gate.outcome_threshold (1-100)
+        max_continuations: Override for automation.max_continuations (>=1)
+    """
+
+    handoff_threshold: int | None = None
+    readiness_threshold: int | None = None
+    outcome_threshold: int | None = None
+    max_continuations: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization (skip-if-None)."""
+        result: dict[str, Any] = {}
+
+        if self.handoff_threshold is not None:
+            result["handoff_threshold"] = self.handoff_threshold
+
+        confidence_gate: dict[str, Any] = {}
+        if self.readiness_threshold is not None:
+            confidence_gate["readiness_threshold"] = self.readiness_threshold
+        if self.outcome_threshold is not None:
+            confidence_gate["outcome_threshold"] = self.outcome_threshold
+        if confidence_gate:
+            result["commands"] = {"confidence_gate": confidence_gate}
+
+        if self.max_continuations is not None:
+            result["automation"] = {"max_continuations": self.max_continuations}
+
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LoopConfigOverrides:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        commands = data.get("commands", {})
+        confidence_gate = commands.get("confidence_gate", {}) if isinstance(commands, dict) else {}
+        automation = data.get("automation", {})
+        continuation = data.get("continuation", {})
+
+        max_continuations = None
+        if isinstance(automation, dict) and "max_continuations" in automation:
+            max_continuations = automation["max_continuations"]
+        elif isinstance(continuation, dict) and "max_continuations" in continuation:
+            max_continuations = continuation["max_continuations"]
+
+        return cls(
+            handoff_threshold=data.get("handoff_threshold"),
+            readiness_threshold=confidence_gate.get("readiness_threshold") if isinstance(confidence_gate, dict) else None,
+            outcome_threshold=confidence_gate.get("outcome_threshold") if isinstance(confidence_gate, dict) else None,
+            max_continuations=max_continuations,
+        )
+
+
+@dataclass
 class FSMLoop:
     """Complete FSM loop definition.
 
@@ -420,6 +481,7 @@ class FSMLoop:
     llm: LLMConfig = field(default_factory=LLMConfig)
     on_handoff: Literal["pause", "spawn", "terminate"] = "pause"
     input_key: str = "input"
+    config: LoopConfigOverrides | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -454,6 +516,11 @@ class FSMLoop:
         if llm_dict:
             result["llm"] = llm_dict
 
+        if self.config is not None:
+            config_dict = self.config.to_dict()
+            if config_dict:
+                result["config"] = config_dict
+
         return result
 
     @classmethod
@@ -467,6 +534,10 @@ class FSMLoop:
         llm = LLMConfig()
         if "llm" in data:
             llm = LLMConfig.from_dict(data["llm"])
+
+        loop_config = None
+        if "config" in data:
+            loop_config = LoopConfigOverrides.from_dict(data["config"])
 
         return cls(
             name=data["name"],
@@ -483,6 +554,7 @@ class FSMLoop:
             llm=llm,
             on_handoff=data.get("on_handoff", "pause"),
             input_key=data.get("input_key", "input"),
+            config=loop_config,
         )
 
     def get_all_state_names(self) -> set[str]:

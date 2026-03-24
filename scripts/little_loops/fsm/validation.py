@@ -84,10 +84,12 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "max_iterations",
         "backoff",
         "timeout",
+        "default_timeout",
         "maintain",
         "llm",
         "on_handoff",
         "input_key",
+        "config",
     }
 )
 

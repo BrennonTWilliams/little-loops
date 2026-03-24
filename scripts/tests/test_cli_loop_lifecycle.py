@@ -754,3 +754,93 @@ class TestCmdRunHandoffThreshold:
 
         with pytest.raises(SystemExit):
             cmd_run("test-loop", self._make_args(handoff_threshold=101), loops_dir, logger)
+
+
+class TestCmdRunYAMLConfigOverrides:
+    """Tests for YAML config block override in cmd_run (FEAT-862)."""
+
+    def _make_args(self, handoff_threshold: int | None = None, **kwargs: object) -> argparse.Namespace:
+        defaults = {
+            "input": None,
+            "context": [],
+            "max_iterations": None,
+            "delay": None,
+            "no_llm": False,
+            "llm_model": None,
+            "dry_run": True,
+            "background": False,
+            "foreground_internal": False,
+            "quiet": False,
+            "verbose": False,
+            "show_diagrams": False,
+            "clear": False,
+            "queue": False,
+            "handoff_threshold": handoff_threshold,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def _make_loop(self, tmp_path: Path, config_block: str = "") -> Path:
+        """Create a minimal loop YAML in tmp_path with optional config block."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        content = "name: test-loop\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        if config_block:
+            content += config_block
+        (loops_dir / "test-loop.yaml").write_text(content)
+        return loops_dir
+
+    def test_yaml_config_handoff_threshold_sets_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """YAML config.handoff_threshold sets LL_HANDOFF_THRESHOLD when no CLI flag."""
+        import os
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        monkeypatch.delenv("LL_HANDOFF_THRESHOLD", raising=False)
+        loops_dir = self._make_loop(tmp_path, config_block="config:\n  handoff_threshold: 60\n")
+        args = self._make_args(handoff_threshold=None)
+        logger = Logger(use_color=False)
+
+        result = cmd_run("test-loop", args, loops_dir, logger)
+
+        assert result == 0
+        assert os.environ.get("LL_HANDOFF_THRESHOLD") == "60"
+
+    def test_cli_handoff_threshold_wins_over_yaml(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CLI --handoff-threshold overrides YAML config.handoff_threshold."""
+        import os
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        monkeypatch.delenv("LL_HANDOFF_THRESHOLD", raising=False)
+        loops_dir = self._make_loop(tmp_path, config_block="config:\n  handoff_threshold: 60\n")
+        args = self._make_args(handoff_threshold=80)
+        logger = Logger(use_color=False)
+
+        cmd_run("test-loop", args, loops_dir, logger)
+
+        assert os.environ.get("LL_HANDOFF_THRESHOLD") == "80"
+
+    def test_no_yaml_config_no_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No YAML config block and no CLI flag leaves LL_HANDOFF_THRESHOLD unset."""
+        import os
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        monkeypatch.delenv("LL_HANDOFF_THRESHOLD", raising=False)
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(handoff_threshold=None)
+        logger = Logger(use_color=False)
+
+        cmd_run("test-loop", args, loops_dir, logger)
+
+        assert "LL_HANDOFF_THRESHOLD" not in os.environ

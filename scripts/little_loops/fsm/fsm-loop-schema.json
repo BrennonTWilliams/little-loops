@@ -62,6 +62,80 @@
       "type": "string",
       "description": "Context key populated by the positional input arg at runtime (default: 'input')",
       "default": "input"
+    },
+    "on_handoff": {
+      "type": "string",
+      "description": "Behavior when handoff signal detected",
+      "enum": ["pause", "spawn", "terminate"],
+      "default": "pause"
+    },
+    "default_timeout": {
+      "type": "integer",
+      "description": "Default timeout for individual states in seconds",
+      "minimum": 1
+    },
+    "config": {
+      "type": "object",
+      "description": "Per-loop ll-config overrides (applied for the duration of this loop's execution)",
+      "properties": {
+        "handoff_threshold": {
+          "type": "integer",
+          "description": "Override for LL_HANDOFF_THRESHOLD (context monitor handoff percentage)",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "commands": {
+          "type": "object",
+          "description": "Override for commands config",
+          "properties": {
+            "confidence_gate": {
+              "type": "object",
+              "description": "Override for confidence gate thresholds",
+              "properties": {
+                "readiness_threshold": {
+                  "type": "integer",
+                  "description": "Override for readiness score gate threshold (1-100)",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "outcome_threshold": {
+                  "type": "integer",
+                  "description": "Override for outcome confidence gate threshold (1-100)",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "automation": {
+          "type": "object",
+          "description": "Override for automation config",
+          "properties": {
+            "max_continuations": {
+              "type": "integer",
+              "description": "Override for maximum number of session continuations",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "continuation": {
+          "type": "object",
+          "description": "Override for continuation config",
+          "properties": {
+            "max_continuations": {
+              "type": "integer",
+              "description": "Override for maximum number of session continuations",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

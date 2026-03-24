@@ -658,6 +658,18 @@ def cmd_show(
         llm_parts.append(f"timeout={llm.timeout}s")
     if llm_parts:
         config_parts.append(f"llm: {', '.join(llm_parts)}")
+    if fsm.config is not None:
+        cfg_parts = []
+        if fsm.config.handoff_threshold is not None:
+            cfg_parts.append(f"handoff_threshold={fsm.config.handoff_threshold}")
+        if fsm.config.readiness_threshold is not None:
+            cfg_parts.append(f"readiness_threshold={fsm.config.readiness_threshold}")
+        if fsm.config.outcome_threshold is not None:
+            cfg_parts.append(f"outcome_threshold={fsm.config.outcome_threshold}")
+        if fsm.config.max_continuations is not None:
+            cfg_parts.append(f"max_continuations={fsm.config.max_continuations}")
+        if cfg_parts:
+            config_parts.append(f"config: {', '.join(cfg_parts)}")
     print("   " + " \u00b7 ".join(config_parts))
 
     # --- Description ---

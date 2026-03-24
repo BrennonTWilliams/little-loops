@@ -219,11 +219,29 @@ _Added by `/ll:confidence-check` on 2026-03-23_
 - **No acceptance criteria**: Missing explicit test scenarios for edge cases (e.g., "given YAML `config.handoff_threshold: 60` and CLI default 80, effective threshold must be 60"). Without these, flag-vs-YAML precedence may be incompletely tested.
 - **`ll-loop resume` not in implementation steps**: The refine-issue findings note `ll-loop resume` (line 221 in `__init__.py`) also registers `--handoff-threshold` and should apply YAML config overrides, but Step 3 only covers `ll-loop run`.
 
+## Resolution
+
+**Completed**: 2026-03-23
+
+### Changes Made
+
+1. **`scripts/little_loops/config/automation.py`** — Extended `ConfidenceGateConfig` with `readiness_threshold: int = 85` and `outcome_threshold: int = 70` fields, aligning it with `config-schema.json`.
+2. **`scripts/little_loops/fsm/schema.py`** — Added `LoopConfigOverrides` dataclass and `config` field to `FSMLoop`; updated `to_dict`/`from_dict`.
+3. **`scripts/little_loops/fsm/fsm-loop-schema.json`** — Added `config` property; also added missing `on_handoff` and `default_timeout` properties.
+4. **`scripts/little_loops/fsm/validation.py`** — Added `"config"` and `"default_timeout"` to `KNOWN_TOP_LEVEL_KEYS`.
+5. **`scripts/little_loops/cli/loop/run.py`** — Injects `LL_HANDOFF_THRESHOLD` from YAML config block before CLI flag (CLI always wins).
+6. **`scripts/little_loops/cli/loop/lifecycle.py`** — Fixed silent ignore of `--handoff-threshold` in `cmd_resume`; added YAML config override application.
+7. **`scripts/little_loops/cli/loop/info.py`** — Displays config overrides in `ll-loop info` header.
+8. **Tests** — Added `TestLoopConfigOverrides` (14 tests) and `TestCmdRunYAMLConfigOverrides` (3 tests).
+
+Precedence confirmed: CLI flags > YAML `config:` block > global ll-config > schema defaults.
+
 ## Status
 
-**Open** | Created: 2026-03-23 | Priority: P3
+**Completed** | Created: 2026-03-23 | Completed: 2026-03-23 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-24T01:25:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c8b36b2-bce5-4170-9443-730c147b51ed.jsonl`
 - `/ll:refine-issue` - 2026-03-23T21:26:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07d161e2-659e-4958-84f2-8dc2ec15fb6d.jsonl`
 - `/ll:format-issue` - 2026-03-23T21:07:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9db96889-7141-4c7a-9208-51f9a202e218.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87d63032-1c5a-48a2-bbbb-58a14a066171.jsonl`
