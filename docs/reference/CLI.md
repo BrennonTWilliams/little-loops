@@ -468,10 +468,6 @@ The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-
 
 #### `ll-issues next-action` / `ll-issues na`
 
-<!-- TODO: update-docs stub — ENH-860 — drafted 2026-03-23 -->
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
-
 Print the next refinement action needed across all active issues. Designed for FSM loop integration — exits 1 when work remains, exits 0 when all issues are ready.
 
 Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
@@ -488,8 +484,6 @@ Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
 | `--refine-cap N` | `5` | Max `/ll:refine-issue` runs before moving on |
 | `--ready-threshold N` | `85` | Minimum readiness score to consider issue ready |
 | `--outcome-threshold N` | `70` | Minimum outcome confidence score to consider issue ready |
-
-<!-- END TODO stub -->
 
 #### `ll-issues next-issue` / `ll-issues nx`
 

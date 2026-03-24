@@ -393,7 +393,10 @@ ll-issues impact-effort --type FEAT           # Filter matrix to a specific issu
 ll-issues refine-status                       # Refinement depth table sorted by commands touched
 ll-issues refine-status --type BUG            # Filter to bugs only
 ll-issues refine-status --format json         # JSONL output for scripting
+ll-issues refine-status FEAT-873             # Single-issue view
+ll-issues refine-status FEAT-873 --json      # Single issue as JSON object
 ll-issues next-action                         # Next refinement action needed (for FSM loop use)
+ll-issues next-issue                          # Highest-confidence issue ID (for FSM loop use)
 ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
 ```
 
