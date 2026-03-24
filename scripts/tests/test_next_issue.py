@@ -68,10 +68,24 @@ class TestNextIssueSorting:
         _write_config(temp_project_dir, sample_config)
         features_dir = _setup_dirs(temp_project_dir)
 
-        _make_issue(features_dir, "P2-FEAT-001-low.md", "FEAT-001: Low", outcome_confidence=40, confidence_score=90)
-        _make_issue(features_dir, "P2-FEAT-002-high.md", "FEAT-002: High", outcome_confidence=90, confidence_score=50)
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-low.md",
+            "FEAT-001: Low",
+            outcome_confidence=40,
+            confidence_score=90,
+        )
+        _make_issue(
+            features_dir,
+            "P2-FEAT-002-high.md",
+            "FEAT-002: High",
+            outcome_confidence=90,
+            confidence_score=50,
+        )
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -90,10 +104,24 @@ class TestNextIssueSorting:
         _write_config(temp_project_dir, sample_config)
         features_dir = _setup_dirs(temp_project_dir)
 
-        _make_issue(features_dir, "P2-FEAT-001-low.md", "FEAT-001: Low cs", outcome_confidence=80, confidence_score=50)
-        _make_issue(features_dir, "P2-FEAT-002-high.md", "FEAT-002: High cs", outcome_confidence=80, confidence_score=90)
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-low.md",
+            "FEAT-001: Low cs",
+            outcome_confidence=80,
+            confidence_score=50,
+        )
+        _make_issue(
+            features_dir,
+            "P2-FEAT-002-high.md",
+            "FEAT-002: High cs",
+            outcome_confidence=80,
+            confidence_score=90,
+        )
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -112,10 +140,24 @@ class TestNextIssueSorting:
         _write_config(temp_project_dir, sample_config)
         features_dir = _setup_dirs(temp_project_dir)
 
-        _make_issue(features_dir, "P3-FEAT-001-lower.md", "FEAT-001: P3", outcome_confidence=80, confidence_score=80)
-        _make_issue(features_dir, "P1-FEAT-002-higher.md", "FEAT-002: P1", outcome_confidence=80, confidence_score=80)
+        _make_issue(
+            features_dir,
+            "P3-FEAT-001-lower.md",
+            "FEAT-001: P3",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
+        _make_issue(
+            features_dir,
+            "P1-FEAT-002-higher.md",
+            "FEAT-002: P1",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -135,9 +177,17 @@ class TestNextIssueSorting:
         features_dir = _setup_dirs(temp_project_dir)
 
         _make_issue(features_dir, "P0-FEAT-001-unscored.md", "FEAT-001: No scores")
-        _make_issue(features_dir, "P3-FEAT-002-scored.md", "FEAT-002: Scored", outcome_confidence=50, confidence_score=50)
+        _make_issue(
+            features_dir,
+            "P3-FEAT-002-scored.md",
+            "FEAT-002: Scored",
+            outcome_confidence=50,
+            confidence_score=50,
+        )
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -159,9 +209,17 @@ class TestNextIssueOutputFlags:
         """Default output is just the issue ID."""
         _write_config(temp_project_dir, sample_config)
         features_dir = _setup_dirs(temp_project_dir)
-        _make_issue(features_dir, "P2-FEAT-001-test.md", "FEAT-001: Test", outcome_confidence=80, confidence_score=80)
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-test.md",
+            "FEAT-001: Test",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -179,9 +237,17 @@ class TestNextIssueOutputFlags:
         """--json outputs a JSON object with expected fields."""
         _write_config(temp_project_dir, sample_config)
         features_dir = _setup_dirs(temp_project_dir)
-        _make_issue(features_dir, "P2-FEAT-001-test.md", "FEAT-001: Test", outcome_confidence=85, confidence_score=75)
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-test.md",
+            "FEAT-001: Test",
+            outcome_confidence=85,
+            confidence_score=75,
+        )
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--json", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--json", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -204,9 +270,17 @@ class TestNextIssueOutputFlags:
         """--path outputs only the file path."""
         _write_config(temp_project_dir, sample_config)
         features_dir = _setup_dirs(temp_project_dir)
-        _make_issue(features_dir, "P2-FEAT-001-test.md", "FEAT-001: Test", outcome_confidence=80, confidence_score=80)
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-test.md",
+            "FEAT-001: Test",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--path", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--path", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -226,7 +300,9 @@ class TestNextIssueOutputFlags:
         features_dir = _setup_dirs(temp_project_dir)
         _make_issue(features_dir, "P2-FEAT-001-unscored.md", "FEAT-001: Unscored")
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--json", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--json", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -251,7 +327,9 @@ class TestNextIssueEdgeCases:
         _write_config(temp_project_dir, sample_config)
         _setup_dirs(temp_project_dir)
 
-        with patch.object(sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -268,7 +346,13 @@ class TestNextIssueEdgeCases:
         """The 'nx' alias resolves to the same command."""
         _write_config(temp_project_dir, sample_config)
         features_dir = _setup_dirs(temp_project_dir)
-        _make_issue(features_dir, "P2-FEAT-001-test.md", "FEAT-001: Test", outcome_confidence=80, confidence_score=80)
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-test.md",
+            "FEAT-001: Test",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
 
         with patch.object(sys, "argv", ["ll-issues", "nx", "--config", str(temp_project_dir)]):
             from little_loops.cli import main_issues
