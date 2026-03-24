@@ -557,7 +557,9 @@ class TestContextMonitor:
                 timeout=6,
             )
 
-            assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+            assert result.returncode == 0, (
+                f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+            )
 
             state_file = tmp_path / "ll-context-state.json"
             assert state_file.exists()
@@ -597,7 +599,9 @@ class TestContextMonitor:
                 timeout=6,
             )
 
-            assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+            assert result.returncode == 0, (
+                f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+            )
 
             state_file = tmp_path / "ll-context-state.json"
             assert state_file.exists()
@@ -625,9 +629,7 @@ class TestContextMonitor:
             config_link.write_text(test_config.read_text())
 
             # Pre-write state with last_reminder_at 2 minutes ago
-            old_ts = (datetime.now(UTC) - timedelta(seconds=120)).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            old_ts = (datetime.now(UTC) - timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
             state_file = tmp_path / "ll-context-state.json"
             state_file.write_text(
                 json.dumps(
@@ -739,7 +741,6 @@ class TestUserPromptCheck:
         finally:
             os.chdir(original_dir)
 
-
     @pytest.fixture
     def enabled_config(self, tmp_path: Path) -> Path:
         """Create test config with prompt optimization enabled."""
@@ -768,7 +769,9 @@ class TestUserPromptCheck:
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(enabled_config.read_text())
 
-            input_data = {"prompt": "This is a qualifying prompt that is longer than ten characters"}
+            input_data = {
+                "prompt": "This is a qualifying prompt that is longer than ten characters"
+            }
 
             # Set CLAUDE_PLUGIN_ROOT to the project root (not hooks/ dir) to reproduce the bug.
             # With the bug: path resolves to $CLAUDE_PLUGIN_ROOT/prompts/ (no such dir) → empty output.
@@ -786,7 +789,9 @@ class TestUserPromptCheck:
                 env=env,
             )
 
-            assert result.returncode == 0, f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
+            assert result.returncode == 0, (
+                f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
+            )
             assert result.stdout.strip(), (
                 "Prompt optimization produced no output — template was not injected. "
                 "HOOK_PROMPT_FILE path is likely wrong when CLAUDE_PLUGIN_ROOT is set."
@@ -854,7 +859,9 @@ class TestIssueCompletionLog:
                 timeout=10,
             )
 
-            assert result.returncode == 0, f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
+            assert result.returncode == 0, (
+                f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
+            )
             content = issue_file.read_text()
             assert "hook:posttooluse-git-mv" in content, (
                 f"Session log entry not appended for transcript path {transcript_name!r}. "
