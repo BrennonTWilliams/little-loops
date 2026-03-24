@@ -327,7 +327,7 @@ class SitemapDiscovery:
                         "[id*='nav']",
                     ]
 
-                    links = []
+                    links: list[Any] = []
                     for selector in selectors:
                         nav = soup.select_one(selector)
                         if nav:
@@ -428,7 +428,7 @@ class SitemapDiscovery:
                 # Find links
                 for link in soup.find_all("a", href=True):
                     href = link.get("href")
-                    if not href:
+                    if not isinstance(href, str):
                         continue
 
                     full_url = urljoin(url, href)
@@ -566,8 +566,9 @@ class PageProcessor:
         try:
             from crawl4ai import AsyncWebCrawler
 
-            self.crawler = AsyncWebCrawler(verbose=False)
-            await self.crawler.start()
+            crawler = AsyncWebCrawler(verbose=False)
+            await crawler.start()
+            self.crawler = crawler
         except ImportError:
             self.error_handler.logger.debug("crawl4ai not available, using simple HTTP")
             self.crawler = None
