@@ -102,6 +102,8 @@ Process issues concurrently using isolated git worktrees.
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 
+> **Config tip:** Branch naming and merge behavior are controlled by `parallel.use_feature_branches` in `ll-config.json`. When `true`, branches are named `feature/<id>-<slug>` and auto-merge is skipped, leaving PR-ready branches for review. See [Configuration reference](CONFIGURATION.md#parallel).
+
 **Examples:**
 ```bash
 ll-parallel                         # Process with default workers

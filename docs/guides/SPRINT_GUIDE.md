@@ -226,7 +226,7 @@ Use `--dry-run` to see this plan without executing anything.
 Each wave runs as follows:
 
 - **Single-issue wave**: [`manage-issue`](/ll:manage-issue) runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner
-- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results
+- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With [`use_feature_branches: true`](/docs/reference/CONFIGURATION.md) in `ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
 
 After each wave completes:
 - State is checkpointed to `.sprint-state.json`
