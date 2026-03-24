@@ -25,7 +25,9 @@ Not all commands support all flags. See individual command documentation for sup
 ### `/ll:init`
 Initialize little-loops configuration for a project.
 
-**Flags:** `--interactive`, `--yes`, `--force`
+**Flags:** `--interactive`, `--yes` (non-interactive, accepts all defaults), `--force`
+
+**Auto-update:** If the installed `little_loops` package version does not match the plugin version, `init` automatically runs `pip install` to upgrade the package before proceeding.
 
 ### `/ll:help`
 List all available little-loops commands with descriptions.
@@ -34,9 +36,15 @@ List all available little-loops commands with descriptions.
 Interactively configure specific areas in ll-config.json.
 
 **Arguments:**
-- `area` (optional): `project`, `issues`, `parallel`, `automation`, `documents`, `continuation`, `context`, `prompt`, `scan`, `workflow`
+- `area` (optional): `project`, `issues`, `commands`, `parallel`, `automation`, `documents`, `continuation`, `context`, `prompt`, `scan`, `sync`, `allowed-tools`, `hooks`
 
 **Flags:** `--list`, `--show`, `--reset`
+
+**Area notes:**
+- `allowed-tools` — writes to `.claude/settings.json` or `.claude/settings.local.json`, not `ll-config.json`
+- `hooks` — installs/shows/validates ll- lifecycle hooks in Claude Code settings files (not `ll-config.json`)
+
+**Auto-update:** Like `/ll:init`, `configure` checks the installed package version and auto-upgrades if a mismatch is detected.
 
 ---
 
