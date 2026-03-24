@@ -5,7 +5,8 @@
     "src_dir": "scripts/",
     "test_cmd": "python -m pytest scripts/tests/",
     "lint_cmd": "ruff check scripts/",
-    "format_cmd": "ruff format scripts/"
+    "format_cmd": "ruff format scripts/",
+    "type_cmd": "python -m mypy scripts/little_loops/"
   },
   "issues": {
     "base_dir": ".issues"
