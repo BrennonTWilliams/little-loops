@@ -276,6 +276,8 @@ Command customization for `/ll:manage-issue`:
 | `custom_verification` | `[]` | Additional verification commands |
 | `confidence_gate.enabled` | `false` | Enable confidence score gate before implementation |
 | `confidence_gate.threshold` | `85` | Minimum confidence score (1-100) required to proceed |
+| `confidence_gate.readiness_threshold` | `85` | Minimum readiness score (1-100) required to proceed (overrides `threshold` for readiness check) |
+| `confidence_gate.outcome_threshold` | `70` | Minimum outcome confidence score (1-100) required to proceed |
 | `tdd_mode` | `false` | Enable TDD mode: write failing tests before implementation |
 
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `threshold`, implementation halts. Use `--force-implement` to bypass.

@@ -325,7 +325,7 @@ Copy a built-in loop to `.loops/` for customization.
 
 #### `ll-loop show <loop>` / `ll-loop s <loop>`
 
-Show loop details and FSM structure.
+Show loop details and FSM structure. The header line displays active [per-loop config overrides](../guides/LOOPS_GUIDE.md#per-loop-config-overrides) (e.g., `config: handoff_threshold=60`) when a `config:` block is present in the loop YAML.
 
 | Flag | Short | Description |
 |------|-------|-------------|
