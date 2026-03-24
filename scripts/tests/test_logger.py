@@ -555,6 +555,88 @@ class TestLoggerEdgeCases:
         assert re.search(r"\[\d{2}:\d{2}:\d{2}\]", captured2.out)
 
 
+# =============================================================================
+# TestLoggerFlush — non-TTY flush regression (BUG-876)
+# =============================================================================
+
+
+class FlushTracker:
+    """Minimal stream that tracks whether flush() was called."""
+
+    def __init__(self) -> None:
+        self.content: list[str] = []
+        self.flush_called = False
+
+    def write(self, s: str) -> None:
+        self.content.append(s)
+
+    def flush(self) -> None:
+        self.flush_called = True
+
+
+class TestLoggerFlush:
+    """Logger output methods must flush immediately for non-TTY compatibility (BUG-876).
+
+    When stdout is not a TTY (piped/redirected), Python defaults to block buffering.
+    Every Logger print() call must pass flush=True so output is not held in the buffer.
+    """
+
+    def _make_tracker(self) -> tuple[FlushTracker, Logger]:
+        tracker = FlushTracker()
+        log = Logger(verbose=True, use_color=False)
+        return tracker, log
+
+    def test_info_flushes_stdout(self) -> None:
+        """info() flushes stdout immediately."""
+        tracker, log = self._make_tracker()
+        with patch("sys.stdout", tracker):
+            log.info("test")
+        assert tracker.flush_called, "info() must call flush() on stdout"
+
+    def test_debug_flushes_stdout(self) -> None:
+        """debug() flushes stdout immediately."""
+        tracker, log = self._make_tracker()
+        with patch("sys.stdout", tracker):
+            log.debug("test")
+        assert tracker.flush_called, "debug() must call flush() on stdout"
+
+    def test_success_flushes_stdout(self) -> None:
+        """success() flushes stdout immediately."""
+        tracker, log = self._make_tracker()
+        with patch("sys.stdout", tracker):
+            log.success("test")
+        assert tracker.flush_called, "success() must call flush() on stdout"
+
+    def test_warning_flushes_stdout(self) -> None:
+        """warning() flushes stdout immediately."""
+        tracker, log = self._make_tracker()
+        with patch("sys.stdout", tracker):
+            log.warning("test")
+        assert tracker.flush_called, "warning() must call flush() on stdout"
+
+    def test_error_flushes_stderr(self) -> None:
+        """error() flushes stderr immediately."""
+        tracker = FlushTracker()
+        log = Logger(verbose=True, use_color=False)
+        with patch("sys.stderr", tracker):
+            log.error("test")
+        assert tracker.flush_called, "error() must call flush() on stderr"
+
+    def test_timing_flushes_stdout(self) -> None:
+        """timing() flushes stdout immediately."""
+        tracker, log = self._make_tracker()
+        with patch("sys.stdout", tracker):
+            log.timing("test")
+        assert tracker.flush_called, "timing() must call flush() on stdout"
+
+    def test_header_flushes_stdout(self) -> None:
+        """header() flushes stdout immediately."""
+        tracker, log = self._make_tracker()
+        with patch("sys.stdout", tracker):
+            log.header("test")
+        assert tracker.flush_called, "header() must call flush() on stdout"
+
+
 class TestFormatDurationEdgeCases:
     """Edge case tests for format_duration()."""
 

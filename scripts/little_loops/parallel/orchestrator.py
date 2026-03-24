@@ -667,7 +667,7 @@ class ParallelOrchestrator:
         if self.logger.use_color:
             color = self.logger.GRAY
             ts = self.logger._timestamp()
-            print(f"{color}[{ts}]{self.logger.RESET} {status}")
+            print(f"{color}[{ts}]{self.logger.RESET} {status}", flush=True)
         else:
             self.logger.info(status)
 

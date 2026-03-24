@@ -76,40 +76,40 @@ class Logger:
     def info(self, msg: str) -> None:
         """Log an info message."""
         if self.verbose:
-            print(self._format(self.CYAN, msg))
+            print(self._format(self.CYAN, msg), flush=True)
 
     def debug(self, msg: str) -> None:
         """Log a debug message (gray/dim)."""
         if self.verbose:
-            print(self._format(self.GRAY, msg))
+            print(self._format(self.GRAY, msg), flush=True)
 
     def success(self, msg: str) -> None:
         """Log a success message."""
         if self.verbose:
-            print(self._format(self.GREEN, msg))
+            print(self._format(self.GREEN, msg), flush=True)
 
     def warning(self, msg: str) -> None:
         """Log a warning message."""
         if self.verbose:
-            print(self._format(self.YELLOW, msg))
+            print(self._format(self.YELLOW, msg), flush=True)
 
     def error(self, msg: str) -> None:
         """Log an error message to stderr."""
         if self.verbose:
-            print(self._format(self.RED, msg), file=sys.stderr)
+            print(self._format(self.RED, msg), file=sys.stderr, flush=True)
 
     def timing(self, msg: str) -> None:
         """Log timing information."""
         if self.verbose:
-            print(self._format(self.MAGENTA, msg))
+            print(self._format(self.MAGENTA, msg), flush=True)
 
     def header(self, msg: str, char: str = "=", width: int = 60) -> None:
         """Log a header with separators."""
         if self.verbose:
             line = char * width
-            print(line)
-            print(msg)
-            print(line)
+            print(line, flush=True)
+            print(msg, flush=True)
+            print(line, flush=True)
 
 
 def format_duration(seconds: float) -> str:
