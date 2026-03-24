@@ -1840,6 +1840,19 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "sub-loop: child-loop" in out
 
+    def test_top_level_loop_header_shown_when_show_diagrams(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Top-level loop header is printed before the FSM diagram when show_diagrams=True."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        fsm = make_test_fsm(name="my-loop")
+        run_foreground(executor, fsm, self._make_args(show_diagrams=True))
+        out = capsys.readouterr().out
+        assert "== loop: my-loop" in out
+
     def test_sub_loop_route_indented_with_depth(self, capsys: pytest.CaptureFixture[str]) -> None:
         """route event with depth=1 is prefixed with 2-space indent."""
         events = [

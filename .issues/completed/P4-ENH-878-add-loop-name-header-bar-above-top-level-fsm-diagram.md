@@ -116,14 +116,25 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `cli`, `show-diagrams`, `fsm`, `captured`
 
+## Resolution
+
+**Implemented** on 2026-03-24.
+
+Added a `== loop: <name> ====...` header line immediately before the top-level FSM diagram print in `run_foreground` (`scripts/little_loops/cli/loop/_helpers.py`). The header mirrors the existing sub-loop separator pattern (`──`) but uses `=` characters to visually distinguish top-level from sub-loop diagrams. Added a corresponding test in `TestDisplayProgressEvents` to verify the header appears in output when `show_diagrams=True`.
+
+**Files changed**:
+- `scripts/little_loops/cli/loop/_helpers.py` — added 2-line header before top-level diagram print
+- `scripts/tests/test_ll_loop_display.py` — added `test_top_level_loop_header_shown_when_show_diagrams`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-24T23:52:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0fe85a4a-ea95-46b5-ae1e-190049f24d79.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03039c01-35af-49e7-adee-63a6509207db.jsonl`
 - `/ll:refine-issue` - 2026-03-24T23:48:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/934c3a74-13fd-4d71-9690-19cbd8eda466.jsonl`
-
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7eabad2-b585-45d8-8e92-63f37037ac5f.jsonl`
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-24 | Priority: P4
+**Completed** | Created: 2026-03-24 | Resolved: 2026-03-24 | Priority: P4

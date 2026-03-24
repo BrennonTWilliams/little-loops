@@ -354,6 +354,9 @@ def run_foreground(
                     highlight_color=highlight_color,
                     edge_label_colors=edge_label_colors,
                 )
+                header_text = f"== loop: {fsm.name} "
+                header = header_text + "=" * max(0, tw - len(header_text))
+                print(header, flush=True)
                 print(diagram, flush=True)
                 if depth > 0 and current_child_fsm[0] is not None:
                     child_name = current_child_fsm[0].name
