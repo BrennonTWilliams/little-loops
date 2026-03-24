@@ -65,9 +65,9 @@ This matches how other scripts in `hooks/scripts/` resolve sibling paths and is 
 - `user-prompt-check.sh` is the **only** script that uses `CLAUDE_PLUGIN_ROOT` to resolve a file path; all other scripts use only `SCRIPT_DIR`
 
 ### Tests
-- `scripts/tests/test_hooks_integration.py:439-441` — `TestUserPromptCheck.hook_script` fixture (existing test class for this script)
-- `scripts/tests/test_hooks_integration.py:443-450` — `TestUserPromptCheck.test_config` fixture pattern to follow
-- Add a test to `TestUserPromptCheck` that runs the script with a prompt >10 chars and asserts output is non-empty (i.e., optimization template was injected); use `_run_bash` or `subprocess.run([str(hook_script)], input=json.dumps({...}))` pattern from line 460+
+- `scripts/tests/test_hooks_integration.py:676-679` — `TestUserPromptCheck.hook_script` fixture (existing test class for this script)
+- `scripts/tests/test_hooks_integration.py:681-688` — `TestUserPromptCheck.test_config` fixture pattern to follow
+- Add a test to `TestUserPromptCheck` that runs the script with a prompt >10 chars and asserts output is non-empty (i.e., optimization template was injected); use `subprocess.run([str(hook_script)], input=json.dumps({...}))` pattern from line 723+
 
 ### Documentation
 - N/A
@@ -97,7 +97,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `hooks`, `bug`, `captured`
 
+## Resolution
+
+**Status**: Fixed
+**Fixed in**: `hooks/scripts/user-prompt-check.sh:81`
+**Changes**:
+- Fixed `HOOK_PROMPT_FILE` to use `${SCRIPT_DIR}/../prompts/optimize-prompt-hook.md` instead of `${CLAUDE_PLUGIN_ROOT:-$SCRIPT_DIR/..}/prompts/optimize-prompt-hook.md`
+- Added regression test `test_optimization_template_injected_when_claude_plugin_root_set` to `TestUserPromptCheck` in `scripts/tests/test_hooks_integration.py`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T23:28:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74ed0a05-427c-4cde-be9e-c27bca1af60d.jsonl`
 - `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11d3fbe6-350d-468f-8c22-27df726df3ea.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:57:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8abe37ac-d35f-4eda-a4e9-ca0e44b84ecc.jsonl`
 - `/ll:format-issue` - 2026-03-23T22:42:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
@@ -106,4 +115,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-03-23 | Priority: P2
+**Completed** | Created: 2026-03-23 | Closed: 2026-03-23 | Priority: P2

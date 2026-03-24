@@ -102,7 +102,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `hooks`, `context-monitor`, `robustness`, `captured`
 
+## Resolution
+
+Fixed by adding `2>/dev/null || echo` fallbacks to all jq calls missing them:
+
+- `hooks/scripts/context-monitor.sh` lines 45-46: `TOOL_NAME` and `TOOL_RESPONSE`
+- `hooks/scripts/issue-completion-log.sh` lines 19, 23, 29: `TOOL_NAME`, `CMD`, `TRANSCRIPT_PATH`
+
+Verified: `echo "" | bash hooks/scripts/context-monitor.sh` and `echo "" | bash hooks/scripts/issue-completion-log.sh` both exit 0.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-23T23:23:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07eabfc6-8cf9-4a50-b98f-384bafdc2aa3.jsonl`
 - `/ll:confidence-check` - 2026-03-23T22:50:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
 - `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
 - `/ll:refine-issue` - 2026-03-23T22:32:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/667ecdfb-f85c-42f2-aa72-56e3ee0847e1.jsonl`
