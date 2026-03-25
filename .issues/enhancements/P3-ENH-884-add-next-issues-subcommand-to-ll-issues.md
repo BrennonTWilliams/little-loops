@@ -1,13 +1,15 @@
 ---
 discovered_date: 2026-03-24
 discovered_by: /ll:capture-issue
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-884: Add `next-issues` subcommand to `ll-issues`
 
 ## Summary
 
-`ll-issues next-issue` (alias `nx`) returns only the single highest-ranked active issue. A list variant — `next-issues` (alias `nxs`) — is needed to return the full ranked queue, using the same three-tier sort: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int`. Supports `--json`, `--path`, and `--limit` flags.
+`ll-issues next-issue` (alias `nx`) returns only the single highest-ranked active issue. A list variant — `next-issues` (alias `nxs`) — is needed to return the full ranked queue, using the same three-tier sort: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int`. Supports `--json`, `--path`, and an optional positional count argument.
 
 ## Current Behavior
 
@@ -18,13 +20,13 @@ Only `next-issue` / `nx` exists, returning a single issue. There is no way to ge
 `ll-issues next-issues` prints all active issues in ranked order, one ID per line. Flags:
 - `--json`: output JSON array with `id`, `path`, `outcome_confidence`, `confidence_score`, `priority` per item
 - `--path`: output one file path per line
-- `--limit N` / `-n N`: cap results at N items
+- `N` (optional positional int): cap results at N items
 
 Exit codes: `0` = at least one issue found, `1` = no active issues.
 
 ```
 ll-issues next-issues
-ll-issues next-issues --limit 5
+ll-issues next-issues 5
 ll-issues next-issues --json
 ll-issues nxs --path
 ```
@@ -35,7 +37,7 @@ Automation loops and scripts that need to process multiple issues in priority or
 
 ## Proposed Solution
 
-Mirror `next_issue.py` in a new `next_issues.py` module. Sort all active issues by the same three-tier key, slice with `limit`, then output via the requested format flag.
+Mirror `next_issue.py` in a new `next_issues.py` module. Sort all active issues by the same three-tier key, slice with `count`, then output via the requested format flag.
 
 ```python
 def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
@@ -49,8 +51,8 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
         i.priority_int,
     ))
 
-    limit = getattr(args, "limit", None)
-    ranked = issues[:limit] if limit else issues
+    count = getattr(args, "count", None)
+    ranked = issues[:count] if count else issues
 
     if getattr(args, "json", False):
         print_json([{"id": i.issue_id, "path": str(i.path),
@@ -69,7 +71,7 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
     return 0
 ```
 
-Register in `scripts/little_loops/cli/issues/__init__.py` with alias `nxs`, `--json`, `--path`, `--limit`/`-n` flags, and epilog examples.
+Register in `scripts/little_loops/cli/issues/__init__.py` with alias `nxs`, `--json`, `--path` flags, optional positional `count` (`nargs="?", type=int`), and epilog examples.
 
 ## Integration Map
 
@@ -92,13 +94,23 @@ Register in `scripts/little_loops/cli/issues/__init__.py` with alias `nxs`, `--j
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/cli/output.py:97` — `print_json(data: Any)` calls `json.dumps(data, indent=2)`; accepts both `dict` and `list`, so `print_json([...])` works without modification
+- `scripts/little_loops/cli/issues/__init__.py:324-332` — exact registration pattern for `next-issue` / `nx` alias: `subs.add_parser("next-issue", aliases=["nx"])`, then `nx.set_defaults(command="next-issue")`, then dispatch via `if args.command == "next-issue":`; follow the same pattern for `"next-issues"` / `"nxs"`
+- `scripts/little_loops/cli/issues/__init__.py:367-368` — dispatch block location: add `if args.command == "next-issues": return cmd_next_issues(config, args)` immediately after the `next-issue` dispatch block
+- `scripts/little_loops/cli/issues/__init__.py:130-134` — `nargs="?"` positional precedent: `search` uses `query: nargs="?", default=None` without `type`; for `count`, `type=int` **must** be specified or argparse passes a string
+- `scripts/tests/test_next_issue.py:292-314` — `test_json_flag_output_shape` asserts `json.loads(out)` is a dict; for `next-issues`, assert `isinstance(data, list)` and check `data[0]["id"]`, `data[0]["path"]`, `data[0]["outcome_confidence"]`, `data[0]["confidence_score"]`, `data[0]["priority"]`
+
 ## Implementation Steps
 
 1. Create `scripts/little_loops/cli/issues/next_issues.py` with `cmd_next_issues`
-2. Register in `__init__.py`: import, subparser (`next-issues` + alias `nxs`), flags (`--json`, `--path`, `--limit`/`-n`), dispatch, epilog
+2. Register in `__init__.py`: import, subparser (`next-issues` + alias `nxs`), flags (`--json`, `--path`), positional `count` (`nargs="?"`), dispatch, epilog
 3. Create `scripts/tests/test_next_issues.py` with 7 test cases:
    - `test_returns_all_issues_in_ranked_order`
-   - `test_limit_caps_results`
+   - `test_count_caps_results`
    - `test_default_output_is_ids_one_per_line`
    - `test_json_flag_returns_array`
    - `test_path_flag_returns_paths`
@@ -131,4 +143,6 @@ Register in `scripts/little_loops/cli/issues/__init__.py` with alias `nxs`, `--j
 ---
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-25T02:34:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf417607-090b-45cf-9a30-9183f02b6bda.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/260efed5-c346-4a55-ab79-a03e97451fe4.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6397182f-baef-4093-8056-e07b0b54b84b.jsonl`

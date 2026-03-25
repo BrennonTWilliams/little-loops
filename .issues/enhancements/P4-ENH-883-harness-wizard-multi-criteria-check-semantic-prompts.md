@@ -5,8 +5,8 @@ priority: P4
 status: open
 discovered_date: 2026-03-24
 discovered_by: capture-issue
-confidence_score: 98
-outcome_confidence: 71
+confidence_score: 100
+outcome_confidence: 78
 ---
 
 # ENH-883: Harness wizard should generate multi-criteria `check_semantic` evaluation prompts
@@ -68,17 +68,17 @@ evaluate:
 
 > **Note**: The issue originally referenced "Step H2" but the relevant wizard step is **Step H3** (Evaluation Phases) at `skills/create-loop/loop-types.md:603`. Step H2 is "Work Item Discovery". The "What does done look like?" question currently exists only in the Custom prompt path (`loop-types.md:575`).
 
-1. **Add follow-up sub-questions in Step H3** (`skills/create-loop/loop-types.md:624-630`) — after the existing `"If 'Skill-based evaluation' is selected"` block, add a parallel block:
+1. **Add follow-up sub-questions in Step H3** — insert after the Skill-based follow-up block at `skills/create-loop/loop-types.md:641-645` (before the "Default selection" note at line 647):
 
    ```
-   **If "LLM-as-judge" is selected**, ask (single AskUserQuestion with two questions, following the pattern in Step H4 at loop-types.md:636-659):
+   **If "LLM-as-judge" is selected**, ask (single AskUserQuestion with two questions, following the pattern in Step H4 at loop-types.md:651-676):
    - "What should be different in the output after the skill runs successfully?"
    - "What would indicate the skill failed or made no progress?"
    ```
 
 2. **Update the prompt template in both YAML variants** — replace the `<auto-derived>` placeholder:
-   - Variant A (`loop-types.md:705`): Replace the single-question `prompt:` with a numbered multi-criteria block using the two answers from Step H3
-   - Variant B (`loop-types.md:767`): Same replacement
+   - Variant A (`loop-types.md:733`): Replace the single-question `prompt:` with a numbered multi-criteria block using the two answers from Step H3
+   - Variant B (`loop-types.md:806`): Same replacement
 
 3. **For skill catalog selections** (not custom prompts), pre-populate the sub-questions with suggested criteria derived from the selected skill's SKILL.md description (already read at `loop-types.md:558`). The description string currently feeds into `<skill-description>` — extend this to suggest criterion wording as option labels/descriptions in the AskUserQuestion.
 
@@ -88,8 +88,8 @@ evaluate:
    - Line ~601: Update the `check_semantic.evaluate.prompt` customization tip to mention multi-criteria format
 
 5. **Update built-in example harness files**:
-   - `loops/harness-single-shot.yaml:121-124` — Replace single-criterion prompt with multi-criteria example
-   - `loops/harness-multi-item.yaml:146-149` — Same
+   - `loops/harness-single-shot.yaml:123-126` — Reformat three-condition prose prompt to numbered multi-criteria list
+   - `loops/harness-multi-item.yaml:148-151` — Same
 
 ## API/Interface
 
@@ -120,15 +120,15 @@ evaluate:
 
 ### Files to Modify
 
-- `skills/create-loop/loop-types.md:603-630` — Step H3: Add follow-up AskUserQuestion after "LLM-as-judge" selection (mirroring the Skill-based evaluation follow-up at line 624)
-- `skills/create-loop/loop-types.md:700-707` — Variant A `check_semantic` template: Replace `<auto-derived>` placeholder with multi-criteria numbered format using user answers
-- `skills/create-loop/loop-types.md:762-768` — Variant B `check_semantic` template: Same replacement
+- `skills/create-loop/loop-types.md:641-645` — Step H3: Insert follow-up AskUserQuestion block after Skill-based follow-up (before "Default selection" note at line 647); mirror the Skill-based follow-up pattern at lines 641–645 and the H4 two-question AskUserQuestion structure at lines 651–676
+- `skills/create-loop/loop-types.md:733` — Variant A `check_semantic` template: Replace `<auto-derived>` placeholder with multi-criteria numbered format using user answers
+- `skills/create-loop/loop-types.md:806` — Variant B `check_semantic` template: Same replacement
 - `skills/create-loop/loop-types.md:575` — Custom prompt path: Extend "What does 'done' look like?" to also use the two-question format for consistency
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:219-233` — Update LLM-as-Judge section example prompt
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:~404-415` — Update Variant A worked example
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:~468-476` — Update Variant B worked example
-- `loops/harness-single-shot.yaml:121-124` — Update example `check_semantic` prompt
-- `loops/harness-multi-item.yaml:146-149` — Update example `check_semantic` prompt
+- `loops/harness-single-shot.yaml:123-126` — Update example `check_semantic` prompt (three-condition prose → numbered list)
+- `loops/harness-multi-item.yaml:148-151` — Update example `check_semantic` prompt (three-condition prose → numbered list)
 
 ### Dependent Files (Read-Only / Context)
 
@@ -149,8 +149,32 @@ evaluate:
 
 ### Similar Patterns to Follow
 
-- `skills/create-loop/loop-types.md:636-659` — Step H4 two-question AskUserQuestion in a single call; use this exact pattern structure for the H3 LLM-as-judge follow-up
+- `skills/create-loop/loop-types.md:651-676` — Step H4 two-question AskUserQuestion in a single call; use this exact pattern structure for the H3 LLM-as-judge follow-up
 - `loops/oracles/oracle-capture-issue.yaml:65-98` — Multi-criteria scoring pattern with numbered dimensions and explicit positive/negative signals per criterion
+
+### Codebase Research Findings
+
+_Updated by `/ll:refine-issue` — re-verified after `check_stall` and `check_skill` wizard commits shifted lines:_
+
+**Verified line ranges in `skills/create-loop/loop-types.md`** (as of 2026-03-24):
+- Step H3 header at line 603; LLM-as-judge option at lines 635–636; no LLM-as-judge follow-up exists — confirmed gap
+- Skill-based follow-up block (reference pattern) at lines 641–645
+- Insertion point for new LLM-as-judge follow-up: after line 645, before line 647 ("Default selection" note)
+- Step H4 two-question AskUserQuestion pattern (structural reference): lines 651–676
+- Variant A `check_semantic` block: lines 727–735; `evaluate.prompt` placeholder at line 733
+- Variant B `check_semantic` block: lines 800–808; `evaluate.prompt` placeholder at line 806
+- Custom prompt "done" question: line 575 (unchanged)
+
+**`skills/create-loop/templates.md`**: Contains no `check_semantic` states or `evaluate.prompt` fields — **no changes needed**. Resolves the prior "additional file to audit" uncertainty.
+
+**Corrected line ranges in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`**:
+- Lines 219–233: LLM-as-Judge section — confirmed correct
+- Variant A worked example: lines 406–415
+- Variant B worked example: lines 469–478
+
+**Current harness YAML prompts** (three-condition prose — need reformatting to numbered list):
+- `loops/harness-single-shot.yaml:123–126` — prose: "at least one file was modified, no errors were reported, and the task appears complete"
+- `loops/harness-multi-item.yaml:148–151` — prose: "the item was meaningfully updated, no errors occurred, and the overall quality improved"
 
 ## Scope Boundaries
 
@@ -177,7 +201,11 @@ evaluate:
 **Open** | Created: 2026-03-24 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-25T04:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39ccdd92-6e91-4cbf-a732-3a2195f532e6.jsonl`
+- `/ll:refine-issue` - 2026-03-25T03:36:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f0c9302-3842-474a-b57f-bab3e4187f1d.jsonl`
+- `/ll:refine-issue` - 2026-03-25T02:34:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d706ae24-efb5-4d22-b384-27e1793cb625.jsonl`
 - `/ll:format-issue` - 2026-03-25T01:57:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15f2515b-b7d9-4642-9556-f9fa1158773a.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e447577-879b-46c6-bd2c-f3b7cdd1e037.jsonl`
 - `/ll:refine-issue` - 2026-03-25T00:48:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7bda774-ec89-44b3-8910-da455deea386.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`
