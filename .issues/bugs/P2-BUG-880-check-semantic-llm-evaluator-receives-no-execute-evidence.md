@@ -6,7 +6,7 @@ status: open
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 86
+outcome_confidence: 93
 ---
 
 # BUG-880: Wizard-generated `check_semantic` provides no evidence to LLM evaluator
@@ -93,8 +93,10 @@ All working examples in the codebase use `capture:` + `${captured.*}` for cross-
 
 ### Tests
 
+- `scripts/tests/test_builtin_loops.py` — run after harness YAML changes to confirm schema validity; **also add assertions** that:
+  - `execute` state has `capture: execute_result`
+  - `check_semantic.evaluate` has `source: "${captured.execute_result.output}"`
 - `scripts/tests/test_ll_loop_execution.py:968-1097` — `TestEvaluateSource` class has 3 existing tests for `source` redirect (no new executor tests needed)
-- `scripts/tests/test_builtin_loops.py` — run after harness YAML changes to confirm schema validity
 
 ### Documentation
 
@@ -102,27 +104,25 @@ All working examples in the codebase use `capture:` + `${captured.*}` for cross-
 
 ## Implementation Steps
 
-1. In the `check_semantic` state template in `skills/create-loop/`, add `source: "${prev.output}"` to the `evaluate` block
-2. Verify `${prev.output}` resolves correctly in `InterpolationContext` (it maps to `self.prev_result["output"]` in `executor._build_context()`)
-3. Update the generated examples in `loops/harness-single-shot.yaml` and `loops/harness-multi-item.yaml`
-4. Update `AUTOMATIC_HARNESSING_GUIDE.md` — the "Why echo?" note is currently misleading (see BUG-881)
+1. Add `capture: execute_result` to the `execute` state in:
+   - `skills/create-loop/loop-types.md:685-699` (Variant A execute template)
+   - `skills/create-loop/loop-types.md:750-761` (Variant B execute template)
+   - `skills/create-loop/loop-types.md:872-875` (worked example execute state)
+   - `loops/harness-single-shot.yaml:26-35`
+   - `loops/harness-multi-item.yaml:53-64`
 
-### Codebase Research Findings
+2. Add `source: "${captured.execute_result.output}"` to the `evaluate` block in each `check_semantic` state in:
+   - `skills/create-loop/loop-types.md:700-707` (Variant A check_semantic)
+   - `skills/create-loop/loop-types.md:762-769` (Variant B check_semantic)
+   - `skills/create-loop/loop-types.md:883-893` (worked example check_semantic)
+   - `loops/harness-single-shot.yaml:111-127`
+   - `loops/harness-multi-item.yaml:136-152`
 
-_Added by `/ll:refine-issue` — concrete file references and correction to steps 1-2:_
+3. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` to confirm schema validity; add content-level assertions for `capture:` and `source:` fields (see Tests section).
 
-**Step 1 correction**: Use `source: "${captured.execute_result.output}"` (not `${prev.output}`). Both changes required per file:
-- `skills/create-loop/loop-types.md:700-707` — add `source:` to `check_semantic.evaluate`; add `capture: execute_result` to the `execute:` state template in the same section
-- `skills/create-loop/loop-types.md:762-769` — same for Variant B
-- `skills/create-loop/loop-types.md:883-893` — same in worked example
+4. Documentation update (`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:219-231`) is delegated to BUG-881.
 
-**Step 2 correction**: `${captured.execute_result.output}` is the correct expression. Resolution path: `executor.py:877` → `interpolate()` → `InterpolationContext.resolve("captured", "execute_result.output")` at `interpolation.py:65-100`. This path is tested at `test_ll_loop_execution.py:971-1056` (`TestEvaluateSource` class).
-
-**Step 3 (concrete)**:
-- `loops/harness-single-shot.yaml:111-127` — add `source: "${captured.execute_result.output}"` to `check_semantic.evaluate`; locate `execute:` state and add `capture: execute_result`
-- `loops/harness-multi-item.yaml:136-152` — same changes
-
-**Step 4**: `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:219-231` — delegated to BUG-881
+_Resolution path_: `executor.py:877` → `interpolate()` → `InterpolationContext.resolve("captured", "execute_result.output")` at `interpolation.py:65-100`. Tested at `test_ll_loop_execution.py:971-1056` (`TestEvaluateSource`).
 
 ## Labels
 
@@ -133,6 +133,8 @@ _Added by `/ll:refine-issue` — concrete file references and correction to step
 **Open** | Created: 2026-03-24 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-24T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88391aba-1dba-40f4-b113-08613df7cb9c.jsonl`
+- `/ll:refine-issue` - 2026-03-25T02:09:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dacde480-5f26-48cb-ae84-f2d6f73fd4cf.jsonl`
 - `/ll:format-issue` - 2026-03-25T00:53:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4305bbc5-4892-4b4e-80f3-917b53ab0916.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3382032-d4c8-4648-a0b4-57042264a675.jsonl`
 - `/ll:refine-issue` - 2026-03-25T00:44:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84c297f5-2cfd-4de2-a219-ef0c285314b0.jsonl`

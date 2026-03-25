@@ -3,6 +3,8 @@ discovered_commit: 30872893
 discovered_branch: main
 discovered_date: 2026-03-24T00:00:00Z
 discovered_by: capture-issue
+confidence_score: 80
+outcome_confidence: 100
 ---
 
 # ENH-879: Elevate check_skill prominence in wizard — distinguish phases by observability, not cost
@@ -65,36 +67,53 @@ N/A — No public API changes. This is a wizard text and framing change only.
 
 ## Implementation Steps
 
-1. Read the current check phase selection step in `skills/create-loop/SKILL.md`
-2. Add an observability table (or concise text equivalent) before the phase selection prompt to establish the mental model
-3. Relabel `check_skill` from "Optional" to something that conveys its unique capability (e.g., "Recommended — only phase that validates real user behavior")
-4. Separate `check_skill` from `check_semantic` visually or textually with explanatory distinction (external observation vs. self-report)
-5. Subordinate cost information to observability framing (cost as tiebreaker, not primary organizer)
-6. Review the wizard flow for consistency with the guide's existing `check_skill` description
+1. Open `skills/create-loop/loop-types.md` and navigate to Step H3 (line ~603)
+2. Add an observability table as a blockquote context block before the `AskUserQuestion` yaml — model after `docs/guides/LOOPS_GUIDE.md:895-904`; include phase name, what it can observe, and latency
+3. Relabel `check_skill` option from `"Skill-based evaluation (Optional)"` (line 620) to `"Skill-based validation (Recommended — only phase that validates real user behavior)"`
+4. Reorder options: move skill-based validation to 2nd position (after tool-based gates, before LLM-as-judge) to reflect observational hierarchy
+5. Update LLM-as-judge description to clarify it's self-report/bias-prone, distinguishing it from skill-based external observation
+6. Update default selection note (line 630) to reinforce that skill-based validation is the highest-fidelity gate, not just an optional extra
+7. No changes to `review-loop/SKILL.md` — no check phase text present
+8. (Optional consistency follow-up) Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:339-344` to match the new wizard framing — it mirrors the old wizard H3 step verbatim; and update the `# OPTIONAL: check_skill` comment in `loops/harness-single-shot.yaml:91`
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/create-loop/SKILL.md` — wizard prompt text for check phase selection
+- `skills/create-loop/loop-types.md:603-631` — Step H3: Evaluation Phases — the actual wizard question block; `SKILL.md` delegates to this file for type-specific question flows
 
 ### Files to Read for Context
-- `skills/review-loop/SKILL.md` — may reference check phase descriptions
-- `docs/` — any loop configuration guide that describes check phases
+- `docs/guides/LOOPS_GUIDE.md:895-904` — observability table already present; model the wizard framing after this table
+- `skills/create-loop/SKILL.md:83` — confirms harness type states: `discover, execute, check_concrete, check_semantic, check_invariants, advance, done`
 
 ### Dependent Files (Callers/Importers)
 - N/A — wizard prompt text; no callers/importers
 
 ### Similar Patterns
-- `skills/review-loop/SKILL.md` — check phase descriptions may use similar framing; review for consistency
+- `docs/guides/LOOPS_GUIDE.md:895-904` — correct observability framing already used in guide docs; wizard should match
 
 ### Tests
 - N/A — wizard text change; no automated tests to update
 
 ### Documentation
-- Covered in Files to Read for Context above
+- `skills/review-loop/SKILL.md` — no check phase descriptions present; no consistency changes needed
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Exact location**: `skills/create-loop/loop-types.md:607-631` — Step H3 contains the full wizard question block with the "Optional" label
+- **Current "Optional" label**: Line 620 — `label: "Skill-based evaluation (Optional)"` with description "Invoke a skill to act as a user and verify the feature end-to-end"
+- **Current ordering**: Tool-based gates → LLM-as-judge → Diff invariants → Skill-based evaluation (last position)
+- **Default note at line 630**: "Skill-based evaluation is unselected by default — add it when a skill can verify something the other phases cannot observe"
+- **Guide framing (model)** at `docs/guides/LOOPS_GUIDE.md:895-904`: already has the correct observability table with latency column — wizard should echo this framing
+- **`review-loop/SKILL.md`**: no check phase text; no changes required for consistency
+- **Consistency targets (out of scope per issue boundaries, but worth noting)**:
+  - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:339-344` — guide renders the wizard H3 step verbatim with the same "Optional" label; will need a follow-up update for consistency
+  - `loops/harness-single-shot.yaml:91` — shipped example has `# OPTIONAL: check_skill` header comment; reinforces the wrong framing
+- **State list discrepancy**: `skills/create-loop/SKILL.md:83` lists harness states as `discover, execute, check_concrete, check_semantic, check_invariants, advance, done` — `check_skill` is absent, though `loop-types.md:689` generates it conditionally; this may need separate correction
 
 ---
 
@@ -109,10 +128,22 @@ N/A — No public API changes. This is a wizard text and framing change only.
 
 `enhancement`, `wizard`, `create-loop`, `ux`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-03-24_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 100/100 → HIGH CONFIDENCE
+
+### Concerns
+- **Implementation already exists in working tree**: All five prescribed changes from ENH-879 are already applied to `skills/create-loop/loop-types.md` (unstaged). The work is done — verify correctness and close this issue rather than re-implementing.
+
 ## Status
 
-Open
+Completed — 2026-03-24. All prescribed changes applied to `skills/create-loop/loop-types.md`: observability table added, `check_skill` relabeled and elevated to 2nd position, LLM-as-judge distinguished as self-report/bias-prone, default note strengthened.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:refine-issue` - 2026-03-25T02:04:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9d20766-f11c-4f34-906a-8e749b37605d.jsonl`
 - `/ll:format-issue` - 2026-03-25T01:57:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cecd92d-7688-41c8-8c77-72f94f04500c.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee142cb2-b955-483a-a13b-7ca611c8d2cf.jsonl`
