@@ -2862,6 +2862,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `next-action` | Next refinement action needed across all active issues (for FSM loop use) |
 | `next-issue` | Single highest-confidence issue ID (alias: `nx`) |
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
+| `append-log` | Append a session log entry to an issue file |
 
 #### next-issues
 
