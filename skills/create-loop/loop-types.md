@@ -611,6 +611,7 @@ Read `.claude/ll-config.json` to detect configured tool commands (`test_cmd`, `l
 > | Phase | What it can observe | Latency |
 > |-------|--------------------|---------|
 > | Tool-based gates | Objective regressions — tests, types, lint | < 1s |
+> | Stall detection | No-op iterations — detects prompt-based skills that make no file changes | < 1s |
 > | Skill-based validation | **Real user behavior** — the only phase that exercises the feature as a real user would | 30–300s |
 > | LLM-as-judge | Self-assessed output quality — the LLM evaluates its own output (bias-prone) | 3–10s |
 > | Diff invariants | Runaway scope — catches unexpectedly large changes | < 1s |
@@ -626,6 +627,9 @@ questions:
       - label: "Tool-based gates (Recommended)"
         description: "Shell checks using configured test/lint/type commands"
         # Show only if at least one of test_cmd, lint_cmd, type_cmd is configured
+      - label: "Stall detection (Recommended for prompt-based skills)"
+        description: "Detects no-op iterations — catches skills that return 'already done' without making file changes"
+        # Pre-selected by default: all H1 choices produce prompt-based execution
       - label: "Skill-based validation (Recommended — only phase that validates real user behavior)"
         description: "A skill acts as a real user to verify the feature end-to-end — external observation, not self-report"
       - label: "LLM-as-judge"
@@ -692,7 +696,16 @@ states:
     action: "<skill-or-prompt>"
     action_type: prompt
     capture: execute_result      # captured as ${captured.execute_result.output}
-    next: check_concrete         # omit if no tool gates selected
+    next: check_stall            # or check_concrete / check_semantic / check_invariants / done if stall detection omitted
+  check_stall:                   # include if stall detection selected (recommended for prompt-based skills)
+    action: "echo 'checking stall'"
+    action_type: shell
+    evaluate:
+      type: diff_stall
+      max_stall: 2
+    on_yes: check_concrete       # or check_semantic / check_invariants / done if later phases omitted
+    on_no: done                  # stalled in single-shot mode → nothing more to do
+    on_error: done
   check_concrete:                # include if tool-based gates selected
     action: "<highest-priority configured cmd: test_cmd > lint_cmd > type_cmd>"
     action_type: shell
@@ -756,7 +769,16 @@ states:
     capture: execute_result      # captured as ${captured.execute_result.output}
     max_retries: <per-item-retries>        # optional: skip stuck items automatically
     on_retry_exhausted: advance            # optional: route here when retries exceeded
-    next: check_concrete         # or check_semantic / check_invariants / advance
+    next: check_stall            # or check_concrete / check_semantic / check_invariants / advance if stall detection omitted
+  check_stall:                   # include if stall detection selected (recommended for prompt-based skills)
+    action: "echo 'checking stall'"
+    action_type: shell
+    evaluate:
+      type: diff_stall
+      max_stall: 2
+    on_yes: check_concrete       # or check_semantic / check_invariants / advance if later phases omitted
+    on_no: advance               # stalled → skip item, move to next
+    on_error: check_concrete
   check_concrete:                # include if tool-based gates selected
     action: "<highest-priority configured cmd>"
     action_type: shell

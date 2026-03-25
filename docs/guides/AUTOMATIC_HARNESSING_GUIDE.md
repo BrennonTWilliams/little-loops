@@ -14,6 +14,7 @@ The hard problem in automated iteration isn't running the skill — it's knowing
   - [Skill-as-Judge (`check_skill`)](#skill-as-judge-check_skill)
   - [LLM-as-Judge (`check_semantic`)](#llm-as-judge-check_semantic)
   - [Diff Invariants (`check_invariants`)](#diff-invariants-check_invariants)
+  - [Stall Detection (`check_stall`)](#stall-detection-check_stall)
 - [When to Use a Harness](#when-to-use-a-harness)
 - [Creating a Harness: The 4-Step Wizard](#creating-a-harness-the-4-step-wizard)
   - [Step H1: Choose a Target](#step-h1-choose-a-target)
@@ -23,7 +24,6 @@ The hard problem in automated iteration isn't running the skill — it's knowing
 - [Generated FSM Structure](#generated-fsm-structure)
   - [Variant A: Single-Shot](#variant-a-single-shot)
   - [Variant B: Multi-Item](#variant-b-multi-item)
-- [Stall Detection](#stall-detection)
 - [Using the Example Files](#using-the-example-files)
 - [Worked Example: Harness `refine-issue`](#worked-example-harness-refine-issue)
 - [Tips](#tips)
@@ -238,11 +238,51 @@ Runs `git diff --stat HEAD | wc -l | tr -d ' '` and checks that the line count i
 
 Adjust the `target` value for skills that intentionally make large changes.
 
+### Stall Detection (`check_stall`) {#stall-detection-check_stall}
+
+Add a `check_stall` state when a skill might loop without making any code changes. This is especially important for prompt-based skills that sometimes conclude "nothing to do" — without stall detection, they exhaust `max_iterations` silently.
+
+**When to add stall detection:**
+- The action uses `action_type: prompt` and may no-op
+- You see a harness exhausting `max_iterations` without git commits
+- The skill being harnessed sometimes returns "already done"
+
+**Placement**: Insert `check_stall` between `execute` and the first check state (e.g., `check_concrete`). In this position, use `on_yes: check_concrete` (or whichever check state comes first) and `on_no: advance` (multi-item) or `on_no: done` (single-shot).
+
+```yaml
+check_stall:
+  action: "echo 'checking stall'"     # output ignored by diff_stall
+  action_type: shell
+  evaluate:
+    type: diff_stall
+    scope: ["scripts/"]    # optional: limit diff to specific paths
+    max_stall: 2           # optional: consecutive no-change iterations before stall
+  on_yes: check_concrete   # progress detected — proceed to evaluation chain
+  on_no: advance           # stalled — skip item (use on_no: done for single-shot)
+  on_error: check_concrete
+```
+
+**`diff_stall` field reference:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `scope` | `list[str]` | *(entire repo)* | Paths to limit `git diff --stat` to |
+| `max_stall` | `int` | `1` | Consecutive no-change iterations before failure verdict |
+
+**Verdicts:**
+
+| Verdict | Meaning |
+|---------|---------|
+| `yes` | Progress detected (diff changed) |
+| `no` | Stalled — no changes for `max_stall` consecutive iterations |
+| `error` | git unavailable or command failed |
+
 ---
 
-**Full 5-phase ordering (with all phases active):**
+**Full 6-phase ordering (with all phases active):**
 
 ```
+check_stall      → no-op detection (diff_stall, <1s) — first, before any evaluation cost
 check_concrete   → cheapest (exit code, <1s)
 check_mcp        → deterministic tool call (~500ms)
 check_skill      → agentic user simulation (30–300s)
@@ -254,6 +294,7 @@ check_invariants → diff size (cheapest final gate)
 
 | Phase | Use when |
 |-------|---------|
+| `check_stall` (diff_stall) | The action is prompt-based and may no-op silently |
 | `check_concrete` (shell) | A CLI tool exit-codes on pass/fail |
 | `check_mcp` (mcp_tool) | An MCP server can deterministically verify the result |
 | `check_skill` (slash_command + llm_structured) | A skill can exercise the feature end-to-end as a user would |
@@ -333,14 +374,15 @@ The active issues command filters for `status == 'open'`, prints the first issue
 
 ### Step H3: Evaluation Phases
 
-The wizard reads `.claude/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
+The wizard reads `.claude/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected; stall detection is pre-selected by default since all H1 choices produce prompt-based execution. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
 
 ```
 Which evaluation phases should be included? (multi-select)
-  ☑ Tool-based gates (Recommended)   — Shell checks using test/lint/type commands
-  ☑ LLM-as-judge                     — Claude assesses output against skill description
-  ☑ Diff invariants                  — git diff --stat line count < 50
-  ○ Skill-based evaluation (Optional) — Invoke a skill to exercise and verify the feature as a user would
+  ☑ Tool-based gates (Recommended)                      — Shell checks using test/lint/type commands
+  ☑ Stall detection (Recommended for prompt-based skills) — Detects no-op iterations
+  ☑ LLM-as-judge                                        — Claude assesses output against skill description
+  ☑ Diff invariants                                     — git diff --stat line count < 50
+  ○ Skill-based evaluation (Optional)                   — Invoke a skill to exercise and verify the feature as a user would
 ```
 
 > **Note**: `check_mcp` is not offered by the wizard. If your harness requires an MCP tool call for evaluation, add a `check_mcp` state manually to the generated YAML after wizard completion. See [`check_mcp`](#mcp-tool-gates-check_mcp) in the Evaluation Phases Explained section for the required fields.
@@ -499,51 +541,6 @@ states:
 > **`max_retries` + `on_retry_exhausted`**: Adding these to `execute` is the key safeguard in multi-item loops. Without them, one item that never passes evaluation will consume the entire `max_iterations` budget. With them, the loop skips the stuck item and moves on after `max_retries` attempts.
 
 > **Ready-to-run example**: [`loops/harness-multi-item.yaml`](../../loops/harness-multi-item.yaml) is a fully annotated version of this variant with all five evaluation phases active, including `check_mcp` and `check_skill`. See [Using the Example Files](#using-the-example-files) below.
-
----
-
-## Stall Detection
-
-Add a `check_stall` state when a skill might loop without making any code changes. This is especially important for prompt-based skills that sometimes conclude "nothing to do" — without stall detection, they exhaust `max_iterations` silently.
-
-**When to add stall detection:**
-- The action uses `action_type: prompt` and may no-op
-- You see a harness exhausting `max_iterations` without git commits
-- The skill being harnessed sometimes returns "already done"
-
-**Placement**: Insert `check_stall` between `check_invariants` and `advance` (as shown in the example below). Alternatively, insert it between `execute` and the first check state — in that placement, use `on_yes: check_concrete` (or whichever check state comes first) instead of `on_yes: advance`.
-
-```yaml
-check_stall:
-  action: "echo 'checking stall'"     # output ignored by diff_stall
-  action_type: shell
-  evaluate:
-    type: diff_stall
-    scope: ["scripts/"]    # optional: limit diff to specific paths
-    max_stall: 2           # optional: consecutive no-change iterations before stall
-  on_yes: advance          # progress detected — move on
-  on_no: skip_item         # stalled — skip without consuming more iterations
-
-skip_item:
-  action: echo "Skipping ${captured.current_item.output} after stall detection"
-  action_type: shell
-  next: discover
-```
-
-**`diff_stall` field reference:**
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `scope` | `list[str]` | *(entire repo)* | Paths to limit `git diff --stat` to |
-| `max_stall` | `int` | `1` | Consecutive no-change iterations before failure verdict |
-
-**Verdicts:**
-
-| Verdict | Meaning |
-|---------|---------|
-| `yes` | Progress detected (diff changed) |
-| `no` | Stalled — no changes for `max_stall` consecutive iterations |
-| `error` | git unavailable or command failed |
 
 ---
 
