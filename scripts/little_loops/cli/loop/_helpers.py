@@ -84,7 +84,7 @@ def register_loop_signal_handlers(executor: Any, pid_file: Path | None = None) -
 
 def get_builtin_loops_dir() -> Path:
     """Get the path to built-in loops bundled with the plugin."""
-    return Path(__file__).parent.parent.parent.parent.parent / "loops"
+    return Path(__file__).parent.parent.parent / "loops"
 
 
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:

@@ -126,14 +126,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Fixed** in commit via `/ll:manage-issue`.
+
+- Moved `loops/` from repo root to `scripts/little_loops/loops/` so it is bundled with the wheel
+- Fixed `get_builtin_loops_dir()` to use 3 `.parent` traversals instead of 5
+- Updated `BUILTIN_LOOPS_DIR` constant in `test_builtin_loops.py` to point to new location
+- All 118 tests pass
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-03-25T17:35:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5335882-175d-435d-a540-0e53b9380dc2.jsonl`
+- `/ll:ready-issue` - 2026-03-25T17:32:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/289f5133-7e21-4c35-85ec-45ca43171748.jsonl`
 - `/ll:confidence-check` - 2026-03-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9205761a-6cf9-4d88-ad9c-044132ce6444.jsonl`
 - `/ll:refine-issue` - 2026-03-25T17:14:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e1845c1-50e0-42b1-b711-63e54cda9cc6.jsonl`
 - `/ll:format-issue` - 2026-03-25T17:11:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dd7859e-e6b7-48ad-8887-66c0ff4ff68b.jsonl`
 - `/ll:capture-issue` - 2026-03-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af344de7-e693-4b47-b015-a17dc5930e72.jsonl`
+- `/ll:manage-issue` - 2026-03-25T00:00:00Z - active
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-25 | Priority: P2
+**Completed** | Created: 2026-03-25 | Resolved: 2026-03-25 | Priority: P2
