@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-25
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 71
 ---
 
 # BUG-885: Built-in loops missing after pip install
@@ -77,23 +79,27 @@ Use `importlib.resources` / `importlib.metadata` to resolve the package data pat
 - `loops/` → `scripts/little_loops/loops/` — move directory
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/info.py` — calls `get_builtin_loops_dir()`
-- `scripts/little_loops/cli/loop/run.py` — calls `get_builtin_loops_dir()`
-- `scripts/little_loops/cli/loop/config_cmds.py` — calls `get_builtin_loops_dir()`
+- `scripts/little_loops/cli/loop/info.py:90` — `cmd_list()` calls `get_builtin_loops_dir()` directly, globs `*.yaml` from it
+- `scripts/little_loops/cli/loop/run.py:35` — `cmd_run()` constructs path directly as `get_builtin_loops_dir() / f"{loop_name}.yaml"` (bypasses `resolve_loop_path()`)
+- `scripts/little_loops/cli/loop/config_cmds.py:45` — `cmd_install()` calls it directly to build source path for copying a built-in loop into `.loops/`
+- `scripts/little_loops/cli/loop/_helpers.py:107` — `resolve_loop_path()` calls `get_builtin_loops_dir()` as a fallback when name not found in project `loops_dir`; `load_loop()` (line 114) and `load_loop_with_spec()` (line 128) both call `resolve_loop_path()`, making them indirect callers
 
 ### Similar Patterns
-- `scripts/little_loops/cli/loop/_helpers.py:resolve_loop_path` — uses `get_builtin_loops_dir()`, no change needed
+- `scripts/little_loops/cli/loop/_helpers.py:90-111` — `resolve_loop_path()` fallback chain; only the final fallback (line 107) calls `get_builtin_loops_dir()` — no change needed here beyond the path fix
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — update path expectations after move
-- `scripts/tests/test_ll_loop_commands.py` — patches `get_builtin_loops_dir`, may need path updates
+- `scripts/tests/test_ll_loop_commands.py` — patches `little_loops.cli.loop.info.get_builtin_loops_dir` at lines 150, 262, 290, 313; mock return values pointing to old path will need updating to reflect new location
 
 ### Documentation
-- `docs/guides/loops.md` — verify any path references
-- `loops/README.md` — update after move to new location
+- `docs/guides/LOOPS_GUIDE.md` — verify any path references (note: not `loops.md`)
+- `loops/README.md` → `scripts/little_loops/loops/README.md` — update after move to new location
 
 ### Configuration
-- `scripts/pyproject.toml` — verify `packages = ["little_loops"]` is sufficient (hatchling includes all files under the package)
+- `scripts/pyproject.toml:76-78` — has both `packages = ["little_loops"]` AND `include = ["little_loops/**", "LICENSE"]`; the explicit `include` pattern confirms that after moving `loops/` into `scripts/little_loops/loops/`, all files will be packaged automatically — no additional `include` rule needed
+
+### Note: `oracles/` Subdirectory
+- `loops/oracles/oracle-capture-issue.yaml` exists but none of the current lookup logic (globs or direct path construction) traverses subdirectories — only top-level `*.yaml` files are discoverable. This behavior continues after the move and is pre-existing, not introduced by this fix.
 
 ## Implementation Steps
 
@@ -121,6 +127,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9205761a-6cf9-4d88-ad9c-044132ce6444.jsonl`
+- `/ll:refine-issue` - 2026-03-25T17:14:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e1845c1-50e0-42b1-b711-63e54cda9cc6.jsonl`
+- `/ll:format-issue` - 2026-03-25T17:11:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dd7859e-e6b7-48ad-8887-66c0ff4ff68b.jsonl`
 - `/ll:capture-issue` - 2026-03-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af344de7-e693-4b47-b015-a17dc5930e72.jsonl`
 
 ---
