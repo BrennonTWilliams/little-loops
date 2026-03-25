@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.64.0] - 2026-03-24
+
+### Added
+
+- **`refine-status` ISSUE-ID single-issue filter** — Filter `refine-status` output to inspect a single issue (FEAT-873)
+- **`next-issue` command sorted by confidence and readiness** — New `ll-issues next-issue` subcommand to find the most implementation-ready issue by confidence and readiness scores (FEAT-874)
+- **`next-issues` subcommand with ranked list output** — New `ll-issues next-issues` subcommand showing a ranked list of issues prioritized for implementation (ENH-884)
+
+### Fixed
+
+- **Display timing bug in non-TTY environments** — Add `flush=True` to all `print()` calls so output appears immediately when running in external projects (BUG-876)
+- **`check_semantic` evaluator receives no evidence from skill execution** — Wire execute-phase output to the `check_semantic` LLM evaluator so it has context to evaluate (BUG-880)
+- **`AUTOMATIC_HARNESSING_GUIDE` incorrectly describes `check_semantic` access** — Correct the echo-output explanation to accurately describe how `check_semantic` accesses prior output (BUG-881)
+- **Scraper type safety** — Tighten types and defer crawler assignment until after `start()` (7a672ad3)
+
+### Changed
+
+- **`--auto` flag for `commit` skill** — Enable non-interactive automation use of the commit skill for use in FSM loops and ll-auto (ENH-875)
+- **Add `refine_status` and `cli` to Full Configuration Example** — Fill in missing sections in the configuration reference documentation (ENH-877)
+- **Loop-name header bar above top-level FSM diagram** — Display a visual header bar with the loop name when `--show-diagrams` is used (ENH-878)
+- **Elevate `check_skill` prominence in harness wizard** — Distinguish evaluation phases by observability rather than cost, making check_skill the recommended first choice (ENH-879)
+- **Harness wizard pre-selects `check_stall` for `action_type: prompt`** — Improve wizard defaults to auto-select stall detection when the execute phase uses a prompt action (ENH-882)
+- **Harness wizard generates multi-criteria `check_semantic` evaluation prompts** — Wizard now generates richer, multi-criteria evaluation prompts for `check_semantic` phases (ENH-883)
+
 ## [1.63.0] - 2026-03-23
 
 ### Added
@@ -173,6 +197,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.64.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.63.0...v1.64.0
 [1.63.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.62.0...v1.63.0
 [1.62.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.1...v1.62.0
 [1.61.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.0...v1.61.1
