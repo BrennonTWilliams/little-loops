@@ -1,0 +1,47 @@
+name: "refine-to-ready-issue"
+initial: resolve_issue
+max_iterations: 20
+on_handoff: spawn
+
+states:
+  resolve_issue:
+    action: >-
+      { [ -n "${context.input}" ] && printf '%s' "${context.input}" ||
+      ll-issues next-issue; } | tr -d '\n\r '
+    action_type: shell
+    capture: issue_id
+    next: format_issue
+    on_error: failed
+
+  format_issue:
+    action: "/ll:format-issue ${captured.issue_id.output} --auto"
+    action_type: slash_command
+    next: refine_issue
+    on_error: failed
+
+  refine_issue:
+    action: "/ll:refine-issue ${captured.issue_id.output} --auto"
+    action_type: slash_command
+    next: confidence_check
+    on_error: failed
+
+  confidence_check:
+    action: "/ll:confidence-check ${captured.issue_id.output}"
+    action_type: slash_command
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Review the confidence check output for issue
+        ${captured.issue_id.output}. Answer YES only if BOTH
+        thresholds are met: (1) Readiness Score > 90, and
+        (2) Outcome Confidence Score > 75. Answer NO if
+        either score does not meet its threshold.
+    on_yes: done
+    on_no: refine_issue
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
