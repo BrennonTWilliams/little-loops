@@ -204,6 +204,8 @@ Default edge color mapping (see `Output Color Reference > Edge colors` above for
 
 Edge label colors are **user-configurable** via `cli.colors.fsm_edge_labels` in `ll-config.json`. See [`CONFIGURATION.md → cli.colors.fsm_edge_labels`](CONFIGURATION.md#clicolorsfsm_edge_labels).
 
+The active state highlight color is configurable via `cli.colors.fsm_active_state` (default: green `32`). See [`CONFIGURATION.md → cli.colors.fsm_active_state`](CONFIGURATION.md#clicolorsfsm_active_state).
+
 ### State overview table
 
 `_print_state_overview_table(fsm)` (`cli/loop/info.py`) renders a compact aligned table below the diagram:

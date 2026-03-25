@@ -182,6 +182,26 @@ For interactive editing, use `/ll:configure`.
   "cli": {
     "color": true,
     "colors": {
+      "logger": {
+        "info": "36",
+        "success": "32",
+        "warning": "33",
+        "error": "38;5;208"
+      },
+      "priority": {
+        "P0": "38;5;208;1",
+        "P1": "38;5;208",
+        "P2": "33",
+        "P3": "0",
+        "P4": "2",
+        "P5": "2"
+      },
+      "type": {
+        "BUG": "38;5;208",
+        "FEAT": "32",
+        "ENH": "34"
+      },
+      "fsm_active_state": "32",
       "fsm_edge_labels": {}
     }
   }
@@ -460,6 +480,68 @@ Dependency mapping threshold configuration for overlap detection and conflict sc
 | `exclude_common_files` | See below | Infrastructure files excluded from overlap detection |
 
 Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"]`
+
+### `cli`
+
+CLI output settings.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `color` | `true` | Enable ANSI color output. Set to `false` for CI or plain-text terminals. Also suppressed by the `NO_COLOR` environment variable. |
+
+### `cli.colors.logger`
+
+Override ANSI color codes for log-level output from all `ll-*` tools.
+
+| Key | Default ANSI | Appearance |
+|-----|-------------|------------|
+| `info` | `36` | Cyan |
+| `success` | `32` | Green |
+| `warning` | `33` | Yellow |
+| `error` | `38;5;208` | Orange |
+
+### `cli.colors.priority`
+
+Override ANSI color codes for issue priority labels in list and card output.
+
+| Key | Default ANSI | Appearance |
+|-----|-------------|------------|
+| `P0` | `38;5;208;1` | Bold orange |
+| `P1` | `38;5;208` | Orange |
+| `P2` | `33` | Yellow |
+| `P3` | `0` | Default |
+| `P4` | `2` | Dim |
+| `P5` | `2` | Dim |
+
+### `cli.colors.type`
+
+Override ANSI color codes for issue type labels in list and card output.
+
+| Key | Default ANSI | Appearance |
+|-----|-------------|------------|
+| `BUG` | `38;5;208` | Orange |
+| `FEAT` | `32` | Green |
+| `ENH` | `34` | Blue |
+
+### `cli.colors.fsm_active_state`
+
+ANSI color code for the currently active state box highlight in FSM diagrams (shown with `--show-diagrams`).
+
+| Key | Default ANSI | Appearance |
+|-----|-------------|------------|
+| `fsm_active_state` | `32` | Green |
+
+**Example** — use blue for the active state:
+
+```json
+{
+  "cli": {
+    "colors": {
+      "fsm_active_state": "34"
+    }
+  }
+}
+```
 
 ### `cli.colors.fsm_edge_labels`
 
