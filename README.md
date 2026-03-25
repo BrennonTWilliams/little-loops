@@ -397,6 +397,10 @@ ll-issues refine-status FEAT-873             # Single-issue view
 ll-issues refine-status FEAT-873 --json      # Single issue as JSON object
 ll-issues next-action                         # Next refinement action needed (for FSM loop use)
 ll-issues next-issue                          # Highest-confidence issue ID (for FSM loop use)
+ll-issues next-issues                         # All active issues in ranked order (alias: nxs)
+ll-issues next-issues 5                       # Top 5 ranked issues
+ll-issues nxs --json                          # Ranked list as JSON array
+ll-issues nxs --path                          # Ranked list as file paths
 ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
 ```
 

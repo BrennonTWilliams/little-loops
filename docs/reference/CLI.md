@@ -499,6 +499,21 @@ Print the issue ranked highest by outcome confidence and readiness score. Design
 | `--path` | Output only the file path (useful for shell scripting: `$(ll-issues next-issue --path)`) |
 | `--config` | Path to project root |
 
+#### `ll-issues next-issues [N]` / `ll-issues nxs [N]`
+
+Print all active issues in ranked order by outcome confidence and readiness score. Designed for FSM loop integration — use this to get a ranked list of all issues, not just the top one.
+
+**Sort order:** `outcome_confidence` (desc), `confidence_score` (desc), `priority` (asc). Issues without scores are ranked below all scored issues.
+
+**Exit codes:** 0 = at least one issue found, 1 = no active issues.
+
+| Flag/Arg | Description |
+|----------|-------------|
+| `N` | Optional count — limit output to top N issues |
+| `--json` | Output a JSON array of objects: `{id, path, outcome_confidence, confidence_score, priority}` |
+| `--path` | Output file paths instead of issue IDs |
+| `--config` | Path to project root |
+
 #### `ll-issues append-log <issue_path> <log_command>` / `ll-issues al`
 
 Append a session log entry to an issue file.
@@ -540,6 +555,10 @@ ll-issues next-action --ready-threshold 90       # Stricter readiness threshold
 ll-issues next-issue                             # Highest-confidence issue ID
 ll-issues next-issue --json                      # As JSON: {id, path, outcome_confidence, confidence_score, priority}
 ll-issues next-issue --path                      # File path only (for shell scripting)
+ll-issues next-issues                            # All active issues in ranked order
+ll-issues next-issues 5                          # Top 5 ranked issues
+ll-issues nxs --json                             # Ranked list as JSON array
+ll-issues nxs --path                             # Ranked list as file paths
 ll-issues append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
 ```
 

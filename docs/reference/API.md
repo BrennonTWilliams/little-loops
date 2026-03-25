@@ -2859,6 +2859,39 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `sequence` | Suggest dependency-ordered implementation sequence |
 | `impact-effort` | Display impact vs effort matrix for active issues |
 | `refine-status` | Refinement depth table sorted by commands touched (`--type`, `--format json`) |
+| `next-action` | Next refinement action needed across all active issues (for FSM loop use) |
+| `next-issue` | Single highest-confidence issue ID (alias: `nx`) |
+| `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
+
+#### next-issues
+
+```
+ll-issues next-issues [COUNT] [--json] [--path]
+ll-issues nxs [COUNT] [--json] [--path]
+```
+
+Print all active issues sorted by outcome confidence, readiness score, and priority. Returns one issue ID per line by default.
+
+**Arguments:**
+- `COUNT` - Optional integer; limit output to top N issues
+
+**Output flags:**
+- `--json` - Output as a JSON array with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`
+- `--path` - Output one file path per line instead of IDs
+
+**Exit codes:** 0 when at least one issue found; 1 when no active issues exist.
+
+**Sort key**: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int`
+
+**Examples:**
+```bash
+ll-issues next-issues           # all active issues ranked
+ll-issues next-issues 5         # top 5 only
+ll-issues nxs --json            # ranked list as JSON array
+ll-issues nxs --path            # ranked list as file paths
+```
+
+**FSM loop use**: Pair with `ll-issues next-issue` (singular) when you need only the top item; use `next-issues` when you want to seed a loop queue or inspect the full ranked backlog.
 
 #### search
 
