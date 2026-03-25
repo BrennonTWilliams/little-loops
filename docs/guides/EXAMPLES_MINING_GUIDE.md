@@ -145,6 +145,10 @@ The `harvest` state runs `ll-messages` with `--examples-format` to extract `(inp
 }
 ```
 
+> **ResponseMetadata** — A JSON object automatically captured by little-loops at issue completion.
+> Key fields: `issue_id` (string), `skill` (string), `duration_ms` (number), `tool_calls` (array),
+> `exit_status` (string). You don't create this manually — the harness captures it automatically.
+
 **Important**: the `output` field is not free text. It is a JSON-serialized `ResponseMetadata` object recording what tools the agent used and what files it changed — not the raw assistant response. The oracle judge evaluates tool choices and file changes, not prose quality.
 
 On the first run, no sentinel file exists and all sessions are harvested. On subsequent runs, `--since $(cat corpus.last_harvested)` limits the query to sessions added after the last publish.
@@ -217,6 +221,8 @@ The calibrate state assigns a `difficulty_score` (0–100) to each surviving can
 | 0–39 | Trivially easy | Excluded — won't produce gradient signal |
 | 40–80 | Informatively challenging | **Included** |
 | 81–100 | Noise-level hard | Excluded — will always fail, wasting LLM calls |
+
+This range targets non-trivial but learnable examples — too easy (< 40) provides no training signal; too hard (> 80) causes instability.
 
 If `corpus_state_file` (default: `corpus.json`) exists, calibrate loads it, decays each existing entry's `freshness_weight` by ×0.9, and merges with today's included set (deduplicating by input text). This preserves the accumulated corpus across runs while progressively down-weighting stale examples.
 
@@ -359,8 +365,8 @@ Each object in the published `examples.json` array has the following fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `input` | string | Concatenated preceding user messages (context window) |
-| `expected` | string | JSON-serialized `ResponseMetadata` — NOT free text |
+| `input` * | string | Concatenated preceding user messages (context window) |
+| `expected` * | string | JSON-serialized `ResponseMetadata` — NOT free text |
 | `source` | `"harvested"` \| `"adversarial"` | Provenance |
 | `difficulty_score` | 0–100 | Estimated pass-rate difficulty; 40–80 = active band |
 | `failure_cluster` | string \| null | `FAILURE_PATTERN` tag for adversarial examples; null for harvested |
@@ -371,6 +377,8 @@ Each object in the published `examples.json` array has the following fields:
 | `persistence_age` | integer | Harvested: average commit count for still-present files |
 | `revision_distance` | 0.0–1.0 | Harvested: how much the linked issue was revised post-invocation |
 | `oracle_score` | 0–100 | Quality gate score from the oracle rubric |
+
+Fields marked * are required. All others are metadata used by the miner.
 
 `apo-textgrad` reads only `input` and `expected` — the other fields are miner bookkeeping and are preserved across re-runs.
 
@@ -468,6 +476,11 @@ ll-loop run examples-miner --context skill_name=<name> ...
 
 ## The Oracle Sub-loop (v2 Upgrade)
 
+This upgrade is optional for most projects. Adopt it when your quality rubric needs to vary per-skill rather than using a global judge.
+
+> **Advanced** — The v2 oracle pattern requires familiarity with nested FSM loops.
+> Complete the rest of this guide before attempting this upgrade.
+
 The built-in `examples-miner.yaml` uses inline LLM judging in the `judge` and `score_adversarial` states. This is a generic rubric that works across all skills but doesn't know skill-specific invariants.
 
 For production use on a specific skill, upgrade to a dedicated oracle sub-loop:
@@ -528,7 +541,7 @@ ll-loop run examples-miner --verbose \
   --context prompt_file=skills/capture-issue/SKILL.md
 ```
 
-What to watch at each stage:
+The states correspond to the pipeline stages described in [How the Pipeline Works](#how-the-pipeline-works) above. What to watch for at each state:
 
 | State | What to look for |
 |-------|-----------------|

@@ -1,5 +1,7 @@
 # Automatic Harnessing Guide
 
+A harness loop wraps your skill in a multi-stage quality pipeline — automatically retrying until the output passes your quality bar.
+
 The hard problem in automated iteration isn't running the skill — it's knowing when the output is actually good. A harness loop is a quality evaluation pipeline that applies a skill or prompt to work items, then evaluates the result from multiple angles before advancing: mechanical tests catch regressions, LLM judgment assesses semantic quality, user-simulation skills verify the experience as a real user would, and diff invariants catch runaway changes. The wizard auto-derives this evaluation framework from your project config so you don't write it by hand.
 
 ---
@@ -240,6 +242,16 @@ Runs `git diff --stat HEAD | wc -l | tr -d ' '` and checks that the line count i
 
 Adjust the `target` value for skills that intentionally make large changes.
 
+### Referencing Captured Outputs
+
+Use `${captured.<state_name>.output}` to pass output from one state to a later state:
+
+```yaml
+prompt: "Review this output: ${captured.execute.output}"
+```
+
+Use `${prev.output}` to reference the immediately preceding state's output.
+
 ### Stall Detection (`check_stall`) {#stall-detection-check_stall}
 
 Add a `check_stall` state when a skill might loop without making any code changes. This is especially important for prompt-based skills that sometimes conclude "nothing to do" — without stall detection, they exhaust `max_iterations` silently.
@@ -249,7 +261,7 @@ Add a `check_stall` state when a skill might loop without making any code change
 - You see a harness exhausting `max_iterations` without git commits
 - The skill being harnessed sometimes returns "already done"
 
-**Placement**: Insert `check_stall` between `execute` and the first check state (e.g., `check_concrete`). In this position, use `on_yes: check_concrete` (or whichever check state comes first) and `on_no: advance` (multi-item) or `on_no: done` (single-shot).
+**Placement**: Insert `check_stall` between `execute` and the first check state (e.g., `check_concrete`). In this position, use `on_yes: check_concrete` (or whichever check state comes first) and `on_no: advance` (multi-item) or `on_no: done` (single-shot). Placing it here avoids making LLM-based quality checks on output from a run that has already stalled.
 
 ```yaml
 check_stall:
@@ -376,7 +388,7 @@ The active issues command filters for `status == 'open'`, prints the first issue
 
 ### Step H3: Evaluation Phases
 
-The wizard reads `.claude/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected; stall detection is pre-selected by default since all H1 choices produce prompt-based execution. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
+The wizard reads `.claude/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected (default, can be changed); stall detection is pre-selected by default since all H1 choices produce prompt-based execution. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
 
 ```
 Which evaluation phases should be included? (multi-select)

@@ -99,7 +99,7 @@ Issue IDs in the sprint list are resolved to actual files at runtime. The sprint
 
 ## Creating a Sprint
 
-### Interactive: /ll:create-sprint
+### Interactive: `/ll:create-sprint`
 
 ```
 /ll:create-sprint
@@ -225,8 +225,8 @@ Use `--dry-run` to see this plan without executing anything.
 
 Each wave runs as follows:
 
-- **Single-issue wave**: [`manage-issue`](/ll:manage-issue) runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner
-- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With [`use_feature_branches: true`](/docs/reference/CONFIGURATION.md) in `ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
+- **Single-issue wave**: `/ll:manage-issue` runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner
+- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With `use_feature_branches: true` in `ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
 
 After each wave completes:
 - State is checkpointed to `.sprint-state.json`
@@ -252,7 +252,7 @@ Send `Ctrl+C` once to request graceful shutdown. The runner finishes the current
 
 ## Handling Interruptions (Resume)
 
-Sprint state persists across interruptions. The state file lives at `.sprint-state.json` in the repository root and contains:
+If a sprint is interrupted — by `Ctrl+C`, a system restart, or a tool crash — you can resume it exactly where it left off using `ll-sprint run sprint-name --resume`. Sprint state persists across interruptions. The state file lives at `.sprint-state.json` in the repository root and contains:
 
 - Sprint name and which wave is current
 - Completed and failed issue IDs
@@ -401,6 +401,21 @@ ll-sprint run sprint-name --resume    ← finds .sprint-state.json, continues
 ll-sprint show sprint-name            ← see which issues completed/failed
 ll-sprint run sprint-name --resume
 ```
+
+### Picking Up After a Partial Failure
+
+When a sprint finishes but some issues failed, address failures without re-running the whole sprint:
+
+```
+1. ll-sprint show sprint-name              ← review which issues failed and why
+2. /ll:refine-issue ISSUE-ID               ← investigate and update each failed issue
+3. ll-sprint edit sprint-name --prune      ← remove any issues that are now completed/invalid
+4. ll-sprint run sprint-name --only FAILED-ID-1,FAILED-ID-2
+                                           ← re-run only the failed issues
+5. ll-sprint show sprint-name              ← confirm all issues completed
+```
+
+If a failed issue blocks downstream issues, fix it first — the wave structure ensures dependents run after.
 
 ### Pre-PR Quality Sprint
 

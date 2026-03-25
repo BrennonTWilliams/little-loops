@@ -133,7 +133,7 @@ Automation tools handle handoff automatically:
 
 ### `/ll:handoff`
 
-Generates a continuation prompt capturing current session state. Uses a **conversation-first approach** by default - summarizing the conversation history already in context without running external commands.
+Generates a continuation prompt capturing current session state. **Summarizes conversation history without running external tools** by default - using the conversation history already in context.
 
 **Usage:**
 
@@ -332,6 +332,9 @@ When `continuation.auto_detect_on_session_start` is `true` (the default), little
 
 ### Transcript Baseline Mode (Default)
 
+> **Advanced** — This section explains internal token estimation mechanics.
+> Most users can skip this. It's useful if you're tuning `threshold` for maximum accuracy.
+
 By default (`use_transcript_baseline: true`), the monitor uses the JSONL transcript at `transcript_path` (provided by the PostToolUse hook payload) as an API-exact baseline:
 
 1. **Read** `input_tokens + cache_creation_input_tokens + cache_read_input_tokens + output_tokens` from the last `assistant` entry in the transcript
@@ -350,6 +353,8 @@ The transcript has a one-turn lag (it reflects the last completed API call). The
 ### Token Estimation Weights
 
 The context monitor estimates the current-turn delta based on tool activity:
+
+> **Advanced** — These weights are pre-tuned and rarely need adjustment.
 
 | Tool | Estimation | Rationale |
 |------|------------|-----------|
@@ -374,6 +379,8 @@ The context monitor estimates the current-turn delta based on tool activity:
 ### State File Format
 
 `.claude/ll-context-state.json`:
+
+You'll rarely need to inspect this directly, but it's useful for debugging stuck continuations.
 
 ```json
 {

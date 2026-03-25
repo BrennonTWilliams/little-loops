@@ -40,6 +40,18 @@ P2-BUG-042-sprint-runner-ignores-failed-issues.md
 
 Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../reference/ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
 
+```yaml
+---
+id: BUG-042
+title: Fix login timeout
+status: open
+priority: P2
+blocked_by: []
+---
+```
+
+For the full frontmatter schema, see the [Issue Template reference](../reference/ISSUE_TEMPLATE.md).
+
 **Code references always use anchors, not line numbers.** Write `in function _cmd_sprint_run()`, not `at line 1847`. Line numbers drift; function names don't.
 
 ## The Lifecycle
@@ -87,6 +99,19 @@ Issues move through seven states:
 ```
 
 Issues can also be **deferred** (parked for later) using `/ll:manage-issue <type> defer <ID>` and later restored with `undefer`.
+
+### Reopen a Completed Issue
+
+When a fix regresses or an issue was closed prematurely:
+
+```
+1. Move file from .issues/completed/ back to the appropriate type directory
+   e.g.: .issues/completed/P2-BUG-042-...md → .issues/bugs/P2-BUG-042-...md
+2. Update Status footer: **Reopened** | Reopened: 2026-02-24 | Reason: regression in commit abc123
+3. Add a "Reopen Note" section explaining what changed
+4. Run /ll:verify-issues <file> to refresh codebase claims
+5. Continue from Phase 3 (validate) or Phase 4 (implement)
+```
 
 Not every issue goes through every state. A trivial bug fix might go Discovered → Ready → Completed in one session. A large feature might stay in Validating for multiple refinement cycles.
 
@@ -147,6 +172,10 @@ Refinement transforms raw captures into implementation-ready issues. The steps r
 6. tradeoff-review-issues ← prune low-value issues
 ```
 
+> **When to skip steps:** `normalize` and `prioritize` are safe to run on every issue.
+> Skip `verify` for issues you just wrote yourself. Skip `align` if you're not using a goals doc.
+> Skip `refine` for small, well-understood bugs.
+
 You don't have to run all six on every issue. A well-described issue captured from conversation might skip normalize and go straight to format → refine → verify.
 
 ### Fixing Filenames
@@ -155,7 +184,7 @@ You don't have to run all six on every issue. A well-described issue captured fr
 /ll:normalize-issues
 ```
 
-Scans all issue files for naming problems: missing priority prefix, missing or duplicate ID numbers, incorrect type codes, malformed descriptions. Renames files to match the convention. Run this after any bulk import or after manually creating files.
+Scans all issue files for naming problems: missing priority prefix, missing or duplicate ID numbers, incorrect type codes, malformed descriptions. Renames files to match the convention (renames files only — does not edit issue content). Run this after any bulk import or after manually creating files.
 
 ### Setting Priorities
 
@@ -353,7 +382,7 @@ Or use `/ll:commit` to have the skill draft the commit message from the diff and
 
 ---
 
-## Automation: Batch Processing
+## Running Issues in Bulk
 
 When you have many issues to process, the CLI tools can handle them in bulk without manual prompting between each one.
 
@@ -439,19 +468,6 @@ When you inherit an unfamiliar project and need to understand what's broken:
 ```
 
 After triage, you have a prioritized backlog of real problems with dependency ordering. Start with P0/P1 issues and work down.
-
-### Reopen a Completed Issue
-
-When a fix regresses or an issue was closed prematurely:
-
-```
-1. Move file from .issues/completed/ back to the appropriate type directory
-   e.g.: .issues/completed/P2-BUG-042-...md → .issues/bugs/P2-BUG-042-...md
-2. Update Status footer: **Reopened** | Reopened: 2026-02-24 | Reason: regression in commit abc123
-3. Add a "Reopen Note" section explaining what changed
-4. Run /ll:verify-issues <file> to refresh codebase claims
-5. Continue from Phase 3 (validate) or Phase 4 (implement)
-```
 
 ---
 

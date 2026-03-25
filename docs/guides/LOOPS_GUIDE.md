@@ -3,34 +3,14 @@
 ## Contents
 
 - [What Is a Loop?](#what-is-a-loop)
+- [Quick Start](#quick-start)
 - [How Loops Work](#how-loops-work)
 - [Common Loop Patterns](#common-loop-patterns)
 - [Walkthrough: Creating and Running a Loop](#walkthrough-creating-and-running-a-loop)
 - [Built-in Loops](#built-in-loops)
 - [Beyond the Basics](#beyond-the-basics)
-  - [Evaluators](#evaluators)
-  - [Variable Interpolation](#variable-interpolation)
-  - [Capture](#capture)
-  - [Routing](#routing)
-  - [Action Types](#action-types)
-  - [Retry and Timing Fields](#retry-and-timing-fields)
-  - [Handoff Behavior](#handoff-behavior)
-  - [Scope-Based Concurrency](#scope-based-concurrency)
 - [Prompt Optimization Loops (APO)](#prompt-optimization-loops-apo)
-  - [apo-feedback-refinement](#apo-feedback-refinement--feedback-driven-refinement)
-  - [apo-contrastive](#apo-contrastive--contrastive-optimization)
-  - [apo-opro](#apo-opro--opro-style-history-guided-optimization)
-  - [apo-beam](#apo-beam--beam-search-optimization)
-  - [apo-textgrad](#apo-textgrad--textgrad-example-driven-gradient-descent)
-  - [examples-miner](#examples-miner--co-evolutionary-corpus-mining)
-  - [Choosing Between APO Loops](#choosing-between-apo-loops)
-  - [Tips for APO Loops](#tips-for-apo-loops)
 - [Harness Loops](#harness-loops)
-  - [The Evaluation Pipeline](#the-evaluation-pipeline)
-  - [Creating a Harness](#creating-a-harness)
-  - [FSM Structure](#fsm-structure)
-  - [Stall Detection](#stall-detection)
-  - [When to Use a Harness vs. Hand-Authored Loop](#when-to-use-a-harness-vs-hand-authored-loop)
 - [CLI Quick Reference](#cli-quick-reference)
 - [Pattern: Using --check with Exit Code Evaluators](#pattern-using---check-with-exit-code-evaluators)
 - [Tips](#tips)
@@ -50,6 +30,22 @@ Why does this matter? LLMs are stateless — they don't remember what happened t
 You write:    FSM YAML (or use /ll:create-loop)
 You run:      ll-loop run <name>
 ```
+
+## Quick Start
+
+The fastest way to create and run a loop:
+
+1. **Create**: `/ll:create-loop` — answer the wizard prompts
+2. **Validate**: `ll-loop validate <name>` — check your YAML for errors
+3. **Run**: `ll-loop run <name>` — start the loop
+
+For a walkthrough of a real example, see [Walkthrough: Creating and Running a Loop](#walkthrough-creating-and-running-a-loop) below.
+
+### When NOT to Use a Loop
+
+Loops add overhead — a YAML file, state management, and retry logic. For a one-off task,
+just run the command directly. Use a loop when you need: automatic retry on failure,
+repeated execution on a schedule, or quality gates that must pass before moving forward.
 
 ## How Loops Work
 
@@ -571,6 +567,9 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 
 ## Prompt Optimization Loops (APO)
 
+> **Advanced** — APO loops tune prompts automatically. Most users won't need these.
+> Start with standard loops and return here when you have a specific prompt quality problem.
+
 Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
 
 Five built-in APO loops ship with little-loops:
@@ -869,6 +868,15 @@ ll-loop run examples-miner \
 
 ### Choosing Between APO Loops
 
+| Trigger | Recommended loop |
+|---------|-----------------|
+| Output quality varies run-to-run | `apo-feedback-refinement` |
+| Need to compare two prompt versions | `apo-contrastive` |
+| Optimizing a prompt against a fixed metric | `apo-opro` |
+| Want to explore multiple prompt candidates | `apo-beam` |
+| Have gradient-like feedback signals | `apo-textgrad` |
+| Building a training example corpus | `examples-miner` |
+
 | | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` |
 |---|---|---|---|---|---|
 | Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) | Low (single targeted refinement) |
@@ -884,6 +892,9 @@ ll-loop run examples-miner \
 - **Install to customize**: run `ll-loop install apo-feedback-refinement` to copy the YAML to `.loops/` and edit state actions or add custom evaluation logic.
 
 ## Harness Loops
+
+> **Advanced** — See [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) for the
+> full harness guide. This section is a brief overview.
 
 A **harness loop** is a pre-structured FSM pattern that wraps a skill or prompt in a layered quality evaluation pipeline, then repeats over a list of work items — or runs once in single-shot mode. The `/ll:create-loop` wizard auto-derives the evaluation framework from your project config so you don't write it by hand.
 

@@ -139,6 +139,19 @@ All outputs are written to `.claude/workflow-analysis/`:
 - `tool_references` — slash commands and tools mentioned in messages
 - `entity_inventory` — files, commands, and concepts referenced across messages
 
+Here's what a typical pattern entry looks like:
+
+```yaml
+# Example entry from step1-patterns.yaml
+- pattern: run_tests_after_edit
+  category: code_quality
+  frequency: 7
+  examples:
+    - "run the tests after making this change"
+    - "check if tests still pass"
+  confidence: 0.85
+```
+
 ### Key fields in `step2-workflows.yaml`
 
 - `session_links` — cross-session continuations (same entity worked on across multiple sessions)
@@ -163,7 +176,7 @@ You can run Step 2 independently — useful if you've run Step 1 manually or wan
 ```bash
 # Shortest form — assumes step1-patterns.yaml already exists from a prior Step 1 agent run;
 # sets the --input path to the default so ll-workflows can find it automatically
-ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
+ll-messages --output .claude/workflow-analysis/user-messages.jsonl
 ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
 
 # Explicit input
@@ -241,6 +254,9 @@ MEDIUM: score ≥ 4   →  3-4 occurrences, moderate friction
 LOW:    score < 4   →  1-2 occurrences, minor friction
 ```
 
+> **Note:** Frequency ≥ 5 is the threshold for *high-priority* automation. Lower-frequency
+> patterns can still appear in the output — they'll be scored as LOW or MEDIUM priority.
+
 Variable definitions:
 
 | Variable | Range | Meaning |
@@ -286,7 +302,7 @@ ll-messages -n 200                    # Extract recent messages
 
 ### Quick pattern check (Step 1 patterns only)
 
-Run only Step 1 to get a fast category breakdown without the full pipeline. Spawn the `workflow-pattern-analyzer` agent directly with the messages file as input:
+Run only Step 1 to get a fast category breakdown without the full pipeline. In Claude Code, run `/ll:analyze-workflows` to execute the full pipeline, or ask Claude to 'use the workflow-pattern-analyzer agent' to run Step 1 on its own.
 
 ```bash
 ll-messages                           # Extract messages to .claude/user-messages-{ts}.jsonl

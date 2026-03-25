@@ -41,8 +41,6 @@ The slash commands run inside Claude Code sessions. The CLI tools (`ll-auto`, `l
 pip install little-loops
 ```
 
-> **Contributing to little-loops?** Use the editable dev install instead: `pip install -e "./scripts[dev]"`
-
 ### Step 3: Verify
 
 ```bash
@@ -81,13 +79,13 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
 
 ### Flags
 
-| Flag | When to use it |
-|------|---------------|
-| _(none)_ | Auto-detect, preview settings, confirm before writing |
-| `--interactive` | Step through a guided wizard to configure every option |
-| `--yes` | Accept all auto-detected defaults without confirmation |
-| `--force` | Overwrite an existing `.claude/ll-config.json` |
-| `--dry-run` | Preview what would be generated without writing any files |
+| Flag | What it does | When to use it |
+|------|-------------|---------------|
+| _(none)_ | Auto-detects project type, previews settings, and asks for confirmation | Default — works for most projects |
+| `--interactive` | Launches a guided wizard to configure every option step by step | First setup when auto-detection won't cover non-standard tooling |
+| `--yes` | Accepts all auto-detected defaults without any confirmation prompts | When you trust the defaults and want a fast, non-interactive setup |
+| `--force` | Overwrites an existing `.claude/ll-config.json` | Re-initializing a project that already has a config |
+| `--dry-run` | Previews what would be generated without writing any files | Checking what `/ll:init` would produce before committing |
 
 `--interactive` and `--yes` are mutually exclusive. All other combinations are valid — for example, `--interactive --force` runs the wizard and overwrites the existing config, and `--dry-run --force` previews what an overwrite would produce.
 
@@ -161,7 +159,7 @@ The commit message follows conventional commit format. You approve before anythi
 
 A few things that trip up new users:
 
-### Filename Format
+### Filenames
 
 ```
 P2-BUG-042-sprint-runner-ignores-failed-issues.md
@@ -173,7 +171,13 @@ P2-BUG-042-sprint-runner-ignores-failed-issues.md
 
 IDs are globally unique across all types — you won't have both `BUG-007` and `FEAT-007`.
 
-### The `completed/` Directory
+### Status and Priority
+
+Priority levels run from P0 (critical, must fix immediately) to P5 (low, nice-to-have). The priority prefix in the filename determines ordering in automated runs — `ll-auto` and `ll-sprint` process lower numbers first. You can reassign priority at any time by renaming the file or running `/ll:prioritize-issues`.
+
+The `status` field inside the issue file tracks where the issue is in the workflow: `backlog`, `in-progress`, `blocked`, or `complete`. Automated tools read and update this field; you rarely need to edit it directly.
+
+### Directory Structure
 
 `.issues/completed/` is a **sibling** of `bugs/`, `features/`, and `enhancements/` — not nested inside any of them.
 
@@ -209,7 +213,7 @@ Root cause is at line 1847 in sprint.py.
 
 Three commands for finding problems and gaps proactively, without waiting for them to surface in production.
 
-### Scan the Codebase
+### Scanning Your Codebase
 
 ```bash
 /ll:scan-codebase
@@ -218,7 +222,14 @@ Three commands for finding problems and gaps proactively, without waiting for th
 
 Creates issue files for anything it finds. Run this periodically or after major refactors.
 
-### Scan Against Your Product Goals
+```bash
+/ll:audit-architecture
+#    → Identifies structural problems: coupling, missing abstractions, consistency issues
+```
+
+Analyzes code organization and design patterns rather than individual bugs. Good for understanding systemic issues in an unfamiliar codebase.
+
+### Goal-Oriented Scanning
 
 ```bash
 /ll:scan-product
@@ -227,14 +238,15 @@ Creates issue files for anything it finds. Run this periodically or after major 
 
 Requires a product goals file (configured in `ll-config.json`). Useful for identifying what the codebase is missing relative to what you said you wanted to build.
 
-### Audit Architecture
+### Manual Capture
+
+For issues you spot yourself — a bug you just hit, a feature request from a stakeholder, or a code smell you noticed during review — use `/ll:capture-issue` directly:
 
 ```bash
-/ll:audit-architecture
-#    → Identifies structural problems: coupling, missing abstractions, consistency issues
+/ll:capture-issue "description of the problem or idea"
 ```
 
-Analyzes code organization and design patterns rather than individual bugs. Good for understanding systemic issues in an unfamiliar codebase.
+This skips scanning entirely and creates a single issue file from your description. It's the fastest path from observation to a tracked issue.
 
 ### After Scanning
 
@@ -280,6 +292,8 @@ The eight commands you'll use most often:
 | `/ll:scan-codebase` | Static analysis to discover bugs and tech debt |
 | `/ll:prioritize-issues` | Assign P0-P5 priorities to issue files |
 | `/ll:create-sprint` | Create a sprint from active issues for batch execution |
+| `/ll:format-issue` | Validate and normalize issue file structure |
+| `/ll:refine-issue` | Fill knowledge gaps with codebase research |
 
 For the full list: `/ll:help` or see [Command Reference](../reference/COMMANDS.md).
 
@@ -304,3 +318,7 @@ Once you're comfortable with the basic workflow, each guide covers a deeper area
 - [Command Reference](../reference/COMMANDS.md) — Full slash command reference with arguments and examples
 - [Configuration Reference](../reference/CONFIGURATION.md) — All `ll-config.json` options
 - [Troubleshooting](../development/TROUBLESHOOTING.md) — Common issues and diagnostic commands
+
+---
+
+Contributing to little-loops? Use the editable dev install instead of the PyPI package: `pip install -e "./scripts[dev]"`. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for development setup and guidelines.
