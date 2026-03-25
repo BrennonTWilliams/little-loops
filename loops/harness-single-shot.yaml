@@ -121,9 +121,10 @@ states:
       type: llm_structured
       source: "${captured.execute_result.output}"
       prompt: >
-        Did the previous skill action successfully complete its task with meaningful changes?
-        Check that: at least one file was modified, no errors were reported, and the task
-        appears complete. Answer YES or NO with brief rationale.
+        Evaluate the previous action on these criteria:
+        1. At least one file was modified and the task appears meaningfully complete
+        2. Absence of failure signals: no errors were reported, no incomplete or partial output
+        Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
     on_yes: check_invariants          # quality confirmed → check diff size
     on_no: execute                    # quality not confirmed → retry
     on_partial: check_semantic        # ambiguous → re-evaluate

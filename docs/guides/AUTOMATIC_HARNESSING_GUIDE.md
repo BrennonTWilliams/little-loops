@@ -218,7 +218,7 @@ check_skill:
 
 ### LLM-as-Judge (`check_semantic`)
 
-Uses an `llm_structured` evaluator where Claude assesses whether the previous action achieved its intent. The evaluation prompt is auto-derived from the skill's description:
+Uses an `llm_structured` evaluator where Claude assesses whether the previous action achieved its intent. The wizard collects two criteria from the user — what should change on success and what indicates failure — and generates a numbered multi-criteria evaluation prompt:
 
 > **Why `echo` as the action?** `check_semantic` receives the echo string as `<action_output>` in the LLM prompt — an empty `echo` provides minimal evidence. To evaluate a prior state's output, set `source: "${captured.<var>.output}"` on the `evaluate` block, where `<var>` is the `capture` key on the source state. Note: `${prev.output}` at `check_semantic` resolves to `check_concrete`'s output (pytest results), not `execute`'s skill output — use the `capture` + `source` pattern instead (see production examples in `loops/issue-staleness-review.yaml:36-47`).
 
@@ -226,11 +226,13 @@ Uses an `llm_structured` evaluator where Claude assesses whether the previous ac
 evaluate:
   type: llm_structured
   prompt: >
-    Did the previous action successfully complete: <skill-description>?
-    Answer YES or NO with brief rationale.
+    Evaluate the previous action on these criteria:
+    1. [success criterion: what should be different after the skill runs successfully]
+    2. Absence of failure signals: [failure criterion: what would indicate the skill failed]
+    Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
 ```
 
-For custom prompts, the wizard uses your "What does 'done' look like?" answer as the evaluation criterion.
+The wizard asks two follow-up questions when LLM-as-judge is selected: "What should be different in the output after the skill runs successfully?" and "What would indicate the skill failed or made no progress?" The answers populate criteria 1 and 2 respectively. For custom prompts, the same two-question format applies.
 
 ### Diff Invariants (`check_invariants`)
 
@@ -451,8 +453,10 @@ states:
     evaluate:
       type: llm_structured
       prompt: >
-        Did the previous action successfully complete the code quality check?
-        Answer YES or NO with brief rationale.
+        Evaluate the previous action on these criteria:
+        1. No lint or type errors remain in the modified files
+        2. Absence of failure signals: no error output, no unresolved violations reported
+        Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
     on_yes: check_invariants
     on_no: execute
 
@@ -514,8 +518,10 @@ states:
     evaluate:
       type: llm_structured
       prompt: >
-        Did the previous action successfully refine the issue?
-        Answer YES or NO with brief rationale.
+        Evaluate the previous action on these criteria:
+        1. The issue file was meaningfully updated with new codebase-grounded information
+        2. Absence of failure signals: no error output, no unchanged or empty issue content
+        Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
     on_yes: check_invariants
     on_no: execute
 
@@ -595,7 +601,7 @@ Key fields to change:
 | `name` | A descriptive name for your loop |
 | `execute.action` | Your skill or prompt (e.g., `/ll:check-code --auto`) |
 | `check_concrete.action` | Your test/lint command, or remove the state entirely |
-| `check_semantic.evaluate.prompt` | A description of what "done" looks like for your skill |
+| `check_semantic.evaluate.prompt` | Multi-criteria numbered prompt: criterion 1 (what should change), criterion 2 (absence of failure signals) |
 | `check_invariants.evaluate.target` | Increase if your skill makes large diffs legitimately |
 | `discover.action` | Your item discovery command (multi-item only) |
 

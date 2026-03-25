@@ -572,7 +572,9 @@ questions:
         description: "Enter a free-form natural language prompt to repeat"
 ```
 
-**If "Custom prompt"**: Ask via Other input for the prompt text. Also ask: "What does 'done' look like?" (free text via Other) to derive the LLM-as-judge evaluation prompt.
+**If "Custom prompt"**: Ask via Other input for the prompt text. Then ask two follow-up questions to derive the LLM-as-judge evaluation prompt:
+- "What should be different in the output after the skill runs successfully?"
+- "What would indicate the skill failed or made no progress?"
 
 ---
 
@@ -643,6 +645,19 @@ questions:
 Which skill should act as evaluator?
   (Enter a skill name, e.g. "scrape-docs", or describe what to verify)
 ```
+
+**If "LLM-as-judge" is selected**, ask (single AskUserQuestion with two questions, following the pattern in Step H4):
+```
+You selected LLM-as-judge evaluation. Help define the criteria:
+
+What should be different in the output after the skill runs successfully?
+> [user input]
+
+What would indicate the skill failed or made no progress?
+> [user input]
+```
+
+Pre-populate the questions with suggested wording derived from the selected skill's description (already read in Step H1) as option labels to guide the user. For custom prompts, apply the same two-question format (replacing the single "What does 'done' look like?" question).
 
 **Default selection**: All available phases are pre-selected (Recommended). Skill-based validation is unselected by default — add it when a skill can verify something the other phases cannot observe. It is the highest-fidelity gate available: it catches issues that no static analysis or self-report can surface.
 
@@ -730,7 +745,11 @@ states:
     evaluate:
       type: llm_structured
       source: "${captured.execute_result.output}"
-      prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
+      prompt: >
+        Evaluate the previous action on these criteria:
+        1. <success-criterion: what should be different after the skill runs successfully>
+        2. Absence of failure signals: <failure-criterion: what would indicate the skill failed>
+        Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
     on_yes: check_invariants # or done if diff invariants omitted
     on_no: execute
   check_invariants:              # include if diff invariants selected
@@ -803,7 +822,11 @@ states:
     evaluate:
       type: llm_structured
       source: "${captured.execute_result.output}"
-      prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
+      prompt: >
+        Evaluate the previous action on these criteria:
+        1. <success-criterion: what should be different after the skill runs successfully>
+        2. Absence of failure signals: <failure-criterion: what would indicate the skill failed>
+        Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
     on_yes: check_invariants # or advance
     on_no: execute
   check_invariants:              # include if diff invariants selected

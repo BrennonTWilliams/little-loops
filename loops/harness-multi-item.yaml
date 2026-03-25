@@ -146,9 +146,10 @@ states:
       type: llm_structured
       source: "${captured.execute_result.output}"
       prompt: >
-        Did the previous skill action successfully complete its task?
-        Check that: the item was meaningfully updated, no errors occurred, and the
-        overall quality improved. Answer YES or NO with brief rationale.
+        Evaluate the previous action on these criteria:
+        1. The item was meaningfully updated and overall quality improved
+        2. Absence of failure signals: no errors occurred, no unchanged or low-effort output
+        Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
     on_yes: check_invariants          # quality confirmed → diff size gate
     on_no: execute                    # quality not confirmed → retry
     on_partial: check_semantic        # ambiguous → re-evaluate

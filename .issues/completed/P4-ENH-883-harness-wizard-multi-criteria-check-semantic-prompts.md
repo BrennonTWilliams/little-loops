@@ -2,7 +2,7 @@
 id: ENH-883
 type: ENH
 priority: P4
-status: open
+status: completed
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
@@ -84,8 +84,8 @@ evaluate:
 
 4. **Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`**:
    - Lines 219-233: Replace single-criterion example prompt with multi-criteria numbered format
-   - Lines ~404-415 and ~468-476: Update the Variant A and B worked example YAML blocks
-   - Line ~601: Update the `check_semantic.evaluate.prompt` customization tip to mention multi-criteria format
+   - Lines ~448-457 and ~511-520: Update the Variant A and B worked example YAML blocks
+   - Line ~598: Update the `check_semantic.evaluate.prompt` customization tip to mention multi-criteria format
 
 5. **Update built-in example harness files**:
    - `loops/harness-single-shot.yaml:123-126` — Reformat three-condition prose prompt to numbered multi-criteria list
@@ -125,8 +125,8 @@ evaluate:
 - `skills/create-loop/loop-types.md:806` — Variant B `check_semantic` template: Same replacement
 - `skills/create-loop/loop-types.md:575` — Custom prompt path: Extend "What does 'done' look like?" to also use the two-question format for consistency
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:219-233` — Update LLM-as-Judge section example prompt
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:~404-415` — Update Variant A worked example
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:~468-476` — Update Variant B worked example
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:~448-457` — Update Variant A worked example
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:~511-520` — Update Variant B worked example
 - `loops/harness-single-shot.yaml:123-126` — Update example `check_semantic` prompt (three-condition prose → numbered list)
 - `loops/harness-multi-item.yaml:148-151` — Update example `check_semantic` prompt (three-condition prose → numbered list)
 
@@ -169,8 +169,8 @@ _Updated by `/ll:refine-issue` — re-verified after `check_stall` and `check_sk
 
 **Corrected line ranges in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`**:
 - Lines 219–233: LLM-as-Judge section — confirmed correct
-- Variant A worked example: lines 406–415
-- Variant B worked example: lines 469–478
+- Variant A worked example: lines 448–457 (check_semantic block; prompt at 453–455)
+- Variant B worked example: lines 511–520 (check_semantic block; prompt at 516–518)
 
 **Current harness YAML prompts** (three-condition prose — need reformatting to numbered list):
 - `loops/harness-single-shot.yaml:123–126` — prose: "at least one file was modified, no errors were reported, and the task appears complete"
@@ -200,7 +200,19 @@ _Updated by `/ll:refine-issue` — re-verified after `check_stall` and `check_sk
 
 **Open** | Created: 2026-03-24 | Priority: P4
 
+## Resolution
+
+Implemented all five changes described in the Implementation Steps:
+
+1. **Step H3 follow-up** (`loop-types.md`): Added LLM-as-judge two-question follow-up block after the Skill-based validation follow-up, including a note about pre-populating suggestions from skill description.
+2. **Custom prompt path** (`loop-types.md:575`): Replaced single "done" question with the two-question format for consistency.
+3. **Variant A template** (`loop-types.md`): Replaced `<auto-derived>` placeholder with numbered multi-criteria format using `<success-criterion>` and `<failure-criterion>` placeholders.
+4. **Variant B template** (`loop-types.md`): Same replacement.
+5. **Docs** (`AUTOMATIC_HARNESSING_GUIDE.md`): Updated LLM-as-Judge section description, both worked examples (Variant A/B), and the customization tip table row.
+6. **Example harnesses** (`harness-single-shot.yaml`, `harness-multi-item.yaml`): Reformatted prose prompts to numbered multi-criteria format.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-25T03:50:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83280324-52b5-44e9-b8f2-0920a7fb2a15.jsonl`
 - `/ll:confidence-check` - 2026-03-25T04:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39ccdd92-6e91-4cbf-a732-3a2195f532e6.jsonl`
 - `/ll:refine-issue` - 2026-03-25T03:36:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f0c9302-3842-474a-b57f-bab3e4187f1d.jsonl`
 - `/ll:refine-issue` - 2026-03-25T02:34:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d706ae24-efb5-4d22-b384-27e1793cb625.jsonl`
