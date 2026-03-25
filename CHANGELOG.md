@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.64.1] - 2026-03-25
+
+### Fixed
+
+- **Built-in loops missing after pip install** — Bundle `loops/` directory as package data so built-in FSM loop configs are included in the installed package (BUG-885)
+
+### Documentation
+
+- Clarify and expand documentation across all guides (74439c2b)
+
 ## [1.64.0] - 2026-03-24
 
 ### Added
@@ -197,6 +207,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.64.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.0...v1.64.1
 [1.64.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.63.0...v1.64.0
 [1.63.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.62.0...v1.63.0
 [1.62.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.1...v1.62.0
