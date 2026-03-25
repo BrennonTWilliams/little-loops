@@ -21,6 +21,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.next_action import cmd_next_action
     from little_loops.cli.issues.next_id import cmd_next_id
     from little_loops.cli.issues.next_issue import cmd_next_issue
+    from little_loops.cli.issues.next_issues import cmd_next_issues
     from little_loops.cli.issues.refine_status import cmd_refine_status
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
@@ -45,6 +46,7 @@ Sub-commands:
   append-log     Append a session log entry to an issue file
   next-action    Print the next refinement action for the highest-priority active issue
   next-issue     Print the issue ID ranked highest by outcome confidence and readiness
+  next-issues    Print all active issues in ranked order (alias: nxs)
 
 Examples:
   %(prog)s next-id
@@ -68,6 +70,10 @@ Examples:
   %(prog)s next-issue
   %(prog)s next-issue --json
   %(prog)s next-issue --path
+  %(prog)s next-issues
+  %(prog)s next-issues 5
+  %(prog)s next-issues --json
+  %(prog)s nxs --path
 """,
     )
 
@@ -331,6 +337,24 @@ Examples:
     nx.add_argument("--path", action="store_true", help="Output only the file path")
     add_config_arg(nx)
 
+    nxs = subs.add_parser(
+        "next-issues",
+        aliases=["nxs"],
+        help="Print all active issues in ranked order",
+    )
+    nxs.set_defaults(command="next-issues")
+    nxs.add_argument(
+        "count",
+        nargs="?",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Cap results at N issues",
+    )
+    nxs.add_argument("--json", action="store_true", help="Output as JSON array")
+    nxs.add_argument("--path", action="store_true", help="Output one file path per line")
+    add_config_arg(nxs)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -366,4 +390,6 @@ Examples:
         return cmd_next_action(config, args)
     if args.command == "next-issue":
         return cmd_next_issue(config, args)
+    if args.command == "next-issues":
+        return cmd_next_issues(config, args)
     return 1
