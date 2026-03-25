@@ -79,7 +79,7 @@ Also update the same incorrect claim in:
 - `loops/harness-multi-item.yaml:137-139` — YAML comment: same incorrect claim
 
 If BUG-880 is fixed first, additionally update:
-- `skills/create-loop/loop-types.md:700-707` and `:762-769` — `check_semantic` templates to include the `source` field
+- `skills/create-loop/loop-types.md:713-720` and `:775-782` — `check_semantic` templates to include the `source` field
 
 ## Integration Map
 
@@ -91,8 +91,8 @@ If BUG-880 is fixed first, additionally update:
 - `loops/harness-multi-item.yaml:137-139` — YAML comment repeats the same incorrect claim
 
 **If BUG-880 is fixed first (preferred path per step 3):**
-- `skills/create-loop/loop-types.md:700-707` — Variant A `check_semantic` template (no `source` field); update after BUG-880 adds `source`
-- `skills/create-loop/loop-types.md:762-769` — Variant B `check_semantic` template (no `source` field); same
+- `skills/create-loop/loop-types.md:713-720` — Variant A `check_semantic` template (no `source` field); update after BUG-880 adds `source`
+- `skills/create-loop/loop-types.md:775-782` — Variant B `check_semantic` template (no `source` field); same
 
 ### Reference Files (Do Not Modify)
 
@@ -143,11 +143,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `bug`, `documentation`
 
+## Resolution
+
+Fixed by correcting the "Why `echo` as the action?" blockquote in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` and the corresponding YAML comments in `loops/harness-single-shot.yaml` and `loops/harness-multi-item.yaml`. All three locations now accurately describe that the echo string IS the `<action_output>` the LLM evaluator receives, and explain that `source: "${captured.<var>.output}"` must be set explicitly to pass prior state output.
+
 ## Status
 
-**Open** | Created: 2026-03-24 | Priority: P3
+**Completed** | Created: 2026-03-24 | Resolved: 2026-03-24 | Priority: P3
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-03-25T02:08:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3312899e-fea8-40b9-9b4d-4853684c46c5.jsonl`
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-25T02:05:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b232923-7aab-40cc-95d9-2f5442836380.jsonl`
 - `/ll:format-issue` - 2026-03-25T00:53:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4305bbc5-4892-4b4e-80f3-917b53ab0916.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
 - `/ll:refine-issue` - 2026-03-25T00:47:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07c03e86-2f17-4650-a7f9-2d45a82edcd4.jsonl`

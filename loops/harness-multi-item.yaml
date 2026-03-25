@@ -135,8 +135,9 @@ states:
 
   check_semantic:
     # EXAMPLE: LLM-as-judge evaluates whether the skill achieved its intent.
-    # The llm_structured evaluator judges the *previous* state's output context —
-    # the echo here is a placeholder; the shell output is ignored.
+    # The llm_structured evaluator receives this echo string as <action_output> in the LLM prompt.
+    # An empty echo provides minimal evidence — for richer evaluation, set source on the evaluate
+    # block (e.g. source: "${captured.<var>.output}") to pass a prior state's captured output.
     # Customize the prompt to describe what "success" means for your workflow.
     # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — LLM-as-Judge section
     action: "echo 'Evaluating refinement quality'"

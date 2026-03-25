@@ -220,7 +220,7 @@ check_skill:
 
 Uses an `llm_structured` evaluator where Claude assesses whether the previous action achieved its intent. The evaluation prompt is auto-derived from the skill's description:
 
-> **Why `echo` as the action?** The `llm_structured` evaluator judges the *previous* state's output — not the current state's shell output. The `check_semantic` state still requires an `action` field, so a minimal `echo` satisfies the field while doing nothing meaningful. The echo output is ignored; only the `evaluate.prompt` and the captured context from the preceding state matter.
+> **Why `echo` as the action?** `check_semantic` receives the echo string as `<action_output>` in the LLM prompt — an empty `echo` provides minimal evidence. To evaluate a prior state's output, set `source: "${captured.<var>.output}"` on the `evaluate` block, where `<var>` is the `capture` key on the source state. Note: `${prev.output}` at `check_semantic` resolves to `check_concrete`'s output (pytest results), not `execute`'s skill output — use the `capture` + `source` pattern instead (see production examples in `loops/issue-staleness-review.yaml:36-47`).
 
 ```yaml
 evaluate:
