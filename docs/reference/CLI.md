@@ -247,7 +247,7 @@ Run a loop.
 | `--quiet` | `-q` | Suppress progress output |
 | `--verbose` | `-v` | Show full prompt text and more output lines |
 | `--queue` | | Wait for conflicting loops to finish |
-| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; when a sub-loop is active, renders both parent and child diagrams separated by `── sub-loop: <name> ──` |
+| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; the top-level loop is preceded by `== loop: <name> ====...` and, when a sub-loop is active, both parent and child diagrams are rendered separated by `── sub-loop: <name> ──` |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--builtin` | | Load loop from built-ins directory (bypasses project `.loops/` lookup) |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
@@ -287,7 +287,7 @@ Resume an interrupted loop.
 |------|-------|-------------|
 | `--background` | `-b` | Resume as a detached background process |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
-| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; when a sub-loop is active, renders both parent and child diagrams separated by `── sub-loop: <name> ──` |
+| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; the top-level loop is preceded by `== loop: <name> ====...` and, when a sub-loop is active, both parent and child diagrams are rendered separated by `── sub-loop: <name> ──` |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |

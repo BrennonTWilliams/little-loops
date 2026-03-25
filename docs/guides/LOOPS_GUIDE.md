@@ -1154,6 +1154,7 @@ For full sub-loop schema details — `context_passthrough`, verdict handling, an
 When `--show-diagrams` is active and a state invokes a child loop, both FSM diagrams are rendered after each child step:
 
 ```
+== loop: my-loop ====...
 [parent diagram — parent state highlighted]
 ── sub-loop: fix-quality-and-tests ──
 [child diagram — current child state highlighted]
