@@ -691,6 +691,7 @@ states:
   execute:
     action: "<skill-or-prompt>"
     action_type: prompt
+    capture: execute_result      # captured as ${captured.execute_result.output}
     next: check_concrete         # omit if no tool gates selected
   check_concrete:                # include if tool-based gates selected
     action: "<highest-priority configured cmd: test_cmd > lint_cmd > type_cmd>"
@@ -715,6 +716,7 @@ states:
     action_type: shell
     evaluate:
       type: llm_structured
+      source: "${captured.execute_result.output}"
       prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
     on_yes: check_invariants # or done if diff invariants omitted
     on_no: execute
@@ -751,6 +753,7 @@ states:
   execute:
     action: "<skill-or-prompt> ${captured.current_item.output}"
     action_type: prompt
+    capture: execute_result      # captured as ${captured.execute_result.output}
     max_retries: <per-item-retries>        # optional: skip stuck items automatically
     on_retry_exhausted: advance            # optional: route here when retries exceeded
     next: check_concrete         # or check_semantic / check_invariants / advance
@@ -777,6 +780,7 @@ states:
     action_type: shell
     evaluate:
       type: llm_structured
+      source: "${captured.execute_result.output}"
       prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
     on_yes: check_invariants # or advance
     on_no: execute
@@ -885,6 +889,7 @@ states:
   execute:
     action: /ll:refine-issue ${captured.current_item.output} --auto
     action_type: prompt
+    capture: execute_result
     next: check_concrete
   check_concrete:
     action: python -m pytest scripts/tests/ -q --tb=no
@@ -898,6 +903,7 @@ states:
     action_type: shell
     evaluate:
       type: llm_structured
+      source: "${captured.execute_result.output}"
       prompt: >
         Did the previous /ll:refine-issue action successfully refine the issue?
         Check that: the issue file was updated with new content, confidence scores

@@ -2,7 +2,7 @@
 id: BUG-880
 type: BUG
 priority: P2
-status: open
+status: completed
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
@@ -74,9 +74,9 @@ All working examples in the codebase use `capture:` + `${captured.*}` for cross-
 
 ### Files to Modify
 
-- `skills/create-loop/loop-types.md:700-707` — Variant A (single-shot) `check_semantic` template: add `source:` to `evaluate` block; add `capture: execute_result` to `execute` state template
-- `skills/create-loop/loop-types.md:762-769` — Variant B (multi-item) `check_semantic` template: same changes
-- `skills/create-loop/loop-types.md:883-893` — worked example output: same changes
+- `skills/create-loop/loop-types.md:713-720` — Variant A (single-shot) `check_semantic` template: add `source:` to `evaluate` block; add `capture: execute_result` to `execute` state template
+- `skills/create-loop/loop-types.md:775-782` — Variant B (multi-item) `check_semantic` template: same changes
+- `skills/create-loop/loop-types.md:896-906` — worked example output: same changes
 - `loops/harness-single-shot.yaml:111-127` — `check_semantic` state: add `source: "${captured.execute_result.output}"`; also update `execute` state to add `capture: execute_result`
 - `loops/harness-multi-item.yaml:136-152` — same changes
 
@@ -105,16 +105,16 @@ All working examples in the codebase use `capture:` + `${captured.*}` for cross-
 ## Implementation Steps
 
 1. Add `capture: execute_result` to the `execute` state in:
-   - `skills/create-loop/loop-types.md:685-699` (Variant A execute template)
-   - `skills/create-loop/loop-types.md:750-761` (Variant B execute template)
-   - `skills/create-loop/loop-types.md:872-875` (worked example execute state)
+   - `skills/create-loop/loop-types.md:691-701` (Variant A execute template)
+   - `skills/create-loop/loop-types.md:751-756` (Variant B execute template)
+   - `skills/create-loop/loop-types.md:885-888` (worked example execute state)
    - `loops/harness-single-shot.yaml:26-35`
    - `loops/harness-multi-item.yaml:53-64`
 
 2. Add `source: "${captured.execute_result.output}"` to the `evaluate` block in each `check_semantic` state in:
-   - `skills/create-loop/loop-types.md:700-707` (Variant A check_semantic)
-   - `skills/create-loop/loop-types.md:762-769` (Variant B check_semantic)
-   - `skills/create-loop/loop-types.md:883-893` (worked example check_semantic)
+   - `skills/create-loop/loop-types.md:713-720` (Variant A check_semantic)
+   - `skills/create-loop/loop-types.md:775-782` (Variant B check_semantic)
+   - `skills/create-loop/loop-types.md:896-906` (worked example check_semantic)
    - `loops/harness-single-shot.yaml:111-127`
    - `loops/harness-multi-item.yaml:136-152`
 
@@ -123,6 +123,33 @@ All working examples in the codebase use `capture:` + `${captured.*}` for cross-
 4. Documentation update (`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:219-231`) is delegated to BUG-881.
 
 _Resolution path_: `executor.py:877` → `interpolate()` → `InterpolationContext.resolve("captured", "execute_result.output")` at `interpolation.py:65-100`. Tested at `test_ll_loop_execution.py:971-1056` (`TestEvaluateSource`).
+
+## Resolution
+
+**Status**: Fixed
+**Date**: 2026-03-24
+
+### Changes Made
+
+1. **`loops/harness-single-shot.yaml`**
+   - Added `capture: execute_result` to `execute` state
+   - Added `source: "${captured.execute_result.output}"` to `check_semantic.evaluate` block
+   - Updated comment from "set source on the evaluate block" guidance to "source: redirects eval input from echo to captured output"
+
+2. **`loops/harness-multi-item.yaml`**
+   - Added `capture: execute_result` to `execute` state
+   - Added `source: "${captured.execute_result.output}"` to `check_semantic.evaluate` block
+   - Updated comment similarly
+
+3. **`skills/create-loop/loop-types.md`**
+   - Variant A template: `execute` + `check_semantic` updated
+   - Variant B template: `execute` + `check_semantic` updated
+   - Worked example: `execute` + `check_semantic` updated
+
+4. **`scripts/tests/test_builtin_loops.py`**
+   - Added `TestHarnessCapture` class with 4 parametrized tests asserting `capture: execute_result` on `execute` and `source: "${captured.execute_result.output}"` in `check_semantic.evaluate` for both harness files
+
+All 3924 tests pass.
 
 ## Labels
 
@@ -133,6 +160,8 @@ _Resolution path_: `executor.py:877` → `interpolate()` → `InterpolationConte
 **Open** | Created: 2026-03-24 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z - fix applied: capture/source wired in harness YAMLs and loop-types.md templates
+- `/ll:ready-issue` - 2026-03-25T02:14:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a44b0399-e0ca-4228-b8b1-939bf9f45874.jsonl`
 - `/ll:confidence-check` - 2026-03-24T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88391aba-1dba-40f4-b113-08613df7cb9c.jsonl`
 - `/ll:refine-issue` - 2026-03-25T02:09:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dacde480-5f26-48cb-ae84-f2d6f73fd4cf.jsonl`
 - `/ll:format-issue` - 2026-03-25T00:53:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4305bbc5-4892-4b4e-80f3-917b53ab0916.jsonl`

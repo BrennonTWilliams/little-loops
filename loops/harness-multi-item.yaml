@@ -59,6 +59,7 @@ states:
     #   action_type: prompt        → for a free-form instruction to Claude
     action: "/ll:refine-issue ${captured.current_item.output} --auto"
     action_type: prompt
+    capture: execute_result           # captured as ${captured.execute_result.output}
     max_retries: 3                    # skip item after 3 failed attempts
     on_retry_exhausted: advance
     next: check_stall
@@ -135,15 +136,15 @@ states:
 
   check_semantic:
     # EXAMPLE: LLM-as-judge evaluates whether the skill achieved its intent.
-    # The llm_structured evaluator receives this echo string as <action_output> in the LLM prompt.
-    # An empty echo provides minimal evidence — for richer evaluation, set source on the evaluate
-    # block (e.g. source: "${captured.<var>.output}") to pass a prior state's captured output.
+    # The llm_structured evaluator receives execute's captured output as <action_output>.
+    # source: redirects eval input from this state's echo to ${captured.execute_result.output}.
     # Customize the prompt to describe what "success" means for your workflow.
     # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — LLM-as-Judge section
     action: "echo 'Evaluating refinement quality'"
     action_type: shell
     evaluate:
       type: llm_structured
+      source: "${captured.execute_result.output}"
       prompt: >
         Did the previous skill action successfully complete its task?
         Check that: the item was meaningfully updated, no errors occurred, and the

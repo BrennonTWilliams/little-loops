@@ -402,6 +402,41 @@ class TestIssueRefinementLoopOnError:
         )
 
 
+class TestHarnessCapture:
+    """Tests that harness YAML files wire execute output to check_semantic via capture/source."""
+
+    HARNESS_FILES = [
+        "harness-single-shot.yaml",
+        "harness-multi-item.yaml",
+    ]
+
+    @pytest.mark.parametrize("loop_name", HARNESS_FILES)
+    def test_execute_state_has_capture_execute_result(self, loop_name: str) -> None:
+        """execute state must define capture: execute_result so check_semantic can reference it."""
+        path = BUILTIN_LOOPS_DIR / loop_name
+        assert path.exists(), f"Loop file not found: {path}"
+        data = yaml.safe_load(path.read_text())
+        execute_state = data.get("states", {}).get("execute", {})
+        assert execute_state.get("capture") == "execute_result", (
+            f"{loop_name}: execute state must have 'capture: execute_result' so "
+            f"check_semantic can reference the skill output via ${{captured.execute_result.output}}"
+        )
+
+    @pytest.mark.parametrize("loop_name", HARNESS_FILES)
+    def test_check_semantic_evaluate_has_source(self, loop_name: str) -> None:
+        """check_semantic evaluate block must define source pointing to execute's captured output."""
+        path = BUILTIN_LOOPS_DIR / loop_name
+        assert path.exists(), f"Loop file not found: {path}"
+        data = yaml.safe_load(path.read_text())
+        check_semantic = data.get("states", {}).get("check_semantic", {})
+        evaluate = check_semantic.get("evaluate", {})
+        assert evaluate.get("source") == "${captured.execute_result.output}", (
+            f"{loop_name}: check_semantic.evaluate must have "
+            f"'source: \"${{captured.execute_result.output}}\"' so the LLM evaluator "
+            f"receives actual skill output as evidence, not the echo string"
+        )
+
+
 class TestBuiltinLoopOnBlockedCoverage:
     """Tests that llm_structured evaluate states in built-in loops define on_blocked handlers."""
 
