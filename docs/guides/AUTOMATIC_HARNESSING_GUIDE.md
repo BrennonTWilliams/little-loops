@@ -269,6 +269,9 @@ Use a harness loop when you want to:
 - **Wrap a skill in quality gates** — ensure tests pass and the LLM confirms success before advancing to the next item
 - **Run a skill repeatedly over a list** — refining every open issue, checking every file, processing a batch of items in priority order
 - **Set up a single polished iteration** — execute a skill once with full evaluation rather than just calling it manually
+- **Run capable skills at scale, unattended** — even for skills that rarely fail, a harness lets you process 50 items unattended with the same confidence you'd have watching 1 item manually; the value isn't just catching failures, it's enabling workflows no single agent call could safely accomplish
+
+As models improve, the harness becomes more ambitious, not less necessary — better skills expand the space of what a well-composed evaluation pipeline can accomplish.
 
 Compare to hand-authoring a loop:
 
