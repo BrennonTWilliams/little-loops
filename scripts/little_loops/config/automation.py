@@ -70,7 +70,7 @@ class ParallelAutomationConfig:
             state_file=data.get("state_file", ".parallel-manage-state.json"),
             worktree_base=data.get("worktree_base", ".worktrees"),
             max_workers=data.get("max_workers", 2),
-            stream_output=data.get("stream_output", False),
+            stream_output=data.get("stream_subprocess_output", data.get("stream_output", False)),
         )
         return cls(
             base=base,

@@ -324,6 +324,16 @@ class TestParallelAutomationConfig:
         )
         assert config.base.timeout_seconds == 7200
 
+    def test_stream_subprocess_output_key_is_respected(self) -> None:
+        """Test that the documented stream_subprocess_output key enables streaming."""
+        config = ParallelAutomationConfig.from_dict({"stream_subprocess_output": True})
+        assert config.base.stream_output is True
+
+    def test_stream_output_fallback_still_works(self) -> None:
+        """Test that stream_output still works as a fallback key."""
+        config = ParallelAutomationConfig.from_dict({"stream_output": True})
+        assert config.base.stream_output is True
+
 
 class TestConfidenceGateConfig:
     """Tests for ConfidenceGateConfig dataclass."""
