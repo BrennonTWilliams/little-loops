@@ -11,6 +11,7 @@ Common issues and solutions for little-loops.
 - [Session Handoff](#session-handoff)
 - [Priority and Filtering](#priority-and-filtering)
 - [Merge Conflicts](#merge-conflicts)
+- [Loop Issues](#loop-issues)
 - [Slash Command Issues](#slash-command-issues)
 - [Hook Debugging](#hook-debugging)
 - [Diagnostic Commands](#diagnostic-commands)
@@ -631,6 +632,31 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
    git diff --name-only HEAD...parallel/BUG-001-branch
    ```
 3. Consider processing conflicting issues sequentially
+
+---
+
+## Loop Issues
+
+### Built-in loops not found after pip install
+
+**Symptom**: `ll-loop list --builtin` returns an empty list, or `ll-loop run <name>` reports the loop cannot be found even though it's a known built-in (e.g., `issue-refinement`, `dead-code-cleanup`).
+
+**Cause**: Versions of `little-loops` prior to v1.64.1 stored the built-in loop YAML files in a top-level `loops/` directory that was not included in the Python wheel. Installing via `pip install little-loops` omitted those files, leaving `get_builtin_loops_dir()` pointing at a non-existent path. (BUG-885)
+
+**Solution**:
+1. Upgrade to v1.64.1 or later:
+   ```bash
+   pip install --upgrade little-loops
+   ```
+2. Verify built-in loops are now available:
+   ```bash
+   ll-loop list --builtin
+   ```
+3. If running from a development install (`pip install -e .`), re-run the install after pulling the fix:
+   ```bash
+   pip install -e "./scripts[dev]"
+   ll-loop list --builtin
+   ```
 
 ---
 
