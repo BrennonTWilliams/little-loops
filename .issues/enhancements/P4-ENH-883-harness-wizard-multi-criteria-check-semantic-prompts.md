@@ -11,6 +11,34 @@ outcome_confidence: 71
 
 # ENH-883: Harness wizard should generate multi-criteria `check_semantic` evaluation prompts
 
+## Summary
+
+The harness wizard's `check_semantic` (LLM-as-judge) evaluation path generates a single vague binary YES/NO prompt auto-derived from the skill description. This enhancement adds a two-question follow-up in wizard Step H3 to collect success and failure criteria from the user, then generates a numbered multi-criteria evaluation prompt—producing measurably better LLM judge outputs as validated by Anthropic's harness design research.
+
+## Current Behavior
+
+When the user selects LLM-as-judge evaluation in the wizard, a single YES/NO prompt is auto-derived from the skill description with no user input:
+
+```yaml
+evaluate:
+  prompt: >
+    Did the previous action successfully complete the code quality check?
+    Answer YES or NO with brief rationale.
+```
+
+## Expected Behavior
+
+When LLM-as-judge is selected in Step H3, the wizard asks two follow-up questions ("What should change after the skill runs successfully?" and "What would indicate failure?") and generates a numbered multi-criteria prompt:
+
+```yaml
+evaluate:
+  prompt: >
+    Evaluate the previous action on these criteria:
+    1. [criterion from "what should change"]
+    2. Absence of failure signals: [criterion from "what indicates failure"]
+    Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
+```
+
 ## Motivation
 
 The harness wizard generates a single YES/NO `check_semantic` evaluation prompt auto-derived from the skill description:
@@ -124,7 +152,32 @@ evaluate:
 - `skills/create-loop/loop-types.md:636-659` — Step H4 two-question AskUserQuestion in a single call; use this exact pattern structure for the H3 LLM-as-judge follow-up
 - `loops/oracles/oracle-capture-issue.yaml:65-98` — Multi-criteria scoring pattern with numbered dimensions and explicit positive/negative signals per criterion
 
+## Scope Boundaries
+
+- No changes to FSM schema (`EvaluateConfig.prompt` accepts any string; no schema updates needed)
+- No changes to `evaluate_llm_structured()` evaluator logic
+- Existing harness YAML files produced by previous wizard runs are unaffected
+- Skill-based evaluation path (Step H3 skill-based follow-up) is unchanged
+- Pre-populated criteria suggestions from skill description (Step H3, item 3) are optional; the core flow only requires the two follow-up questions
+- No changes to non-`check_semantic` evaluation types (`exit_code`, `file_exists`, etc.)
+
+## Impact
+
+- **Priority**: P4 — Quality improvement for wizard-generated harnesses; not blocking any other work
+- **Effort**: Small — Adds ~2 AskUserQuestion sub-questions to one wizard step; updates 2 YAML template variants and docs
+- **Risk**: Low — No schema or evaluator changes; no breaking changes to existing loops
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `wizard`, `harness`, `check-semantic`, `evaluation`
+
+## Status
+
+**Open** | Created: 2026-03-24 | Priority: P4
+
 ## Session Log
+- `/ll:format-issue` - 2026-03-25T01:57:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15f2515b-b7d9-4642-9556-f9fa1158773a.jsonl`
 - `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
 - `/ll:refine-issue` - 2026-03-25T00:48:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7bda774-ec89-44b3-8910-da455deea386.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`

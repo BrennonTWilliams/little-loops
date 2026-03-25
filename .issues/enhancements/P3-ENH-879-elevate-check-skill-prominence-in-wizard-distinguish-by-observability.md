@@ -53,6 +53,25 @@ Reorganize the wizard's check phase selection to:
 - Out of scope: changes to how `check_skill` executes at runtime
 - Out of scope: changes to the guide documentation (already accurate)
 
+## Success Metrics
+
+- `check_skill` is no longer labeled "Optional" in the wizard's check phase selection step
+- An observability table (or text equivalent) appears before the phase selection prompt
+- Users can distinguish `check_skill` from `check_semantic` by observational scope, not cost
+
+## API/Interface
+
+N/A — No public API changes. This is a wizard text and framing change only.
+
+## Implementation Steps
+
+1. Read the current check phase selection step in `skills/create-loop/SKILL.md`
+2. Add an observability table (or concise text equivalent) before the phase selection prompt to establish the mental model
+3. Relabel `check_skill` from "Optional" to something that conveys its unique capability (e.g., "Recommended — only phase that validates real user behavior")
+4. Separate `check_skill` from `check_semantic` visually or textually with explanatory distinction (external observation vs. self-report)
+5. Subordinate cost information to observability framing (cost as tiebreaker, not primary organizer)
+6. Review the wizard flow for consistency with the guide's existing `check_skill` description
+
 ## Integration Map
 
 ### Files to Modify
@@ -62,11 +81,38 @@ Reorganize the wizard's check phase selection to:
 - `skills/review-loop/SKILL.md` — may reference check phase descriptions
 - `docs/` — any loop configuration guide that describes check phases
 
+### Dependent Files (Callers/Importers)
+- N/A — wizard prompt text; no callers/importers
+
+### Similar Patterns
+- `skills/review-loop/SKILL.md` — check phase descriptions may use similar framing; review for consistency
+
+### Tests
+- N/A — wizard text change; no automated tests to update
+
+### Documentation
+- Covered in Files to Read for Context above
+
+### Configuration
+- N/A
+
 ---
+
+## Impact
+
+- **Priority**: P3 — improves wizard UX but does not block any functionality
+- **Effort**: Small — wizard text and framing change only; no runtime code changes
+- **Risk**: Low — no behavioral changes to loop execution or check phase logic
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `wizard`, `create-loop`, `ux`
 
 ## Status
 
 Open
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-25T01:57:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cecd92d-7688-41c8-8c77-72f94f04500c.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee142cb2-b955-483a-a13b-7ca611c8d2cf.jsonl`
