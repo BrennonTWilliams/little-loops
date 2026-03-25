@@ -602,7 +602,20 @@ questions:
 
 ### Step H3: Evaluation Phases
 
-Read `.claude/ll-config.json` to detect configured tool commands (`test_cmd`, `lint_cmd`, `type_cmd`). Present only phases that are relevant:
+Read `.claude/ll-config.json` to detect configured tool commands (`test_cmd`, `lint_cmd`, `type_cmd`). Present only phases that are relevant.
+
+**Before presenting the question, show this observability context:**
+
+> Each phase covers a different observational scope:
+>
+> | Phase | What it can observe | Latency |
+> |-------|--------------------|---------|
+> | Tool-based gates | Objective regressions — tests, types, lint | < 1s |
+> | Skill-based validation | **Real user behavior** — the only phase that exercises the feature as a real user would | 30–300s |
+> | LLM-as-judge | Self-assessed output quality — the LLM evaluates its own output (bias-prone) | 3–10s |
+> | Diff invariants | Runaway scope — catches unexpectedly large changes | < 1s |
+>
+> **Key distinction**: Skill-based validation is *external observation* (a skill acts as a real user); LLM-as-judge is *self-report* (the LLM evaluates its own output). They are not interchangeable — if you can configure a skill evaluator, it is the highest-fidelity gate available.
 
 ```yaml
 questions:
@@ -613,21 +626,21 @@ questions:
       - label: "Tool-based gates (Recommended)"
         description: "Shell checks using configured test/lint/type commands"
         # Show only if at least one of test_cmd, lint_cmd, type_cmd is configured
+      - label: "Skill-based validation (Recommended — only phase that validates real user behavior)"
+        description: "A skill acts as a real user to verify the feature end-to-end — external observation, not self-report"
       - label: "LLM-as-judge"
-        description: "Claude assesses output quality against skill description"
+        description: "Claude assesses its own output quality — useful for semantic correctness, but bias-prone (self-report)"
       - label: "Diff invariants"
         description: "Check git diff --stat to catch runaway or off-scope changes"
-      - label: "Skill-based evaluation (Optional)"
-        description: "Invoke a skill to act as a user and verify the feature end-to-end"
 ```
 
-**If "Skill-based evaluation" is selected**, ask:
+**If "Skill-based validation" is selected**, ask:
 ```
 Which skill should act as evaluator?
   (Enter a skill name, e.g. "scrape-docs", or describe what to verify)
 ```
 
-**Default selection**: All available phases are pre-selected (Recommended). Skill-based evaluation is unselected by default — add it when a skill can verify something the other phases cannot observe.
+**Default selection**: All available phases are pre-selected (Recommended). Skill-based validation is unselected by default — add it when a skill can verify something the other phases cannot observe. It is the highest-fidelity gate available: it catches issues that no static analysis or self-report can surface.
 
 ---
 
