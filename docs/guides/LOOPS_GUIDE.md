@@ -222,6 +222,13 @@ These loops ship with little-loops and cover common workflows. Install one to `.
 ll-loop install <name>       # Copies to .loops/ for editing
 ```
 
+**General-Purpose**
+
+| Loop | Description |
+|------|-------------|
+| `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
+| `refine-to-ready-issue` | Single-issue refinement pipeline — format → refine → confidence-check → ready-issue until the issue reaches ready status |
+
 **Issue Management**
 
 | Loop | Description |

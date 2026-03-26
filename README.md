@@ -178,6 +178,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 |---------|-------------|
 | `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
 | `/ll:configure [area]` | Interactive configuration editor |
+| `/ll:update [--marketplace\|--plugin\|--package\|--all] [--dry-run]` | Update little-loops components (marketplace, plugin, package) |
 | `/ll:help` | Show available commands and usage |
 | `/ll:handoff [context]` | Generate continuation prompt for session handoff |
 | `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
@@ -221,6 +222,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `analyze-history`^ | Meta-Analysis | Analyze issue history for project health, trends, and progress |
 | `init`^ | Session & Config | Initialize little-loops configuration for a project |
 | `configure`^ | Session & Config | Interactively configure specific areas in ll-config.json |
+| `update`^ | Session & Config | Update little-loops components (marketplace, plugin, package) |
 | `go-no-go`^ | Planning & Implementation | Adversarial GO/NO-GO verdict via pro/con debate agents |
 
 ## CLI Tools

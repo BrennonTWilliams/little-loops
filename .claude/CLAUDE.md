@@ -55,7 +55,7 @@ Run `/ll:help` for full list. Both commands (`commands/*.md`) and skills (`skill
 - **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
 - **Automation & Loops**: `create-loop`^, `loop-suggester`, `review-loop`^, `analyze-loop`^, `cleanup-loops`^, `workflow-automation-proposer`^
 - **Meta-Analysis**: `audit-claude-config`^, `analyze-workflows`, `analyze-history`^
-- **Session & Config**: `init`^, `configure`^, `help`, `handoff`, `resume`, `toggle-autoprompt`
+- **Session & Config**: `init`^, `configure`^, `update`^, `help`, `handoff`, `resume`, `toggle-autoprompt`
 
 ## Development
 
