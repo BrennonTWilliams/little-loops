@@ -229,6 +229,14 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
 | `refine-to-ready-issue` | Single-issue refinement pipeline — format → refine → confidence-check → ready-issue until the issue reaches ready status |
 
+The `refine-to-ready-issue` loop uses configurable confidence thresholds (default: readiness > 90, outcome confidence > 75). Override per-run:
+
+```bash
+ll-loop run refine-to-ready-issue --context readiness_threshold=85 --context outcome_threshold=70
+```
+
+To apply project-wide defaults, set `commands.confidence_gate.readiness_threshold` / `outcome_threshold` in `ll-config.json`, then install the loop locally (`ll-loop install refine-to-ready-issue`) and update its `context:` block defaults.
+
 **Issue Management**
 
 | Loop | Description |

@@ -322,6 +322,8 @@ Command customization for `/ll:manage-issue`:
 
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `readiness_threshold`, implementation halts. Use `--force-implement` to bypass.
 
+The `refine-to-ready-issue` built-in loop also reads `readiness_threshold` and `outcome_threshold` from its `context:` block (defaults: 90/75). Override per-run with `--context readiness_threshold=95` or set project-wide in `ll-config.json` and install the loop locally (`ll-loop install refine-to-ready-issue`) to apply your config defaults.
+
 When `tdd_mode` is `true`, `manage-issue` splits Phase 3 into Phase 3a (Write Tests — Red) and Phase 3b (Implement — Green). In Phase 3a, tests are written based on the plan's acceptance criteria and must fail against the current codebase. In Phase 3b, implementation code is written to make those tests pass.
 
 **Per-issue override**: Set `testable: false` in an issue's YAML frontmatter to skip Phase 3a for that issue even when `tdd_mode` is `true`. Use this for documentation-only changes, prompt-file edits, or any issue where automated testing is not applicable. See [ISSUE_TEMPLATE.md](./ISSUE_TEMPLATE.md#frontmatter-fields) for details.

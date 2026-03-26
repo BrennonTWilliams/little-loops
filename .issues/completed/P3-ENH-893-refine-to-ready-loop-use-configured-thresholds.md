@@ -1,7 +1,7 @@
 ---
 id: ENH-893
 priority: P3
-status: backlog
+status: completed
 discovered_date: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 90
@@ -190,11 +190,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Current**: backlog
+**Current**: completed
+
+## Resolution
+
+Implemented Approach A (YAML-only change, no Python modifications).
+
+- Added `context:` block to `scripts/little_loops/loops/refine-to-ready-issue.yaml` with `readiness_threshold: 90` and `outcome_threshold: 75` defaults (matching the previous hardcoded values to preserve backward compatibility)
+- Replaced hardcoded `> 90` and `> 75` in the `confidence_check` evaluate prompt with `${context.readiness_threshold}` and `${context.outcome_threshold}`
+- Updated `docs/reference/CONFIGURATION.md` to note that `refine-to-ready-issue` uses these config-driven thresholds
+- Updated `docs/guides/LOOPS_GUIDE.md` to document the per-run `--context` override mechanism
+
+Users can now override thresholds per-run (`--context readiness_threshold=85`) or install the loop locally and set `commands.confidence_gate.readiness_threshold` in `ll-config.json`.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-26T20:02:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3197ba7-99f1-4d43-9a8b-4e3536ea4d41.jsonl`
 - `/ll:refine-issue` - 2026-03-26T19:55:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12adbe9d-0694-4215-8345-f111e716f460.jsonl`
 - `/ll:confidence-check` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d74fd998-5ed3-431a-9af6-24ec2e79ab03.jsonl`
 - `/ll:refine-issue` - 2026-03-26T19:48:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c471ee77-14f8-4630-9bf8-5cb13df084f7.jsonl`
 - `/ll:format-issue` - 2026-03-26T19:40:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ddc13abb-2a4b-4c6f-a878-8a6902ed75f4.jsonl`
+- `/ll:manage-issue` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:capture-issue` - 2026-03-26T19:31:42Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d8e1735-f189-4b39-be06-236e6011a12e.jsonl`

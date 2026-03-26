@@ -2,6 +2,9 @@ name: "refine-to-ready-issue"
 initial: resolve_issue
 max_iterations: 20
 on_handoff: spawn
+context:
+  readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
+  outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
 
 states:
   resolve_issue:
@@ -33,8 +36,8 @@ states:
       prompt: >
         Review the confidence check output for issue
         ${captured.issue_id.output}. Answer YES only if BOTH
-        thresholds are met: (1) Readiness Score > 90, and
-        (2) Outcome Confidence Score > 75. Answer NO if
+        thresholds are met: (1) Readiness Score > ${context.readiness_threshold}, and
+        (2) Outcome Confidence Score > ${context.outcome_threshold}. Answer NO if
         either score does not meet its threshold.
     on_yes: done
     on_no: refine_issue
