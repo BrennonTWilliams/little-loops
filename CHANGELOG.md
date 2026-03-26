@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.65.0] - 2026-03-25
+
+### Added
+
+- **refine-to-ready-issue automation loop** — Add FSM automation loop for automatically refining issues to ready state (375d159)
+
+### Fixed
+
+- **context-monitor.sh default context limit too low** — Updated default context limit from 150K to 1M tokens to match current Claude model capabilities (BUG-809)
+- **ParallelAutomationConfig `stream_subprocess_output` key not read** — Read `stream_subprocess_output` key correctly in `from_dict` (0c12718)
+- **Config schema `cli` section placement** — Move `cli` section inside `properties` in config-schema.json (a1dfd5f)
+- **BRConfig.to_dict() parallel/automation key mismatch** — Align `BRConfig.to_dict()` parallel/automation keys with schema (5a26dde)
+
+### Changed
+
+- **ConfidenceGateConfig schema alignment** — Remove legacy threshold field, align with schema (b4e6569)
+
+### Documentation
+
+- Add loop issues section for built-in loops packaging bug (d40f400)
+- Update reference docs for config alignment changes (2dfc1c8)
+
 ## [1.64.1] - 2026-03-25
 
 ### Fixed
@@ -207,6 +229,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.65.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.1...v1.65.0
 [1.64.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.0...v1.64.1
 [1.64.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.63.0...v1.64.0
 [1.63.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.62.0...v1.63.0
