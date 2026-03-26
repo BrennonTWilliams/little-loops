@@ -154,7 +154,7 @@ Internal use only within little-loops; no public API surface affected.
 
 ### Dependent Files (Callers/Importers)
 - `skills/configure/areas.md:189-192` — uses `{{config.parallel.timeout_per_issue}}`, `{{config.parallel.worktree_copy_files}}`, `{{config.parallel.stream_subprocess_output}}`
-- `skills/configure/show-output.md:43-63` — uses `{{config.parallel.timeout_per_issue}}`, `{{config.parallel.stream_subprocess_output}}`, `{{config.parallel.worktree_copy_files}}` (also affected, not just areas.md)
+- `skills/configure/show-output.md:43-52` — uses `{{config.parallel.timeout_per_issue}}`, `{{config.parallel.stream_subprocess_output}}`, `{{config.parallel.worktree_copy_files}}` (also affected, not just areas.md)
 - `commands/cleanup-worktrees.md:19,27` — uses `{{config.parallel.worktree_base}}` (resolves correctly, not affected)
 - `skills/init/interactive.md:369` — uses `{{config.parallel.worktree_base}}` (resolves correctly, not affected)
 
@@ -163,8 +163,8 @@ Internal use only within little-loops; no public API surface affected.
 
 ### Tests
 - `scripts/tests/test_config.py` — extend to assert all schema-aligned parallel and automation keys
-- Follow the style of `test_dependency_mapping_in_to_dict` (line 1067): assert each key present by name, then spot-check values
-- Existing `test_to_dict` (line 573) only asserts `result["parallel"]["max_workers"]` — add sibling assertions for all renamed/added keys
+- Follow the style of `test_dependency_mapping_in_to_dict` (line 1077): assert each key present by name, then spot-check values
+- Existing `test_to_dict` (line 583) only asserts `result["parallel"]["max_workers"]` — add sibling assertions for all renamed/added keys
 - `conftest.py:96-107` sample_config fixture uses `timeout_seconds: 1800` under `parallel` — no fixture update needed; `ParallelAutomationConfig.from_dict()` accepts `timeout_seconds` as fallback (automation.py:69), so `base.timeout_seconds` will equal 1800 and the new assertion `result["parallel"]["timeout_per_issue"] == 1800` will pass
 
 ### Dataclass Source
@@ -194,12 +194,24 @@ Internal use only within little-loops; no public API surface affected.
 `enhancement`, `config`, `template-substitution`, `auto-generated`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-26T00:05:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe164423-7552-47e3-ad03-c3c2b19f008e.jsonl`
 - `/ll:refine-issue` - 2026-03-25T23:31:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:format-issue` - 2026-03-25T23:26:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:confidence-check` - 2026-03-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 
 ---
 
+## Resolution
+
+**Completed** 2026-03-25
+
+- Renamed `parallel.timeout_seconds` → `parallel.timeout_per_issue` in `BRConfig.to_dict()`
+- Renamed `parallel.stream_output` → `parallel.stream_subprocess_output` in `BRConfig.to_dict()`
+- Added four missing parallel keys: `worktree_copy_files`, `require_code_changes`, `use_feature_branches`, `remote_name`
+- Added missing `automation.idle_timeout_seconds`
+- Added `test_to_dict_parallel_schema_aligned_keys` and `test_to_dict_automation_idle_timeout` to `scripts/tests/test_config.py`
+- All 113 tests pass
+
 ## Status
 
-**Open** | Created: 2026-03-25 | Priority: P3
+**Completed** | Created: 2026-03-25 | Priority: P3

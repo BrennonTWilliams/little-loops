@@ -596,6 +596,42 @@ class TestBRConfig:
         # Should be JSON serializable
         json.dumps(result)
 
+    def test_to_dict_parallel_schema_aligned_keys(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test to_dict exports schema-aligned key names and all parallel keys."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+        parallel = result["parallel"]
+
+        # Renamed keys (schema-aligned names)
+        assert "timeout_per_issue" in parallel
+        assert parallel["timeout_per_issue"] == 1800
+        assert "stream_subprocess_output" in parallel
+        assert parallel["stream_subprocess_output"] is False
+
+        # Previously missing keys
+        assert "worktree_copy_files" in parallel
+        assert "require_code_changes" in parallel
+        assert "use_feature_branches" in parallel
+        assert "remote_name" in parallel
+
+    def test_to_dict_automation_idle_timeout(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test to_dict exports idle_timeout_seconds in automation section."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "idle_timeout_seconds" in result["automation"]
+        assert result["automation"]["idle_timeout_seconds"] == 0
+
     def test_resolve_variable(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test resolve_variable resolves config paths."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
