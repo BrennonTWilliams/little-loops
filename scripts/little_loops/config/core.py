@@ -399,7 +399,8 @@ class BRConfig:
                 "custom_verification": self._commands.custom_verification,
                 "confidence_gate": {
                     "enabled": self._commands.confidence_gate.enabled,
-                    "threshold": self._commands.confidence_gate.threshold,
+                    "readiness_threshold": self._commands.confidence_gate.readiness_threshold,
+                    "outcome_threshold": self._commands.confidence_gate.outcome_threshold,
                 },
                 "tdd_mode": self._commands.tdd_mode,
             },

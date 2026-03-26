@@ -95,17 +95,16 @@ class ConfidenceGateConfig:
     """Confidence score gate configuration for manage-issue."""
 
     enabled: bool = False
-    threshold: int = 85
     readiness_threshold: int = 85
     outcome_threshold: int = 70
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ConfidenceGateConfig:
         """Create ConfidenceGateConfig from dictionary."""
+        legacy = data.get("threshold", 85)
         return cls(
             enabled=data.get("enabled", False),
-            threshold=data.get("threshold", 85),
-            readiness_threshold=data.get("readiness_threshold", 85),
+            readiness_threshold=data.get("readiness_threshold", legacy),
             outcome_threshold=data.get("outcome_threshold", 70),
         )
 

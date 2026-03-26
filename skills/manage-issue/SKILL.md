@@ -170,7 +170,7 @@ IF confidence_score is absent:
      Run /ll:confidence-check [ID] to evaluate readiness, or use --force-implement to bypass."
     STOP (do not proceed to Phase 3)
 
-ELSE IF confidence_score < config.commands.confidence_gate.threshold:
+ELSE IF confidence_score < config.commands.confidence_gate.readiness_threshold:
   IF --force-implement flag is set:
     WARN: "⚠ Confidence gate: score [SCORE]/100 is below threshold [THRESHOLD]. Proceeding due to --force-implement."
     PROCEED to Phase 3

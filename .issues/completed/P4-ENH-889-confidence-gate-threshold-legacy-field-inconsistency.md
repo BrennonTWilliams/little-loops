@@ -38,7 +38,7 @@ This enhancement would:
 - **File**: `scripts/little_loops/config/automation.py`
 - **Lines**: 94–110 (`ConfidenceGateConfig`)
 - **File**: `scripts/little_loops/config/core.py`
-- **Lines**: 392–399 (`BRConfig.to_dict()` commands section)
+- **Lines**: 400–403 (`BRConfig.to_dict()` commands section)
 
 ## Finding
 
@@ -64,7 +64,7 @@ class ConfidenceGateConfig:
 ```
 
 ```python
-# core.py:392-399 — to_dict() exports undocumented legacy key only
+# core.py:400-403 — to_dict() exports undocumented legacy key only
 "confidence_gate": {
     "enabled": self._commands.confidence_gate.enabled,
     "threshold": self._commands.confidence_gate.threshold,   # ← only exports legacy key
@@ -161,15 +161,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Legacy fallback pattern**: `scripts/little_loops/config/automation.py:69` — `ParallelAutomationConfig.from_dict()` uses `data.get("timeout_per_issue", data.get("timeout_seconds", 3600))` — nested `data.get()` with primary key first, legacy key as the default (no helper function needed)
 - **Nested dataclass delegation**: `scripts/little_loops/config/automation.py:125-132` — `CommandsConfig.from_dict()` delegates to `ConfidenceGateConfig.from_dict(data.get("confidence_gate", {}))` (no changes needed here)
-- **Inline field expansion in `to_dict()`**: `scripts/little_loops/config/core.py:426-439` — `dependency_mapping` section shows how a multi-field nested section is expanded field-by-field inline (the pattern to follow for the fixed `confidence_gate` section)
+- **Inline field expansion in `to_dict()`**: `scripts/little_loops/config/core.py:431-444` — `dependency_mapping` section shows how a multi-field nested section is expanded field-by-field inline (the pattern to follow for the fixed `confidence_gate` section)
 
 ### Tests
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/tests/test_config.py:328-344` — `TestConfidenceGateConfig` — currently only tests `enabled` and `threshold`; needs new tests for `readiness_threshold`, `outcome_threshold`, and the legacy fallback behavior
-- `scripts/tests/test_config.py:350-377` — `TestCommandsConfig` — assertions at lines 365 and 376 check `config.confidence_gate.threshold == 90/85`; must be updated to check `readiness_threshold` and `outcome_threshold`
-- `scripts/tests/test_config.py:573-587` — `TestBRConfig.test_to_dict()` — add assertion that `result["commands"]["confidence_gate"]` contains `readiness_threshold` and `outcome_threshold` (not `threshold`)
+- `scripts/tests/test_config.py:338-354` — `TestConfidenceGateConfig` — currently only tests `enabled` and `threshold`; needs new tests for `readiness_threshold`, `outcome_threshold`, and the legacy fallback behavior
+- `scripts/tests/test_config.py:357-387` — `TestCommandsConfig` — assertions at lines 365 and 376 check `config.confidence_gate.threshold == 90/85`; must be updated to check `readiness_threshold` and `outcome_threshold`
+- `scripts/tests/test_config.py:583-594` — `TestBRConfig.test_to_dict()` — add assertion that `result["commands"]["confidence_gate"]` contains `readiness_threshold` and `outcome_threshold` (not `threshold`)
 - **Test pattern to follow**: `scripts/tests/test_config.py:310-325` — `TestParallelAutomationConfig` legacy-key tests: (1) primary key only, (2) fallback key only, (3) both present with primary winning
 
 ### Documentation
@@ -180,8 +180,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. **`automation.py:93-110`** — Remove `threshold` field from `ConfidenceGateConfig` dataclass; update `from_dict()` to use the nested-`data.get()` pattern from `automation.py:69`: `readiness_threshold=data.get("readiness_threshold", data.get("threshold", 85))`
-2. **`core.py:394-398`** — Fix `BRConfig.to_dict()` confidence_gate section: replace `"threshold": ...` with `"readiness_threshold": ...` and `"outcome_threshold": ...` (follow the inline expansion pattern at `core.py:426-439`)
+1. **`automation.py:94-110`** — Remove `threshold` field from `ConfidenceGateConfig` dataclass; update `from_dict()` to use the nested-`data.get()` pattern from `automation.py:69`: `readiness_threshold=data.get("readiness_threshold", data.get("threshold", 85))`
+2. **`core.py:400-403`** — Fix `BRConfig.to_dict()` confidence_gate section: replace `"threshold": ...` with `"readiness_threshold": ...` and `"outcome_threshold": ...` (follow the inline expansion pattern at `core.py:431-444`)
 3. **`skills/manage-issue/SKILL.md:173`** — Migrate `config.commands.confidence_gate.threshold` → `config.commands.confidence_gate.readiness_threshold`
 4. **`docs/reference/CONFIGURATION.md:318`** — Remove the `threshold` row from the confidence_gate config table/example
 5. **`scripts/tests/test_config.py:328-344`** — Update `TestConfidenceGateConfig` to remove `threshold` assertions; add tests for `readiness_threshold`, `outcome_threshold`, and legacy-`threshold` fallback (follow 3-test pattern at `test_config.py:310-325`)
@@ -203,12 +203,27 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `enhancement`, `config`, `confidence-gate`, `auto-generated`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-26T00:11:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2ad6a1-fdb3-4820-8aeb-9bcbc36aeac1.jsonl`
 - `/ll:refine-issue` - 2026-03-25T23:42:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:format-issue` - 2026-03-25T23:37:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:confidence-check` - 2026-03-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
+## Resolution
+
+- Removed `threshold` field from `ConfidenceGateConfig` dataclass (`automation.py:94-110`)
+- Updated `from_dict()` to use legacy fallback pattern: `readiness_threshold=data.get("readiness_threshold", data.get("threshold", 85))` (`automation.py`)
+- Fixed `BRConfig.to_dict()` to export `readiness_threshold` and `outcome_threshold` instead of `threshold` (`core.py:400-403`)
+- Migrated `skills/manage-issue/SKILL.md:173` from `confidence_gate.threshold` → `confidence_gate.readiness_threshold`
+- Removed `"threshold": 85` from `docs/reference/CONFIGURATION.md` example block and table row
+- Updated `TestConfidenceGateConfig` and `TestCommandsConfig` tests to use `readiness_threshold`/`outcome_threshold`
+- Added 3 new tests: legacy fallback behavior (2 tests) and `to_dict()` schema alignment (1 test)
+- All 116 tests pass
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-25T00:00:00 - improvement complete
+
 ## Status
 
-**Open** | Created: 2026-03-25 | Priority: P4
+**Completed** | Created: 2026-03-25 | Priority: P4 | Resolved: 2026-03-25

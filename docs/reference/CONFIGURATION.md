@@ -71,7 +71,6 @@ For interactive editing, use `/ll:configure`.
     "custom_verification": [],
     "confidence_gate": {
       "enabled": false,
-      "threshold": 85,
       "readiness_threshold": 85,
       "outcome_threshold": 70
     },
@@ -315,12 +314,11 @@ Command customization for `/ll:manage-issue`:
 | `post_implement` | `null` | Command to run after implementation |
 | `custom_verification` | `[]` | Additional verification commands |
 | `confidence_gate.enabled` | `false` | Enable confidence score gate before implementation |
-| `confidence_gate.threshold` | `85` | Minimum confidence score (1-100) required to proceed |
-| `confidence_gate.readiness_threshold` | `85` | Minimum readiness score (1-100) required to proceed (overrides `threshold` for readiness check) |
+| `confidence_gate.readiness_threshold` | `85` | Minimum readiness score (1-100) required to proceed |
 | `confidence_gate.outcome_threshold` | `70` | Minimum outcome confidence score (1-100) required to proceed |
 | `tdd_mode` | `false` | Enable TDD mode: write failing tests before implementation |
 
-When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `threshold`, implementation halts. Use `--force-implement` to bypass.
+When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `readiness_threshold`, implementation halts. Use `--force-implement` to bypass.
 
 When `tdd_mode` is `true`, `manage-issue` splits Phase 3 into Phase 3a (Write Tests — Red) and Phase 3b (Implement — Green). In Phase 3a, tests are written based on the plan's acceptance criteria and must fail against the current codebase. In Phase 3b, implementation code is written to make those tests pass.
 

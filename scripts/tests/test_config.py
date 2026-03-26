@@ -339,19 +339,31 @@ class TestConfidenceGateConfig:
     """Tests for ConfidenceGateConfig dataclass."""
 
     def test_from_dict_with_all_fields(self) -> None:
-        """Test creating ConfidenceGateConfig with all fields."""
-        data = {"enabled": True, "threshold": 70}
+        """Test creating ConfidenceGateConfig with all schema-aligned fields."""
+        data = {"enabled": True, "readiness_threshold": 75, "outcome_threshold": 60}
         config = ConfidenceGateConfig.from_dict(data)
 
         assert config.enabled is True
-        assert config.threshold == 70
+        assert config.readiness_threshold == 75
+        assert config.outcome_threshold == 60
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating ConfidenceGateConfig with default values."""
         config = ConfidenceGateConfig.from_dict({})
 
         assert config.enabled is False
-        assert config.threshold == 85
+        assert config.readiness_threshold == 85
+        assert config.outcome_threshold == 70
+
+    def test_threshold_fallback_sets_readiness_threshold(self) -> None:
+        """Test that legacy threshold key falls back to set readiness_threshold."""
+        config = ConfidenceGateConfig.from_dict({"threshold": 90})
+        assert config.readiness_threshold == 90
+
+    def test_threshold_fallback_does_not_override_explicit_readiness_threshold(self) -> None:
+        """Test that explicit readiness_threshold wins over legacy threshold fallback."""
+        config = ConfidenceGateConfig.from_dict({"threshold": 90, "readiness_threshold": 75})
+        assert config.readiness_threshold == 75
 
 
 class TestCommandsConfig:
@@ -363,7 +375,7 @@ class TestCommandsConfig:
             "pre_implement": "npm run lint",
             "post_implement": "npm run build",
             "custom_verification": ["npm test", "npm run e2e"],
-            "confidence_gate": {"enabled": True, "threshold": 90},
+            "confidence_gate": {"enabled": True, "readiness_threshold": 90},
             "tdd_mode": True,
         }
         config = CommandsConfig.from_dict(data)
@@ -372,7 +384,7 @@ class TestCommandsConfig:
         assert config.post_implement == "npm run build"
         assert config.custom_verification == ["npm test", "npm run e2e"]
         assert config.confidence_gate.enabled is True
-        assert config.confidence_gate.threshold == 90
+        assert config.confidence_gate.readiness_threshold == 90
         assert config.tdd_mode is True
 
     def test_from_dict_with_defaults(self) -> None:
@@ -383,7 +395,7 @@ class TestCommandsConfig:
         assert config.post_implement is None
         assert config.custom_verification == []
         assert config.confidence_gate.enabled is False
-        assert config.confidence_gate.threshold == 85
+        assert config.confidence_gate.readiness_threshold == 85
         assert config.tdd_mode is False
 
 
@@ -618,6 +630,21 @@ class TestBRConfig:
         assert "require_code_changes" in parallel
         assert "use_feature_branches" in parallel
         assert "remote_name" in parallel
+
+    def test_to_dict_confidence_gate_schema_aligned_keys(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test to_dict exports readiness_threshold and outcome_threshold, not threshold."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+        cg = result["commands"]["confidence_gate"]
+
+        assert "readiness_threshold" in cg
+        assert "outcome_threshold" in cg
+        assert "threshold" not in cg
 
     def test_to_dict_automation_idle_timeout(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
