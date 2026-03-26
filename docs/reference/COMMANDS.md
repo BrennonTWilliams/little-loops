@@ -516,6 +516,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
 | `analyze-loop`^ | Analyze loop execution history and synthesize issues from failure patterns |
+| `cleanup-loops`^ | Find and clean stuck or stale loop processes |
 | `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
