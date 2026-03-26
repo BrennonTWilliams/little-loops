@@ -429,6 +429,37 @@ Analyze loop execution history to synthesize actionable issues from failure patt
 
 **See also:** `/ll:review-loop`, `/ll:create-loop`, `ll-loop history`
 
+### `/ll:cleanup-loops`
+Find stuck or stale `ll-loop` processes, diagnose root causes from state and events files, and clean them up after user confirmation.
+
+**Arguments:**
+- `--dry-run` (flag): Preview discovered stuck/stale loops without making any changes
+- `--threshold N` (optional): Minutes before a "running" loop's `updated_at` is considered stale (default: 15)
+
+**What it does:**
+1. Runs `ll-loop list --running --json` to enumerate all loops with state files
+2. Checks each loop's PID liveness and `updated_at` staleness
+3. Classifies loops: stuck-running, stale-interrupted, abandoned-handoff, terminal, or healthy
+4. Prompts user to confirm cleanup of actionable loops
+5. Calls `ll-loop stop` (stuck-running) or removes orphaned `.pid` files (stale-interrupted)
+6. Tails the events file to surface root cause for each cleaned loop
+
+**Usage:**
+```bash
+# Discover and clean all stuck/stale loops (with confirmation)
+/ll:cleanup-loops
+
+# Preview what would be cleaned without making changes
+/ll:cleanup-loops --dry-run
+
+# Use a custom staleness threshold (30 minutes)
+/ll:cleanup-loops --threshold 30
+```
+
+**Trigger keywords:** "cleanup loops", "stuck loops", "clean loops", "stale loops", "kill stuck loops"
+
+**See also:** `/ll:analyze-loop`, `/ll:review-loop`, `ll-loop stop`
+
 ### `/ll:workflow-automation-proposer`
 Synthesize workflow patterns into concrete automation proposals. Final step (Step 3) of the `/ll:analyze-workflows` pipeline.
 

@@ -160,6 +160,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:create-loop` | Interactive FSM loop creation |
 | `/ll:review-loop` | Review and improve existing FSM loop configurations |
 | `/ll:analyze-loop` | Analyze loop execution history for actionable issues |
+| `/ll:cleanup-loops [--dry-run] [--threshold N]` | Find and clean stuck or stale loop processes |
 | `/ll:loop-suggester [file|--from-commands]` | Suggest FSM loops from message history or command catalog |
 | `/ll:workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 
@@ -214,6 +215,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `create-loop`^ | Automation & Loops | Create new FSM loop configuration interactively |
 | `review-loop`^ | Automation & Loops | Review and improve existing FSM loop configurations |
 | `analyze-loop`^ | Automation & Loops | Analyze loop execution history to synthesize actionable issues from failures |
+| `cleanup-loops`^ | Automation & Loops | Find stuck/stale loops, diagnose root causes, and clean them up |
 | `workflow-automation-proposer`^ | Automation & Loops | Synthesize workflow patterns into automation proposals |
 | `audit-claude-config`^ | Meta-Analysis | Comprehensive audit of Claude Code plugin configuration |
 | `analyze-history`^ | Meta-Analysis | Analyze issue history for project health, trends, and progress |
