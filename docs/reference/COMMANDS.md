@@ -27,6 +27,8 @@ Initialize little-loops configuration for a project.
 
 **Flags:** `--interactive`, `--yes` (non-interactive, accepts all defaults), `--force`
 
+**Interactive wizard:** `--interactive` runs a multi-round setup that covers project type, issue directories, test commands, document tracking, sprint settings, and more. The final round offers to add ll- CLI command documentation to the target project's `.claude/CLAUDE.md` (or root `CLAUDE.md`). If the file already contains a `## little-loops` section, the write is skipped automatically.
+
 **Auto-update:** If the installed `little_loops` package version does not match the plugin version, `init` automatically runs `pip install` to upgrade the package before proceeding.
 
 ### `/ll:help`

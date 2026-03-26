@@ -70,6 +70,8 @@ class TestBuiltinLoopFiles:
             "context-health-monitor",
             "harness-single-shot",
             "harness-multi-item",
+            "general-task",
+            "refine-to-ready-issue",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
