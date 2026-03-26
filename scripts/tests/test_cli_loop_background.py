@@ -617,3 +617,33 @@ class TestCmdStatusWithPid:
         print_calls = [str(c) for c in mock_print.call_args_list]
         print_text = " ".join(print_calls)
         assert "PID" not in print_text
+
+
+class TestMainModuleEntryPoint:
+    """Tests that __main__.py enables `python -m little_loops.cli.loop` invocation (BUG-891)."""
+
+    def test_main_module_is_importable(self) -> None:
+        """__main__.py must exist so `python -m little_loops.cli.loop` works."""
+        import importlib.util
+
+        spec = importlib.util.find_spec("little_loops.cli.loop.__main__")
+        assert spec is not None, (
+            "__main__.py is missing from little_loops/cli/loop/; "
+            "background mode spawns 'python -m little_loops.cli.loop' which requires it"
+        )
+
+    def test_module_entry_point_exits_cleanly(self) -> None:
+        """python -m little_loops.cli.loop --help must exit 0, not raise No module named error."""
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.cli.loop", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert "No module named little_loops.cli.loop.__main__" not in result.stderr, (
+            f"__main__.py is missing; got stderr: {result.stderr}"
+        )
+        assert result.returncode == 0, (
+            f"Expected exit 0 from --help, got {result.returncode}\nstderr: {result.stderr}"
+        )

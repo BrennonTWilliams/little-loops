@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/__main__.py` (create new)
-- `scripts/little_loops/cli/loop/__init__.py` (verify `main` is exported)
+- `scripts/little_loops/cli/loop/__init__.py` (verify `main_loop` is exported)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/_helpers.py:224-232` — `run_background()` builds `[sys.executable, "-m", "little_loops.cli.loop", subcommand, loop_name, "--foreground-internal"]` and spawns via `subprocess.Popen` at line 264
@@ -142,12 +142,33 @@ The `paradigm: fsm` key in loop configs generates a warning because it's not in 
 
 ---
 
+## Resolution
+
+**Fixed** | Resolved: 2026-03-26
+
+Created `scripts/little_loops/cli/loop/__main__.py` with the standard Python module entry point:
+
+```python
+from little_loops.cli.loop import main_loop
+
+if __name__ == "__main__":
+    raise SystemExit(main_loop())
+```
+
+Also added `TestMainModuleEntryPoint` class to `scripts/tests/test_cli_loop_background.py` with two tests:
+- `test_main_module_is_importable` — verifies `__main__.py` exists via `importlib.util.find_spec`
+- `test_module_entry_point_exits_cleanly` — verifies `python -m little_loops.cli.loop --help` exits 0
+
+All 68 tests pass. Lint and type checks clean.
+
 ## Status
 
-**Open** | Created: 2026-03-26 | Priority: P2
+**Completed** | Created: 2026-03-26 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-26T17:35:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388e753a-2095-4bd6-a688-bc38d51c7b91.jsonl`
 - `/ll:confidence-check` - 2026-03-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
 - `/ll:refine-issue` - 2026-03-26T17:29:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
 - `/ll:format-issue` - 2026-03-26T17:25:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
 - `/ll:capture-issue` - 2026-03-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
+- `/ll:manage-issue` - 2026-03-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
