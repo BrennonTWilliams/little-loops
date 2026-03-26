@@ -175,7 +175,7 @@ IDs are globally unique across all types — you won't have both `BUG-007` and `
 
 Priority levels run from P0 (critical, must fix immediately) to P5 (low, nice-to-have). The priority prefix in the filename determines ordering in automated runs — `ll-auto` and `ll-sprint` process lower numbers first. You can reassign priority at any time by renaming the file or running `/ll:prioritize-issues`.
 
-The `status` field inside the issue file tracks where the issue is in the workflow: `backlog`, `in-progress`, `blocked`, or `complete`. Automated tools read and update this field; you rarely need to edit it directly.
+The `status` field inside the issue file tracks where the issue is in the workflow: `open`, `backlog`, `active`, `in-progress`, `blocked`, or `completed`. Automated tools read and update this field; you rarely need to edit it directly.
 
 ### Directory Structure
 

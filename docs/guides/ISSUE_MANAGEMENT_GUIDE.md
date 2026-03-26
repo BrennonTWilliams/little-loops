@@ -100,6 +100,22 @@ Issues move through seven states:
 
 Issues can also be **deferred** (parked for later) using `/ll:manage-issue <type> defer <ID>` and later restored with `undefer`.
 
+### Frontmatter `status` Values
+
+The lifecycle diagram above shows conceptual workflow phases. The frontmatter `status` field uses a separate set of semantic values that automated tools (e.g., `ll-auto`, `/ll:manage-issue`) read and write:
+
+| Value | Meaning |
+|-------|---------|
+| `open` | Newly captured, not yet triaged |
+| `backlog` | Triaged, queued for a later sprint |
+| `active` | Currently being worked on |
+| `completed` | Work finished and committed |
+| `resolved` | Closed without a code change |
+| `wont_do` | Decided not to implement |
+| `superseded` | Replaced by another issue |
+
+**Directory location determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by directory (`bugs/`, `features/`, `enhancements/`, `completed/`, `deferred/`) — not by the `status` field. The `status` field is a semantic label for human and tool context.
+
 ### Reopen a Completed Issue
 
 When a fix regresses or an issue was closed prematurely:
