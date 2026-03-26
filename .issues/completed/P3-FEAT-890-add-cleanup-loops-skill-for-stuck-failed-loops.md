@@ -157,15 +157,15 @@ ll-loop stop <loop-name>
 
 ## Acceptance Criteria
 
-- [ ] `/ll:cleanup-loops` is a valid invocable skill
-- [ ] Skill lists all running loops via `ll-loop list --running`
-- [ ] Skill calls `ll-loop status` on each running loop and identifies stuck/stale ones
-- [ ] Stuck heuristics cover: dead PID, state stale for > threshold time, interrupted/awaiting states
-- [ ] Skill kills processes and cleans state for confirmed stuck loops
-- [ ] For each cleaned loop, skill reports the state where it got stuck and the last recorded event
-- [ ] User confirmation is required before any destructive action (kill / stop)
-- [ ] Skill handles the case where no loops are running (graceful no-op message)
-- [ ] `CLAUDE.md` updated to list `cleanup-loops` under Automation & Loops
+- [x] `/ll:cleanup-loops` is a valid invocable skill
+- [x] Skill lists all running loops via `ll-loop list --running`
+- [x] Skill calls `ll-loop status` on each running loop and identifies stuck/stale ones
+- [x] Stuck heuristics cover: dead PID, state stale for > threshold time, interrupted/awaiting states
+- [x] Skill kills processes and cleans state for confirmed stuck loops
+- [x] For each cleaned loop, skill reports the state where it got stuck and the last recorded event
+- [x] User confirmation is required before any destructive action (kill / stop)
+- [x] Skill handles the case where no loops are running (graceful no-op message)
+- [ ] `CLAUDE.md` updated to list `cleanup-loops` under Automation & Loops — BLOCKED: `.claude/CLAUDE.md` is protected from automated edits; update manually
 
 ## Impact
 
@@ -182,7 +182,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feature`, `loops`, `automation`, `captured`
 
+## Resolution
+
+- Created `skills/cleanup-loops/SKILL.md` (285 lines) with 8-step workflow: enumerate loops → gather status → classify by stuck heuristics → display summary → confirm via AskUserQuestion → execute cleanup → inspect events for root cause → final report
+- Supports `--dry-run` and `--threshold N` arguments
+- Follows analyze-loop AskUserQuestion pattern and cleanup-worktrees structural pattern
+- `.claude/CLAUDE.md` update blocked (protected file); must be updated manually: add `` `cleanup-loops`^ `` to the Automation & Loops line
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-26T16:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1aa8b9f-1117-46b9-8eb0-95e808a743b7.jsonl`
 - `/ll:refine-issue` - 2026-03-26T16:47:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/733ad6a6-f1d6-41f5-99a9-700614de197e.jsonl`
 - `/ll:confidence-check` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
 - `/ll:refine-issue` - 2026-03-26T16:38:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
@@ -193,4 +202,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-03-26 | Priority: P3
+**Completed** | Created: 2026-03-26 | Resolved: 2026-03-26 | Priority: P3
