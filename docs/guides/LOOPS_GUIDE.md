@@ -229,6 +229,16 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
 | `refine-to-ready-issue` | Single-issue refinement pipeline — format → refine → confidence-check → ready-issue until the issue reaches ready status |
 
+<!-- TODO: update-docs stub — general-task — drafted 2026-03-26 -->
+The `general-task` loop requires the `input` context variable — a natural-language description of the task to complete:
+
+```bash
+ll-loop run general-task --context input="Refactor the auth module to use dependency injection"
+```
+
+The loop creates a Definition of Done before doing any work, decomposes the task into a step-by-step plan, executes one step at a time, and verifies all DoD criteria are met before finishing. Intermediate files are written to `.loops/tmp/` (`general-task-dod.md`, `general-task-plan.md`).
+<!-- END TODO stub -->
+
 The `refine-to-ready-issue` loop uses configurable confidence thresholds (default: readiness > 90, outcome confidence > 75). Override per-run:
 
 ```bash
