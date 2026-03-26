@@ -437,6 +437,41 @@ class BRConfig:
                 },
                 "exclude_common_files": self._dependency_mapping.exclude_common_files,
             },
+            "cli": {
+                "color": self._cli.color,
+                "colors": {
+                    "logger": {
+                        "info": self._cli.colors.logger.info,
+                        "success": self._cli.colors.logger.success,
+                        "warning": self._cli.colors.logger.warning,
+                        "error": self._cli.colors.logger.error,
+                    },
+                    "priority": {
+                        "P0": self._cli.colors.priority.P0,
+                        "P1": self._cli.colors.priority.P1,
+                        "P2": self._cli.colors.priority.P2,
+                        "P3": self._cli.colors.priority.P3,
+                        "P4": self._cli.colors.priority.P4,
+                        "P5": self._cli.colors.priority.P5,
+                    },
+                    "type": {
+                        "BUG": self._cli.colors.type.BUG,
+                        "FEAT": self._cli.colors.type.FEAT,
+                        "ENH": self._cli.colors.type.ENH,
+                    },
+                    "fsm_active_state": self._cli.colors.fsm_active_state,
+                    "fsm_edge_labels": {
+                        "yes": self._cli.colors.fsm_edge_labels.yes,
+                        "no": self._cli.colors.fsm_edge_labels.no,
+                        "error": self._cli.colors.fsm_edge_labels.error,
+                        "partial": self._cli.colors.fsm_edge_labels.partial,
+                        "next": self._cli.colors.fsm_edge_labels.next,
+                        "default": self._cli.colors.fsm_edge_labels.default,
+                        "blocked": self._cli.colors.fsm_edge_labels.blocked,
+                        "retry_exhausted": self._cli.colors.fsm_edge_labels.retry_exhausted,
+                    },
+                },
+            },
         }
 
     def resolve_variable(self, var_path: str) -> str | None:

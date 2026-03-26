@@ -138,7 +138,7 @@ This fix would:
 - `config-schema.json` — move `"cli"` block inside `"properties"`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/brconfig.py` — `BRConfig._parse_config()` reads `cli` key via
+- `scripts/little_loops/config/core.py:112` — `BRConfig._parse_config()` reads `cli` key via
   `_raw_config.get("cli", {})` — no changes needed (runtime path is already correct)
 
 ### Similar Patterns
@@ -146,8 +146,8 @@ This fix would:
   inside `"properties"` — this fix makes `cli` consistent with that pattern
 
 ### Tests
-- `scripts/tests/test_config.py:1225` — `TestCliConfig`: unit tests for `CliConfig.from_dict` defaults/overrides
-- `scripts/tests/test_config.py:1251` — `TestBRConfigCli`: integration tests for `BRConfig.cli` loading from `ll-config.json`
+- `scripts/tests/test_config.py:1235` — `TestCliConfig`: unit tests for `CliConfig.from_dict` defaults/overrides
+- `scripts/tests/test_config.py:1261` — `TestBRConfigCli`: integration tests for `BRConfig.cli` loading from `ll-config.json`
 - No schema-level JSON validation tests exist anywhere in `scripts/tests/` (no `jsonschema` import found)
 - No `test_cli_in_to_dict` test exists — needed since `to_dict()` currently omits `cli` (see Secondary Finding below)
 
@@ -164,7 +164,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `config-schema.json:808-883` — Bug confirmed: `"properties"` closes at line 809 (`},`), then `"cli"` opens at line 810 as a sibling. The `"additionalProperties": false` at line 881 belongs to `"cli"`, and the root-level `"additionalProperties": false` is at line 883.
 - `scripts/little_loops/config/core.py:342-440` — **Secondary gap**: `to_dict()` omits `"cli"` entirely. All other sections (`project`, `issues`, `automation`, `parallel`, `commands`, `scan`, `sprints`, `loops`, `sync`, `dependency_mapping`) are present; `cli` is the only missing one. This is a separate but related bug — `resolve_variable("cli.*")` will silently fail and any template using `{{config.cli.*}}` will break.
 - `scripts/little_loops/config/cli.py` — `CliConfig` dataclass; `from_dict` classmethod exists
-- `scripts/tests/test_config.py:928` — `test_sync_in_to_dict` pattern to follow for a `test_cli_in_to_dict` test
+- `scripts/tests/test_config.py:938` — `test_sync_in_to_dict` pattern to follow for a `test_cli_in_to_dict` test
 - `scripts/tests/conftest.py:66` — `sample_config` fixture does not include a `"cli"` key (no impact on existing tests)
 
 ## Implementation Steps
@@ -174,7 +174,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 3. Verify JSON is structurally valid: `python -c "import json; json.load(open('config-schema.json'))"`
 4. Validate `cli.*` keys are now recognized: add `"cli": {"invalid_key": true}` to `ll-config.json` and confirm `python -m jsonschema --instance .claude/ll-config.json config-schema.json` reports an error
 5. **(Secondary fix)** Add `"cli"` to `to_dict()` in `scripts/little_loops/config/core.py:440` following the pattern of adjacent sections — `{"color": self._cli.color, "colors": {...}}`
-6. Add `test_cli_in_to_dict` to `scripts/tests/test_config.py` following the pattern at line 928 (`test_sync_in_to_dict`)
+6. Add `test_cli_in_to_dict` to `scripts/tests/test_config.py` following the pattern at line 938 (`test_sync_in_to_dict`)
 7. Run tests: `python -m pytest scripts/tests/test_config.py -v -k "cli"`
 
 ## Impact
@@ -189,12 +189,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `bug`, `config`, `schema`, `auto-generated`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-25T23:54:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01388abb-124d-46ca-ac1f-3ae11e508514.jsonl`
 - `/ll:refine-issue` - 2026-03-25T23:19:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:format-issue` - 2026-03-25T23:14:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 - `/ll:confidence-check` - 2026-03-25T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:manage-issue` - 2026-03-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+
+## Resolution
+
+**Fixed** in commit `fix(config): move cli section inside properties in config-schema.json`
+
+### Changes Made
+- `config-schema.json`: Moved `"cli"` block from root schema object into `"properties"` (lines 810–882 re-indented). Validators now type-check `cli.*` settings, IDE autocomplete works, and `additionalProperties: false` prevents typos in cli sub-keys.
+- `scripts/little_loops/config/core.py`: Added `"cli"` to `to_dict()` (secondary fix). `resolve_variable("cli.*")` now works correctly.
+- `scripts/tests/test_config.py`: Added `test_cli_in_to_dict` to `TestBRConfigCli` to verify `cli` appears in `to_dict()` output.
+
+### Verification
+- 3910 tests pass, 5 skipped
+- Lint and type checks pass
+- JSON schema validity confirmed: `cli` is inside `properties`, root `additionalProperties: false` enforced
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-25 | Priority: P3
+**Completed** | Created: 2026-03-25 | Resolved: 2026-03-25 | Priority: P3

@@ -805,80 +805,80 @@
         }
       },
       "additionalProperties": false
-    }
-  },
-  "cli": {
-    "type": "object",
-    "description": "CLI output settings",
-    "properties": {
-      "color": {
-        "type": "boolean",
-        "default": true,
-        "description": "Emit ANSI color codes in CLI output. Set to false for CI or plain-text environments. Also suppressed when the NO_COLOR environment variable is set."
-      },
-      "colors": {
-        "type": "object",
-        "description": "Override individual ANSI SGR color codes. Values are raw SGR parameter strings (e.g. \"32\", \"38;5;208\"). Unspecified keys retain their defaults.",
-        "properties": {
-          "logger": {
-            "type": "object",
-            "description": "Colors for Logger log-level output.",
-            "properties": {
-              "info":    { "type": "string", "default": "36", "description": "ANSI SGR code for info messages (default: cyan)" },
-              "success": { "type": "string", "default": "32", "description": "ANSI SGR code for success messages (default: green)" },
-              "warning": { "type": "string", "default": "33", "description": "ANSI SGR code for warning messages (default: yellow)" },
-              "error":   { "type": "string", "default": "38;5;208", "description": "ANSI SGR code for error messages (default: orange)" }
-            },
-            "additionalProperties": false
-          },
-          "priority": {
-            "type": "object",
-            "description": "Colors for issue priority labels (P0–P5).",
-            "properties": {
-              "P0": { "type": "string", "default": "38;5;208;1", "description": "ANSI SGR code for P0 (default: bold orange)" },
-              "P1": { "type": "string", "default": "38;5;208", "description": "ANSI SGR code for P1 (default: orange)" },
-              "P2": { "type": "string", "default": "33", "description": "ANSI SGR code for P2 (default: yellow)" },
-              "P3": { "type": "string", "default": "0", "description": "ANSI SGR code for P3 (default: normal)" },
-              "P4": { "type": "string", "default": "2", "description": "ANSI SGR code for P4 (default: dim)" },
-              "P5": { "type": "string", "default": "2", "description": "ANSI SGR code for P5 (default: dim)" }
-            },
-            "additionalProperties": false
-          },
-          "type": {
-            "type": "object",
-            "description": "Colors for issue type labels (BUG, FEAT, ENH).",
-            "properties": {
-              "BUG":  { "type": "string", "default": "38;5;208", "description": "ANSI SGR code for BUG labels (default: orange)" },
-              "FEAT": { "type": "string", "default": "32", "description": "ANSI SGR code for FEAT labels (default: green)" },
-              "ENH":  { "type": "string", "default": "34", "description": "ANSI SGR code for ENH labels (default: blue)" }
-            },
-            "additionalProperties": false
-          },
-          "fsm_active_state": {
-            "type": "string",
-            "default": "32",
-            "description": "ANSI SGR code for the active FSM state highlight during verbose run (default: green)"
-          },
-          "fsm_edge_labels": {
-            "type": "object",
-            "description": "ANSI SGR color overrides for FSM transition edge labels in loop diagrams.",
-            "properties": {
-              "yes":             { "type": "string", "default": "32",      "description": "ANSI SGR code for 'yes' transitions (default: green)" },
-              "no":              { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'no' transitions (default: orange)" },
-              "error":           { "type": "string", "default": "31",      "description": "ANSI SGR code for 'error' transitions (default: red)" },
-              "partial":         { "type": "string", "default": "33",      "description": "ANSI SGR code for 'partial' transitions (default: yellow)" },
-              "next":            { "type": "string", "default": "2",       "description": "ANSI SGR code for 'next' transitions (default: dim)" },
-              "default":         { "type": "string", "default": "2",       "description": "ANSI SGR code for unlabeled ('_') transitions (default: dim)" },
-              "blocked":         { "type": "string", "default": "31",      "description": "ANSI SGR code for 'blocked' transitions (default: red)" },
-              "retry_exhausted": { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'retry_exhausted' transitions (default: orange)" }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false
-      }
     },
-    "additionalProperties": false
+    "cli": {
+      "type": "object",
+      "description": "CLI output settings",
+      "properties": {
+        "color": {
+          "type": "boolean",
+          "default": true,
+          "description": "Emit ANSI color codes in CLI output. Set to false for CI or plain-text environments. Also suppressed when the NO_COLOR environment variable is set."
+        },
+        "colors": {
+          "type": "object",
+          "description": "Override individual ANSI SGR color codes. Values are raw SGR parameter strings (e.g. \"32\", \"38;5;208\"). Unspecified keys retain their defaults.",
+          "properties": {
+            "logger": {
+              "type": "object",
+              "description": "Colors for Logger log-level output.",
+              "properties": {
+                "info":    { "type": "string", "default": "36", "description": "ANSI SGR code for info messages (default: cyan)" },
+                "success": { "type": "string", "default": "32", "description": "ANSI SGR code for success messages (default: green)" },
+                "warning": { "type": "string", "default": "33", "description": "ANSI SGR code for warning messages (default: yellow)" },
+                "error":   { "type": "string", "default": "38;5;208", "description": "ANSI SGR code for error messages (default: orange)" }
+              },
+              "additionalProperties": false
+            },
+            "priority": {
+              "type": "object",
+              "description": "Colors for issue priority labels (P0–P5).",
+              "properties": {
+                "P0": { "type": "string", "default": "38;5;208;1", "description": "ANSI SGR code for P0 (default: bold orange)" },
+                "P1": { "type": "string", "default": "38;5;208", "description": "ANSI SGR code for P1 (default: orange)" },
+                "P2": { "type": "string", "default": "33", "description": "ANSI SGR code for P2 (default: yellow)" },
+                "P3": { "type": "string", "default": "0", "description": "ANSI SGR code for P3 (default: normal)" },
+                "P4": { "type": "string", "default": "2", "description": "ANSI SGR code for P4 (default: dim)" },
+                "P5": { "type": "string", "default": "2", "description": "ANSI SGR code for P5 (default: dim)" }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "object",
+              "description": "Colors for issue type labels (BUG, FEAT, ENH).",
+              "properties": {
+                "BUG":  { "type": "string", "default": "38;5;208", "description": "ANSI SGR code for BUG labels (default: orange)" },
+                "FEAT": { "type": "string", "default": "32", "description": "ANSI SGR code for FEAT labels (default: green)" },
+                "ENH":  { "type": "string", "default": "34", "description": "ANSI SGR code for ENH labels (default: blue)" }
+              },
+              "additionalProperties": false
+            },
+            "fsm_active_state": {
+              "type": "string",
+              "default": "32",
+              "description": "ANSI SGR code for the active FSM state highlight during verbose run (default: green)"
+            },
+            "fsm_edge_labels": {
+              "type": "object",
+              "description": "ANSI SGR color overrides for FSM transition edge labels in loop diagrams.",
+              "properties": {
+                "yes":             { "type": "string", "default": "32",      "description": "ANSI SGR code for 'yes' transitions (default: green)" },
+                "no":              { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'no' transitions (default: orange)" },
+                "error":           { "type": "string", "default": "31",      "description": "ANSI SGR code for 'error' transitions (default: red)" },
+                "partial":         { "type": "string", "default": "33",      "description": "ANSI SGR code for 'partial' transitions (default: yellow)" },
+                "next":            { "type": "string", "default": "2",       "description": "ANSI SGR code for 'next' transitions (default: dim)" },
+                "default":         { "type": "string", "default": "2",       "description": "ANSI SGR code for unlabeled ('_') transitions (default: dim)" },
+                "blocked":         { "type": "string", "default": "31",      "description": "ANSI SGR code for 'blocked' transitions (default: red)" },
+                "retry_exhausted": { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'retry_exhausted' transitions (default: orange)" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

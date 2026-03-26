@@ -1297,3 +1297,15 @@ class TestBRConfigCli:
         # Unspecified keys retain defaults
         assert config.cli.colors.logger.info == "36"
         assert config.cli.colors.priority.P1 == "38;5;208"
+
+    def test_cli_in_to_dict(self, temp_project_dir: Path) -> None:
+        """Test cli config appears in to_dict output."""
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "cli" in result
+        assert "color" in result["cli"]
+        assert "colors" in result["cli"]
+        assert "logger" in result["cli"]["colors"]
+        assert "priority" in result["cli"]["colors"]
+        assert "type" in result["cli"]["colors"]
