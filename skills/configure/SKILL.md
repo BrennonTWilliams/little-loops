@@ -19,7 +19,7 @@ arguments:
 
 # Configure
 
-<!-- PLUGIN_VERSION: 1.65.0 -->
+<!-- PLUGIN_VERSION: 1.66.0 -->
 
 Interactively configure specific areas of `.claude/ll-config.json` without re-running the full `/ll:init` wizard.
 
