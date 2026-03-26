@@ -1,7 +1,7 @@
 ---
 id: BUG-895
 title: "GETTING_STARTED.md lists stale status values inconsistent with ISSUE_MANAGEMENT_GUIDE"
-status: open
+status: completed
 priority: P3
 blocked_by: []
 testable: false
@@ -92,12 +92,17 @@ New users reading GETTING_STARTED will expect `in-progress` and `blocked` to be 
 
 `documentation`, `consistency`, `captured`
 
+## Resolution
+
+Updated `docs/guides/GETTING_STARTED.md:178` to replace `in-progress` and `blocked` with the canonical set (`open`, `backlog`, `active`, `completed`, `resolved`, `wont_do`, `superseded`) and added a reference link to `ISSUE_MANAGEMENT_GUIDE.md`.
+
 ## Status
 
-**Open** | Captured: 2026-03-26 | Priority: P3
+**Completed** | Captured: 2026-03-26 | Resolved: 2026-03-26 | Priority: P3
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-26T21:20:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a144f8f6-b87d-4e3d-84c3-177d86c2baca.jsonl`
 - `/ll:refine-issue` - 2026-03-26T21:15:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/184fd12a-1de3-4eba-9d21-0c994ea1a12d.jsonl`
 - `/ll:format-issue` - 2026-03-26T21:09:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09734997-4b5e-4d15-a3cc-89e8eb882723.jsonl`
 - `/ll:confidence-check` - 2026-03-26T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57cbeb51-65cf-4d20-9547-cc7a5990b7a5.jsonl`
