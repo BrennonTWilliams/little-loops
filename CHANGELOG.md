@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.66.0] - 2026-03-26
+
+### Added
+
+- **Add /ll:cleanup-loops Skill for Stuck/Failed Loop Management** — New skill for finding, diagnosing, and cleaning up stuck or stale loops; investigates PIDs, kills dead processes, cleans state files, and reports where each loop got stuck (FEAT-890)
+
+### Fixed
+
+- **ll-loop --background fails: Missing `__main__.py`** — Fixed immediate crash when running `ll-loop run <loop-name> --background`; added `__main__.py` entry point to `little_loops/cli/loop/` package (BUG-891)
+
+### Documentation
+
+- Update skills count and add cleanup-loops to command reference (d4578818)
+- Add cleanup-loops skill to all reference docs (9bc0df0f)
+
 ## [1.65.0] - 2026-03-25
 
 ### Added
@@ -229,6 +244,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.66.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.65.0...v1.66.0
 [1.65.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.1...v1.65.0
 [1.64.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.0...v1.64.1
 [1.64.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.63.0...v1.64.0
