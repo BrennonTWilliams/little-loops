@@ -12,6 +12,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.67.0] - 2026-03-26
+
+### Added
+
+- **`/ll:update` Slash Command for Plugin and Package Updates** — New skill for updating little-loops components (plugin marketplace listing, Claude Code plugin, and pip package) with per-component control via `--only` flag (FEAT-892)
+
+### Changed
+
+- **Configurable thresholds in refine-to-ready-issue loop** — Added `context:` block to `refine-to-ready-issue.yaml` with `readiness_threshold` and `outcome_threshold` defaults; replaced hardcoded values with `${context.*}` variable interpolation (ENH-893)
+- Add CLAUDE.md documentation step to `ll-init` interactive wizard (7253feac)
+
+### Fixed
+
+- Fix stale status values in GETTING_STARTED.md (e91a84fc)
+
+### Documentation
+
+- Update FSM loop count to 26 and document general-task loop (d296df44)
+- Add `--only` flag to `ll-sprint run` documentation (261729db)
+- Update skill count to 21 and add cleanup-loops to all reference docs (1e32ea65)
+- Add `/ll:update` references and general-purpose loops section to guides (cd9de7eb)
+- Document interactive wizard behavior and register new builtin loops in init docs (2b7b3725)
+
 ## [1.66.1] - 2026-03-26
 
 ### Changed
@@ -250,6 +273,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.67.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.1...v1.67.0
 [1.66.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.0...v1.66.1
 [1.66.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.65.0...v1.66.0
 [1.65.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.1...v1.65.0
