@@ -18,7 +18,7 @@ These flags appear across multiple tools:
 | `--resume` | `-r` | Resume from previous checkpoint | `ll-auto`, `ll-parallel`, `ll-sprint run` |
 | `--max-issues` | `-m` | Limit number of issues to process (0 = unlimited) | `ll-auto`, `ll-parallel` |
 | `--quiet` | `-q` | Suppress non-essential output | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-sync` |
-| `--only` | | Comma-separated issue IDs to process exclusively | `ll-auto`, `ll-parallel` |
+| `--only` | | Comma-separated issue IDs to process exclusively | `ll-auto`, `ll-parallel`, `ll-sprint run` |
 | `--skip` | | Comma-separated issue IDs to exclude | `ll-auto`, `ll-parallel`, `ll-sprint` |
 | `--type` | | Comma-separated issue types: `BUG`, `FEAT`, `ENH` | `ll-auto`, `ll-parallel`, `ll-sprint` |
 | `--config` | | Path to project root (default: current directory) | `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-sync` |
@@ -153,6 +153,7 @@ Execute a sprint.
 | `--config` | | Path to project root |
 | `--resume` | `-r` | Resume interrupted sprint |
 | `--quiet` | `-q` | Suppress non-essential output |
+| `--only` | | Issue IDs to process exclusively during execution |
 | `--skip` | | Issue IDs to skip during execution |
 | `--skip-analysis` | | Skip dependency analysis |
 | `--type` | | Filter by type |
