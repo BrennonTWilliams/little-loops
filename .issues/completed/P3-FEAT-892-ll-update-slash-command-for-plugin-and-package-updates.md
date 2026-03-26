@@ -2,7 +2,7 @@
 id: FEAT-892
 type: FEAT
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 98
@@ -39,15 +39,15 @@ A developer has just run `/ll:manage-release` to publish v1.67.0. They now need 
 
 ## Acceptance Criteria
 
-- [ ] `/ll:update` is available as a slash command (skill or command) in the little-loops plugin
-- [ ] Running `/ll:update` with no arguments updates all three components (A + B + C) in order
-- [ ] Running `/ll:update --marketplace` updates only the marketplace listing (A)
-- [ ] Running `/ll:update --plugin` updates only the plugin itself (B)
-- [ ] Running `/ll:update --package` updates only the pip package (C)
-- [ ] Each step reports success/failure independently; partial failures do not abort remaining steps
-- [ ] Output shows current version → new version for each updated component
-- [ ] Dry-run mode (`--dry-run`) shows what would be updated without applying changes
-- [ ] Command is documented in `/ll:help` output
+- [x] `/ll:update` is available as a slash command (skill or command) in the little-loops plugin
+- [x] Running `/ll:update` with no arguments updates all three components (A + B + C) in order
+- [x] Running `/ll:update --marketplace` updates only the marketplace listing (A)
+- [x] Running `/ll:update --plugin` updates only the plugin itself (B)
+- [x] Running `/ll:update --package` updates only the pip package (C)
+- [x] Each step reports success/failure independently; partial failures do not abort remaining steps
+- [x] Output shows current version → new version for each updated component
+- [x] Dry-run mode (`--dry-run`) shows what would be updated without applying changes
+- [x] Command is documented in `/ll:help` output
 
 ## API/Interface
 
@@ -174,6 +174,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `feature`, `dx`, `cli`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-26T19:01:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66fb6678-4a38-49ff-8181-66f3bbb18395.jsonl`
 - `/ll:confidence-check` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08222264-8c10-483b-8297-c8b24653e187.jsonl`
 - `/ll:refine-issue` - 2026-03-26T18:51:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08222264-8c10-483b-8297-c8b24653e187.jsonl`
 - `/ll:refine-issue` - 2026-03-26T18:45:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08222264-8c10-483b-8297-c8b24653e187.jsonl`
@@ -183,6 +184,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
+## Resolution
+
+**Implemented** on 2026-03-26 by `/ll:manage-issue feature implement FEAT-892`.
+
+### Changes Made
+
+- `skills/update/SKILL.md` — Created; implements all 5 flags with `[PASS/SKIP/FAIL/DRY-RUN]` per-step reporting and summary table
+- `commands/help.md` — Added `/ll:update` entry in SESSION & CONFIG section and Quick Reference Table
+- `.claude-plugin/marketplace.json` — Synced version `1.66.0` → `1.66.1` (first use of the `--marketplace` step)
+- `scripts/tests/test_update_skill.py` — Created; 15 structural tests verifying skill content and marketplace version sync
+
+### Notes
+
+- Skill is auto-discovered via `"skills": ["./skills"]` in `plugin.json`; no registration needed
+- `--marketplace` step is Edit + git-stage (no CLI exists); `--plugin` step uses `claude plugin update ll`
+- `--package` step auto-detects dev vs release context via `[ -d "./scripts" ]`
+
 ## Status
 
-**Open** | Created: 2026-03-26 | Priority: P3
+**Completed** | Created: 2026-03-26 | Resolved: 2026-03-26 | Priority: P3
