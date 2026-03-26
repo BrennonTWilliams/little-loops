@@ -389,11 +389,15 @@ class ParallelAutomationConfig:
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
     require_code_changes: bool = True
+    use_feature_branches: bool = False
+    remote_name: str = "origin"
 ```
 
 **Fields:**
 - `worktree_copy_files` - Files copied from main repo to each worktree
 - `require_code_changes` - Fail issues that don't produce code changes
+- `use_feature_branches` - Create `feature/<id>-<slug>` branches instead of auto-merged worktree branches; skips auto-merge, leaving branches as PR-ready
+- `remote_name` - Git remote name for fetch/pull operations (default: `"origin"`)
 
 **Note:** Shared fields from `AutomationConfig` are accessed via `base.*`:
 - `base.max_workers` - Maximum parallel workers (default: 2)

@@ -42,6 +42,7 @@ For interactive editing, use `/ll:configure`.
 
   "automation": {
     "timeout_seconds": 3600,
+    "idle_timeout_seconds": 0,
     "state_file": ".auto-manage-state.json",
     "worktree_base": ".worktrees",
     "max_workers": 2,
@@ -263,6 +264,7 @@ Sequential automation settings (ll-auto):
 | Key | Default | Description |
 |-----|---------|-------------|
 | `timeout_seconds` | `3600` | Per-issue timeout |
+| `idle_timeout_seconds` | `0` | Kill worker if no output for N seconds (0 to disable) |
 | `state_file` | `.auto-manage-state.json` | State persistence |
 | `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |
