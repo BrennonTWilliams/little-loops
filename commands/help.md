@@ -187,6 +187,10 @@ SESSION & CONFIG
     Toggle automatic prompt optimization settings
     Settings: enabled, mode, confirm, status
 
+/ll:update [flags]
+    Update little-loops components (marketplace listing, plugin, pip package)
+    Flags: --marketplace, --plugin, --package, --all, --dry-run
+
 CLI TOOLS (pip install little-loops)
 ------------------------------------
 ll-auto           Process all backlog issues sequentially in priority order
@@ -236,7 +240,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
 **Automation & Loops**: `create-loop`, `loop-suggester`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`
-**Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`
+**Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`
 
 ---
 
