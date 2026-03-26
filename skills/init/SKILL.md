@@ -19,7 +19,7 @@ arguments:
 
 # Initialize Configuration
 
-<!-- PLUGIN_VERSION: 1.61.1 -->
+<!-- PLUGIN_VERSION: 1.65.0 -->
 
 You are tasked with initializing little-loops configuration for a project by creating `.claude/ll-config.json`.
 
