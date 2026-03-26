@@ -592,8 +592,8 @@ The loop exits at `done` (terminal). If it exits early via `on_blocked: done` on
 ## See Also
 
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — quick-reference section for `examples-miner`: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations
-- [`loops/examples-miner.yaml`](../../loops/examples-miner.yaml) — full annotated loop source (12 states with complete action prompts)
-- [`loops/oracles/oracle-capture-issue.yaml`](../../loops/oracles/oracle-capture-issue.yaml) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)
-- [`loops/apo-textgrad.yaml`](../../loops/apo-textgrad.yaml) — inner optimizer loop invoked by `run_optimizer`; reads `examples_file`, emits `FAILURE_PATTERN` / `ROOT_CAUSE` / `GRADIENT`
+- [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (12 states with complete action prompts)
+- [`scripts/little_loops/loops/oracles/oracle-capture-issue.yaml`](../../scripts/little_loops/loops/oracles/oracle-capture-issue.yaml) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)
+- [`scripts/little_loops/loops/apo-textgrad.yaml`](../../scripts/little_loops/loops/apo-textgrad.yaml) — inner optimizer loop invoked by `run_optimizer`; reads `examples_file`, emits `FAILURE_PATTERN` / `ROOT_CAUSE` / `GRADIENT`
 - [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) — related guide for wrapping skills in layered quality evaluation pipelines
 - [FSM Loop Architecture](../generalized-fsm-loop.md) — sub-loop chaining (`context_passthrough`), state field reference, evaluator catalog

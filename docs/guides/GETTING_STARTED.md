@@ -280,7 +280,7 @@ A scan often produces more issues than you want to implement. Two commands to re
 
 ## Quick Reference
 
-The eight commands you'll use most often:
+The ten commands you'll use most often:
 
 | Command | What It Does |
 |---------|-------------|
