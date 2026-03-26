@@ -119,7 +119,7 @@ Strip the `_meta`, `$schema`, and `product` sections (product is configured sepa
 
 ### 5. Interactive Mode (if --interactive)
 
-If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 5–6 rounds of configuration questions, with a progress indicator shown at each step.
+If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 6–7 rounds of configuration questions, with a progress indicator shown at each step.
 
 ### 6. Display Summary
 
@@ -267,11 +267,13 @@ After the user confirms, check whether the configured tool commands are availabl
   [mkdir]  {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
   [update] .gitignore (add state file exclusions)
   [update] .claude/settings.local.json (add ll- CLI tool permissions)  # Only if user opts in
+  [write]  .claude/CLAUDE.md (ll- CLI command documentation)        # Only if opted in + no existing file
+  [update] .claude/CLAUDE.md (append ## little-loops CLI Commands)  # Only if opted in + existing file
 
 === END DRY RUN (no changes made) ===
 ```
 
-Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, and 11 — the dry-run output above replaces them.
+Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, 11, and 12 — the dry-run output above replaces them.
 
 **Otherwise**, proceed with normal file writes:
 
@@ -439,7 +441,79 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
    - Create `.claude/` directory first if needed
    - Write result back with 2-space indent, preserving all top-level keys (`$schema`, `env`, etc.)
 
-### 11. Display Completion Message
+### 11. Update CLAUDE.md
+
+Add ll- CLI command documentation to the target project's `CLAUDE.md`.
+
+**If `--dry-run` is set, skip this step** (already shown in dry-run preview).
+
+**If `--interactive` mode**: use the answer recorded in Round 12 (`CLAUDE_MD_ANSWER`). If the user chose "Skip", proceed to Step 12 without changes.
+
+**Otherwise**: skip this step (Step 11 only runs in interactive mode).
+
+If user opted in:
+
+1. Detect existing file (reuse detection from Round 12, or re-detect):
+   ```bash
+   CLAUDE_MD_EXISTS=false
+   CLAUDE_MD_PATH=""
+   [ -f ".claude/CLAUDE.md" ] && CLAUDE_MD_EXISTS=true && CLAUDE_MD_PATH=".claude/CLAUDE.md"
+   [ "$CLAUDE_MD_EXISTS" = false ] && [ -f "CLAUDE.md" ] && CLAUDE_MD_EXISTS=true && CLAUDE_MD_PATH="CLAUDE.md"
+   ```
+
+2. **Duplicate guard** (if file exists): check whether a `## little-loops` section is already present:
+   - Read existing file content
+   - If the string `## little-loops` is found anywhere in the file, skip writing (already documented) and log: `Skipped: CLAUDE.md already contains a ## little-loops section`
+   - Otherwise, proceed to append
+
+3. **If file exists and no duplicate**: append the commands section:
+   ```markdown
+
+   ## little-loops CLI Commands
+
+   - `ll-auto` - Process all backlog issues sequentially in priority order
+   - `ll-parallel` - Process issues concurrently using isolated git worktrees
+   - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
+   - `ll-loop` - Execute FSM-based automation loops
+   - `ll-workflows` - Identify multi-step workflow patterns from user message history
+   - `ll-messages` - Extract user messages from Claude Code logs
+   - `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
+   - `ll-deps` - Cross-issue dependency analysis and validation
+   - `ll-sync` - Sync local issues with GitHub Issues
+   - `ll-verify-docs` - Verify documented counts match actual file counts
+   - `ll-check-links` - Check markdown documentation for broken links
+   - `ll-issues` - Issue management and visualization (next-id, list, show, sequence, impact-effort, refine-status)
+   - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
+
+   Install: `pip install -e "./scripts[dev]"`
+   ```
+   Track outcome: `CLAUDE_MD_UPDATED=true`
+
+4. **If no file exists**: create `.claude/` directory if needed, then write `.claude/CLAUDE.md`:
+   ```markdown
+   # Project Configuration
+
+   ## little-loops CLI Commands
+
+   - `ll-auto` - Process all backlog issues sequentially in priority order
+   - `ll-parallel` - Process issues concurrently using isolated git worktrees
+   - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
+   - `ll-loop` - Execute FSM-based automation loops
+   - `ll-workflows` - Identify multi-step workflow patterns from user message history
+   - `ll-messages` - Extract user messages from Claude Code logs
+   - `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
+   - `ll-deps` - Cross-issue dependency analysis and validation
+   - `ll-sync` - Sync local issues with GitHub Issues
+   - `ll-verify-docs` - Verify documented counts match actual file counts
+   - `ll-check-links` - Check markdown documentation for broken links
+   - `ll-issues` - Issue management and visualization (next-id, list, show, sequence, impact-effort, refine-status)
+   - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
+
+   Install: `pip install -e "./scripts[dev]"`
+   ```
+   Track outcome: `CLAUDE_MD_CREATED=true`
+
+### 12. Display Completion Message
 
 ```
 ================================================================================
@@ -451,6 +525,8 @@ Created: .claude/ll-goals.md (product goals template)  # Only show if product en
 Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
 Updated: .gitignore (added state file exclusions)
 Updated: .claude/settings.local.json (added ll- CLI tool permissions)  # Only show if user opted in
+Created: .claude/CLAUDE.md (ll- CLI command documentation)             # Only show if CLAUDE_MD_CREATED=true
+Updated: .claude/CLAUDE.md (appended ## little-loops CLI Commands)     # Only show if CLAUDE_MD_UPDATED=true
 
 Next steps:
   1. Review and customize: .claude/ll-config.json

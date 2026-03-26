@@ -190,6 +190,8 @@ N/A - No public API changes (wizard flow modification in `skills/init/SKILL.md` 
 `enhancement`, `init`, `onboarding`, `claude-md`, `discoverability`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-26T20:10:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5e04b4e-412f-414b-935f-24a84bc0750e.jsonl`
 - `/ll:refine-issue` - 2026-03-26T19:57:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6984070-445a-4d12-84a8-cff27f584410.jsonl`
 - `/ll:confidence-check` - 2026-03-26T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d74fd998-5ed3-431a-9af6-24ec2e79ab03.jsonl`
 - `/ll:refine-issue` - 2026-03-26T19:47:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c471ee77-14f8-4630-9bf8-5cb13df084f7.jsonl`
@@ -198,6 +200,22 @@ N/A - No public API changes (wizard flow modification in `skills/init/SKILL.md` 
 
 ---
 
+## Resolution
+
+**Status**: Completed | **Completed**: 2026-03-26
+
+### Changes Made
+
+- `skills/init/interactive.md`: Incremented `TOTAL = 5` → `TOTAL = 6`; updated round count comment to include Round 12; added Round 12 AskUserQuestion block with two variants (file-exists vs. not-exists); updated summary table (6–7 total rounds) and added Row 12
+- `skills/init/SKILL.md`: Added Step 11 (Update CLAUDE.md) between the old Step 10 (Allowed Tools) and new Step 12 (Display Completion Message); updated dry-run preview block with conditional `[write]`/`[update]` CLAUDE.md lines; added `Created:`/`Updated:` lines in completion message; updated interactive mode round count to 6–7; updated dry-run skip list to include Step 11
+
+### Verification
+
+All three paths work correctly per implementation:
+- **Yes (new file)**: creates `.claude/CLAUDE.md` with minimal header + 13-command bullet list
+- **Yes (existing file)**: appends `## little-loops CLI Commands` section with duplicate guard
+- **Skip**: no CLAUDE.md files created or modified
+
 ## Status
 
-**Open** | Created: 2026-03-26 | Priority: P3
+**Completed** | Created: 2026-03-26 | Completed: 2026-03-26 | Priority: P3

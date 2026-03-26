@@ -10,7 +10,7 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 5     # Working total (mandatory rounds: 1, 2, 3a, 6, 11)
+TOTAL = 6     # Working total (mandatory rounds: 1, 2, 3a, 6, 11, 12)
               # Round 3b is silent (automation always enabled, no user prompt)
               # Round 5a is conditional (only if parallel processing selected)
               # Round 7 is silent (advanced settings always skipped)
@@ -225,7 +225,7 @@ Count active conditions for Round 5:
 
   if ACTIVE > 0: TOTAL += 1   # Round 5a only runs if parallel processing selected; max ACTIVE = 2
   # Round 5b and 5c are never shown (max ACTIVE never exceeds 2)
-  # Round 11 (Allowed Tools) is always shown — already counted in TOTAL = 5
+  # Rounds 11 (Allowed Tools) and 12 (CLAUDE.md Docs) are always shown — already counted in TOTAL = 6
 ```
 
 ## Round 5: Advanced Settings (Dynamic)
@@ -668,11 +668,58 @@ questions:
 
 **Record the result** (chosen target file or "skip") — used by SKILL.md Step 10 to perform the actual merge.
 
+## Round 12: CLAUDE.md Documentation — ALWAYS RUNS
+
+**CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked the user about CLAUDE.md documentation.
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — CLAUDE.md Documentation
+
+**First, detect existing CLAUDE.md files:**
+
+```bash
+CLAUDE_MD_EXISTS=false
+CLAUDE_MD_PATH=""
+[ -f ".claude/CLAUDE.md" ] && CLAUDE_MD_EXISTS=true && CLAUDE_MD_PATH=".claude/CLAUDE.md"
+[ "$CLAUDE_MD_EXISTS" = false ] && [ -f "CLAUDE.md" ] && CLAUDE_MD_EXISTS=true && CLAUDE_MD_PATH="CLAUDE.md"
+```
+
+**Build options based on detected files and present a SINGLE AskUserQuestion call:**
+
+If **`.claude/CLAUDE.md` or `CLAUDE.md` exists** (`CLAUDE_MD_EXISTS=true`):
+
+```yaml
+questions:
+  - header: "CLAUDE.md Documentation"
+    question: "Add ll- CLI command documentation to your project's CLAUDE.md?"
+    options:
+      - label: "Yes, append to existing CLAUDE.md (Recommended)"
+        description: "Append a ## little-loops CLI Commands section to the existing file"
+      - label: "Skip"
+        description: "Don't modify CLAUDE.md"
+    multiSelect: false
+```
+
+If **neither exists** (`CLAUDE_MD_EXISTS=false`):
+
+```yaml
+questions:
+  - header: "CLAUDE.md Documentation"
+    question: "Add ll- CLI command documentation to your project's CLAUDE.md? (Improves discoverability)"
+    options:
+      - label: "Yes, create .claude/CLAUDE.md (Recommended)"
+        description: "Create .claude/CLAUDE.md with a minimal header and ## little-loops CLI Commands section"
+      - label: "Skip"
+        description: "Don't create a CLAUDE.md file"
+    multiSelect: false
+```
+
+**Record the result** (`CLAUDE_MD_ANSWER`) — used by SKILL.md Step 11.5 to perform the actual file write/append.
+
 ---
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 5–6 (6 only if parallel processing selected)**
+**Total interaction rounds: 6–7 (7 only if parallel processing selected)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -687,6 +734,7 @@ questions:
 | 9 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
 | 10 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
 | **11** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
+| **12** | **CLAUDE.md Docs** | **add ll- CLI commands to CLAUDE.md (yes/skip)** | **Always in --interactive** |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
