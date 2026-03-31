@@ -1,7 +1,7 @@
 name: issue-refinement
 description: |
   Progressively refine all active issues through format → score → refine pipeline.
-  Routes each issue to the correct step using a deterministic shell classifier.
+  Delegates refinement to the refine-to-ready-issue sub-loop for each issue.
   Commits every 5 actions and continues until all issues meet quality thresholds.
 initial: init
 states:
@@ -21,64 +21,16 @@ states:
   parse_id:
     action: echo "${captured.classify.output}" | awk 'NR==1{printf $2}'
     action_type: shell
-    capture: "issue_id"
+    capture: "input"
     evaluate:
       type: exit_code
-    on_yes: route_format
+    on_yes: run_refine_to_ready
     on_error: evaluate
-  route_format:
-    evaluate:
-      type: output_contains
-      source: "${captured.classify.output}"
-      pattern: "NEEDS_FORMAT"
-    on_yes: format_issues
-    on_no: route_verify
-    on_error: evaluate
-  route_verify:
-    evaluate:
-      type: output_contains
-      source: "${captured.classify.output}"
-      pattern: "NEEDS_VERIFY"
-    on_yes: verify_only
-    on_no: route_score
-    on_error: evaluate
-  route_score:
-    evaluate:
-      type: output_contains
-      source: "${captured.classify.output}"
-      pattern: "NEEDS_SCORE"
-    on_yes: score_issues
-    on_no: refine_issues
-    on_error: evaluate
-  verify_only:
-    action_type: prompt
-    action: |
-      Run this command for issue ${captured.issue_id.output}:
-      /ll:verify-issues ${captured.issue_id.output} --auto
-    next: check_commit
-  format_issues:
-    action_type: prompt
-    on_error: check_commit
-    action: |
-      Run these commands in order for issue ${captured.issue_id.output}:
-      1. /ll:format-issue ${captured.issue_id.output} --auto
-      2. /ll:verify-issues ${captured.issue_id.output} --auto
-    next: check_commit
-  score_issues:
-    action_type: prompt
-    on_error: check_commit
-    action: |
-      Run this command for issue ${captured.issue_id.output}:
-      /ll:confidence-check ${captured.issue_id.output} --auto
-    next: check_commit
-  refine_issues:
-    action_type: prompt
-    on_error: check_commit
-    action: |
-      Run these commands in order for issue ${captured.issue_id.output}:
-      1. /ll:refine-issue ${captured.issue_id.output} --auto
-      2. /ll:confidence-check ${captured.issue_id.output} --auto
-    next: check_commit
+  run_refine_to_ready:
+    loop: refine-to-ready-issue
+    context_passthrough: true
+    on_yes: check_commit
+    on_no: check_commit
   check_commit:
     action: |
       mkdir -p .loops/tmp

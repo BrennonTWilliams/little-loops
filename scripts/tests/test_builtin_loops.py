@@ -370,37 +370,76 @@ class TestEvaluationQualityLoop:
         assert data.get("timeout", 0) > 0
 
 
-class TestIssueRefinementLoopOnError:
-    """Tests that prompt states in issue-refinement.yaml define on_error handlers."""
+
+class TestIssueRefinementSubLoop:
+    """Tests that issue-refinement.yaml delegates refinement to the refine-to-ready-issue sub-loop."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "issue-refinement.yaml"
-    PROMPT_STATES_REQUIRING_ON_ERROR = ["format_issues", "score_issues", "refine_issues"]
+    REMOVED_STATES = [
+        "route_format",
+        "route_verify",
+        "route_score",
+        "format_issues",
+        "score_issues",
+        "refine_issues",
+        "verify_only",
+    ]
 
     @pytest.fixture
     def data(self) -> dict:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    @pytest.mark.parametrize("state_name", PROMPT_STATES_REQUIRING_ON_ERROR)
-    def test_prompt_state_has_on_error(self, data: dict, state_name: str) -> None:
-        """Each prompt state must define on_error to prevent loop termination on SIGKILL."""
-        state = data["states"].get(state_name)
-        assert state is not None, f"State '{state_name}' not found"
-        assert state.get("action_type") == "prompt", f"State '{state_name}' is not a prompt state"
-        assert "on_error" in state, (
-            f"Prompt state '{state_name}' missing on_error handler — "
-            f"SIGKILL will terminate the loop instead of recovering"
+    def test_parse_id_capture_is_input(self, data: dict) -> None:
+        """parse_id must capture as 'input' so context_passthrough injects it into child loop."""
+        parse_id = data["states"].get("parse_id", {})
+        assert parse_id.get("capture") == "input", (
+            f"parse_id.capture should be 'input', got {parse_id.get('capture')!r} — "
+            f"child loop reads context.input via context_passthrough"
         )
 
-    @pytest.mark.parametrize("state_name", PROMPT_STATES_REQUIRING_ON_ERROR)
-    def test_prompt_state_on_error_routes_to_check_commit(
-        self, data: dict, state_name: str
-    ) -> None:
-        """on_error for each prompt state must route to check_commit."""
-        state = data["states"].get(state_name, {})
-        assert state.get("on_error") == "check_commit", (
-            f"Prompt state '{state_name}' on_error should be 'check_commit', "
-            f"got {state.get('on_error')!r}"
+    def test_parse_id_routes_to_sub_loop(self, data: dict) -> None:
+        """parse_id.on_yes must route to run_refine_to_ready, not route_format."""
+        parse_id = data["states"].get("parse_id", {})
+        assert parse_id.get("on_yes") == "run_refine_to_ready", (
+            f"parse_id.on_yes should be 'run_refine_to_ready', got {parse_id.get('on_yes')!r}"
+        )
+
+    def test_run_refine_to_ready_state_exists(self, data: dict) -> None:
+        """run_refine_to_ready sub-loop state must exist."""
+        assert "run_refine_to_ready" in data["states"], (
+            "State 'run_refine_to_ready' not found in issue-refinement.yaml"
+        )
+
+    def test_run_refine_to_ready_uses_sub_loop(self, data: dict) -> None:
+        """run_refine_to_ready must use 'loop:' field to invoke refine-to-ready-issue."""
+        state = data["states"].get("run_refine_to_ready", {})
+        assert state.get("loop") == "refine-to-ready-issue", (
+            f"run_refine_to_ready.loop should be 'refine-to-ready-issue', got {state.get('loop')!r}"
+        )
+
+    def test_run_refine_to_ready_has_context_passthrough(self, data: dict) -> None:
+        """run_refine_to_ready must set context_passthrough: true to inject captured input."""
+        state = data["states"].get("run_refine_to_ready", {})
+        assert state.get("context_passthrough") is True, (
+            f"run_refine_to_ready.context_passthrough should be true, got {state.get('context_passthrough')!r}"
+        )
+
+    def test_run_refine_to_ready_routes_to_check_commit(self, data: dict) -> None:
+        """run_refine_to_ready must route both on_yes and on_no to check_commit."""
+        state = data["states"].get("run_refine_to_ready", {})
+        assert state.get("on_yes") == "check_commit", (
+            f"run_refine_to_ready.on_yes should be 'check_commit', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_commit", (
+            f"run_refine_to_ready.on_no should be 'check_commit', got {state.get('on_no')!r}"
+        )
+
+    @pytest.mark.parametrize("state_name", REMOVED_STATES)
+    def test_removed_states_absent(self, data: dict, state_name: str) -> None:
+        """Inline routing and prompt states must be removed — logic lives in refine-to-ready-issue."""
+        assert state_name not in data["states"], (
+            f"State '{state_name}' should have been removed; logic delegated to refine-to-ready-issue sub-loop"
         )
 
 

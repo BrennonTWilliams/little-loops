@@ -147,12 +147,29 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Resolved** | 2026-03-31 | `/ll:manage-issue enhancement improve ENH-901`
+
+- Renamed `parse_id.capture` from `"issue_id"` to `"input"` so `context_passthrough` injects the issue ID as `context.input` in the child loop
+- Updated `parse_id.on_yes` from `route_format` to `run_refine_to_ready`
+- Removed 7 inline states: `route_format`, `route_verify`, `route_score`, `format_issues`, `score_issues`, `refine_issues`, `verify_only`
+- Added `run_refine_to_ready` sub-loop state using `loop: refine-to-ready-issue` + `context_passthrough: true`
+- Removed `TestIssueRefinementLoopOnError` class from `test_builtin_loops.py` (deleted states)
+- Added `TestIssueRefinementSubLoop` class with 13 tests covering the new sub-loop wiring
+
+All 175 tests pass.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-03-31 | Priority: P3
+**Completed** | Created: 2026-03-31 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-31T23:30:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c43e1fa-eb24-4bbf-9798-e3ba3416d9d0.jsonl`
 - `/ll:confidence-check` - 2026-03-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa9b1b58-ba01-4d31-9284-dc3b8ec1fd7e.jsonl`
 - `/ll:refine-issue` - 2026-03-31T23:24:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa9b1b58-ba01-4d31-9284-dc3b8ec1fd7e.jsonl`
 - `/ll:format-issue` - 2026-03-31T23:19:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa9b1b58-ba01-4d31-9284-dc3b8ec1fd7e.jsonl`
 - `/ll:capture-issue` - 2026-03-31T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa9b1b58-ba01-4d31-9284-dc3b8ec1fd7e.jsonl`
+- `/ll:manage-issue` - 2026-03-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c43e1fa-eb24-4bbf-9798-e3ba3416d9d0.jsonl`
