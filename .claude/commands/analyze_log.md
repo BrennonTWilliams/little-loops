@@ -12,7 +12,7 @@ You are tasked with analyzing log files from `ll-parallel` or `ll-auto` runs to 
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
 - **Completed directory**: `{{config.issues.completed_dir}}`

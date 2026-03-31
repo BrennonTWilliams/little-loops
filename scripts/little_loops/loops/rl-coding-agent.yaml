@@ -50,7 +50,7 @@ states:
       # Load test_cmd: ll-config.json > context override > default
       TEST_CMD=$(python3 -c "
       import json, pathlib
-      p = pathlib.Path('.claude/ll-config.json')
+      p = pathlib.Path('.ll/ll-config.json')
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', '${context.test_cmd}'))
       ")
@@ -58,7 +58,7 @@ states:
       # Load lint_cmd: ll-config.json > context override > default
       LINT_CMD=$(python3 -c "
       import json, pathlib
-      p = pathlib.Path('.claude/ll-config.json')
+      p = pathlib.Path('.ll/ll-config.json')
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('lint_cmd', '${context.lint_cmd}'))
       ")

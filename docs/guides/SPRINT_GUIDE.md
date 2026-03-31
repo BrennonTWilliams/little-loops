@@ -320,7 +320,7 @@ ll-sprint analyze sprint-1 --format json
 
 ## Configuration
 
-Sprint behavior is configured in `.claude/ll-config.json` under the `sprints` key:
+Sprint behavior is configured in `.ll/ll-config.json` under the `sprints` key:
 
 ```json
 {

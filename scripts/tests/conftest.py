@@ -54,11 +54,11 @@ def load_fixture(fixtures_dir: Path, *path_parts: str) -> str:
 
 @pytest.fixture
 def temp_project_dir() -> Generator[Path, None, None]:
-    """Create a temporary project directory with .claude folder."""
+    """Create a temporary project directory with .ll folder."""
     with tempfile.TemporaryDirectory() as tmpdir:
         project_root = Path(tmpdir)
-        claude_dir = project_root / ".claude"
-        claude_dir.mkdir()
+        ll_dir = project_root / ".ll"
+        ll_dir.mkdir()
         yield project_root
 
 
@@ -116,7 +116,7 @@ def sample_config() -> dict[str, Any]:
 @pytest.fixture
 def config_file(temp_project_dir: Path, sample_config: dict[str, Any]) -> Path:
     """Create a config file in the temp project."""
-    config_path = temp_project_dir / ".claude" / "ll-config.json"
+    config_path = temp_project_dir / ".ll" / "ll-config.json"
     config_path.write_text(json.dumps(sample_config, indent=2))
     return config_path
 

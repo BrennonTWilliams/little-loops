@@ -431,7 +431,7 @@ ll-check-links docs/             # Check specific directory
 
 ## Configuration
 
-little-loops uses `.claude/ll-config.json` for project-specific settings. Run `/ll:init` to auto-detect your project type and generate a config, or `/ll:configure` for interactive editing. All settings have sensible defaults.
+little-loops uses `.ll/ll-config.json` for project-specific settings. Run `/ll:init` to auto-detect your project type and generate a config, or `/ll:configure` for interactive editing. All settings have sensible defaults.
 
 For the full configuration reference — all sections, options, variable substitution, and command overrides — see [Configuration Reference](docs/reference/CONFIGURATION.md).
 
@@ -480,7 +480,7 @@ For the full configuration reference — all sections, options, variable substit
 
 | Issue | Solution |
 |-------|----------|
-| Config not loading | Run `/ll:init` or check `.claude/ll-config.json` exists |
+| Config not loading | Run `/ll:init` or check `.ll/ll-config.json` exists |
 | Command not found | Verify plugin is enabled in `.claude/settings.local.json` |
 | `ll-auto`/`ll-parallel` not found | Run `pip install little-loops` |
 | Worktree errors | Run `ll-parallel --cleanup` then `git worktree prune` |

@@ -22,7 +22,7 @@ You are tasked with creating sprint definitions for the little-loops project. Sp
 
 ## Configuration
 
-Read settings from `.claude/ll-config.json`:
+Read settings from `.ll/ll-config.json`:
 
 **Issues settings** (under `issues`):
 - `base_dir`: Issues directory (default: `.issues`)
@@ -36,9 +36,9 @@ Read settings from `.claude/ll-config.json`:
 
 ### 0. Load Configuration
 
-Read the project configuration from `.claude/ll-config.json` to get sprint settings.
+Read the project configuration from `.ll/ll-config.json` to get sprint settings.
 
-Use the Read tool to read `.claude/ll-config.json`, then extract:
+Use the Read tool to read `.ll/ll-config.json`, then extract:
 - `issues.base_dir` - Issues directory (use default `.issues` if not set)
 - `sprints.sprints_dir` - Directory for sprint files (use default `.sprints` if not set)
 - `sprints.default_timeout` - Default timeout in seconds (use default `3600` if not set)
@@ -195,7 +195,7 @@ Analyze the parsed issues and generate 2-4 distinct groupings. Skip any grouping
 - Include the top 2 component groupings by issue count
 
 **Grouping Strategy 6: Goal-Aligned**
-- **SKIP entirely** if `product.enabled` is not `true` in `.claude/ll-config.json` or `product.goals_file` (default `.claude/ll-goals.md`) does not exist
+- **SKIP entirely** if `product.enabled` is not `true` in `.ll/ll-config.json` or `product.goals_file` (default `.ll/ll-goals.md`) does not exist
 - Read the goals file and extract priority names from its YAML frontmatter `priorities` list
 - For each issue, check if its `goal_alignment` frontmatter field matches a goal name, OR if its title/summary mentions a goal name (case-insensitive)
 - Group issues by matching goal

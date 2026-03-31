@@ -7,13 +7,13 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 - **Plugin manifest**: `.claude-plugin/plugin.json`
 - **Config schema**: `config-schema.json`
-- **Project config**: `.claude/ll-config.json` (read this for project-specific settings)
-- **Local overrides**: `.claude/ll.local.md` (user-specific, gitignored)
+- **Project config**: `.ll/ll-config.json` (read this for project-specific settings)
+- **Local overrides**: `.ll/ll.local.md` (user-specific, gitignored)
 - **Hooks**: `hooks/hooks.json`
 
 ### Local Settings Override
 
-Create `.claude/ll.local.md` to override settings for your local environment without modifying shared config:
+Create `.ll/ll.local.md` to override settings for your local environment without modifying shared config:
 
 ```markdown
 ---

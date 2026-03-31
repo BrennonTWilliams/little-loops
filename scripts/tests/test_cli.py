@@ -325,8 +325,8 @@ class TestMainAutoIntegration:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
-            claude_dir = project / ".claude"
-            claude_dir.mkdir()
+            ll_dir = project / ".ll"
+            ll_dir.mkdir()
             config = {
                 "project": {"name": "test"},
                 "issues": {
@@ -337,7 +337,7 @@ class TestMainAutoIntegration:
                 },
                 "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
             }
-            (claude_dir / "ll-config.json").write_text(json.dumps(config))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config))
             issues_dir = project / ".issues" / "bugs"
             issues_dir.mkdir(parents=True)
             yield project
@@ -491,8 +491,8 @@ class TestMainParallelIntegration:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
-            claude_dir = project / ".claude"
-            claude_dir.mkdir()
+            ll_dir = project / ".ll"
+            ll_dir.mkdir()
             config = {
                 "project": {"name": "test"},
                 "issues": {
@@ -508,7 +508,7 @@ class TestMainParallelIntegration:
                     "timeout_seconds": 1800,
                 },
             }
-            (claude_dir / "ll-config.json").write_text(json.dumps(config))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config))
             issues_dir = project / ".issues" / "bugs"
             issues_dir.mkdir(parents=True)
             yield project
@@ -1378,8 +1378,8 @@ class TestMainAutoAdditionalCoverage:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
-            claude_dir = project / ".claude"
-            claude_dir.mkdir()
+            ll_dir = project / ".ll"
+            ll_dir.mkdir()
             config = {
                 "project": {"name": "test"},
                 "issues": {
@@ -1390,7 +1390,7 @@ class TestMainAutoAdditionalCoverage:
                 },
                 "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
             }
-            (claude_dir / "ll-config.json").write_text(json.dumps(config))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config))
             issues_dir = project / ".issues" / "bugs"
             issues_dir.mkdir(parents=True)
             yield project
@@ -1493,8 +1493,8 @@ class TestMainParallelAdditionalCoverage:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
-            claude_dir = project / ".claude"
-            claude_dir.mkdir()
+            ll_dir = project / ".ll"
+            ll_dir.mkdir()
             config = {
                 "project": {"name": "test"},
                 "issues": {
@@ -1510,7 +1510,7 @@ class TestMainParallelAdditionalCoverage:
                     "timeout_seconds": 1800,
                 },
             }
-            (claude_dir / "ll-config.json").write_text(json.dumps(config))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config))
             issues_dir = project / ".issues" / "bugs"
             issues_dir.mkdir(parents=True)
             yield project
@@ -2260,8 +2260,8 @@ class TestMainSprintAdditionalCoverage:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
-            claude_dir = project / ".claude"
-            claude_dir.mkdir()
+            ll_dir = project / ".ll"
+            ll_dir.mkdir()
             config = {
                 "project": {"name": "test"},
                 "issues": {
@@ -2277,7 +2277,7 @@ class TestMainSprintAdditionalCoverage:
                     "completed_dir": "completed",
                 },
             }
-            (claude_dir / "ll-config.json").write_text(json.dumps(config))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config))
 
             # Create issue directories
             issues_dir = project / ".issues"

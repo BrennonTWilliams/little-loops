@@ -29,7 +29,7 @@ ModelCallback = Callable[[str], None]
 
 # Context handoff detection pattern
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
-CONTINUATION_PROMPT_PATH = Path(".claude/ll-continue-prompt.md")
+CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")
 
 
 def detect_context_handoff(output: str) -> bool:

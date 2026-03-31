@@ -16,7 +16,7 @@ Configure automatic prompt optimization behavior. The optimization hook analyzes
 
 ## Configuration
 
-Settings are stored in `.claude/ll-config.json` under `prompt_optimization`:
+Settings are stored in `.ll/ll-config.json` under `prompt_optimization`:
 
 | Setting | Values | Description |
 |---------|--------|-------------|
@@ -65,7 +65,7 @@ Output: `Confirm: [ON|OFF] - [description]`
 
 ### 3. Update Config
 
-When toggling, update `.claude/ll-config.json` with the new value.
+When toggling, update `.ll/ll-config.json` with the new value.
 
 ---
 
@@ -81,7 +81,7 @@ When disabled, prompts are never optimized automatically. Users can always re-en
 ### mode (quick/thorough)
 
 - **quick** (default): Uses project config and reference files only (~2s)
-  - Reads `.claude/ll-config.json` for project settings
+  - Reads `.ll/ll-config.json` for project settings
   - Checks CLAUDE.md, CONTRIBUTING.md, README.md
   - Fast, suitable for most prompts
 
@@ -167,6 +167,6 @@ $ARGUMENTS
 
 ## Integration
 
-This command modifies `.claude/ll-config.json`. Changes take effect immediately for all subsequent prompts in the session.
+This command modifies `.ll/ll-config.json`. Changes take effect immediately for all subsequent prompts in the session.
 
 The optimization hook (`optimize-prompt-hook.md`) reads these settings on every prompt submission.

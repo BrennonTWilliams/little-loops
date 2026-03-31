@@ -30,7 +30,7 @@ Use `~[TOTAL]` (tilde prefix) for Rounds 1–3a to signal the total may grow (Ro
 Before starting Round 1, display the following introduction:
 
 > **Welcome to little-loops setup!**
-> This wizard creates `.claude/ll-config.json` — the configuration file that controls how little-loops manages your project's issues, code quality checks, and automation tools.
+> This wizard creates `.ll/ll-config.json` — the configuration file that controls how little-loops manages your project's issues, code quality checks, and automation tools.
 
 ## Round 1: Core Project Settings
 
@@ -142,7 +142,7 @@ else
 fi
 ```
 
-**Issues directory (silent)**: If `EXISTING_ISSUES_DIR` is found, use it automatically. Otherwise, use `.issues` as the default. No prompting — users can change this value later by editing `.claude/ll-config.json` directly or via `/ll:configure`.
+**Issues directory (silent)**: If `EXISTING_ISSUES_DIR` is found, use it automatically. Otherwise, use `.issues` as the default. No prompting — users can change this value later by editing `.ll/ll-config.json` directly or via `/ll:configure`.
 
 Use a SINGLE AskUserQuestion call with 3 questions:
 
@@ -423,7 +423,7 @@ If document tracking is enabled with defaults:
       },
       "product": {
         "description": "Product goals and requirements",
-        "files": [".claude/ll-goals.md", "docs/ROADMAP.md"]
+        "files": [".ll/ll-goals.md", "docs/ROADMAP.md"]
       }
     }
   }

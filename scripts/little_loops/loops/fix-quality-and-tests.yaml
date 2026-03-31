@@ -67,7 +67,7 @@ states:
     action: |
       CMD=$(python3 -c "
       import json, pathlib
-      p = pathlib.Path('.claude/ll-config.json')
+      p = pathlib.Path('.ll/ll-config.json')
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")

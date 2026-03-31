@@ -12,7 +12,7 @@ import pytest
 
 
 def _write_config(temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
-    config_path = temp_project_dir / ".claude" / "ll-config.json"
+    config_path = temp_project_dir / ".ll" / "ll-config.json"
     config_path.write_text(json.dumps(sample_config))
 
 

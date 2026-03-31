@@ -167,7 +167,7 @@ git add {{config.issues.base_dir}}/
 
 ## Configuration
 
-Uses project configuration from `.claude/ll-config.json`:
+Uses project configuration from `.ll/ll-config.json`:
 
 - `issues.base_dir` - Base directory for issues (default: `.issues`)
 - `issues.categories` - Bug/feature/enhancement directory config

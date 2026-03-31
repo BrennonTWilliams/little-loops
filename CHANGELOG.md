@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Runtime files migrated from `.claude/` to `.ll/`** — All little-loops runtime and configuration files now live in `.ll/` instead of `.claude/` to avoid Claude Code write permission prompts (ENH-896)
+
+### Migration
+
+- **Breaking**: Move your config file: `mkdir -p .ll && mv .claude/ll-config.json .ll/ll-config.json`
+- Other runtime files (`.ll-lock`, `ll-context-state.json`, `ll-continue-prompt.md`, etc.) will be recreated automatically in `.ll/` on next session
+- Local overrides file moved: `.claude/ll.local.md` → `.ll/ll.local.md`
+- Update `.gitignore` if you have custom entries referencing `.claude/ll-*` paths
+
 ### Planned
 
 - Windows compatibility testing

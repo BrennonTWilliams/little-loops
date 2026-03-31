@@ -119,7 +119,7 @@ Scan codebase for product-focused issues based on goals document (requires `prod
 
 **Prerequisites:**
 - Product analysis enabled in config
-- Goals file exists (`.claude/ll-goals.md` by default)
+- Goals file exists (`.ll/ll-goals.md` by default)
 
 ### `/ll:prioritize-issues`
 Analyze issues and assign priority levels (P0-P5).
@@ -183,7 +183,7 @@ Analyze codebase against product goals to identify feature gaps, user experience
 
 **Prerequisites:**
 - Product analysis enabled in config (`product.enabled: true`)
-- Goals file exists (`.claude/ll-goals.md` by default)
+- Goals file exists (`.ll/ll-goals.md` by default)
 
 ### `/ll:confidence-check`
 Pre-implementation confidence check that validates readiness and estimates outcome confidence before coding begins. Produces dual scores: a Readiness Score (go/no-go) and an Outcome Confidence Score (implementation risk).
@@ -289,7 +289,7 @@ Audit documentation for accuracy and completeness. Auto-fixable findings (wrong 
 Identify stale or missing documentation by analyzing git commits and completed issues since a given reference. Detects *coverage gaps* from recent work — complements `/ll:audit-docs` (which validates accuracy of existing content).
 
 **Arguments:**
-- `--since` (optional): Change window start — date (`YYYY-MM-DD`) or git ref (commit hash or branch). Defaults to last commit touching a doc file, or the watermark in `.claude/ll-update-docs.watermark` if present.
+- `--since` (optional): Change window start — date (`YYYY-MM-DD`) or git ref (commit hash or branch). Defaults to last commit touching a doc file, or the watermark in `.ll/ll-update-docs.watermark` if present.
 
 **Flags:** `--fix` (draft stub documentation sections inline for all gaps rather than prompting)
 
@@ -360,7 +360,7 @@ Generate continuation prompt for session handoff.
 Resume from a previous session's continuation prompt.
 
 **Arguments:**
-- `prompt_file` (optional): Path to continuation prompt (default: `.claude/ll-continue-prompt.md`)
+- `prompt_file` (optional): Path to continuation prompt (default: `.ll/ll-continue-prompt.md`)
 
 ---
 
@@ -388,7 +388,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 - Detects repeated tool sequences (check-fix cycles, multi-constraint patterns)
 - Maps patterns to appropriate loop types (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
 - Generates ready-to-use loop YAML with confidence scores
-- Outputs to `.claude/loop-suggestions/`
+- Outputs to `.ll/loop-suggestions/`
 
 **Usage:**
 ```bash

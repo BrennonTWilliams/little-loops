@@ -17,7 +17,7 @@ You are tasked with finding issue files that lack valid issue IDs OR have cross-
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
 - **Valid priorities**: `{{config.issues.priorities}}`
@@ -342,7 +342,7 @@ grep -r "[old-filename]" {{config.issues.base_dir}}/ thoughts/shared/plans/
 ### 7b. Add Missing Document References (if documents.enabled)
 
 **Skip this section if**:
-- `documents.enabled` is not `true` in `.claude/ll-config.json`
+- `documents.enabled` is not `true` in `.ll/ll-config.json`
 - OR no documents are configured
 
 **Process:**
@@ -387,7 +387,7 @@ For each issue file:
    | Issue | Documents Linked |
    |-------|------------------|
    | BUG-071 | docs/ARCHITECTURE.md, docs/API.md |
-   | ENH-045 | .claude/ll-goals.md |
+   | ENH-045 | .ll/ll-goals.md |
    ```
 
 ### 8. Output Report

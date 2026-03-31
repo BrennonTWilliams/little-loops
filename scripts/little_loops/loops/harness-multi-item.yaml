@@ -80,12 +80,12 @@ states:
 
   check_concrete:
     # EXAMPLE: Cheapest gate first — run the project's configured test suite.
-    # Reads test_cmd from .claude/ll-config.json; falls back to 'pytest' if absent.
+    # Reads test_cmd from .ll/ll-config.json; falls back to 'pytest' if absent.
     # set -o pipefail ensures the tee pipe does not swallow the test exit code.
     action: |
       CMD=$(python3 -c "
       import json, pathlib
-      p = pathlib.Path('.claude/ll-config.json')
+      p = pathlib.Path('.ll/ll-config.json')
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")

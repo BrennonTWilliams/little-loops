@@ -72,10 +72,10 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
   enhancements/
   completed/
   deferred/
-.claude/ll-config.json
+.ll/ll-config.json
 ```
 
-**What else happens:** `/ll:init` also appends little-loops state files to your `.gitignore` (e.g. `.auto-manage-state.json`, `.claude/ll-context-state.json`) so runtime state never ends up committed.
+**What else happens:** `/ll:init` also appends little-loops state files to your `.gitignore` (e.g. `.auto-manage-state.json`, `.ll/ll-context-state.json`) so runtime state never ends up committed.
 
 ### Flags
 
@@ -84,7 +84,7 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
 | _(none)_ | Auto-detects project type, previews settings, and asks for confirmation | Default — works for most projects |
 | `--interactive` | Launches a guided wizard to configure every option step by step | First setup when auto-detection won't cover non-standard tooling |
 | `--yes` | Accepts all auto-detected defaults without any confirmation prompts | When you trust the defaults and want a fast, non-interactive setup |
-| `--force` | Overwrites an existing `.claude/ll-config.json` | Re-initializing a project that already has a config |
+| `--force` | Overwrites an existing `.ll/ll-config.json` | Re-initializing a project that already has a config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `/ll:init` would produce before committing |
 
 `--interactive` and `--yes` are mutually exclusive. All other combinations are valid — for example, `--interactive --force` runs the wizard and overwrites the existing config, and `--dry-run --force` previews what an overwrite would produce.

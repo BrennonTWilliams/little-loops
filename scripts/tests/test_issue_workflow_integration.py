@@ -30,9 +30,9 @@ class TestSequentialWorkflowIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
 
-            # Create .claude directory and config
-            claude_dir = project_root / ".claude"
-            claude_dir.mkdir()
+            # Create .ll directory and config
+            ll_dir = project_root / ".ll"
+            ll_dir.mkdir()
 
             config = {
                 "project": {
@@ -54,7 +54,7 @@ class TestSequentialWorkflowIntegration:
                     "state_file": ".test-auto-state.json",
                 },
             }
-            (claude_dir / "ll-config.json").write_text(json.dumps(config, indent=2))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config, indent=2))
 
             # Create issue directories
             issues_base = project_root / ".issues"
@@ -166,9 +166,9 @@ class TestParallelWorkflowIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
 
-            # Create .claude directory and config
-            claude_dir = project_root / ".claude"
-            claude_dir.mkdir()
+            # Create .ll directory and config
+            ll_dir = project_root / ".ll"
+            ll_dir.mkdir()
 
             config = {
                 "project": {
@@ -198,7 +198,7 @@ class TestParallelWorkflowIntegration:
                     "stream_output": False,
                 },
             }
-            (claude_dir / "ll-config.json").write_text(json.dumps(config, indent=2))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config, indent=2))
 
             # Create issue directories
             issues_base = project_root / ".issues"
@@ -434,8 +434,8 @@ class TestIssueDiscovery:
         from little_loops.issue_parser import find_issues
 
         # Create a config for the test
-        claude_dir = issues_setup.parent / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = issues_setup.parent / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_data = {
             "issues": {
                 "base_dir": ".issues",
@@ -447,7 +447,7 @@ class TestIssueDiscovery:
                 "priorities": ["P0", "P1", "P2"],
             }
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_data))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_data))
 
         config = BRConfig(issues_setup.parent)
 
@@ -470,8 +470,8 @@ class TestIssueDiscovery:
         from little_loops.issue_parser import find_highest_priority_issue
 
         # Create a config for the test
-        claude_dir = issues_setup.parent / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = issues_setup.parent / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_data = {
             "issues": {
                 "base_dir": ".issues",
@@ -483,7 +483,7 @@ class TestIssueDiscovery:
                 "priorities": ["P0", "P1", "P2"],
             }
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_data))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_data))
 
         config = BRConfig(issues_setup.parent)
 
@@ -502,8 +502,8 @@ class TestIssueDiscovery:
         from little_loops.issue_parser import IssueParser
 
         # Create a config for the test
-        claude_dir = issues_setup.parent / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = issues_setup.parent / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_data = {
             "issues": {
                 "base_dir": ".issues",
@@ -515,7 +515,7 @@ class TestIssueDiscovery:
                 "priorities": ["P0", "P1", "P2"],
             }
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_data))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_data))
 
         config = BRConfig(issues_setup.parent)
         parser = IssueParser(config)

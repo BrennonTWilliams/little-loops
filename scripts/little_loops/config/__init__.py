@@ -1,7 +1,7 @@
 """Configuration management for little-loops.
 
 Provides the BRConfig class for loading, merging, and accessing project configuration.
-Configuration is read from .claude/ll-config.json and merged with sensible defaults.
+Configuration is read from .ll/ll-config.json and merged with sensible defaults.
 
 This package is organized into domain-specific modules:
   core.py       — ProjectConfig, BRConfig (root aggregator)

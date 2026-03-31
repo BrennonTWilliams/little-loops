@@ -14,7 +14,7 @@ This command is the product counterpart to `/ll:scan-codebase`.
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Source directory**: `{{config.project.src_dir}}`
 - **Focus directories**: `{{config.scan.focus_dirs}}`
 - **Exclude patterns**: `{{config.scan.exclude_patterns}}`
@@ -49,7 +49,7 @@ Update todos as each phase completes to give the user visibility into progress.
 Before scanning, verify product analysis is properly configured:
 
 1. **Check product analysis is enabled**:
-   - Read `.claude/ll-config.json`
+   - Read `.ll/ll-config.json`
    - Verify `product.enabled` is `true`
    - If false or missing, inform user and exit:
      ```markdown
@@ -57,7 +57,7 @@ Before scanning, verify product analysis is properly configured:
 
      Product scanning is currently disabled.
 
-     To enable product scanning, add to your `.claude/ll-config.json`:
+     To enable product scanning, add to your `.ll/ll-config.json`:
 
      ```json
      {
@@ -71,7 +71,7 @@ Before scanning, verify product analysis is properly configured:
      ```
 
 2. **Check goals file exists**:
-   - Get goals file path from `product.goals_file` (default: `.claude/ll-goals.md`)
+   - Get goals file path from `product.goals_file` (default: `.ll/ll-goals.md`)
    - Verify file exists using `test -f` or `ls`
    - If missing, inform user and exit:
      ```markdown

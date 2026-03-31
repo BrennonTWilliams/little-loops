@@ -88,9 +88,9 @@ def sample_config(tmp_path: Path) -> BRConfig:
             "priorities": ["P0", "P1", "P2", "P3"],
         },
     }
-    claude_dir = tmp_path / ".claude"
-    claude_dir.mkdir(parents=True, exist_ok=True)
-    config_path = claude_dir / "ll-config.json"
+    ll_dir = tmp_path / ".ll"
+    ll_dir.mkdir(parents=True, exist_ok=True)
+    config_path = ll_dir / "ll-config.json"
     config_path.write_text(json.dumps(config_data, indent=2))
 
     # Create issue directories
@@ -695,9 +695,9 @@ class TestCreateIssueFromFailure:
                 "priorities": ["P0", "P1"],
             },
         }
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_data))
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_data))
         config = BRConfig(tmp_path)
 
         result = create_issue_from_failure("Error occurred", sample_issue_info, config, mock_logger)

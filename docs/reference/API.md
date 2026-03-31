@@ -82,7 +82,7 @@ BRConfig(project_root: Path)
 - `project_root` - Path to the project root directory
 
 **Behavior:**
-- Loads `.claude/ll-config.json` if present
+- Loads `.ll/ll-config.json` if present
 - Merges with sensible defaults
 - Creates typed config objects
 
@@ -443,7 +443,7 @@ class GitHubSyncConfig:
     }
     priority_labels: bool = True               # Sync priority as GitHub labels
     sync_completed: bool = False               # Include completed issues in sync
-    state_file: str = ".claude/ll-sync-state.json"  # Sync state file path
+    state_file: str = ".ll/ll-sync-state.json"  # Sync state file path
     pull_template: str = "minimal"             # Template for pulled issues ("minimal" | "full")
 ```
 
@@ -1278,7 +1278,7 @@ Validate product goals and return warnings.
 from pathlib import Path
 from little_loops.goals_parser import ProductGoals, validate_goals
 
-goals = ProductGoals.from_file(Path(".claude/ll-goals.md"))
+goals = ProductGoals.from_file(Path(".ll/ll-goals.md"))
 if goals is None:
     print("Goals file not found or invalid")
 else:

@@ -2,7 +2,7 @@
 id: ENH-896
 type: ENH
 priority: P2
-status: open
+status: completed
 discovered_date: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 100
@@ -343,11 +343,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-03-26 | Priority: P2
+**Completed** | Created: 2026-03-26 | Completed: 2026-03-31 | Priority: P2
 
 ---
 
+## Resolution
+
+All `.claude/ll-*` runtime file paths migrated to `.ll/` across the entire codebase:
+- **Python source** (6 files): `config/core.py`, `subprocess_utils.py`, `config/features.py`, `config/__init__.py`, `issue_manager.py`, `cli/sync.py`
+- **Hook scripts** (5 files): `common.sh`, `session-start.sh`, `session-cleanup.sh`, `context-monitor.sh`, `precompact-state.sh`
+- **YAML loops** (7 files): All inline Python config path literals updated
+- **Config/settings** (3 files): `config-schema.json`, `.gitignore`, `.claude/settings.local.json`
+- **Tests** (20+ files): All fixture directories and assertions updated
+- **Skills/Commands/Agents** (40+ files): All instruction text references updated
+- **Documentation** (15+ files): All path references updated
+- **Config file moved**: `git mv .claude/ll-config.json .ll/ll-config.json`
+- **CHANGELOG**: Migration notes added for existing users
+
+3930 tests pass, lint clean, type check clean. Zero orphaned `.claude/ll-` references in source files.
+
 ## Session Log
+- `/ll:manage-issue implement` - 2026-03-31T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a62cb204-a08d-41fb-9a83-5319e1119ba4.jsonl`
 - `/ll:ready-issue` - 2026-03-31T16:20:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15b8c31c-0cd9-4489-9637-959697fdd1b4.jsonl`
 - `/ll:refine-issue` - 2026-03-26T21:46:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
 - `/ll:confidence-check` - 2026-03-26T23:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`

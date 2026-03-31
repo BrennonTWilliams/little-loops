@@ -290,7 +290,7 @@ class TestSprintManager:
         for category in ["bugs", "features", "enhancements", "completed"]:
             (issues_dir / category).mkdir(parents=True)
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_file = config_dir / "ll-config.json"
         config_data = {
@@ -339,7 +339,7 @@ class TestSprintManager:
         for category in ["bugs", "tasks", "completed"]:
             (issues_dir / category).mkdir(parents=True)
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
@@ -369,7 +369,7 @@ class TestSprintManager:
         for category in ["bugs", "tasks", "completed"]:
             (issues_dir / category).mkdir(parents=True)
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
@@ -634,7 +634,7 @@ class TestSprintErrorHandling:
             (issues_dir / category).mkdir()
 
         # Create config
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_file = config_dir / "ll-config.json"
@@ -813,7 +813,7 @@ class TestSprintDependencyAnalysis:
             (issues_dir / category).mkdir()
 
         # Create config
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_file = config_dir / "ll-config.json"
         config_data = {
@@ -1052,7 +1052,7 @@ class TestSprintEdit:
         for category in ["bugs", "features", "enhancements", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_file = config_dir / "ll-config.json"
@@ -1448,7 +1448,7 @@ class TestSprintAnalyze:
         for category in ["bugs", "features", "enhancements", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_file = config_dir / "ll-config.json"
         config_data = {
@@ -1616,7 +1616,7 @@ class TestSprintOnlyFlag:
 
     def _setup_multi_issue_sprint(self, tmp_path: Path) -> tuple[Any, Any]:
         """Create a project with two issues and a sprint containing both."""
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_file = config_dir / "ll-config.json"
         config_data = {
@@ -1780,7 +1780,7 @@ class TestSprintWaveCleanStart:
 
     def _setup_multi_issue_sprint(self, tmp_path: Path) -> tuple[Any, Any]:
         """Create a project with two issues and a sprint containing both."""
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_file = config_dir / "ll-config.json"
         config_data = {

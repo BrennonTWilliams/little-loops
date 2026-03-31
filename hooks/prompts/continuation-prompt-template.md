@@ -57,17 +57,17 @@ This template is automatically populated by Claude when:
 1. **PreCompact hook** triggers (context approaching limits)
 2. **Proactive handoff** during manage-issue (agent detects low context)
 
-The filled template is written to: `.claude/ll-continue-prompt.md`
+The filled template is written to: `.ll/ll-continue-prompt.md`
 
 ### For Automation (ll-auto)
 When automation detects `CONTEXT_HANDOFF: Ready for fresh session` in output:
-1. Read `.claude/ll-continue-prompt.md`
+1. Read `.ll/ll-continue-prompt.md`
 2. Start new Claude session with that content as the prompt
 3. Continue processing
 
 ### For Manual Sessions
 User can:
-1. Copy content from `.claude/ll-continue-prompt.md`
+1. Copy content from `.ll/ll-continue-prompt.md`
 2. Start new Claude Code session
 3. Paste as first prompt
 4. Continue with fresh context

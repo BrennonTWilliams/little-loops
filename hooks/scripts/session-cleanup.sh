@@ -11,13 +11,13 @@
 # Cleanup function that always succeeds
 cleanup() {
     # Clean up lock and state files (relative to CWD which should be project root)
-    rm -f .claude/.ll-lock .claude/ll-context-state.json 2>/dev/null || true
+    rm -f .ll/.ll-lock .ll/ll-context-state.json 2>/dev/null || true
 
     # Clean up scratch pad files
     rm -rf ".loops/tmp/scratch" 2>/dev/null || true
 
     # Read worktree base from config, with fallback default
-    CONFIG_FILE=".claude/ll-config.json"
+    CONFIG_FILE=".ll/ll-config.json"
     WORKTREE_BASE=".worktrees"
     if command -v jq >/dev/null 2>&1; then
         WORKTREE_BASE=$(jq -r '.parallel.worktree_base // ".worktrees"' "$CONFIG_FILE" 2>/dev/null || echo ".worktrees")

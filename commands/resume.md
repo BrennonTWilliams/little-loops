@@ -5,7 +5,7 @@ allowed-tools:
   - Read
 arguments:
   - name: prompt_file
-    description: "Path to continuation prompt file (default: .claude/ll-continue-prompt.md)"
+    description: "Path to continuation prompt file (default: .ll/ll-continue-prompt.md)"
     required: false
 ---
 
@@ -15,7 +15,7 @@ Resume work from a previous session's continuation prompt.
 
 ## Configuration
 
-Read settings from `.claude/ll-config.json` under `continuation`:
+Read settings from `.ll/ll-config.json` under `continuation`:
 - `prompt_expiry_hours`: Hours before prompt is considered stale (default: 24)
 
 ## Process
@@ -23,20 +23,20 @@ Read settings from `.claude/ll-config.json` under `continuation`:
 ### 1. Locate Continuation Prompt
 
 ```bash
-PROMPT_FILE="${prompt_file:-.claude/ll-continue-prompt.md}"
+PROMPT_FILE="${prompt_file:-.ll/ll-continue-prompt.md}"
 ```
 
 Check for continuation state in order:
 1. Use provided `prompt_file` if specified
-2. Check `$(pwd)/.claude/ll-continue-prompt.md` (primary location — project-level)
-3. Check `~/.claude/ll-continue-prompt.md` (user-level — warn if found here but not at project-level)
-4. Check `.claude/ll-session-state.json` (fallback for metadata)
+2. Check `$(pwd)/.ll/ll-continue-prompt.md` (primary location — project-level)
+3. Check `~/.ll/ll-continue-prompt.md` (user-level — warn if found here but not at project-level)
+4. Check `.ll/ll-session-state.json` (fallback for metadata)
 
-**Path guard**: If the file is found at `~/.claude/ll-continue-prompt.md` but NOT at the project-level path, display this warning before displaying the prompt content:
+**Path guard**: If the file is found at `~/.ll/ll-continue-prompt.md` but NOT at the project-level path, display this warning before displaying the prompt content:
 
 ```
-⚠ Warning: Continuation prompt found at ~/.claude/ll-continue-prompt.md (user-level), not at
-  <project-root>/.claude/ll-continue-prompt.md (project-level). This may be caused by a prior
+⚠ Warning: Continuation prompt found at ~/.ll/ll-continue-prompt.md (user-level), not at
+  <project-root>/.ll/ll-continue-prompt.md (project-level). This may be caused by a prior
   handoff bug. The prompt may belong to a different project. Proceeding anyway.
 ```
 
@@ -136,7 +136,7 @@ Continuation prompts are created by:
 
 ## State File Format
 
-The `.claude/ll-session-state.json` file contains:
+The `.ll/ll-session-state.json` file contains:
 
 ```json
 {
@@ -148,7 +148,7 @@ The `.claude/ll-session-state.json` file contains:
     {"content": "description", "status": "pending|in_progress|completed"}
   ],
   "context": "brief description",
-  "handoff_prompt": ".claude/ll-continue-prompt.md"
+  "handoff_prompt": ".ll/ll-continue-prompt.md"
 }
 ```
 
@@ -158,7 +158,7 @@ The `.claude/ll-session-state.json` file contains:
 
 $ARGUMENTS
 
-- **prompt_file** (optional, default: `.claude/ll-continue-prompt.md`): Path to continuation prompt file
+- **prompt_file** (optional, default: `.ll/ll-continue-prompt.md`): Path to continuation prompt file
   - If provided, reads from specified path
   - If omitted, checks default location then falls back to state file
 

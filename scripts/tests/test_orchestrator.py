@@ -52,8 +52,8 @@ def temp_repo_with_config() -> Generator[Path, None, None]:
         repo_path = Path(tmpdir)
 
         # Create .claude directory with config
-        claude_dir = repo_path / ".claude"
-        claude_dir.mkdir()
+        ll_dir = repo_path / ".ll"
+        ll_dir.mkdir()
         config = {
             "project": {"name": "test", "src_dir": "src/"},
             "issues": {
@@ -66,7 +66,7 @@ def temp_repo_with_config() -> Generator[Path, None, None]:
                 "completed_dir": "completed",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config))
 
         # Create issues directory structure
         issues_dir = repo_path / ".issues"

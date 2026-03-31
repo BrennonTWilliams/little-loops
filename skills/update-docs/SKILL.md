@@ -26,7 +26,7 @@ You are tasked with identifying documentation that needs to be written or update
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Source directory**: `{{config.project.src_dir}}`
 - **Issues base**: `{{config.issues.base_dir}}`
 
@@ -204,11 +204,11 @@ After a successful run, optionally record the current HEAD commit as a watermark
 ```bash
 # Store current HEAD as watermark for next run
 CURRENT_HEAD=$(git rev-parse HEAD)
-echo "$CURRENT_HEAD" > .claude/ll-update-docs.watermark
+echo "$CURRENT_HEAD" > .ll/ll-update-docs.watermark
 echo "Watermark updated: $CURRENT_HEAD"
 ```
 
-If `.claude/ll-update-docs.watermark` exists and no `--since` was provided, use the watermark as the since-ref instead of the last doc commit.
+If `.ll/ll-update-docs.watermark` exists and no `--since` was provided, use the watermark as the since-ref instead of the last doc commit.
 
 ### 9. Summary Output
 
@@ -234,7 +234,7 @@ $ARGUMENTS
 - **--since** (optional): Change window start
   - Date: `YYYY-MM-DD` (e.g., `--since=2026-03-01`)
   - Git ref: commit hash or branch name (e.g., `--since=main`, `--since=abc1234`)
-  - Default: last commit touching a doc file (or watermark if `.claude/ll-update-docs.watermark` exists)
+  - Default: last commit touching a doc file (or watermark if `.ll/ll-update-docs.watermark` exists)
 
 - **--fix** (optional, flag): Draft stub documentation sections inline rather than prompting per gap. Non-draftable gaps still flow to issue creation.
 

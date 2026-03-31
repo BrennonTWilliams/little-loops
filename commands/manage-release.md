@@ -30,7 +30,7 @@ You are tasked with managing releases for this project. This includes creating g
 
 ## Configuration
 
-Read settings from `.claude/ll-config.json`:
+Read settings from `.ll/ll-config.json`:
 
 - **Issues base**: `{{config.issues.base_dir}}` (default: `.issues`)
 - **Completed dir**: `{{config.issues.completed_dir}}` (default: `completed`)

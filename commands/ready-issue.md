@@ -25,7 +25,7 @@ You are tasked with analyzing an issue file to determine if it's ready for imple
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
 - **Templates dir**: `{{config.issues.templates_dir}}` (custom section JSON directory, or plugin default if null)

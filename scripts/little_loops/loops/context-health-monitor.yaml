@@ -19,7 +19,7 @@ states:
       FILE_COUNT=$(find ${context.scratch_dir} -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
       echo "scratch_kb: $SCRATCH_SIZE"
       echo "file_count: $FILE_COUNT"
-      TOKENS=$(jq -r '.estimated_tokens // "n/a"' .claude/ll-context-state.json 2>/dev/null || echo "n/a")
+      TOKENS=$(jq -r '.estimated_tokens // "n/a"' .ll/ll-context-state.json 2>/dev/null || echo "n/a")
       echo "estimated_tokens: $TOKENS"
       find ${context.scratch_dir} -maxdepth 1 -type f -size +100k -exec du -sk {} \; 2>/dev/null | sort -rn || true
     capture: snapshot

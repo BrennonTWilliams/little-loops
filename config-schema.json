@@ -499,7 +499,7 @@
         "state_file": {
           "type": "string",
           "description": "File to track context usage state",
-          "default": ".claude/ll-context-state.json"
+          "default": ".ll/ll-context-state.json"
         },
         "post_compaction_percent": {
           "type": "integer",
@@ -579,7 +579,7 @@
         "goals_file": {
           "type": "string",
           "description": "Path to product goals/vision document",
-          "default": ".claude/ll-goals.md"
+          "default": ".ll/ll-goals.md"
         },
         "analyze_user_impact": {
           "type": "boolean",
@@ -792,7 +792,7 @@
             "state_file": {
               "type": "string",
               "description": "File to track sync state",
-              "default": ".claude/ll-sync-state.json"
+              "default": ".ll/ll-sync-state.json"
             },
             "pull_template": {
               "type": "string",

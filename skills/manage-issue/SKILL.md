@@ -24,7 +24,7 @@ You are tasked with autonomously managing issues across the project. This comman
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
 - **Completed dir**: `{{config.issues.completed_dir}}`
@@ -250,7 +250,7 @@ IF exit code is non-zero:
 
 If `--resume` flag is specified:
 
-1. **Read continuation prompt** from `$(pwd)/.claude/ll-continue-prompt.md` (project-level path, if exists)
+1. **Read continuation prompt** from `$(pwd)/.ll/ll-continue-prompt.md` (project-level path, if exists)
 2. **Locate existing plan** matching the issue ID pattern
 3. **Scan for progress** - look for `[x]` checkmarks in success criteria
 4. **Present resume status** and verify previous work
@@ -289,12 +289,12 @@ See [templates.md](templates.md) for the Session Continuation (handoff) template
 
 1. **Detect low context** - If you notice context approaching limits (conversation getting long, many files read), find a natural stopping point at a phase boundary.
 
-2. **Generate handoff** - Before context exhaustion, write a continuation prompt to `$(pwd)/.claude/ll-continue-prompt.md` (absolute path derived from the current working directory — **never** to `~/.claude/ll-continue-prompt.md`) using the Session Continuation template.
+2. **Generate handoff** - Before context exhaustion, write a continuation prompt to `$(pwd)/.ll/ll-continue-prompt.md` (absolute path derived from the current working directory — **never** to `~/.ll/ll-continue-prompt.md`) using the Session Continuation template.
 
 3. **Signal handoff** - Output a clear message:
 ```
 CONTEXT_HANDOFF: Ready for fresh session
-Continuation prompt written to: <project-root>/.claude/ll-continue-prompt.md
+Continuation prompt written to: <project-root>/.ll/ll-continue-prompt.md
 To continue: Start new session with content from that file
 ```
 

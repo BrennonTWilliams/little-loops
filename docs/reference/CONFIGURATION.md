@@ -1,6 +1,6 @@
 # Configuration Reference
 
-little-loops uses `.claude/ll-config.json` for project-specific settings. All settings have sensible defaults. Run `/ll:init` to auto-detect your project type and generate a config file.
+little-loops uses `.ll/ll-config.json` for project-specific settings. All settings have sensible defaults. Run `/ll:init` to auto-detect your project type and generate a config file.
 
 For interactive editing, use `/ll:configure`.
 
@@ -86,7 +86,7 @@ For interactive editing, use `/ll:configure`.
 
   "product": {
     "enabled": false,
-    "goals_file": ".claude/ll-goals.md",
+    "goals_file": ".ll/ll-goals.md",
     "analyze_user_impact": true,
     "analyze_business_value": true,
     "goals_discovery": {
@@ -138,7 +138,7 @@ For interactive editing, use `/ll:configure`.
       },
       "priority_labels": true,
       "sync_completed": false,
-      "state_file": ".claude/ll-sync-state.json"
+      "state_file": ".ll/ll-sync-state.json"
     }
   },
 
@@ -298,7 +298,7 @@ Product analysis configuration for `/ll:scan-product`:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Enable product-focused issue analysis |
-| `goals_file` | `.claude/ll-goals.md` | Path to product goals/vision document |
+| `goals_file` | `.ll/ll-goals.md` | Path to product goals/vision document |
 | `analyze_user_impact` | `true` | Include user impact assessment in issues |
 | `analyze_business_value` | `true` | Include business value scoring in issues |
 | `goals_discovery.max_files` | `5` | Maximum markdown files to analyze for goal discovery (1-20) |
@@ -397,7 +397,7 @@ GitHub Issues synchronization for `/ll:sync-issues`:
 | `github.label_mapping` | `{"BUG": "bug", ...}` | Map issue types to GitHub labels |
 | `github.priority_labels` | `true` | Add priority as GitHub label (e.g., "P1") |
 | `github.sync_completed` | `false` | Also sync completed issues (close on GitHub) |
-| `github.state_file` | `.claude/ll-sync-state.json` | File to track sync state |
+| `github.state_file` | `.ll/ll-sync-state.json` | File to track sync state |
 
 To enable sync, set `sync.enabled: true`. The repository is auto-detected from your git remote; set `sync.github.repo` to override.
 
@@ -580,7 +580,7 @@ Set `NO_COLOR=1` to disable all colorization regardless of config.
 
 ## Manual Configuration
 
-The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.claude/ll-config.json` directly. All have sensible defaults and rarely need changing.
+The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.
 
 ### `scan.custom_agents`
 

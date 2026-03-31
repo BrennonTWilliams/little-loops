@@ -604,7 +604,7 @@ questions:
 
 ### Step H3: Evaluation Phases
 
-Read `.claude/ll-config.json` to detect configured tool commands (`test_cmd`, `lint_cmd`, `type_cmd`). Present only phases that are relevant.
+Read `.ll/ll-config.json` to detect configured tool commands (`test_cmd`, `lint_cmd`, `type_cmd`). Present only phases that are relevant.
 
 **Before presenting the question, show this observability context:**
 

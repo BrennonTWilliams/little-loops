@@ -50,10 +50,10 @@ temp/
 
 # Claude Code
 .claude/settings.local.json
-.claude/ll.local.md
-.claude/loop-suggestions/
+.ll/ll.local.md
+.ll/loop-suggestions/
 .claude/skills/
-.claude/ll-continue-prompt.md
+.ll/ll-continue-prompt.md
 .mcp.json
 
 # Python
@@ -81,7 +81,7 @@ docs/demo
 deepcodebase-*.txt
 
 # little-loops context/sync state files
-.claude/ll-context-state.json
-.claude/ll-sync-state.json
+.ll/ll-context-state.json
+.ll/ll-sync-state.json
 loop-catalog.*
 docs/research/

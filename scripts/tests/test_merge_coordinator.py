@@ -490,28 +490,28 @@ class TestStashLocalChanges:
         # State file should NOT be reverted (excluded from stash)
         assert state_file.read_text() == '{"modified": true}'
 
-    def test_excludes_claude_context_state_file_from_stash(
+    def test_excludes_ll_context_state_file_from_stash(
         self,
         default_config: ParallelConfig,
         mock_logger: MagicMock,
         temp_git_repo: Path,
     ) -> None:
-        """Should exclude Claude context state file from stash.
+        """Should exclude ll context state file from stash.
 
-        The .claude/ll-context-state.json file is managed by Claude Code and
+        The .ll/ll-context-state.json file is managed by little-loops and
         frequently appears as deleted during operations. Stashing it causes
         unnecessary stash/restore cycling with no benefit to merge operations.
         """
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
-        # Create .claude directory and context state file as tracked
-        claude_dir = temp_git_repo / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-        context_state_file = claude_dir / "ll-context-state.json"
+        # Create .ll directory and context state file as tracked
+        ll_dir = temp_git_repo / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        context_state_file = ll_dir / "ll-context-state.json"
         context_state_file.write_text('{"session": "initial"}')
-        subprocess.run(["git", "add", ".claude/"], cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "add", ".ll/"], cwd=temp_git_repo, capture_output=True)
         subprocess.run(
-            ["git", "commit", "-m", "add claude context state"],
+            ["git", "commit", "-m", "add ll context state"],
             cwd=temp_git_repo,
             capture_output=True,
         )

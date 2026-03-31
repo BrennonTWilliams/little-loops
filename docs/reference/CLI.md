@@ -773,7 +773,7 @@ ll-sync reopen BUG-042            # Reopen GitHub issue for BUG-042
 ll-sync reopen --all-reopened     # Reopen all issues moved back to active locally
 ```
 
-Requires `"sync": { "enabled": true }` in `.claude/ll-config.json`.
+Requires `"sync": { "enabled": true }` in `.ll/ll-config.json`.
 
 ---
 

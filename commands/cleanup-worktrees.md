@@ -15,7 +15,7 @@ You are tasked with cleaning up orphaned git worktrees that may remain after int
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Worktree base**: `{{config.parallel.worktree_base}}` (default: `.worktrees`)
 
 ## Process

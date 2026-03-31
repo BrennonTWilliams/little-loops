@@ -24,16 +24,16 @@ Common issues and solutions for little-loops.
 
 **Symptom**: Commands use default values instead of project config
 
-**Cause**: Missing or mislocated `.claude/ll-config.json`
+**Cause**: Missing or mislocated `.ll/ll-config.json`
 
 **Solution**:
 1. Run `/ll:init` to create config
-2. Verify path is `.claude/ll-config.json` (not project root)
+2. Verify path is `.ll/ll-config.json` (not project root)
 3. Check file permissions
 
 ```bash
 # Verify config exists
-ls -la .claude/ll-config.json
+ls -la .ll/ll-config.json
 ```
 
 ### Invalid JSON in config
@@ -45,7 +45,7 @@ ls -la .claude/ll-config.json
 **Solution**:
 1. Validate JSON syntax:
    ```bash
-   python -m json.tool .claude/ll-config.json
+   python -m json.tool .ll/ll-config.json
    ```
 2. Common fixes:
    - Remove trailing commas after last items
@@ -303,7 +303,7 @@ git worktree prune
 
 Check your config for custom paths:
 ```bash
-grep state_file .claude/ll-config.json
+grep state_file .ll/ll-config.json
 ```
 
 ---
@@ -317,7 +317,7 @@ grep state_file .claude/ll-config.json
 **Cause**: Context monitoring is disabled by default
 
 **Solution**:
-1. Enable in `.claude/ll-config.json`:
+1. Enable in `.ll/ll-config.json`:
    ```json
    {
      "context_monitor": {
@@ -332,7 +332,7 @@ grep state_file .claude/ll-config.json
    ```
 3. Check state file is being updated:
    ```bash
-   cat .claude/ll-context-state.json
+   cat .ll/ll-context-state.json
    ```
 
 ### Reminders keep appearing after handoff
@@ -344,15 +344,15 @@ grep state_file .claude/ll-config.json
 **Solution**:
 1. Verify the file was created/modified:
    ```bash
-   ls -la .claude/ll-continue-prompt.md
+   ls -la .ll/ll-continue-prompt.md
    ```
 2. Check `handoff_complete` in state file:
    ```bash
-   cat .claude/ll-context-state.json | jq '.handoff_complete'
+   cat .ll/ll-context-state.json | jq '.handoff_complete'
    ```
 3. Manually mark complete if needed:
    ```bash
-   # Edit .claude/ll-context-state.json and set "handoff_complete": true
+   # Edit .ll/ll-context-state.json and set "handoff_complete": true
    ```
 
 ### Resume shows stale prompt
@@ -383,11 +383,11 @@ grep state_file .claude/ll-config.json
 1. Run `/ll:handoff` to create the prompt
 2. Check file location:
    ```bash
-   ls -la .claude/ll-continue-prompt.md
+   ls -la .ll/ll-continue-prompt.md
    ```
 3. Check session state file:
    ```bash
-   cat .claude/ll-session-state.json 2>/dev/null || echo "No session state"
+   cat .ll/ll-session-state.json 2>/dev/null || echo "No session state"
    ```
 
 ### Automation not detecting handoff signal
@@ -407,7 +407,7 @@ grep state_file .claude/ll-config.json
    ```
 3. Verify continuation prompt exists in worktree:
    ```bash
-   cat .worktrees/worker-1/.claude/ll-continue-prompt.md
+   cat .worktrees/worker-1/.ll/ll-continue-prompt.md
    ```
 
 ### Max continuations reached
@@ -495,7 +495,7 @@ grep -rn "print(" hooks/ scripts/ | grep -v "flush=True"
 3. Increase threshold for later warnings: `"auto_handoff_threshold": 85`
 4. Check token breakdown in state file:
    ```bash
-   cat .claude/ll-context-state.json | jq '.breakdown'
+   cat .ll/ll-context-state.json | jq '.breakdown'
    ```
 5. For custom tuning, edit `hooks/scripts/context-monitor.sh` lines 56-118
 
@@ -772,13 +772,13 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
 **Solution**:
 1. Check state file is valid JSON:
    ```bash
-   jq empty .claude/ll-context-state.json 2>&1
-   jq empty .claude/ll-precompact-state.json 2>&1
+   jq empty .ll/ll-context-state.json 2>&1
+   jq empty .ll/ll-precompact-state.json 2>&1
    ```
 2. Delete corrupted state files (they'll be recreated):
    ```bash
-   rm .claude/ll-context-state.json
-   rm .claude/ll-precompact-state.json
+   rm .ll/ll-context-state.json
+   rm .ll/ll-precompact-state.json
    ```
 3. Verify `atomic_write_json` is being used (check hook scripts source `lib/common.sh`)
 
@@ -838,7 +838,7 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
    ```
 2. Check state file is updating:
    ```bash
-   watch -n 1 'cat .claude/ll-context-state.json | jq .estimated_tokens'
+   watch -n 1 'cat .ll/ll-context-state.json | jq .estimated_tokens'
    ```
 3. Verify PostToolUse hook is running:
    ```bash

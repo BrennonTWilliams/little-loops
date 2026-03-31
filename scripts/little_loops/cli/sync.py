@@ -117,7 +117,7 @@ Examples:
 
     # Check sync is enabled
     if not config.sync.enabled:
-        logger.error("Sync is not enabled. Add to .claude/ll-config.json:")
+        logger.error("Sync is not enabled. Add to .ll/ll-config.json:")
         logger.error('  "sync": { "enabled": true }')
         return 1
 

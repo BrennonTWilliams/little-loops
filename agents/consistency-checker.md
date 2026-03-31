@@ -66,7 +66,7 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 |--------|--------|---------------|
 | commands/*.md | agents/*.md | subagent_type="X" → agents/X.md exists |
 | hooks/hooks.json | hooks/prompts/*.md | "prompt": "path" → file exists |
-| .claude/ll-config.json | config-schema.json | Values match schema types |
+| .ll/ll-config.json | config-schema.json | Values match schema types |
 | CLAUDE.md | commands/*.md | /ll:X mentioned → commands/X.md exists |
 | skills/*/SKILL.md | commands/*.md | /ll:X referenced → commands/X.md or skills/X/ exists |
 | CLAUDE.md | MCP configs (all scopes) | MCP tool X mentioned → server exists in any scope (project, user, local, managed) |

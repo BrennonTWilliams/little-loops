@@ -26,7 +26,7 @@ fi
 THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"
 # context_limit_estimate is an optional override/fallback; auto-detection sets the final limit below.
 CONFIG_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "1000000")
-STATE_FILE=$(ll_config_value "context_monitor.state_file" ".claude/ll-context-state.json")
+STATE_FILE=$(ll_config_value "context_monitor.state_file" ".ll/ll-context-state.json")
 
 # Read estimate weights with defaults
 READ_PER_LINE=$(ll_config_value "context_monitor.estimate_weights.read_per_line" "10")
@@ -154,7 +154,7 @@ read_state() {
         # If a handoff file already exists from a prior session, start with handoff_complete=true
         # so the hook does not re-fire reminders for a handoff that was already completed.
         local handoff_complete="false"
-        if [ -f ".claude/ll-continue-prompt.md" ]; then
+        if [ -f ".ll/ll-continue-prompt.md" ]; then
             handoff_complete="true"
         fi
         local init_state
@@ -183,7 +183,7 @@ write_state() {
 # Returns reset state on stdout if compaction detected, returns 1 otherwise
 check_compaction() {
     local state="$1"
-    local precompact_file=".claude/ll-precompact-state.json"
+    local precompact_file=".ll/ll-precompact-state.json"
 
     # No precompact file = no compaction happened
     [ -f "$precompact_file" ] || return 1
@@ -241,7 +241,7 @@ main() {
     RESET_STATE=$(check_compaction "$STATE" || true)
     if [ -n "$RESET_STATE" ]; then
         STATE="$RESET_STATE"
-        rm -f ".claude/ll-precompact-state.json" 2>/dev/null || true
+        rm -f ".ll/ll-precompact-state.json" 2>/dev/null || true
     fi
 
     # Extract current values
@@ -313,7 +313,7 @@ main() {
         fi
 
         # Check if handoff was completed (file exists and modified after threshold)
-        HANDOFF_FILE=".claude/ll-continue-prompt.md"
+        HANDOFF_FILE=".ll/ll-continue-prompt.md"
         if [ -f "$HANDOFF_FILE" ]; then
             PROMPT_MTIME=$(get_mtime "$HANDOFF_FILE")
             THRESHOLD_EPOCH=$(to_epoch "$THRESHOLD_CROSSED_AT")

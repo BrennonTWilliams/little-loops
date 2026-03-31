@@ -30,7 +30,7 @@ class TestContextMonitor:
                 "state_file": str(tmp_path / "ll-context-state.json"),
             }
         }
-        config_file = tmp_path / ".claude" / "ll-config.json"
+        config_file = tmp_path / ".ll" / "ll-config.json"
         config_file.parent.mkdir(parents=True, exist_ok=True)
         config_file.write_text(json.dumps(config, indent=2))
         return config_file
@@ -45,7 +45,7 @@ class TestContextMonitor:
             os.chdir(tmp_path)
 
             # Create config symlink in temp dir
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -101,7 +101,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -159,7 +159,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -200,7 +200,7 @@ class TestContextMonitor:
             os.chdir(tmp_path)
 
             # Create config
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -236,7 +236,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -275,7 +275,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -318,7 +318,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())  # context_limit_estimate = 1000000
 
@@ -385,7 +385,7 @@ class TestContextMonitor:
                     "state_file": str(tmp_path / "ll-context-state.json"),
                 }
             }
-            config_file = tmp_path / ".claude" / "ll-config.json"
+            config_file = tmp_path / ".ll" / "ll-config.json"
             config_file.parent.mkdir(parents=True, exist_ok=True)
             config_file.write_text(json.dumps(config, indent=2))
 
@@ -445,7 +445,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -496,7 +496,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -538,12 +538,12 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
             # Create the handoff file (simulates a prior-session handoff)
-            (tmp_path / ".claude" / "ll-continue-prompt.md").write_text("Continue from here.")
+            (tmp_path / ".ll" / "ll-continue-prompt.md").write_text("Continue from here.")
 
             input_data = {
                 "tool_name": "Read",
@@ -581,7 +581,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -624,7 +624,7 @@ class TestContextMonitor:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -684,7 +684,7 @@ class TestUserPromptCheck:
     def test_config(self, tmp_path: Path) -> Path:
         """Create test config with prompt optimization disabled."""
         config = {"prompt_optimization": {"enabled": False}}
-        config_file = tmp_path / ".claude" / "ll-config.json"
+        config_file = tmp_path / ".ll" / "ll-config.json"
         config_file.parent.mkdir(parents=True, exist_ok=True)
         config_file.write_text(json.dumps(config, indent=2))
         return config_file
@@ -715,7 +715,7 @@ class TestUserPromptCheck:
             os.chdir(tmp_path)
 
             # Create config
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(test_config.read_text())
 
@@ -745,7 +745,7 @@ class TestUserPromptCheck:
     def enabled_config(self, tmp_path: Path) -> Path:
         """Create test config with prompt optimization enabled."""
         config = {"prompt_optimization": {"enabled": True, "mode": "quick", "confirm": "true"}}
-        config_file = tmp_path / ".claude" / "ll-config.json"
+        config_file = tmp_path / ".ll" / "ll-config.json"
         config_file.parent.mkdir(parents=True, exist_ok=True)
         config_file.write_text(json.dumps(config, indent=2))
         return config_file
@@ -765,7 +765,7 @@ class TestUserPromptCheck:
         try:
             os.chdir(tmp_path)
 
-            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link = tmp_path / ".ll" / "ll-config.json"
             config_link.parent.mkdir(exist_ok=True)
             config_link.write_text(enabled_config.read_text())
 
@@ -942,7 +942,7 @@ class TestDuplicateIssueId:
         try:
             os.chdir(tmp_path)
 
-            # Config at root ll-config.json only (no .claude/ll-config.json)
+            # Config at root ll-config.json only (no .ll/ll-config.json)
             custom_base = "myissues"
             config = {"issues": {"base_dir": custom_base}}
             (tmp_path / "ll-config.json").write_text(json.dumps(config))
@@ -1030,16 +1030,16 @@ class TestSharedConfigFunctions:
             cwd=str(cwd),
         )
 
-    def test_resolve_config_finds_claude_dir(self, common_sh: Path, tmp_path: Path):
-        """ll_resolve_config finds .claude/ll-config.json."""
-        config_dir = tmp_path / ".claude"
+    def test_resolve_config_finds_ll_dir(self, common_sh: Path, tmp_path: Path):
+        """ll_resolve_config finds .ll/ll-config.json."""
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_file = config_dir / "ll-config.json"
         config_file.write_text('{"test": true}')
 
         result = self._run_bash(common_sh, 'll_resolve_config; echo "$LL_CONFIG_FILE"', tmp_path)
         assert result.returncode == 0
-        assert result.stdout.strip() == ".claude/ll-config.json"
+        assert result.stdout.strip() == ".ll/ll-config.json"
 
     def test_resolve_config_finds_root_fallback(self, common_sh: Path, tmp_path: Path):
         """ll_resolve_config falls back to ll-config.json."""
@@ -1058,7 +1058,7 @@ class TestSharedConfigFunctions:
 
     def test_feature_enabled_returns_true(self, common_sh: Path, tmp_path: Path):
         """ll_feature_enabled returns 0 when feature is enabled."""
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         (config_dir / "ll-config.json").write_text('{"context_monitor": {"enabled": true}}')
 
@@ -1072,7 +1072,7 @@ class TestSharedConfigFunctions:
 
     def test_feature_enabled_returns_false(self, common_sh: Path, tmp_path: Path):
         """ll_feature_enabled returns 1 when feature is disabled."""
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         (config_dir / "ll-config.json").write_text('{"context_monitor": {"enabled": false}}')
 
@@ -1086,7 +1086,7 @@ class TestSharedConfigFunctions:
 
     def test_feature_enabled_missing_key(self, common_sh: Path, tmp_path: Path):
         """ll_feature_enabled returns 1 when key is missing."""
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         (config_dir / "ll-config.json").write_text("{}")
 
@@ -1110,7 +1110,7 @@ class TestSharedConfigFunctions:
 
     def test_config_value_reads_string(self, common_sh: Path, tmp_path: Path):
         """ll_config_value reads a string value."""
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         (config_dir / "ll-config.json").write_text('{"prompt_optimization": {"mode": "thorough"}}')
 
@@ -1124,7 +1124,7 @@ class TestSharedConfigFunctions:
 
     def test_config_value_uses_default(self, common_sh: Path, tmp_path: Path):
         """ll_config_value returns default when key is missing."""
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         (config_dir / "ll-config.json").write_text("{}")
 
@@ -1152,7 +1152,7 @@ class TestSessionStartValidation:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            config_dir = tmp_path / ".claude"
+            config_dir = tmp_path / ".ll"
             config_dir.mkdir()
             (config_dir / "ll-config.json").write_text(json.dumps({"sync": {"enabled": True}}))
 
@@ -1174,7 +1174,7 @@ class TestSessionStartValidation:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            config_dir = tmp_path / ".claude"
+            config_dir = tmp_path / ".ll"
             config_dir.mkdir()
             (config_dir / "ll-config.json").write_text(json.dumps({"documents": {"enabled": True}}))
 
@@ -1198,7 +1198,7 @@ class TestSessionStartValidation:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            config_dir = tmp_path / ".claude"
+            config_dir = tmp_path / ".ll"
             config_dir.mkdir()
             (config_dir / "ll-config.json").write_text(json.dumps({"product": {"enabled": True}}))
 
@@ -1220,7 +1220,7 @@ class TestSessionStartValidation:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            config_dir = tmp_path / ".claude"
+            config_dir = tmp_path / ".ll"
             config_dir.mkdir()
 
             # Create goals file for product
@@ -1239,7 +1239,7 @@ class TestSessionStartValidation:
                         },
                         "product": {
                             "enabled": True,
-                            "goals_file": ".claude/ll-goals.md",
+                            "goals_file": ".ll/ll-goals.md",
                         },
                     }
                 )
@@ -1263,7 +1263,7 @@ class TestSessionStartValidation:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            config_dir = tmp_path / ".claude"
+            config_dir = tmp_path / ".ll"
             config_dir.mkdir()
             (config_dir / "ll-config.json").write_text(
                 json.dumps(
@@ -1318,7 +1318,7 @@ class TestPrecompactState:
             assert result.returncode == 2
 
             # State file should exist with valid JSON
-            state_file = tmp_path / ".claude" / "ll-precompact-state.json"
+            state_file = tmp_path / ".ll" / "ll-precompact-state.json"
             assert state_file.exists()
 
             state = json.loads(state_file.read_text())
@@ -1356,7 +1356,7 @@ class TestPrecompactState:
             assert all(r.returncode == 2 for r in results)
 
             # State file should have valid JSON (last write wins)
-            state_file = tmp_path / ".claude" / "ll-precompact-state.json"
+            state_file = tmp_path / ".ll" / "ll-precompact-state.json"
             state = json.loads(state_file.read_text())
             assert state["preserved"] is True
 

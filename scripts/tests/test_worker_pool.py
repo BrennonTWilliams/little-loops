@@ -42,12 +42,14 @@ def mock_logger() -> MagicMock:
 
 @pytest.fixture
 def temp_repo_with_config() -> Generator[Path, None, None]:
-    """Create a temporary directory with .claude config."""
+    """Create a temporary directory with .ll config."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = Path(tmpdir)
+        ll_dir = repo_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text("{}")
         claude_dir = repo_path / ".claude"
         claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text("{}")
         (claude_dir / "settings.local.json").write_text('{"model": "claude-sonnet-4"}')
 
         # Create worktree base
@@ -1293,9 +1295,9 @@ class TestWorkerPoolHelpers:
     ) -> None:
         """_detect_main_repo_leaks() detects files in configured src_dir and test_dir."""
         # Set up a repo with non-default src_dir/test_dir not in the hardcoded fallback list
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text(
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
             json.dumps({"project": {"src_dir": "scripts/", "test_dir": "custom_tests"}})
         )
         (tmp_path / ".worktrees").mkdir()

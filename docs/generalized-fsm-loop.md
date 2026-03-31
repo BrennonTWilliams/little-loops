@@ -1802,7 +1802,7 @@ ll-messages --include-response-context -n 200 -o messages.jsonl
 # Invoke the skill to analyze and suggest loops
 /ll:loop-suggester messages.jsonl
 
-# Review suggestions in .claude/loop-suggestions/
+# Review suggestions in .ll/loop-suggestions/
 # Copy promising yaml_config to .loops/ and validate
 ```
 

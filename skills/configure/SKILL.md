@@ -21,11 +21,11 @@ arguments:
 
 <!-- PLUGIN_VERSION: 1.66.0 -->
 
-Interactively configure specific areas of `.claude/ll-config.json` without re-running the full `/ll:init` wizard.
+Interactively configure specific areas of `.ll/ll-config.json` without re-running the full `/ll:init` wizard.
 
 ## Configuration
 
-Settings are stored in `.claude/ll-config.json`. See `config-schema.json` for default values and validation rules.
+Settings are stored in `.ll/ll-config.json`. See `config-schema.json` for default values and validation rules.
 
 ## Process
 
@@ -109,7 +109,7 @@ Map argument names to config sections:
 
 If `--list` flag is set, display all configuration areas with their status.
 
-Read `.claude/ll-config.json` and check which sections are configured (vs using defaults).
+Read `.ll/ll-config.json` and check which sections are configured (vs using defaults).
 
 Output format:
 
@@ -158,7 +158,7 @@ For detailed output formats for each area, see [show-output.md](show-output.md).
 
 If `--reset` flag is set with an area, remove the section from config.
 
-1. Read `.claude/ll-config.json`
+1. Read `.ll/ll-config.json`
 2. Delete the mapped config section (e.g., `context` → delete `context_monitor`)
 3. Write updated config back (preserving `$schema` and other sections)
 4. Display confirmation
@@ -282,7 +282,7 @@ No changes selected. Configuration unchanged.
 
 ### Step 4: Update Config
 
-1. Read existing `.claude/ll-config.json`
+1. Read existing `.ll/ll-config.json`
 2. Merge changes into the appropriate section
 3. **Minimal write rule**: If a value matches the schema default, remove it from config
 4. If a section becomes empty after removing defaults, remove the section
@@ -292,7 +292,7 @@ No changes selected. Configuration unchanged.
 Output on success:
 
 ```
-Configuration updated: .claude/ll-config.json
+Configuration updated: .ll/ll-config.json
 
 Changes applied:
   [section].[key]: [new_value]
@@ -351,7 +351,7 @@ $ARGUMENTS
 
 ## Integration
 
-Changes take effect immediately. Commands that read from `.claude/ll-config.json` will use the updated values.
+Changes take effect immediately. Commands that read from `.ll/ll-config.json` will use the updated values.
 
 Related commands:
 - `/ll:init` - Full interactive initialization wizard

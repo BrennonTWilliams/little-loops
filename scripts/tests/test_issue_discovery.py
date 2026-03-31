@@ -81,7 +81,7 @@ def sample_config_with_enh() -> dict[str, Any]:
 def issues_with_content(temp_project_dir: Path, sample_config_with_enh: dict[str, Any]) -> Path:
     """Create issue directories with sample issues containing detailed content."""
     # Write config
-    config_path = temp_project_dir / ".claude" / "ll-config.json"
+    config_path = temp_project_dir / ".ll" / "ll-config.json"
     config_path.write_text(json.dumps(sample_config_with_enh))
 
     issues_base = temp_project_dir / ".issues"
@@ -586,7 +586,7 @@ class TestMatchesIssueType:
                 }
             }
         }
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(json.dumps(config_data))
 

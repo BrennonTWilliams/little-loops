@@ -22,7 +22,7 @@ You are tasked with validating that active issues have correct document referenc
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Documents enabled**: `{{config.documents.enabled}}`
 - **Document categories**: `{{config.documents.categories}}`
 - **Issues base**: `{{config.issues.base_dir}}`
@@ -31,7 +31,7 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 Before proceeding, verify document tracking is configured:
 
-1. Check if `documents` section exists in `.claude/ll-config.json`
+1. Check if `documents` section exists in `.ll/ll-config.json`
 2. Check if `documents.enabled` is `true`
 
 If not configured or disabled, display:
@@ -40,7 +40,7 @@ Document tracking is not configured or is disabled.
 
 To enable:
 1. Run /ll:init --interactive and enable document tracking
-2. Or manually add to .claude/ll-config.json:
+2. Or manually add to .ll/ll-config.json:
 
    "documents": {
      "enabled": true,
@@ -420,16 +420,16 @@ This command works well with:
 
 **"Document tracking is not configured"**
 - Run `/ll:init --interactive` and enable document tracking in Round 5
-- Or manually add `documents` section to `.claude/ll-config.json`
+- Or manually add `documents` section to `.ll/ll-config.json`
 
 **"Category not found"**
-- Check available categories: `cat .claude/ll-config.json | grep -A 50 '"categories"'`
+- Check available categories: `cat .ll/ll-config.json | grep -A 50 '"categories"'`
 - Use `--all` to see results for all configured categories
 
 **"Document file not found"**
 - Verify file paths in config are relative to project root
 - Check that documents haven't been moved or renamed
-- Update paths in `.claude/ll-config.json` if files moved
+- Update paths in `.ll/ll-config.json` if files moved
 
 **Relevance marked as "Not relevant" incorrectly**
 - Check if document was manually linked for a reason not obvious from content

@@ -24,7 +24,7 @@ You are tasked with analyzing the codebase architecture to identify patterns, in
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Source directory**: `{{config.project.src_dir}}`
 - **Focus directories**: `{{config.scan.focus_dirs}}`
 

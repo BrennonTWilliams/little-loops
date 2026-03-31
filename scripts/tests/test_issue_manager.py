@@ -179,8 +179,8 @@ class TestAutoManagerIntegration:
     def setup_project(self, temp_project_dir: Path) -> tuple[Path, Path]:
         """Set up a minimal project structure."""
         # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test-project"},
@@ -201,7 +201,7 @@ class TestAutoManagerIntegration:
             },
         }
 
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "enhancements"
@@ -469,8 +469,8 @@ class TestDependencyAwareSequencing:
         """Set up project with issues that have dependencies."""
 
         # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test-project"},
@@ -490,7 +490,7 @@ class TestDependencyAwareSequencing:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "features"
@@ -574,8 +574,8 @@ class TestDependencyAwareSequencing:
         """Set up project with issues that have a dependency cycle."""
 
         # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test-project"},
@@ -595,7 +595,7 @@ class TestDependencyAwareSequencing:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "features"
@@ -635,8 +635,8 @@ class TestAutoManagerPriorityFilter:
     @pytest.fixture
     def temp_project_with_priorities(self, temp_project_dir: Path) -> Path:
         """Set up project with issues of mixed priorities."""
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test-project"},
@@ -652,7 +652,7 @@ class TestAutoManagerPriorityFilter:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         issues_dir = temp_project_dir / ".issues" / "bugs"
         issues_dir.mkdir(parents=True)
@@ -730,8 +730,8 @@ class TestAutoManagerQuietMode:
         from little_loops.issue_manager import AutoManager
 
         # Create minimal config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_content = {
             "project": {"name": "test-project"},
             "issues": {
@@ -750,7 +750,7 @@ class TestAutoManagerQuietMode:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "features"
@@ -768,8 +768,8 @@ class TestAutoManagerQuietMode:
         from little_loops.issue_manager import AutoManager
 
         # Create minimal config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_content = {
             "project": {"name": "test-project"},
             "issues": {
@@ -788,7 +788,7 @@ class TestAutoManagerQuietMode:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "features"
@@ -806,8 +806,8 @@ class TestAutoManagerQuietMode:
         from little_loops.issue_manager import AutoManager
 
         # Create minimal config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_content = {
             "project": {"name": "test-project"},
             "issues": {
@@ -826,7 +826,7 @@ class TestAutoManagerQuietMode:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "features"
@@ -1821,8 +1821,8 @@ class TestAutoManagerRun:
         """Set up a complete project for run() testing."""
 
         # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test-project"},
@@ -1842,7 +1842,7 @@ class TestAutoManagerRun:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "bugs"
@@ -1968,8 +1968,8 @@ class TestSignalHandler:
         from little_loops.issue_manager import AutoManager
 
         # Setup
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_content = {
             "project": {"name": "test"},
             "issues": {
@@ -1979,7 +1979,7 @@ class TestSignalHandler:
             },
             "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         issues_dir = temp_project_dir / ".issues" / "bugs"
         issues_dir.mkdir(parents=True, exist_ok=True)
@@ -2008,8 +2008,8 @@ class TestTimingSummaryAndStateUpdates:
         from little_loops.issue_manager import AutoManager
 
         # Setup project
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_content = {
             "project": {"name": "test"},
             "issues": {
@@ -2019,7 +2019,7 @@ class TestTimingSummaryAndStateUpdates:
             },
             "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         issues_dir = temp_project_dir / ".issues" / "bugs"
         issues_dir.mkdir(parents=True, exist_ok=True)
@@ -2052,8 +2052,8 @@ class TestTimingSummaryAndStateUpdates:
         from little_loops.issue_manager import AutoManager
 
         # Setup
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
         config_content = {
             "project": {"name": "test"},
             "issues": {
@@ -2063,7 +2063,7 @@ class TestTimingSummaryAndStateUpdates:
             },
             "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         issues_dir = temp_project_dir / ".issues" / "bugs"
         issues_dir.mkdir(parents=True, exist_ok=True)
@@ -2126,8 +2126,8 @@ class TestIssueManagerConcurrency:
         """Set up project with multiple issues for concurrent testing."""
 
         # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test-project"},
@@ -2147,7 +2147,7 @@ class TestIssueManagerConcurrency:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
         issues_dir = temp_project_dir / ".issues" / "bugs"
@@ -2194,8 +2194,8 @@ class TestIssueManagerConcurrency:
         """Multiple managers accessing same state file."""
 
         # Setup
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test"},
@@ -2206,7 +2206,7 @@ class TestIssueManagerConcurrency:
             },
             "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         issues_dir = temp_project_dir / ".issues" / "bugs"
         issues_dir.mkdir(parents=True, exist_ok=True)
@@ -2239,8 +2239,8 @@ class TestIssueManagerConcurrency:
         """Multiple threads modifying state simultaneously."""
 
         # Setup
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test"},
@@ -2251,7 +2251,7 @@ class TestIssueManagerConcurrency:
             },
             "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         issues_dir = temp_project_dir / ".issues" / "bugs"
         issues_dir.mkdir(parents=True, exist_ok=True)
@@ -2415,8 +2415,8 @@ class TestAutoManagerModelDetection:
     @pytest.fixture
     def temp_project_with_issue(self, temp_project_dir: Path) -> Path:
         """Set up project with a single feature issue."""
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
 
         config_content = {
             "project": {"name": "test-project"},
@@ -2432,7 +2432,7 @@ class TestAutoManagerModelDetection:
                 "state_file": ".auto-manage-state.json",
             },
         }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         issues_dir = temp_project_dir / ".issues" / "features"
         issues_dir.mkdir(parents=True)

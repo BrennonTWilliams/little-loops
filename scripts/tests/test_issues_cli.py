@@ -21,7 +21,7 @@ class TestIssuesCLINextId:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """next-id returns 001 for an empty project."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
@@ -43,7 +43,7 @@ class TestIssuesCLINextId:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """next-id returns correct next number when issues exist."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues", "next-id", "--config", str(temp_project_dir)]):
@@ -79,7 +79,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list outputs all active issues grouped by type."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
@@ -100,7 +100,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list default output groups issues with type headers and counts."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
@@ -123,7 +123,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list default output formats each line as '  Pn  TYPE-NNN  Title'."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
@@ -144,7 +144,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --flat produces original filename + title format."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -171,7 +171,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --type BUG shows only bug issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -195,7 +195,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --priority P0 shows only P0 issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -220,7 +220,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --priority P0,P1 shows issues matching either priority."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -246,7 +246,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list shows all type groups including empty ones (e.g. ENH when no ENH issues)."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
@@ -266,7 +266,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list with no issues prints a message and returns 0."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
 
@@ -287,7 +287,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --json outputs a valid JSON array with required fields."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -319,7 +319,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --json with no issues outputs empty JSON array."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
 
@@ -342,7 +342,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --json output contains no ANSI color codes."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -367,7 +367,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --limit N returns at most N issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -392,7 +392,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list -n N works as short alias for --limit."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -417,7 +417,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --limit 0 returns exit code 1 with an error message."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -439,7 +439,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list --limit -1 returns exit code 1 with an error message."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -461,7 +461,7 @@ class TestIssuesCLIList:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """list without --limit returns all issues unchanged."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -489,7 +489,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence outputs issues in priority order."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -512,7 +512,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence --limit 2 shows at most 2 issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -536,7 +536,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence with no issues prints a message and returns 0."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
 
@@ -559,7 +559,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence --json outputs a valid JSON array with required fields."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -591,7 +591,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence --json output contains no ANSI color codes."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -615,7 +615,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence --type BUG shows only bug issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -642,7 +642,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence --type FEAT shows only feature issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -668,7 +668,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence --type ENH shows 'No active issues' when no enhancements exist."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
@@ -694,7 +694,7 @@ class TestIssuesCLISequence:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """sequence --type BUG --json includes type_filter in each item."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -734,7 +734,7 @@ class TestIssuesCLIImpactEffort:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """impact-effort renders the 2x2 ASCII grid."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -761,7 +761,7 @@ class TestIssuesCLIImpactEffort:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """impact-effort grid contains issue IDs."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -782,7 +782,7 @@ class TestIssuesCLIImpactEffort:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """impact-effort with no issues prints a message and returns 0."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
 
@@ -805,7 +805,7 @@ class TestIssuesCLIImpactEffort:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """impact-effort produces no ANSI escape codes when NO_COLOR is active."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         import little_loops.cli.output as output_mod
@@ -834,7 +834,7 @@ class TestIssuesCLIImpactEffort:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """impact-effort prints a summary line with total issue count."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -855,7 +855,7 @@ class TestIssuesCLIImpactEffort:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """impact-effort uses frontmatter effort/impact when present."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
@@ -884,7 +884,7 @@ class TestIssuesCLIImpactEffort:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """impact-effort --type BUG shows only bugs in the matrix."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -914,7 +914,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show finds issue by numeric ID only."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -937,7 +937,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show finds issue by TYPE-NNN format."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -960,7 +960,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show finds issue by P-TYPE-NNN format."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -983,7 +983,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show returns 1 and prints error when issue not found."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1005,7 +1005,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays Completed status for issues in completed/ directory."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         completed_dir = temp_project_dir / ".issues" / "completed"
@@ -1032,7 +1032,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays confidence_score and outcome_confidence from frontmatter."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         features_dir = temp_project_dir / ".issues" / "features"
@@ -1062,7 +1062,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show handles issues without frontmatter scores gracefully."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1087,7 +1087,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show uses box-drawing characters for card border."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1113,7 +1113,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays summary text from ## Summary section."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         features_dir = temp_project_dir / ".issues" / "features"
@@ -1141,7 +1141,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays full summary without truncation."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         features_dir = temp_project_dir / ".issues" / "features"
@@ -1171,7 +1171,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays multi-line summary in its own section."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         features_dir = temp_project_dir / ".issues" / "features"
@@ -1205,7 +1205,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays integration file count from ### Files to Modify."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         features_dir = temp_project_dir / ".issues" / "features"
@@ -1239,7 +1239,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays risk level from ## Impact section."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
@@ -1267,7 +1267,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays labels from ## Labels section."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         features_dir = temp_project_dir / ".issues" / "features"
@@ -1294,7 +1294,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays session log history with deduped command counts."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         features_dir = temp_project_dir / ".issues" / "features"
@@ -1329,7 +1329,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show displays relative path instead of absolute."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1353,7 +1353,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show omits new fields when not present in issue file."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         # Create a minimal issue with no Summary, Impact, Labels, Session Log, or Integration Map
@@ -1384,7 +1384,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show --json outputs valid JSON with required card fields."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1413,7 +1413,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show --json output contains no ANSI color codes."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1439,7 +1439,7 @@ class TestIssuesCLIShow:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """show --json returns 1 when issue not found (JSON flag does not suppress error)."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1463,7 +1463,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count outputs total number of active issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues", "count", "--config", str(temp_project_dir)]):
@@ -1483,7 +1483,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --type BUG shows only bug count."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1505,7 +1505,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --priority P0 shows only P0 count."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1529,7 +1529,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --priority P0,P1 counts issues matching either priority."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1553,7 +1553,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --json outputs valid JSON with total, by_type, and by_priority."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1582,7 +1582,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --type BUG --json filters JSON output to bugs only."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
@@ -1608,7 +1608,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count with no issues outputs 0."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
 
@@ -1629,7 +1629,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count alias 'c' works the same as 'count'."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues", "c", "--config", str(temp_project_dir)]):
@@ -1649,7 +1649,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --status completed counts issues in the completed directory."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         completed_dir = issues_dir / "completed"
         (completed_dir / "P1-BUG-010-fixed-crash.md").write_text(
@@ -1680,7 +1680,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --status deferred counts issues in the deferred directory."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         deferred_dir = issues_dir / "deferred"
         (deferred_dir / "P3-FEAT-020-parked.md").write_text(
@@ -1708,7 +1708,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --status all counts across active, completed, and deferred."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         completed_dir = issues_dir / "completed"
         deferred_dir = issues_dir / "deferred"
@@ -1739,7 +1739,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count default (no --status) still only counts active issues."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         completed_dir = issues_dir / "completed"
         (completed_dir / "P1-BUG-010-fixed.md").write_text("# BUG-010: Fixed\n\n## Summary\nFixed.")
@@ -1761,7 +1761,7 @@ class TestIssuesCLICount:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """count --json --status completed includes status field in output."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         completed_dir = issues_dir / "completed"
         (completed_dir / "P1-BUG-010-fixed.md").write_text("# BUG-010: Fixed\n\n## Summary\nFixed.")
@@ -1805,7 +1805,7 @@ class TestIssuesAppendLog:
 
         from little_loops.session_log import count_session_commands
 
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
@@ -1850,7 +1850,7 @@ class TestIssuesAppendLog:
         """append-log returns exit code 1 when session JSONL cannot be resolved."""
         from unittest.mock import patch as mock_patch
 
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
@@ -1884,7 +1884,7 @@ class TestIssuesAppendLog:
 @pytest.fixture
 def list_sort_issues_dir(temp_project_dir: Path, sample_config: dict[str, Any]) -> Path:
     """Create issue directories with varied frontmatter for list --sort tests."""
-    config_path = temp_project_dir / ".claude" / "ll-config.json"
+    config_path = temp_project_dir / ".ll" / "ll-config.json"
     config_path.write_text(json.dumps(sample_config, indent=2))
 
     issues_base = temp_project_dir / ".issues"
@@ -2045,7 +2045,7 @@ class TestIssuesCLIHelp:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Running ll-issues with no sub-command returns exit code 1."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(sys, "argv", ["ll-issues"]):

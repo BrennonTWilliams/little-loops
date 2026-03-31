@@ -23,7 +23,7 @@ def sprint_project(tmp_path: Path) -> BRConfig:
         (issues_dir / category).mkdir()
 
     # Create config
-    config_dir = tmp_path / ".claude"
+    config_dir = tmp_path / ".ll"
     config_dir.mkdir()
 
     config_file = config_dir / "ll-config.json"
@@ -168,7 +168,7 @@ class TestMultiWaveExecution:
         for category in ["bugs", "features", "enhancements", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -500,7 +500,7 @@ class TestErrorRecovery:
         for category in ["bugs", "features", "enhancements", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -741,7 +741,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -1100,7 +1100,7 @@ class TestDependencyHandling:
         for category in ["bugs", "features", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -1162,7 +1162,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -1208,7 +1208,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -1262,7 +1262,7 @@ class TestEdgeCases:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -1363,7 +1363,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -1422,7 +1422,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
 
         config_data = {
@@ -1495,7 +1495,7 @@ issues:
 
         from little_loops.cli import sprint as cli
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         with open(config_dir / "ll-config.json", "w") as f:
             json.dump({"project": {"name": "test"}}, f)
@@ -1536,7 +1536,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_data = {
             "project": {"name": "test"},
@@ -1656,7 +1656,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_data = {
             "project": {"name": "test"},
@@ -1740,7 +1740,7 @@ issues:
         for category in ["bugs", "completed"]:
             (issues_dir / category).mkdir()
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_data = {
             "project": {"name": "test"},

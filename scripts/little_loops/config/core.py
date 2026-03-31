@@ -61,7 +61,7 @@ class ProjectConfig:
 class BRConfig:
     """Main configuration class for little-loops.
 
-    Loads configuration from .claude/ll-config.json and merges with defaults.
+    Loads configuration from .ll/ll-config.json and merges with defaults.
     Provides convenient property access to all configuration values.
 
     Example:
@@ -72,7 +72,7 @@ class BRConfig:
     """
 
     CONFIG_FILENAME = "ll-config.json"
-    CONFIG_DIR = ".claude"
+    CONFIG_DIR = ".ll"
 
     def __init__(self, project_root: Path) -> None:
         """Initialize configuration from project root.

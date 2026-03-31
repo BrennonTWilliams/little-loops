@@ -115,7 +115,7 @@ CODE QUALITY
 
 /ll:update-docs [--since <date|git-ref>] [--fix]
     Identify stale/missing docs from git commits and completed issues since a date
-    Default since: last commit touching a doc file (or .claude/ll-update-docs.watermark)
+    Default since: last commit touching a doc file (or .ll/ll-update-docs.watermark)
 
 GIT & RELEASE
 -------------
@@ -223,7 +223,7 @@ Flags are optional modifiers passed after arguments. Common flags:
 
 Not all commands support all flags. Check each command's documentation.
 
-Configuration: .claude/ll-config.json
+Configuration: .ll/ll-config.json
 Documentation: https://github.com/BrennonTWilliams/little-loops
 ================================================================================
 ```
@@ -276,6 +276,6 @@ This command is typically used when:
 - Discovering workflow patterns
 
 Related documentation:
-- Plugin configuration: `.claude/ll-config.json`
+- Plugin configuration: `.ll/ll-config.json`
 - Issue tracking: `.issues/` directory
 - Project documentation: `CONTRIBUTING.md`

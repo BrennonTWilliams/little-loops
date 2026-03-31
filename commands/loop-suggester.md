@@ -257,7 +257,7 @@ Clamp to range [0.0, 1.0]
 
 ### Step 7: Generate Output
 
-Write suggestions to `.claude/loop-suggestions/suggestions-{timestamp}.yaml` using this output schema:
+Write suggestions to `.ll/loop-suggestions/suggestions-{timestamp}.yaml` using this output schema:
 
 ```yaml
 analysis_metadata:
@@ -379,7 +379,7 @@ usage_instructions: |
 
 ### Step FC-4: Write Output
 
-Write suggestions to `.claude/loop-suggestions/suggestions-{timestamp}.yaml` using this schema (same as message history mode, with `source: "commands-catalog"` to distinguish):
+Write suggestions to `.ll/loop-suggestions/suggestions-{timestamp}.yaml` using this schema (same as message history mode, with `source: "commands-catalog"` to distinguish):
 
 ```yaml
 analysis_metadata:
@@ -422,7 +422,7 @@ suggestions:
       4. Execute: ll-loop run [name]
 ```
 
-Ensure the output directory exists: `mkdir -p .claude/loop-suggestions/`.
+Ensure the output directory exists: `mkdir -p .ll/loop-suggestions/`.
 
 ### Step FC-5: Present Proposals
 
@@ -436,7 +436,7 @@ Found [N] loop proposals from [S] skills, [C] commands, [L] CLI tools:
 2  code-quality-fix        code-quality       fix_until_clean    0.80
 3  release-prep            git-release        run_sequence       0.75
 
-Full proposals written to: .claude/loop-suggestions/suggestions-{timestamp}.yaml
+Full proposals written to: .ll/loop-suggestions/suggestions-{timestamp}.yaml
 
 To use a proposal:
   1. Copy the yaml_config to .loops/<name>.yaml

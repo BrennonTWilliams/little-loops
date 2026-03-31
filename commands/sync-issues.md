@@ -24,7 +24,7 @@ Synchronize local `.issues/` files with GitHub Issues.
 
 This command requires sync to be enabled. Check `{{config.sync.enabled}}`.
 
-If not enabled, instruct the user to add to `.claude/ll-config.json`:
+If not enabled, instruct the user to add to `.ll/ll-config.json`:
 ```json
 {
   "sync": {

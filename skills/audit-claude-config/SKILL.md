@@ -47,7 +47,7 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 5. **Global preferences**: `~/.claude.json` - Preferences, OAuth, user/local MCP configs
 
 ### Configuration Files
-- **Plugin Config**: `./.claude/ll-config.json` - Little-loops plugin config
+- **Plugin Config**: `./.ll/ll-config.json` - Little-loops plugin config
 - **Config Schema**: `config-schema.json` - Configuration validation schema
 - **MCP Config**: `.mcp.json` (project), `~/.claude.json` mcpServers (user/local), `managed-mcp.json` (managed) - MCP servers across all scopes
 - **Output Styles**: `.claude/output-styles/` and `~/.claude/output-styles/` - Custom output style markdown files with YAML frontmatter
@@ -233,7 +233,7 @@ Prompt:
 Locate and audit all configuration files:
 
 **Files to find and validate**:
-- .claude/ll-config.json (validate against config-schema.json)
+- .ll/ll-config.json (validate against config-schema.json)
 - config-schema.json (check for completeness)
 - .mcp.json (project-scope MCP servers)
 - ~/.claude.json → mcpServers field (user-scope MCP servers)

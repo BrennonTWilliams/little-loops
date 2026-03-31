@@ -23,7 +23,7 @@ The command follows a 5-phase workflow:
 
 Scan all active issues:
 
-1. Read `.claude/ll-config.json` for issue directory configuration
+1. Read `.ll/ll-config.json` for issue directory configuration
 2. Use Glob to find all `.md` files in:
    - `{{config.issues.base_dir}}/bugs/`
    - `{{config.issues.base_dir}}/features/`
@@ -338,7 +338,7 @@ ISSUE TRADEOFF REVIEW COMPLETE
 
 ## Configuration
 
-Uses project configuration from `.claude/ll-config.json`:
+Uses project configuration from `.ll/ll-config.json`:
 
 - `issues.base_dir` - Base directory for issues (default: `.issues`)
 - `issues.categories` - Bug/feature/enhancement directory config

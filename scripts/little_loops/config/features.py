@@ -210,7 +210,7 @@ class GitHubSyncConfig:
     )
     priority_labels: bool = True
     sync_completed: bool = False
-    state_file: str = ".claude/ll-sync-state.json"
+    state_file: str = ".ll/ll-sync-state.json"
     pull_template: str = "minimal"
 
     @classmethod
@@ -223,7 +223,7 @@ class GitHubSyncConfig:
             ),
             priority_labels=data.get("priority_labels", True),
             sync_completed=data.get("sync_completed", False),
-            state_file=data.get("state_file", ".claude/ll-sync-state.json"),
+            state_file=data.get("state_file", ".ll/ll-sync-state.json"),
             pull_template=data.get("pull_template", "minimal"),
         )
 

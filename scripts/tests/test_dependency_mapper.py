@@ -638,7 +638,7 @@ class TestGatherAllIssueIds:
         (issues_dir / "archive").mkdir()
         # Note: "bugs" directory intentionally absent – the config only lists "tasks"
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
@@ -668,7 +668,7 @@ class TestGatherAllIssueIds:
         (issues_dir / "archive").mkdir()
         (issues_dir / "archive" / "P1-BUG-002-done.md").write_text("# BUG-002")
 
-        config_dir = tmp_path / ".claude"
+        config_dir = tmp_path / ".ll"
         config_dir.mkdir()
         config_data = {
             "project": {"name": "test-project", "src_dir": "src/"},
@@ -1078,9 +1078,9 @@ class TestMainCLI:
         (issues_dir / "completed").mkdir()
 
         # Create minimal config
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]):
             result = main()
@@ -1095,9 +1095,9 @@ class TestMainCLI:
         (issues_dir / "enhancements").mkdir()
         (issues_dir / "completed").mkdir()
 
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate"]):
             result = main()
@@ -1117,9 +1117,9 @@ class TestMainCLI:
             "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
         )
 
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]):
             result = main()
@@ -1146,9 +1146,9 @@ class TestMainCLI:
             "# ENH-010: Enhancement\n\n## Summary\n\nImprove `scripts/config.py`\n"
         )
 
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text(
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
             '{"issues": {"base_dir": ".issues"}, "sprints": {"sprints_dir": ".sprints"}}'
         )
 
@@ -1472,9 +1472,9 @@ class TestMainCLIFix:
             "## Labels\n\n`feature`\n"
         )
 
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         return issues_dir
 
@@ -1529,9 +1529,9 @@ class TestMainCLIFix:
             "# FEAT-001: OK\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
         )
 
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "fix"]):
             result = main()

@@ -355,9 +355,9 @@ class TestGitHubSyncManager:
     @pytest.fixture
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        config_file = claude_dir / "ll-config.json"
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
                 {
@@ -753,9 +753,9 @@ class TestDryRun:
     @pytest.fixture
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        config_file = claude_dir / "ll-config.json"
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
                 {
@@ -975,9 +975,9 @@ class TestDiffIssue:
     @pytest.fixture
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        config_file = claude_dir / "ll-config.json"
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
                 {
@@ -1190,9 +1190,9 @@ class TestCloseIssue:
     @pytest.fixture
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        config_file = claude_dir / "ll-config.json"
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
                 {
@@ -1346,9 +1346,9 @@ class TestReopenIssue:
     @pytest.fixture
     def mock_config(self, tmp_path: Path) -> BRConfig:
         """Create a mock BRConfig with test directories."""
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        config_file = claude_dir / "ll-config.json"
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
         config_file.write_text(
             json.dumps(
                 {

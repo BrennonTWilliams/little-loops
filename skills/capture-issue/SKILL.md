@@ -25,7 +25,7 @@ You are tasked with capturing issues from either a natural language description 
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Completed dir**: `{{config.issues.completed_dir}}`
 - **Template style**: `{{config.issues.capture_template}}` (full or minimal)
@@ -266,13 +266,13 @@ git add "{{config.issues.base_dir}}/[category]/[filename]"
 ### Phase 4b: Link Relevant Documents (if documents.enabled)
 
 See [templates.md](templates.md) for the complete document linking process including:
-- Loading configured documents from `.claude/ll-config.json`
+- Loading configured documents from `.ll/ll-config.json`
 - Extracting key concepts and scoring relevance
 - Selecting top matches (max 3 documents)
 - Updating the "Related Key Documentation" section with a table format
 
 **Skip this phase if**:
-- `documents.enabled` is not `true` in `.claude/ll-config.json`
+- `documents.enabled` is not `true` in `.ll/ll-config.json`
 - OR no documents are configured in `documents.categories`
 
 #### Action: Update Existing Issue

@@ -388,7 +388,7 @@ The active issues command filters for `status == 'open'`, prints the first issue
 
 ### Step H3: Evaluation Phases
 
-The wizard reads `.claude/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected (default, can be changed); stall detection is pre-selected by default since all H1 choices produce prompt-based execution. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
+The wizard reads `.ll/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected (default, can be changed); stall detection is pre-selected by default since all H1 choices produce prompt-based execution. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
 
 ```
 Which evaluation phases should be included? (multi-select)

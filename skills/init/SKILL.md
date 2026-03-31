@@ -21,7 +21,7 @@ arguments:
 
 <!-- PLUGIN_VERSION: 1.66.0 -->
 
-You are tasked with initializing little-loops configuration for a project by creating `.claude/ll-config.json`.
+You are tasked with initializing little-loops configuration for a project by creating `.ll/ll-config.json`.
 
 ## Arguments
 
@@ -72,10 +72,10 @@ fi
 
 ### 2. Check Existing Configuration
 
-Before proceeding, check if `.claude/ll-config.json` already exists:
+Before proceeding, check if `.ll/ll-config.json` already exists:
 
 - If it exists and `--force` was NOT provided:
-  - Display warning: "Configuration already exists at .claude/ll-config.json"
+  - Display warning: "Configuration already exists at .ll/ll-config.json"
   - Suggest: "Use --force to overwrite, or edit the existing file directly"
   - **Stop here** - do not proceed
 
@@ -180,7 +180,7 @@ Configuration Summary:
 
   [PRODUCT]                               # Only show if enabled
   product.enabled: true
-  product.goals_file: .claude/ll-goals.md
+  product.goals_file: .ll/ll-goals.md
 
   [DOCUMENTS]                             # Only show if enabled
   documents.enabled: true
@@ -210,7 +210,7 @@ If `--yes` flag IS set:
 - Skip confirmation and proceed
 
 Otherwise (neither `--interactive`, `--yes`, nor `--dry-run`):
-- Ask: "Create .claude/ll-config.json with these settings? (y/n)"
+- Ask: "Create .ll/ll-config.json with these settings? (y/n)"
 - Wait for confirmation
 - If user declines, abort without changes
 
@@ -254,7 +254,7 @@ After the user confirms, check whether the configured tool commands are availabl
 ```
 === DRY RUN: /ll:init ===
 
---- Configuration Preview (.claude/ll-config.json) ---
+--- Configuration Preview (.ll/ll-config.json) ---
 {
   "$schema": "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/config-schema.json",
   "project": { ... },
@@ -263,7 +263,7 @@ After the user confirms, check whether the configured tool commands are availabl
 }
 
 --- Actions that would be taken ---
-  [write]  .claude/ll-config.json
+  [write]  .ll/ll-config.json
   [mkdir]  {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
   [update] .gitignore (add state file exclusions)
   [update] .claude/settings.local.json (add ll- CLI tool permissions)  # Only if user opts in
@@ -319,8 +319,8 @@ Add little-loops state files to `.gitignore` to prevent committing runtime state
 # little-loops state files
 .auto-manage-state.json
 .parallel-manage-state.json
-.claude/ll-context-state.json
-.claude/ll-sync-state.json
+.ll/ll-context-state.json
+.ll/ll-sync-state.json
 ```
 
 **Logic:**
@@ -421,7 +421,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
 4. Perform merge into the chosen target file:
    - Read target file, or start with `{"permissions": {"allow": [], "deny": []}}` if absent
    - Remove all existing entries starting with `Bash(ll-` from `permissions.allow` (idempotency)
-   - Remove any existing `Write(.claude/ll-continue-prompt.md)` entry from `permissions.allow` (idempotency)
+   - Remove any existing `Write(.ll/ll-continue-prompt.md)` entry from `permissions.allow` (idempotency)
    - Append the canonical allow entries:
      ```json
      "Bash(ll-issues:*)",
@@ -436,7 +436,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-sync:*)",
      "Bash(ll-verify-docs:*)",
      "Bash(ll-check-links:*)",
-     "Write(.claude/ll-continue-prompt.md)"
+     "Write(.ll/ll-continue-prompt.md)"
      ```
    - Create `.claude/` directory first if needed
    - Write result back with 2-space indent, preserving all top-level keys (`$schema`, `env`, etc.)
@@ -520,8 +520,8 @@ If user opted in:
 INITIALIZATION COMPLETE
 ================================================================================
 
-Created: .claude/ll-config.json
-Created: .claude/ll-goals.md (product goals template)  # Only show if product enabled
+Created: .ll/ll-config.json
+Created: .ll/ll-goals.md (product goals template)  # Only show if product enabled
 Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
 Updated: .gitignore (added state file exclusions)
 Updated: .claude/settings.local.json (added ll- CLI tool permissions)  # Only show if user opted in
@@ -529,9 +529,9 @@ Created: .claude/CLAUDE.md (ll- CLI command documentation)             # Only sh
 Updated: .claude/CLAUDE.md (appended ## little-loops CLI Commands)     # Only show if CLAUDE_MD_UPDATED=true
 
 Next steps:
-  1. Review and customize: .claude/ll-config.json
+  1. Review and customize: .ll/ll-config.json
   2. Try a command: /ll:check-code
-  3. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
+  3. Configure product goals: .ll/ll-goals.md      # Only show if product enabled
   4. Run parallel processing: ll-parallel      # Only show if parallel configured
   5. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
   6. Run sprint processing: ll-sprint run [sprint-file]   # Only show if sprint management selected

@@ -177,7 +177,7 @@ Document the following:
 
 ## Watermark File Format
 
-`.claude/ll-update-docs.watermark` is a plain-text file containing a single git commit hash:
+`.ll/ll-update-docs.watermark` is a plain-text file containing a single git commit hash:
 
 ```
 abc1234def5678

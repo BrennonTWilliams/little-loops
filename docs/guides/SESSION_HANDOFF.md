@@ -55,7 +55,7 @@ which jq
 
 ### Enable Context Monitoring
 
-Add to `.claude/ll-config.json`:
+Add to `.ll/ll-config.json`:
 
 ```json
 {
@@ -98,7 +98,7 @@ When you want to preserve your work:
 │     ↓                                                           │
 │ Reminder repeats on every tool call until handoff executed      │
 │     ↓                                                           │
-│ /ll:handoff writes .claude/ll-continue-prompt.md                │
+│ /ll:handoff writes .ll/ll-continue-prompt.md                │
 │     ↓                                                           │
 │ Start new session → /ll:resume → Continue working               │
 └─────────────────────────────────────────────────────────────────┘
@@ -121,7 +121,7 @@ Automation tools handle handoff automatically:
 │     ↓                                                           │
 │ /ll:handoff outputs: "CONTEXT_HANDOFF: Ready for fresh session" │
 │     ↓                                                           │
-│ CLI detects signal, reads .claude/ll-continue-prompt.md         │
+│ CLI detects signal, reads .ll/ll-continue-prompt.md         │
 │     ↓                                                           │
 │ Spawns fresh Claude session with continuation prompt            │
 │     ↓                                                           │
@@ -151,7 +151,7 @@ Generates a continuation prompt capturing current session state. **Summarizes co
 | Default | `/ll:handoff` | Conversation summary, decisions, errors, code changes | Fast (no disk I/O) |
 | Deep | `/ll:handoff --deep` | Default + git status, todos, discrepancy detection | Slower (runs git) |
 
-**Default Output:** Writes to `.claude/ll-continue-prompt.md`:
+**Default Output:** Writes to `.ll/ll-continue-prompt.md`:
 
 ```markdown
 # Session Continuation: Refactoring auth module
@@ -263,7 +263,7 @@ Ready to continue. What would you like to do next?
 If the specified path does not exist, `/ll:resume` reports an error and stops:
 
 ```
-Error: No continuation prompt found at .claude/ll-continue-prompt.md
+Error: No continuation prompt found at .ll/ll-continue-prompt.md
 
 Run /ll:handoff to generate one, or specify a custom path:
   /ll:resume path/to/custom-prompt.md
@@ -285,7 +285,7 @@ Run /ll:handoff to generate one, or specify a custom path:
       "bash_output_per_char": 0.3
     },
     "use_transcript_baseline": true,
-    "state_file": ".claude/ll-context-state.json"
+    "state_file": ".ll/ll-context-state.json"
   },
   "continuation": {
     "enabled": true,
@@ -328,7 +328,7 @@ ll-sprint run my-sprint --handoff-threshold 85
 
 ### Auto-Detect on Session Start
 
-When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.claude/ll-continue-prompt.md` at the beginning of each session. If a prompt file is found that is not yet expired, a notice is printed prompting you to run `/ll:resume`. Set this to `false` to suppress automatic detection and only resume manually.
+When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.ll/ll-continue-prompt.md` at the beginning of each session. If a prompt file is found that is not yet expired, a notice is printed prompting you to run `/ll:resume`. Set this to `false` to suppress automatic detection and only resume manually.
 
 ### Transcript Baseline Mode (Default)
 
@@ -372,13 +372,13 @@ The context monitor estimates the current-turn delta based on tool activity:
 
 | File | Purpose |
 |------|---------|
-| `.claude/ll-continue-prompt.md` | Generated continuation prompt |
-| `.claude/ll-context-state.json` | Running context usage state |
-| `.claude/ll-session-state.json` | Session metadata (fallback) |
+| `.ll/ll-continue-prompt.md` | Generated continuation prompt |
+| `.ll/ll-context-state.json` | Running context usage state |
+| `.ll/ll-session-state.json` | Session metadata (fallback) |
 
 ### State File Format
 
-`.claude/ll-context-state.json`:
+`.ll/ll-context-state.json`:
 
 You'll rarely need to inspect this directly, but it's useful for debugging stuck continuations.
 
@@ -408,7 +408,7 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 
 1. **Check if enabled:**
    ```bash
-   cat .claude/ll-config.json | jq '.context_monitor.enabled'
+   cat .ll/ll-config.json | jq '.context_monitor.enabled'
    ```
 
 2. **Verify jq is installed** (required for the hook):
@@ -418,12 +418,12 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 
 3. **Check state file:**
    ```bash
-   cat .claude/ll-context-state.json
+   cat .ll/ll-context-state.json
    ```
 
 ### Reminders keep appearing after handoff
 
-The monitor checks if `.claude/ll-continue-prompt.md` was modified *after* the threshold was crossed. Ensure:
+The monitor checks if `.ll/ll-continue-prompt.md` was modified *after* the threshold was crossed. Ensure:
 
 1. `/ll:handoff` was run (not just manually creating the file)
 2. The file modification time is recent
@@ -496,7 +496,7 @@ The `/ll:handoff` command auto-generates prompts from conversation history. You 
 ### With Other Hooks
 
 - **PostToolUse hook**: Monitors context usage and triggers handoff reminders
-- **Stop hook**: Cleans up context state when the session ends by deleting `.claude/ll-context-state.json` and `.claude/ll-session-state.json`; the continuation prompt `.claude/ll-continue-prompt.md` is preserved for use by `/ll:resume`
+- **Stop hook**: Cleans up context state when the session ends by deleting `.ll/ll-context-state.json` and `.ll/ll-session-state.json`; the continuation prompt `.ll/ll-continue-prompt.md` is preserved for use by `/ll:resume`
 
 ### With Automation Tools
 

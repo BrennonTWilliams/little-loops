@@ -25,7 +25,7 @@ fi
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
 
 # State file paths
-STATE_DIR=".claude"
+STATE_DIR=".ll"
 PRECOMPACT_STATE_FILE="${STATE_DIR}/ll-precompact-state.json"
 CONTEXT_STATE_FILE="${STATE_DIR}/ll-context-state.json"
 
@@ -63,7 +63,7 @@ else
 fi
 
 # Look for continue prompt to preserve
-CONTINUE_PROMPT=".claude/ll-continue-prompt.md"
+CONTINUE_PROMPT=".ll/ll-continue-prompt.md"
 if [ -f "$CONTINUE_PROMPT" ]; then
     PRECOMPACT_STATE=$(echo "$PRECOMPACT_STATE" | jq '. + {continue_prompt_exists: true}')
 fi
@@ -79,6 +79,6 @@ else
 fi
 
 # Output feedback to help Claude resume after compaction
-echo "[ll] Task state preserved before context compaction. Check .claude/ll-precompact-state.json if resuming work." >&2
+echo "[ll] Task state preserved before context compaction. Check .ll/ll-precompact-state.json if resuming work." >&2
 
 exit 2  # PreCompact: non-blocking, shows stderr to user

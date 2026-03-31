@@ -4,21 +4,21 @@
 # SessionStart hook for little-loops plugin
 #
 # Cleans up state from previous session and loads/displays config
-# Supports user-local overrides via .claude/ll.local.md
+# Supports user-local overrides via .ll/ll.local.md
 #
 
 set -euo pipefail
 
 # Clean up state from previous session
-rm -f .claude/ll-context-state.json 2>/dev/null || true
+rm -f .ll/ll-context-state.json 2>/dev/null || true
 
 # Find config file
-CONFIG_FILE=".claude/ll-config.json"
+CONFIG_FILE=".ll/ll-config.json"
 if [ ! -f "$CONFIG_FILE" ]; then
     CONFIG_FILE="ll-config.json"
 fi
 
-LOCAL_FILE=".claude/ll.local.md"
+LOCAL_FILE=".ll/ll.local.md"
 
 # Function to merge local overrides into config using Python
 merge_local_config() {
@@ -62,7 +62,7 @@ def parse_frontmatter(content: str) -> dict:
         return {}
 
 # Load base config
-config_file = Path(".claude/ll-config.json")
+config_file = Path(".ll/ll-config.json")
 if not config_file.exists():
     config_file = Path("ll-config.json")
 
@@ -72,7 +72,7 @@ else:
     base_config = {}
 
 # Check for local overrides
-local_file = Path(".claude/ll.local.md")
+local_file = Path(".ll/ll.local.md")
 if local_file.exists():
     local_overrides = parse_frontmatter(local_file.read_text())
     if local_overrides:
@@ -136,7 +136,7 @@ validate_enabled_features() {
     product_enabled=$(jq -r '.product.enabled // false' "$config_file" 2>/dev/null)
     if [ "$product_enabled" = "true" ]; then
         local goals_file
-        goals_file=$(jq -r '.product.goals_file // ".claude/ll-goals.md"' "$config_file" 2>/dev/null)
+        goals_file=$(jq -r '.product.goals_file // ".ll/ll-goals.md"' "$config_file" 2>/dev/null)
         if [ ! -f "$goals_file" ]; then
             echo "[little-loops] Warning: product.enabled is true but goals file not found: $goals_file" >&2
         fi

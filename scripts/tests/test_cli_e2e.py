@@ -50,12 +50,12 @@ class E2ETestFixture:
                 check=True,
             )
 
-            # Create .claude directory and config
-            claude_dir = project_root / ".claude"
-            claude_dir.mkdir()
+            # Create .ll directory and config
+            ll_dir = project_root / ".ll"
+            ll_dir.mkdir()
 
             config = self._get_test_config()
-            (claude_dir / "ll-config.json").write_text(json.dumps(config, indent=2))
+            (ll_dir / "ll-config.json").write_text(json.dumps(config, indent=2))
 
             # Create issue directories
             self._create_issue_directories(project_root)

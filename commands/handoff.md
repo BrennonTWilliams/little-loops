@@ -22,7 +22,7 @@ This command uses a **conversation-first approach**: by default, it summarizes t
 
 ## Configuration
 
-Read settings from `.claude/ll-config.json` under `continuation`:
+Read settings from `.ll/ll-config.json` under `continuation`:
 - `include_todos`: Include todo list state in deep mode (default: true)
 - `include_git_status`: Include git status in deep mode (default: true)
 - `include_recent_files`: Include recently modified files in deep mode (default: true)
@@ -119,7 +119,7 @@ Compare conversation claims to artifact reality:
 
 ### 3. Generate Continuation Prompt
 
-Write to `$(pwd)/.claude/ll-continue-prompt.md` — use an absolute path derived from the current working directory (the project root where Claude Code is running). **Never write to `~/.claude/ll-continue-prompt.md`.**
+Write to `$(pwd)/.ll/ll-continue-prompt.md` — use an absolute path derived from the current working directory (the project root where Claude Code is running). **Never write to `~/.ll/ll-continue-prompt.md`.**
 
 Before writing, gather the following from the conversation and (in `--deep` mode) from artifacts:
 
@@ -192,7 +192,7 @@ After writing the continuation prompt, output:
 
 ```
 CONTEXT_HANDOFF: Ready for fresh session
-Continuation prompt written to: <project-root>/.claude/ll-continue-prompt.md
+Continuation prompt written to: <project-root>/.ll/ll-continue-prompt.md
 
 Source: Conversation summary [+ artifact validation with --deep]
 

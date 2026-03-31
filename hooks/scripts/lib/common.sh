@@ -183,8 +183,9 @@ validate_json() {
 # Sets: LL_CONFIG_FILE (empty string if not found)
 ll_resolve_config() {
     LL_CONFIG_FILE=""
-    if [ -f ".claude/ll-config.json" ]; then
-        LL_CONFIG_FILE=".claude/ll-config.json"
+    mkdir -p .ll 2>/dev/null || true
+    if [ -f ".ll/ll-config.json" ]; then
+        LL_CONFIG_FILE=".ll/ll-config.json"
     elif [ -f "ll-config.json" ]; then
         LL_CONFIG_FILE="ll-config.json"
     fi

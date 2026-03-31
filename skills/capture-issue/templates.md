@@ -221,7 +221,7 @@ EOF
    | Category | Document | Relevance |
    |----------|----------|-----------|
    | architecture | docs/ARCHITECTURE.md | Mentions hook lifecycle |
-   | product | .claude/ll-goals.md | Workflow automation goal |
+   | product | .ll/ll-goals.md | Workflow automation goal |
    ```
 
 6. **Note in output:**

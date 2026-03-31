@@ -457,7 +457,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test loading configuration from file."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -480,7 +480,7 @@ class TestBRConfig:
 
     def test_project_name_defaults_to_directory_name(self, temp_project_dir: Path) -> None:
         """Test that project name defaults to directory name."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps({"project": {}}))
 
         config = BRConfig(temp_project_dir)
@@ -489,7 +489,7 @@ class TestBRConfig:
 
     def test_get_issue_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_issue_dir returns correct path."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -505,7 +505,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test get_issue_dir with unknown category uses category as dir name."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -515,7 +515,7 @@ class TestBRConfig:
 
     def test_get_completed_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_completed_dir returns correct path."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -525,7 +525,7 @@ class TestBRConfig:
 
     def test_get_deferred_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_deferred_dir returns correct path."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -535,7 +535,7 @@ class TestBRConfig:
 
     def test_get_issue_prefix(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_issue_prefix returns correct prefix."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -548,7 +548,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test get_category_action returns correct action."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -559,7 +559,7 @@ class TestBRConfig:
 
     def test_get_src_path(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_src_path returns correct path."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -571,7 +571,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test issue_categories property returns category names."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -584,7 +584,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test issue_priorities property returns priorities."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -594,7 +594,7 @@ class TestBRConfig:
 
     def test_to_dict(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test to_dict returns serializable dictionary."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -612,7 +612,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test to_dict exports schema-aligned key names and all parallel keys."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -635,7 +635,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test to_dict exports readiness_threshold and outcome_threshold, not threshold."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -650,7 +650,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test to_dict exports idle_timeout_seconds in automation section."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -661,7 +661,7 @@ class TestBRConfig:
 
     def test_resolve_variable(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test resolve_variable resolves config paths."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -675,7 +675,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test resolve_variable returns None for unknown paths."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -687,7 +687,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test resolve_variable joins list values with spaces."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -699,7 +699,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test create_parallel_config creates ParallelConfig."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -712,7 +712,7 @@ class TestBRConfig:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test create_parallel_config with overrides."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -890,7 +890,7 @@ class TestGitHubSyncConfig:
         assert config.label_mapping == {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement"}
         assert config.priority_labels is True
         assert config.sync_completed is False
-        assert config.state_file == ".claude/ll-sync-state.json"
+        assert config.state_file == ".ll/ll-sync-state.json"
 
     def test_from_dict_with_all_fields(self) -> None:
         """Test creating GitHubSyncConfig with all fields specified."""
@@ -990,7 +990,7 @@ class TestBRConfigSyncIntegration:
                 "priority_labels": True,
             },
         }
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -1021,7 +1021,7 @@ class TestBRConfigSyncIntegration:
                 "label_mapping": {"BUG": "bug", "FEAT": "feature"},
             },
         }
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -1035,7 +1035,7 @@ class TestBRConfigSyncIntegration:
     ) -> None:
         """Test resolve_variable works for sync config paths."""
         sample_config["sync"] = {"enabled": True}
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -1129,7 +1129,7 @@ class TestDependencyMappingConfig:
             "conflict_threshold": 0.6,
             "scoring_weights": {"semantic": 0.8, "section": 0.1, "type": 0.1},
         }
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -1333,7 +1333,7 @@ class TestBRConfigCli:
     def test_cli_color_false_from_config(self, temp_project_dir: Path) -> None:
         """BRConfig.cli.color is False when configured."""
         sample_config: dict[str, Any] = {"cli": {"color": False}}
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
@@ -1350,7 +1350,7 @@ class TestBRConfigCli:
                 }
             }
         }
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)

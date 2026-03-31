@@ -19,7 +19,7 @@ import pytest
 @pytest.fixture
 def search_issues_dir(temp_project_dir: Path, sample_config: dict[str, Any]) -> Path:
     """Create issue directories with varied sample issues for search tests."""
-    config_path = temp_project_dir / ".claude" / "ll-config.json"
+    config_path = temp_project_dir / ".ll" / "ll-config.json"
     config_path.write_text(json.dumps(sample_config, indent=2))
 
     issues_base = temp_project_dir / ".issues"
@@ -539,7 +539,7 @@ class TestSearchDateFieldUpdated:
         """Issue files with varied Session Log timestamps for date-field=updated tests."""
         import json
 
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config, indent=2))
 
         issues_base = temp_project_dir / ".issues"

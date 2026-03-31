@@ -87,7 +87,7 @@ The codebase implements several strategies for handling multi-turn interactions:
 
 ```python
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
-CONTINUATION_PROMPT_PATH = Path(".claude/ll-continue-prompt.md")
+CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")
 ```
 
 When context limits approach:
@@ -186,7 +186,7 @@ Verdict extraction uses multiple fallback strategies (lines 231-285) to handle f
 PostToolUse hook that:
 - Reads tool call JSON from stdin
 - Estimates token consumption per tool type
-- Stores state in `.claude/ll-context-state.json`
+- Stores state in `.ll/ll-context-state.json`
 - Triggers warning at 80% context threshold
 
 Token weight estimates:

@@ -198,7 +198,7 @@ def run_with_continuation(
 
             # Re-invoke the original command with --resume flag so the skill
             # lifecycle (including completion/file-move) runs in the new session.
-            # The skill reads .claude/ll-continue-prompt.md for context.
+            # The skill reads .ll/ll-continue-prompt.md for context.
             current_command = f"{initial_command} --resume"
             continue
 

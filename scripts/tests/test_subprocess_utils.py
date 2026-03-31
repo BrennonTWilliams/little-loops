@@ -44,7 +44,7 @@ def temp_repo(tmp_path: Path) -> Path:
 @pytest.fixture
 def temp_repo_with_prompt(temp_repo: Path) -> Path:
     """Repository with continuation prompt file."""
-    prompt_path = temp_repo / ".claude" / "ll-continue-prompt.md"
+    prompt_path = temp_repo / ".ll" / "ll-continue-prompt.md"
     prompt_path.parent.mkdir(parents=True)
     prompt_path.write_text("Continue from previous session.\n\nContext: Testing")
     return temp_repo
@@ -149,7 +149,7 @@ class TestReadContinuationPrompt:
         assert result is None
 
     def test_uses_repo_path_when_provided(self, temp_repo_with_prompt: Path) -> None:
-        """Uses repo_path / .claude/ll-continue-prompt.md."""
+        """Uses repo_path / .ll/ll-continue-prompt.md."""
         result = read_continuation_prompt(temp_repo_with_prompt)
         assert result is not None
 
@@ -164,7 +164,7 @@ class TestReadContinuationPrompt:
 
     def test_handles_empty_file(self, temp_repo: Path) -> None:
         """Returns empty string for empty file."""
-        prompt_path = temp_repo / ".claude" / "ll-continue-prompt.md"
+        prompt_path = temp_repo / ".ll" / "ll-continue-prompt.md"
         prompt_path.parent.mkdir(parents=True)
         prompt_path.write_text("")
 
@@ -173,7 +173,7 @@ class TestReadContinuationPrompt:
 
     def test_handles_unicode_content(self, temp_repo: Path) -> None:
         """Reads UTF-8 content correctly."""
-        prompt_path = temp_repo / ".claude" / "ll-continue-prompt.md"
+        prompt_path = temp_repo / ".ll" / "ll-continue-prompt.md"
         prompt_path.parent.mkdir(parents=True)
         prompt_path.write_text("Unicode content: \u2714 \u2717 \U0001f600")
 
@@ -184,7 +184,7 @@ class TestReadContinuationPrompt:
 
     def test_prompt_path_constant(self) -> None:
         """CONTINUATION_PROMPT_PATH constant is correct."""
-        assert CONTINUATION_PROMPT_PATH == Path(".claude/ll-continue-prompt.md")
+        assert CONTINUATION_PROMPT_PATH == Path(".ll/ll-continue-prompt.md")
 
 
 # =============================================================================

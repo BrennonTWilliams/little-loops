@@ -322,7 +322,7 @@ class TestIssueParser:
     ) -> None:
         """Test parsing a file with priority and ID in filename."""
         # Setup config
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -344,7 +344,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test parsing a file without priority prefix defaults to lowest."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -364,7 +364,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test that title is extracted from markdown header."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -382,7 +382,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test title extraction falls back to simple header."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -400,7 +400,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test title extraction falls back to filename when no header."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -418,7 +418,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test parsing a feature issue."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -439,7 +439,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test _get_category_for_prefix returns correct category."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -453,7 +453,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test that ID generation uses sequential numbers, not hash-based IDs."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -475,7 +475,7 @@ class TestIssueParser:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test parsing file without ID in filename generates sequential ID."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -503,7 +503,7 @@ class TestIssueParser:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing discovered_by from YAML frontmatter."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -524,7 +524,7 @@ class TestIssueParser:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing issue without frontmatter."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -545,7 +545,7 @@ class TestIssueParser:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing frontmatter with null discovered_by."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -566,7 +566,7 @@ class TestIssueParser:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing frontmatter with only discovered_by field."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -587,7 +587,7 @@ class TestIssueParser:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing product_impact from YAML frontmatter."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -612,7 +612,7 @@ class TestIssueParser:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing issue without product impact."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -633,7 +633,7 @@ class TestIssueParser:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing frontmatter with null product fields."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -655,7 +655,7 @@ class TestIssueParser:
         import logging
         import os
 
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -684,7 +684,7 @@ class TestGetNextIssueNumber:
 
     def test_empty_directories(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test with empty issue directories."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -698,7 +698,7 @@ class TestGetNextIssueNumber:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test with existing issues in directory."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -715,7 +715,7 @@ class TestGetNextIssueNumber:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test that completed issues are considered."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -734,7 +734,7 @@ class TestGetNextIssueNumber:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test that deferred issues are considered for ID uniqueness."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -753,7 +753,7 @@ class TestGetNextIssueNumber:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test that issue numbers are globally unique across all types."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -781,7 +781,7 @@ class TestGetNextIssueNumber:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test global uniqueness when highest number is in completed with different type."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -807,7 +807,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """Test finding all issues across categories."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -819,7 +819,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """Test finding issues filtered by category."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -833,7 +833,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """Test finding issues while skipping certain IDs."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -848,7 +848,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """Test that found issues are sorted by priority."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -864,7 +864,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test finding issues in non-existent category."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -876,7 +876,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test that issues already in completed/ are skipped from active directories."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -910,7 +910,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test that issues already in deferred/ are skipped from active directories."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -938,7 +938,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """When only_ids is a list, results are returned in list order."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -960,7 +960,7 @@ class TestFindIssues:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """When only_ids is a set, results are sorted by priority as usual."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -984,7 +984,7 @@ class TestFindHighestPriorityIssue:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """Test that P0 issue is returned first."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -998,7 +998,7 @@ class TestFindHighestPriorityIssue:
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
         """Test returns None when no issues exist."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1010,7 +1010,7 @@ class TestFindHighestPriorityIssue:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """Test that skipped IDs are not returned."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1025,7 +1025,7 @@ class TestFindHighestPriorityIssue:
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
         """Test that category filter is respected."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1047,7 +1047,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing single blocker."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1069,7 +1069,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing multiple blockers."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1091,7 +1091,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing when no Blocked By section exists."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1113,7 +1113,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing section with 'None' text instead of list."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1135,7 +1135,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing ## Blocks section."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1159,7 +1159,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test that sections inside code fences are ignored."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1182,7 +1182,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing with asterisk-style bullets."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1204,7 +1204,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing items with trailing descriptions."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1226,7 +1226,7 @@ class TestDependencyParsing:
         fixtures_dir: Path,
     ) -> None:
         """Test parsing blockers with bold markdown formatting."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
         config = BRConfig(temp_project_dir)
 
@@ -1362,7 +1362,7 @@ class TestIssueInfoTestable:
 
         from little_loops.config import BRConfig
 
-        config_path = tmp_path / ".claude" / "ll-config.json"
+        config_path = tmp_path / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True)
         config_path.write_text(
             json.dumps(
@@ -1389,7 +1389,7 @@ class TestIssueInfoTestable:
 
         from little_loops.config import BRConfig
 
-        config_path = tmp_path / ".claude" / "ll-config.json"
+        config_path = tmp_path / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True)
         config_path.write_text(
             json.dumps(

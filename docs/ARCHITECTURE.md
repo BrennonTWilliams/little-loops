@@ -518,7 +518,7 @@ classDiagram
 ```mermaid
 flowchart LR
     subgraph Load["Load Phase"]
-        JSON[".claude/ll-config.json"]
+        JSON[".ll/ll-config.json"]
         INIT["BRConfig.__init__()"]
         PARSE["_parse_config()"]
     end
@@ -850,7 +850,7 @@ flowchart TB
 **Continuation Flow**:
 
 1. **Hook triggers** at 80% estimated context usage (configurable)
-2. **Handoff command** generates `.claude/ll-continue-prompt.md` with session state
+2. **Handoff command** generates `.ll/ll-continue-prompt.md` with session state
 3. **CLI tools** (`ll-auto`, `ll-parallel`) detect `CONTEXT_HANDOFF` signal in output
 4. **Fresh session** spawned with continuation prompt
 5. **Work continues** seamlessly from saved state
@@ -868,8 +868,8 @@ flowchart TB
 
 **Files**:
 - `hooks/prompts/continuation-prompt-template.md` - Template for handoff prompts
-- `.claude/ll-context-state.json` - Running context usage state
-- `.claude/ll-continue-prompt.md` - Generated continuation prompt
+- `.ll/ll-context-state.json` - Running context usage state
+- `.ll/ll-continue-prompt.md` - Generated continuation prompt
 - `subprocess_utils.py` - Handoff detection and continuation reading
 
 ### Session Log Auto-Linking
@@ -902,7 +902,7 @@ flowchart TB
     end
 
     subgraph Config["Configuration"]
-        LOAD["Load .claude/ll-config.json"]
+        LOAD["Load .ll/ll-config.json"]
         MERGE_CFG["Merge with defaults"]
     end
 

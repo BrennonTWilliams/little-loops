@@ -423,9 +423,11 @@ class TestWorkerPoolSetupWorktree:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_path = Path(tmpdir)
+            ll_dir = repo_path / ".ll"
+            ll_dir.mkdir()
+            (ll_dir / "ll-config.json").write_text("{}")
             claude_dir = repo_path / ".claude"
             claude_dir.mkdir()
-            (claude_dir / "ll-config.json").write_text("{}")
             (claude_dir / "settings.local.json").write_text("{}")
 
             worktree_base = repo_path / ".worktrees"
@@ -473,9 +475,9 @@ class TestWorkerPoolSetupWorktree:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_path = Path(tmpdir)
-            claude_dir = repo_path / ".claude"
-            claude_dir.mkdir()
-            (claude_dir / "ll-config.json").write_text("{}")
+            ll_dir = repo_path / ".ll"
+            ll_dir.mkdir()
+            (ll_dir / "ll-config.json").write_text("{}")
 
             worktree_base = repo_path / ".worktrees"
             worktree_base.mkdir()
