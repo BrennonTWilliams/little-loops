@@ -229,7 +229,7 @@ All 7 files need the path literal updated. Pattern: change `'.claude/ll-config.j
 
 #### `config-schema.json` — Exact Line Numbers (mentioned in note above, now with lines)
 
-- Line 503 (`context_monitor.state_file` default): `".claude/ll-context-state.json"` → `".ll/ll-context-state.json"`
+- Line 502 (`context_monitor.state_file` default): `".claude/ll-context-state.json"` → `".ll/ll-context-state.json"`
 - Line 582 (`product.goals_file` default): `".claude/ll-goals.md"` → `".ll/ll-goals.md"`
 - Line 795 (`sync.github.state_file` default): `".claude/ll-sync-state.json"` → `".ll/ll-sync-state.json"`
 
@@ -243,7 +243,7 @@ All 7 files need the path literal updated. Pattern: change `'.claude/ll-config.j
 
 `.claude/settings.json` does not exist in this repo. The active settings file is `.claude/settings.local.json`.
 
-- Line 24: `"Write(.claude/ll-continue-prompt.md)"` → `"Write(.ll/ll-continue-prompt.md)"`
+- Line 25: `"Write(.claude/ll-continue-prompt.md)"` → `"Write(.ll/ll-continue-prompt.md)"`
 
 This is the currently-installed permission entry. The issue's Integration Map and Proposed Solution reference `Write(.claude/ll-continue-prompt.md)` in `.claude/settings.json` — the correct target is `settings.local.json`.
 
@@ -348,6 +348,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-31T16:20:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15b8c31c-0cd9-4489-9637-959697fdd1b4.jsonl`
 - `/ll:refine-issue` - 2026-03-26T21:46:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
 - `/ll:confidence-check` - 2026-03-26T23:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
 - `/ll:refine-issue` - 2026-03-26T21:40:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
