@@ -260,7 +260,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
 | `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
-| `issue-refinement` | Progressively refine all active issues through format → score → refine pipeline |
+| `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
