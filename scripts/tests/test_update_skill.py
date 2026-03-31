@@ -78,11 +78,11 @@ class TestUpdateSkillExists:
         assert "marketplace.json" in content, "Skill must target marketplace.json"
 
     def test_skill_references_claude_plugin_update(self) -> None:
-        """Skill must use 'claude plugin update ll' for plugin step."""
+        """Skill must use 'claude plugin update ll@little-loops' for plugin step."""
         assert SKILL_FILE.exists(), "Skill file not found"
         content = SKILL_FILE.read_text()
-        assert "claude plugin update ll" in content, (
-            "Skill must run 'claude plugin update ll' for --plugin step"
+        assert "claude plugin update ll@little-loops" in content, (
+            "Skill must run 'claude plugin update ll@little-loops' for --plugin step"
         )
 
     def test_skill_has_summary_report(self) -> None:

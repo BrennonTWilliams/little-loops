@@ -31,7 +31,7 @@ $ARGUMENTS
 
 - **flags** (optional): Command flags
   - `--marketplace` - Update only the plugin marketplace listing (`.claude-plugin/marketplace.json`)
-  - `--plugin` - Update only the little-loops Claude Code plugin (`claude plugin update ll`)
+  - `--plugin` - Update only the little-loops Claude Code plugin (`claude plugin update ll@little-loops`)
   - `--package` - Update only the little-loops pip package (`pip install`)
   - `--all` - Update all components (same as providing no flag)
   - `--dry-run` - Show what would be updated without making any changes
@@ -148,12 +148,12 @@ echo "========================================"
 ```
 
 - If `$DRY_RUN == true`:
-  - Print `[DRY-RUN] Would run: claude plugin update ll`
+  - Print `[DRY-RUN] Would run: claude plugin update ll@little-loops`
   - Set `PLUGIN_RESULT="DRY-RUN"`
   - Proceed to Step 5
 
 - If `$DRY_RUN == false`:
-  - Run: `claude plugin update ll`
+  - Run: `claude plugin update ll@little-loops`
   - On success (exit code 0):
     - Print `[PASS] Plugin updated`
     - Set `PLUGIN_RESULT="PASS"`

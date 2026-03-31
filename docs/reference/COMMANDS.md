@@ -53,7 +53,7 @@ Update one or more little-loops components: the plugin marketplace listing, the 
 
 **Flags:**
 - `--marketplace` — Update only the plugin marketplace listing (`.claude-plugin/marketplace.json`)
-- `--plugin` — Update only the Claude Code plugin (`claude plugin update ll`)
+- `--plugin` — Update only the Claude Code plugin (`claude plugin update ll@little-loops`)
 - `--package` — Update only the pip package (`pip install --upgrade little-loops`)
 - `--all` — Update all three components (same as no flag)
 - `--dry-run` — Show what would be updated without making changes

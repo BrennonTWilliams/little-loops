@@ -2,7 +2,7 @@
 id: BUG-898
 type: BUG
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-30
 discovered_by: capture-issue
 confidence_score: 100
@@ -115,6 +115,7 @@ Also update:
 `bug`, `skills`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-31T04:23:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/271d24d1-a5b7-4840-ab50-bf00b2433d86.jsonl`
 - `/ll:refine-issue` - 2026-03-31T04:03:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
 - `/ll:format-issue` - 2026-03-31T03:59:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
 - `/ll:capture-issue` - 2026-03-30T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
@@ -122,6 +123,15 @@ Also update:
 
 ---
 
+## Resolution
+
+**Fixed** — Replaced bare `ll` with fully qualified `ll@little-loops` in 3 locations within `skills/update/SKILL.md` (flag description, dry-run message, actual command), 1 location in `docs/reference/COMMANDS.md`, and updated the test assertion in `scripts/tests/test_update_skill.py`.
+
+### Files Changed
+- `skills/update/SKILL.md` — 3 string replacements (lines 34, 151, 156)
+- `docs/reference/COMMANDS.md` — 1 string replacement (line 56)
+- `scripts/tests/test_update_skill.py` — Updated test to assert `ll@little-loops`
+
 ## Status
 
-**Open** | Created: 2026-03-30 | Priority: P3
+**Completed** | Created: 2026-03-30 | Resolved: 2026-03-30 | Priority: P3
