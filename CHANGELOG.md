@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.67.1] - 2026-03-30
+
+### Changed
+
+- **Init interactive CLAUDE.md prompt** — Init wizard now prompts users to add ll- CLI command documentation to their project's CLAUDE.md (ENH-894)
+
+### Fixed
+
+- **Plugin identifier in update skill** — Use fully qualified plugin identifier `ll@little-loops` in `/ll:update` (f9b1391)
+
+### Documentation
+
+- Update FSM loop count to 27 (80e32fc)
+
+### Other
+
+- Add `docs/research/` to `.gitignore` (27d8cfd)
+- Add BUG-897 and BUG-898 for loop listing and update skill bugs (347cfed)
+
 ## [1.67.0] - 2026-03-26
 
 ### Added
@@ -273,6 +292,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.67.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.67.0...v1.67.1
 [1.67.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.1...v1.67.0
 [1.66.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.0...v1.66.1
 [1.66.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.65.0...v1.66.0
