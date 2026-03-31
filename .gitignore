@@ -84,3 +84,4 @@ deepcodebase-*.txt
 .claude/ll-context-state.json
 .claude/ll-sync-state.json
 loop-catalog.*
+docs/research/
