@@ -46,8 +46,8 @@ Examples:
   %(prog)s --skill refine-issue --examples-format --context-window 5 --stdout
 
 Pipeline with ll-workflows (use the conventional path so ll-workflows finds it automatically):
-  %(prog)s --output .claude/workflow-analysis/step1-patterns.jsonl
-  ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
+  %(prog)s --output .ll/workflow-analysis/step1-patterns.jsonl
+  ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 """,
     )
     parser.add_argument(
@@ -66,7 +66,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
         "-o",
         "--output",
         type=Path,
-        help="Output file path (default: .claude/user-messages-{timestamp}.jsonl)",
+        help="Output file path (default: .ll/user-messages-{timestamp}.jsonl)",
     )
     parser.add_argument(
         "--cwd",

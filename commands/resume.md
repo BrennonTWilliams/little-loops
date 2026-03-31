@@ -174,7 +174,7 @@ $ARGUMENTS
 /ll:resume thoughts/shared/plans/my-handoff.md
 
 # Resume from a specific path
-/ll:resume .claude/backup-continue-prompt.md
+/ll:resume .ll/backup-continue-prompt.md
 ```
 
 ---

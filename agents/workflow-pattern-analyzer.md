@@ -14,7 +14,7 @@ description: |
   </example>
 
   <example>
-  Prompt: "Analyze the user messages in .claude/user-messages-20260112.jsonl"
+  Prompt: "Analyze the user messages in .ll/user-messages-20260112.jsonl"
   → Spawn workflow-pattern-analyzer to categorize messages and detect patterns
   <commentary>Use when you have extracted user messages and want pattern analysis.</commentary>
   </example>
@@ -137,13 +137,13 @@ For each record:
 4. Find domain concepts (authentication, database, API, etc.)
 
 ### Step 6: Write Output
-- Write to `.claude/workflow-analysis/step1-patterns.yaml`
+- Write to `.ll/workflow-analysis/step1-patterns.yaml`
 - Use the exact schema format below
 - Ensure directory exists (create if needed)
 
 ## Output Format
 
-Write analysis results to `.claude/workflow-analysis/step1-patterns.yaml` using this exact schema:
+Write analysis results to `.ll/workflow-analysis/step1-patterns.yaml` using this exact schema:
 
 ```yaml
 analysis_metadata:
@@ -202,7 +202,7 @@ entity_inventory:
 - **Calculate percentages** - Round to 1 decimal place
 - **Sort by frequency** - Highest first in all lists
 - **Truncate examples** - First 80 chars + "..." for long messages
-- **Create directory** - Use Write to `.claude/workflow-analysis/step1-patterns.yaml`
+- **Create directory** - Use Write to `.ll/workflow-analysis/step1-patterns.yaml`
 - **Be thorough** - Identify all patterns meeting threshold
 - **Be accurate** - Double-check counts and calculations
 

@@ -731,9 +731,9 @@ def save_messages(
         Path to the saved file.
     """
     if output_path is None:
-        # Default: ./.claude/user-messages-{timestamp}.jsonl
+        # Default: ./.ll/user-messages-{timestamp}.jsonl
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        output_dir = Path.cwd() / ".claude"
+        output_dir = Path.cwd() / ".ll"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"user-messages-{timestamp}.jsonl"
 

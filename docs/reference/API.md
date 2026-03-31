@@ -2328,7 +2328,7 @@ Save messages to a JSONL file.
 
 **Parameters:**
 - `messages` - List of UserMessage objects to save
-- `output_path` - Output file path. If None, uses `.claude/user-messages-{timestamp}.jsonl`
+- `output_path` - Output file path. If None, uses `.ll/user-messages-{timestamp}.jsonl`
 
 **Returns:** Path to the saved file.
 
@@ -3116,9 +3116,9 @@ from little_loops.workflow_sequence import analyze_workflows
 
 # Analyze messages from Step 1 output
 result = analyze_workflows(
-    messages_file=Path(".claude/user-messages.jsonl"),
-    patterns_file=Path(".claude/workflow-analysis/step1-patterns.yaml"),
-    output_file=Path(".claude/workflow-analysis/step2-workflows.yaml"),
+    messages_file=Path(".ll/user-messages.jsonl"),
+    patterns_file=Path(".ll/workflow-analysis/step1-patterns.yaml"),
+    output_file=Path(".ll/workflow-analysis/step2-workflows.yaml"),
 )
 
 print(f"Found {len(result.workflows)} workflows")
@@ -3259,8 +3259,8 @@ from pathlib import Path
 from little_loops.workflow_sequence import analyze_workflows
 
 result = analyze_workflows(
-    messages_file=Path(".claude/user-messages.jsonl"),
-    patterns_file=Path(".claude/workflow-analysis/step1-patterns.yaml"),
+    messages_file=Path(".ll/user-messages.jsonl"),
+    patterns_file=Path(".ll/workflow-analysis/step1-patterns.yaml"),
 )
 
 for workflow in result.workflows:

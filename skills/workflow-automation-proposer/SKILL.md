@@ -28,7 +28,7 @@ $ARGUMENTS
 | Scenario | Behavior |
 |----------|----------|
 | `$ARGUMENTS` provided | Parse as space-separated paths: `<step1-file> <step2-file>` |
-| `$ARGUMENTS` empty | Look in `.claude/workflow-analysis/` for `step1-patterns.yaml` and `step2-workflows.yaml` |
+| `$ARGUMENTS` empty | Look in `.ll/workflow-analysis/` for `step1-patterns.yaml` and `step2-workflows.yaml` |
 
 ## Analysis Process
 
@@ -173,7 +173,7 @@ Group proposals by priority and effort:
 
 ## Output Schema
 
-Write proposals to `.claude/workflow-analysis/step3-proposals.yaml`:
+Write proposals to `.ll/workflow-analysis/step3-proposals.yaml`:
 
 ```yaml
 analysis_metadata:

@@ -688,21 +688,21 @@ Analyze workflows from messages and Step 1 patterns.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--input` | `-i` | Input JSONL file with user messages (default: `.claude/workflow-analysis/step1-patterns.jsonl`) |
+| `--input` | `-i` | Input JSONL file with user messages (default: `.ll/workflow-analysis/step1-patterns.jsonl`) |
 | `--patterns` | `-p` | **Required.** Input YAML from Step 1 (workflow-pattern-analyzer) |
-| `--output` | `-o` | Output YAML file (default: `.claude/workflow-analysis/step2-workflows.yaml`) |
+| `--output` | `-o` | Output YAML file (default: `.ll/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | Show verbose analysis output |
 
 **Examples:**
 ```bash
 # Use conventional path (no --input needed if ll-messages wrote to the default location)
-ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
-ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
+ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
+ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 
 # Explicit input
 ll-workflows analyze -i messages.jsonl -p patterns.yaml -o output.yaml
-ll-workflows analyze --input .claude/user-messages.jsonl \
-                     --patterns .claude/workflow-analysis/step1-patterns.yaml
+ll-workflows analyze --input .ll/user-messages.jsonl \
+                     --patterns .ll/workflow-analysis/step1-patterns.yaml
 ```
 
 ---
@@ -789,7 +789,7 @@ Extract user messages from Claude Code session logs.
 |------|-------|-------------|
 | `--limit` | `-n` | Maximum messages to extract (default: 100) |
 | `--since` | | Include only messages after this date (YYYY-MM-DD or ISO) |
-| `--output` | `-o` | Output file path (default: `.claude/user-messages-{timestamp}.jsonl`) |
+| `--output` | `-o` | Output file path (default: `.ll/user-messages-{timestamp}.jsonl`) |
 | `--cwd` | | Working directory to use (default: current directory) |
 | `--exclude-agents` | | Exclude agent session files (`agent-*.jsonl`) |
 | `--stdout` | | Print to stdout instead of writing to file |

@@ -55,7 +55,7 @@ Claude logs into      messages, detects         clusters entities,         patte
 msgs-*.jsonl      step1-patterns.yaml       step2-workflows.yaml      step3-proposals.yaml            summary-*.md
 ```
 
-Each step's output is the next step's input. Partial results are always preserved — if Step 2 fails, Step 1's output remains in `.claude/workflow-analysis/`.
+Each step's output is the next step's input. Partial results are always preserved — if Step 2 fails, Step 1's output remains in `.ll/workflow-analysis/`.
 
 ## Prerequisites: Extracting Messages (`ll-messages`)
 
@@ -81,7 +81,7 @@ ll-messages --stdout
 ll-messages --include-response-context
 ```
 
-The output is a JSONL file (one JSON object per line) at `.claude/user-messages-{timestamp}.jsonl`. Each line has at minimum a `content` field with the message text and a `timestamp` field.
+The output is a JSONL file (one JSON object per line) at `.ll/user-messages-{timestamp}.jsonl`. Each line has at minimum a `content` field with the message text and a `timestamp` field.
 
 Key flags reference:
 
@@ -105,7 +105,7 @@ The simplest way to run all three steps is the single orchestrating command:
 /ll:analyze-workflows
 
 # Use a specific file
-/ll:analyze-workflows .claude/user-messages-20260112-111551.jsonl
+/ll:analyze-workflows .ll/user-messages-20260112-111551.jsonl
 ```
 
 The command creates a todo list, runs each step in sequence, and displays a formatted summary when done.
@@ -113,7 +113,7 @@ The command creates a todo list, runs each step in sequence, and displays a form
 **What happens at each step:**
 
 1. **Input detection** — finds (or validates) the messages JSONL file
-2. **Output directory** — creates `.claude/workflow-analysis/` if it doesn't exist
+2. **Output directory** — creates `.ll/workflow-analysis/` if it doesn't exist
 3. **Step 1** — spawns the `workflow-pattern-analyzer` agent to write `step1-patterns.yaml`
 4. **Step 2** — runs `ll-workflows analyze` CLI to write `step2-workflows.yaml`
 5. **Step 3** — invokes the `workflow-automation-proposer` skill to write `step3-proposals.yaml`
@@ -123,7 +123,7 @@ If no messages file is found, the command tells you to run `ll-messages` first.
 
 ## Understanding the Outputs
 
-All outputs are written to `.claude/workflow-analysis/`:
+All outputs are written to `.ll/workflow-analysis/`:
 
 | File | Produced by | Contents |
 |------|-------------|----------|
@@ -176,23 +176,23 @@ You can run Step 2 independently — useful if you've run Step 1 manually or wan
 ```bash
 # Shortest form — assumes step1-patterns.yaml already exists from a prior Step 1 agent run;
 # sets the --input path to the default so ll-workflows can find it automatically
-ll-messages --output .claude/workflow-analysis/user-messages.jsonl
-ll-workflows analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
+ll-messages --output .ll/workflow-analysis/user-messages.jsonl
+ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 
 # Explicit input
 ll-workflows analyze \
-  --input .claude/user-messages-20260112.jsonl \
-  --patterns .claude/workflow-analysis/step1-patterns.yaml \
-  --output .claude/workflow-analysis/step2-workflows.yaml
+  --input .ll/user-messages-20260112.jsonl \
+  --patterns .ll/workflow-analysis/step1-patterns.yaml \
+  --output .ll/workflow-analysis/step2-workflows.yaml
 ```
 
 ### Argument Reference
 
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
-| `--input FILE` | `-i FILE` | No | Input JSONL file with user messages (default: `.claude/workflow-analysis/step1-patterns.jsonl`) |
+| `--input FILE` | `-i FILE` | No | Input JSONL file with user messages (default: `.ll/workflow-analysis/step1-patterns.jsonl`) |
 | `--patterns FILE` | `-p FILE` | Yes | Step 1 output YAML (from workflow-pattern-analyzer) |
-| `--output FILE` | `-o FILE` | No | Output YAML (default: `.claude/workflow-analysis/step2-workflows.yaml`) |
+| `--output FILE` | `-o FILE` | No | Output YAML (default: `.ll/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | No | Print detailed progress |
 
 ### How the Analysis Works
@@ -212,11 +212,11 @@ The CLI performs four analyses on your messages:
 This skill reads Step 1 and Step 2 outputs and writes `step3-proposals.yaml`. Run it standalone when you already have the YAML files and want fresh proposals — for example, after manually editing `step2-workflows.yaml` or when you want to re-run proposals with a different focus.
 
 ```bash
-# Auto-detect inputs in .claude/workflow-analysis/
+# Auto-detect inputs in .ll/workflow-analysis/
 /ll:workflow-automation-proposer
 
 # Explicit paths
-/ll:workflow-automation-proposer .claude/workflow-analysis/step1-patterns.yaml .claude/workflow-analysis/step2-workflows.yaml
+/ll:workflow-automation-proposer .ll/workflow-analysis/step1-patterns.yaml .ll/workflow-analysis/step2-workflows.yaml
 ```
 
 ### What It Looks For
@@ -297,7 +297,7 @@ Full pipeline from extract to proposals:
 ```bash
 ll-messages -n 200                    # Extract recent messages
 /ll:analyze-workflows                 # Run full pipeline (auto-detects file)
-# Review: .claude/workflow-analysis/summary-*.md
+# Review: .ll/workflow-analysis/summary-*.md
 ```
 
 ### Quick pattern check (Step 1 patterns only)
@@ -305,9 +305,9 @@ ll-messages -n 200                    # Extract recent messages
 Run only Step 1 to get a fast category breakdown without the full pipeline. In Claude Code, run `/ll:analyze-workflows` to execute the full pipeline, or ask Claude to 'use the workflow-pattern-analyzer agent' to run Step 1 on its own.
 
 ```bash
-ll-messages                           # Extract messages to .claude/user-messages-{ts}.jsonl
+ll-messages                           # Extract messages to .ll/user-messages-{ts}.jsonl
 # Then in Claude: spawn workflow-pattern-analyzer with the JSONL file path
-# Review: .claude/workflow-analysis/step1-patterns.yaml
+# Review: .ll/workflow-analysis/step1-patterns.yaml
 ```
 
 > **Note**: `/ll:analyze-workflows` always runs all three steps — there is no built-in mid-pipeline stop. To limit analysis to Step 1, invoke the `workflow-pattern-analyzer` agent directly or read `step1-patterns.yaml` before the remaining steps complete.

@@ -40,7 +40,7 @@ from little_loops.workflow_sequence.models import (
     WorkflowBoundary,
 )
 
-_DEFAULT_INPUT_PATH = Path(".claude/workflow-analysis/step1-patterns.jsonl")
+_DEFAULT_INPUT_PATH = Path(".ll/workflow-analysis/step1-patterns.jsonl")
 
 __all__ = [
     "analyze_workflows",
@@ -73,14 +73,14 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
+  %(prog)s analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
   %(prog)s analyze -i messages.jsonl -p patterns.yaml -o output.yaml
-  %(prog)s analyze --input .claude/user-messages.jsonl \\
-                   --patterns .claude/workflow-analysis/step1-patterns.yaml
+  %(prog)s analyze --input .ll/user-messages.jsonl \\
+                   --patterns .ll/workflow-analysis/step1-patterns.yaml
 
-Pipeline (--input defaults to .claude/workflow-analysis/step1-patterns.jsonl):
-  ll-messages --output .claude/workflow-analysis/step1-patterns.jsonl
-  %(prog)s analyze --patterns .claude/workflow-analysis/step1-patterns.yaml
+Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
+  ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
+  %(prog)s analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 """,
     )
 
@@ -98,7 +98,7 @@ Pipeline (--input defaults to .claude/workflow-analysis/step1-patterns.jsonl):
         default=_DEFAULT_INPUT_PATH,
         help=(
             "Input JSONL file with user messages"
-            " (default: .claude/workflow-analysis/step1-patterns.jsonl)"
+            " (default: .ll/workflow-analysis/step1-patterns.jsonl)"
         ),
     )
     analyze_parser.add_argument(
@@ -113,7 +113,7 @@ Pipeline (--input defaults to .claude/workflow-analysis/step1-patterns.jsonl):
         "--output",
         type=Path,
         default=None,
-        help="Output file (default: .claude/workflow-analysis/step2-workflows.yaml or .json)",
+        help="Output file (default: .ll/workflow-analysis/step2-workflows.yaml or .json)",
     )
     analyze_parser.add_argument(
         "-f",
@@ -183,9 +183,9 @@ Pipeline (--input defaults to .claude/workflow-analysis/step1-patterns.jsonl):
         output_path = args.output
         if output_path is None:
             if args.format == "json":
-                output_path = Path(".claude/workflow-analysis/step2-workflows.json")
+                output_path = Path(".ll/workflow-analysis/step2-workflows.json")
             else:
-                output_path = Path(".claude/workflow-analysis/step2-workflows.yaml")
+                output_path = Path(".ll/workflow-analysis/step2-workflows.yaml")
 
         if args.verbose:
             print(f"Input: {args.input}")

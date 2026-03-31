@@ -277,9 +277,9 @@ Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, 11, and 12 â
 
 **Otherwise**, proceed with normal file writes:
 
-1. Create `.claude/` directory if it doesn't exist:
+1. Create `.ll/` directory if it doesn't exist:
    ```bash
-   mkdir -p .claude
+   mkdir -p .ll
    ```
 
 2. Write the configuration file with the `$schema` reference:

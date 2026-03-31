@@ -2026,7 +2026,7 @@ class TestMainDefaultInput:
         captured = capsys.readouterr()
         assert result == 1
         assert "ll-messages" in captured.err
-        assert ".claude/workflow-analysis/step1-patterns.jsonl" in captured.err
+        assert ".ll/workflow-analysis/step1-patterns.jsonl" in captured.err
 
     def test_explicit_input_missing_no_ll_messages_hint(
         self,

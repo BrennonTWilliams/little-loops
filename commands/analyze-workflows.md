@@ -21,7 +21,7 @@ You are tasked with orchestrating the 3-step workflow analysis pipeline to ident
 
 ## Configuration
 
-This command creates output in `.claude/workflow-analysis/`:
+This command creates output in `.ll/workflow-analysis/`:
 - `step1-patterns.yaml` - Pattern analysis results (from agent)
 - `step2-workflows.yaml` - Workflow detection results (from CLI)
 - `step3-proposals.yaml` - Automation proposals (from skill)
@@ -67,7 +67,7 @@ Mark "Detect input file" as in_progress.
 3. Validate and count messages
 
 ```
-Pattern: .claude/user-messages-*.jsonl
+Pattern: .ll/user-messages-*.jsonl
 ```
 
 **On error:**
@@ -93,7 +93,7 @@ Messages: {count}
 
 Create the output directory if it doesn't exist:
 ```
-.claude/workflow-analysis/
+.ll/workflow-analysis/
 ```
 
 ### Step 3: Run Pattern Analysis (Agent via Task Tool)
@@ -109,7 +109,7 @@ Use Task tool with:
     Analyze the user messages file and write pattern analysis results.
 
     Input file: {messages_file}
-    Output file: .claude/workflow-analysis/step1-patterns.yaml
+    Output file: .ll/workflow-analysis/step1-patterns.yaml
 
     Process all messages in the file. Categorize each message, detect repeated patterns,
     extract common phrases, inventory tool references, and build entity inventory.
@@ -120,7 +120,7 @@ Use Task tool with:
 **Wait for agent to complete.**
 
 **Verify success:**
-1. Check that `.claude/workflow-analysis/step1-patterns.yaml` exists
+1. Check that `.ll/workflow-analysis/step1-patterns.yaml` exists
 2. Read the file to extract summary metrics
 
 **On error:**
@@ -129,7 +129,7 @@ ERROR: Step 1 (Pattern Analysis) failed
 
 Agent error: [error message from agent]
 
-Partial outputs preserved in: .claude/workflow-analysis/
+Partial outputs preserved in: .ll/workflow-analysis/
 
 To debug:
 1. Check input file format (should be JSONL with 'content' field)
@@ -143,7 +143,7 @@ Mark "Run Step 1: Pattern Analysis (agent)" as completed after success.
 Step 1 Complete: Pattern Analysis
 - Categories identified: {count}
 - Patterns detected: {count}
-- Output: .claude/workflow-analysis/step1-patterns.yaml
+- Output: .ll/workflow-analysis/step1-patterns.yaml
 ```
 
 ### Step 4: Run Sequence Analysis (CLI via Bash Tool)
@@ -155,8 +155,8 @@ Run the ll-workflows CLI using the Bash tool:
 ```bash
 ll-workflows analyze \
   --input {messages_file} \
-  --patterns .claude/workflow-analysis/step1-patterns.yaml \
-  --output .claude/workflow-analysis/step2-workflows.yaml
+  --patterns .ll/workflow-analysis/step1-patterns.yaml \
+  --output .ll/workflow-analysis/step2-workflows.yaml
 ```
 
 **Check exit code:**
@@ -164,7 +164,7 @@ ll-workflows analyze \
 - Exit non-zero: Failure, report error
 
 **Verify success:**
-1. Check that `.claude/workflow-analysis/step2-workflows.yaml` exists
+1. Check that `.ll/workflow-analysis/step2-workflows.yaml` exists
 2. Read the file to extract summary metrics
 
 **On error:**
@@ -174,7 +174,7 @@ ERROR: Step 2 (Sequence Analysis) failed
 Exit code: {code}
 Error: {stderr}
 
-Partial outputs preserved in: .claude/workflow-analysis/
+Partial outputs preserved in: .ll/workflow-analysis/
 
 To debug:
 1. Verify step1-patterns.yaml exists and is valid YAML
@@ -188,7 +188,7 @@ Mark "Run Step 2: Sequence Analysis (CLI)" as completed after success.
 Step 2 Complete: Sequence Analysis
 - Workflows detected: {count}
 - Session links: {count}
-- Output: .claude/workflow-analysis/step2-workflows.yaml
+- Output: .ll/workflow-analysis/step2-workflows.yaml
 ```
 
 ### Step 5: Run Automation Proposals (Skill via Skill Tool)
@@ -200,13 +200,13 @@ Invoke the workflow-automation-proposer skill using the Skill tool:
 ```
 Use Skill tool with:
   skill: "ll:workflow-automation-proposer"
-  args: ".claude/workflow-analysis/step1-patterns.yaml .claude/workflow-analysis/step2-workflows.yaml"
+  args: ".ll/workflow-analysis/step1-patterns.yaml .ll/workflow-analysis/step2-workflows.yaml"
 ```
 
 **Wait for skill to complete.**
 
 **Verify success:**
-1. Check that `.claude/workflow-analysis/step3-proposals.yaml` exists
+1. Check that `.ll/workflow-analysis/step3-proposals.yaml` exists
 2. Read the file to extract summary metrics
 
 **On error:**
@@ -215,7 +215,7 @@ ERROR: Step 3 (Automation Proposals) failed
 
 Skill error: [error from skill]
 
-Partial outputs preserved in: .claude/workflow-analysis/
+Partial outputs preserved in: .ll/workflow-analysis/
 
 To debug:
 1. Verify step1-patterns.yaml and step2-workflows.yaml exist
@@ -231,7 +231,7 @@ Step 3 Complete: Automation Proposals
 - High priority: {count}
 - Medium priority: {count}
 - Low priority: {count}
-- Output: .claude/workflow-analysis/step3-proposals.yaml
+- Output: .ll/workflow-analysis/step3-proposals.yaml
 ```
 
 ### Step 6: Generate Summary Report
@@ -245,7 +245,7 @@ Read all three output files and generate a human-readable summary.
 date -u +"%Y%m%d-%H%M%S"
 ```
 
-**Write summary to:** `.claude/workflow-analysis/summary-{timestamp}.md`
+**Write summary to:** `.ll/workflow-analysis/summary-{timestamp}.md`
 
 **Summary template:**
 
@@ -321,7 +321,7 @@ Based on your usage patterns, consider using these existing commands:
 ---
 
 *Analysis pipeline: Pattern Analysis → Sequence Analysis → Automation Proposals*
-*Output files: .claude/workflow-analysis/*
+*Output files: .ll/workflow-analysis/*
 ```
 
 Mark "Generate summary report" as completed after success.
@@ -363,7 +363,7 @@ Step 3: Automation Proposals
 ## Existing Command Suggestions
 {list suggestions}
 
-Full report: .claude/workflow-analysis/summary-{timestamp}.md
+Full report: .ll/workflow-analysis/summary-{timestamp}.md
 
 ================================================================================
 ```
@@ -378,7 +378,7 @@ Full report: .claude/workflow-analysis/summary-{timestamp}.md
 | Step 3 (Skill) | Skill error or output missing | Preserve partial outputs, suggest manual run |
 | Summary | Read/write error | Report error, output files remain available |
 
-**Partial outputs are always preserved** - if a step fails, previous step outputs remain in `.claude/workflow-analysis/` for debugging or manual continuation.
+**Partial outputs are always preserved** - if a step fails, previous step outputs remain in `.ll/workflow-analysis/` for debugging or manual continuation.
 
 ## Examples
 
@@ -387,8 +387,8 @@ Full report: .claude/workflow-analysis/summary-{timestamp}.md
 /ll:analyze-workflows
 
 # Analyze specific file
-/ll:analyze-workflows .claude/user-messages-20260112-111551.jsonl
+/ll:analyze-workflows .ll/user-messages-20260112-111551.jsonl
 
 # View results after analysis
-cat .claude/workflow-analysis/summary-*.md
+cat .ll/workflow-analysis/summary-*.md
 ```

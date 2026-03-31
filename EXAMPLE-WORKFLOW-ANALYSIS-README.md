@@ -33,7 +33,7 @@ python scripts/extract_user_messages.py -n 100
 └─────────────────────────────────────────────────┘
         │
         ▼
-.claude/user-messages-{timestamp}.jsonl
+.ll/user-messages-{timestamp}.jsonl
         │
         ▼
 ┌─────────────────────────────────────────────────┐
@@ -231,7 +231,7 @@ Final synthesis proposing concrete automation solutions.
 
 ## Output Files
 
-All analysis outputs are written to `.claude/workflow-analysis/`:
+All analysis outputs are written to `.ll/workflow-analysis/`:
 
 | File | Description |
 |------|-------------|
@@ -249,7 +249,7 @@ All analysis outputs are written to `.claude/workflow-analysis/`:
 /analyze-workflows
 
 # Analyze specific file
-/analyze-workflows .claude/user-messages-20260112-111551.jsonl
+/analyze-workflows .ll/user-messages-20260112-111551.jsonl
 
 # Analyze aggregated/combined file
 /analyze-workflows .claude/all-messages-combined.jsonl
@@ -269,7 +269,7 @@ All analysis outputs are written to `.claude/workflow-analysis/`:
    /analyze-workflows
    ```
 
-3. **Review the summary** in `.claude/workflow-analysis/summary-{timestamp}.md`
+3. **Review the summary** in `.ll/workflow-analysis/summary-{timestamp}.md`
 
 4. **Implement high-priority proposals** from the recommendations
 
@@ -301,7 +301,7 @@ Error: No Claude project folder found for: /path/to/project
 Error: Step [N] ([agent-name]) failed.
 ```
 
-**Solution:** Check the partial outputs in `.claude/workflow-analysis/` for details. The analysis can be re-run after fixing any issues.
+**Solution:** Check the partial outputs in `.ll/workflow-analysis/` for details. The analysis can be re-run after fixing any issues.
 
 ### Empty messages file
 

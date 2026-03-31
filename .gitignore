@@ -83,6 +83,11 @@ deepcodebase-*.txt
 # little-loops context/sync state files
 .ll/ll-context-state.json
 .ll/ll-sync-state.json
+.ll/ll-update-docs.watermark
+.ll/ll-continue-prompt.md
+.ll/loop-suggestions/
+.ll/workflow-analysis/
+.ll/user-messages-*.jsonl
 .claude/ll-continue-prompt.md
 .claude/loop-suggestions/
 loop-catalog.*
