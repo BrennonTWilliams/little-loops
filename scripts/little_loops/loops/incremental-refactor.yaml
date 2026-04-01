@@ -1,0 +1,60 @@
+name: "incremental-refactor"
+description: "Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure"
+initial: plan_steps
+max_iterations: 30
+on_handoff: spawn
+
+context:
+  refactor_goal: ""
+  test_cmd: "python -m pytest scripts/tests/"
+
+states:
+  plan_steps:
+    action: "Analyze the refactoring goal: '${context.refactor_goal}'. Decompose it into the smallest safe atomic steps that can each be independently tested. List each step clearly. Each step should be a single, focused change that keeps the codebase in a working state."
+    action_type: prompt
+    next: execute_step
+
+  execute_step:
+    action: "Execute the next incomplete refactoring step from the plan for goal: '${context.refactor_goal}'. Make only the minimal changes needed for this single step. Do not modify tests or make unrelated changes."
+    action_type: prompt
+    evaluate:
+      type: diff_stall
+      max_stall: 2
+    on_yes: verify_tests
+    on_no: replan
+
+  verify_tests:
+    action: "${context.test_cmd}"
+    action_type: shell
+    on_yes: commit_step
+    on_no: revert
+    on_error: revert
+
+  commit_step:
+    action: "/ll:commit"
+    action_type: slash_command
+    next: check_complete
+
+  check_complete:
+    action: "Review the refactoring plan for goal: '${context.refactor_goal}'. Are ALL planned refactoring steps now complete? Check the git log and current code state."
+    action_type: prompt
+    evaluate:
+      type: llm_structured
+      prompt: "Are all planned refactoring steps complete and committed? Answer YES if the refactoring goal has been fully achieved, NO if there are remaining steps to execute."
+    on_yes: done
+    on_no: execute_step
+
+  revert:
+    action: "git checkout -- ."
+    action_type: shell
+    next: replan
+
+  replan:
+    action: "The previous refactoring step failed tests or produced no changes. Review the refactoring goal: '${context.refactor_goal}'. Analyze what went wrong, adjust the plan, and prepare a different approach for the next step."
+    action_type: prompt
+    max_retries: 3
+    on_retry_exhausted: done
+    next: execute_step
+
+  done:
+    terminal: true
