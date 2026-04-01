@@ -275,7 +275,6 @@ timeout: number                 # Max total runtime in seconds (loop-level)
 default_timeout: number         # Default per-state action timeout in seconds (overridden by state-level timeout:)
 maintain: boolean               # Restart after completion
 
-<!-- TODO: update-docs stub — FEAT-862 — drafted 2026-03-23 -->
 # Per-Loop Config Overrides (optional)
 config:
   handoff_threshold: integer      # Override LL_HANDOFF_THRESHOLD for this loop (1-100)
@@ -289,7 +288,6 @@ config:
     max_continuations: integer    # Alias for automation.max_continuations
 # Precedence: CLI flags > YAML config block > global ll-config > schema defaults
 # All fields are optional; omitted fields inherit the global ll-config value.
-<!-- END TODO stub -->
 
 # LLM Evaluation Settings
 llm:
