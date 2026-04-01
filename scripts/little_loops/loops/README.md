@@ -14,6 +14,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `issue-refinement` | Progressively refine active issues through format → score → refine pipeline |
 | `issue-size-split` | Review issues for sizing, identify oversized ones, and split into smaller tasks |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
+| `refine-to-ready-issue` | Pick the next issue and run format → refine → verify → confidence-check until ready |
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
 
 ## Sprint & Worktree
@@ -32,6 +33,12 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `test-coverage-improvement` | Measure coverage, identify highest-risk gaps, write tests, verify, and iterate until target is met |
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
 | `docs-sync` | Verify documentation matches the codebase and fix broken links |
+
+## General Purpose
+
+| Loop | Description |
+|---|---|
+| `general-task` | Execute any ad-hoc task with auto-generated definition of done and verification |
 
 ## Quality Monitoring
 
@@ -65,6 +72,13 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `apo-beam` | Beam search — generate N variants, score all, advance the winner |
 | `apo-textgrad` | TextGrad-style — test on examples, compute failure gradient, apply refinement |
 | `examples-miner` | Co-evolutionary corpus miner — harvest session logs, quality-gate via three-layer judge, calibrate to 40–80% difficulty band, run apo-textgrad as inner loop, synthesize adversarial examples from gradient signal, enforce diversity, publish fresh examples.json |
+
+## Data & Testing
+
+| Loop | Description |
+|---|---|
+| `dataset-curation` | Ingest raw data, quality-gate each item, fix or reject, balance distribution, validate schema, and publish |
+| `prompt-regression-test` | CI for prompts: run a prompt suite against an LLM endpoint, score outputs against expected results, compare to baseline, and flag regressions |
 
 ## Harness / Templates
 
