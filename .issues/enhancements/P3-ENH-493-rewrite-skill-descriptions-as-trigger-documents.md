@@ -10,7 +10,7 @@ outcome_confidence: 71
 
 ## Summary
 
-All 16 `SKILL.md` files use summary-style descriptions that describe what a skill does. The correct convention — confirmed by published research — is that the `description` field should be a **trigger document**: a list of exact phrases users will say to activate the skill, enabling reliable auto-activation.
+All 21 `SKILL.md` files use summary-style descriptions that lead with what a skill does. The correct convention — confirmed by published research — is that the `description` field should be a **trigger document**: a list of exact phrases users will say to activate the skill, enabling reliable auto-activation.
 
 ## Current Behavior
 
@@ -24,63 +24,72 @@ Skill descriptions contain explicit trigger phrases mirroring natural user langu
 
 ## Motivation
 
-The description field is used by Claude Code to decide when to auto-activate a skill. A trigger-phrase-oriented description directly reduces misses and false positives. This is low-effort, high-impact: no infrastructure changes required, just rewriting 15 description strings.
+The description field is used by Claude Code to decide when to auto-activate a skill. A trigger-phrase-oriented description directly reduces misses and false positives. This is low-effort, high-impact: no infrastructure changes required, just rewriting 21 description strings.
 
 ## Proposed Solution
 
-1. Audit all 15 `SKILL.md` files in `skills/*/SKILL.md`
+1. Audit all 21 `SKILL.md` files in `skills/*/SKILL.md`
 2. For each skill, identify the natural-language phrases a user would say to invoke it
 3. Rewrite the `description` YAML field to lead with trigger phrases and include 3–6 example invocations in quotes
 4. Keep the current summary content but move it to a `## Purpose` section in the skill body, not the frontmatter description
 
 ## Scope Boundaries
 
-- **In scope**: Rewriting `description` fields in all 15 `skills/*/SKILL.md` frontmatters
+- **In scope**: Rewriting `description` fields in all 21 `skills/*/SKILL.md` frontmatters
 - **Out of scope**: Changing skill logic, tool lists, model settings, or body content beyond moving summary text
 
 ## Implementation Steps
 
-1. List all skills: `ls skills/*/SKILL.md`
-2. For each skill, draft trigger phrases based on the skill name, purpose, and existing description
-3. Update the `description` YAML field with trigger-phrase-led content
-4. Optionally add `## Purpose` section in the body preserving the original summary
-5. Test that Claude correctly auto-activates each skill with representative trigger phrases
+1. **Phase 1 — Rewrite 8 summary-only skills** (no trigger keywords): Edit `description` YAML field in each of `skills/{audit-claude-config,audit-docs,configure,create-loop,format-issue,init,manage-issue,review-loop}/SKILL.md` using the trigger phrase drafts in the table above. Follow the established pattern from `skills/capture-issue/SKILL.md` (summary line + blank line + `Trigger keywords:` line).
+2. **Phase 2 — Restructure 13 skills with existing keywords**: For each of `skills/{analyze-history,analyze-loop,capture-issue,cleanup-loops,confidence-check,go-no-go,issue-size-review,issue-workflow,map-dependencies,product-analyzer,update,update-docs,workflow-automation-proposer}/SKILL.md`, rewrite the description to LEAD with trigger conditions ("Use this skill when..." or "Trigger when...") rather than capability summary.
+3. **Verify auto-activation**: Test each rewritten skill with representative trigger phrases to confirm Claude correctly auto-activates it.
+4. **Update CONTRIBUTING.md** (lines 438-455): Document the trigger-phrase description convention as the standard for new skills.
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/*/SKILL.md` — all 15 skill files (description frontmatter field only)
+- `skills/*/SKILL.md` — all 21 skill files (description frontmatter field only)
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — Skill description audit:_
+_Updated by `/ll:refine-issue` on 2026-04-01 — full re-audit of all 21 skills:_
 
-**Skills already using trigger-phrase style (have inline trigger keywords):**
-- `skills/analyze-history/SKILL.md` — trigger keywords present in multiline description
+**Skills with `Trigger keywords:` appended in description (13 — still lead with summary-style text):**
+- `skills/analyze-history/SKILL.md` — trigger keywords in multiline description
+- `skills/analyze-loop/SKILL.md` — trigger keywords in multiline description
 - `skills/capture-issue/SKILL.md` — has trigger keyword list
+- `skills/cleanup-loops/SKILL.md` — has trigger keyword list
 - `skills/confidence-check/SKILL.md` — has trigger keyword list
+- `skills/go-no-go/SKILL.md` — has trigger keyword list
 - `skills/issue-size-review/SKILL.md` — has trigger keyword list
 - `skills/issue-workflow/SKILL.md` — has trigger keyword list
 - `skills/map-dependencies/SKILL.md` — has trigger keyword list
 - `skills/product-analyzer/SKILL.md` — has trigger keyword list
+- `skills/update/SKILL.md` — has trigger keyword list
+- `skills/update-docs/SKILL.md` — has trigger keyword list
+- `skills/workflow-automation-proposer/SKILL.md` — has trigger keyword list
 
-**Skills with summary-only descriptions (need rewriting to trigger-phrase style):**
+**Skills with summary-only descriptions and NO trigger keywords (8 — highest priority):**
 - `skills/audit-claude-config/SKILL.md` — "Comprehensive audit of Claude Code plugin configuration with parallel sub-agents"
 - `skills/audit-docs/SKILL.md` — "Audit documentation for accuracy and completeness"
 - `skills/configure/SKILL.md` — "Interactively configure specific areas in ll-config.json"
-- `skills/create-loop/SKILL.md` — "Create a new FSM loop configuration interactively. Guides users through paradigm selection, parameter gathering, YAML generation, and validation."
+- `skills/create-loop/SKILL.md` — "Create a new FSM loop configuration interactively..."
 - `skills/format-issue/SKILL.md` — "Format issue files to align with template v2.0 structure through interactive Q&A or auto mode"
 - `skills/init/SKILL.md` — "Initialize little-loops configuration for a project"
 - `skills/manage-issue/SKILL.md` — "Autonomously manage issues - plan, implement, verify, and complete"
-- ~~`skills/workflow-automation-proposer/SKILL.md`~~ — **Already has trigger keywords** (verified 2026-03-03): description now includes `Trigger keywords: "propose automations", "workflow proposals", "automation suggestions", "step 3 workflow analysis"`
+- `skills/review-loop/SKILL.md` — "Review an existing FSM loop configuration for quality, correctness, consistency, and potential issues"
 
-**Implementation scope: 10 skills need description rewrites** (workflow-automation-proposer already done; the 7 already trigger-phrase-oriented are lower priority but may still benefit from refinement; 3 new skills added since last audit also need rewrites — see below)
+**Implementation scope:**
+- **Phase 1 (8 skills)**: Full trigger-phrase rewrites for skills with NO trigger keywords
+- **Phase 2 (13 skills)**: Restructure descriptions that already have appended `Trigger keywords:` to LEAD with trigger conditions instead of summary text (all 21 currently lead with summary-style "does X" phrasing)
 
-**No `references/` subdirectories exist** — supplemental content uses flat filenames (`templates.md`, `paradigms.md`, etc.) alongside `SKILL.md`
+**Note**: No dedicated `trigger` or `trigger_keywords` YAML field exists in SKILL.md frontmatter. All trigger keywords are prose embedded within the `description` value. Per `docs/claude-code/skills.md:35-36`, the `description` field is what Claude uses to decide when to auto-activate a skill.
 
-### Proposed Trigger Phrase Drafts (7 Skills)
+**Supplemental content** uses flat filenames (`templates.md`, `reference.md`, etc.) alongside `SKILL.md` — no `references/` subdirectories exist
 
-_Added by `/ll:refine-issue` — reduces implementation ambiguity:_
+### Proposed Trigger Phrase Drafts (8 Skills — Phase 1)
+
+_Updated by `/ll:refine-issue` on 2026-04-01 — added review-loop:_
 
 | Skill | Current Description (Summary Style) | Proposed Trigger Phrases |
 |-------|-------------------------------------|--------------------------|
@@ -91,6 +100,7 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 | `format-issue` | "Format issue files to align with template v2.0 structure..." | "When the user asks to format an issue, fix issue template, align issue to v2.0, or 'format this issue'" |
 | `init` | "Initialize little-loops configuration for a project" | "When the user asks to initialize little-loops, set up ll for a project, bootstrap config, or 'how do I get started with ll?'" |
 | `manage-issue` | "Autonomously manage issues - plan, implement, verify, and complete" | "When the user asks to implement an issue, work on a bug/feature, manage an issue end to end, or 'start implementing FEAT-NNN'" |
+| `review-loop` | "Review an existing FSM loop configuration for quality, correctness, consistency, and potential issues" | "When the user asks to review a loop, check loop config, validate loop YAML, audit a loop definition, or 'is this loop correct?'" |
 
 ### Similar Patterns
 - `agents/*.md` — agent description fields follow a similar convention worth checking
@@ -112,14 +122,16 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 
 | Document | Relevance |
 |----------|-----------|
-| `CONTRIBUTING.md` | Development conventions — target for documenting skill description standards |
+| `CONTRIBUTING.md` (lines 438-455) | Development conventions — target for documenting skill description standards |
 | `docs/reference/COMMANDS.md` | Command and skill documentation reference |
+| `docs/claude-code/skills.md` (lines 35-36, 173, 651) | Official reference confirming `description` is used for auto-activation; troubleshooting advises "include keywords users would naturally say" |
 
 ## Labels
 
 `enhancement`, `skills`, `context-engineering`, `ux`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-01T17:56:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9a59399-86a0-48d0-bc8f-f7823612f52d.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6354e86b-8019-4171-939d-aba670876e1f.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
