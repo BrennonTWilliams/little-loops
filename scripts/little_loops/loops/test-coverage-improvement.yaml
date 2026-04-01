@@ -1,0 +1,206 @@
+# Test coverage improvement loop: measure coverage, identify gaps, write tests
+# for the highest-risk uncovered code, verify, and iterate until target is met.
+#
+# Usage:    ll-loop run test-coverage-improvement
+# Validate: ll-loop test test-coverage-improvement
+
+name: test-coverage-improvement
+description: |
+  Measure test coverage → identify uncovered code paths → prioritize by risk →
+  write tests for the highest-priority gap → verify tests pass → remeasure →
+  converge when coverage target is met. Each iteration focuses on one gap to
+  keep changes reviewable and test quality high.
+initial: measure
+max_iterations: 30
+timeout: 7200
+on_handoff: spawn
+context:
+  coverage_target: 80          # target line coverage percentage (0-100)
+  focus_dirs: ""               # optional comma-separated dirs to scope coverage
+  test_cmd: ""                 # override test command; empty = read from ll-config.json
+  coverage_cmd: ""             # override coverage command; empty = auto-detect
+states:
+
+  measure:
+    # Measure current test coverage and establish a baseline.
+    # Captures the coverage report for gap analysis.
+    action_type: shell
+    timeout: 600
+    action: |
+      mkdir -p .loops/tmp
+
+      # Resolve test command
+      if [ -n "${context.test_cmd}" ]; then
+        CMD="${context.test_cmd}"
+      else
+        CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.ll/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      fi
+
+      # Resolve coverage command
+      if [ -n "${context.coverage_cmd}" ]; then
+        COV_CMD="${context.coverage_cmd}"
+      else
+        COV_CMD="python -m pytest --cov --cov-report=term-missing"
+        if [ -n "${context.focus_dirs}" ]; then
+          DIRS=$(echo "${context.focus_dirs}" | tr ',' ' ')
+          COV_CMD="python -m pytest --cov=$DIRS --cov-report=term-missing"
+        fi
+      fi
+
+      set -o pipefail
+      eval "$COV_CMD" 2>&1 | tee .loops/tmp/ll-coverage-report.txt
+      echo ""
+      echo "--- COVERAGE SUMMARY ---"
+      grep -E "^TOTAL|^Name|coverage:" .loops/tmp/ll-coverage-report.txt | tail -5
+    capture: coverage_report
+    next: extract_percentage
+
+  extract_percentage:
+    # Parse the coverage percentage from the report for convergence tracking.
+    action_type: shell
+    action: |
+      # Extract the TOTAL coverage percentage from pytest-cov output
+      PERCENT=$(grep -oE 'TOTAL[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+%' \
+        .loops/tmp/ll-coverage-report.txt | grep -oE '[0-9]+%' | tr -d '%' || echo "0")
+      if [ -z "$PERCENT" ] || [ "$PERCENT" = "0" ]; then
+        # Fallback: look for "XX%" pattern near end of output
+        PERCENT=$(tail -10 .loops/tmp/ll-coverage-report.txt | grep -oE '[0-9]+%' | tail -1 | tr -d '%' || echo "0")
+      fi
+      echo "$PERCENT"
+    capture: current_coverage
+    evaluate:
+      type: convergence
+      target: "${context.coverage_target}"
+      direction: maximize
+      tolerance: 1
+    route:
+      target: commit
+      progress: identify_gaps
+      stall: identify_gaps
+
+  identify_gaps:
+    # Analyze the coverage report to find the most impactful uncovered code.
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read .loops/tmp/ll-coverage-report.txt to see the full coverage report.
+
+      Identify the top 3 files with the lowest coverage that would have the
+      highest impact if tested. Prioritize by:
+      1. Files with critical business logic or error handling
+      2. Files with the most uncovered lines (biggest coverage gain)
+      3. Files that are actively maintained (recently modified)
+
+      For each file, list:
+      - File path and current coverage %
+      - Specific uncovered line ranges (from the "Missing" column)
+      - What the uncovered code does (read the file to understand it)
+      - Risk level if this code has bugs (high/medium/low)
+
+      Pick the single highest-priority file and summarize exactly which
+      code paths need tests. Save your analysis to .loops/tmp/ll-coverage-gaps.txt
+    capture: gap_analysis
+    on_blocked: done
+    next: write_tests
+
+  write_tests:
+    # Write tests for the highest-priority uncovered code path.
+    action_type: prompt
+    timeout: 900
+    action: |
+      Based on the coverage gap analysis:
+      ${captured.gap_analysis.output}
+
+      Write tests for the single highest-priority uncovered code path identified.
+
+      Guidelines:
+      - Follow existing test patterns and conventions in the project
+      - Test behavior, not implementation details
+      - Cover both happy path and error/edge cases for the identified gap
+      - Keep test count reasonable (3-8 tests per gap)
+      - Use descriptive test names that explain the scenario
+      - Do NOT use mocks unless the code under test has external dependencies
+        that cannot be instantiated in tests
+
+      After writing tests, report:
+      - File where tests were added
+      - Number of new test functions
+      - What code paths they cover
+    on_blocked: done
+    max_retries: 2
+    on_retry_exhausted: done
+    next: verify_tests
+
+  verify_tests:
+    # Run the test suite to ensure new tests pass and nothing is broken.
+    action_type: shell
+    timeout: 600
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.ll/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      mkdir -p .loops/tmp
+      set -o pipefail
+      eval "$CMD" 2>&1 | tee .loops/tmp/ll-coverage-tests.txt
+    evaluate:
+      type: exit_code
+    on_yes: commit
+    on_no: fix_tests
+    on_error: fix_tests
+
+  fix_tests:
+    # Fix failing tests — diagnose before changing anything.
+    action_type: prompt
+    timeout: 600
+    action: |
+      Read .loops/tmp/ll-coverage-tests.txt to see the test failures.
+
+      For each failing test, diagnose the root cause:
+
+      If the NEW test has a bug (wrong assertion, bad setup, misunderstood API):
+        → Fix the test to correctly verify the intended behavior.
+
+      If the new test exposed a genuine bug in the implementation:
+        → Fix the implementation, not the test.
+
+      If an EXISTING test broke due to the new changes:
+        → The new test or its setup has a side effect — isolate and fix it.
+
+      Rules:
+      - Never delete a test to make it pass
+      - Fix one failure at a time; re-run that specific test before moving on
+      - If a test is fundamentally wrong (testing something that doesn't exist),
+        remove it and note why
+    max_retries: 2
+    on_retry_exhausted: revert
+    next: verify_tests
+
+  revert:
+    # If tests can't be fixed after retries, revert and move on.
+    action_type: prompt
+    timeout: 120
+    action: |
+      Tests could not be fixed after multiple attempts.
+      Revert the new test files using `git checkout -- <file>`.
+      Log the failed attempt to .loops/tmp/ll-coverage-skipped.txt
+      (append the file path and reason so future iterations skip it).
+    next: measure
+
+  commit:
+    # Commit the new tests and remeasure coverage.
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the new tests.
+      Use a message like: "test: add coverage for <module/function name>"
+    next: measure
+
+  done:
+    terminal: true

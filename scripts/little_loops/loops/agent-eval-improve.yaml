@@ -1,0 +1,90 @@
+name: agent-eval-improve
+description: |
+  Evaluate an AI agent on a task suite, score outputs (pass/fail + quality),
+  identify failure patterns, and iteratively refine agent config/prompts
+  until quality target is reached. Composite: outer policy iteration
+  with inner evaluation scoring.
+initial: run_eval
+max_iterations: 30
+timeout: 7200
+on_handoff: spawn
+context:
+  quality_target: 0.85
+  task_suite: "evals/"
+  agent_config: "agent.yaml"
+states:
+  run_eval:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Run the AI agent defined in ${context.agent_config} against all tasks in ${context.task_suite}.
+      Execute each task, capture the agent's output, and save results to evals/results/.
+      Report a summary: total tasks, passed, failed.
+    capture: eval_results
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    next: score_results
+  score_results:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Score the evaluation results from the previous run.
+      For each task in ${context.task_suite}, compare agent output against expected output.
+      Calculate: pass/fail per task and an overall quality score (0.0-1.0).
+      Print ONLY the overall quality score (0.0-1.0) on the last line.
+    capture: scores
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    next: analyze_failures
+  analyze_failures:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Analyze the failure patterns from the evaluation scores.
+      Review failed tasks from the latest eval run.
+      Identify common failure modes, categorize them, and suggest targeted fixes.
+      Summarize: number of failure categories, top 3 patterns, and recommended changes.
+    capture: failure_analysis
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the analysis identify actionable failure patterns that can guide
+        config refinement? Answer YES if clear patterns were found with
+        specific recommendations. Answer NO if failures are random,
+        no patterns emerged, or no actionable fixes were identified.
+    on_yes: route_quality
+    on_no: done
+  route_quality:
+    action_type: shell
+    action: |
+      echo "${captured.scores.output}" | tail -1 | tr -d '[:space:]'
+    evaluate:
+      type: convergence
+      target: "${context.quality_target}"
+      direction: maximize
+      tolerance: 0.03
+    route:
+      target: done
+      progress: refine_config
+      stall: done
+  refine_config:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Based on the failure analysis: ${captured.failure_analysis.output}
+
+      Refine the agent configuration in ${context.agent_config} to address
+      the identified failure patterns. Focus on the top failure categories.
+      Make targeted changes to prompts, tools, or parameters.
+      Document what was changed and why.
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    next: run_eval
+  done:
+    terminal: true

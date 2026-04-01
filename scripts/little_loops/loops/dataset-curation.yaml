@@ -1,0 +1,185 @@
+# Dataset curation loop: ingest raw data, quality-gate each item, fix or reject,
+# balance distribution, validate schema, and publish. General-purpose pipeline for
+# training data, eval sets, or RAG corpora. Complements examples-miner (which mines
+# from session logs specifically).
+#
+# Usage:    ll-loop run dataset-curation
+# Validate: ll-loop test dataset-curation
+
+name: dataset-curation
+description: |
+  Scan raw data → quality-gate each item (format, relevance, difficulty calibration) →
+  reject/fix low-quality items → balance distribution → validate against schema →
+  publish curated dataset. Converges when quality and diversity metrics meet thresholds.
+
+  Gap vs examples-miner: examples-miner harvests from Claude Code session logs for
+  prompt-optimization corpora. This loop is general-purpose — feed it any raw data
+  directory and it will curate items through a quality/distribution/schema pipeline.
+initial: ingest
+max_iterations: 50
+timeout: 7200               # 2-hour wall clock limit
+on_handoff: spawn
+context:
+  quality_threshold: 70     # minimum item score (0-100) to pass quality gate
+  min_per_category: 2       # minimum items per category for balanced distribution
+  adversarial_cap: 0.3      # max fraction of adversarial/synthetic items
+  data_dir: "data/raw"
+  output_dir: "data/curated"
+  schema_path: "schemas/dataset.json"
+states:
+
+  ingest:
+    # Scan the raw data directory and build an inventory of items to process.
+    # Captures the full item list so downstream states can iterate.
+    action: |
+      Scan the raw data directory at ${context.data_dir}. Identify all items to process.
+      For each item, extract metadata (format, category, difficulty level).
+      Output a JSON array of items, each with keys: path, category, format, difficulty_estimate.
+      On the final line output: INGESTED=<integer count>
+    action_type: prompt
+    timeout: 120
+    capture: raw_items
+    on_blocked: done
+    next: quality_gate
+
+  quality_gate:
+    # Score the next unprocessed item on three dimensions.
+    # Outputs a numeric score on the last line for route_quality to evaluate.
+    action: |
+      Quality-gate the next unprocessed item from the ingested dataset.
+      Evaluate on three dimensions (each 0-100):
+      1. Format correctness — valid structure, required fields present
+      2. Relevance — topic alignment, no off-topic content
+      3. Difficulty calibration — appropriate complexity for stated level
+
+      For each dimension, explain the score briefly, then output the average
+      as a single integer on the last line (nothing else on that line).
+    action_type: prompt
+    timeout: 120
+    capture: item_score
+    on_blocked: check_distribution
+    next: route_quality
+
+  route_quality:
+    # Extract the numeric score and route: pass → distribution check,
+    # fail → fix attempt, error (unparseable) → reject.
+    action: "echo \"${captured.item_score.output}\" | tail -1 | tr -d '[:space:]'"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: "${context.quality_threshold}"
+    on_yes: check_distribution
+    on_no: fix_item
+    on_error: reject_item
+
+  fix_item:
+    # Attempt to repair a below-threshold item. max_retries prevents burning
+    # the iteration budget on a single unfixable item.
+    action: |
+      The current item scored below the quality threshold (${context.quality_threshold}).
+      Item score details: ${captured.item_score.output}
+
+      Attempt to fix the item:
+      1. Correct format issues (missing fields, malformed structure)
+      2. Improve relevance (refine content, remove off-topic sections)
+      3. Recalibrate difficulty if needed
+
+      Output the fixed item content. If the item is fundamentally unfixable
+      (e.g., completely off-topic, corrupt data), output "UNFIXABLE" on the last line.
+    action_type: prompt
+    timeout: 180
+    max_retries: 2
+    on_retry_exhausted: reject_item
+    on_blocked: reject_item
+    next: quality_gate
+
+  reject_item:
+    # Log the rejection and move on to the next item in the pipeline.
+    action: |
+      Reject the current item from the dataset.
+      Log the rejection reason based on quality gate scores: ${captured.item_score.output}
+      Append rejection to a rejections log (path: ${context.output_dir}/rejections.jsonl)
+      with fields: path, score, reason, timestamp.
+      Then move to the next item for processing.
+    action_type: prompt
+    timeout: 60
+    on_blocked: quality_gate
+    next: quality_gate
+
+  check_distribution:
+    # Verify category balance and adversarial cap before schema validation.
+    # Uses output_contains to gate on a BALANCED/IMBALANCED sentinel.
+    action: |
+      Analyze the current distribution of curated items across categories.
+      Check against thresholds:
+      - Minimum ${context.min_per_category} items per category
+      - Adversarial/synthetic examples must not exceed ${context.adversarial_cap} of total
+
+      Output a JSON object: {"balanced": bool, "categories": {name: count}, "adversarial_ratio": float, "gaps": []}
+      Print "BALANCED" on the last line if all thresholds met, "IMBALANCED" otherwise.
+    action_type: prompt
+    timeout: 120
+    capture: distribution
+    evaluate:
+      type: output_contains
+      pattern: "BALANCED"
+    on_yes: validate_schema
+    on_no: rebalance
+    on_error: validate_schema
+
+  rebalance:
+    # Address distribution gaps: source items for underrepresented categories,
+    # trim overrepresented adversarial examples.
+    action: |
+      The dataset distribution is imbalanced: ${captured.distribution.output}
+
+      Rebalance by:
+      1. Identifying underrepresented categories (below ${context.min_per_category} items)
+      2. Flagging overrepresented adversarial examples (above ${context.adversarial_cap} ratio)
+      3. Generating or sourcing additional items for gap categories from ${context.data_dir}
+      4. Removing lowest-quality adversarial items if over cap
+
+      Report actions taken and updated distribution summary.
+    action_type: prompt
+    timeout: 180
+    on_blocked: validate_schema
+    next: check_distribution
+
+  validate_schema:
+    # Final structural validation before publish. Routes failures back to
+    # fix_item so invalid items get another repair pass.
+    action: |
+      Validate every curated item against the schema at ${context.schema_path}.
+      For each item, check all required fields are present and correctly typed.
+      Report: items validated, pass count, fail count, and specific failures with paths.
+    action_type: prompt
+    timeout: 120
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did all curated items pass schema validation with zero failures?
+        Answer YES if every item conforms to the schema. Answer NO if any
+        items failed validation or if errors were encountered.
+    on_yes: publish
+    on_no: fix_item
+
+  publish:
+    # Write the final curated dataset and generate a manifest with curation metrics.
+    action: |
+      Publish the curated dataset to ${context.output_dir}.
+      1. Write all curated items in the final format
+      2. Generate a manifest (${context.output_dir}/manifest.json) with:
+         item_count, category_breakdown, quality_stats (min/max/avg score)
+      3. Create a summary report (${context.output_dir}/curation-report.md):
+         total ingested vs. published, rejection rate, average quality score,
+         distribution across categories, adversarial ratio
+      On the final line output: PUBLISHED=<integer count>
+    action_type: prompt
+    timeout: 60
+    capture: publish_result
+    on_blocked: done
+    next: done
+
+  done:
+    terminal: true

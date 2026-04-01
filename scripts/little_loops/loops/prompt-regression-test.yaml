@@ -1,0 +1,110 @@
+name: prompt-regression-test
+description: |
+  CI for prompts: run a prompt suite against an LLM endpoint, score outputs
+  against expected results, compare to baseline, flag regressions, and
+  optionally trigger an APO sub-loop for repair.
+initial: run_suite
+max_iterations: 10
+timeout: 3600
+on_handoff: spawn
+context:
+  pass_threshold: 90
+  prompt_suite: prompts/
+  baseline_file: .loops/tmp/prompt-baseline.json
+states:
+  run_suite:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read all prompt files from ${context.prompt_suite}.
+      For each prompt, run it against the LLM endpoint and collect the output.
+      Compare each output to the expected result defined in the prompt file.
+      Output a JSON array:
+      [{"prompt": "<name>", "output": "<actual>", "expected": "<expected>", "pass": true/false}]
+    capture: suite_results
+    next: score_outputs
+  score_outputs:
+    action_type: prompt
+    timeout: 180
+    action: |
+      Analyze the suite results:
+      ${captured.suite_results.output}
+
+      Score each test case by comparing actual output to expected result.
+      Use semantic similarity for open-ended outputs, exact match for structured.
+
+      Output summary on separate lines:
+      TOTAL=<N>
+      PASSED=<N>
+      FAILED=<N>
+      PASS_RATE=<integer 0-100>
+
+      Then list each failure:
+      FAIL: <prompt_name> — <reason>
+    capture: scores
+    next: compare_baseline
+  compare_baseline:
+    action_type: prompt
+    timeout: 180
+    action: |
+      Read the baseline from ${context.baseline_file}.
+      If the file does not exist, create it using current scores as the initial
+      baseline and output: NO_REGRESSION — initial baseline created
+
+      Otherwise compare current scores to the stored baseline:
+      Current: ${captured.scores.output}
+
+      Regression criteria:
+      - PASS_RATE dropped below baseline PASS_RATE
+      - Any previously-passing prompt now fails
+
+      Output exactly one of:
+      NO_REGRESSION — PASS_RATE=<current> (baseline=<baseline>)
+      REGRESSION_DETECTED — <summary of what regressed>
+    capture: comparison
+    next: route_regression
+  route_regression:
+    evaluate:
+      type: output_contains
+      source: "${captured.comparison.output}"
+      pattern: "NO_REGRESSION"
+    on_yes: report
+    on_no: trigger_apo
+    on_error: report
+  report:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Generate a prompt regression test report:
+
+      Suite results: ${captured.scores.output}
+      Baseline comparison: ${captured.comparison.output}
+
+      If pass rate >= ${context.pass_threshold} and no regression detected,
+      update ${context.baseline_file} with current scores as the new baseline.
+
+      Output a concise summary suitable for CI logs.
+    next: done
+  trigger_apo:
+    loop: apo-textgrad
+    context_passthrough: true
+    on_success: update_baseline
+    on_failure: report
+    on_error: report
+  update_baseline:
+    action_type: prompt
+    timeout: 300
+    action: |
+      APO optimization completed. Re-run the prompt suite to verify the fix:
+      1. Read prompts from ${context.prompt_suite}
+      2. Run each against the LLM endpoint
+      3. Score against expected results
+      4. Output: PASS_RATE=<integer 0-100>
+
+      If pass rate >= ${context.pass_threshold}, update ${context.baseline_file}
+      with new scores as the updated baseline.
+      Output: BASELINE_UPDATED — PASS_RATE=<new> (was: <old>)
+      Otherwise: BASELINE_UNCHANGED — PASS_RATE=<new> still below threshold
+    next: done
+  done:
+    terminal: true
