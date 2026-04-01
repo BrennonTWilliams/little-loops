@@ -73,14 +73,16 @@ PACKAGE_RESULT="SKIP"
 ### 2. Read Current Versions
 
 ```bash
-# Plugin version from .claude-plugin/plugin.json
-PLUGIN_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/plugin.json')); print(d['version'])")
-
-# Marketplace version from .claude-plugin/marketplace.json
-MARKETPLACE_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])")
-
-# Installed pip package version
+# Installed pip package version (always relevant)
 PKG_VERSION=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('little-loops'))" 2>/dev/null || echo "not installed")
+
+# Plugin/marketplace versions only exist in the little-loops repo itself
+PLUGIN_VERSION="N/A"
+MARKETPLACE_VERSION="N/A"
+if [[ "$DO_MARKETPLACE" == true ]]; then
+    PLUGIN_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/plugin.json')); print(d['version'])")
+    MARKETPLACE_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])")
+fi
 ```
 
 Print current state:
