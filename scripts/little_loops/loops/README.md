@@ -48,6 +48,12 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `rl-bandit` | Epsilon-greedy bandit — alternate between exploring new options and exploiting the best known |
 | `rl-coding-agent` | **Policy+RLHF composite for agentic coding** — outer policy adapts strategy, inner RLHF polishes each artifact; reward = test pass rate × 0.5 + lint score × 0.3 + LLM weight × 0.2 |
 
+## Agent Evaluation
+
+| Loop | Description |
+|---|---|
+| `agent-eval-improve` | Evaluate an AI agent on a task suite, score outputs, identify failure patterns, and iteratively refine agent config/prompts until quality target is reached |
+
 ## Automatic Prompt Optimization (APO)
 
 | Loop | Description |
