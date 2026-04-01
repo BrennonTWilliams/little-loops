@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.67.2] - 2026-03-31
+
 ### Changed
 
-- **Runtime files migrated from `.claude/` to `.ll/`** — All little-loops runtime and configuration files now live in `.ll/` instead of `.claude/` to avoid Claude Code write permission prompts (ENH-896)
+- **Migrate ll Runtime Files from `.claude/` to `.ll/` Directory** — All little-loops runtime and configuration files now live in `.ll/` to avoid Claude Code write permission prompts (ENH-896)
+- **Migrate workflow-analysis and user-messages paths from `.claude/` to `.ll/`** — Completed directory migration for workflow-analysis paths and user-messages files (ENH-900)
+- **Delegate issue-refinement to refine-to-ready-issue sub-loop** — Refactored loops to use sub-loop delegation for issue refinement (09d46be)
 
 ### Migration
 
@@ -18,10 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local overrides file moved: `.claude/ll.local.md` → `.ll/ll.local.md`
 - Update `.gitignore` if you have custom entries referencing `.claude/ll-*` paths
 
-### Planned
+### Documentation
 
-- Windows compatibility testing
-- Performance benchmarks for large repositories
+- Remove resolved FEAT-862 update-docs stub from FSM loop docs (a1ee5d5)
+- Add missing `ll-loop list` flags to CLI quick-reference in README (6908461)
+- Correct loop count to 26 and add ENH-902 for `ll-loop list` flags (073c4a8)
+- Update issue-refinement loop description to reflect sub-loop delegation (65034c7)
+- Document general-task loop lifecycle in LOOPS_GUIDE (131ab59)
+
+### Other
+
+- Add continuation prompt and loop-suggestions to `.gitignore` (afaf00b)
 
 ## [1.67.1] - 2026-03-30
 
@@ -303,6 +319,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/COMMANDS reference**: `mcp-call` and `check-code` build mode docs (661cf4a)
 - **Workflow analyzer**: updated `--input` flag documentation (6b1f583)
 
+[1.67.2]: https://github.com/BrennonTWilliams/little-loops/compare/v1.67.1...v1.67.2
 [1.67.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.67.0...v1.67.1
 [1.67.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.1...v1.67.0
 [1.66.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.0...v1.66.1
