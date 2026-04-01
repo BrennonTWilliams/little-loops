@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
+from little_loops.cli.loop.lifecycle import (
+    _format_relative_time,
+    cmd_resume,
+    cmd_status,
+    cmd_stop,
+)
 
 
 class TestCmdStatus:
@@ -846,3 +853,172 @@ class TestCmdRunYAMLConfigOverrides:
         cmd_run("test-loop", args, loops_dir, logger)
 
         assert "LL_HANDOFF_THRESHOLD" not in os.environ
+
+
+class TestFormatRelativeTime:
+    """Tests for _format_relative_time helper."""
+
+    def test_seconds(self) -> None:
+        assert _format_relative_time(30) == "30s ago"
+
+    def test_minutes(self) -> None:
+        assert _format_relative_time(180) == "3m ago"
+
+    def test_minutes_and_seconds(self) -> None:
+        assert _format_relative_time(90) == "1m 30s ago"
+
+    def test_hours(self) -> None:
+        assert _format_relative_time(3600) == "1h ago"
+
+    def test_hours_and_minutes(self) -> None:
+        assert _format_relative_time(4980) == "1h 23m ago"
+
+    def test_days(self) -> None:
+        assert _format_relative_time(86400) == "1d ago"
+
+    def test_days_and_hours(self) -> None:
+        assert _format_relative_time(90000) == "1d 1h ago"
+
+    def test_zero(self) -> None:
+        assert _format_relative_time(0) == "0s ago"
+
+
+class TestCmdStatusLogFile:
+    """Tests for log file details in cmd_status output."""
+
+    def _make_state(self) -> MagicMock:
+        mock_state = MagicMock()
+        mock_state.loop_name = "test-loop"
+        mock_state.status = "running"
+        mock_state.current_state = "check"
+        mock_state.iteration = 5
+        mock_state.started_at = "2026-03-31T10:00:00"
+        mock_state.updated_at = "2026-03-31T10:05:00"
+        mock_state.continuation_prompt = None
+        return mock_state
+
+    def test_status_shows_log_file_details(self, tmp_path: Path) -> None:
+        """Shows log path, age, and last event when log file exists."""
+        logger = MagicMock()
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        log_file = running_dir / "test-loop.log"
+        log_file.write_text(
+            "[STATE] idle → check (iteration 4)\n"
+            "[STATE] check → run_eval (iteration 5)\n"
+        )
+        # Set mtime to 180 seconds ago
+        mtime = time.time() - 180
+        os.utime(log_file, (mtime, mtime))
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("builtins.print") as mock_print,
+        ):
+            mock_cls.return_value.load_state.return_value = mock_state
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        print_calls = [str(c) for c in mock_print.call_args_list]
+        print_text = "\n".join(print_calls)
+        assert "Log:" in print_text
+        assert "test-loop.log" in print_text
+        assert "Log updated:" in print_text
+        assert "3m" in print_text
+        assert "Last event:" in print_text
+        assert "run_eval" in print_text
+
+    def test_status_shows_log_not_found(self, tmp_path: Path) -> None:
+        """Shows 'Log: (not found)' when no log file exists."""
+        logger = MagicMock()
+        mock_state = self._make_state()
+
+        # Ensure running dir exists but no log file
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("builtins.print") as mock_print,
+        ):
+            mock_cls.return_value.load_state.return_value = mock_state
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        print_calls = [str(c) for c in mock_print.call_args_list]
+        print_text = "\n".join(print_calls)
+        assert "Log: (not found)" in print_text
+
+    def test_status_json_includes_log_fields(self, tmp_path: Path) -> None:
+        """JSON output includes log_file, log_updated_ago, and last_event."""
+        import json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        log_file = running_dir / "test-loop.log"
+        log_file.write_text("[STATE] check → run_eval (iteration 5)\n")
+        mtime = time.time() - 60
+        os.utime(log_file, (mtime, mtime))
+
+        mock_state = self._make_state()
+        mock_state.to_dict.return_value = {
+            "loop_name": "test-loop",
+            "status": "running",
+            "current_state": "check",
+            "iteration": 5,
+        }
+        args = argparse.Namespace(json=True)
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("builtins.print") as mock_print,
+        ):
+            mock_cls.return_value.load_state.return_value = mock_state
+            result = cmd_status("test-loop", tmp_path, logger, args)
+
+        assert result == 0
+        json_output = mock_print.call_args_list[0][0][0]
+        data = json.loads(json_output)
+        assert "log_file" in data
+        assert "log_updated_ago" in data
+        assert "last_event" in data
+
+    def test_status_json_log_not_found(self, tmp_path: Path) -> None:
+        """JSON output includes null log fields when no log file."""
+        import json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+
+        mock_state = self._make_state()
+        mock_state.to_dict.return_value = {
+            "loop_name": "test-loop",
+            "status": "running",
+            "current_state": "check",
+            "iteration": 5,
+        }
+        args = argparse.Namespace(json=True)
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("builtins.print") as mock_print,
+        ):
+            mock_cls.return_value.load_state.return_value = mock_state
+            result = cmd_status("test-loop", tmp_path, logger, args)
+
+        assert result == 0
+        json_output = mock_print.call_args_list[0][0][0]
+        data = json.loads(json_output)
+        assert data["log_file"] is None
+        assert data["log_updated_ago"] is None
+        assert data["last_event"] is None

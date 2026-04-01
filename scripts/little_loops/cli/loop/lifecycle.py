@@ -19,6 +19,23 @@ from little_loops.fsm.concurrency import _process_alive
 from little_loops.logger import Logger
 
 
+def _format_relative_time(seconds: float) -> str:
+    """Format seconds as a human-readable relative time string (e.g., '3m ago')."""
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s ago"
+    if total < 3600:
+        m, s = divmod(total, 60)
+        return f"{m}m ago" if s == 0 else f"{m}m {s}s ago"
+    if total < 86400:
+        h, rem = divmod(total, 3600)
+        m = rem // 60
+        return f"{h}h ago" if m == 0 else f"{h}h {m}m ago"
+    d, rem = divmod(total, 86400)
+    h = rem // 3600
+    return f"{d}d ago" if h == 0 else f"{d}d {h}h ago"
+
+
 def _read_pid_file(pid_file: Path) -> int | None:
     """Read and validate a PID file.
 
@@ -54,9 +71,27 @@ def cmd_status(
     pid_file = running_dir / f"{loop_name}.pid"
     pid = _read_pid_file(pid_file)
 
+    log_file = running_dir / f"{loop_name}.log"
+    log_file_str: str | None = None
+    log_updated_ago: str | None = None
+    last_event: str | None = None
+    if log_file.exists():
+        log_file_str = str(log_file)
+        age_seconds = time.time() - log_file.stat().st_mtime
+        log_updated_ago = _format_relative_time(age_seconds)
+        try:
+            lines = log_file.read_text().splitlines()
+            non_empty = [ln for ln in lines if ln.strip()]
+            last_event = non_empty[-1] if non_empty else None
+        except OSError:
+            last_event = None
+
     if getattr(args, "json", False):
         d = state.to_dict()
         d["pid"] = pid
+        d["log_file"] = log_file_str
+        d["log_updated_ago"] = log_updated_ago
+        d["last_event"] = last_event
         print_json(d)
         return 0
 
@@ -73,6 +108,15 @@ def cmd_status(
             print(f"PID: {pid} (running)")
         else:
             print(f"PID: {pid} (not running - stale PID file)")
+
+    # Show log file info
+    if log_file_str is not None:
+        print(f"Log: {log_file_str}")
+        print(f"Log updated: {log_updated_ago}")
+        if last_event:
+            print(f"Last event: {last_event}")
+    else:
+        print("Log: (not found)")
 
     if state.continuation_prompt:
         # Show truncated continuation context

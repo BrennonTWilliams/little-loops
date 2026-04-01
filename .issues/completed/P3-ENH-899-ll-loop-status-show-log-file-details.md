@@ -151,6 +151,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `cli`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-01T18:29:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4c2d795-6b0c-42e7-ae0e-66f4b2e6a78a.jsonl`
 - `/ll:refine-issue` - 2026-04-01T18:16:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49419b0f-25d9-4a0e-9b27-897ab9a1ca5b.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:confidence-check` - 2026-03-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b71ea4-65ba-45df-b40c-1250b0bfb74b.jsonl`
@@ -158,8 +159,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:format-issue` - 2026-03-31T17:21:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b71ea4-65ba-45df-b40c-1250b0bfb74b.jsonl`
 - `/ll:capture-issue` - 2026-03-31T12:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/705d8dcf-207a-4293-9698-d61e0449c1de.jsonl`
 
+- `/ll:manage-issue` - 2026-04-01T13:34:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfeb20f2-8e88-41ee-a553-574c44340e85.jsonl`
+
 ---
+
+## Resolution
+
+- Added `_format_relative_time()` helper to `lifecycle.py` for human-readable time formatting
+- Enhanced `cmd_status` text output: log path, last modified age, last event line
+- Enhanced `cmd_status` JSON output: `log_file`, `log_updated_ago`, `last_event` fields
+- Graceful fallback: shows `Log: (not found)` when no log file exists
+- Added 12 tests: 8 for `_format_relative_time`, 4 for `cmd_status` log output (text + JSON)
 
 ## Status
 
-**Open** | Created: 2026-03-31 | Priority: P3
+**Completed** | Created: 2026-03-31 | Completed: 2026-04-01 | Priority: P3
