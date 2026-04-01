@@ -90,7 +90,7 @@ A new `_format_relative_time(seconds: float) -> str` helper is needed — no exi
 ### Similar Patterns
 - `lifecycle.py:53-55` — PID file derivation (`running_dir / f"{loop_name}.pid"`) is the exact structural analog for log file derivation
 - `_helpers.py:222` — log file path creation: `log_file = running_dir / f"{loop_name}.log"`
-- `_helpers.py:328-332` — inline seconds-to-"Xm Ys" formatting pattern
+- `_helpers.py:330-334` — inline seconds-to-"Xm Ys" formatting pattern
 - `_helpers.py:433-438` — `splitlines()[-N:]` tail pattern for reading last lines
 - `session_log.py:82` — `f.stat().st_mtime` pattern for file modification time
 
@@ -121,10 +121,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Location correction**: `cmd_status` is in `lifecycle.py:36-83`, NOT `info.py` as originally stated. `info.py` contains `cmd_list`, `cmd_show`, and `cmd_history`.
 - **Log path convention**: `_helpers.py:222` creates log files as `running_dir / f"{loop_name}.log"` where `running_dir = loops_dir / ".running"`. The PID file at `lifecycle.py:53` follows the identical pattern — log derivation should mirror it.
-- **No "ago" formatter exists**: Three `_format_duration` helpers exist (`info.py:305`, `interpolation.py:262`, `logger.py:115`) but all format durations, not relative times. A new `_format_relative_time` function is needed.
-- **JSON output**: `cmd_status` has a `--json` flag (registered at `__init__.py:177`, handled at `lifecycle.py:57-61`) that serializes `state.to_dict()` — log info should be included here too.
+- **No "ago" formatter exists**: Three `_format_duration` helpers exist (`info.py:305`, `interpolation.py:262`, `logger.py:115`) but all format durations, not relative times. A new `_format_relative_time` function is needed. Note: `logger.py:115` is public (`format_duration`), the other two are private (`_format_duration`).
+- **JSON output**: `cmd_status` has a `--json` flag (registered at `__init__.py:177`, handled at `lifecycle.py:57-61`) that serializes `state.to_dict()` via `print_json` from `output.py:97-99` — log info should be included here too.
 - **Test infrastructure**: `test_cli_loop_background.py:526-619` (`TestCmdStatusWithPid`) writes real files to `tmp_path/.running/` and asserts on print output — this is the exact pattern to follow for log file tests.
-- **File reading pattern**: `_helpers.py:433-438` uses `splitlines()[-N:]` for tailing output — apply same pattern for reading last log line.
+- **File reading pattern**: `_helpers.py:438-442` uses `splitlines()[-N:]` for tailing output — apply same pattern for reading last log line. Filters blank lines before slicing and guards with `if lines else []`.
+- **Inline duration formatter**: `_helpers.py:421-427` has an inline `if/else` seconds-to-`"Xs"`/`"Xm Ys"` formatter — closest structural analog for the new `_format_relative_time` function, but the new function should extend to hours and days.
+- **Additional `st_mtime` references**: Beyond `session_log.py:82`, the `st_mtime` pattern appears in `issue_manager.py:243`, `user_messages.py:565,661`, `issue_history/parsing.py:103-104`, and `cli/issues/search.py:60` — all use `f.stat().st_mtime` for file selection or fallback timestamps.
+- **Line number verified 2026-04-01**: All issue line references re-verified against current codebase. One correction applied: `_helpers.py:328-332` → `330-334` (inline elapsed-time formatting).
 
 ## Impact
 
@@ -148,6 +151,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `cli`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-01T18:16:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49419b0f-25d9-4a0e-9b27-897ab9a1ca5b.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:confidence-check` - 2026-03-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b71ea4-65ba-45df-b40c-1250b0bfb74b.jsonl`
 - `/ll:refine-issue` - 2026-03-31T17:25:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b71ea4-65ba-45df-b40c-1250b0bfb74b.jsonl`
