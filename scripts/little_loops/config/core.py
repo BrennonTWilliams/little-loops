@@ -416,6 +416,7 @@ class BRConfig:
             },
             "loops": {
                 "loops_dir": self._loops.loops_dir,
+                "glyphs": self._loops.glyphs.to_dict(),
             },
             "sync": {
                 "enabled": self._sync.enabled,

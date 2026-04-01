@@ -203,7 +203,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `fsm-diagram`, `configuration`, `captured`
 
+## Resolution
+
+Implemented via the `edge_label_colors` precedent pattern:
+
+1. **`LoopsGlyphsConfig`** dataclass added to `config/features.py` — 6 glyph fields with unicode defaults, `from_dict()` (partial-override), `to_dict()`.
+2. **`LoopsConfig`** updated with `glyphs: LoopsGlyphsConfig` field.
+3. **`config-schema.json`** — `loops.glyphs` object added with per-key string fields and defaults.
+4. **`layout.py`** — `badges: dict[str, str] | None = None` param added to `_render_fsm_diagram`, `_render_layered_diagram`, `_render_horizontal_simple`, `_compute_box_sizes`; `_get_state_badge` merges `{**_ACTION_TYPE_BADGES, **(badges or {})}`.
+5. **`_helpers.py`** — `badges` threaded through `run_foreground` to both `_render_fsm_diagram` calls.
+6. **`run.py`** — loads `BRConfig(Path.cwd()).loops.glyphs.to_dict()` and passes as `badges=`.
+7. **`info.py`** — loads same config and passes as `badges=`.
+8. **`config/__init__.py`** — `LoopsGlyphsConfig` exported.
+9. **`config/core.py`** — `to_dict()` includes `loops.glyphs`.
+10. Tests added: `TestLoopsGlyphsConfig`, `TestBRConfigLoopsGlyphs` in `test_config.py`; `TestCustomGlyphOverride` in `test_ll_loop_display.py`.
+
+All 6 success metrics satisfied. No breaking changes — defaults preserve existing behavior.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-01T05:22:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3819f3b7-bc23-4f36-bc14-9a846ee7c2ff.jsonl`
 - `/ll:confidence-check` - 2026-03-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
 - `/ll:refine-issue` - 2026-04-01T03:52:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
 - `/ll:confidence-check` - 2026-03-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
@@ -213,4 +232,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-03-31 | Priority: P4
+**Completed** | Created: 2026-03-31 | Resolved: 2026-04-01 | Priority: P4

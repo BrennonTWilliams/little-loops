@@ -682,9 +682,14 @@ def cmd_show(
 
     # --- ASCII FSM Diagram ---
     verbose = getattr(args, "verbose", False)
+    from pathlib import Path
+
+    from little_loops.config import BRConfig
+
+    badges = BRConfig(Path.cwd()).loops.glyphs.to_dict()
     print()
     print("Diagram:")
-    diagram = _render_fsm_diagram(fsm, verbose=verbose)
+    diagram = _render_fsm_diagram(fsm, verbose=verbose, badges=badges)
     if diagram:
         print(diagram)
 

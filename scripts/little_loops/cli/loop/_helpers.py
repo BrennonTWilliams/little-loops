@@ -285,12 +285,14 @@ def run_foreground(
     args: argparse.Namespace,
     highlight_color: str = "32",
     edge_label_colors: dict[str, str] | None = None,
+    badges: dict[str, str] | None = None,
 ) -> int:
     """Run loop with progress display.
 
     Args:
         highlight_color: ANSI SGR code for the active FSM state highlight in verbose mode.
         edge_label_colors: Optional label→SGR-code mapping for transition edge labels.
+        badges: Optional glyph-key→string mapping for state type badges in FSM diagrams.
 
     Returns:
         Exit code (0 = success).
@@ -353,6 +355,7 @@ def run_foreground(
                     highlight_state=highlight,
                     highlight_color=highlight_color,
                     edge_label_colors=edge_label_colors,
+                    badges=badges,
                 )
                 header_text = f"== loop: {fsm.name} "
                 header = header_text + "=" * max(0, tw - len(header_text))
@@ -368,6 +371,7 @@ def run_foreground(
                         highlight_state=state,
                         highlight_color=highlight_color,
                         edge_label_colors=edge_label_colors,
+                        badges=badges,
                     )
                     print(child_diagram, flush=True)
             if not quiet:

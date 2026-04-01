@@ -115,18 +115,21 @@ def _badge_display_width(badge: str) -> int:
     return w if w >= 0 else len(badge)
 
 
-def _get_state_badge(state: StateConfig | None) -> str:
+def _get_state_badge(state: StateConfig | None, badges: dict[str, str] | None = None) -> str:
     """Return the unicode badge string for a state, or '' if none."""
     if state is None:
         return ""
+    effective = {**_ACTION_TYPE_BADGES, **(badges or {})}
+    sub_loop_badge = (badges or {}).get("sub_loop", _SUB_LOOP_BADGE)
+    route_badge = (badges or {}).get("route", _ROUTE_BADGE)
     if state.loop is not None:
-        return _SUB_LOOP_BADGE
+        return sub_loop_badge
     if state.action_type:
-        return _ACTION_TYPE_BADGES.get(state.action_type, f"[{state.action_type}]")
+        return effective.get(state.action_type, f"[{state.action_type}]")
     if state.action:
-        return _ACTION_TYPE_BADGES["shell"]
+        return effective["shell"]
     if state.route is not None:
-        return _ROUTE_BADGE
+        return route_badge
     return ""
 
 
@@ -503,6 +506,7 @@ def _compute_box_sizes(
     fsm_states: dict[str, StateConfig] | None,
     verbose: bool,
     max_box_inner: int,
+    badges: dict[str, str] | None = None,
 ) -> tuple[dict[str, list[str]], dict[str, int], dict[str, int], dict[str, str]]:
     """Compute box content, widths, and heights for all states.
 
@@ -515,7 +519,7 @@ def _compute_box_sizes(
     for s in all_states:
         state_obj = fsm_states.get(s) if fsm_states else None
 
-        badge = _get_state_badge(state_obj)
+        badge = _get_state_badge(state_obj, badges)
         badge_w = _badge_display_width(badge) if badge else 0
         box_badge[s] = badge
 
@@ -666,6 +670,7 @@ def _render_layered_diagram(
     highlight_state: str | None,
     highlight_color: str,
     edge_label_colors: dict[str, str] | None = None,
+    badges: dict[str, str] | None = None,
 ) -> str:
     """Render FSM using layered (Sugiyama-style) vertical layout."""
     terminal_states = terminal_states or set()
@@ -687,7 +692,7 @@ def _render_layered_diagram(
         max_box_inner = max(20, min(40, (tw - 4) // max(1, max_layer_size) - 6))
 
     box_inner, box_width, box_height, box_badge = _compute_box_sizes(
-        all_states, display_label, fsm_states, verbose, max_box_inner
+        all_states, display_label, fsm_states, verbose, max_box_inner, badges
     )
 
     # Post-hoc layer merge: re-merge adjacent single-state layers that were
@@ -1432,6 +1437,7 @@ def _render_fsm_diagram(
     highlight_state: str | None = None,
     highlight_color: str = "32",
     edge_label_colors: dict[str, str] | None = None,
+    badges: dict[str, str] | None = None,
 ) -> str:
     """Render an adaptive text diagram of the FSM graph.
 
@@ -1445,6 +1451,8 @@ def _render_fsm_diagram(
         highlight_state: If provided, render this state's box with the highlight color.
         highlight_color: ANSI SGR code for the highlighted state (default: green).
         edge_label_colors: Optional label→SGR-code mapping for transition labels.
+            Falls back to hardcoded defaults when None.
+        badges: Optional glyph-key→string mapping for state type badges.
             Falls back to hardcoded defaults when None.
     """
     edges = _collect_edges(fsm)
@@ -1489,6 +1497,7 @@ def _render_fsm_diagram(
             highlight_state,
             highlight_color,
             edge_label_colors,
+            badges,
         )
 
     # Compute max node width to determine width constraint
@@ -1496,7 +1505,7 @@ def _render_fsm_diagram(
     max_node_w = 30  # reasonable default
     for s in all_states:
         st = fsm.states.get(s)
-        badge = _get_state_badge(st)
+        badge = _get_state_badge(st, badges)
         badge_w = _badge_display_width(badge) if badge else 0
         label = s
         if s == fsm.initial:
@@ -1529,6 +1538,7 @@ def _render_fsm_diagram(
         highlight_state,
         highlight_color,
         edge_label_colors,
+        badges,
     )
 
 
@@ -1546,6 +1556,7 @@ def _render_horizontal_simple(
     highlight_state: str | None,
     highlight_color: str,
     edge_label_colors: dict[str, str] | None = None,
+    badges: dict[str, str] | None = None,
 ) -> str:
     """Simple horizontal rendering for single-state or very simple FSMs."""
     if not main_path:
@@ -1562,7 +1573,7 @@ def _render_horizontal_simple(
         max_box_inner = max(20, min(40, (tw - 4) // num_main - 6))
 
     box_inner, box_width, box_height, box_badge = _compute_box_sizes(
-        all_states, display_label, fsm_states, verbose, max_box_inner
+        all_states, display_label, fsm_states, verbose, max_box_inner, badges
     )
 
     main_height = max((box_height[s] for s in main_path), default=3)

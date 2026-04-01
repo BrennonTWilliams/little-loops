@@ -154,15 +154,18 @@ def cmd_run(
 
         from little_loops.config import BRConfig
 
-        cli_colors = BRConfig(Path.cwd()).cli.colors
+        config = BRConfig(Path.cwd())
+        cli_colors = config.cli.colors
         highlight_color = cli_colors.fsm_active_state
         edge_label_colors = cli_colors.fsm_edge_labels.to_dict()
+        badges = config.loops.glyphs.to_dict()
         return run_foreground(
             executor,
             fsm,
             args,
             highlight_color=highlight_color,
             edge_label_colors=edge_label_colors,
+            badges=badges,
         )
     finally:
         lock_manager.release(fsm.name)

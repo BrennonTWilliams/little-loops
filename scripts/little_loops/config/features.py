@@ -187,16 +187,53 @@ class SprintsConfig:
 
 
 @dataclass
+class LoopsGlyphsConfig:
+    """Unicode badge/glyph overrides for FSM box diagram state badges."""
+
+    prompt: str = "\u2726"  # ✦
+    slash_command: str = "/\u2501\u25ba"  # /━►
+    shell: str = "\u276f_"  # ❯_
+    mcp_tool: str = "\u26a1"  # ⚡
+    sub_loop: str = "\u21b3\u27f3"  # ↳⟳
+    route: str = "\u2443"  # ⑃
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LoopsGlyphsConfig:
+        """Create LoopsGlyphsConfig from dictionary."""
+        return cls(
+            prompt=data.get("prompt", "\u2726"),
+            slash_command=data.get("slash_command", "/\u2501\u25ba"),
+            shell=data.get("shell", "\u276f_"),
+            mcp_tool=data.get("mcp_tool", "\u26a1"),
+            sub_loop=data.get("sub_loop", "\u21b3\u27f3"),
+            route=data.get("route", "\u2443"),
+        )
+
+    def to_dict(self) -> dict[str, str]:
+        """Convert to a glyph-key→string dict for use by _get_state_badge."""
+        return {
+            "prompt": self.prompt,
+            "slash_command": self.slash_command,
+            "shell": self.shell,
+            "mcp_tool": self.mcp_tool,
+            "sub_loop": self.sub_loop,
+            "route": self.route,
+        }
+
+
+@dataclass
 class LoopsConfig:
     """FSM loop configuration."""
 
     loops_dir: str = ".loops"
+    glyphs: LoopsGlyphsConfig = field(default_factory=LoopsGlyphsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopsConfig:
         """Create LoopsConfig from dictionary."""
         return cls(
             loops_dir=data.get("loops_dir", ".loops"),
+            glyphs=LoopsGlyphsConfig.from_dict(data.get("glyphs", {})),
         )
 
 

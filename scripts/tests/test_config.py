@@ -24,6 +24,8 @@ from little_loops.config import (
     DuplicateDetectionConfig,
     GitHubSyncConfig,
     IssuesConfig,
+    LoopsConfig,
+    LoopsGlyphsConfig,
     ParallelAutomationConfig,
     ProjectConfig,
     ScanConfig,
@@ -1372,3 +1374,67 @@ class TestBRConfigCli:
         assert "logger" in result["cli"]["colors"]
         assert "priority" in result["cli"]["colors"]
         assert "type" in result["cli"]["colors"]
+
+
+class TestLoopsGlyphsConfig:
+    """Tests for LoopsGlyphsConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        config = LoopsGlyphsConfig()
+        assert config.prompt == "\u2726"
+        assert config.slash_command == "/\u2501\u25ba"
+        assert config.shell == "\u276f_"
+        assert config.mcp_tool == "\u26a1"
+        assert config.sub_loop == "\u21b3\u27f3"
+        assert config.route == "\u2443"
+
+    def test_from_dict_empty(self) -> None:
+        config = LoopsGlyphsConfig.from_dict({})
+        assert config.prompt == "\u2726"
+        assert config.sub_loop == "\u21b3\u27f3"
+
+    def test_from_dict_partial_override(self) -> None:
+        config = LoopsGlyphsConfig.from_dict({"prompt": "P", "shell": "S"})
+        assert config.prompt == "P"
+        assert config.shell == "S"
+        assert config.mcp_tool == "\u26a1"  # default unchanged
+
+    def test_to_dict_returns_all_keys(self) -> None:
+        config = LoopsGlyphsConfig()
+        d = config.to_dict()
+        assert set(d.keys()) == {"prompt", "slash_command", "shell", "mcp_tool", "sub_loop", "route"}
+        assert d["prompt"] == "\u2726"
+        assert d["route"] == "\u2443"
+
+    def test_loops_config_has_glyphs_field(self) -> None:
+        config = LoopsConfig()
+        assert hasattr(config, "glyphs")
+        assert isinstance(config.glyphs, LoopsGlyphsConfig)
+
+    def test_loops_config_from_dict_passes_glyphs(self) -> None:
+        config = LoopsConfig.from_dict({"glyphs": {"prompt": "X"}})
+        assert config.glyphs.prompt == "X"
+        assert config.glyphs.shell == "\u276f_"  # default
+
+
+class TestBRConfigLoopsGlyphs:
+    """Tests for BRConfig.loops.glyphs integration."""
+
+    def test_loops_glyphs_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.loops.glyphs returns defaults when 'glyphs' key is absent."""
+        config = BRConfig(temp_project_dir)
+        assert config.loops.glyphs.prompt == "\u2726"
+        assert config.loops.glyphs.route == "\u2443"
+
+    def test_loops_glyphs_override_from_config(self, temp_project_dir: Path) -> None:
+        """Custom loops.glyphs values are loaded from config file."""
+        sample_config: dict[str, Any] = {
+            "loops": {"glyphs": {"prompt": "P", "mcp_tool": "M"}}
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.loops.glyphs.prompt == "P"
+        assert config.loops.glyphs.mcp_tool == "M"
+        assert config.loops.glyphs.shell == "\u276f_"  # default unchanged

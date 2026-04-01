@@ -1622,6 +1622,7 @@ class TestDisplayProgressEvents:
                 highlight_state="start",
                 highlight_color="32",
                 edge_label_colors=None,
+                badges=None,
             )
         out = capsys.readouterr().out
         # Diagram contains box drawing characters
@@ -1681,6 +1682,7 @@ class TestDisplayProgressEvents:
                 highlight_state="start",
                 highlight_color="32",
                 edge_label_colors=None,
+                badges=None,
             )
         out = capsys.readouterr().out
         assert "\u250c" in out
@@ -1829,13 +1831,13 @@ class TestDisplayProgressEvents:
         assert mock_render.call_count == 3, f"Expected 3 render calls, got {mock_render.call_count}"
         calls = mock_render.call_args_list
         assert calls[0] == call(
-            parent_fsm, highlight_state="run_sub_loop", highlight_color="32", edge_label_colors=None
+            parent_fsm, highlight_state="run_sub_loop", highlight_color="32", edge_label_colors=None, badges=None
         )
         assert calls[1] == call(
-            parent_fsm, highlight_state="run_sub_loop", highlight_color="32", edge_label_colors=None
+            parent_fsm, highlight_state="run_sub_loop", highlight_color="32", edge_label_colors=None, badges=None
         )
         assert calls[2] == call(
-            child_fsm, highlight_state="child_state_1", highlight_color="32", edge_label_colors=None
+            child_fsm, highlight_state="child_state_1", highlight_color="32", edge_label_colors=None, badges=None
         )
         out = capsys.readouterr().out
         assert "sub-loop: child-loop" in out
@@ -2187,3 +2189,66 @@ class TestEdgeLineColorization:
             result = _render_fsm_diagram(fsm)
 
         assert "\033[" not in result, f"Expected no ANSI codes when color disabled.\n{result!r}"
+
+
+class TestCustomGlyphOverride:
+    """Tests for custom glyph/badge overrides in FSM box diagrams."""
+
+    def _make_fsm(
+        self,
+        initial: str = "a",
+        states: dict[str, StateConfig] | None = None,
+    ) -> FSMLoop:
+        from little_loops.fsm.schema import FSMLoop
+
+        if states is None:
+            states = {"a": StateConfig(terminal=True)}
+        return FSMLoop(name="test", initial=initial, states=states)
+
+    def test_custom_prompt_badge_applied(self) -> None:
+        """Custom 'prompt' badge is rendered instead of the default ✦."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram as _render
+
+        fsm = self._make_fsm(
+            states={"a": StateConfig(action_type="prompt", terminal=True)}
+        )
+        result = _render(fsm, badges={"prompt": "P"})
+        assert "P" in result
+        assert "\u2726" not in result  # default ✦ not present
+
+    def test_custom_shell_badge_applied(self) -> None:
+        """Custom 'shell' badge overrides the default ❯_."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram as _render
+
+        fsm = self._make_fsm(
+            states={"a": StateConfig(action="run something", terminal=True)}
+        )
+        result = _render(fsm, badges={"shell": "S"})
+        assert "S" in result
+        assert "\u276f_" not in result  # default ❯_ not present
+
+    def test_partial_override_leaves_defaults_intact(self) -> None:
+        """Overriding one glyph does not change other glyphs."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram as _render
+
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action_type="mcp_tool", on_yes="b"),
+                "b": StateConfig(action_type="prompt", terminal=True),
+            },
+        )
+        # Override only prompt; mcp_tool should keep its default
+        result = _render(fsm, badges={"prompt": "PROMPT"})
+        assert "PROMPT" in result
+        assert "\u26a1" in result  # default ⚡ for mcp_tool still present
+
+    def test_no_badges_arg_uses_defaults(self) -> None:
+        """Calling _render_fsm_diagram without badges= yields default glyphs."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram as _render
+
+        fsm = self._make_fsm(
+            states={"a": StateConfig(action_type="prompt", terminal=True)}
+        )
+        result = _render(fsm)
+        assert "\u2726" in result  # default ✦ present

@@ -647,6 +647,19 @@
           "type": "string",
           "description": "Directory for loop definitions and runtime state",
           "default": ".loops"
+        },
+        "glyphs": {
+          "type": "object",
+          "description": "Override unicode badge glyphs shown in FSM box diagrams. Omitted keys use built-in defaults.",
+          "properties": {
+            "prompt":        { "type": "string", "default": "\u2726",           "description": "Badge for prompt states (default: \u2726)" },
+            "slash_command": { "type": "string", "default": "/\u2501\u25ba",    "description": "Badge for slash_command states (default: /\u2501\u25ba)" },
+            "shell":         { "type": "string", "default": "\u276f_",          "description": "Badge for shell states (default: \u276f_)" },
+            "mcp_tool":      { "type": "string", "default": "\u26a1",           "description": "Badge for mcp_tool states (default: \u26a1)" },
+            "sub_loop":      { "type": "string", "default": "\u21b3\u27f3",     "description": "Badge for sub-loop states (default: \u21b3\u27f3)" },
+            "route":         { "type": "string", "default": "\u2443",           "description": "Badge for route states (default: \u2443)" }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
