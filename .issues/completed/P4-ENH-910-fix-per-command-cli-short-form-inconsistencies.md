@@ -2,12 +2,13 @@
 id: ENH-910
 type: ENH
 priority: P4
-status: active
+status: completed
 title: "Fix per-command CLI short form inconsistencies"
 discovered_date: 2026-04-01
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_date: 2026-04-01
 ---
 
 # ENH-910: Fix per-command CLI short form inconsistencies
@@ -123,6 +124,9 @@ For `--since`, use `-S` (uppercase) to avoid conflicts with `-s` which is used f
 `cli`, `consistency`, `ergonomics`, `captured`
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-01T22:28:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e77ca98-076b-466c-bbdf-ed347519633b.jsonl`
+- `/ll:ready-issue` - 2026-04-01T22:18:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f9a6bb2-cff6-406a-8e17-eeadef7dcda2.jsonl`
+- `/ll:ready-issue` - 2026-04-01T22:17:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f9a6bb2-cff6-406a-8e17-eeadef7dcda2.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71078b2f-884f-4e6b-862f-7993af4077dc.jsonl`
 - `/ll:refine-issue` - 2026-04-01T21:43:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a0ce300-11fd-48ac-b9b1-120178b9b0d0.jsonl`
 - `/ll:format-issue` - 2026-04-01T21:39:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79a7fb0b-5e49-4588-9e2e-64733f42e3db.jsonl`
@@ -130,6 +134,25 @@ For `--since`, use `-S` (uppercase) to avoid conflicts with `-s` which is used f
 
 ---
 
+## Resolution
+
+**Completed**: 2026-04-01
+
+### Changes Made
+- `scripts/little_loops/cli/docs.py`: Added `-t` to `--timeout` in `main_check_links()`
+- `scripts/little_loops/cli/history.py`: Added `-S` to `--since` in both `analyze` and `export` subcommands; added `-o` to `--output` in `export` subcommand
+- `scripts/little_loops/cli/auto.py`: Added `--verbose`/`-v` argument; updated `verbose=args.verbose or not args.quiet`
+- `scripts/little_loops/cli/parallel.py`: Added `--verbose`/`-v` argument; updated both `Logger` and `ParallelOrchestrator` calls with `verbose=args.verbose or not args.quiet`
+- `scripts/little_loops/cli/messages.py`: Added `-S` to `--since`
+- `scripts/little_loops/cli/loop/__init__.py`: Added `-S` to `--since` in `history` subcommand
+
+### Scope Adjustment
+- `ll-issues search --since`: `-S` skipped due to conflict with existing `--status/-S` alias. No suitable alternative short form available without breaking existing conventions.
+- `--dry-run` in `ll-loop`: Not changed (intentional exception, `-n` taken by `--max-iterations`)
+
+### Tests Added
+8 new tests across 5 test files covering all implemented short forms.
+
 ## Status
 
-**Open** | Created: 2026-04-01 | Priority: P4
+**Completed** | Created: 2026-04-01 | Completed: 2026-04-01 | Priority: P4

@@ -327,3 +327,23 @@ class TestMainCheckLinks:
         call_args = mock_check.call_args[0]
         assert call_args[2] == 30  # timeout
         assert call_args[4] == 5  # workers
+
+    def test_timeout_short_form(self) -> None:
+        """-t is accepted by ll-check-links as --timeout (ENH-910)."""
+        mock_result = self._make_link_result(has_errors=False)
+
+        with (
+            patch("sys.argv", ["ll-check-links", "-t", "5"]),
+            patch("little_loops.link_checker.load_ignore_patterns", return_value=[]),
+            patch(
+                "little_loops.link_checker.check_markdown_links",
+                return_value=mock_result,
+            ) as mock_check,
+            patch("little_loops.link_checker.format_result_text", return_value="OK"),
+            patch("builtins.print"),
+        ):
+            result = main_check_links()
+
+        assert result == 0
+        call_args = mock_check.call_args[0]
+        assert call_args[2] == 5  # timeout passed as 5

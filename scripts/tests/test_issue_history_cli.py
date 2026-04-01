@@ -527,3 +527,86 @@ class TestAnalyzeDateArgParsing:
             result = main_history()
 
         assert result == 0
+
+    def test_analyze_since_short_form(self, tmp_path: Path) -> None:
+        """-S is accepted as --since in ll-history analyze (ENH-910)."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "-S", "2026-01-01", "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+
+
+class TestExportShortForms:
+    """Tests for short form aliases on ll-history export subcommand (ENH-910)."""
+
+    def test_export_output_short_form(self, tmp_path: Path) -> None:
+        """-o is accepted as --output in ll-history export (ENH-910)."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        out_file = tmp_path / "out.md"
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-history",
+                    "export",
+                    "cli",
+                    "-o",
+                    str(out_file),
+                    "-d",
+                    str(tmp_path / ".issues"),
+                ],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert out_file.exists()
+
+    def test_export_since_short_form(self, tmp_path: Path) -> None:
+        """-S is accepted as --since in ll-history export (ENH-910)."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-history",
+                    "export",
+                    "cli",
+                    "-S",
+                    "2026-01-01",
+                    "-d",
+                    str(tmp_path / ".issues"),
+                ],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc"),
+            patch("builtins.print"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0

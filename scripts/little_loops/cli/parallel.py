@@ -117,6 +117,13 @@ Examples:
         help="With --overlap-detection, warn about overlaps instead of serializing",
     )
 
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose output (default when --quiet is not set)",
+    )
+
     # Add common arguments from shared module
     add_dry_run_arg(parser)
     add_resume_arg(parser)
@@ -145,7 +152,7 @@ Examples:
     config = BRConfig(project_root)
     configure_output(config.cli)
 
-    logger = Logger(verbose=not args.quiet)
+    logger = Logger(verbose=args.verbose or not args.quiet)
 
     # Handle cleanup mode
     if args.cleanup:
@@ -218,7 +225,7 @@ Examples:
         parallel_config=parallel_config,
         br_config=config,
         repo_path=project_root,
-        verbose=not args.quiet,
+        verbose=args.verbose or not args.quiet,
     )
 
     return orchestrator.run()

@@ -480,6 +480,26 @@ class TestMainAutoIntegration:
                 main_auto()
             assert exc_info.value.code == 2
 
+    def test_main_auto_verbose_short_flag(self, temp_project: Path) -> None:
+        """-v is accepted as --verbose in ll-auto and sets verbose=True (ENH-910)."""
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
+            mock_manager = MagicMock()
+            mock_manager.run.return_value = 0
+            mock_manager_cls.return_value = mock_manager
+
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-auto", "-v", "--config", str(temp_project)],
+            ):
+                from little_loops.cli import main_auto
+
+                result = main_auto()
+
+            assert result == 0
+            call_kwargs = mock_manager_cls.call_args.kwargs
+            assert call_kwargs["verbose"] is True
+
 
 class TestMainParallelIntegration:
     """Integration tests for main_parallel entry point."""
@@ -568,6 +588,26 @@ class TestMainParallelIntegration:
             call_kwargs = mock_orch_cls.call_args.kwargs
             assert call_kwargs["verbose"] is True  # default (not --quiet)
 
+    def test_main_parallel_verbose_short_flag(self, temp_project: Path) -> None:
+        """-v is accepted as --verbose in ll-parallel and sets verbose=True (ENH-910)."""
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+            mock_orch_cls.return_value = mock_orch
+
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-parallel", "-v", "--config", str(temp_project)],
+            ):
+                from little_loops.cli import main_parallel
+
+                result = main_parallel()
+
+            assert result == 0
+            call_kwargs = mock_orch_cls.call_args.kwargs
+            assert call_kwargs["verbose"] is True
+
 
 class TestMainMessagesIntegration:
     """Integration tests for main_messages entry point."""
@@ -635,6 +675,25 @@ class TestMainMessagesIntegration:
                 mock_extract.return_value = []
 
                 with patch.object(sys, "argv", ["ll-messages", "--since", "2026-01-01"]):
+                    from little_loops.cli import main_messages
+
+                    result = main_messages()
+
+            assert result == 0
+            mock_extract.assert_called_once()
+            call_kwargs = mock_extract.call_args.kwargs
+            assert call_kwargs["since"] == datetime(2026, 1, 1)
+
+    def test_main_messages_since_short_form(self) -> None:
+        """-S is accepted as --since in ll-messages (ENH-910)."""
+        from datetime import datetime
+
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
+                mock_extract.return_value = []
+
+                with patch.object(sys, "argv", ["ll-messages", "-S", "2026-01-01"]):
                     from little_loops.cli import main_messages
 
                     result = main_messages()

@@ -55,6 +55,12 @@ Examples:
         default=None,
         help="Filter to specific category (bugs, features, enhancements)",
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose output (default when --quiet is not set)",
+    )
 
     args = parser.parse_args()
 
@@ -91,7 +97,7 @@ Examples:
         skip_ids=skip_ids,
         type_prefixes=type_prefixes,
         priority_filter=priority_filter,
-        verbose=not args.quiet,
+        verbose=args.verbose or not args.quiet,
     )
 
     return manager.run()

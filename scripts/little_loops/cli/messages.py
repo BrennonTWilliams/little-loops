@@ -59,6 +59,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
     )
     parser.add_argument(
         "--since",
+        "-S",
         type=str,
         help="Only include messages after this date (YYYY-MM-DD or ISO format)",
     )

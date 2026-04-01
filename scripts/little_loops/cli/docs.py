@@ -165,6 +165,7 @@ Exit codes:
 
     parser.add_argument(
         "--timeout",
+        "-t",
         type=int,
         default=10,
         help="Request timeout in seconds (default: 10)",

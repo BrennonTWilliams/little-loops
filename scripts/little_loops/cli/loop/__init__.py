@@ -257,6 +257,7 @@ Examples:
     )
     history_parser.add_argument(
         "--since",
+        "-S",
         type=str,
         default=None,
         metavar="DURATION",

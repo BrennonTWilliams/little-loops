@@ -103,6 +103,7 @@ Examples:
     )
     date_filter_group.add_argument(
         "--since",
+        "-S",
         type=str,
         default=None,
         metavar="DATE",
@@ -128,6 +129,7 @@ Examples:
     )
     gendocs_parser.add_argument(
         "--output",
+        "-o",
         type=Path,
         default=None,
         help="Write output to file instead of stdout",
@@ -149,6 +151,7 @@ Examples:
     )
     gendocs_parser.add_argument(
         "--since",
+        "-S",
         type=str,
         default=None,
         metavar="DATE",

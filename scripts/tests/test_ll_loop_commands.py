@@ -2382,3 +2382,40 @@ class TestHistoryFiltering:
         assert result == 0
         data = json.loads(capsys.readouterr().out)
         assert len(data) == 8
+
+
+class TestHistorySinceShortForm:
+    """Tests for -S short form of --since in ll-loop history (ENH-910)."""
+
+    @pytest.fixture
+    def loop_archive(self, tmp_path: Path) -> Path:
+        """Create an archived events file for history testing."""
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
+        events = [
+            {"event": "transition", "ts": "2026-01-15T10:00:00", "from": "idle", "to": "check"},
+        ]
+        with open(events_file, "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+        return tmp_path
+
+    def test_history_since_short_form(
+        self,
+        loop_archive: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-S is accepted as --since in ll-loop history (ENH-910)."""
+        monkeypatch.chdir(loop_archive)
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-loop", "history", "test-loop", "test-run-id", "-S", "1h"],
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
