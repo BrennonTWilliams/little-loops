@@ -6,6 +6,8 @@ status: active
 title: "Fix per-command CLI short form inconsistencies"
 discovered_date: 2026-04-01
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 78
 ---
 
 # ENH-910: Fix per-command CLI short form inconsistencies
@@ -47,19 +49,31 @@ For `--since`, use `-S` (uppercase) to avoid conflicts with `-s` which is used f
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/check_links.py` — add `-t` to `--timeout`
-- `scripts/little_loops/cli/history.py` — add `-o` to `--output` in export, add `-S` to `--since`
-- `scripts/little_loops/cli/auto.py` — add `-v` / `--verbose` option
-- `scripts/little_loops/cli/parallel.py` — add `-v` / `--verbose` option
-- `scripts/little_loops/cli/messages.py` — add `-S` to `--since`
-- `scripts/little_loops/cli/loop.py` — add `-S` to `--since` in history subcommand
-- `scripts/little_loops/cli/issues/` — add `-S` to `--since` in search subcommand
+- `scripts/little_loops/cli/docs.py` — add `-t` to `--timeout` in `main_check_links()` (inline definition at line ~167; use `add_timeout_arg` helper or add `-t` inline)
+- `scripts/little_loops/cli/history.py` — add `-o` to `--output` (~line 129) in export subcommand; add `-S` to `--since` in both analyze (~line 103, inside `mutually_exclusive_group`) and export (~line 149)
+- `scripts/little_loops/cli/auto.py` — add `--verbose`/`-v` as a new argument; note: these commands currently only have `--quiet/-q` with `verbose=not args.quiet`; adding `--verbose` requires deciding how it interacts with `--quiet` (see research notes below)
+- `scripts/little_loops/cli/parallel.py` — same as auto.py; `verbose=not args.quiet` pattern at ~line 221
+- `scripts/little_loops/cli/messages.py` — add `-S` to `--since` (~line 62)
+- `scripts/little_loops/cli/loop/__init__.py` — add `-S` to `--since` in history subcommand (~line 259)
+- `scripts/little_loops/cli/issues/__init__.py` — add `-S` to `--since` in search subparser (~line 177)
 
 ### Dependent Files (Callers/Importers)
 - N/A — changes are internal to argparse definitions
 
+### Similar Patterns
+- `add_timeout_arg` at `scripts/little_loops/cli_args.py:97` — uses `("--timeout", "-t", ...)` ordering
+- `add_dry_run_arg` at `scripts/little_loops/cli_args.py:15` — uses `("--dry-run", "-n", ...)` ordering
+- `-v`/`--verbose` inline pattern in `messages.py:87` and `docs.py:181` — uses `("-v", "--verbose", ...)` ordering (short first)
+- `-o`/`--output` in `messages.py:65` — use as template for ll-history export fix
+
 ### Tests
-- `scripts/tests/` — CLI tests for affected commands
+- `scripts/tests/test_cli_docs.py` — tests for `main_check_links`; add `-t` short form test
+- `scripts/tests/test_issue_history_cli.py` — tests for `history.py`; add `-o` and `-S` tests
+- `scripts/tests/test_cli.py` — general CLI tests for ll-auto and ll-parallel
+- `scripts/tests/test_cli_args.py` — tests for `cli_args.py` shared helpers
+- `scripts/tests/test_cli_messages_save.py` — tests for `messages.py`
+- `scripts/tests/test_issues_search.py` — tests for issues search; add `-S` test
+- `scripts/tests/test_ll_loop_commands.py` — tests for loop subcommands; add `-S` test for history
 
 ### Documentation
 - N/A (self-documenting via `--help`)
@@ -69,17 +83,27 @@ For `--since`, use `-S` (uppercase) to avoid conflicts with `-s` which is used f
 
 ## Implementation Steps
 
-1. Fix `--timeout` in ll-check-links (add `-t`)
-2. Fix `--output` in ll-history export (add `-o`)
-3. Add `--verbose` / `-v` to ll-auto and ll-parallel
-4. Add `-S` for `--since` across all commands that use it
-5. Run tests to verify no regressions
+1. **Fix `--timeout` in ll-check-links** (`docs.py:167`): Replace the inline `add_argument("--timeout", ...)` with `add_timeout_arg(parser, default=10)` from `cli_args.py`, or add `"-t"` as a second positional to the existing inline call.
+2. **Fix `--output` in ll-history export** (`history.py:129`): Add `"-o"` as a second positional to the existing `add_argument("--output", ...)` call.
+3. **Fix `--since` in ll-history** (`history.py:103` and `history.py:149`): Add `"-S"` to both the analyze subcommand's `--since` (which is inside a `mutually_exclusive_group` — verify argparse supports short forms on group members) and the export subcommand's `--since`.
+4. **Add `--verbose`/`-v` to ll-auto** (`auto.py`): Add a new `add_argument("--verbose", "-v", action="store_true")` argument. Update the `AutoManager` construction to use `verbose=args.verbose or not args.quiet` (or make `--verbose` and `--quiet` mutually exclusive).
+5. **Add `--verbose`/`-v` to ll-parallel** (`parallel.py`): Same as step 4; update `verbose=not args.quiet` at ~line 221 and the `Logger` at ~line 147.
+6. **Fix `--since` in ll-messages** (`messages.py:62`): Add `"-S"` to the existing `add_argument("--since", ...)`.
+7. **Fix `--since` in ll-loop history** (`loop/__init__.py:259`): Add `"-S"` to the existing `add_argument("--since", ...)`.
+8. **Fix `--since` in ll-issues search** (`issues/__init__.py:177`): Add `"-S"` to the existing `add_argument("--since", ...)`.
+9. **Run tests**: `python -m pytest scripts/tests/test_cli_docs.py scripts/tests/test_issue_history_cli.py scripts/tests/test_cli.py scripts/tests/test_cli_messages_save.py scripts/tests/test_issues_search.py scripts/tests/test_ll_loop_commands.py -v`
 
 ## Scope Boundaries
 
 - Only the 5 inconsistencies listed above
 - Do NOT change the `--dry-run` / `-n` conflict in ll-loop (intentional trade-off)
 - Do NOT add short forms to low-frequency options not listed here
+
+## Success Metrics
+
+- All affected commands accept the new short form aliases without error (`-t`, `-o`, `-v`, `-S`)
+- Existing long-form options continue to function identically (no regressions)
+- `--help` output for each affected command reflects the new short forms
 
 ## Impact
 
@@ -99,6 +123,9 @@ For `--since`, use `-S` (uppercase) to avoid conflicts with `-s` which is used f
 `cli`, `consistency`, `ergonomics`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71078b2f-884f-4e6b-862f-7993af4077dc.jsonl`
+- `/ll:refine-issue` - 2026-04-01T21:43:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a0ce300-11fd-48ac-b9b1-120178b9b0d0.jsonl`
+- `/ll:format-issue` - 2026-04-01T21:39:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79a7fb0b-5e49-4588-9e2e-64733f42e3db.jsonl`
 - `/ll:capture-issue` - 2026-04-01 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
 
 ---
