@@ -2,7 +2,7 @@
 id: ENH-909
 type: ENH
 priority: P3
-status: active
+status: completed
 title: "Standardize --json and --format short forms across all CLI commands"
 discovered_date: 2026-04-01
 discovered_by: capture-issue
@@ -18,10 +18,10 @@ outcome_confidence: 93
 
 ## Current Behavior
 
-| Option | Has Short Form | Missing Short Form |
-|---|---|---|
-| `--json` / `-j` | ll-verify-docs, ll-check-links | ll-loop (list/status/show/history), ll-issues (6 subcmds), ll-sprint (list/show), ll-history |
-| `--format` / `-f` | ll-history, ll-deps, ll-workflows, ll-verify-docs, ll-check-links, ll-sprint analyze | ll-issues search, ll-issues refine-status |
+| Option | Has Short Form | Missing Short Form | Done |
+|---|---|---|---|
+| `--json` / `-j` | ll-verify-docs, ll-check-links | ll-loop (list/status/show/history), ll-sprint (list), ll-history (summary) | ll-issues all subcommands ✓ |
+| `--format` / `-f` | ll-history, ll-deps, ll-workflows, ll-verify-docs, ll-check-links, ll-sprint analyze | — | ll-issues search, ll-issues refine-status ✓ |
 
 ## Expected Behavior
 
@@ -87,26 +87,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Precise change locations:**
 
-| File | Subcommand | Change | Line |
-|---|---|---|---|
-| `cli/loop/__init__.py` | `list` | add `-j` to `--json` | L170 |
-| `cli/loop/__init__.py` | `status` | add `-j` to `--json` | L177 |
-| `cli/loop/__init__.py` | `history` | add `-j` to `--json` | L247 |
-| `cli/loop/__init__.py` | `show` | add `-j` to `--json` | L317 |
-| `cli/sprint/__init__.py` | `list` | add `-j` to `--json` | L142 |
-| `cli/history.py` | `summary` | add `-j` to `--json` | L53 |
-| `cli/issues/__init__.py` | `list` | add `-j` to `--json` | L105 |
-| `cli/issues/__init__.py` | `search` | add `-j` to `--json` | L205 |
-| `cli/issues/__init__.py` | `search` | add `-f` to `--format` | L206 |
-| `cli/issues/__init__.py` | `count` | add `-j` to `--json` | L229 |
-| `cli/issues/__init__.py` | `sequence` | add `-j` to `--json` | L240 |
-| `cli/issues/__init__.py` | `show` | add `-j` to `--json` | L246 |
-| `cli/issues/__init__.py` | `refine-status` | add `-f` to `--format` | L261 |
-| `cli/issues/__init__.py` | `refine-status` | add `-j` to `--json` | L274 |
-| `cli/issues/__init__.py` | `next-issue` | add `-j` to `--json` | L336 |
-| `cli/issues/__init__.py` | `next-issues` | add `-j` to `--json` | L354 |
+| File | Subcommand | Change | Line | Status |
+|---|---|---|---|---|
+| `cli/loop/__init__.py` | `list` | add `-j` to `--json` | L170 | TODO |
+| `cli/loop/__init__.py` | `status` | add `-j` to `--json` | L177 | TODO |
+| `cli/loop/__init__.py` | `history` | add `-j` to `--json` | L247 | TODO |
+| `cli/loop/__init__.py` | `show` | add `-j` to `--json` | L317 | TODO |
+| `cli/sprint/__init__.py` | `list` | add `-j` to `--json` | L142 | TODO |
+| `cli/history.py` | `summary` | add `-j` to `--json` | L53 | TODO |
+| `cli/issues/__init__.py` | `list` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `search` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `search` | add `-f` to `--format` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `count` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `sequence` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `show` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `refine-status` | add `-f` to `--format` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `refine-status` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `next-issue` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
+| `cli/issues/__init__.py` | `next-issues` | add `-j` to `--json` | — | DONE (commit d65cd3c6) |
 
-**No `-j` conflicts** confirmed in all subcommands above. **Not needed** (already have short forms or lack the flag): `ll-sprint show`, `ll-sprint analyze` (`-f` present), `ll-history analyze` (`-f` present), `ll-history export` (`-f` present).
+**No `-j` conflicts** confirmed in all remaining subcommands. **Not needed** (already have short forms or lack the flag): `ll-sprint show`, `ll-sprint analyze` (`-f` present), `ll-history analyze` (`-f` present), `ll-history export` (`-f` present).
+
+**Remaining work**: 6 changes across 3 files (loop, sprint, history). The 10 `cli/issues/__init__.py` changes were completed by commit `d65cd3c6`.
 
 **Specific test files:**
 - `scripts/tests/test_issues_cli.py` — issues CLI tests
@@ -128,10 +130,10 @@ _Added by `/ll:refine-issue` — concrete steps with file:line references:_
 1. **`scripts/little_loops/cli/loop/__init__.py`** — add `"-j"` as first positional arg at L170, L177, L247, L317 (4 changes)
 2. **`scripts/little_loops/cli/sprint/__init__.py`** — add `"-j"` at L142 (`list` only; `show` has no `--json`, `analyze` already has `-f`)
 3. **`scripts/little_loops/cli/history.py`** — add `"-j"` at L53 (`summary` only; `analyze`/`export` already have `-f`)
-4. **`scripts/little_loops/cli/issues/__init__.py`** — add `"-j"` at L105, L205, L229, L240, L246, L274, L336, L354; add `"-f"` at L206, L261 (10 changes)
-5. Run: `python -m pytest scripts/tests/test_issues_cli.py scripts/tests/test_ll_loop_parsing.py scripts/tests/test_issue_history_cli.py -v`
+4. ~~**`scripts/little_loops/cli/issues/__init__.py`**~~ — DONE (commit d65cd3c6, 2026-04-01)
+5. Run: `python -m pytest scripts/tests/test_ll_loop_parsing.py scripts/tests/test_issue_history_cli.py -v`
 
-**Total changes: 16 `add "-j"` + 2 `add "-f"` = 18 argparse lines across 4 files.**
+**Remaining: 6 `add "-j"` across 3 files. (10 issues/__init__.py changes completed by commit d65cd3c6.)**
 
 ## Scope Boundaries
 
@@ -157,6 +159,7 @@ _Added by `/ll:refine-issue` — concrete steps with file:line references:_
 `cli`, `consistency`, `ergonomics`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-01T22:07:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5150c9c4-7c61-4179-a619-17b9efe065b3.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:refine-issue` - 2026-04-01T21:44:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d71985-ba62-4c95-940c-27ba0048b64e.jsonl`
 - `/ll:format-issue` - 2026-04-01T21:39:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c8f9b06-8a34-48b3-ae2b-5e9fcf341116.jsonl`
@@ -164,6 +167,16 @@ _Added by `/ll:refine-issue` — concrete steps with file:line references:_
 
 ---
 
+## Resolution
+
+**Completed** — All 6 remaining `--json` / `-j` short forms added across 3 files:
+
+- `scripts/little_loops/cli/loop/__init__.py`: `list`, `status`, `history`, `show` subcommands
+- `scripts/little_loops/cli/sprint/__init__.py`: `list` subcommand
+- `scripts/little_loops/cli/history.py`: `summary` subcommand
+
+6 new tests written (TDD) and passing. No regressions introduced.
+
 ## Status
 
-**Open** | Created: 2026-04-01 | Priority: P3
+**Completed** | Created: 2026-04-01 | Resolved: 2026-04-01 | Priority: P3

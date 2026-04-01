@@ -167,14 +167,14 @@ Examples:
     list_parser.add_argument(
         "--status", help="Filter running loops by status (e.g., interrupted, awaiting_continuation)"
     )
-    list_parser.add_argument("--json", action="store_true", help="Output as JSON array")
+    list_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON array")
     list_parser.add_argument("--builtin", action="store_true", help="Show only built-in loops")
 
     # Status subcommand
     status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")
     status_parser.set_defaults(command="status")
     status_parser.add_argument("loop", help="Loop name")
-    status_parser.add_argument("--json", action="store_true", help="Output loop state as JSON")
+    status_parser.add_argument("-j", "--json", action="store_true", help="Output loop state as JSON")
 
     # Stop subcommand
     stop_parser = subparsers.add_parser("stop", help="Stop a running loop")
@@ -244,7 +244,7 @@ Examples:
         action="store_true",
         help="Show untruncated prompts and output (implies --verbose)",
     )
-    history_parser.add_argument("--json", action="store_true", help="Output events as JSON array")
+    history_parser.add_argument("-j", "--json", action="store_true", help="Output events as JSON array")
     history_parser.add_argument(
         "--event", "-e", type=str, default=None, help="Filter by event type (e.g. evaluate, route)"
     )
@@ -314,7 +314,7 @@ Examples:
     show_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt"
     )
-    show_parser.add_argument("--json", action="store_true", help="Output FSM config as JSON")
+    show_parser.add_argument("-j", "--json", action="store_true", help="Output FSM config as JSON")
 
     args = parser.parse_args(argv)
 

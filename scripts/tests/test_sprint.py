@@ -1869,3 +1869,31 @@ class TestSprintWaveCleanStart:
         assert captured_kwargs.get("clean_start") is True, (
             "Wave create_parallel_config must pass clean_start=True to avoid loading stale orchestrator state"
         )
+
+
+class TestSprintListJsonShortForm:
+    """-j short form for --json in ll-sprint list subcommand (ENH-909)."""
+
+    def test_list_json_short_form(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """-j is accepted by ll-sprint list and sets json=True."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir()
+
+        with (
+            patch.object(sys, "argv", ["ll-sprint", "list", "-j"]),
+            patch("little_loops.cli.sprint._cmd_sprint_list", return_value=0) as mock_list,
+        ):
+            from little_loops.cli import main_sprint
+
+            result = main_sprint()
+
+        assert result == 0
+        mock_list.assert_called_once()
+        list_args = mock_list.call_args[0][0]
+        assert getattr(list_args, "json", False) is True

@@ -139,7 +139,7 @@ Examples:
     list_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show detailed information"
     )
-    list_parser.add_argument("--json", action="store_true", help="Output as JSON array")
+    list_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON array")
 
     # show subcommand
     show_parser = subparsers.add_parser("show", aliases=["s"], help="Show sprint details")

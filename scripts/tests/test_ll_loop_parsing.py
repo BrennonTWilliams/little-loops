@@ -396,3 +396,91 @@ class TestParseDuration:
 
         with pytest.raises(ValueError, match="Invalid duration"):
             parse_duration("h")
+
+
+class TestLoopJsonShortForm:
+    """Tests for -j short form of --json in ll-loop subcommands (ENH-909)."""
+
+    def test_list_json_short_form(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """-j is accepted by ll-loop list and sets json=True."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "list", "-j"]),
+            patch("little_loops.cli.loop.info.cmd_list", return_value=0) as mock_list,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_list.assert_called_once()
+        list_args = mock_list.call_args[0][0]
+        assert getattr(list_args, "json", False) is True
+
+    def test_status_json_short_form(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """-j is accepted by ll-loop status and sets json=True."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "status", "my-loop", "-j"]),
+            patch("little_loops.cli.loop.lifecycle.cmd_status", return_value=0) as mock_status,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_status.assert_called_once()
+        status_args = mock_status.call_args[0][3]
+        assert getattr(status_args, "json", False) is True
+
+    def test_history_json_short_form(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """-j is accepted by ll-loop history and sets json=True."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "history", "my-loop", "-j"]),
+            patch("little_loops.cli.loop.info.cmd_history", return_value=0) as mock_history,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_history.assert_called_once()
+        history_args = mock_history.call_args[0][2]
+        assert getattr(history_args, "json", False) is True
+
+    def test_show_json_short_form(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """-j is accepted by ll-loop show and sets json=True."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "-j"]),
+            patch("little_loops.cli.loop.info.cmd_show", return_value=0) as mock_show,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_show.assert_called_once()
+        show_args = mock_show.call_args[0][1]
+        assert getattr(show_args, "json", False) is True

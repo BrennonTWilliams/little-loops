@@ -35,6 +35,27 @@ class TestHistoryArgumentParsing:
         args = self._parse_history_args(["summary", "--json"])
         assert args.json is True
 
+    def test_summary_json_short_form(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """-j is accepted by ll-history summary and produces JSON output (ENH-909)."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys, "argv", ["ll-history", "summary", "-j", "-d", str(tmp_path / ".issues")]
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        import json as json_mod
+
+        data = json_mod.loads(captured.out)
+        assert isinstance(data, dict)
+
     def test_summary_directory(self) -> None:
         """Test -d flag."""
         args = self._parse_history_args(["summary", "-d", "/custom/path"])

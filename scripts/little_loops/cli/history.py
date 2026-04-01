@@ -51,6 +51,7 @@ Examples:
     # summary subcommand (existing)
     summary_parser = subparsers.add_parser("summary", help="Show issue statistics")
     summary_parser.add_argument(
+        "-j",
         "--json",
         action="store_true",
         help="Output as JSON instead of formatted text",
