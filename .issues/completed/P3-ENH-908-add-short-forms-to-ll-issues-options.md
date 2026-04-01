@@ -154,7 +154,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — concrete steps with file:line references:_
 
-1. **Modify `scripts/little_loops/cli_args.py:35–42`**: Add `"-C"` to `add_config_arg()` — this covers all 12 subcommands at once since each calls `add_config_arg(subparser)`. Verify `-C` doesn't conflict with `ll-auto` or `ll-sprint` (it doesn't — `-c` lowercase is used in those tools but not `-C` uppercase).
+1. ~~**Modify `scripts/little_loops/cli_args.py:35–42`**: Add `"-C"` to `add_config_arg()`~~ — **Already done by ENH-907** (commit `821be7d0`). `add_config_arg()` already defines `"--config", "-C"` at `cli_args.py:37–39`. Skip this step.
 
 2. **Modify `scripts/little_loops/cli/issues/__init__.py`** — add short forms inline, using **long-form first** convention (matching existing `-n` at line 108):
    - Lines 88, 142, 217, 236, 251, 260: add `"-T"` to each `--type` call
@@ -211,6 +211,7 @@ New short-form CLI options (additive — existing long forms preserved):
 `cli`, `ergonomics`, `ll-issues`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-01T22:01:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
 - `/ll:refine-issue` - 2026-04-01T21:43:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b4eae71-f640-463f-b8dc-e190ea206a9d.jsonl`
 - `/ll:format-issue` - 2026-04-01T21:39:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/674284e2-26fb-4e5f-8988-b52f3854ef01.jsonl`
 - `/ll:capture-issue` - 2026-04-01 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
@@ -218,6 +219,24 @@ New short-form CLI options (additive — existing long forms preserved):
 
 ---
 
+## Resolution
+
+**Implemented** in `scripts/little_loops/cli/issues/__init__.py`. Added short forms for all 8 high-frequency options across all applicable subcommands:
+- `-T` (`--type`): list, search, count, sequence, impact-effort, refine-status
+- `-p` (`--priority`): list, search, count
+- `-S` (`--status`): list, search, count
+- `-j` (`--json`): list, search, count, sequence, show, refine-status, next-issue, next-issues
+- `-s` (`--sort`): list, search
+- `-f` (`--format`): search, refine-status
+- `-n` (`--limit`): search, sequence (list already had it)
+- `-C` (`--config`): already done by ENH-907 via `add_config_arg()`
+
+Added 10 short-form tests in `scripts/tests/test_issues_cli.py` (`TestIssuesCLIShortForms`). All 125 tests pass.
+
+## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-01T22:05:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc7893d1-dd13-4e96-94d9-4598fb9fa5b5.jsonl`
+- `/ll:manage-issue` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
+
 ## Status
 
-**Open** | Created: 2026-04-01 | Priority: P3
+**Completed** | Created: 2026-04-01 | Priority: P3

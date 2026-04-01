@@ -2054,3 +2054,232 @@ class TestIssuesCLIHelp:
             result = main_issues()
 
         assert result == 1
+
+
+class TestIssuesCLIShortForms:
+    """Tests for ll-issues short-form CLI options (ENH-908)."""
+
+    def test_list_type_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-T is equivalent to --type on list."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "-T", "BUG", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+        assert "FEAT-001" not in captured.out
+
+    def test_list_priority_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-p is equivalent to --priority on list."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "-p", "P0", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+        assert "BUG-002" not in captured.out
+
+    def test_list_status_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-S is equivalent to --status on list."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "-S", "active", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+
+    def test_list_json_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-j is equivalent to --json on list."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "-j", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    def test_list_sort_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-s is equivalent to --sort on list."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "-s", "id", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_search_type_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-T is equivalent to --type on search."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "search", "-T", "BUG", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG" in captured.out
+        assert "FEAT" not in captured.out
+
+    def test_search_json_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-j is equivalent to --json on search."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "search", "-j", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+
+    def test_search_format_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-f is equivalent to --format on search."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "search", "-f", "ids", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_search_limit_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-n is equivalent to --limit on search."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "search", "-n", "1", "-j", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) <= 1
+
+    def test_count_json_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-j is equivalent to --json on count."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "count", "-j", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "total" in data
+
+    def test_sequence_limit_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-n is equivalent to --limit on sequence."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "sequence", "-n", "2", "-j", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) <= 2

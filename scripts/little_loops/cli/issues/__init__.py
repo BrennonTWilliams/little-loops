@@ -85,14 +85,16 @@ Examples:
 
     ls = subs.add_parser("list", aliases=["l"], help="List active issues")
     ls.set_defaults(command="list")
-    ls.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    ls.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     ls.add_argument(
         "--priority",
+        "-p",
         metavar="PRIORITY",
         help="Filter by priority level, e.g. P1 or P1,P2",
     )
     ls.add_argument(
         "--status",
+        "-S",
         choices=["active", "completed", "deferred", "all"],
         default="active",
         help="Filter by status (default: active)",
@@ -102,7 +104,7 @@ Examples:
         action="store_true",
         help="Output flat list (current format) for scripting compatibility",
     )
-    ls.add_argument("--json", action="store_true", help="Output as JSON array")
+    ls.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
     ls.add_argument(
         "--limit",
         "-n",
@@ -113,6 +115,7 @@ Examples:
     )
     ls.add_argument(
         "--sort",
+        "-s",
         choices=[
             "priority",
             "id",
@@ -141,6 +144,7 @@ Examples:
     )
     sr.add_argument(
         "--type",
+        "-T",
         choices=["BUG", "FEAT", "ENH"],
         action="append",
         dest="type",
@@ -149,6 +153,7 @@ Examples:
     )
     sr.add_argument(
         "--priority",
+        "-p",
         action="append",
         dest="priority",
         metavar="P",
@@ -156,6 +161,7 @@ Examples:
     )
     sr.add_argument(
         "--status",
+        "-S",
         choices=["active", "completed", "deferred", "all"],
         default="active",
         help="Filter by status (default: active)",
@@ -185,6 +191,7 @@ Examples:
     )
     sr.add_argument(
         "--sort",
+        "-s",
         choices=[
             "priority",
             "id",
@@ -202,53 +209,56 @@ Examples:
     )
     sr.add_argument("--asc", action="store_true", default=False, help="Sort ascending")
     sr.add_argument("--desc", action="store_true", default=False, help="Sort descending")
-    sr.add_argument("--json", action="store_true", help="Output as JSON array")
+    sr.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
     sr.add_argument(
         "--format",
+        "-f",
         choices=["table", "list", "ids"],
         default="table",
         help="Output format: table (default), list, ids",
     )
-    sr.add_argument("--limit", type=int, metavar="N", help="Cap results at N")
+    sr.add_argument("--limit", "-n", type=int, metavar="N", help="Cap results at N")
     add_config_arg(sr)
 
     cnt = subs.add_parser("count", aliases=["c"], help="Count active issues")
     cnt.set_defaults(command="count")
-    cnt.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    cnt.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     cnt.add_argument(
         "--priority",
+        "-p",
         metavar="PRIORITY",
         help="Filter by priority level, e.g. P1 or P1,P2",
     )
     cnt.add_argument(
         "--status",
+        "-S",
         choices=["active", "completed", "deferred", "all"],
         default="active",
         help="Filter by status (default: active)",
     )
-    cnt.add_argument("--json", action="store_true", help="Output as JSON with breakdowns")
+    cnt.add_argument("--json", "-j", action="store_true", help="Output as JSON with breakdowns")
     add_config_arg(cnt)
 
     seq = subs.add_parser(
         "sequence", aliases=["seq"], help="Suggest implementation order based on dependencies"
     )
     seq.set_defaults(command="sequence")
-    seq.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    seq.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     seq.add_argument(
-        "--limit", type=int, default=10, help="Maximum number of issues to show (default: 10)"
+        "--limit", "-n", type=int, default=10, help="Maximum number of issues to show (default: 10)"
     )
-    seq.add_argument("--json", action="store_true", help="Output as JSON array")
+    seq.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
     add_config_arg(seq)
 
     show = subs.add_parser("show", aliases=["s"], help="Show summary card for an issue")
     show.set_defaults(command="show")
     show.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
-    show.add_argument("--json", action="store_true", help="Output as JSON")
+    show.add_argument("--json", "-j", action="store_true", help="Output as JSON")
     add_config_arg(show)
 
     ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")
     ie.set_defaults(command="impact-effort")
-    ie.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    ie.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     add_config_arg(ie)
 
     refine_s = subs.add_parser(
@@ -257,9 +267,10 @@ Examples:
         help="Show refinement depth table sorted by commands touched",
     )
     refine_s.set_defaults(command="refine-status")
-    refine_s.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    refine_s.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     refine_s.add_argument(
         "--format",
+        "-f",
         choices=["table", "json"],
         default="table",
         help="Output format (default: table)",
@@ -272,6 +283,7 @@ Examples:
     )
     refine_s.add_argument(
         "--json",
+        "-j",
         action="store_true",
         default=False,
         help="Output as JSON array. Matches ll-issues list --json interface. (--format json outputs NDJSON instead)",
@@ -333,7 +345,7 @@ Examples:
         help="Print the issue ranked highest by outcome confidence and readiness",
     )
     nx.set_defaults(command="next-issue")
-    nx.add_argument("--json", action="store_true", help="Output as JSON object")
+    nx.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
     nx.add_argument("--path", action="store_true", help="Output only the file path")
     add_config_arg(nx)
 
@@ -351,7 +363,7 @@ Examples:
         metavar="N",
         help="Cap results at N issues",
     )
-    nxs.add_argument("--json", action="store_true", help="Output as JSON array")
+    nxs.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
     nxs.add_argument("--path", action="store_true", help="Output one file path per line")
     add_config_arg(nxs)
 
