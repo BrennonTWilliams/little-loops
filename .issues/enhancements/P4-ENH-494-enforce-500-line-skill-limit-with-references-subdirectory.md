@@ -114,6 +114,7 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-03-22T05:05:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
@@ -134,9 +135,10 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 
 ## Verification Notes
 
-- **Date**: 2026-03-21
+- **Date**: 2026-04-01
 - **Verdict**: NEEDS_UPDATE
-- `audit-claude-config/SKILL.md` = **708 lines** (unchanged), `confidence-check/SKILL.md` = **604 lines** (was 554 — grew 50 lines), `manage-issue/SKILL.md` = **513 lines** (was 500 — now exceeds limit). No `references/` subdirectories exist. Enhancement scope now covers **3 skills** exceeding 500 lines (was 2).
+- Removed completed blocker FEAT-565. Still blocked by ENH-493 (open).
+- Now **4 skills** exceed 500 lines (was 3): `audit-claude-config/SKILL.md` = **708** (unchanged), `confidence-check/SKILL.md` = **604** (unchanged), `init/SKILL.md` = **581** (NEW exceeder), `manage-issue/SKILL.md` = **513** (unchanged). No `references/` subdirectories exist.
 
 ## Status
 
@@ -162,7 +164,6 @@ Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708
 
 ## Blocked By
 - ENH-493
-- FEAT-565
 
 ---
 

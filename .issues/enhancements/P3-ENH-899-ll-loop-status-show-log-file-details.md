@@ -148,6 +148,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `cli`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:confidence-check` - 2026-03-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b71ea4-65ba-45df-b40c-1250b0bfb74b.jsonl`
 - `/ll:refine-issue` - 2026-03-31T17:25:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b71ea4-65ba-45df-b40c-1250b0bfb74b.jsonl`
 - `/ll:format-issue` - 2026-03-31T17:21:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b71ea4-65ba-45df-b40c-1250b0bfb74b.jsonl`

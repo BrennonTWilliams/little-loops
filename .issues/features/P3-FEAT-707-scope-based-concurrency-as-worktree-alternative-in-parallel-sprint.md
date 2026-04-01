@@ -139,6 +139,7 @@ ll-sprint run my-sprint --scope-mode
 `feature`, `parallel`, `concurrency`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd0a8bb6-7595-4676-9582-a0e3f4962033.jsonl`
 - `/ll:format-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ebe5424-4390-42c8-a840-ac8166b02550.jsonl`

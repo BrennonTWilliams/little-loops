@@ -201,6 +201,7 @@ The `issue_history/` sub-package (introduced to decompose `issue_history/formatt
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-03-22T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
@@ -228,9 +229,10 @@ The `issue_history/` sub-package (introduced to decompose `issue_history/formatt
 
 ## Verification Notes
 
-- **Date**: 2026-03-21
+- **Date**: 2026-04-01
 - **Verdict**: NEEDS_UPDATE
-- Line counts: `merge_coordinator.py` = **1,244** (was 1,242), `worker_pool.py` = **1,348** (was 1,336), `orchestrator.py` = **1,199** (was 1,172); avg **1,264** (was 1,250). No helper modules created. Enhancement not yet applied.
+- Removed completed blocker ENH-665 — issue is now unblocked.
+- Line counts: `merge_coordinator.py` = **1,244** (unchanged), `worker_pool.py` = **1,353** (was 1,348), `orchestrator.py` = **1,229** (was 1,199); avg **1,275** (was 1,264). No helper modules created. Enhancement not yet applied.
 
 ## Status
 
@@ -261,7 +263,6 @@ Second review confirms prior assessment. Scores unchanged: MEDIUM utility, HIGH 
 Third review confirms prior assessment. The dependency audit is now complete (detailed caller/importer list in "Dependent Files" section). The remaining preparedness gaps are: (1) a method-level extraction plan specifying which methods move to which helper modules, (2) a thread-safety review checklist for lock ownership during extraction, and (3) an established extraction pattern to follow (currently "novel extraction"). Also note: the 2026-02-26 audit recommends extracting `output_parsing` to root first (ENH-510) to eliminate bidirectional coupling before tackling this refactor. Do not implement until all preparedness items are completed and ENH-510 is addressed.
 
 ## Blocked By
-- ENH-665
 
 ---
 

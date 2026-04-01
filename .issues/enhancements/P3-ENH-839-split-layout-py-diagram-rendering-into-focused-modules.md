@@ -111,16 +111,17 @@ Split into a `layout/` subpackage or three focused modules:
 
 ## Verification Notes
 
-**Verified**: 2026-03-19 | **Verdict**: NEEDS_UPDATE
+**Verified**: 2026-04-01 | **Verdict**: NEEDS_UPDATE
 
-- ✅ File `scripts/little_loops/cli/loop/layout.py` exists at exactly 1,617 lines
-- ✅ 3 classes confirmed: `TopologyDetector` (line 275), `LayerAssigner` (line 320), `CrossingMinimizer` (line 413)
-- ✅ All named functions exist in the file
-- ⚠️ **Function count**: Issue states "23 functions" — actual count is 16 top-level module functions (`^def`) and 27 total including class methods
-- ⚠️ **Integration Map incomplete**: `scripts/little_loops/cli/loop/_helpers.py:324` also imports `_render_fsm_diagram` from `layout` and must be updated during the split
-- ⚠️ **Tests**: `scripts/tests/test_ll_loop_display.py` already imports directly from `little_loops.cli.loop.layout` (confirmed); `test_dependency_mapper.py` references "layout" but does not import the module
+- ✅ File `scripts/little_loops/cli/loop/layout.py` exists at **1,630 lines** (was 1,617 — grew 13 lines)
+- ✅ 3 classes confirmed: `TopologyDetector` (line 280), `LayerAssigner` (line 325), `CrossingMinimizer` (line 418)
+- ⚠️ `_render_2d_diagram` no longer exists — function was renamed/restructured. `_render_fsm_diagram` at line 1434.
+- ⚠️ **Function count**: 19 top-level defs + 3 classes
+- ⚠️ **Integration Map incomplete**: `_helpers.py` imports `_render_fsm_diagram` from `layout` — must be updated during split
+- No `layout/` subpackage created. Enhancement not yet applied.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:08:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:format-issue` - 2026-03-19T23:06:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 - `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

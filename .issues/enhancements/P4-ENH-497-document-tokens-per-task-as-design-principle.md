@@ -124,9 +124,10 @@ This principle is validated by published research on long-context LLM architectu
 
 ## Verification Notes
 
-- **2026-03-05** — VALID. `docs/ARCHITECTURE.md` exists; no `### Context Efficiency` section present; `## Key Design Decisions` section confirmed; `auto_handoff_threshold: 80` documented. Insertion point after `### Context Monitor and Session Continuation` remains valid.
+- **2026-04-01** — NEEDS_UPDATE. Removed completed blocker ENH-665 — issue is now unblocked. `docs/ARCHITECTURE.md` exists; no `### Context Efficiency` section present. Enhancement not yet applied.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified insertion point in ARCHITECTURE.md (after line ~839, inside ## Key Design Decisions, after Context Monitor section)
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-441
@@ -146,4 +147,3 @@ This principle is validated by published research on long-context LLM architectu
 **Open** | Created: 2026-02-24 | Priority: P4
 
 ## Blocked By
-- ENH-665

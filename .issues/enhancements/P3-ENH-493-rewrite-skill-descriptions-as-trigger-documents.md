@@ -120,6 +120,7 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 `enhancement`, `skills`, `context-engineering`, `ux`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6354e86b-8019-4171-939d-aba670876e1f.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
@@ -140,19 +141,16 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 
 ## Verification Notes
 
-- **Date**: 2026-03-21
+- **Date**: 2026-04-01
 - **Verdict**: NEEDS_UPDATE
-- All 7 originally identified skills still have summary-style descriptions (`audit-claude-config`, `audit-docs`, `configure`, `create-loop`, `format-issue`, `init`, `manage-issue`) — confirmed.
-- **Scope expanded**: 3 new skills added since last audit also use summary-style descriptions and need rewrites: `analyze-loop`, `go-no-go`, `update-docs`. Total skill count is now **19** (was 16). Scope updated from 7 to **10** skills needing trigger-phrase description rewrites.
+- Removed 3 completed blockers: FEAT-659, FEAT-638, FEAT-565 (all completed) — issue is now unblocked.
+- Total skill count is now **21** (was 19). New skills since last audit: `cleanup-loops`, `review-loop`, `update-docs`, `update`. Scope of summary-style skills needing rewrites may have expanded further.
 
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
 
 ## Blocked By
-- FEAT-659
-- FEAT-638
-- FEAT-565
 
 ## Blocks
 - ENH-459

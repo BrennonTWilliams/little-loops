@@ -57,6 +57,7 @@ Modify `list_running_loops()` in `scripts/little_loops/fsm/persistence.py` to al
 `bug`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:capture-issue` - 2026-03-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c781d736-a85e-47b1-9ef5-625122a2c2ae.jsonl`
 
 ---

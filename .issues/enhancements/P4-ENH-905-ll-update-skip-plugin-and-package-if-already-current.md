@@ -87,6 +87,7 @@ In `skills/update/SKILL.md`:
 `enhancement`, `ll:update`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:capture-issue` - 2026-03-31T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a08a6ef4-ca07-4031-8993-a8bc29361f74.jsonl`
 
 ---

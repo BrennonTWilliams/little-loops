@@ -86,6 +86,7 @@ Also consider adding `.ll/ll.local.md` to the `.gitignore` entries in Step 9 if 
 `enhancement`, `init`, `local-config`, `onboarding`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
@@ -104,9 +105,10 @@ Also consider adding `.ll/ll.local.md` to the `.gitignore` entries in Step 9 if 
 
 ## Verification Notes
 
-- **Date**: 2026-03-13
-- **Verdict**: VALID
-- `skills/init/SKILL.md` Step 9 gitignore block (lines 307-315) confirmed: only adds `.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`. `.ll/ll.local.md` is absent. Step 10 completion message does not mention `ll.local.md`. Enhancement not yet applied.
+- **Date**: 2026-04-01
+- **Verdict**: NEEDS_UPDATE
+- Removed completed blocker ENH-665. Still blocked by ENH-493 (open).
+- `.ll/ll.local.md` still absent from init SKILL.md. Enhancement not yet applied.
 
 ## Status
 
@@ -115,5 +117,4 @@ Also consider adding `.ll/ll.local.md` to the `.gitignore` entries in Step 9 if 
 
 ## Blocked By
 - ENH-493
-- ENH-665
 ## Blocks
