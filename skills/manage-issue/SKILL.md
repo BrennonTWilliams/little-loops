@@ -1,5 +1,8 @@
 ---
-description: Autonomously manage issues - plan, implement, verify, and complete
+description: |
+  Use when the user asks to implement an issue, work on a bug/feature/enhancement, manage an issue end-to-end, or says "start implementing FEAT-NNN." Autonomously plans, implements, verifies, and completes issues.
+
+  Trigger keywords: "manage issue", "implement issue", "work on bug", "work on feature", "fix issue", "start implementing", "manage bug", "manage feature"
 argument-hint: "[type] [action] [issue-id]"
 allowed-tools:
   - Bash(git:*)

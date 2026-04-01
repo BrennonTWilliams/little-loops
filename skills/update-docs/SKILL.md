@@ -1,6 +1,6 @@
 ---
 description: |
-  Identify stale or missing documentation based on git commits and completed issues since a given date.
+  Use when the user asks to update docs, find stale documentation, check doc coverage after a sprint, or asks "what docs need updating?"
 
   Trigger keywords: "update docs", "stale docs", "missing docs", "docs since sprint", "doc coverage", "what docs need updating", "documentation gaps", "docs after sprint", "catch up docs"
 argument-hint: "[--since <date|git-ref>] [--fix]"

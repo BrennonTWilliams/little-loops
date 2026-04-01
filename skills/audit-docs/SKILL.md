@@ -1,5 +1,8 @@
 ---
-description: Audit documentation for accuracy and completeness
+description: |
+  Use when the user asks to audit documentation, check docs accuracy, verify docs are up to date, find documentation gaps, or asks "are the docs correct?"
+
+  Trigger keywords: "audit docs", "check documentation", "verify docs", "docs accuracy", "are the docs correct", "documentation audit", "stale documentation"
 argument-hint: "[scope]"
 allowed-tools:
   - Read

@@ -1,10 +1,6 @@
 ---
 description: |
-  Pre-implementation confidence check that validates readiness and estimates outcome confidence before coding begins. Evaluates 5 readiness criteria (0-100) and 4 outcome confidence criteria (0-100), producing dual scores: a Readiness Score (go/no-go) and an Outcome Confidence Score (implementation risk).
-
-  Supports --all (batch all active issues) and --auto (non-interactive) flags. Persists confidence_score and outcome_confidence to issue frontmatter after evaluation.
-
-  Complementary to /ll:ready-issue (which validates the issue file) — this skill validates the implementation approach, codebase readiness, and predicted implementation risk.
+  Use when the user asks for a pre-implementation confidence check, wants to evaluate readiness before coding, check implementation risk, or asks "is this issue ready to implement?" Produces dual scores: Readiness (go/no-go) and Outcome Confidence (implementation risk).
 
   Trigger keywords: "confidence check", "pre-implementation check", "ready to implement", "implementation readiness", "confidence score", "outcome confidence"
 model: sonnet

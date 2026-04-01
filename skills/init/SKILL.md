@@ -1,5 +1,8 @@
 ---
-description: Initialize little-loops configuration for a project
+description: |
+  Use when the user asks to initialize little-loops, set up ll for a project, bootstrap config, or asks "how do I get started with ll?"
+
+  Trigger keywords: "initialize ll", "init ll", "set up little-loops", "bootstrap config", "get started with ll", "ll init", "setup little-loops"
 argument-hint: "[flags]"
 allowed-tools:
   - Read

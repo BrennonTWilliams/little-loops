@@ -1,6 +1,6 @@
 ---
 description: |
-  Evaluate the size/complexity of active issues and propose decomposition for large ones. Use this skill when issues seem too large for a single session, when sprint planning, or to audit issue backlog size.
+  Use when the user wants to evaluate issue size/complexity, decompose large issues, check if issues are too big for a single session, or audit backlog sizes for sprint planning.
 
   Trigger keywords: "issue size review", "decompose issues", "split large issues", "issue complexity", "break down issues", "audit issue sizes", "large issue check"
 model: sonnet

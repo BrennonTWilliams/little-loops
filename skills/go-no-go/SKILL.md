@@ -1,8 +1,6 @@
 ---
 description: |
-  Evaluates whether an issue should be implemented using an adversarial debate format. Launches two isolated background agents concurrently — one arguing for implementation, one against — each grounded in real codebase research. A third judge agent delivers a final GO or NO-GO verdict with structured reasoning, key arguments from both sides, and a deciding factor.
-
-  Accepts one or more comma-separated Issue IDs, a sprint name, or no argument (defaults to highest-priority open issue). In --check mode, exits 0 on all GO and exits 1 on any NO-GO for FSM loop integration.
+  Use when the user asks "should I implement this?", wants an adversarial review of an issue, needs a go/no-go decision, or wants to debate whether an issue is worth implementing. Uses adversarial debate with concurrent pro/con agents and a judge.
 
   Trigger keywords: "go no go", "go/no-go", "should I implement", "adversarial review", "worth implementing", "debate this issue", "go no go check"
 model: sonnet

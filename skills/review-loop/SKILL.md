@@ -1,5 +1,8 @@
 ---
-description: Review an existing FSM loop configuration for quality, correctness, consistency, and potential improvements. Analyzes all states and transitions, reports findings by severity (Error/Warning/Suggestion), proposes concrete fixes with before/after diffs, and applies approved changes.
+description: |
+  Use when the user asks to review a loop, check loop config quality, validate loop YAML, audit a loop definition, or asks "is this loop correct?" Analyzes states and transitions, reports findings by severity, and proposes fixes.
+
+  Trigger keywords: "review loop", "check loop config", "validate loop", "audit loop definition", "is this loop correct", "loop review", "loop quality check"
 allowed-tools:
   - Bash(ll-loop:*)
   - Read

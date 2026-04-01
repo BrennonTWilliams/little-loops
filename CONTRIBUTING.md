@@ -442,7 +442,8 @@ The `SKILL.md` file uses YAML frontmatter for metadata, followed by the skill in
 ```markdown
 ---
 description: |
-  Brief description of what the skill does.
+  Use when the user asks to [trigger conditions], [more conditions], or asks "[example phrase]."
+  [Optional brief context about what the skill does].
 
   Trigger keywords: "keyword1", "keyword2", "keyword3"
 ---
@@ -451,6 +452,8 @@ description: |
 
 [Skill instructions and usage documentation]
 ```
+
+**Description convention**: The `description` field is a **trigger document** — Claude uses it to decide when to auto-activate the skill. Lead with trigger conditions ("Use when..."), not a capability summary. Include 5-10 quoted trigger keywords matching natural user phrasing. This reduces missed activations and false positives.
 
 Skills are user-invocable workflows that activate based on trigger keywords or explicit invocation. Prefer creating skills over agents for new functionality (see development preferences in CLAUDE.md).
 

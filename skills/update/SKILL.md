@@ -1,7 +1,6 @@
 ---
 description: |
-  Update little-loops components - plugin marketplace listing, Claude Code plugin, and pip package.
-  Consolidates three separate update procedures into a single command with per-component control.
+  Use when the user asks to update little-loops, update the plugin, push to marketplace, or update the pip package. Consolidates plugin, marketplace, and package updates.
 
   Trigger keywords: "update little-loops", "update plugin", "update marketplace", "update package", "ll update"
 argument-hint: "[flags]"

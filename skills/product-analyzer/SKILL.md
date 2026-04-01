@@ -1,8 +1,8 @@
 ---
 description: |
-  Analyzes codebase against product goals to identify feature gaps, user experience improvements, and business value opportunities. Requires product analysis to be enabled and ll-goals.md to exist.
+  Use when the user asks to analyze product goals, check for feature gaps, scan for goal alignment, evaluate business value, or asks "what features are we missing?" Requires ll-goals.md.
 
-  Trigger keywords: "product analysis", "analyze product goals", "feature gaps", "product scan", "goal alignment"
+  Trigger keywords: "product analysis", "analyze product goals", "feature gaps", "product scan", "goal alignment", "what features are we missing", "are we building the right things"
 model: sonnet
 allowed-tools:
   - Read

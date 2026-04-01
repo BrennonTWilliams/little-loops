@@ -1,5 +1,8 @@
 ---
-description: Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
+description: |
+  Use when the user asks to audit their Claude Code config, check plugin settings, validate configuration, diagnose plugin issues, or asks "is my config valid?" Runs a comprehensive audit with parallel sub-agents.
+
+  Trigger keywords: "audit config", "check plugin settings", "review claude config", "validate configuration", "is my config valid", "plugin audit", "diagnose plugin"
 argument-hint: "[scope]"
 allowed-tools:
   - Read

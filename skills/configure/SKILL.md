@@ -1,5 +1,8 @@
 ---
-description: Interactively configure specific areas in ll-config.json
+description: |
+  Use when the user asks to configure little-loops, change settings, update ll-config.json, set up options, or asks "how do I set X?"
+
+  Trigger keywords: "configure ll", "change settings", "update ll-config", "set up options", "configure settings", "edit config", "ll configuration"
 argument-hint: "[area]"
 allowed-tools:
   - Read

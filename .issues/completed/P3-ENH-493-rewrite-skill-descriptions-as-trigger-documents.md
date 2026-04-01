@@ -131,6 +131,7 @@ _Updated by `/ll:refine-issue` on 2026-04-01 — added review-loop:_
 `enhancement`, `skills`, `context-engineering`, `ux`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-01T18:03:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/120447ec-f7ea-42c9-a9f4-6a253b54e026.jsonl`
 - `/ll:refine-issue` - 2026-04-01T17:56:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9a59399-86a0-48d0-bc8f-f7823612f52d.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6354e86b-8019-4171-939d-aba670876e1f.jsonl`
@@ -148,6 +149,7 @@ _Updated by `/ll:refine-issue` on 2026-04-01 — added review-loop:_
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: 7 skills still need description rewrites
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: 7 skills still use summary-style descriptions
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — NEEDS_UPDATE: removed completed ENH-668 from Blocked By; skill count now 16 (was 15)
+- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` — Implemented: rewrote all 21 SKILL.md descriptions as trigger documents, updated CONTRIBUTING.md convention
 
 ---
 
@@ -158,9 +160,20 @@ _Updated by `/ll:refine-issue` on 2026-04-01 — added review-loop:_
 - Removed 3 completed blockers: FEAT-659, FEAT-638, FEAT-565 (all completed) — issue is now unblocked.
 - Total skill count is now **21** (was 19). New skills since last audit: `cleanup-loops`, `review-loop`, `update-docs`, `update`. Scope of summary-style skills needing rewrites may have expanded further.
 
+## Resolution
+
+- **Resolved**: 2026-04-01
+- **Action**: improve
+- **Changes**:
+  - Rewrote all 21 `skills/*/SKILL.md` description fields as trigger documents
+  - Phase 1: Added trigger-condition-first descriptions with `Trigger keywords:` to 8 skills that had summary-only descriptions
+  - Phase 2: Restructured 13 skills with existing keywords to lead with "Use when..." trigger conditions
+  - Updated `CONTRIBUTING.md` skill template to document the trigger-phrase convention
+- **Files modified**: 21 SKILL.md files + CONTRIBUTING.md
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Resolved: 2026-04-01 | Priority: P3
 
 ## Blocked By
 

@@ -1,5 +1,8 @@
 ---
-description: Create a new FSM loop configuration interactively. Guides users through loop type selection, parameter gathering, YAML generation, and validation.
+description: |
+  Use when the user asks to create a new loop, make an automation loop, set up an FSM loop, or says "I want to automate X with a loop." Guides through loop type selection, parameter gathering, YAML generation, and validation.
+
+  Trigger keywords: "create loop", "new loop", "make a loop", "add automation loop", "set up FSM", "create automation", "new FSM loop"
 allowed-tools:
   - Bash(mkdir:*, test:*, ll-loop:*)
 ---

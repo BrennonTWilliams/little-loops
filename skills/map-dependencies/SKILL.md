@@ -1,6 +1,6 @@
 ---
 description: |
-  Analyze active issues to discover cross-issue dependencies based on file overlap, validate existing dependency references, and propose new relationships. Use this skill when you want to find missing dependencies between issues, check for broken dependency refs, or prepare for sprint planning.
+  Use when the user wants to find dependencies between issues, check for broken dependency refs, discover cross-issue file overlaps, or prepare dependency-aware sprint plans.
 
   Trigger keywords: "map dependencies", "dependency mapping", "find dependencies", "dependency analysis", "issue dependencies", "cross-issue dependencies", "blocked by analysis", "discover dependencies"
 model: sonnet

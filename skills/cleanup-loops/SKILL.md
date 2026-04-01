@@ -1,8 +1,7 @@
 ---
 description: |
-  Find running loops via ll-loop list --running, assess their status, identify stuck or stale
-  loops (dead PID, stale updated_at, interrupted/awaiting states), kill processes, clean state
-  files, and report where each loop got stuck with last recorded events.
+  Use when the user asks to clean up stuck loops, find stale loops, kill dead loop processes, or troubleshoot loop state issues.
+
   Trigger keywords: "cleanup loops", "stuck loops", "clean loops", "stale loops", "kill stuck loops", "cleanup-loops"
 argument-hint: "[--dry-run] [--threshold N]"
 model: sonnet
