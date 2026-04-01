@@ -133,6 +133,7 @@ Examples:
     add_max_issues_arg(parser)
     parser.add_argument(
         "--config",
+        "-C",
         type=Path,
         default=None,
         help="Path to project root",

@@ -19,6 +19,7 @@ from little_loops.cli_args import (
     add_dry_run_arg,
     add_idle_timeout_arg,
     add_max_workers_arg,
+    add_only_arg,
     add_priority_arg,
     add_resume_arg,
     add_skip_arg,
@@ -201,6 +202,13 @@ class TestAddTypeArg:
         args = parser.parse_args([])
         assert args.type is None
 
+    def test_short_flag(self) -> None:
+        """Short -T flag works."""
+        parser = argparse.ArgumentParser()
+        add_type_arg(parser)
+        args = parser.parse_args(["-T", "BUG"])
+        assert args.type == "BUG"
+
     def test_accepts_multiple_types(self) -> None:
         """Accepts comma-separated types as raw string."""
         parser = argparse.ArgumentParser()
@@ -262,12 +270,44 @@ class TestAddConfigArg:
         args = parser.parse_args(["--config", "/some/path"])
         assert args.config == Path("/some/path")
 
+    def test_short_flag(self) -> None:
+        """Short -C flag works."""
+        parser = argparse.ArgumentParser()
+        add_config_arg(parser)
+        args = parser.parse_args(["-C", "/some/path"])
+        assert args.config == Path("/some/path")
+
     def test_default_is_none(self) -> None:
         """Default value is None."""
         parser = argparse.ArgumentParser()
         add_config_arg(parser)
         args = parser.parse_args([])
         assert args.config is None
+
+
+class TestAddOnlyArg:
+    """Tests for add_only_arg() function."""
+
+    def test_adds_only_argument(self) -> None:
+        """Adds --only argument that accepts string."""
+        parser = argparse.ArgumentParser()
+        add_only_arg(parser)
+        args = parser.parse_args(["--only", "BUG-001"])
+        assert args.only == "BUG-001"
+
+    def test_short_flag(self) -> None:
+        """Short -o flag works."""
+        parser = argparse.ArgumentParser()
+        add_only_arg(parser)
+        args = parser.parse_args(["-o", "BUG-001,FEAT-002"])
+        assert args.only == "BUG-001,FEAT-002"
+
+    def test_default_is_none(self) -> None:
+        """Default value is None."""
+        parser = argparse.ArgumentParser()
+        add_only_arg(parser)
+        args = parser.parse_args([])
+        assert args.only is None
 
 
 class TestAddMaxWorkersArg:
@@ -410,6 +450,27 @@ class TestAddSkipArg:
         add_skip_arg(parser, help_text="Custom help message")
         help_text = parser.format_help()
         assert "Custom help message" in help_text
+
+    def test_long_flag(self) -> None:
+        """Long --skip flag works."""
+        parser = argparse.ArgumentParser()
+        add_skip_arg(parser)
+        args = parser.parse_args(["--skip", "BUG-003"])
+        assert args.skip == "BUG-003"
+
+    def test_short_flag(self) -> None:
+        """Short -s flag works."""
+        parser = argparse.ArgumentParser()
+        add_skip_arg(parser)
+        args = parser.parse_args(["-s", "BUG-003,FEAT-004"])
+        assert args.skip == "BUG-003,FEAT-004"
+
+    def test_default_is_none(self) -> None:
+        """Default value is None."""
+        parser = argparse.ArgumentParser()
+        add_skip_arg(parser)
+        args = parser.parse_args([])
+        assert args.skip is None
 
 
 class TestParsePriorities:

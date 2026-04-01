@@ -33,9 +33,10 @@ def add_resume_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def add_config_arg(parser: argparse.ArgumentParser) -> None:
-    """Add --config argument to parser."""
+    """Add --config/-C argument to parser."""
     parser.add_argument(
         "--config",
+        "-C",
         type=Path,
         default=None,
         help="Path to project root (default: current directory)",
@@ -43,9 +44,10 @@ def add_config_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def add_only_arg(parser: argparse.ArgumentParser) -> None:
-    """Add --only argument for filtering specific issues."""
+    """Add --only/-o argument for filtering specific issues."""
     parser.add_argument(
         "--only",
+        "-o",
         type=str,
         default=None,
         help="Comma-separated list of issue IDs to process (e.g., BUG-001,FEAT-002)",
@@ -63,6 +65,7 @@ def add_skip_arg(parser: argparse.ArgumentParser, help_text: str | None = None) 
         help_text = "Comma-separated list of issue IDs to skip (e.g., BUG-003,FEAT-004)"
     parser.add_argument(
         "--skip",
+        "-s",
         type=str,
         default=None,
         help=help_text,
@@ -311,9 +314,10 @@ def add_priority_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def add_type_arg(parser: argparse.ArgumentParser) -> None:
-    """Add --type argument for filtering issues by type prefix."""
+    """Add --type/-T argument for filtering issues by type prefix."""
     parser.add_argument(
         "--type",
+        "-T",
         type=str,
         default=None,
         help="Comma-separated issue types to process (e.g., BUG, FEAT, ENH)",
