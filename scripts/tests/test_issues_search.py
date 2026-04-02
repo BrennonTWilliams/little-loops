@@ -912,4 +912,3 @@ class TestSearchCombinedFilters:
         assert result == 0
         assert "FEAT-011" in captured.out
         assert "BUG-002" not in captured.out  # right query but wrong type
-

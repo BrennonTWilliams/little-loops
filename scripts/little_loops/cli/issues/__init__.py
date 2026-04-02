@@ -267,7 +267,9 @@ Examples:
         help="Show refinement depth table sorted by commands touched",
     )
     refine_s.set_defaults(command="refine-status")
-    refine_s.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    refine_s.add_argument(
+        "--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type"
+    )
     refine_s.add_argument(
         "--format",
         "-f",

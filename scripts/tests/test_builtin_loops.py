@@ -370,7 +370,6 @@ class TestEvaluationQualityLoop:
         assert data.get("timeout", 0) > 0
 
 
-
 class TestIssueRefinementSubLoop:
     """Tests that issue-refinement.yaml delegates refinement to the refine-to-ready-issue sub-loop."""
 

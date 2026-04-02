@@ -906,8 +906,7 @@ class TestCmdStatusLogFile:
         running_dir.mkdir(parents=True)
         log_file = running_dir / "test-loop.log"
         log_file.write_text(
-            "[STATE] idle → check (iteration 4)\n"
-            "[STATE] check → run_eval (iteration 5)\n"
+            "[STATE] idle → check (iteration 4)\n[STATE] check → run_eval (iteration 5)\n"
         )
         # Set mtime to 180 seconds ago
         mtime = time.time() - 180

@@ -1874,9 +1874,7 @@ class TestSprintWaveCleanStart:
 class TestSprintListJsonShortForm:
     """-j short form for --json in ll-sprint list subcommand (ENH-909)."""
 
-    def test_list_json_short_form(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_list_json_short_form(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """-j is accepted by ll-sprint list and sets json=True."""
         import sys
         from unittest.mock import patch

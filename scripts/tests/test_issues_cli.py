@@ -2070,7 +2070,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "list", "-T", "BUG", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "-T", "BUG", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2091,7 +2093,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "list", "-p", "P0", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "-p", "P0", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2112,7 +2116,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "list", "-S", "active", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "-S", "active", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2132,7 +2138,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "list", "-j", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "-j", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2154,7 +2162,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "list", "-s", "id", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "-s", "id", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2172,7 +2182,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "search", "-T", "BUG", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "search", "-T", "BUG", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2193,7 +2205,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "search", "-j", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "search", "-j", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2214,7 +2228,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "search", "-f", "ids", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "search", "-f", "ids", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2232,7 +2248,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "search", "-n", "1", "-j", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "search", "-n", "1", "-j", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2253,7 +2271,9 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "count", "-j", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys, "argv", ["ll-issues", "count", "-j", "--config", str(temp_project_dir)]
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -2274,7 +2294,11 @@ class TestIssuesCLIShortForms:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(sys, "argv", ["ll-issues", "sequence", "-n", "2", "-j", "--config", str(temp_project_dir)]):
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "sequence", "-n", "2", "-j", "--config", str(temp_project_dir)],
+        ):
             from little_loops.cli import main_issues
 
             result = main_issues()

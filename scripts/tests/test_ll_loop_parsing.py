@@ -401,9 +401,7 @@ class TestParseDuration:
 class TestLoopJsonShortForm:
     """Tests for -j short form of --json in ll-loop subcommands (ENH-909)."""
 
-    def test_list_json_short_form(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_list_json_short_form(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """-j is accepted by ll-loop list and sets json=True."""
         import sys
         from unittest.mock import patch
@@ -422,9 +420,7 @@ class TestLoopJsonShortForm:
         list_args = mock_list.call_args[0][0]
         assert getattr(list_args, "json", False) is True
 
-    def test_status_json_short_form(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_status_json_short_form(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """-j is accepted by ll-loop status and sets json=True."""
         import sys
         from unittest.mock import patch
@@ -443,9 +439,7 @@ class TestLoopJsonShortForm:
         status_args = mock_status.call_args[0][3]
         assert getattr(status_args, "json", False) is True
 
-    def test_history_json_short_form(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_history_json_short_form(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """-j is accepted by ll-loop history and sets json=True."""
         import sys
         from unittest.mock import patch
@@ -464,9 +458,7 @@ class TestLoopJsonShortForm:
         history_args = mock_history.call_args[0][2]
         assert getattr(history_args, "json", False) is True
 
-    def test_show_json_short_form(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_show_json_short_form(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """-j is accepted by ll-loop show and sets json=True."""
         import sys
         from unittest.mock import patch

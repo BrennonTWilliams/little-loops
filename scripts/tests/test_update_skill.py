@@ -124,7 +124,7 @@ class TestUpdateSkillSkipLogic:
         """Step 4 must set PLUGIN_RESULT to SKIP when plugin is already current."""
         content = SKILL_FILE.read_text()
         assert 'PLUGIN_RESULT="SKIP (already at $PLUGIN_VERSION)"' in content, (
-            "Step 4 must set PLUGIN_RESULT=\"SKIP (already at $PLUGIN_VERSION)\" "
+            'Step 4 must set PLUGIN_RESULT="SKIP (already at $PLUGIN_VERSION)" '
             "when the installed plugin version matches the current version"
         )
 
@@ -139,7 +139,7 @@ class TestUpdateSkillSkipLogic:
         """Step 5 must set PACKAGE_RESULT to SKIP when dev-repo package is already current."""
         content = SKILL_FILE.read_text()
         assert 'PACKAGE_RESULT="SKIP (already at $PKG_BEFORE)"' in content, (
-            "Step 5 must set PACKAGE_RESULT=\"SKIP (already at $PKG_BEFORE)\" "
+            'Step 5 must set PACKAGE_RESULT="SKIP (already at $PKG_BEFORE)" '
             "when the installed package version matches the source version"
         )
 

@@ -1402,7 +1402,14 @@ class TestLoopsGlyphsConfig:
     def test_to_dict_returns_all_keys(self) -> None:
         config = LoopsGlyphsConfig()
         d = config.to_dict()
-        assert set(d.keys()) == {"prompt", "slash_command", "shell", "mcp_tool", "sub_loop", "route"}
+        assert set(d.keys()) == {
+            "prompt",
+            "slash_command",
+            "shell",
+            "mcp_tool",
+            "sub_loop",
+            "route",
+        }
         assert d["prompt"] == "\u2726"
         assert d["route"] == "\u2443"
 
@@ -1428,9 +1435,7 @@ class TestBRConfigLoopsGlyphs:
 
     def test_loops_glyphs_override_from_config(self, temp_project_dir: Path) -> None:
         """Custom loops.glyphs values are loaded from config file."""
-        sample_config: dict[str, Any] = {
-            "loops": {"glyphs": {"prompt": "P", "mcp_tool": "M"}}
-        }
+        sample_config: dict[str, Any] = {"loops": {"glyphs": {"prompt": "P", "mcp_tool": "M"}}}
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 

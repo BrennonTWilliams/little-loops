@@ -174,7 +174,9 @@ Examples:
     status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")
     status_parser.set_defaults(command="status")
     status_parser.add_argument("loop", help="Loop name")
-    status_parser.add_argument("-j", "--json", action="store_true", help="Output loop state as JSON")
+    status_parser.add_argument(
+        "-j", "--json", action="store_true", help="Output loop state as JSON"
+    )
 
     # Stop subcommand
     stop_parser = subparsers.add_parser("stop", help="Stop a running loop")
@@ -244,7 +246,9 @@ Examples:
         action="store_true",
         help="Show untruncated prompts and output (implies --verbose)",
     )
-    history_parser.add_argument("-j", "--json", action="store_true", help="Output events as JSON array")
+    history_parser.add_argument(
+        "-j", "--json", action="store_true", help="Output events as JSON array"
+    )
     history_parser.add_argument(
         "--event", "-e", type=str, default=None, help="Filter by event type (e.g. evaluate, route)"
     )
