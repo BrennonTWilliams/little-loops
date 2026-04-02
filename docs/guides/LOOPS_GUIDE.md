@@ -228,6 +228,8 @@ ll-loop install <name>       # Copies to .loops/ for editing
 |------|-------------|
 | `dataset-curation` | Scan raw data, quality-gate each item, fix or reject, balance distribution, validate schema, and publish a curated dataset |
 | `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
+| `greenfield-builder` | End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle |
+| `eval-driven-development` | Reusable eval-driven development cycle: implement issues, run eval harness, capture issues from failures, refine, and iterate until the harness passes |
 | `refine-to-ready-issue` | Single-issue refinement pipeline — format → refine → confidence-check → ready-issue until the issue reaches ready status |
 
 The `general-task` loop requires the `input` context variable — a natural-language description of the task to complete:

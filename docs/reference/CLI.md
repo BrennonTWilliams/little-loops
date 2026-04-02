@@ -167,7 +167,7 @@ List all sprints.
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--verbose` | `-v` | Show detailed information |
-| `--json` | | Output as JSON array |
+| `--json` | `-j` | Output as JSON array |
 
 #### `ll-sprint show <sprint>` / `ll-sprint s <sprint>`
 
@@ -266,7 +266,7 @@ List available loops.
 | Flag | Description |
 |------|-------------|
 | `--running` | Only show currently running loops |
-| `--json` | Output as JSON array |
+| `--json` / `-j` | Output as JSON array |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 
@@ -274,7 +274,7 @@ Show current status of a loop.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--json` | | Output loop state as JSON |
+| `--json` | `-j` | Output loop state as JSON |
 
 #### `ll-loop stop <loop>`
 
@@ -307,7 +307,7 @@ Show execution history for a loop.
 | `--since` | | Filter to events within a time window (e.g. `1h`, `30m`, `2d`) |
 | `--verbose` | `-v` | Show action output preview and LLM call details (model, latency, prompt, response) |
 | `--full` | | Show untruncated prompts and output (implies `--verbose`) |
-| `--json` | | Output events as JSON array |
+| `--json` | `-j` | Output events as JSON array |
 
 #### `ll-loop test <loop>` / `ll-loop t <loop>`
 
@@ -332,7 +332,7 @@ Show loop details and FSM structure. The header line displays active [per-loop c
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--json` | | Output FSM config as JSON |
+| `--json` | `-j` | Output FSM config as JSON |
 
 **Examples:**
 ```bash
@@ -386,7 +386,7 @@ List active issues with optional filters.
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
 | `--flat` | Output flat list for scripting |
-| `--json` | Output as JSON array |
+| `--json` / `-j` | Output as JSON array |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
 | `--config` | Path to project root |
 
@@ -399,7 +399,7 @@ Count active issues. Outputs a single integer by default, or a JSON object with 
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
-| `--json` | Output JSON with `total`, `status`, `by_type`, and `by_priority` breakdowns |
+| `--json` / `-j` | Output JSON with `total`, `status`, `by_type`, and `by_priority` breakdowns |
 | `--config` | Path to project root |
 
 #### `ll-issues show <issue_id>` / `ll-issues s <issue_id>`
@@ -408,7 +408,7 @@ Show summary card for a single issue. Accepts short form (`518`), type-prefixed 
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Output issue fields as JSON |
+| `--json` / `-j` | Output issue fields as JSON |
 
 #### `ll-issues search [query]` / `ll-issues sr [query]`
 
@@ -429,7 +429,7 @@ Search issues with filters and sorting.
 | `--asc` / `--desc` | Sort direction |
 | `--format` | Output format: `table` (default), `list`, `ids` |
 | `--limit` | Cap results at N |
-| `--json` | Output as JSON array |
+| `--json` / `-j` | Output as JSON array |
 
 #### `ll-issues sequence` / `ll-issues seq`
 
@@ -439,7 +439,7 @@ Suggest a dependency-ordered implementation sequence.
 |------|-------------|
 | `--type` | Filter by issue type: `BUG`, `FEAT`, `ENH` |
 | `--limit` | Maximum issues to show (default: 10) |
-| `--json` | Output sequence as JSON array |
+| `--json` / `-j` | Output sequence as JSON array |
 | `--config` | Path to project root |
 
 #### `ll-issues impact-effort` / `ll-issues ie`
@@ -459,7 +459,7 @@ Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title,
 | `ISSUE-ID` | (Optional) Filter to a single issue by ID (e.g. `FEAT-873`, `BUG-525`). Ignores `--type` when set. Exits 1 if the issue is not found. |
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` (ignored when `ISSUE-ID` is provided) |
 | `--format` | Output format: `table` (default), `json` (NDJSON) |
-| `--json` | Output as JSON array; with `ISSUE-ID` outputs a single JSON object instead |
+| `--json` / `-j` | Output as JSON array; with `ISSUE-ID` outputs a single JSON object instead |
 | `--no-key` | Suppress the key/legend section at the bottom of output |
 | `--config` | Path to project root |
 
@@ -496,7 +496,7 @@ Print the issue ranked highest by outcome confidence and readiness score. Design
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}` |
+| `--json` / `-j` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}` |
 | `--path` | Output only the file path (useful for shell scripting: `$(ll-issues next-issue --path)`) |
 | `--config` | Path to project root |
 
@@ -511,7 +511,7 @@ Print all active issues in ranked order by outcome confidence and readiness scor
 | Flag/Arg | Description |
 |----------|-------------|
 | `N` | Optional count — limit output to top N issues |
-| `--json` | Output a JSON array of objects: `{id, path, outcome_confidence, confidence_score, priority}` |
+| `--json` / `-j` | Output a JSON array of objects: `{id, path, outcome_confidence, confidence_score, priority}` |
 | `--path` | Output file paths instead of issue IDs |
 | `--config` | Path to project root |
 
@@ -632,7 +632,7 @@ Show issue statistics for completed issues.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--json` | | Output as JSON |
+| `--json` | `-j` | Output as JSON |
 | `--directory` | `-d` | Path to issues directory (default: `.issues`) |
 
 #### `ll-history analyze`

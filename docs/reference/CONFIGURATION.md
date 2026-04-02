@@ -435,6 +435,25 @@ FSM loop settings:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `loops_dir` | `.loops` | Directory for loop definitions and runtime state |
+| `glyphs.prompt` | `✦` | Badge glyph for `prompt` action states in FSM box diagrams |
+| `glyphs.slash_command` | `/━►` | Badge glyph for `slash_command` action states |
+| `glyphs.shell` | `❯_` | Badge glyph for `shell` action states |
+| `glyphs.mcp_tool` | `⚡` | Badge glyph for `mcp_tool` action states |
+| `glyphs.sub_loop` | `↳⟳` | Badge glyph for `sub_loop` action states |
+| `glyphs.route` | `⑃` | Badge glyph for `route` action states |
+
+Override individual glyphs to customize how FSM box diagrams render state type badges:
+
+```json
+{
+  "loops": {
+    "glyphs": {
+      "prompt": "?",
+      "shell": "$"
+    }
+  }
+}
+```
 
 ### `scratch_pad`
 

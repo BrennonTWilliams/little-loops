@@ -433,6 +433,46 @@ sequenceDiagram
 
 ---
 
+## Extension Architecture & Event Flow
+
+<!-- TODO: update-docs stub — EventBus wiring — drafted 2026-04-02 -->
+
+little-loops includes an extension architecture built on a structured event bus. Extensions implement the `LLExtension` protocol and receive `LLEvent` notifications from core subsystems.
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Expand with full event taxonomy and extension authoring guide.
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `LLEvent` | `events.py` | Structured event dataclass (type, timestamp, payload) |
+| `EventBus` | `events.py` | Multi-observer dispatcher with optional JSONL file sink |
+| `LLExtension` | `extension.py` | Runtime-checkable protocol for event consumers |
+| `ExtensionLoader` | `extension.py` | Discovers extensions from config paths and entry points |
+
+### Event Emitters
+
+The `EventBus` is wired into the following subsystems, which emit events at key lifecycle points:
+
+| Subsystem | File | Events Emitted |
+|-----------|------|----------------|
+| FSM Executor | `fsm/executor.py` | `fsm.state_enter`, `fsm.loop_complete`, `fsm.evaluate`, `fsm.route` |
+| StateManager | `state.py` | State persistence events (save, load, mark completed/failed) |
+| Issue Lifecycle | `issue_lifecycle.py` | Issue status transitions (move, close, defer) |
+| Parallel Orchestrator | `parallel/orchestrator.py` | Worker start/complete, merge events |
+
+### Extension Loading
+
+Extensions are loaded via two mechanisms:
+1. **Config paths**: `"extensions": ["my_package:MyExtension"]` in `ll-config.json`
+2. **Entry points**: `importlib.metadata` discovery under the `little_loops.extensions` group
+
+See [API Reference — Extension API](reference/API.md#extension-api) for full protocol and loader documentation.
+
+<!-- END TODO stub -->
+
+---
+
 ## Class Relationships
 
 ```mermaid

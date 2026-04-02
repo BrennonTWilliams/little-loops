@@ -4209,7 +4209,7 @@ print(f"Status: {state.status}")
 ```python
 def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]
 ```
-List all loops with saved state.
+List all loops with saved state, including loops in the `starting` status (not yet executing their first state).
 
 ```python
 def get_loop_history(loop_name: str, loops_dir: Path | None = None) -> list[dict]
