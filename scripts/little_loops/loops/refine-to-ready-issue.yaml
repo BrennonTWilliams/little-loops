@@ -39,8 +39,14 @@ states:
         thresholds are met: (1) Readiness Score > ${context.readiness_threshold}, and
         (2) Outcome Confidence Score > ${context.outcome_threshold}. Answer NO if
         either score does not meet its threshold.
-    on_yes: done
+    on_yes: verify_issue
     on_no: refine_issue
+    on_error: failed
+
+  verify_issue:
+    action: "/ll:verify-issues ${captured.issue_id.output}"
+    action_type: slash_command
+    next: done
     on_error: failed
 
   done:

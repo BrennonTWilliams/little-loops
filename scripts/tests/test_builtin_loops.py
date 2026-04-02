@@ -443,6 +443,53 @@ class TestIssueRefinementSubLoop:
         )
 
 
+class TestRefineToReadyIssueSubLoop:
+    """Tests that refine-to-ready-issue.yaml includes a verify_issue state before done."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "refine-to-ready-issue.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_verify_issue_state_exists(self, data: dict) -> None:
+        """verify_issue state must exist so session_commands is populated before sub-loop exits."""
+        assert "verify_issue" in data["states"], (
+            "State 'verify_issue' not found in refine-to-ready-issue.yaml — "
+            "next-action gates NEEDS_VERIFY on this command being in session_commands"
+        )
+
+    def test_confidence_check_routes_to_verify_issue(self, data: dict) -> None:
+        """confidence_check.on_yes must route to verify_issue, not directly to done."""
+        confidence_check = data["states"].get("confidence_check", {})
+        assert confidence_check.get("on_yes") == "verify_issue", (
+            f"confidence_check.on_yes should be 'verify_issue', got {confidence_check.get('on_yes')!r} — "
+            f"routing directly to 'done' skips /ll:verify-issues and causes infinite NEEDS_VERIFY cycle"
+        )
+
+    def test_verify_issue_is_slash_command(self, data: dict) -> None:
+        """verify_issue must use action_type: slash_command to invoke /ll:verify-issues."""
+        state = data["states"].get("verify_issue", {})
+        assert state.get("action_type") == "slash_command", (
+            f"verify_issue.action_type should be 'slash_command', got {state.get('action_type')!r}"
+        )
+
+    def test_verify_issue_routes_to_done(self, data: dict) -> None:
+        """verify_issue.next must be 'done' (unconditional success transition)."""
+        state = data["states"].get("verify_issue", {})
+        assert state.get("next") == "done", (
+            f"verify_issue.next should be 'done', got {state.get('next')!r}"
+        )
+
+    def test_verify_issue_on_error_is_failed(self, data: dict) -> None:
+        """verify_issue.on_error must route to 'failed' terminal state."""
+        state = data["states"].get("verify_issue", {})
+        assert state.get("on_error") == "failed", (
+            f"verify_issue.on_error should be 'failed', got {state.get('on_error')!r}"
+        )
+
+
 class TestHarnessCapture:
     """Tests that harness YAML files wire execute output to check_semantic via capture/source."""
 

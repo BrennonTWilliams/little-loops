@@ -133,7 +133,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `loops`, `issue-refinement`, `refine-to-ready`, `captured`
 
+## Resolution
+
+**Status**: Fixed
+**Fixed in**: `scripts/little_loops/loops/refine-to-ready-issue.yaml`
+
+### Changes Made
+
+1. **`refine-to-ready-issue.yaml`**: Changed `confidence_check.on_yes` from `done` → `verify_issue`. Added new `verify_issue` state (`action_type: slash_command`, `next: done`, `on_error: failed`) that invokes `/ll:verify-issues ${captured.issue_id.output}` before the sub-loop exits.
+2. **`scripts/tests/test_builtin_loops.py`**: Added `TestRefineToReadyIssueSubLoop` class with 5 assertions covering the new state structure and the corrected `on_yes` routing.
+
+### Outcome
+
+After `confidence_check` passes, the sub-loop now runs `/ll:verify-issues` which appends the command to `session_commands`. The `next-action` gate in `next_action.py:38-40` is satisfied, allowing `issue-refinement` to advance to the next issue rather than cycling indefinitely on `NEEDS_VERIFY`.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-02T02:48:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53eb3cb1-f604-4fd9-85f3-fc768c44ed9b.jsonl`
 - `/ll:verify-issues` - 2026-04-02T02:43:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbde4238-c365-4ed1-af0f-b596132407a8.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
 - `/ll:refine-issue` - 2026-04-02T02:18:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
@@ -142,4 +157,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-04-01 | Priority: P2
+**Completed** | Created: 2026-04-01 | Resolved: 2026-04-01 | Priority: P2
