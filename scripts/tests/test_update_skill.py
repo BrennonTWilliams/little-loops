@@ -95,6 +95,55 @@ class TestUpdateSkillExists:
         assert "DRY-RUN" in content, "Skill must include [DRY-RUN] status in summary"
 
 
+class TestUpdateSkillSkipLogic:
+    """Tests for ENH-905: skip logic when components are already at current version."""
+
+    def test_step2_condition_includes_do_plugin(self) -> None:
+        """Step 2 must read PLUGIN_VERSION when DO_PLUGIN is true, not only DO_MARKETPLACE."""
+        content = SKILL_FILE.read_text()
+        assert (
+            '"$DO_MARKETPLACE" == true ]] || [[ "$DO_PLUGIN" == true' in content
+            or '"$DO_PLUGIN" == true ]] || [[ "$DO_MARKETPLACE" == true' in content
+        ), (
+            "Step 2 condition must read PLUGIN_VERSION when either DO_MARKETPLACE or "
+            "DO_PLUGIN is true. Change the condition from "
+            "'if [[ \"$DO_MARKETPLACE\" == true ]]' to include DO_PLUGIN."
+        )
+
+    def test_plugin_step_reads_installed_version(self) -> None:
+        """Step 4 must read installed plugin version via 'claude plugin list'."""
+        content = SKILL_FILE.read_text()
+        assert "INSTALLED_PLUGIN_VERSION" in content, (
+            "Step 4 must read installed plugin version into INSTALLED_PLUGIN_VERSION"
+        )
+        assert "claude plugin list" in content, (
+            "Step 4 must use 'claude plugin list' to detect installed plugin version"
+        )
+
+    def test_plugin_step_has_skip_result(self) -> None:
+        """Step 4 must set PLUGIN_RESULT to SKIP when plugin is already current."""
+        content = SKILL_FILE.read_text()
+        assert 'PLUGIN_RESULT="SKIP (already at $PLUGIN_VERSION)"' in content, (
+            "Step 4 must set PLUGIN_RESULT=\"SKIP (already at $PLUGIN_VERSION)\" "
+            "when the installed plugin version matches the current version"
+        )
+
+    def test_package_step_reads_src_version(self) -> None:
+        """Step 5 must read source version from pyproject.toml for dev-repo installs."""
+        content = SKILL_FILE.read_text()
+        assert "SRC_VERSION" in content, (
+            "Step 5 must read source version into SRC_VERSION for dev-repo installs"
+        )
+
+    def test_package_step_has_skip_result(self) -> None:
+        """Step 5 must set PACKAGE_RESULT to SKIP when dev-repo package is already current."""
+        content = SKILL_FILE.read_text()
+        assert 'PACKAGE_RESULT="SKIP (already at $PKG_BEFORE)"' in content, (
+            "Step 5 must set PACKAGE_RESULT=\"SKIP (already at $PKG_BEFORE)\" "
+            "when the installed package version matches the source version"
+        )
+
+
 class TestMarketplaceVersionSync:
     """Verify marketplace.json is in sync with plugin.json."""
 

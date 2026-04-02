@@ -78,9 +78,9 @@ PKG_VERSION=$(python3 -c "import importlib.metadata; print(importlib.metadata.ve
 # Plugin/marketplace versions only exist in the little-loops repo itself
 PLUGIN_VERSION="N/A"
 MARKETPLACE_VERSION="N/A"
-if [[ "$DO_MARKETPLACE" == true ]]; then
+if [[ "$DO_MARKETPLACE" == true ]] || [[ "$DO_PLUGIN" == true ]]; then
     PLUGIN_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/plugin.json')); print(d['version'])")
-    MARKETPLACE_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])")
+    MARKETPLACE_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])" 2>/dev/null || echo "N/A")
 fi
 ```
 
@@ -148,6 +148,19 @@ echo "PLUGIN UPDATE"
 echo "========================================"
 ```
 
+**Check installed plugin version first**:
+
+```bash
+INSTALLED_PLUGIN_VERSION=$(claude plugin list 2>/dev/null | grep -A1 "ll@little-loops" | grep "Version:" | awk '{print $2}')
+```
+
+**If `$INSTALLED_PLUGIN_VERSION == $PLUGIN_VERSION`** (and `INSTALLED_PLUGIN_VERSION` is non-empty):
+- Print `[SKIP] Plugin already at $PLUGIN_VERSION`
+- Set `PLUGIN_RESULT="SKIP (already at $PLUGIN_VERSION)"`
+- Proceed to Step 5
+
+If `claude plugin list` fails or returns empty, fall through to the update logic below (safe fallback).
+
 - If `$DRY_RUN == true`:
   - Print `[DRY-RUN] Would run: claude plugin update ll@little-loops`
   - Set `PLUGIN_RESULT="DRY-RUN"`
@@ -185,6 +198,24 @@ Read version before update:
 ```bash
 PKG_BEFORE=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('little-loops'))" 2>/dev/null || echo "not installed")
 ```
+
+**Check source version for dev-repo installs** (skip comparison for non-dev `pip install --upgrade` installs where no local source exists):
+
+```bash
+SRC_VERSION=""
+if [ -d "./scripts" ]; then
+    SRC_VERSION=$(python3 -c "import tomllib; d=tomllib.load(open('scripts/pyproject.toml','rb')); print(d['project']['version'])" 2>/dev/null \
+        || python3 -c "import re; m=re.search(r'version\s*=\s*\"([^\"]+)\"', open('scripts/pyproject.toml').read()); print(m.group(1) if m else '')" 2>/dev/null \
+        || echo "")
+fi
+```
+
+**If `$PKG_BEFORE == $SRC_VERSION`** (and `SRC_VERSION` is non-empty and `DRY_RUN == false`):
+- Print `[SKIP] Package already at $PKG_BEFORE`
+- Set `PACKAGE_RESULT="SKIP (already at $PKG_BEFORE)"`
+- Proceed to Step 6
+
+For non-dev installs (`INSTALL_CMD="pip install --upgrade little-loops"`), `SRC_VERSION` will be empty, so the skip is never triggered — always run.
 
 - If `$DRY_RUN == true`:
   - Print `[DRY-RUN] Would run: $INSTALL_CMD`

@@ -147,7 +147,27 @@ If `claude plugin list` fails or returns empty, fall through to running `claude 
 
 `enhancement`, `ll:update`, `captured`
 
+## Resolution
+
+**Status**: Resolved  
+**Resolved**: 2026-04-01  
+**Implementation**: `skills/update/SKILL.md`
+
+### Changes Made
+
+1. **Step 2 condition extended** — `PLUGIN_VERSION` is now read from `plugin.json` when either `$DO_MARKETPLACE == true` OR `$DO_PLUGIN == true` (previously only `$DO_MARKETPLACE`). Ensures skip comparison in Step 4 has a valid version when running `--plugin` alone.
+
+2. **Step 4 plugin skip added** — Before running `claude plugin update`, reads installed version via `claude plugin list`. If `INSTALLED_PLUGIN_VERSION == $PLUGIN_VERSION`, prints `[SKIP] Plugin already at $PLUGIN_VERSION` and sets `PLUGIN_RESULT="SKIP (already at $PLUGIN_VERSION)"`. Falls through if `claude plugin list` fails.
+
+3. **Step 5 package skip added** — For dev-repo installs only (`[ -d "./scripts" ]`), reads source version from `scripts/pyproject.toml` into `SRC_VERSION`. If `PKG_BEFORE == SRC_VERSION`, prints `[SKIP] Package already at $PKG_BEFORE` and sets `PACKAGE_RESULT="SKIP (already at $PKG_BEFORE)"`. Non-dev installs are unaffected.
+
+### Tests Added
+
+`TestUpdateSkillSkipLogic` in `scripts/tests/test_update_skill.py` (5 tests, all passing).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-04-02T03:59:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aef94f24-fa0c-4234-9cf9-00b1839f38df.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55240902-445e-4d6a-95cf-171fcd330636.jsonl`
 - `/ll:refine-issue` - 2026-04-02T03:53:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a4f1b01-67b9-4287-b97b-4c053fd50cb7.jsonl`
 - `/ll:refine-issue` - 2026-04-02T03:45:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e287fb1-9497-4145-8422-6b6a7f5b6bba.jsonl`
@@ -157,4 +177,4 @@ If `claude plugin list` fails or returns empty, fall through to running `claude 
 
 ---
 
-**Open** | Created: 2026-03-31 | Priority: P4
+**Resolved** | Created: 2026-03-31 | Resolved: 2026-04-01 | Priority: P4
