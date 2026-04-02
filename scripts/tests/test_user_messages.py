@@ -350,7 +350,7 @@ class TestSaveMessages:
                 os.chdir(tmpdir)
                 result_path = save_messages(messages)
 
-                assert result_path.parent.name == ".claude"
+                assert result_path.parent.name == ".ll"
                 assert result_path.name.startswith("user-messages-")
                 assert result_path.suffix == ".jsonl"
                 assert result_path.exists()
