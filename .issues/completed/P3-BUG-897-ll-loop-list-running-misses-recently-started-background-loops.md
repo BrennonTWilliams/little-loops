@@ -133,7 +133,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `bug`, `captured`
 
+## Resolution
+
+**Fixed** | Resolved: 2026-04-01 | By: `/ll:manage-issue bug fix BUG-897`
+
+### Changes Made
+- `scripts/little_loops/fsm/persistence.py`: Added `from little_loops.fsm.concurrency import _process_alive` import; added PID-file scanning in `list_running_loops()` after the `*.state.json` glob loop — synthesizes a `LoopState(status="starting", current_state="(initializing)", iteration=0)` for any live process with a `.pid` file but no state file yet
+- `scripts/little_loops/cli/loop/info.py`: Added `"starting": "33"` (yellow) to `_STATUS_COLORS` so starting loops display with visual distinction
+- `scripts/tests/test_fsm_persistence.py`: Added 3 test cases in `TestUtilityFunctions` — live PID only → `status="starting"`, stale PID → skipped, both files → no duplicate
+
+### Verification
+- All 3 new tests pass; 4006 pre-existing tests pass; lint and mypy clean
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-02T04:26:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90944be6-c0ae-40b1-a19e-9351fa308847.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
 - `/ll:refine-issue` - 2026-04-01T20:55:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
 - `/ll:format-issue` - 2026-04-01T20:50:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
@@ -144,4 +158,4 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-03-30 | Priority: P3
+**Completed** | Created: 2026-03-30 | Resolved: 2026-04-01 | Priority: P3

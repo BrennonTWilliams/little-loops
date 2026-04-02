@@ -60,7 +60,7 @@ def cmd_list(
             print_json([s.to_dict() for s in states])
             return 0
         print(colorize("Running loops:", "1"))
-        _STATUS_COLORS = {"running": "32", "interrupted": "33", "stopped": "2"}
+        _STATUS_COLORS = {"running": "32", "interrupted": "33", "stopped": "2", "starting": "33"}
         for state in states:
             elapsed_s = (state.accumulated_ms or 0) // 1000
             elapsed_str = (

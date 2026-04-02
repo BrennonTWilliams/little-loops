@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecutor
 from little_loops.fsm.schema import FSMLoop
 
@@ -518,6 +519,30 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
             states.append(LoopState.from_dict(data))
         except (json.JSONDecodeError, KeyError):
             continue  # Skip malformed files
+
+    # Include loops that have a PID file but no state file yet (still starting up)
+    known_names = {s.loop_name for s in states}
+    for pid_file in running_dir.glob("*.pid"):
+        if pid_file.stem in known_names:
+            continue  # state file already covers this loop
+        try:
+            pid = int(pid_file.read_text().strip())
+        except (ValueError, OSError):
+            continue
+        if _process_alive(pid):
+            states.append(
+                LoopState(
+                    loop_name=pid_file.stem,
+                    current_state="(initializing)",
+                    iteration=0,
+                    captured={},
+                    prev_result=None,
+                    last_result=None,
+                    started_at="",
+                    updated_at="",
+                    status="starting",
+                )
+            )
 
     return states
 

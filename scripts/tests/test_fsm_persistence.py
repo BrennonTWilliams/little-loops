@@ -954,6 +954,56 @@ class TestUtilityFunctions:
         assert len(states) == 1
         assert states[0].loop_name == "valid"
 
+    def test_list_running_loops_pid_only_live_process(self, tmp_path: Path) -> None:
+        """list_running_loops() includes loops with PID file but no state file yet (live process)."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        (running_dir / "starting-loop.pid").write_text("12345")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+            states = list_running_loops(loops_dir)
+
+        assert len(states) == 1
+        assert states[0].loop_name == "starting-loop"
+        assert states[0].status == "starting"
+        assert states[0].current_state == "(initializing)"
+        assert states[0].iteration == 0
+
+    def test_list_running_loops_pid_only_stale_process(self, tmp_path: Path) -> None:
+        """list_running_loops() skips PID-only loops where the process is not alive."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        (running_dir / "dead-loop.pid").write_text("99999")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: False)
+            states = list_running_loops(loops_dir)
+
+        assert states == []
+
+    def test_list_running_loops_no_duplicate_for_loop_with_both_files(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """list_running_loops() returns state-file version only when both .pid and .state.json exist."""
+        running_dir = tmp_loops_dir / ".running"
+        # loop-a has a state file (from fixture); also add a PID file for it
+        (running_dir / "loop-a.pid").write_text("12345")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+            states = list_running_loops(tmp_loops_dir)
+
+        names = [s.loop_name for s in states]
+        assert names.count("loop-a") == 1
+        # The state-file version should be returned, not the synthetic one
+        loop_a = next(s for s in states if s.loop_name == "loop-a")
+        assert loop_a.status != "starting"
+
     def test_get_loop_history(self, tmp_loops_dir: Path) -> None:
         """get_loop_history() returns events for a loop."""
         events = get_loop_history("loop-a", tmp_loops_dir)
