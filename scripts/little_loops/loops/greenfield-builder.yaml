@@ -1,0 +1,183 @@
+name: greenfield-builder
+description: |
+  End-to-end greenfield project builder meta-loop. Takes one or more project
+  spec Markdown files and autonomously drives the project from zero to a
+  working, evaluated implementation. Phases: spec analysis → technology
+  research → design artifacts → eval harness creation → issue decomposition →
+  refinement → eval-driven improvement cycle. Delegates the implement→eval→fix
+  loop to eval-driven-development as a sub-loop.
+initial: init
+max_iterations: 20
+timeout: 28800
+on_handoff: spawn
+context:
+  spec: ""           # required: path(s) to spec file(s), comma-separated
+  max_issues: 30     # max issues to create per decomposition pass
+  harness_name: ""   # auto-populated: name of created harness loop
+
+states:
+
+  # Phase 1: Validate spec file(s) exist and read their contents.
+  init:
+    action: |
+      SPECS="${context.spec}"
+      if [ -z "$SPECS" ]; then
+        echo "ERROR: spec context variable is required"
+        exit 1
+      fi
+      IFS=',' read -ra SPEC_LIST <<< "$SPECS"
+      for S in "${SPEC_LIST[@]}"; do
+        S=$(echo "$S" | xargs)
+        if [ ! -f "$S" ]; then
+          echo "ERROR: Spec file not found: $S"
+          exit 1
+        fi
+        echo "=== $S ==="
+        cat "$S"
+        echo ""
+      done
+    action_type: shell
+    capture: spec_content
+    next: tech_research
+
+  # Phase 2: Analyze the spec and research technology decisions.
+  tech_research:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Analyze the project spec:
+      ${captured.spec_content.output}
+
+      Research and document technology decisions. Write `docs/research.md` containing:
+      1. **Technology Decisions** — table of chosen technologies with rationale
+      2. **Library Comparisons** — alternatives considered for key dependencies
+      3. **Rejected Alternatives** — what was not chosen and why
+      4. **Security & Platform Notes** — relevant security considerations
+
+      Create the `docs/` directory if it doesn't exist.
+    capture: tech_research
+    next: design_artifacts
+
+  # Phase 3: Produce design artifacts informed by spec and research.
+  design_artifacts:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Using the spec and technology research:
+      Spec: ${captured.spec_content.output}
+      Research: ${captured.tech_research.output}
+
+      Create the following design artifacts:
+      1. `docs/data-model.md` — key entities with fields, types, relationships, constraints (traceable to spec requirements)
+      2. `docs/contracts/` — one file per major interface boundary (operation name, inputs, outputs, error cases)
+      3. `docs/quickstart.md` — 3-5 observable validation scenarios in prose
+
+      Create directories as needed. Every entity and contract must trace back to a spec requirement.
+    capture: design_artifacts
+    next: commit_design
+
+  # Phase 4: Commit research and design artifacts before issue work.
+  commit_design:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit all research and design artifacts.
+      Use message: "docs: add technology research and design artifacts from spec"
+    next: harness_planning
+
+  # Phase 5: Plan and create an eval harness following AUTOMATIC_HARNESSING_GUIDE.md.
+  harness_planning:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Plan an as-a-user eval harness for the project. Read `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
+      for the two harness variants (single-shot and multi-item).
+
+      Using the design artifacts:
+      ${captured.design_artifacts.output}
+
+      1. Determine which variant fits: Variant A (single-shot) for a single validation scenario,
+         Variant B (multi-item) for multiple test cases or items
+      2. Run `ll-loop install harness-single-shot` or `ll-loop install harness-multi-item` to get the template
+      3. Customize the installed harness YAML in `.loops/`:
+         - Set `name` to a project-specific name (e.g., `myproject-harness`)
+         - Configure `execute.action` to run the project
+         - Configure `check_concrete.action` to run tests
+         - Configure `check_semantic.evaluate.prompt` for semantic validation
+         - Configure `check_invariants.evaluate.target` for diff size gates
+      4. Report the harness name so it can be passed to eval-driven-development
+    capture: harness_plan
+    next: harness_issues
+
+  # Phase 6: Create P1 FEAT issues for the eval harness itself.
+  harness_issues:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Based on the harness plan:
+      ${captured.harness_plan.output}
+
+      Create P1 FEAT issues for implementing the eval harness using `/ll:capture-issue`.
+      These issues should cover:
+      - Setting up the harness execution environment
+      - Implementing concrete checks (test commands)
+      - Implementing semantic checks (LLM evaluation prompts)
+      - Implementing invariant checks (diff size, performance gates)
+
+      Run `/ll:normalize-issues` after creating issues.
+    next: spec_decomposition
+
+  # Phase 7: Decompose spec into FEAT and ENH issues.
+  spec_decomposition:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Decompose the project spec into implementation issues.
+      Spec: ${captured.spec_content.output}
+      Research: ${captured.tech_research.output}
+      Design: ${captured.design_artifacts.output}
+
+      For each distinct feature or capability in the spec:
+      1. Run `/ll:capture-issue` to create a FEAT or ENH issue
+      2. Reference specific entities from `docs/data-model.md`
+      3. Reference specific contracts from `docs/contracts/`
+      4. Reference chosen technologies from `docs/research.md`
+      5. Limit to ${context.max_issues} issues maximum
+
+      After all issues are created, run `/ll:normalize-issues` to assign IDs.
+    next: commit_issues
+
+  # Phase 7b: Commit decomposed issues.
+  commit_issues:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit all newly created issues.
+      Use message: "chore(issues): decompose spec into implementation issues"
+    next: issue_refinement
+
+  # Phase 8: Refine all decomposed issues to implementation readiness.
+  # Pattern: issue-refinement.yaml:29-33
+  issue_refinement:
+    loop: issue-refinement
+    context_passthrough: true
+    on_yes: tradeoff_review
+    on_no: tradeoff_review
+
+  # Phase 9: Annotate issues with viability notes.
+  tradeoff_review:
+    action_type: prompt
+    action: |
+      Run `/ll:tradeoff-review-issues` to annotate all issues with viability notes.
+      Then run `/ll:commit` to commit the annotations.
+      Use message: "chore(issues): add tradeoff review annotations"
+    next: eval_driven_improvement
+
+  # Phase 10: Delegate to eval-driven-development for the implement→eval→fix cycle.
+  # Context passthrough flows harness_name to the inner loop.
+  eval_driven_improvement:
+    loop: eval-driven-development
+    context_passthrough: true
+    on_yes: done
+    on_no: done
+
+  done:
+    terminal: true

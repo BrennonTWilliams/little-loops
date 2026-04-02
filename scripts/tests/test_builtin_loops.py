@@ -72,6 +72,13 @@ class TestBuiltinLoopFiles:
             "harness-multi-item",
             "general-task",
             "refine-to-ready-issue",
+            "agent-eval-improve",
+            "dataset-curation",
+            "incremental-refactor",
+            "prompt-regression-test",
+            "test-coverage-improvement",
+            "eval-driven-development",
+            "greenfield-builder",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

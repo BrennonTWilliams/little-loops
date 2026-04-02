@@ -1,0 +1,98 @@
+name: eval-driven-development
+description: |
+  Reusable eval-driven development cycle: implement viable issues, run an eval
+  harness, capture issues from failures, refine them, and iterate until the
+  harness passes or the iteration budget is exhausted. Usable standalone by any
+  project with an eval harness, or as a sub-loop of greenfield-builder.
+initial: implement
+max_iterations: 20
+timeout: 14400
+on_handoff: spawn
+context:
+  harness_name: ""            # required: name of harness loop to run
+  readiness_threshold: 90     # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
+  outcome_threshold: 75       # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+
+states:
+
+  # Implement viable issues in priority order via ll-auto.
+  implement:
+    action: ll-auto --priority P1,P2 --quiet
+    action_type: shell
+    capture: implement_result
+    next: commit_impl
+
+  # Commit implementation changes before evaluation.
+  commit_impl:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit any implementation changes.
+      Use a descriptive message summarizing the issues implemented.
+    next: run_harness
+
+  # Run the eval harness via shell (not loop: field — see executor.py:585).
+  # action: strings are interpolated; loop: fields are not.
+  # Pattern: rl-coding-agent.yaml:37-44
+  run_harness:
+    action: ll-loop run ${context.harness_name}
+    action_type: shell
+    capture: run_harness
+    next: capture_issues
+
+  # Analyze harness results and create issues from failures/gaps.
+  capture_issues:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Analyze the eval harness results:
+      ${captured.run_harness.output}
+
+      For each failure or gap identified:
+      1. Run `/ll:capture-issue` to create a new issue describing the failure
+      2. Include specific error messages, expected vs actual behavior
+      3. Reference the harness gate that failed
+
+      After creating issues, run `/ll:normalize-issues` to assign IDs.
+    next: commit_eval
+
+  # Commit new issues and eval findings.
+  commit_eval:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit new issues and evaluation findings.
+      Use message: "chore(eval): capture issues from harness run"
+    next: route_eval
+
+  # Route based on harness results: all gates pass → done, otherwise → refine.
+  # Pattern: sprint-build-and-validate.yaml:57-69
+  route_eval:
+    evaluate:
+      type: llm_structured
+      source: "${captured.run_harness.output}"
+      prompt: |
+        Did all eval harness gates pass?
+        Return "yes" if all gates passed and no failures were found.
+        Return "no" if any gates failed or produced errors.
+    on_yes: done
+    on_no: refine_issues
+    on_error: refine_issues
+    on_blocked: refine_issues
+
+  # Refine newly captured issues to implementation readiness.
+  # Pattern: issue-refinement.yaml:29-33
+  refine_issues:
+    loop: issue-refinement
+    context_passthrough: true
+    on_yes: tradeoff_review
+    on_no: tradeoff_review
+
+  # Annotate issues with viability notes, then loop back to implement.
+  tradeoff_review:
+    action_type: prompt
+    action: |
+      Run `/ll:tradeoff-review-issues` to annotate issues with viability notes.
+      Then run `/ll:commit` to commit the tradeoff annotations.
+    next: implement
+
+  done:
+    terminal: true

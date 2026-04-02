@@ -1,8 +1,8 @@
 ---
 discovered_date: "2026-04-02"
 discovered_by: capture-issue
-confidence_score: 80
-outcome_confidence: 71
+confidence_score: 95
+outcome_confidence: 79
 ---
 
 # FEAT-914: Greenfield Project Builder Meta-Loop
@@ -28,13 +28,15 @@ Running `ll-loop run greenfield-builder -- spec=path/to/spec.md` (or multiple sp
 **Outer loop (`greenfield-builder`):**
 
 1. Read and analyze the spec file(s)
-2. Plan and create an as-a-user eval harness (per AUTOMATIC_HARNESSING_GUIDE.md)
-3. Create P1 FEAT issues for the eval harness
-4. Decompose specs into FEAT and ENH issues via `/ll:capture-issue`
-5. Normalize and commit issues
-6. Refine all issues via the `issue-refinement` sub-loop
-7. Run `/ll:tradeoff-review-issues` to annotate issues with viability notes
-8. Invoke `eval-driven-development` as a sub-loop → done when it terminates
+2. Research technology decisions — produce `docs/research.md` (tech choices, library comparisons, rejected alternatives)
+3. Create design artifacts — produce `docs/data-model.md`, `docs/contracts/`, `docs/quickstart.md`; commit
+4. Plan and create an as-a-user eval harness (per AUTOMATIC_HARNESSING_GUIDE.md), informed by design artifacts
+5. Create P1 FEAT issues for the eval harness
+6. Decompose specs into FEAT and ENH issues via `/ll:capture-issue`, referencing research and design artifacts
+7. Normalize and commit issues
+8. Refine all issues via the `issue-refinement` sub-loop
+9. Run `/ll:tradeoff-review-issues` to annotate issues with viability notes
+10. Invoke `eval-driven-development` as a sub-loop → done when it terminates
 
 **Inner loop (`eval-driven-development`):**
 
@@ -61,7 +63,7 @@ A developer has a project specification document (`spec.md`) describing a new CL
 - [ ] Accepts `harness_name` context variable (name of harness loop to run)
 - [ ] Accepts `readiness_threshold` and `outcome_threshold` context variables (with defaults from `ll-config.json` canonical values)
 - [ ] Implements viable issues via `ll-auto` (`action_type: shell`)
-- [ ] Runs the harness loop as a sub-loop and captures results
+- [ ] Runs the harness loop via `action_type: shell` with `ll-loop run ${context.harness_name}`, captures stdout (`capture: run_harness`), routes unconditionally to `capture_issues` — `loop: ${context.*}` interpolation is unsupported (`executor.py:585`); see `rl-coding-agent.yaml:37-44` for the established workaround pattern
 - [ ] Creates/updates issues from eval findings via `/ll:capture-issue`
 - [ ] Refines new issues via `issue-refinement` sub-loop (`loop:` field with `context_passthrough`)
 - [ ] Runs `/ll:tradeoff-review-issues` on new issues
@@ -73,9 +75,14 @@ A developer has a project specification document (`spec.md`) describing a new CL
 
 - [ ] `greenfield-builder.yaml` exists in `scripts/little_loops/loops/` and passes `ll-loop validate`
 - [ ] Accepts `spec` input parameter (single path or comma-separated paths to Markdown spec files)
+- [ ] Produces `docs/research.md` with technology decisions, library comparisons, and rejected alternatives before issue decomposition
+- [ ] Produces `docs/data-model.md` with entity definitions traceable to spec requirements
+- [ ] Produces `docs/contracts/` with interface definitions (API/CLI/service boundaries)
+- [ ] Produces `docs/quickstart.md` with observable validation scenarios
+- [ ] Design artifacts are committed before harness planning begins
 - [ ] Plans and creates a harness loop YAML dynamically based on the spec (using patterns from AUTOMATIC_HARNESSING_GUIDE.md)
 - [ ] Creates P1 FEAT issues for the eval harness itself
-- [ ] Decomposes spec into FEAT and ENH issues using `/ll:capture-issue`
+- [ ] Decomposes spec into FEAT and ENH issues using `/ll:capture-issue`; `spec_decomposition` prompt references `${captured.tech_research.output}` and `${captured.design_artifacts.output}`
 - [ ] Invokes `issue-refinement` as a sub-loop for initial refinement pass
 - [ ] Runs `/ll:tradeoff-review-issues` and updates issues with findings
 - [ ] Invokes `eval-driven-development` as a sub-loop (via `loop:` field with `context_passthrough`), passing `harness_name`
@@ -114,9 +121,9 @@ The original 9-phase monolithic design is split into two composable loops:
 
 ```
 greenfield-builder (outer)
-  ├── Phase 1-4: One-time setup (spec → harness → issues)
-  ├── Phase 5-6: Initial refinement + tradeoff review
-  └── Phase 7:   loop: eval-driven-development  ← sub-loop
+  ├── Phase 1-6: One-time setup (spec → research → design → harness → issues)
+  ├── Phase 7-9: Initial refinement + tradeoff review
+  └── Phase 10:  loop: eval-driven-development  ← sub-loop
                    ├── implement (ll-auto)
                    ├── run harness
                    ├── capture issues from findings
@@ -141,7 +148,7 @@ Structural analog: `agent-eval-improve.yaml` (eval → score → analyze → ref
 
 2. **`commit_impl`** — `action_type: prompt` with `/ll:commit`. Commit implementation changes before evaluation.
 
-3. **`run_harness`** — `loop: ${context.harness_name}`, `context_passthrough: true`. Runs the eval harness as a sub-loop, captures results. Child termination → `on_yes`/`on_no` routing.
+3. **`run_harness`** — `action_type: shell` with `ll-loop run ${context.harness_name}`, `capture: run_harness`, `next: capture_issues` (unconditional — result evaluation deferred to `route_eval`). Pass context via explicit `--context` flags. **Do NOT use `loop: ${context.harness_name}`** — `_execute_sub_loop` passes `state.loop` raw to `resolve_loop_path()` at `executor.py:585` without interpolation; the literal string `"${context.harness_name}"` would cause `FileNotFoundError`. Established workaround pattern: `rl-coding-agent.yaml:37-44`.
 
 4. **`capture_issues`** — `action_type: prompt`. Analyze harness results from `${captured.run_harness.output}`, create issues from failures/gaps via `/ll:capture-issue`, normalize with `/ll:normalize-issues`.
 
@@ -163,21 +170,32 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
 
 **Phase 1 — Initialization**: `action_type: shell` to validate spec file(s) exist, read contents. `capture: spec_content`.
 
-**Phase 2 — Eval Harness Planning**: `action_type: prompt` to analyze the spec and plan an as-a-user eval harness following patterns in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`. Output a harness YAML to `.loops/`. `capture: harness_plan`.
+**Phase 2 — Technology Research**: `action_type: prompt` to analyze the spec and research technology decisions. Writes `docs/research.md` with: Technology Decisions table, Library Comparisons, Rejected Alternatives, Security & Platform Notes. `capture: tech_research`. `next: design_artifacts`.
 
-**Phase 3 — Harness Issue Creation**: `action_type: prompt` to create P1 FEAT issues for the eval harness using `/ll:capture-issue`.
+**Phase 3 — Design Artifacts**: `action_type: prompt` referencing `${captured.spec_content.output}` and `${captured.tech_research.output}`. Produces:
+- `docs/data-model.md` — key entities with fields, types, relationships, constraints (spec-traceable only)
+- `docs/contracts/` — one file per major interface boundary (operation name, inputs, outputs, error cases)
+- `docs/quickstart.md` — 3-5 observable validation scenarios in prose
 
-**Phase 4 — Spec Decomposition**: `action_type: prompt` to analyze spec file(s) and create FEAT/ENH issues via `/ll:capture-issue`, then normalize with `/ll:normalize-issues` and commit.
+`capture: design_artifacts`. `next: commit_design`.
 
-**Phase 5 — Issue Refinement**: `loop: issue-refinement`, `context_passthrough: true`. Initial refinement pass on all decomposed issues.
+**Phase 4 — Commit Design**: `action_type: prompt` with `/ll:commit`. Commits research and design artifacts before any issue work begins. `next: harness_planning`.
 
-**Phase 6 — Tradeoff Review**: `action_type: prompt` with `/ll:tradeoff-review-issues` and `/ll:commit`.
+**Phase 5 — Eval Harness Planning**: `action_type: prompt` to analyze the spec and design artifacts and plan an as-a-user eval harness following patterns in `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`. References `${captured.design_artifacts.output}` so the harness targets concrete API contracts and data-model entities. Output a harness YAML to `.loops/`. `capture: harness_plan`.
 
-**Phase 7 — Eval-Driven Improvement**: `loop: eval-driven-development`, `context_passthrough: true`. The outer loop's `harness_name` context variable flows through to the inner loop. Inner loop handles the implement→eval→fix cycle autonomously.
+**Phase 6 — Harness Issue Creation**: `action_type: prompt` to create P1 FEAT issues for the eval harness using `/ll:capture-issue`.
+
+**Phase 7 — Spec Decomposition**: `action_type: prompt` to analyze spec file(s) and create FEAT/ENH issues via `/ll:capture-issue`, then normalize with `/ll:normalize-issues` and commit. References `${captured.tech_research.output}` and `${captured.design_artifacts.output}` so issues name specific entities, contracts, and chosen technologies rather than abstract spec language.
+
+**Phase 8 — Issue Refinement**: `loop: issue-refinement`, `context_passthrough: true`. Initial refinement pass on all decomposed issues.
+
+**Phase 9 — Tradeoff Review**: `action_type: prompt` with `/ll:tradeoff-review-issues` and `/ll:commit`.
+
+**Phase 10 — Eval-Driven Improvement**: `loop: eval-driven-development`, `context_passthrough: true`. The outer loop's `harness_name` context variable flows through to the inner loop. Inner loop handles the implement→eval→fix cycle autonomously.
 
 **Done** — `terminal: true`.
 
-**Configuration:** `max_iterations: 15`, `timeout: 28800` (8 hours), `on_handoff: spawn`.
+**Configuration:** `max_iterations: 20`, `timeout: 28800` (8 hours), `on_handoff: spawn`.
 
 ### Key Design Decisions
 
@@ -260,7 +278,7 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
    - Top-level: `name`, `description`, `initial: implement`, `context` (with `harness_name: ""` required, thresholds with defaults), `max_iterations: 20`, `timeout: 14400`, `on_handoff: spawn`
    - `implement`: `action_type: shell` with `ll-auto --priority P1,P2`
    - `commit_impl`: `action_type: prompt` with `/ll:commit`
-   - `run_harness`: `loop: ${context.harness_name}`, `context_passthrough: true`
+   - `run_harness`: `action_type: shell`, `action: "ll-loop run ${context.harness_name}"`, `capture: run_harness`, `next: capture_issues` — pass context explicitly via `--context KEY=VALUE` flags (pattern: `rl-coding-agent.yaml:37-44`)
    - `capture_issues`: `action_type: prompt` analyzing `${captured.run_harness.output}`, invoking `/ll:capture-issue` + `/ll:normalize-issues`
    - `commit_eval`: `action_type: prompt` with `/ll:commit`
    - `route_eval`: `evaluate.type: llm_structured` — pass → `done`, fail → `refine_issues`
@@ -270,23 +288,26 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
 
 3. **Validate inner loop**: Run `ll-loop validate eval-driven-development`.
 
-4. **Design the outer loop FSM state graph**: Map `greenfield-builder` phases 1-7 referencing `eval-driven-development` as a sub-loop in phase 7. Use `sprint-build-and-validate.yaml:12-116` as the structural template.
+4. **Design the outer loop FSM state graph**: Map `greenfield-builder` phases 1-10 referencing `eval-driven-development` as a sub-loop in phase 10. Use `sprint-build-and-validate.yaml:12-116` as the structural template.
 
 5. **Write `scripts/little_loops/loops/greenfield-builder.yaml`**:
-   - Top-level: `name`, `description`, `initial`, `context` (with `spec: ""` required), `max_iterations: 15`, `timeout: 28800`, `on_handoff: spawn`
+   - Top-level: `name`, `description`, `initial`, `context` (with `spec: ""` required), `max_iterations: 20`, `timeout: 28800`, `on_handoff: spawn`
    - Phase 1 (init): `action_type: shell` to validate spec files exist, `capture: spec_content`
-   - Phase 2 (harness planning): `action_type: prompt` referencing `AUTOMATIC_HARNESSING_GUIDE.md`, `capture: harness_plan`
-   - Phase 3 (harness issues): `action_type: prompt` invoking `/ll:capture-issue`
-   - Phase 4 (spec decomposition): `action_type: prompt` invoking `/ll:capture-issue` + `/ll:normalize-issues`, then `/ll:commit`
-   - Phase 5 (refinement): `loop: issue-refinement`, `context_passthrough: true`
-   - Phase 6 (tradeoff review): `action_type: prompt` with `/ll:tradeoff-review-issues` + `/ll:commit`
-   - Phase 7 (eval-driven improvement): `loop: eval-driven-development`, `context_passthrough: true`
+   - Phase 2 (tech research): `action_type: prompt` referencing `${captured.spec_content.output}`, writes `docs/research.md`, `capture: tech_research`, `next: design_artifacts`
+   - Phase 3 (design artifacts): `action_type: prompt` referencing `${captured.spec_content.output}` + `${captured.tech_research.output}`, writes `docs/data-model.md` + `docs/contracts/` + `docs/quickstart.md`, `capture: design_artifacts`, `next: commit_design`
+   - Phase 4 (commit design): `action_type: prompt` with `/ll:commit`, `next: harness_planning`
+   - Phase 5 (harness planning): `action_type: prompt` referencing `AUTOMATIC_HARNESSING_GUIDE.md` + `${captured.design_artifacts.output}`, `capture: harness_plan`
+   - Phase 6 (harness issues): `action_type: prompt` invoking `/ll:capture-issue`
+   - Phase 7 (spec decomposition): `action_type: prompt` invoking `/ll:capture-issue` + `/ll:normalize-issues`, referencing `${captured.tech_research.output}` + `${captured.design_artifacts.output}`, then `/ll:commit`
+   - Phase 8 (refinement): `loop: issue-refinement`, `context_passthrough: true`
+   - Phase 9 (tradeoff review): `action_type: prompt` with `/ll:tradeoff-review-issues` + `/ll:commit`
+   - Phase 10 (eval-driven improvement): `loop: eval-driven-development`, `context_passthrough: true`
    - `done`: `terminal: true`
 
 6. **Validate and test both loops**:
    - Run `ll-loop validate eval-driven-development` and `ll-loop validate greenfield-builder`
    - Run `ll-loop test` for both loops
-   - Verify `test_builtin_loops.py` passes with both new loops auto-included
+   - **Update `scripts/tests/test_builtin_loops.py:48-75`**: `test_expected_loops_exist` uses strict `==` comparison (`assert expected == actual`) against the glob result. **The test is already failing before this issue is implemented** — the expected set has 26 entries but 31 loop files exist on disk (5 undocumented: `agent-eval-improve`, `dataset-curation`, `incremental-refactor`, `prompt-regression-test`, `test-coverage-improvement`). Add all **7** missing stems to the set: the 5 pre-existing ones plus `"eval-driven-development"` and `"greenfield-builder"`. Adding only 2 will leave the test still failing.
 
 7. **Update `scripts/little_loops/loops/README.md`** with entries for both loops
 
@@ -317,7 +338,145 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Useful flags: `--max-issues N`, `--priority P1,P2`, `--type BUG,FEAT,ENH`, `--skip ID1,ID2`, `--quiet`
 - No existing built-in loop directly invokes `ll-auto`; the documented pattern is `action_type: shell` with `ll-auto --max-issues 5`
 
-**Existing loop count**: 32 built-in loops in `scripts/little_loops/loops/`; `test_builtin_loops.py` auto-validates all YAMLs in that directory — the new loop will be automatically tested.
+**Existing loop count**: Built-in loops in `scripts/little_loops/loops/`. `test_builtin_loops.py` has two test categories: (a) structural YAML validation — auto-discovers all files; (b) `test_expected_loops_exist` (lines 46-77) — uses a **hardcoded `expected` set** with strict `==` comparison against the glob result. Adding new loops will pass structural validation automatically but WILL FAIL the expected-set test until the set is manually updated.
+
+### Codebase Research Findings (Round 2)
+
+_Added by `/ll:refine-issue` — resolving Confidence Check concerns:_
+
+**`loop: ${context.*}` interpolation is unsupported — confirmed** (`executor.py:571-625`):
+- `_execute_sub_loop` passes `state.loop` raw to `resolve_loop_path()` at `executor.py:585` — the `ctx` object is built at line 637 and used for routing (`on_yes`/`on_no`) but never applied to `state.loop`
+- `resolve_loop_path()` (`cli/loop/_helpers.py:90-111`) treats the input as a literal filename stem; `"${context.harness_name}"` causes `FileNotFoundError` at line 111
+- By contrast, `action:` strings ARE interpolated: `interpolate(action_template, ctx)` at `executor.py:705` resolves all `${context.*}` tokens before shell execution
+- **Resolution**: Use `action_type: shell` with `action: "ll-loop run ${context.harness_name}"` — the FSM executor interpolates the action string, the shell receives the resolved loop name
+
+**Established workaround pattern** (`rl-coding-agent.yaml:37-44`):
+```yaml
+refine:
+  action: |
+    ll-loop run rl-rlhf \
+      --context quality_dimension="correctness and test coverage" \
+      --max-iterations 10
+  action_type: shell
+  capture: refine_result
+  next: observe
+```
+The file even includes a comment (line 8) noting this as a workaround pending FEAT-659 (native hierarchical FSM loop support). This is the exact pattern for `run_harness`.
+
+**Context passthrough for shell-invoked harness**: Use `--context KEY=VALUE` flags (CLI defined at `cli/loop/__init__.py:141-147`). Any FSM context variables needed by the harness must be passed explicitly — `context_passthrough: true` only works on native `loop:` states, not shell actions.
+
+**`capture:` on `loop:` states — no explicit field needed**: Child captures are automatically stored in `parent.captured[<state_name>]` when `context_passthrough: true`. Reference syntax: `${captured.<state_name>.<child_capture_name>.output}` (pattern: `examples-miner.yaml:135-148`, reference doc: `skills/create-loop/reference.md:570-616`). For `run_harness` as a shell action, use `capture: run_harness`; reference via `${captured.run_harness.output}` in `route_eval`.
+
+**`test_expected_loops_exist` is a strict-equality test** (`test_builtin_loops.py:46-77`):
+- Uses `assert expected == actual` where `expected` is a hardcoded inline `set` literal and `actual` = `{f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}`
+- Fails in both directions: new file added but not in set, OR set has a name whose file was deleted
+- Add exactly `"eval-driven-development"` and `"greenfield-builder"` to the `expected` set at lines 48-75
+
+### Codebase Research Findings (Round 3)
+
+_Added by `/ll:refine-issue` — verifying implementation details:_
+
+**`test_expected_loops_exist` actual expected set — 26 entries, not 31** (`test_builtin_loops.py:48-75`):
+
+The issue previously said "31 loop names" — actual count is **26**. Adding the two new loops brings it to 28. Exact current set to which the implementer must append:
+
+```python
+expected = {
+    "dead-code-cleanup",
+    "docs-sync",
+    "evaluation-quality",
+    "fix-quality-and-tests",
+    "issue-discovery-triage",
+    "issue-refinement",
+    "issue-size-split",
+    "issue-staleness-review",
+    "backlog-flow-optimizer",
+    "sprint-build-and-validate",
+    "worktree-health",
+    "rl-bandit",
+    "rl-rlhf",
+    "rl-policy",
+    "rl-coding-agent",
+    "apo-feedback-refinement",
+    "apo-contrastive",
+    "apo-opro",
+    "apo-beam",
+    "apo-textgrad",
+    "examples-miner",
+    "context-health-monitor",
+    "harness-single-shot",
+    "harness-multi-item",
+    "general-task",
+    "refine-to-ready-issue",
+    # ADD THESE:
+    "eval-driven-development",
+    "greenfield-builder",
+}
+```
+
+**Harness template selection logic for Phase 5** (`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:439-495`):
+
+Template selection is purely structural — determined at wizard Step H2 (Work Item Discovery Mode):
+- **Variant A (`harness-single-shot`)**: Single-shot verification (one execution → check chain). Use when the spec defines a single validation scenario.
+- **Variant B (`harness-multi-item`)**: Iterates over a list of work items (`discover → execute → check → advance`). Use when the spec implies multiple test cases, files, or items.
+
+For Phase 5 in the prompt, instruct the LLM to:
+1. Choose Variant A or B based on whether the spec has a single observable scenario vs. a list of items
+2. Copy the chosen template: `ll-loop install harness-single-shot` or `ll-loop install harness-multi-item` (installs to `.loops/`)
+3. Customize the key fields: `name`, `execute.action`, `check_concrete.action`, `check_semantic.evaluate.prompt`, `check_invariants.evaluate.target` (and `discover.action` for Variant B)
+4. Reference `AUTOMATIC_HARNESSING_GUIDE.md` lines 600–620 for the exact fields to modify
+
+**3-level nesting (`greenfield-builder → eval-driven-development → issue-refinement`) — mechanically sound** (`executor.py:571-625`):
+
+- No depth limit exists in `_execute_sub_loop`; `_depth` is only used for event tagging
+- Grandparent context reaches grandchild IF the intermediate `loop:` state also sets `context_passthrough: true`
+- **`harness_name` flow is safe**: `greenfield-builder` → `eval-driven-development` (1 level, needs `harness_name`) is the critical pass; `eval-driven-development` → `issue-refinement` (2 levels) does NOT need `harness_name` — `issue-refinement` only uses `context.input`
+- Untested gap: grandparent-to-grandchild context passthrough chain is exercised by `test_fsm_executor.py:3494` for depth/events but NOT for context values. Not a blocker — the `harness_name` variable only needs to propagate 1 level deep
+
+**`rl-coding-agent.yaml` workaround note** (`rl-coding-agent.yaml:7-8`):
+
+The hardcoded loop name in the existing example (`rl-rlhf`) is intentional — `rl-coding-agent` always calls the same fixed child. For `run_harness` in `eval-driven-development`, the name is dynamic (`${context.harness_name}`). This is supported because `action:` strings are interpolated at `executor.py:705` before shell execution. The pattern extends naturally: action strings support `${context.*}` interpolation; only `loop:` fields do not. No FEAT-659 blocker applies to this usage.
+
+### Codebase Research Findings (Round 4)
+
+_Added by `/ll:refine-issue` — correcting Round 3 and filling remaining gaps:_
+
+**CORRECTION to Round 3 — `test_expected_loops_exist` requires adding 7 entries, not 2**:
+
+Round 3 shows the 26-entry `expected` set and says "add just `eval-driven-development` and `greenfield-builder`". This is incorrect. The test is ALREADY failing: 31 YAML files exist at the top level of `scripts/little_loops/loops/` (the `oracles/` subdirectory is excluded by the non-recursive `glob("*.yaml")`) but only 26 are in `expected`. Five files are on disk but absent from the set:
+
+```
+agent-eval-improve, dataset-curation, incremental-refactor,
+prompt-regression-test, test-coverage-improvement
+```
+
+Implementation step 6 is correct: add all **7** missing stems (5 pre-existing + 2 new). The final `expected` set must have 33 entries. Round 3's "add just 2" would leave the test still failing with `len(actual)=33 != len(expected)=28`.
+
+**`route_eval` evaluate block exact syntax** (from `sprint-build-and-validate.yaml:57-69`):
+
+`route_eval` is a pure routing state with NO `action` field — it evaluates `${captured.run_harness.output}` from the prior shell state using `llm_structured` + `source:`:
+
+```yaml
+route_eval:
+  evaluate:
+    type: llm_structured
+    source: "${captured.run_harness.output}"
+    prompt: |
+      Did all eval harness gates pass?
+      Return "yes" if all gates passed.
+      Return "no" if any gates failed or produced errors.
+  on_yes: done
+  on_no: refine_issues
+  on_error: refine_issues
+  on_blocked: refine_issues
+```
+
+The `source:` field feeds the captured harness stdout into the LLM evaluator. This pattern is identical to `route_validation` in `sprint-build-and-validate.yaml:57-69`.
+
+**`ll-loop install` is a real, valid command** (`cli/loop/__init__.py:307-311`, `config_cmds.py:37-66`):
+- Usage: `ll-loop install harness-single-shot` or `ll-loop install harness-multi-item`
+- Copies the built-in template to `<project>/.loops/<loop_name>.yaml`; errors if destination already exists
+- Phase 5 prompt should instruct the LLM to run `ll-loop install <variant>` to obtain the template before customizing it
 
 ## Impact
 
@@ -347,13 +506,19 @@ _Added by `/ll:confidence-check` on 2026-04-02_
 
 ### Concerns
 - **`loop: ${context.harness_name}` is not supported by the executor** (`executor.py:585`). `state.loop` is passed directly to `resolve_loop_path()` without interpolation — the literal string `"${context.harness_name}"` would be used as a file path and fail. The issue lists executor.py as "Reference Only — Not Modified", creating a contradiction. Resolution required before implementation: either (a) enhance `executor.py` to interpolate `state.loop` before resolution, or (b) use `action_type: shell` with `ll-loop run ${context.harness_name}` and `exit_code` routing instead of a sub-loop state.
-- **`test_expected_loops_exist` will fail** (`test_builtin_loops.py:46-77`). This test has a hardcoded `expected` set of 31 loop names. Adding two new loops will cause `actual != expected`. The issue notes new loops will be "auto-included" but this only applies to structural validation tests — the expected-set test must be manually updated.
+- **`test_expected_loops_exist` will fail** (`test_builtin_loops.py:46-77`). This test has a hardcoded `expected` set of 26 loop names, but 31 YAML files exist on disk. Adding two new loops will widen this gap further. The issue notes new loops will be "auto-included" but this only applies to structural validation tests — the expected-set test must be manually updated (add all 7 missing stems: 5 pre-existing + 2 new).
 
 ### Outcome Risk Factors
 - The outer loop's Phase 2 (creating harness YAML from spec) relies heavily on LLM judgment with no concrete template selection logic. Choosing and parameterizing the right harness variant for an arbitrary spec is a significant inference task that may produce inconsistent results.
 - 3-level sub-loop nesting (greenfield-builder → eval-driven-development → issue-refinement) is novel — only 1-level nesting is established in existing loops. Debugging failures in deeply nested sub-loops has no established pattern.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-02T16:39:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/559d7ee1-0b28-4714-bc85-f7f06316dc14.jsonl`
+- `/ll:refine-issue` - 2026-04-02T16:23:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d41e142-95a4-4d7a-a114-f07f2bbc44bd.jsonl`
+- `/ll:refine-issue` - 2026-04-02T16:23:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d41e142-95a4-4d7a-a114-f07f2bbc44bd.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3dfd289-19b3-42ae-91c4-9110cbc966f7.jsonl`
+- `/ll:refine-issue` - 2026-04-02T14:46:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b7533a7-29d7-44d6-8489-bc5e06ed005f.jsonl`
+- `/ll:refine-issue` - 2026-04-02T06:15:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d667a6c-0a49-4284-a4ce-4b5ecbbfe4a3.jsonl`
 - `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79abedd4-e354-40a5-a5ad-3c6d38b65535.jsonl`
 - `/ll:refine-issue` - 2026-04-02T05:14:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42dd0907-a734-4d2d-9267-44252d3837e7.jsonl`
 - `/ll:format-issue` - 2026-04-02T05:05:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42f55760-d9eb-4053-a9a0-e47fdee21521.jsonl`
@@ -361,6 +526,28 @@ _Added by `/ll:confidence-check` on 2026-04-02_
 
 ---
 
+## Resolution
+
+**Resolved** — 2026-04-02
+
+### Changes Made
+- Created `scripts/little_loops/loops/eval-driven-development.yaml` — inner loop with 9 states: implement → commit → run_harness → capture_issues → commit → route_eval → refine → tradeoff → done
+- Created `scripts/little_loops/loops/greenfield-builder.yaml` — outer loop with 12 states: init → tech_research → design → commit → harness_planning → harness_issues → spec_decomposition → commit → refinement → tradeoff → eval_driven_improvement → done
+- Updated `scripts/tests/test_builtin_loops.py` — added 7 missing loop stems to expected set (5 pre-existing + 2 new, 33 total)
+- Updated `scripts/little_loops/loops/README.md` — added "Greenfield & Eval-Driven" section
+
+### Key Design Decisions
+- `run_harness` uses `action_type: shell` with `ll-loop run ${context.harness_name}` (not `loop:` field) because `executor.py:585` doesn't interpolate `state.loop` — follows `rl-coding-agent.yaml:37-44` workaround pattern
+- `eval-driven-development` is standalone-reusable: any project with an eval harness can invoke it directly
+- 3-level nesting supported: greenfield-builder → eval-driven-development → issue-refinement
+- `context_passthrough: true` on all sub-loop states to flow `harness_name` through
+
+### Verification
+- `ll-loop validate` passes for both loops
+- All 52 tests in `test_builtin_loops.py` pass
+- `ruff check` passes
+- `mypy` passes (pre-existing unrelated `wcwidth` warning only)
+
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P1
+**Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P1

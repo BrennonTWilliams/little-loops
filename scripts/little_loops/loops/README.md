@@ -80,6 +80,13 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `dataset-curation` | Ingest raw data, quality-gate each item, fix or reject, balance distribution, validate schema, and publish |
 | `prompt-regression-test` | CI for prompts: run a prompt suite against an LLM endpoint, score outputs against expected results, compare to baseline, and flag regressions |
 
+## Greenfield & Eval-Driven
+
+| Loop | Description |
+|---|---|
+| `greenfield-builder` | End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle |
+| `eval-driven-development` | Reusable eval-driven development cycle: implement issues, run eval harness, capture issues from failures, refine, and iterate until the harness passes |
+
 ## Harness / Templates
 
 | Loop | Description |
