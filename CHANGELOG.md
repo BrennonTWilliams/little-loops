@@ -12,6 +12,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.68.0] - 2026-04-02
+
+### Added
+
+- **CLI Short Forms for Shared Arguments** — Added `-j`, `-o`, `-f`, `-s`, and other short flags across all CLI commands for a consistent, ergonomic developer experience (ENH-907, ENH-910)
+- **New FSM Automation Loops** — Added `agent-eval-improve`, `dataset-curation`, `prompt-regression-test`, `test-coverage-improvement`, and `incremental-refactor` loops (be2c634c, da3e802c)
+- **Configurable FSM Box Diagram Glyphs** — FSM loop box diagrams now support configurable glyph mappings (387e1d53)
+
+### Changed
+
+- **Rewrite Skill Descriptions as Trigger Documents** — All 21 skill descriptions restructured for better auto-activation and discoverability (ENH-493)
+- **`/ll:update` Skips Already-Current Components** — Update command now detects and skips plugin/package steps when already at the latest version (ENH-905)
+- **`ll-loop status` Shows Log File Details** — Status output now includes log file path and line counts for active loops (ENH-899)
+- **Delegate issue-refinement to refine-to-ready sub-loop** — Reduced code duplication by delegating issue-refinement loop FSM states to the `refine-to-ready-issue` sub-loop (ENH-901)
+- **Document `ll-loop list` Flags in README** — Added missing `--running`, `--all`, and `--format` flag documentation to CLI quick-reference (ENH-902)
+
+### Fixed
+
+- **`ll-loop list --running` Misses Recently-Started Loops** — `list_running_loops` now includes loops in the `starting` state so they appear immediately after launch (BUG-897)
+- **FSM context_passthrough passes full capture dicts** — Fixed to pass `.output` strings instead of raw capture dicts in context passthrough (bd2f4cd5)
+- **`/ll:update` reads plugin.json unconditionally** — Guarded `plugin.json` reads behind `DO_MARKETPLACE` flag to avoid errors in non-marketplace environments (da8e8c3f)
+- **`refine-to-ready-issue` loop missing verify_issue state** — Added `verify_issue` FSM state to the sub-loop for complete issue lifecycle coverage (42724be3)
+
+### Documentation
+
+- Auto-format source and test files with ruff (58366a35)
+
+[1.68.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.67.2...v1.68.0
+
 ## [1.67.2] - 2026-03-31
 
 ### Changed
