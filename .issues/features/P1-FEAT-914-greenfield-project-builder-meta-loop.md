@@ -9,9 +9,9 @@ discovered_by: capture-issue
 
 Create two new built-in FSM loops in `scripts/little_loops/loops/`:
 
-1. **`eval-driven-improvement.yaml`** — A reusable inner loop that runs an eval harness, captures issues from findings, refines them to readiness, implements fixes, and cycles until the harness passes or the iteration budget is exhausted. Usable by any project with an eval harness, not just greenfield builds.
+1. **`eval-driven-development.yaml`** — A reusable inner loop that runs an eval harness, captures issues from findings, refines them to readiness, implements fixes, and cycles until the harness passes or the iteration budget is exhausted. Usable by any project with an eval harness, not just greenfield builds.
 
-2. **`greenfield-builder.yaml`** — The outer meta-loop that drives a full greenfield project lifecycle: spec decomposition → eval harness creation → issue creation → refinement → then delegates the improvement cycle to `eval-driven-improvement` as a sub-loop.
+2. **`greenfield-builder.yaml`** — The outer meta-loop that drives a full greenfield project lifecycle: spec decomposition → eval harness creation → issue creation → refinement → then delegates the improvement cycle to `eval-driven-development` as a sub-loop.
 
 The outer loop accepts one or more project spec Markdown files as input and autonomously drives the project from zero to a working, evaluated implementation. The inner loop is extracted as a standalone primitive so it can be independently tested, tuned, and reused by other workflows (e.g., hardening an existing project, post-refactor validation).
 
@@ -32,9 +32,9 @@ Running `ll-loop run greenfield-builder -- spec=path/to/spec.md` (or multiple sp
 5. Normalize and commit issues
 6. Refine all issues via the `issue-refinement` sub-loop
 7. Run `/ll:tradeoff-review-issues` to annotate issues with viability notes
-8. Invoke `eval-driven-improvement` as a sub-loop → done when it terminates
+8. Invoke `eval-driven-development` as a sub-loop → done when it terminates
 
-**Inner loop (`eval-driven-improvement`):**
+**Inner loop (`eval-driven-development`):**
 
 1. Implement viable issues via `ll-auto`
 2. Run the eval harness, capture results
@@ -53,9 +53,9 @@ A developer has a project specification document (`spec.md`) describing a new CL
 
 ## Acceptance Criteria
 
-### Inner loop (`eval-driven-improvement.yaml`)
+### Inner loop (`eval-driven-development.yaml`)
 
-- [ ] `eval-driven-improvement.yaml` exists in `scripts/little_loops/loops/` and passes `ll-loop validate`
+- [ ] `eval-driven-development.yaml` exists in `scripts/little_loops/loops/` and passes `ll-loop validate`
 - [ ] Accepts `harness_name` context variable (name of harness loop to run)
 - [ ] Accepts `readiness_threshold` and `outcome_threshold` context variables (with defaults from `ll-config.json` canonical values)
 - [ ] Implements viable issues via `ll-auto` (`action_type: shell`)
@@ -76,7 +76,7 @@ A developer has a project specification document (`spec.md`) describing a new CL
 - [ ] Decomposes spec into FEAT and ENH issues using `/ll:capture-issue`
 - [ ] Invokes `issue-refinement` as a sub-loop for initial refinement pass
 - [ ] Runs `/ll:tradeoff-review-issues` and updates issues with findings
-- [ ] Invokes `eval-driven-improvement` as a sub-loop (via `loop:` field with `context_passthrough`), passing `harness_name`
+- [ ] Invokes `eval-driven-development` as a sub-loop (via `loop:` field with `context_passthrough`), passing `harness_name`
 - [ ] Has `max_iterations`, `timeout`, and `on_handoff: spawn` configured appropriately
 
 ## API/Interface
@@ -95,9 +95,9 @@ context:
 
 ```yaml
 # Inner loop invocation (standalone):
-# ll-loop run eval-driven-improvement -- harness_name=my-harness
+# ll-loop run eval-driven-development -- harness_name=my-harness
 
-# eval-driven-improvement context variables:
+# eval-driven-development context variables:
 context:
   harness_name: ""            # required: name of harness loop to run
   readiness_threshold: 90     # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
@@ -114,7 +114,7 @@ The original 9-phase monolithic design is split into two composable loops:
 greenfield-builder (outer)
   ├── Phase 1-4: One-time setup (spec → harness → issues)
   ├── Phase 5-6: Initial refinement + tradeoff review
-  └── Phase 7:   loop: eval-driven-improvement  ← sub-loop
+  └── Phase 7:   loop: eval-driven-development  ← sub-loop
                    ├── implement (ll-auto)
                    ├── run harness
                    ├── capture issues from findings
@@ -129,7 +129,7 @@ greenfield-builder (outer)
 - Each loop can be validated and tested independently with `ll-loop validate` and `ll-loop test`
 - Follows the established composition pattern: `issue-refinement.yaml` → `refine-to-ready-issue.yaml`
 
-### Inner Loop: `eval-driven-improvement.yaml`
+### Inner Loop: `eval-driven-development.yaml`
 
 Structural analog: `agent-eval-improve.yaml` (eval → score → analyze → refine → re-eval cycle with convergence routing). This is the issue-management equivalent of that RL pattern.
 
@@ -171,7 +171,7 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
 
 **Phase 6 — Tradeoff Review**: `action_type: prompt` with `/ll:tradeoff-review-issues` and `/ll:commit`.
 
-**Phase 7 — Eval-Driven Improvement**: `loop: eval-driven-improvement`, `context_passthrough: true`. The outer loop's `harness_name` context variable flows through to the inner loop. Inner loop handles the implement→eval→fix cycle autonomously.
+**Phase 7 — Eval-Driven Improvement**: `loop: eval-driven-development`, `context_passthrough: true`. The outer loop's `harness_name` context variable flows through to the inner loop. Inner loop handles the implement→eval→fix cycle autonomously.
 
 **Done** — `terminal: true`.
 
@@ -179,9 +179,9 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
 
 ### Key Design Decisions
 
-- Inner loop is a standalone reusable primitive — invocable directly via `ll-loop run eval-driven-improvement -- harness_name=...` or as a sub-loop
+- Inner loop is a standalone reusable primitive — invocable directly via `ll-loop run eval-driven-development -- harness_name=...` or as a sub-loop
 - Use `action_type: prompt` for phases requiring LLM reasoning (spec analysis, issue decomposition, eval planning)
-- Use `loop:` sub-loop states for `issue-refinement`, `eval-driven-improvement`, and the harness evaluation
+- Use `loop:` sub-loop states for `issue-refinement`, `eval-driven-development`, and the harness evaluation
 - Use `action_type: shell` for `ll-auto` invocation and deterministic checks
 - Use `context_passthrough: true` on all sub-loop states to share captured data and flow `harness_name`
 - Commit at natural phase boundaries (after decomposition, after implementation, after evaluation)
@@ -204,7 +204,7 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/eval-driven-improvement.yaml` (new file)
+- `scripts/little_loops/loops/eval-driven-development.yaml` (new file)
 - `scripts/little_loops/loops/greenfield-builder.yaml` (new file)
 
 ### Dependent Files (Callers/Importers)
@@ -252,9 +252,9 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
 
 ## Implementation Steps
 
-1. **Design the inner loop FSM state graph**: Map `eval-driven-improvement` states and transitions. Use `agent-eval-improve.yaml` as the structural analog. Key decisions: harness invocation as sub-loop vs shell, commit placement, routing logic.
+1. **Design the inner loop FSM state graph**: Map `eval-driven-development` states and transitions. Use `agent-eval-improve.yaml` as the structural analog. Key decisions: harness invocation as sub-loop vs shell, commit placement, routing logic.
 
-2. **Write `scripts/little_loops/loops/eval-driven-improvement.yaml`**:
+2. **Write `scripts/little_loops/loops/eval-driven-development.yaml`**:
    - Top-level: `name`, `description`, `initial: implement`, `context` (with `harness_name: ""` required, thresholds with defaults), `max_iterations: 20`, `timeout: 14400`, `on_handoff: spawn`
    - `implement`: `action_type: shell` with `ll-auto --priority P1,P2`
    - `commit_impl`: `action_type: prompt` with `/ll:commit`
@@ -266,9 +266,9 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
    - `tradeoff_review`: `action_type: prompt` with `/ll:tradeoff-review-issues`, `next: implement`
    - `done`: `terminal: true`
 
-3. **Validate inner loop**: Run `ll-loop validate eval-driven-improvement`.
+3. **Validate inner loop**: Run `ll-loop validate eval-driven-development`.
 
-4. **Design the outer loop FSM state graph**: Map `greenfield-builder` phases 1-7 referencing `eval-driven-improvement` as a sub-loop in phase 7. Use `sprint-build-and-validate.yaml:12-116` as the structural template.
+4. **Design the outer loop FSM state graph**: Map `greenfield-builder` phases 1-7 referencing `eval-driven-development` as a sub-loop in phase 7. Use `sprint-build-and-validate.yaml:12-116` as the structural template.
 
 5. **Write `scripts/little_loops/loops/greenfield-builder.yaml`**:
    - Top-level: `name`, `description`, `initial`, `context` (with `spec: ""` required), `max_iterations: 15`, `timeout: 28800`, `on_handoff: spawn`
@@ -278,11 +278,11 @@ Follows the phased pipeline pattern from `sprint-build-and-validate.yaml` with s
    - Phase 4 (spec decomposition): `action_type: prompt` invoking `/ll:capture-issue` + `/ll:normalize-issues`, then `/ll:commit`
    - Phase 5 (refinement): `loop: issue-refinement`, `context_passthrough: true`
    - Phase 6 (tradeoff review): `action_type: prompt` with `/ll:tradeoff-review-issues` + `/ll:commit`
-   - Phase 7 (eval-driven improvement): `loop: eval-driven-improvement`, `context_passthrough: true`
+   - Phase 7 (eval-driven improvement): `loop: eval-driven-development`, `context_passthrough: true`
    - `done`: `terminal: true`
 
 6. **Validate and test both loops**:
-   - Run `ll-loop validate eval-driven-improvement` and `ll-loop validate greenfield-builder`
+   - Run `ll-loop validate eval-driven-development` and `ll-loop validate greenfield-builder`
    - Run `ll-loop test` for both loops
    - Verify `test_builtin_loops.py` passes with both new loops auto-included
 
@@ -320,7 +320,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Impact
 
 - **Priority**: P1 - This is the highest-leverage automation in the plugin; it composes all existing primitives into the ultimate workflow
-- **Effort**: Large - Two FSM loops with nested sub-loop composition (3 levels deep: greenfield-builder → eval-driven-improvement → issue-refinement), prompt engineering for spec decomposition and harness planning, integration with many existing skills
+- **Effort**: Large - Two FSM loops with nested sub-loop composition (3 levels deep: greenfield-builder → eval-driven-development → issue-refinement), prompt engineering for spec decomposition and harness planning, integration with many existing skills
 - **Risk**: Medium - Relies on correct interaction of many subsystems (sub-loops, skills, ll-auto, harness execution); each phase is individually proven but the composition is novel
 - **Breaking Change**: No
 
