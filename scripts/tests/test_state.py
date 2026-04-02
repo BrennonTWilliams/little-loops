@@ -659,9 +659,7 @@ class TestStateManagerEventEmission:
         assert received[0]["issue_id"] == "BUG-002"
         assert received[0]["status"] == "completed"
 
-    def test_mark_failed_emits_event(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_mark_failed_emits_event(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """mark_failed emits state.issue_failed event."""
         from little_loops.events import EventBus
 
@@ -679,9 +677,7 @@ class TestStateManagerEventEmission:
         assert received[0]["status"] == "failed"
         assert "ts" in received[0]
 
-    def test_no_event_bus_no_error(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_no_event_bus_no_error(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """StateManager without event_bus works without errors (backward compat)."""
         manager = StateManager(temp_state_file, mock_logger)
 

@@ -88,9 +88,7 @@ class StateManager:
     automated issue processing with resume capability.
     """
 
-    def __init__(
-        self, state_file: Path, logger: Logger, event_bus: EventBus | None = None
-    ) -> None:
+    def __init__(self, state_file: Path, logger: Logger, event_bus: EventBus | None = None) -> None:
         """Initialize state manager.
 
         Args:
@@ -211,7 +209,9 @@ class StateManager:
         """
         self.state.failed_issues[issue_id] = reason
         self.save()
-        self._emit("state.issue_failed", {"issue_id": issue_id, "reason": reason, "status": "failed"})
+        self._emit(
+            "state.issue_failed", {"issue_id": issue_id, "reason": reason, "status": "failed"}
+        )
 
     def is_attempted(self, issue_id: str) -> bool:
         """Check if an issue has been attempted.

@@ -913,14 +913,16 @@ class ParallelOrchestrator:
 
         # Emit worker completion event for extensions (ENH-921)
         if self._event_bus:
-            self._event_bus.emit({
-                "event": "parallel.worker_completed",
-                "ts": datetime.now(UTC).isoformat(),
-                "issue_id": result.issue_id,
-                "worker_name": result.worktree_path.name,
-                "status": "success" if result.success else "failure",
-                "duration_seconds": result.duration,
-            })
+            self._event_bus.emit(
+                {
+                    "event": "parallel.worker_completed",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "issue_id": result.issue_id,
+                    "worker_name": result.worktree_path.name,
+                    "status": "success" if result.success else "failure",
+                    "duration_seconds": result.duration,
+                }
+            )
 
     def _requeue_deferred_issues(self) -> None:
         """Re-queue deferred issues that no longer have overlaps (ENH-143)."""

@@ -388,7 +388,10 @@ def _cmd_sprint_run(
 
                 event_bus = EventBus()
                 orchestrator = ParallelOrchestrator(
-                    parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}/{total_waves}",
+                    parallel_config,
+                    config,
+                    Path.cwd(),
+                    wave_label=f"Wave {wave_num}/{total_waves}",
                     event_bus=event_bus,
                 )
                 result = orchestrator.run()

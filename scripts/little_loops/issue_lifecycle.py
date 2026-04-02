@@ -526,13 +526,15 @@ Investigate the error output above and address the root cause.
         new_issue_path.write_text(content)
         logger.success(f"Created new issue: {new_issue_path}")
         if event_bus is not None:
-            event_bus.emit({
-                "event": "issue.failure_captured",
-                "ts": _iso_now(),
-                "issue_id": bug_id,
-                "file_path": str(new_issue_path),
-                "parent_issue_id": parent_info.issue_id,
-            })
+            event_bus.emit(
+                {
+                    "event": "issue.failure_captured",
+                    "ts": _iso_now(),
+                    "issue_id": bug_id,
+                    "file_path": str(new_issue_path),
+                    "parent_issue_id": parent_info.issue_id,
+                }
+            )
         return new_issue_path
     except Exception as e:
         logger.error(f"Failed to create issue: {e}")
@@ -614,13 +616,15 @@ Status: {close_status}"""
 
         logger.success(f"Closed {info.issue_id}: {close_status}")
         if event_bus is not None:
-            event_bus.emit({
-                "event": "issue.closed",
-                "ts": _iso_now(),
-                "issue_id": info.issue_id,
-                "file_path": str(completed_path),
-                "close_reason": close_reason,
-            })
+            event_bus.emit(
+                {
+                    "event": "issue.closed",
+                    "ts": _iso_now(),
+                    "issue_id": info.issue_id,
+                    "file_path": str(completed_path),
+                    "close_reason": close_reason,
+                }
+            )
         return True
 
     except Exception as e:
@@ -688,12 +692,14 @@ Status: Completed via fallback lifecycle completion"""
 
         logger.success(f"Completed lifecycle for {info.issue_id}")
         if event_bus is not None:
-            event_bus.emit({
-                "event": "issue.completed",
-                "ts": _iso_now(),
-                "issue_id": info.issue_id,
-                "file_path": str(completed_path),
-            })
+            event_bus.emit(
+                {
+                    "event": "issue.completed",
+                    "ts": _iso_now(),
+                    "issue_id": info.issue_id,
+                    "file_path": str(completed_path),
+                }
+            )
         return True
 
     except Exception as e:
@@ -785,13 +791,15 @@ Reason: {reason}"""
 
         logger.success(f"Deferred {info.issue_id}")
         if event_bus is not None:
-            event_bus.emit({
-                "event": "issue.deferred",
-                "ts": _iso_now(),
-                "issue_id": info.issue_id,
-                "file_path": str(deferred_path),
-                "reason": reason,
-            })
+            event_bus.emit(
+                {
+                    "event": "issue.deferred",
+                    "ts": _iso_now(),
+                    "issue_id": info.issue_id,
+                    "file_path": str(deferred_path),
+                    "reason": reason,
+                }
+            )
         return True
 
     except Exception as e:
