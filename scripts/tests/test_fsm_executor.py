@@ -3356,6 +3356,48 @@ class TestSubLoopExecution:
         # Child captures should be merged back under the state name
         assert "run_child" in executor.captured
 
+    def test_sub_loop_context_passthrough_captured_values(self, tmp_path: Path) -> None:
+        """Captured output strings are passed as plain strings, not full capture dicts."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child loop that captures the context value to verify it's a plain string
+        (loops_dir / "check-child.yaml").write_text(
+            "name: check-child\ninitial: step\nstates:\n"
+            "  step:\n"
+            "    action: 'echo ${context.issue_id}'\n"
+            "    capture: received\n"
+            "    next: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="capture_id",
+            states={
+                "capture_id": StateConfig(
+                    action="echo 'ENH-999'",
+                    capture="issue_id",
+                    next="run_child",
+                ),
+                "run_child": StateConfig(
+                    loop="check-child",
+                    context_passthrough=True,
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        # Child's received capture should be the plain string, not a JSON blob
+        child_captures = executor.captured.get("run_child", {})
+        received_output = child_captures.get("received", {}).get("output", "")
+        assert received_output.strip() == "ENH-999", (
+            f"Expected plain string 'ENH-999', got: {received_output!r}"
+        )
+
     def test_sub_loop_missing_loop_with_on_error(self, tmp_path: Path) -> None:
         """Missing child loop routes to on_error when set."""
         loops_dir = tmp_path / ".loops"

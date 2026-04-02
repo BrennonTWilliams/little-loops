@@ -587,7 +587,13 @@ class FSMExecutor:
 
         # Pass parent context to child if requested
         if state.context_passthrough:
-            child_fsm.context = {**self.fsm.context, **self.captured, **child_fsm.context}
+            # Extract .output strings from capture result dicts so ${context.key} resolves
+            # to the plain output string (e.g. "ENH-123") rather than the full capture object.
+            captured_as_context = {
+                k: v["output"] if isinstance(v, dict) and "exit_code" in v else v
+                for k, v in self.captured.items()
+            }
+            child_fsm.context = {**self.fsm.context, **captured_as_context, **child_fsm.context}
 
         depth = self._depth + 1
 
