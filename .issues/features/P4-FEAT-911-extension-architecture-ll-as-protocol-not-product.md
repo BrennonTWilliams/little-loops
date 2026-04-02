@@ -35,7 +35,23 @@ Define and publish an event/schema contract:
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-**Critical insight: the FSM event system already exists.** `FSMExecutor` (`scripts/little_loops/fsm/executor.py:103`) already defines `EventCallback = Callable[[dict[str, Any]], None]` and emits 11 named events via `_emit()` at line 1000. All events are persisted to `.loops/.running/<name>.events.jsonl` via `PersistentExecutor.append_event()` at `fsm/persistence.py:216`. The extension API for the FSM layer is already there structurally — it just isn't exposed publicly.
+**Critical insight: the FSM event system already exists.** `FSMExecutor` (`scripts/little_loops/fsm/executor.py:103`) already defines `EventCallback = Callable[[dict[str, Any]], None]` and emits **10 distinct event names across 13 call sites** via `_emit()` at line 1006. All events are persisted to `.loops/.running/<name>.events.jsonl` via `PersistentExecutor.append_event()` at `fsm/persistence.py:216`. The extension API for the FSM layer is already there structurally — it just isn't exposed publicly.
+
+**Complete FSM event taxonomy** (from `executor.py`):
+
+| Event name | Key payload fields |
+|---|---|
+| `loop_start` | `loop` |
+| `route` | `from`, `to`, `reason` (emitted at 2 call sites) |
+| `retry_exhausted` | `state`, `retries`, `next` |
+| `state_enter` | `state`, `iteration` |
+| `action_start` | `action`, `is_prompt` |
+| `action_output` | `line` |
+| `action_complete` | `exit_code`, `duration_ms`, `output_preview`, `is_prompt`, optionally `session_jsonl` |
+| `evaluate` | `type`, `verdict`, `**result.details` (emitted at 2 call sites) |
+| `loop_complete` | `final_state`, `iterations`, `terminated_by` |
+| `handoff_detected` | `state`, `iteration`, `continuation` |
+| `handoff_spawned` | `pid`, `state` |
 
 **What does NOT exist yet:**
 - `ll-auto` and `ll-parallel` emit **zero events** — they update JSON state files but fire no callbacks
@@ -94,6 +110,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_fsm_executor.py` — Add tests for extension observers wired through `FSMExecutor`
 - `scripts/tests/test_fsm_persistence.py` — Add tests for `EventBus` in `PersistentExecutor` (replacing single-slot `_on_event`)
 - `scripts/tests/test_issue_lifecycle.py` — Add tests for event emission on `close_issue`, `defer_issue`, etc.
+- `scripts/tests/test_orchestrator.py` — **Exists** (contrary to earlier assumption); add event emission tests here when wiring `ParallelOrchestrator`
+- `scripts/tests/test_ll_loop_execution.py` — Integration tests for loop execution through `PersistentExecutor`; add `EventBus` registration tests
+- `scripts/tests/test_state.py` — Existing `StateManager` tests; add emission tests for `mark_completed`/`mark_failed`
 - New: `scripts/tests/test_events.py` — Unit tests for `LLEvent` dataclass + `EventBus` multi-observer
 - New: `scripts/tests/test_extension.py` — Unit tests for `LLExtension` Protocol + `ExtensionLoader`
 
@@ -114,7 +133,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _Added by `/ll:refine-issue` — gaps not covered by prior research:_
 
 **Public API exports missing from prior analysis:**
-- `scripts/little_loops/__init__.py` — **NOT listed in Files to Modify above**, but needs updating: `LLEvent`, `EventBus`, `LLExtension` must be added to `__all__` (currently 14 exports; none are from the FSM layer). Without this, external packages can't import the extension types.
+- `scripts/little_loops/__init__.py` — **NOT listed in Files to Modify above**, but needs updating: `LLEvent`, `EventBus`, `LLExtension` must be added to `__all__` (currently **17 exports** across 6 modules: `BRConfig`, `check_git_status`, work-verification functions, issue-lifecycle exports, output-parsing helpers, `AutoManager`, `GitHubSyncManager`, `SyncResult`, `SyncStatus`; none are from the FSM or parallel layer). Without this, external packages can't import the extension types.
 - `scripts/little_loops/fsm/__init__.py:43` — `ActionRunner` is exported here with the docstring `"Protocol for action execution (for testing/customization)"`. This is the direct model for how `LLExtension` should be exported from a new `events` or `extension` module-level `__init__.py`. Follow the same export pattern.
 
 **`importlib.metadata` has no existing usage in the codebase** — `ExtensionLoader`'s `entry_points(group="little_loops.extensions")` call will be the first use. The only `importlib` usage in the repo is `importlib.reload()` in tests (`test_issues_search.py:72`) and `importlib.util.find_spec()` in a background test (`test_cli_loop_background.py:627`). No production-code model to follow — implement directly from Python stdlib docs.
@@ -203,7 +222,21 @@ class LLEvent:
 
 **Open** | Created: 2026-04-01 | Priority: P4
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-01_
+
+**Readiness Score**: 91/100 → PROCEED
+**Outcome Confidence**: 54/100 → LOW
+
+### Outcome Risk Factors
+- **Wide change surface across 5+ subsystems**: FSM executor, issue lifecycle, ll-auto state, ll-parallel orchestrator, all CLI entry points, config schema, and docs. Even with clean individual changes, integration risk is high. Consider implementing in phases: start with the minimal acceptance bar ("at least one emission point") before wiring all 8 points.
+- **No test for `parallel/orchestrator.py`**: The orchestrator (1,229 lines) is a modification target with no dedicated test file — only `test_parallel_types.py` covers adjacent code. New event emission there will be untested unless `test_events.py` covers it via integration.
+- **`importlib.metadata.entry_points` is novel to this codebase**: No production usage exists. The `ExtensionLoader` will be the first — expect edge-case friction around the discover/register lifecycle, especially in test environments where entry points aren't installed.
+- **ENH-470 parallel god-class refactor shares `orchestrator.py`**: Both issues modify the orchestrator. If ENH-470 is in flight, coordinate to avoid conflict or defer FEAT-911's orchestrator wiring until after ENH-470 lands.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6efbb42-4e21-4314-8299-c2708eaeefe6.jsonl`
 - `/ll:refine-issue` - 2026-04-02T03:46:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37f1ea52-31f5-4082-b130-54cc49163d35.jsonl`
 - `/ll:refine-issue` - 2026-04-01T23:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ee23639-2228-4497-8647-94b597449939.jsonl`
 - `/ll:capture-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1dc851d2-a56a-4f1d-8be1-ae404b7f7f2e.jsonl`
