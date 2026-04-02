@@ -124,7 +124,7 @@ def create_issue_from_failure(
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_manager.py` — `process_issue_inplace()` (line 288) calls `close_issue` (line 465), `complete_issue_lifecycle` (lines 637, 647), `create_issue_from_failure` (line 580). Needs `event_bus` threaded through or left as `None` initially
-- `scripts/little_loops/parallel/orchestrator.py` — `_handle_worker_result` (line ~857) and `_handle_sequential_result` (line ~942) call `close_issue`. `ParallelOrchestrator` has no `event_bus` attribute currently. Note: `_complete_issue_lifecycle_if_needed` (line 1100) does inline resolution, not calling `complete_issue_lifecycle` directly
+- `scripts/little_loops/parallel/orchestrator.py` — `_on_worker_complete` (line 830; `close_issue` call at line ~857) and `_merge_sequential` (line 930; `close_issue` call at line ~942) call `close_issue`. `ParallelOrchestrator` has no `event_bus` attribute currently. Note: `_complete_issue_lifecycle_if_needed` (line 1100) does inline resolution, not calling `complete_issue_lifecycle` directly
 - `scripts/little_loops/__init__.py` — re-exports these functions (lines 8, 32–33); no changes needed unless signature changes break the re-export
 - `scripts/tests/test_issue_manager.py` — patches `close_issue` (line 1431), `create_issue_from_failure` (line 1551), `complete_issue_lifecycle` (line 1634); may need to verify `event_bus=` kwarg doesn't break mocks
 - `scripts/tests/test_orchestrator.py` — patches `close_issue` (lines 1286, 1458); same consideration

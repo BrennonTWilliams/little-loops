@@ -86,7 +86,7 @@ _These are not files to modify, but callers/importers the documentation must acc
 - Dataclass documentation pattern (lines 303-316, 512-533) — use for `LLEvent`
 - Protocol documentation pattern (lines 3938-3951, `ActionRunner`) — use for `LLExtension`
 - Class with constructor + methods (lines 61-297, `BRConfig`) — use for `EventBus`, `NoopLoggerExtension`
-- Static methods pattern (lines 154-297) — use for `ExtensionLoader` methods
+- `ExtensionLoader` uses `@staticmethod` methods in `extension.py:63-129` — document using class heading + static method signatures (no existing API.md pattern; BRConfig at lines 154-297 uses instance methods, so adapt the format with `@staticmethod` annotations)
 - Config key table pattern (lines 140-145) — use for `extensions` config key
 
 ### Tests
