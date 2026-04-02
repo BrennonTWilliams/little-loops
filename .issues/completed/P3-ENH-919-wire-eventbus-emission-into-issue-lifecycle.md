@@ -151,18 +151,18 @@ def create_issue_from_failure(
 
 1. Add `from little_loops.events import EventBus` import in `issue_lifecycle.py` and a local `_iso_now()` helper (or reuse `datetime.now()` already imported at line 14)
 2. Add `event_bus: EventBus | None = None` as the final keyword parameter to all 4 functions (`close_issue` at line 525, `complete_issue_lifecycle` at line 604, `defer_issue` at line 697, `create_issue_from_failure` at line 437)
-3. In each function, emit a raw dict event after the operation succeeds — `close_issue`: after `_move_issue_to_completed` (line 584); `complete_issue_lifecycle`: after `_commit_issue_completion` (line 658); `defer_issue`: after `_commit_issue_completion` (line 743); `create_issue_from_failure`: after file write (line 516)
+3. In each function, emit a raw dict event after the operation succeeds — `close_issue`: after `_move_issue_to_completed` (line 584); `complete_issue_lifecycle`: after `_commit_issue_completion` (line 658); `defer_issue`: after `_commit_issue_completion` (line 746); `create_issue_from_failure`: after file write (line 517)
 4. Add tests in `test_issue_lifecycle.py` using real `EventBus()` + list accumulator pattern (see `test_events.py:97-110`). Reuse existing fixtures (`mock_logger`, `sample_issue_info`, `sample_config`). Verify each function emits correct event type and payload fields
 5. Run existing tests to verify no regression: `python -m pytest scripts/tests/test_issue_lifecycle.py scripts/tests/test_issue_manager.py scripts/tests/test_orchestrator.py -v`
 
 ## Acceptance Criteria
 
-- [ ] `close_issue()` emits `issue.closed` event
-- [ ] `complete_issue_lifecycle()` emits `issue.completed` event
-- [ ] `defer_issue()` emits `issue.deferred` event
-- [ ] `create_issue_from_failure()` emits `issue.failure_captured` event
-- [ ] All events include issue ID and file path in payload
-- [ ] Tests verify emission for each function
+- [x] `close_issue()` emits `issue.closed` event
+- [x] `complete_issue_lifecycle()` emits `issue.completed` event
+- [x] `defer_issue()` emits `issue.deferred` event
+- [x] `create_issue_from_failure()` emits `issue.failure_captured` event
+- [x] All events include issue ID and file path in payload
+- [x] Tests verify emission for each function
 
 ## Impact
 
@@ -186,10 +186,25 @@ def create_issue_from_failure(
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P3
+**Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P3
+
+## Resolution
+
+- **Action**: improve
+- **Status**: Completed
+- **Date**: 2026-04-02
+- **Changes**:
+  - Added `event_bus: EventBus | None = None` parameter to `close_issue()`, `complete_issue_lifecycle()`, `defer_issue()`, `create_issue_from_failure()`
+  - Each function emits the appropriate event (`issue.closed`, `issue.completed`, `issue.deferred`, `issue.failure_captured`) via EventBus after successful operation
+  - Added `_iso_now()` helper and `EventBus` import to `issue_lifecycle.py`
+  - Added 5 tests in `TestEventBusEmission` class verifying emission for all 4 functions plus backward compatibility
+- **Files Modified**:
+  - `scripts/little_loops/issue_lifecycle.py`
+  - `scripts/tests/test_issue_lifecycle.py`
 
 ## Session Log
 - `/ll:refine-issue` - 2026-04-02T18:54:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/41b7e13f-e7a5-4e5d-9839-ca0cca6a202b.jsonl`
 - `/ll:format-issue` - 2026-04-02T18:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8eeca827-dfcc-4857-981f-5b6e7a04f182.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
 - `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/121e99c6-8412-4e37-9a57-c5f047090d07.jsonl`
+- `/ll:ready-issue` - 2026-04-02T20:37:22 - `no-session-resolved`

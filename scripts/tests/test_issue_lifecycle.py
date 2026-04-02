@@ -1450,3 +1450,199 @@ class TestUndeferIssue:
         assert msg.startswith("undefer(bugs):")
         assert "BUG-007 - Undeferred" in msg
         assert "Dependency resolved" in msg
+
+
+# =============================================================================
+# EventBus Emission Tests
+# =============================================================================
+
+
+class TestEventBusEmission:
+    """Tests for EventBus event emission in lifecycle functions."""
+
+    def test_close_issue_emits_event(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """close_issue() emits issue.closed event when event_bus is provided."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
+            if "commit" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = close_issue(
+                sample_issue_info,
+                sample_config,
+                mock_logger,
+                close_reason="already_fixed",
+                close_status="Closed - Already Fixed",
+                event_bus=bus,
+            )
+
+        assert result is True
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "issue.closed"
+        assert event["issue_id"] == sample_issue_info.issue_id
+        assert "file_path" in event
+        assert event["close_reason"] == "already_fixed"
+        assert "ts" in event
+
+    def test_complete_issue_lifecycle_emits_event(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """complete_issue_lifecycle() emits issue.completed event."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
+            if "commit" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = complete_issue_lifecycle(
+                sample_issue_info,
+                sample_config,
+                mock_logger,
+                event_bus=bus,
+            )
+
+        assert result is True
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "issue.completed"
+        assert event["issue_id"] == sample_issue_info.issue_id
+        assert "file_path" in event
+        assert "ts" in event
+
+    def test_defer_issue_emits_event(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """defer_issue() emits issue.deferred event."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
+            if "commit" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = defer_issue(
+                sample_issue_info,
+                sample_config,
+                mock_logger,
+                reason="Waiting for dependency",
+                event_bus=bus,
+            )
+
+        assert result is True
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "issue.deferred"
+        assert event["issue_id"] == sample_issue_info.issue_id
+        assert "file_path" in event
+        assert event["reason"] == "Waiting for dependency"
+        assert "ts" in event
+
+    def test_create_issue_from_failure_emits_event(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """create_issue_from_failure() emits issue.failure_captured event."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        result = create_issue_from_failure(
+            "ValueError: test error",
+            sample_issue_info,
+            sample_config,
+            mock_logger,
+            event_bus=bus,
+        )
+
+        assert result is not None
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "issue.failure_captured"
+        assert "issue_id" in event
+        assert "file_path" in event
+        assert event["parent_issue_id"] == sample_issue_info.issue_id
+        assert "ts" in event
+
+    def test_no_emission_without_event_bus(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Functions work without event_bus (backward compat, no error)."""
+        result = create_issue_from_failure(
+            "Error occurred",
+            sample_issue_info,
+            sample_config,
+            mock_logger,
+        )
+        assert result is not None

@@ -11,14 +11,21 @@ from __future__ import annotations
 
 import re
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
 from little_loops.config import BRConfig
+from little_loops.events import EventBus
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger
 from little_loops.session_log import append_session_log_entry
+
+
+def _iso_now() -> str:
+    """Return current time as ISO 8601 string."""
+    return datetime.now(UTC).isoformat()
+
 
 # =============================================================================
 # Failure Classification
@@ -439,6 +446,7 @@ def create_issue_from_failure(
     parent_info: IssueInfo,
     config: BRConfig,
     logger: Logger,
+    event_bus: EventBus | None = None,
 ) -> Path | None:
     """Create a new bug issue file when implementation fails.
 
@@ -447,6 +455,7 @@ def create_issue_from_failure(
         parent_info: Info about the issue that failed
         config: Project configuration
         logger: Logger for output
+        event_bus: Optional EventBus for event emission
 
     Returns:
         Path to new issue file, or None if creation failed
@@ -516,6 +525,14 @@ Investigate the error output above and address the root cause.
         bugs_dir.mkdir(parents=True, exist_ok=True)
         new_issue_path.write_text(content)
         logger.success(f"Created new issue: {new_issue_path}")
+        if event_bus is not None:
+            event_bus.emit({
+                "event": "issue.failure_captured",
+                "ts": _iso_now(),
+                "issue_id": bug_id,
+                "file_path": str(new_issue_path),
+                "parent_issue_id": parent_info.issue_id,
+            })
         return new_issue_path
     except Exception as e:
         logger.error(f"Failed to create issue: {e}")
@@ -530,6 +547,7 @@ def close_issue(
     close_status: str | None,
     fix_commit: str | None = None,
     files_changed: list[str] | None = None,
+    event_bus: EventBus | None = None,
 ) -> bool:
     """Close an issue by moving it to completed with closure status.
 
@@ -544,6 +562,7 @@ def close_issue(
         close_status: Status text (e.g., "Closed - Already Fixed")
         fix_commit: SHA of the commit that fixed the issue (for regression tracking)
         files_changed: List of files modified by the fix (for regression tracking)
+        event_bus: Optional EventBus for event emission
 
     Returns:
         True if successful, False otherwise
@@ -594,6 +613,14 @@ Status: {close_status}"""
         _commit_issue_completion(info, "close", commit_body, logger)
 
         logger.success(f"Closed {info.issue_id}: {close_status}")
+        if event_bus is not None:
+            event_bus.emit({
+                "event": "issue.closed",
+                "ts": _iso_now(),
+                "issue_id": info.issue_id,
+                "file_path": str(completed_path),
+                "close_reason": close_reason,
+            })
         return True
 
     except Exception as e:
@@ -605,6 +632,7 @@ def complete_issue_lifecycle(
     info: IssueInfo,
     config: BRConfig,
     logger: Logger,
+    event_bus: EventBus | None = None,
 ) -> bool:
     """Fallback: Complete the issue lifecycle when command exited early.
 
@@ -614,6 +642,7 @@ def complete_issue_lifecycle(
         info: Issue info
         config: Project configuration
         logger: Logger for output
+        event_bus: Optional EventBus for event emission
 
     Returns:
         True if successful, False otherwise
@@ -658,6 +687,13 @@ Status: Completed via fallback lifecycle completion"""
         _commit_issue_completion(info, action, commit_body, logger)
 
         logger.success(f"Completed lifecycle for {info.issue_id}")
+        if event_bus is not None:
+            event_bus.emit({
+                "event": "issue.completed",
+                "ts": _iso_now(),
+                "issue_id": info.issue_id,
+                "file_path": str(completed_path),
+            })
         return True
 
     except Exception as e:
@@ -699,6 +735,7 @@ def defer_issue(
     config: BRConfig,
     logger: Logger,
     reason: str | None = None,
+    event_bus: EventBus | None = None,
 ) -> bool:
     """Defer an issue by moving it from its active directory to deferred/.
 
@@ -707,6 +744,7 @@ def defer_issue(
         config: Project configuration
         logger: Logger for output
         reason: Reason for deferring
+        event_bus: Optional EventBus for event emission
 
     Returns:
         True if successful, False otherwise
@@ -746,6 +784,14 @@ Reason: {reason}"""
         _commit_issue_completion(info, "defer", commit_body, logger)
 
         logger.success(f"Deferred {info.issue_id}")
+        if event_bus is not None:
+            event_bus.emit({
+                "event": "issue.deferred",
+                "ts": _iso_now(),
+                "issue_id": info.issue_id,
+                "file_path": str(deferred_path),
+                "reason": reason,
+            })
         return True
 
     except Exception as e:
