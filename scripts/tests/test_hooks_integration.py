@@ -782,12 +782,10 @@ class TestContextMonitor:
             elapsed = time.monotonic() - start
 
             assert result.returncode in (0, 2), (
-                f"Hook failed with exit code {result.returncode}. "
-                f"stderr: {result.stderr}"
+                f"Hook failed with exit code {result.returncode}. stderr: {result.stderr}"
             )
             assert elapsed < 5.0, (
-                f"Hook took {elapsed:.2f}s, exceeding 5s timeout. "
-                f"stderr: {result.stderr}"
+                f"Hook took {elapsed:.2f}s, exceeding 5s timeout. stderr: {result.stderr}"
             )
 
         finally:

@@ -1090,12 +1090,10 @@ class TestSprintDependencyAnalysis:
         # Should contain formatted date (YYYY-MM-DD HH:MM UTC) rather than raw ISO with microseconds
         assert "Created:" in captured.out
         # Raw ISO with microseconds or +00:00 should NOT appear
-        created_line = [l for l in captured.out.splitlines() if "Created:" in l][0]
+        created_line = [line for line in captured.out.splitlines() if "Created:" in line][0]
         assert "+00:00" not in created_line or "UTC" in created_line
 
-    def test_show_composition_line(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_composition_line(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show displays composition breakdown after health summary."""
         import argparse
         from unittest.mock import patch
@@ -1119,9 +1117,7 @@ class TestSprintDependencyAnalysis:
         captured = capsys.readouterr()
         assert "Composition:" in captured.out
 
-    def test_show_lighter_separators(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_lighter_separators(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show uses lighter ── separators instead of === banners."""
         import argparse
         from unittest.mock import patch
@@ -1146,9 +1142,7 @@ class TestSprintDependencyAnalysis:
         assert "===" not in captured.out
         assert "\u2500\u2500" in captured.out  # ── chars present
 
-    def test_show_wider_title(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_wider_title(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show does not truncate titles at 45 chars when terminal is wide."""
         import argparse
         from unittest.mock import patch
@@ -1188,9 +1182,7 @@ class TestSprintDependencyAnalysis:
         # With terminal width 120, title should NOT be truncated to 42+...
         assert "..." not in captured.out or long_title[:50] in captured.out
 
-    def test_show_issue_file_paths(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_issue_file_paths(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show displays file paths for each issue."""
         import argparse
         from unittest.mock import patch
@@ -1216,9 +1208,7 @@ class TestSprintDependencyAnalysis:
         assert "P1-BUG-001-fix-config.md" in captured.out
         assert "P2-FEAT-001-add-config-validation.md" in captured.out
 
-    def test_show_readiness_scores(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_readiness_scores(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show displays readiness and confidence scores per issue."""
         import argparse
         from unittest.mock import patch
@@ -1255,9 +1245,7 @@ class TestSprintDependencyAnalysis:
         assert "85" in captured.out
         assert "72" in captured.out
 
-    def test_show_json_output(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_json_output(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show --json produces valid JSON output."""
         import argparse
         import json as json_mod
@@ -1286,9 +1274,7 @@ class TestSprintDependencyAnalysis:
         assert "issues" in data
         assert isinstance(data["issues"], list)
 
-    def test_show_sprint_run_state(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_sprint_run_state(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show displays last run state when .sprint-state.json exists."""
         import argparse
         import json as json_mod
