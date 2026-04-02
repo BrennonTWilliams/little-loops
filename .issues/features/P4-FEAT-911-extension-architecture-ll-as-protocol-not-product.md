@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-01
 discovered_by: capture-issue
+confidence_score: 91
+outcome_confidence: 54
 ---
 
 # FEAT-911: Extension Architecture — little-loops as a Protocol, not a Product
@@ -107,6 +109,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `config-schema.json` + `.ll/ll-config.json` — Add `extensions: list[str]` for module-path-based extension loading (e.g., `"my_package.MyExtension"`)
 - Alternative: `[project.entry-points."little_loops.extensions"]` in `scripts/pyproject.toml` for pip-installable extensions
 
+### Codebase Research Findings (2nd pass)
+
+_Added by `/ll:refine-issue` — gaps not covered by prior research:_
+
+**Public API exports missing from prior analysis:**
+- `scripts/little_loops/__init__.py` — **NOT listed in Files to Modify above**, but needs updating: `LLEvent`, `EventBus`, `LLExtension` must be added to `__all__` (currently 14 exports; none are from the FSM layer). Without this, external packages can't import the extension types.
+- `scripts/little_loops/fsm/__init__.py:43` — `ActionRunner` is exported here with the docstring `"Protocol for action execution (for testing/customization)"`. This is the direct model for how `LLExtension` should be exported from a new `events` or `extension` module-level `__init__.py`. Follow the same export pattern.
+
+**`importlib.metadata` has no existing usage in the codebase** — `ExtensionLoader`'s `entry_points(group="little_loops.extensions")` call will be the first use. The only `importlib` usage in the repo is `importlib.reload()` in tests (`test_issues_search.py:72`) and `importlib.util.find_spec()` in a background test (`test_cli_loop_background.py:627`). No production-code model to follow — implement directly from Python stdlib docs.
+
 ## Implementation Steps
 
 1. Audit current emission points (FSM executor, ll-loop, ll-auto, ll-parallel, issue lifecycle)
@@ -132,9 +144,11 @@ _Added by `/ll:refine-issue` — concrete steps with file references:_
 
 6. **Wire extension loading** in CLI entry points — `cli/loop/run.py:150`, `cli/auto.py`, `cli/parallel.py` — load extensions from config before creating executor/manager, register each with the `EventBus`
 
-7. **Add tests** following `MockActionRunner` pattern (`tests/test_fsm_executor.py:26-77`) — implement `MockExtension` with `recorded_events: list[dict]` and assert event sequences
+7. **Update public exports**: add `LLEvent`, `EventBus`, `LLExtension` to `scripts/little_loops/__init__.py:__all__`; follow `fsm/__init__.py:43` export pattern for `LLExtension` Protocol docstring
 
-8. **Run test suite**: `python -m pytest scripts/tests/test_events.py scripts/tests/test_extension.py scripts/tests/test_fsm_persistence.py scripts/tests/test_issue_lifecycle.py -v`
+8. **Add tests** following `MockActionRunner` pattern (`tests/test_fsm_executor.py:26-77`) — implement `MockExtension` with `recorded_events: list[dict]` and assert event sequences
+
+9. **Run test suite**: `python -m pytest scripts/tests/test_events.py scripts/tests/test_extension.py scripts/tests/test_fsm_persistence.py scripts/tests/test_issue_lifecycle.py -v`
 
 ## Use Case
 
@@ -190,5 +204,6 @@ class LLEvent:
 **Open** | Created: 2026-04-01 | Priority: P4
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-02T03:46:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37f1ea52-31f5-4082-b130-54cc49163d35.jsonl`
 - `/ll:refine-issue` - 2026-04-01T23:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ee23639-2228-4497-8647-94b597449939.jsonl`
 - `/ll:capture-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1dc851d2-a56a-4f1d-8be1-ae404b7f7f2e.jsonl`
