@@ -1,7 +1,7 @@
 ---
 discovered_date: 2026-04-01
 discovered_by: capture-issue
-confidence_score: 91
+confidence_score: 95
 outcome_confidence: 54
 ---
 
@@ -128,6 +128,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `config-schema.json` + `.ll/ll-config.json` — Add `extensions: list[str]` for module-path-based extension loading (e.g., `"my_package.MyExtension"`)
 - Alternative: `[project.entry-points."little_loops.extensions"]` in `scripts/pyproject.toml` for pip-installable extensions
 
+#### Codebase Research Findings (3rd pass)
+
+_Added by `/ll:refine-issue` — verified 2026-04-01:_
+
+- **`config-schema.json:896` has `"additionalProperties": false` at root** — adding `extensions` is not a simple append; the root schema must explicitly declare the new property or the validator will reject it. Logical placement: after `loops` (line 666) alongside other runtime/automation features, or as the final key after `cli` (line 822).
+- **`scripts/pyproject.toml`** — no `[project.entry-points]` section exists anywhere; the `[project.scripts]` block ends at line 62 and `[project.optional-dependencies]` begins at line 64. A new `[project.entry-points."little_loops.extensions"]` table should be inserted between lines 62 and 64.
+- **ENH-841 and ENH-470** — both are still open (not completed or deferred); conflict risk with ENH-470 on `orchestrator.py` remains active. Check these issue statuses before implementing FEAT-911's parallel orchestrator wiring step.
+
 ### Codebase Research Findings (2nd pass)
 
 _Added by `/ll:refine-issue` — gaps not covered by prior research:_
@@ -226,16 +234,20 @@ class LLEvent:
 
 _Added by `/ll:confidence-check` on 2026-04-01_
 
-**Readiness Score**: 91/100 → PROCEED
+**Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 54/100 → LOW
 
 ### Outcome Risk Factors
-- **Wide change surface across 5+ subsystems**: FSM executor, issue lifecycle, ll-auto state, ll-parallel orchestrator, all CLI entry points, config schema, and docs. Even with clean individual changes, integration risk is high. Consider implementing in phases: start with the minimal acceptance bar ("at least one emission point") before wiring all 8 points.
-- **No test for `parallel/orchestrator.py`**: The orchestrator (1,229 lines) is a modification target with no dedicated test file — only `test_parallel_types.py` covers adjacent code. New event emission there will be untested unless `test_events.py` covers it via integration.
-- **`importlib.metadata.entry_points` is novel to this codebase**: No production usage exists. The `ExtensionLoader` will be the first — expect edge-case friction around the discover/register lifecycle, especially in test environments where entry points aren't installed.
-- **ENH-470 parallel god-class refactor shares `orchestrator.py`**: Both issues modify the orchestrator. If ENH-470 is in flight, coordinate to avoid conflict or defer FEAT-911's orchestrator wiring until after ENH-470 lands.
+- **Wide change surface (16+ files, 6 subsystems)**: Even with clean individual changes, integration risk is high. The acceptance criteria wisely set a minimal bar ("at least one emission point") — strongly recommend implementing in phases: start with `events.py` + FSM wiring, validate, then extend to issue lifecycle and CLI entry points.
+- **Complexity is the dominant risk**: 0/25 on complexity alone tanks the outcome score. The architecture is sound and well-specified — the risk is purely execution across many files.
+- **ENH-470 / ENH-841 coordination**: Both open issues touch `orchestrator.py`. Defer FEAT-911's parallel orchestrator wiring until ENH-470's status is resolved to avoid merge conflicts.
+- **`importlib.metadata.entry_points` is novel**: First production use; expect edge cases in test environments where packages aren't installed. Budget time for test harness setup.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3576f2a-9a9d-4660-bfdd-ec5477ddd565.jsonl`
+- `/ll:refine-issue` - 2026-04-02T04:19:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cefa20fa-827b-4271-aacd-aafe384c904b.jsonl`
+- `/ll:format-issue` - 2026-04-02T04:12:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e78e5bb6-f7d2-4912-8069-79a717fb51a8.jsonl`
+- `/ll:refine-issue` - 2026-04-02T04:07:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21f8e37c-280e-474e-a61c-e518895716c2.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6efbb42-4e21-4314-8299-c2708eaeefe6.jsonl`
 - `/ll:refine-issue` - 2026-04-02T03:46:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37f1ea52-31f5-4082-b130-54cc49163d35.jsonl`
 - `/ll:refine-issue` - 2026-04-01T23:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ee23639-2228-4497-8647-94b597449939.jsonl`
