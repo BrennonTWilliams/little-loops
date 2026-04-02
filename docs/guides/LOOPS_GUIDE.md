@@ -226,6 +226,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 
 | Loop | Description |
 |------|-------------|
+| `dataset-curation` | Scan raw data, quality-gate each item, fix or reject, balance distribution, validate schema, and publish a curated dataset |
 | `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
 | `refine-to-ready-issue` | Single-issue refinement pipeline — format → refine → confidence-check → ready-issue until the issue reaches ready status |
 
@@ -273,12 +274,15 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass |
 | `docs-sync` | Verify documentation matches the codebase and check for broken links |
 | `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
+| `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
+| `test-coverage-improvement` | Measure test coverage, identify uncovered code paths, write tests for highest-risk gaps, and converge when coverage target is met |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
 
 **Reinforcement Learning (RL)**
 
 | Loop | Description |
 |------|-------------|
+| `agent-eval-improve` | Evaluate an AI agent on a task suite, score outputs, identify failure patterns, and iteratively refine agent config/prompts until quality target is reached |
 | `rl-bandit` | Epsilon-greedy bandit loop — explore vs exploit rounds routing on reward convergence |
 | `rl-coding-agent` | Policy+RLHF composite loop for agentic coding — outer policy loop adapts coding strategy while inner RLHF loop polishes each artifact to a quality threshold |
 | `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
@@ -294,6 +298,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 | `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
 | `examples-miner` | Co-evolutionary corpus mining — harvest completed issue sessions, quality-gate, calibrate difficulty band, synthesize adversarial examples; runs `apo-textgrad` as a child loop |
+| `prompt-regression-test` | CI for prompts — run a prompt suite, score against baseline, flag regressions, and trigger APO repair when quality drops |
 
 **Harness Examples**
 

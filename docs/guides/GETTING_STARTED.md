@@ -187,6 +187,7 @@ The `status` field inside the issue file tracks where the issue is in the workfl
   features/         ← active features
   enhancements/     ← active enhancements
   completed/        ← ALL completed issues (bugs, features, and enhancements)
+  deferred/         ← parked issues (not active, not completed)
 ```
 
 A completed bug moves to `.issues/completed/P2-BUG-042-...md`, not `.issues/bugs/completed/`.
