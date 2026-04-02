@@ -65,18 +65,20 @@ Option A is cleaner and fixes the issue for all current and future sub-loops.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/` — FSM executor (find the file implementing `context_passthrough` logic)
+- `scripts/little_loops/fsm/executor.py` — `_execute_sub_loop` method: `context_passthrough` block (around line 589) spreads full capture dicts into child context instead of `.output` strings
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/issue-refinement.yaml` — uses `context_passthrough: true`
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — consumes `${context.input}`
-- Any other loops using `context_passthrough: true`
+- `scripts/little_loops/loops/examples-miner.yaml` — uses `context_passthrough: true`
+- `scripts/little_loops/loops/prompt-regression-test.yaml` — uses `context_passthrough: true`
+- `scripts/little_loops/loops/oracles/oracle-capture-issue.yaml` — uses `context_passthrough: true`
 
 ### Similar Patterns
-- Search for `context_passthrough` across `scripts/little_loops/loops/*.yaml` for other affected loops
+- All 5 loops above use `context_passthrough: true` and may be affected by the fix
 
 ### Tests
-- `scripts/tests/` — FSM executor tests covering `context_passthrough` behavior
+- `scripts/tests/test_fsm_executor.py` — existing test `test_sub_loop_context_passthrough` covers this behavior and will need updating
 
 ### Documentation
 - N/A
@@ -106,9 +108,29 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `loops`, `fsm`, `context-passthrough`, `captured`
 
+## Resolution
+
+**Status**: Fixed
+**Approach**: Option A — FSM executor level fix
+
+In `scripts/little_loops/fsm/executor.py`, the `_execute_sub_loop` method's `context_passthrough` block was spreading `self.captured` directly into `child_fsm.context`. Since captured values are stored as full dicts (`{"output": ..., "stderr": ..., "exit_code": ..., "duration_ms": ...}`), child contexts received those dicts instead of plain strings.
+
+**Fix** (line ~590): Extract `.output` string from capture result dicts before spreading into child context:
+```python
+captured_as_context = {
+    k: v["output"] if isinstance(v, dict) and "exit_code" in v else v
+    for k, v in self.captured.items()
+}
+child_fsm.context = {**self.fsm.context, **captured_as_context, **child_fsm.context}
+```
+
+**Test added**: `test_sub_loop_context_passthrough_captured_values` in `test_fsm_executor.py` — verifies a captured shell output is received as a plain string in the child loop's context.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-04-02T02:58:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dab3a3df-4969-489e-998b-1844664bee57.jsonl`
 - `/ll:capture-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaf73d5c-81eb-45a4-a5e6-b157f77ba059.jsonl`
 
 ---
 
-**Open** | Created: 2026-04-01 | Priority: P3
+**Completed** | Created: 2026-04-01 | Resolved: 2026-04-01 | Priority: P3
