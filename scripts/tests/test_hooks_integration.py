@@ -671,6 +671,128 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
+    def test_detected_model_cached_in_state(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Detected model from transcript should be cached in state file."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # Create transcript with a known model
+            transcript_file = tmp_path / "transcript.jsonl"
+            assistant_entry = {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-sonnet-4-6",
+                    "usage": {
+                        "input_tokens": 1000,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 100,
+                    },
+                },
+            }
+            transcript_file.write_text(json.dumps(assistant_entry) + "\n")
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "small output\n"},
+                "transcript_path": str(transcript_file),
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode == 0
+
+            state_file = tmp_path / "ll-context-state.json"
+            state = json.loads(state_file.read_text())
+
+            # Model should be cached in state for future calls
+            assert "detected_model" in state, (
+                f"State should contain 'detected_model' field. State keys: {list(state.keys())}"
+            )
+            assert state["detected_model"] == "claude-sonnet-4-6"
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_large_tool_response_completes_within_timeout(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """Hook should complete within 5s even with large tool_response and transcript."""
+        import os
+        import time
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # Create a transcript with 200 entries to simulate a mid-session state
+            transcript_file = tmp_path / "transcript.jsonl"
+            entries = []
+            for i in range(200):
+                entry = {
+                    "type": "assistant" if i % 2 == 0 else "user",
+                    "message": {
+                        "model": "claude-sonnet-4-6",
+                        "content": f"Response {i} " + "x" * 200,
+                        "usage": {
+                            "input_tokens": 1000 + i * 10,
+                            "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 0,
+                            "output_tokens": 100,
+                        },
+                    },
+                }
+                entries.append(json.dumps(entry))
+            transcript_file.write_text("\n".join(entries) + "\n")
+
+            # Large tool_response simulating a 2000-line file read
+            large_content = "Line of code with some typical content here\n" * 2000
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": large_content},
+                "transcript_path": str(transcript_file),
+            }
+
+            start = time.monotonic()
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            elapsed = time.monotonic() - start
+
+            assert result.returncode in (0, 2), (
+                f"Hook failed with exit code {result.returncode}. "
+                f"stderr: {result.stderr}"
+            )
+            assert elapsed < 5.0, (
+                f"Hook took {elapsed:.2f}s, exceeding 5s timeout. "
+                f"stderr: {result.stderr}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
 
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""

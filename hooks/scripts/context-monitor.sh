@@ -41,51 +41,44 @@ POST_COMPACT_PERCENT=$(ll_config_value "context_monitor.post_compaction_percent"
 # Use JSONL transcript as accurate token baseline (one-turn lag)
 USE_TRANSCRIPT_BASELINE=$(ll_config_value "context_monitor.use_transcript_baseline" "true")
 
-# Extract tool information from input
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
-TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}' 2>/dev/null || echo '{}')
-TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
-DETECTED_MODEL=""
-if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-    DETECTED_MODEL=$(jq -rs 'map(select(.type == "assistant")) | last | .message.model // ""' "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
-fi
+# Extract tool information from input (single jq pass — avoids 3× re-parsing of potentially large INPUT)
+IFS=$'\t' read -r TOOL_NAME TRANSCRIPT_PATH <<< "$(echo "$INPUT" | jq -r '[(.tool_name // ""), (.transcript_path // "")] | @tsv' 2>/dev/null)"
+# Note: TOOL_RESPONSE is no longer extracted here — estimate_tokens reads .tool_response
+# directly from $INPUT, avoiding a full serialization of the response into a shell variable.
+# Model detection is deferred to main() after state read, where the cached value is checked first.
 
 # Estimate tokens for this tool call
+# Accepts raw hook INPUT JSON — extracts .tool_response only in branches that need it,
+# avoiding a full serialization of potentially large response data into shell variables.
 estimate_tokens() {
     local tool="$1"
-    local response="$2"
+    local raw_input="$2"
     local tokens=0
 
     case "$tool" in
         Read)
-            # Count newlines in response content to estimate lines
-            local content
-            content=$(echo "$response" | jq -r 'if type == "object" then (.content // "") else (. | tostring) end' 2>/dev/null || echo "")
-            if [ -n "$content" ]; then
-                local lines
-                lines=$(echo "$content" | wc -l | tr -d ' ')
-                tokens=$((lines * READ_PER_LINE))
-            fi
+            # Count lines in jq to avoid putting full file content into a bash variable
+            local lines
+            lines=$(echo "$raw_input" | jq -r '.tool_response | if type == "object" then (.content // "") else (. | tostring) end | split("\n") | length' 2>/dev/null || echo "0")
+            tokens=$((lines * READ_PER_LINE))
             ;;
         Grep)
             # Output lines x 5 (half of read weight)
             local output
-            output=$(echo "$response" | jq -r 'if type == "array" then length else (. | tostring | split("\n") | length) end' 2>/dev/null || echo "0")
+            output=$(echo "$raw_input" | jq -r '.tool_response | if type == "array" then length else (. | tostring | split("\n") | length) end' 2>/dev/null || echo "0")
             tokens=$((output * 5))
             ;;
         Bash)
-            # Output chars x 0.3
-            local stdout_len stderr_len
-            stdout_len=$(echo "$response" | jq -r '.stdout // "" | length' 2>/dev/null || echo "0")
-            stderr_len=$(echo "$response" | jq -r '.stderr // "" | length' 2>/dev/null || echo "0")
-            local total_len=$((stdout_len + stderr_len))
+            # Output chars x 0.3 — single jq call extracts both lengths
+            local total_len
+            total_len=$(echo "$raw_input" | jq -r '.tool_response | ((.stdout // "" | length) + (.stderr // "" | length))' 2>/dev/null || echo "0")
             # Bash arithmetic: multiply by 3 and divide by 10 to approximate * 0.3
             tokens=$((total_len * 3 / 10))
             ;;
         Glob)
             # File count x 20
             local file_count
-            file_count=$(echo "$response" | jq -r 'if type == "array" then length else 1 end' 2>/dev/null || echo "1")
+            file_count=$(echo "$raw_input" | jq -r '.tool_response | if type == "array" then length else 1 end' 2>/dev/null || echo "1")
             tokens=$((file_count * 20))
             ;;
         Write|Edit)
@@ -117,14 +110,15 @@ estimate_tokens() {
 
 # Read the last assistant entry's token usage from JSONL transcript.
 # Returns sum of input + cache_creation + cache_read + output tokens, or 0 on failure.
+# Uses tail -50 instead of full jq -s slurp to avoid reading the entire growing transcript.
 get_transcript_baseline() {
     local path="$1"
     [ -z "$path" ] || [ ! -f "$path" ] && echo 0 && return
-    jq -s 'map(select(.type == "assistant")) | last |
+    tail -50 "$path" 2>/dev/null | jq -s 'map(select(.type == "assistant")) | last |
         (.message.usage.input_tokens // 0) +
         (.message.usage.cache_creation_input_tokens // 0) +
         (.message.usage.cache_read_input_tokens // 0) +
-        (.message.usage.output_tokens // 0)' "$path" 2>/dev/null || echo 0
+        (.message.usage.output_tokens // 0)' 2>/dev/null || echo 0
 }
 
 # Map a model identifier to its context window size.
@@ -220,12 +214,8 @@ main() {
         exit 0
     fi
 
-    # Resolve final context limit: LL_CONTEXT_LIMIT env var wins first, then auto-detection
-    # by model prefix, then config value fallback for unknown models.
-    CONTEXT_LIMIT="${LL_CONTEXT_LIMIT:-$(get_context_limit "$DETECTED_MODEL" "$CONFIG_LIMIT")}"
-
-    # Estimate tokens for this tool call
-    TOKENS=$(estimate_tokens "$TOOL_NAME" "$TOOL_RESPONSE")
+    # Estimate tokens for this tool call (before lock — doesn't need state)
+    TOKENS=$(estimate_tokens "$TOOL_NAME" "$INPUT")
 
     # Acquire lock for state file read-modify-write (3s timeout, ~2s margin within 5s hook timeout)
     STATE_LOCK="${STATE_FILE}.lock"
@@ -237,23 +227,57 @@ main() {
     # Read current state
     STATE=$(read_state)
 
-    # Check for compaction event and reset if needed
+    # Extract all state fields in a single jq pass (replaces 7 individual jq calls)
+    # Uses one-field-per-line output (jq comma operator) to avoid bash IFS whitespace collapsing
+    TOOL_KEY=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
+    {
+        read -r CURRENT_TOKENS
+        read -r CURRENT_CALLS
+        read -r THRESHOLD_CROSSED_AT
+        read -r HANDOFF_COMPLETE
+        read -r LAST_REMINDER_AT
+        read -r DETECTED_MODEL
+        read -r CACHED_BASELINE
+        read -r OVERHEAD_CURRENT
+        read -r TOOL_CURRENT
+    } <<< "$(echo "$STATE" | jq -r --arg key "$TOOL_KEY" '
+        (.estimated_tokens // 0 | tostring),
+        (.tool_calls // 0 | tostring),
+        (.threshold_crossed_at // "" | tostring),
+        (.handoff_complete // false | tostring),
+        (.last_reminder_at // "" | tostring),
+        (.detected_model // ""),
+        (.transcript_baseline_tokens // 0 | tostring),
+        (.breakdown["claude_overhead"] // 0 | tostring),
+        (.breakdown[$key] // 0 | tostring)
+    ')"
+
+    # Detect model — use cached value from state; only read transcript on first detection
+    if [ -z "$DETECTED_MODEL" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+        DETECTED_MODEL=$(tail -50 "$TRANSCRIPT_PATH" 2>/dev/null | \
+            jq -rs 'map(select(.type == "assistant")) | last | .message.model // ""' 2>/dev/null || echo "")
+    fi
+
+    # Resolve final context limit (after model detection for accurate auto-detection)
+    CONTEXT_LIMIT="${LL_CONTEXT_LIMIT:-$(get_context_limit "$DETECTED_MODEL" "$CONFIG_LIMIT")}"
+
+    # Check for compaction event and reset if needed (after CONTEXT_LIMIT is resolved)
     RESET_STATE=$(check_compaction "$STATE" || true)
     if [ -n "$RESET_STATE" ]; then
         STATE="$RESET_STATE"
         rm -f ".ll/ll-precompact-state.json" 2>/dev/null || true
+        # Re-extract fields that compaction resets
+        CURRENT_TOKENS=$(echo "$STATE" | jq -r '.estimated_tokens // 0')
+        THRESHOLD_CROSSED_AT=""
+        HANDOFF_COMPLETE="false"
+        OVERHEAD_CURRENT=0
+        TOOL_CURRENT=0
     fi
 
-    # Extract current values
-    CURRENT_TOKENS=$(echo "$STATE" | jq -r '.estimated_tokens // 0')
-    CURRENT_CALLS=$(echo "$STATE" | jq -r '.tool_calls // 0')
-    THRESHOLD_CROSSED_AT=$(echo "$STATE" | jq -r '.threshold_crossed_at // ""')
-    HANDOFF_COMPLETE=$(echo "$STATE" | jq -r '.handoff_complete // false')
-    LAST_REMINDER_AT=$(echo "$STATE" | jq -r '.last_reminder_at // ""')
-
-    # Get transcript baseline if enabled (API-exact, one-turn lag)
-    TRANSCRIPT_BASELINE=0
-    if [ "${USE_TRANSCRIPT_BASELINE}" = "true" ] && [ -n "$TRANSCRIPT_PATH" ]; then
+    # Get transcript baseline — use cached value from state; only read transcript when cache is 0
+    TRANSCRIPT_BASELINE="${CACHED_BASELINE:-0}"
+    if [ "${USE_TRANSCRIPT_BASELINE}" = "true" ] && [ -n "$TRANSCRIPT_PATH" ] && \
+       { [ "${TRANSCRIPT_BASELINE}" -le 0 ] 2>/dev/null || [ -z "$TRANSCRIPT_BASELINE" ]; }; then
         TRANSCRIPT_BASELINE=$(get_transcript_baseline "$TRANSCRIPT_PATH")
     fi
 
@@ -275,16 +299,11 @@ main() {
     fi
     NEW_TOKENS=$((NEW_TOKENS + overhead))
 
-    # Track overhead in breakdown
-    OVERHEAD_CURRENT=$(echo "$STATE" | jq -r '.breakdown["claude_overhead"] // 0')
+    # Update breakdown tracking
     OVERHEAD_NEW=$((OVERHEAD_CURRENT + overhead))
-
-    # Update breakdown by tool type
-    TOOL_KEY=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
-    TOOL_CURRENT=$(echo "$STATE" | jq -r --arg key "$TOOL_KEY" '.breakdown[$key] // 0')
     TOOL_NEW=$((TOOL_CURRENT + TOKENS))
 
-    # Build new state
+    # Build new state (includes detected_model cache)
     NEW_STATE=$(echo "$STATE" | jq \
         --argjson tokens "$NEW_TOKENS" \
         --argjson calls "$NEW_CALLS" \
@@ -292,7 +311,8 @@ main() {
         --argjson tool_tokens "$TOOL_NEW" \
         --argjson overhead "$OVERHEAD_NEW" \
         --argjson baseline "$TRANSCRIPT_BASELINE" \
-        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline')
+        --arg model "$DETECTED_MODEL" \
+        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline | .detected_model = $model')
 
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))
