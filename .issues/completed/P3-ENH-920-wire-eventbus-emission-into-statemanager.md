@@ -74,15 +74,15 @@ Events emitted (flat dict format matching codebase convention — see `LLEvent.t
 3. **Emit in `mark_completed()`** (`state.py:175`): After `self.save()` at line 187, call `self._emit("state.issue_completed", {"issue_id": issue_id, "status": "completed"})`
 4. **Emit in `mark_failed()`** (`state.py:189`): After `self.save()` at line 197, call `self._emit("state.issue_failed", {"issue_id": issue_id, "reason": reason, "status": "failed"})`
 5. **Wire EventBus in `AutoManager.__init__`** (`issue_manager.py:734`): Create `EventBus()` and pass to `StateManager(config.get_state_file(), self.logger, event_bus=event_bus)`. Optionally expose the bus as `self.event_bus` for CLI consumers to register observers
-6. **Add tests** (`tests/test_state.py`): Follow list collector spy pattern from `test_events.py:97` — create `EventBus`, register `lambda e: received.append(e)`, construct `StateManager` with it, call `mark_completed`/`mark_failed`, assert on collected events
+6. **Add tests** (`tests/test_state.py`): Follow list collector spy pattern from `test_events.py:101` — create `EventBus`, register `lambda e: received.append(e)`, construct `StateManager` with it, call `mark_completed`/`mark_failed`, assert on collected events
 
 ## Acceptance Criteria
 
-- [ ] `mark_completed()` emits `state.issue_completed` event
-- [ ] `mark_failed()` emits `state.issue_failed` event
-- [ ] Events include issue ID and relevant metadata
-- [ ] EventBus is wired from `AutoManager.__init__` (the only `StateManager` instantiation site)
-- [ ] Tests verify emission for both methods
+- [x] `mark_completed()` emits `state.issue_completed` event
+- [x] `mark_failed()` emits `state.issue_failed` event
+- [x] Events include issue ID and relevant metadata
+- [x] EventBus is wired from `AutoManager.__init__` (the only `StateManager` instantiation site)
+- [x] Tests verify emission for both methods
 
 ## Scope Boundaries
 
@@ -127,7 +127,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Tests
 - `scripts/tests/test_state.py` — Existing `StateManager` tests at lines 308–337; add emission tests alongside
-- `scripts/tests/test_events.py:97` — Reference test spy pattern: `received = []; bus.register(lambda e: received.append(e))`
+- `scripts/tests/test_events.py:101` — Reference test spy pattern: `received = []; bus.register(lambda e: received.append(e))`
 
 ### Documentation
 - `docs/reference/API.md` — Update StateManager API docs with new parameter and events
@@ -150,10 +150,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P3
+**Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P3
+
+## Resolution
+
+Implemented EventBus emission in StateManager with 5 new tests. Changes:
+- `state.py`: Added optional `event_bus` parameter to `__init__`, `_emit` helper, and emission calls in `mark_completed()` and `mark_failed()`
+- `issue_manager.py`: Created `EventBus()` in `AutoManager.__init__` and passed to `StateManager`
+- `test_state.py`: 5 new tests covering both emission paths, backward compatibility, and flat dict format
 
 ## Session Log
 - `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8394421c-530d-4c82-897e-1edcec40a825.jsonl`
 - `/ll:refine-issue` - 2026-04-02T19:10:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87eedb33-487e-4156-9a11-3b9a54f1b62b.jsonl`
 - `/ll:format-issue` - 2026-04-02T18:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d44d738d-0717-4906-af00-9fc93600eff9.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
+- `/ll:ready-issue` - 2026-04-02T20:37:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bda8160-2032-44ba-98ff-2c78bc74395e.jsonl`

@@ -20,6 +20,7 @@ from types import FrameType
 from little_loops.cli_args import _id_matches
 from little_loops.config import BRConfig
 from little_loops.dependency_graph import DependencyGraph
+from little_loops.events import EventBus
 from little_loops.git_operations import check_git_status, verify_work_was_done
 from little_loops.issue_lifecycle import (
     FailureType,
@@ -731,7 +732,10 @@ class AutoManager:
         self.priority_filter = priority_filter
 
         self.logger = Logger(verbose=verbose)
-        self.state_manager = StateManager(config.get_state_file(), self.logger)
+        self.event_bus = EventBus()
+        self.state_manager = StateManager(
+            config.get_state_file(), self.logger, event_bus=self.event_bus
+        )
         self.parser = IssueParser(config)
         self._detected_model: list[str] = []
 

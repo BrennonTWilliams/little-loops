@@ -7,6 +7,7 @@ import threading
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -617,3 +618,103 @@ class TestStateManagerAtomicSave:
         assert content["phase"] == "initial", (
             "Original state file must be preserved on write failure"
         )
+
+
+class TestStateManagerEventEmission:
+    """Tests for EventBus emission from StateManager."""
+
+    def test_mark_completed_emits_event(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """mark_completed emits state.issue_completed event."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        manager = StateManager(temp_state_file, mock_logger, event_bus=bus)
+        manager.mark_completed("BUG-001")
+
+        assert len(received) == 1
+        assert received[0]["event"] == "state.issue_completed"
+        assert received[0]["issue_id"] == "BUG-001"
+        assert received[0]["status"] == "completed"
+        assert "ts" in received[0]
+
+    def test_mark_completed_with_timing_emits_event(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """mark_completed with timing still emits event."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        manager = StateManager(temp_state_file, mock_logger, event_bus=bus)
+        manager.mark_completed("BUG-002", {"total": 130.0})
+
+        assert len(received) == 1
+        assert received[0]["issue_id"] == "BUG-002"
+        assert received[0]["status"] == "completed"
+
+    def test_mark_failed_emits_event(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """mark_failed emits state.issue_failed event."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        manager = StateManager(temp_state_file, mock_logger, event_bus=bus)
+        manager.mark_failed("BUG-003", "Timeout after 3600s")
+
+        assert len(received) == 1
+        assert received[0]["event"] == "state.issue_failed"
+        assert received[0]["issue_id"] == "BUG-003"
+        assert received[0]["reason"] == "Timeout after 3600s"
+        assert received[0]["status"] == "failed"
+        assert "ts" in received[0]
+
+    def test_no_event_bus_no_error(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """StateManager without event_bus works without errors (backward compat)."""
+        manager = StateManager(temp_state_file, mock_logger)
+
+        manager.mark_completed("BUG-004")
+        manager.mark_failed("BUG-005", "Some error")
+
+        assert "BUG-004" in manager.state.completed_issues
+        assert manager.state.failed_issues["BUG-005"] == "Some error"
+
+    def test_event_payload_flat_dict_format(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """Events use flat dict format matching LLEvent.to_dict() convention."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        manager = StateManager(temp_state_file, mock_logger, event_bus=bus)
+        manager.mark_completed("ENH-920")
+        manager.mark_failed("ENH-921", "Build failed")
+
+        completed_event = received[0]
+        failed_event = received[1]
+
+        # Flat dict: no nested "payload" key
+        assert "payload" not in completed_event
+        assert "payload" not in failed_event
+
+        # Required top-level keys
+        for event in [completed_event, failed_event]:
+            assert "event" in event
+            assert "ts" in event
+            assert "issue_id" in event
+            assert "status" in event

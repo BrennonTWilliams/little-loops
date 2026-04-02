@@ -9,11 +9,17 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from little_loops.events import EventBus
 from little_loops.logger import Logger
+
+
+def _iso_now() -> str:
+    """Get current time as ISO 8601 string."""
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -82,16 +88,25 @@ class StateManager:
     automated issue processing with resume capability.
     """
 
-    def __init__(self, state_file: Path, logger: Logger) -> None:
+    def __init__(
+        self, state_file: Path, logger: Logger, event_bus: EventBus | None = None
+    ) -> None:
         """Initialize state manager.
 
         Args:
             state_file: Path to the state file
             logger: Logger instance for output
+            event_bus: Optional EventBus for emitting state transition events
         """
         self.state_file = state_file
         self.logger = logger
+        self._event_bus = event_bus
         self._state: ProcessingState | None = None
+
+    def _emit(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Emit an event via the EventBus if available."""
+        if self._event_bus:
+            self._event_bus.emit({"event": event_type, "ts": _iso_now(), **payload})
 
     @property
     def state(self) -> ProcessingState:
@@ -185,6 +200,7 @@ class StateManager:
         self.state.current_issue = ""
         self.state.phase = "idle"
         self.save()
+        self._emit("state.issue_completed", {"issue_id": issue_id, "status": "completed"})
 
     def mark_failed(self, issue_id: str, reason: str) -> None:
         """Mark an issue as failed.
@@ -195,6 +211,7 @@ class StateManager:
         """
         self.state.failed_issues[issue_id] = reason
         self.save()
+        self._emit("state.issue_failed", {"issue_id": issue_id, "reason": reason, "status": "failed"})
 
     def is_attempted(self, issue_id: str) -> bool:
         """Check if an issue has been attempted.
