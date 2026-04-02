@@ -1036,6 +1036,297 @@ class TestSprintDependencyAnalysis:
         captured = capsys.readouterr()
         assert "\033[" not in captured.out
 
+    def test_show_omits_empty_description(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show omits Description line when description is empty."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Sprint: overlap-test" in captured.out
+        assert "Description:" not in captured.out
+
+    def test_show_human_friendly_timestamp(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show formats timestamps in human-friendly form."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Should contain formatted date (YYYY-MM-DD HH:MM UTC) rather than raw ISO with microseconds
+        assert "Created:" in captured.out
+        # Raw ISO with microseconds or +00:00 should NOT appear
+        created_line = [l for l in captured.out.splitlines() if "Created:" in l][0]
+        assert "+00:00" not in created_line or "UTC" in created_line
+
+    def test_show_composition_line(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show displays composition breakdown after health summary."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Composition:" in captured.out
+
+    def test_show_lighter_separators(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show uses lighter ── separators instead of === banners."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "===" not in captured.out
+        assert "\u2500\u2500" in captured.out  # ── chars present
+
+    def test_show_wider_title(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show does not truncate titles at 45 chars when terminal is wide."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Replace a title with a long one (> 45 chars)
+        long_title = "A" * 55
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-fix-config.md"
+        issue_file.write_text(
+            f"# BUG-001: {long_title}\n\n"
+            "## Summary\nFix bug in config module.\n\n"
+            "### Files to Modify\n- `scripts/config.py`\n\n"
+            "## Blocked By\n\nNone\n\n"
+            "## Blocks\n\nNone\n"
+        )
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with (
+            patch.object(output_mod, "_USE_COLOR", False),
+            patch("little_loops.cli.output.terminal_width", return_value=120),
+            patch("little_loops.cli.sprint._helpers.terminal_width", return_value=120),
+        ):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # With terminal width 120, title should NOT be truncated to 42+...
+        assert "..." not in captured.out or long_title[:50] in captured.out
+
+    def test_show_issue_file_paths(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show displays file paths for each issue."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Should show issue file paths
+        assert "P1-BUG-001-fix-config.md" in captured.out
+        assert "P2-FEAT-001-add-config-validation.md" in captured.out
+
+    def test_show_readiness_scores(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show displays readiness and confidence scores per issue."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Add confidence scores to an issue
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-fix-config.md"
+        issue_file.write_text(
+            "---\nconfidence_score: 85\noutcome_confidence: 72\n---\n"
+            "# BUG-001: Fix config parsing\n\n"
+            "## Summary\nFix bug in config module.\n\n"
+            "### Files to Modify\n- `scripts/config.py`\n\n"
+            "## Blocked By\n\nNone\n\n"
+            "## Blocks\n\nNone\n"
+        )
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Scores should appear in output
+        assert "85" in captured.out
+        assert "72" in captured.out
+
+    def test_show_json_output(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show --json produces valid JSON output."""
+        import argparse
+        import json as json_mod
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+            json=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json_mod.loads(captured.out)
+        assert data["name"] == "overlap-test"
+        assert "issues" in data
+        assert isinstance(data["issues"], list)
+
+    def test_show_sprint_run_state(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show displays last run state when .sprint-state.json exists."""
+        import argparse
+        import json as json_mod
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Create .sprint-state.json
+        state_data = {
+            "sprint_name": "overlap-test",
+            "current_wave": 2,
+            "completed_issues": ["BUG-001"],
+            "failed_issues": {"FEAT-001": "timeout"},
+            "skipped_blocked_issues": {},
+            "timing": {},
+            "started_at": "2026-04-01T10:00:00+00:00",
+            "last_checkpoint": "2026-04-01T10:30:00+00:00",
+        }
+        (tmp_path / ".sprint-state.json").write_text(json_mod.dumps(state_data))
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Last run:" in captured.out
+        assert "1 completed" in captured.out or "BUG-001" in captured.out
+
 
 class TestSprintEdit:
     """Tests for _cmd_sprint_edit (ENH-393)."""

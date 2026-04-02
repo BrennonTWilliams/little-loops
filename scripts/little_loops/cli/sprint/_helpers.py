@@ -12,6 +12,20 @@ if TYPE_CHECKING:
     from little_loops.logger import Logger
 
 
+def _score_suffix(issue: Any) -> str:
+    """Build an inline score suffix like ' [ready: 85, conf: 72]'."""
+    cs = getattr(issue, "confidence_score", None)
+    oc = getattr(issue, "outcome_confidence", None)
+    if cs is None and oc is None:
+        return ""
+    parts: list[str] = []
+    if cs is not None:
+        parts.append(f"ready: {cs}")
+    if oc is not None:
+        parts.append(f"conf: {oc}")
+    return f" [{', '.join(parts)}]"
+
+
 def _render_execution_plan(
     waves: list[list[Any]],
     dep_graph: DependencyGraph,
@@ -54,11 +68,13 @@ def _render_execution_plan(
     lines: list[str] = []
 
     width = terminal_width()
-    lines.append("")
-    lines.append("=" * width)
     wave_word = "wave" if num_logical == 1 else "waves"
-    lines.append(f"EXECUTION PLAN ({total_issues} issues, {num_logical} {wave_word})")
-    lines.append("=" * width)
+    header_text = f"Execution Plan ({total_issues} issues, {num_logical} {wave_word})"
+    fill = "\u2500" * max(0, width - len(header_text) - 4)
+    lines.append("")
+    lines.append(f"\u2500\u2500 {header_text} {fill}")
+
+    max_title = max(45, width - 30)
 
     for logical_idx, group in enumerate(logical_waves):
         lines.append("")
@@ -80,17 +96,20 @@ def _render_execution_plan(
 
                     # Truncate title if too long
                     title = issue.title
-                    if len(title) > 45:
-                        title = title[:42] + "..."
+                    if len(title) > max_title:
+                        title = title[: max_title - 3] + "..."
 
                     issue_type = issue.issue_id.split("-", 1)[0]
                     colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
                     colored_priority = colorize(
                         issue.priority, PRIORITY_COLOR.get(issue.priority, "0")
                     )
+                    score_suffix = _score_suffix(issue)
                     lines.append(
-                        f"    \u2514\u2500\u2500 {colored_id}: {title} ({colored_priority})"
+                        f"    \u2514\u2500\u2500 {colored_id}: {title} ({colored_priority}){score_suffix}"
                     )
+                    if hasattr(issue, "path") and issue.path:
+                        lines.append(f"        {issue.path}")
 
                     # Show blockers for this issue
                     blockers = dep_graph.blocked_by.get(issue.issue_id, set())
@@ -125,13 +144,19 @@ def _render_execution_plan(
 
                 # Truncate title if too long
                 title = issue.title
-                if len(title) > 45:
-                    title = title[:42] + "..."
+                if len(title) > max_title:
+                    title = title[: max_title - 3] + "..."
 
                 issue_type = issue.issue_id.split("-", 1)[0]
                 colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
                 colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
-                lines.append(f"{prefix}{colored_id}: {title} ({colored_priority})")
+                score_suffix = _score_suffix(issue)
+                lines.append(f"{prefix}{colored_id}: {title} ({colored_priority}){score_suffix}")
+
+                # Show file path
+                path_indent = "      " if is_last else "  \u2502   "
+                if hasattr(issue, "path") and issue.path:
+                    lines.append(f"{path_indent}{issue.path}")
 
                 # Show blockers for this issue
                 blockers = dep_graph.blocked_by.get(issue.issue_id, set())

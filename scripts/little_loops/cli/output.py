@@ -97,3 +97,20 @@ def colorize(text: str, code: str) -> str:
 def print_json(data: Any) -> None:
     """Print *data* as formatted JSON to stdout."""
     print(json.dumps(data, indent=2))
+
+
+def format_relative_time(seconds: float) -> str:
+    """Format seconds as a human-readable relative time string (e.g., '3m ago')."""
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s ago"
+    if total < 3600:
+        m, s = divmod(total, 60)
+        return f"{m}m ago" if s == 0 else f"{m}m {s}s ago"
+    if total < 86400:
+        h, rem = divmod(total, 3600)
+        m = rem // 60
+        return f"{h}h ago" if m == 0 else f"{h}h {m}m ago"
+    d, rem = divmod(total, 86400)
+    h = rem // 3600
+    return f"{d}d ago" if h == 0 else f"{d}d {h}h ago"

@@ -145,6 +145,7 @@ Examples:
     show_parser = subparsers.add_parser("show", aliases=["s"], help="Show sprint details")
     show_parser.set_defaults(command="show")
     show_parser.add_argument("sprint", help="Sprint name to show")
+    show_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON object")
     add_config_arg(show_parser)
     add_skip_analysis_arg(show_parser)
 

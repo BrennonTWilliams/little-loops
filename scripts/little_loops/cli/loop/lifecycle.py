@@ -20,20 +20,13 @@ from little_loops.logger import Logger
 
 
 def _format_relative_time(seconds: float) -> str:
-    """Format seconds as a human-readable relative time string (e.g., '3m ago')."""
-    total = int(seconds)
-    if total < 60:
-        return f"{total}s ago"
-    if total < 3600:
-        m, s = divmod(total, 60)
-        return f"{m}m ago" if s == 0 else f"{m}m {s}s ago"
-    if total < 86400:
-        h, rem = divmod(total, 3600)
-        m = rem // 60
-        return f"{h}h ago" if m == 0 else f"{h}h {m}m ago"
-    d, rem = divmod(total, 86400)
-    h = rem // 3600
-    return f"{d}d ago" if h == 0 else f"{d}d {h}h ago"
+    """Format seconds as a human-readable relative time string (e.g., '3m ago').
+
+    Delegates to the shared ``format_relative_time`` in ``cli.output``.
+    """
+    from little_loops.cli.output import format_relative_time
+
+    return format_relative_time(seconds)
 
 
 def _read_pid_file(pid_file: Path) -> int | None:

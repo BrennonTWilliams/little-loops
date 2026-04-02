@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from little_loops.cli.output import colorize, terminal_width
+from little_loops.cli.output import colorize, format_relative_time, print_json, terminal_width
 from little_loops.cli.sprint._helpers import (
     _build_issue_contents,
     _render_dependency_analysis,
@@ -45,10 +45,10 @@ def _render_dependency_graph(
 
     width = terminal_width()
     lines: list[str] = []
+    header_text = "Dependency Graph"
+    fill = "\u2500" * max(0, width - len(header_text) - 4)
     lines.append("")
-    lines.append("=" * width)
-    lines.append("DEPENDENCY GRAPH")
-    lines.append("=" * width)
+    lines.append(f"\u2500\u2500 {header_text} {fill}")
     lines.append("")
 
     # Build chains: track which issues block what
@@ -186,9 +186,14 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
             dep_config = config.dependency_mapping if config else None
             waves, contention_notes = refine_waves_for_contention(waves, config=dep_config)
 
+    # JSON early-exit
+    if getattr(args, "json", False):
+        return _show_json(sprint, issue_infos, waves, contention_notes, has_cycles, dep_graph)
+
     print(f"{colorize('Sprint:', '1')} {sprint.name}")
-    print(f"Description: {sprint.description or '(none)'}")
-    print(f"Created: {sprint.created}")
+    if sprint.description:
+        print(f"Description: {sprint.description}")
+    print(f"Created: {_format_created(sprint.created)}")
 
     # Options on a single compact line right after metadata
     if sprint.options:
@@ -196,6 +201,9 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
         print(
             f"Options: max_workers={opts.max_workers}, timeout={opts.timeout}s, max_iterations={opts.max_iterations}"
         )
+
+    # Sprint run state from .sprint-state.json
+    _print_run_state(sprint.name)
 
     # Dependency analysis (ENH-301) - run before health summary so we can reference it
     dep_report: Any = None
@@ -224,6 +232,9 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
             issue_to_wave=issue_to_wave if issue_to_wave else None,
         )
         print(f"Sprint health: {health}")
+
+        # Composition breakdown
+        _print_composition(issue_infos)
 
     # Show execution plan if we have dependency info and no cycles
     if waves and dep_graph:
@@ -255,4 +266,119 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     if invalid:
         print(f"\nWarning: {len(invalid)} issue(s) not found")
 
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for enhanced show output (ENH-923)
+# ---------------------------------------------------------------------------
+
+
+def _format_created(iso_str: str) -> str:
+    """Format an ISO 8601 created timestamp as a human-friendly string."""
+    import time
+    from datetime import UTC, datetime
+
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        formatted = dt.strftime("%Y-%m-%d %H:%M UTC")
+        elapsed = time.time() - dt.timestamp()
+        if elapsed >= 0:
+            return f"{formatted} ({format_relative_time(elapsed)})"
+        return formatted
+    except (ValueError, OSError):
+        return iso_str
+
+
+def _print_composition(issue_infos: list[Any]) -> None:
+    """Print type/priority composition breakdown."""
+    if not issue_infos:
+        return
+    from collections import Counter
+
+    types: Counter[str] = Counter()
+    priorities: Counter[str] = Counter()
+    for info in issue_infos:
+        issue_type = info.issue_id.split("-", 1)[0]
+        types[issue_type] += 1
+        if info.priority:
+            priorities[info.priority] += 1
+
+    type_parts = [f"{count} {t}" for t, count in sorted(types.items())]
+    prio_parts = [f"{p}: {count}" for p, count in sorted(priorities.items())]
+    print(f"Composition: {', '.join(type_parts)}  |  {', '.join(prio_parts)}")
+
+
+def _print_run_state(sprint_name: str) -> None:
+    """Print last run state if .sprint-state.json exists for this sprint."""
+    import json
+
+    state_file = Path.cwd() / ".sprint-state.json"
+    if not state_file.exists():
+        return
+    try:
+        data = json.loads(state_file.read_text())
+        if data.get("sprint_name") != sprint_name:
+            return
+        completed = data.get("completed_issues", [])
+        failed = data.get("failed_issues", {})
+        skipped = data.get("skipped_blocked_issues", {})
+        total = len(completed) + len(failed) + len(skipped)
+
+        started = data.get("started_at", "")
+        date_str = started[:10] if started else "unknown"
+
+        parts = [f"{len(completed)} completed"]
+        if failed:
+            failed_ids = ", ".join(sorted(failed.keys()))
+            parts.append(f"{len(failed)} failed ({failed_ids})")
+        if skipped:
+            parts.append(f"{len(skipped)} skipped")
+        print(f"Last run: {date_str} \u2014 {', '.join(parts)} of {total}")
+    except (json.JSONDecodeError, OSError):
+        pass
+
+
+def _show_json(
+    sprint: Any,
+    issue_infos: list[Any],
+    waves: list[list[Any]],
+    contention_notes: Any,
+    has_cycles: bool,
+    dep_graph: Any,
+) -> int:
+    """Render sprint show output as JSON."""
+    issues_data = []
+    for info in issue_infos:
+        issues_data.append(
+            {
+                "id": info.issue_id,
+                "title": info.title,
+                "priority": info.priority,
+                "path": str(info.path),
+                "confidence_score": info.confidence_score,
+                "outcome_confidence": info.outcome_confidence,
+            }
+        )
+
+    waves_data = []
+    for wave_idx, wave in enumerate(waves):
+        waves_data.append(
+            {
+                "wave": wave_idx + 1,
+                "issues": [issue.issue_id for issue in wave],
+            }
+        )
+
+    data = {
+        "name": sprint.name,
+        "description": sprint.description or None,
+        "created": sprint.created,
+        "issues": issues_data,
+        "waves": waves_data,
+        "has_cycles": has_cycles,
+    }
+    print_json(data)
     return 0
