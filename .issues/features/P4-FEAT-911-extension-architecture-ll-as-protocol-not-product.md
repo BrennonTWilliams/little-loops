@@ -35,7 +35,7 @@ Define and publish an event/schema contract:
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-**Critical insight: the FSM event system already exists.** `FSMExecutor` (`scripts/little_loops/fsm/executor.py:103`) already defines `EventCallback = Callable[[dict[str, Any]], None]` and emits **10 distinct event names across 13 call sites** via `_emit()` at line 1006. All events are persisted to `.loops/.running/<name>.events.jsonl` via `PersistentExecutor.append_event()` at `fsm/persistence.py:216`. The extension API for the FSM layer is already there structurally — it just isn't exposed publicly.
+**Critical insight: the FSM event system already exists.** `FSMExecutor` (`scripts/little_loops/fsm/executor.py:103`) already defines `EventCallback = Callable[[dict[str, Any]], None]` and emits **10 distinct event names across 13 call sites** via `_emit()` at line 1006. All events are persisted to `.loops/.running/<name>.events.jsonl` via `PersistentExecutor.append_event()` at `fsm/persistence.py:217`. The extension API for the FSM layer is already there structurally — it just isn't exposed publicly.
 
 **Complete FSM event taxonomy** (from `executor.py`):
 
@@ -56,10 +56,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **What does NOT exist yet:**
 - `ll-auto` and `ll-parallel` emit **zero events** — they update JSON state files but fire no callbacks
 - Issue lifecycle (close/complete/defer in `issue_lifecycle.py`) has no event emission — all state changes are filesystem moves
-- `PersistentExecutor._on_event` (line 342) is a single-slot observer (direct attribute assignment) — not a registration API
+- `PersistentExecutor._on_event` (line 343) is a single-slot observer (direct attribute assignment) — not a registration API
 - No `[project.entry-points]` group in `scripts/pyproject.toml` — no mechanism for external packages to self-register as extensions
 
-**Transport decision (informed by existing code):** File-based JSONL is already the established pattern (`persistence.py:216-242`). A unified `.ll/events.jsonl` append-only log is the lowest-friction approach — external tools can tail/watch it without in-process coupling. In-process callbacks (`EventCallback`) can coexist for latency-sensitive consumers.
+**Transport decision (informed by existing code):** File-based JSONL is already the established pattern (`persistence.py:217-243`). A unified `.ll/events.jsonl` append-only log is the lowest-friction approach — external tools can tail/watch it without in-process coupling. In-process callbacks (`EventCallback`) can coexist for latency-sensitive consumers.
 
 **Recommended design:**
 1. Create `scripts/little_loops/events.py` — `LLEvent` dataclass + `EventBus` (multi-observer, replaces the single `_on_event` slot)
@@ -76,7 +76,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/extension.py` — `LLExtension` Protocol + `ExtensionLoader` (discovers extensions via `importlib.metadata.entry_points(group="little_loops.extensions")` or `ll-config.json`)
 
 **Emission points to add (none currently exist outside FSM):**
-- `scripts/little_loops/fsm/persistence.py:342,353` — Replace single `_on_event` slot with `EventBus` multi-observer; fire `EventBus` from `_handle_event()`
+- `scripts/little_loops/fsm/persistence.py:343,354` — Replace single `_on_event` slot with `EventBus` multi-observer; fire `EventBus` from `_handle_event()`
 - `scripts/little_loops/issue_lifecycle.py:525` — `close_issue()` — add event emission on issue close
 - `scripts/little_loops/issue_lifecycle.py:604` — `complete_issue_lifecycle()` — add event emission on completion
 - `scripts/little_loops/issue_lifecycle.py:697` — `defer_issue()` — add event emission on defer
@@ -100,9 +100,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - `scripts/little_loops/fsm/executor.py:103-127` — `EventCallback` type alias + `ActionRunner` Protocol — direct model for `LLExtension` Protocol design
 - `scripts/little_loops/fsm/executor.py:1000-1008` — `_emit()` method pattern — replicate verbatim for issue lifecycle and ll-auto/parallel emission points
-- `scripts/little_loops/fsm/persistence.py:216-242` — `append_event()` / `read_events()` JSONL pattern — reuse/extend for unified event log
+- `scripts/little_loops/fsm/persistence.py:217-243` — `append_event()` / `read_events()` JSONL pattern — reuse/extend for unified event log
 - `scripts/little_loops/subprocess_utils.py:21-28` — Typed `Callable` aliases (`OutputCallback`, `ProcessCallback`) — follow same naming convention for `EventCallback`
-- `scripts/little_loops/parallel/types.py:51-135` — `WorkerResult.to_dict()` / `from_dict()` — use for `LLEvent` serialization
+- `scripts/little_loops/parallel/types.py:52-135` — `WorkerResult.to_dict()` / `from_dict()` — use for `LLEvent` serialization
 - `scripts/tests/test_fsm_executor.py:26-77` — `MockActionRunner` dataclass pattern — model for `MockExtension` in new tests
 
 ### Tests
@@ -159,11 +159,11 @@ _Added by `/ll:refine-issue` — gaps not covered by prior research:_
 
 _Added by `/ll:refine-issue` — concrete steps with file references:_
 
-1. **Create `LLEvent` + `EventBus`** in `scripts/little_loops/events.py` — follow `WorkerResult` dataclass pattern (`parallel/types.py:51`) with `to_dict()`/`from_dict()`; model the bus's `emit()` on `_emit()` at `fsm/executor.py:1000`; use `append_event()` pattern from `fsm/persistence.py:216` for JSONL sink
+1. **Create `LLEvent` + `EventBus`** in `scripts/little_loops/events.py` — follow `WorkerResult` dataclass pattern (`parallel/types.py:52`) with `to_dict()`/`from_dict()`; model the bus's `emit()` on `_emit()` at `fsm/executor.py:1000`; use `append_event()` pattern from `fsm/persistence.py:217` for JSONL sink
 
 2. **Create `LLExtension` Protocol** in `scripts/little_loops/extension.py` — follow `ActionRunner` Protocol at `fsm/executor.py:106-127` exactly; add `ExtensionLoader` using `importlib.metadata.entry_points(group="little_loops.extensions")`
 
-3. **Migrate `PersistentExecutor._on_event`** (`fsm/persistence.py:342`) from single-slot to `EventBus` — update `_helpers.py:484-486` to call `executor.event_bus.register(display_progress)` instead of direct attribute assignment
+3. **Migrate `PersistentExecutor._on_event`** (`fsm/persistence.py:343`) from single-slot to `EventBus` — update `_helpers.py:484-486` to call `executor.event_bus.register(display_progress)` instead of direct attribute assignment
 
 4. **Add emission to issue lifecycle** (`issue_lifecycle.py:437,525,604,697`) — copy `_emit()` pattern; emit `{"event": "issue.closed", "ts": ..., "issue_id": ..., "resolution": ...}` etc.
 
@@ -244,6 +244,7 @@ _Added by `/ll:confidence-check` on 2026-04-01_
 - **`importlib.metadata.entry_points` is novel**: First production use; expect edge cases in test environments where packages aren't installed. Budget time for test harness setup.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-02T17:49:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6966be3-9748-4703-ac3d-a3d40bced0b7.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3576f2a-9a9d-4660-bfdd-ec5477ddd565.jsonl`
 - `/ll:refine-issue` - 2026-04-02T04:19:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cefa20fa-827b-4271-aacd-aafe384c904b.jsonl`
 - `/ll:format-issue` - 2026-04-02T04:12:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e78e5bb6-f7d2-4912-8069-79a717fb51a8.jsonl`
