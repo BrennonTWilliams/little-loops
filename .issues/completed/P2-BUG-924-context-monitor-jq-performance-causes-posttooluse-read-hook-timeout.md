@@ -192,14 +192,29 @@ All claims confirmed against current codebase:
 - **Integration map**: All dependent files, documentation, and config references verified
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-02T22:19:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ce45c89-4ad8-4c6d-b8ea-43d33fdd3374.jsonl`
 - `/ll:verify-issues` - 2026-04-02T22:15:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
 - `/ll:confidence-check` - 2026-04-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
 - `/ll:refine-issue` - 2026-04-02T22:11:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
 - `/ll:format-issue` - 2026-04-02T22:05:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
 - `/ll:capture-issue` - 2026-04-02 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f1745da-4e21-4370-979f-bddf31a380b8.jsonl`
 
+- `/ll:manage-issue` - 2026-04-02T22:30:00Z - `fix BUG-924`
+
+---
+
+## Resolution
+
+**Fixed** — Reduced jq subprocess invocations from ~15 to ~5 per hook call through 5 optimizations:
+
+1. **Single-pass INPUT parsing**: 3 `echo "$INPUT" | jq` calls → 1 `jq @tsv` call
+2. **Deferred tool_response extraction**: `estimate_tokens` now reads `.tool_response` directly from raw `$INPUT` only in branches that need it; Read counts lines in jq (avoids full file content in bash var); Bash combines 2 jq calls into 1
+3. **Cached model detection**: `detected_model` stored in state file; transcript only read on first call via `tail -50` (not full `jq -s` slurp)
+4. **Consolidated state extraction**: 7 individual `jq -r` calls → 1 multi-field jq call
+5. **Cached transcript baseline**: `transcript_baseline_tokens` from state reused; `get_transcript_baseline()` uses `tail -50` instead of full slurp; only called when cache is 0
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P2
+**Completed** | Created: 2026-04-02 | Resolved: 2026-04-02 | Priority: P2
