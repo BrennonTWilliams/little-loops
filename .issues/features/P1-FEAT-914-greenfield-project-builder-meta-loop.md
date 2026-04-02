@@ -1,6 +1,8 @@
 ---
 discovered_date: "2026-04-02"
 discovered_by: capture-issue
+confidence_score: 80
+outcome_confidence: 71
 ---
 
 # FEAT-914: Greenfield Project Builder Meta-Loop
@@ -336,7 +338,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `feature`, `automation`, `fsm-loop`, `meta-loop`, `captured`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-02_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- **`loop: ${context.harness_name}` is not supported by the executor** (`executor.py:585`). `state.loop` is passed directly to `resolve_loop_path()` without interpolation — the literal string `"${context.harness_name}"` would be used as a file path and fail. The issue lists executor.py as "Reference Only — Not Modified", creating a contradiction. Resolution required before implementation: either (a) enhance `executor.py` to interpolate `state.loop` before resolution, or (b) use `action_type: shell` with `ll-loop run ${context.harness_name}` and `exit_code` routing instead of a sub-loop state.
+- **`test_expected_loops_exist` will fail** (`test_builtin_loops.py:46-77`). This test has a hardcoded `expected` set of 31 loop names. Adding two new loops will cause `actual != expected`. The issue notes new loops will be "auto-included" but this only applies to structural validation tests — the expected-set test must be manually updated.
+
+### Outcome Risk Factors
+- The outer loop's Phase 2 (creating harness YAML from spec) relies heavily on LLM judgment with no concrete template selection logic. Choosing and parameterizing the right harness variant for an arbitrary spec is a significant inference task that may produce inconsistent results.
+- 3-level sub-loop nesting (greenfield-builder → eval-driven-development → issue-refinement) is novel — only 1-level nesting is established in existing loops. Debugging failures in deeply nested sub-loops has no established pattern.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79abedd4-e354-40a5-a5ad-3c6d38b65535.jsonl`
 - `/ll:refine-issue` - 2026-04-02T05:14:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42dd0907-a734-4d2d-9267-44252d3837e7.jsonl`
 - `/ll:format-issue` - 2026-04-02T05:05:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42f55760-d9eb-4053-a9a0-e47fdee21521.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/691b200f-7de4-4ff4-bdb4-e101673139e8.jsonl`
