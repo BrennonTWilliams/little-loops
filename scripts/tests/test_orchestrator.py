@@ -1397,6 +1397,84 @@ class TestOnWorkerComplete:
         # Verify wait_for_completion is called after queue_merge
         assert call_order == ["queue_merge", "wait_for_completion"]
 
+    def test_on_worker_complete_emits_event_on_success(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_on_worker_complete emits parallel.worker_completed on success (ENH-921)."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worker-BUG-001-20260402"),
+            duration=12.5,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "parallel.worker_completed"
+        assert event["issue_id"] == "BUG-001"
+        assert event["worker_name"] == "worker-BUG-001-20260402"
+        assert event["status"] == "success"
+        assert event["duration_seconds"] == 12.5
+        assert "ts" in event
+
+    def test_on_worker_complete_emits_event_on_failure(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_on_worker_complete emits parallel.worker_completed on failure (ENH-921)."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
+        result = WorkerResult(
+            issue_id="BUG-002",
+            success=False,
+            branch_name="parallel/bug-002",
+            worktree_path=Path("/tmp/worker-BUG-002-20260402"),
+            error="Processing failed",
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "parallel.worker_completed"
+        assert event["issue_id"] == "BUG-002"
+        assert event["status"] == "failure"
+        assert event["duration_seconds"] == 0.0
+
+    def test_on_worker_complete_no_emission_without_event_bus(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_on_worker_complete works without event_bus (backward compat, ENH-921)."""
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        # Should not raise - no _event_bus attribute or it's None
+        orchestrator._on_worker_complete(result)
+
+        orchestrator.merge_coordinator.queue_merge.assert_called_once_with(result)  # type: ignore[attr-defined]
+
 
 class TestMergeSequential:
     """Tests for _merge_sequential method."""

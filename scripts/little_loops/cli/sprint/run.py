@@ -384,8 +384,12 @@ def _cmd_sprint_run(
                     clean_start=True,  # Sprint manages its own state; don't load stale orchestrator state
                 )
 
+                from little_loops.events import EventBus
+
+                event_bus = EventBus()
                 orchestrator = ParallelOrchestrator(
-                    parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}/{total_waves}"
+                    parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}/{total_waves}",
+                    event_bus=event_bus,
                 )
                 result = orchestrator.run()
                 total_duration += orchestrator.execution_duration

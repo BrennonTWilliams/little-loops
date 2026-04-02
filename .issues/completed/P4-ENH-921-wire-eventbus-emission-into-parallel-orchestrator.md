@@ -92,18 +92,18 @@ event_bus.emit({
 ## Success Metrics
 
 - `parallel.worker_completed` event fires for every worker completion (success and failure)
-- Event payload contains all four required fields (worker_id, issue_id, status, duration)
+- Event payload contains all four required fields (issue_id, worker_name, status, duration_seconds)
 - No performance regression in parallel orchestrator (event emission is fire-and-forget)
 
 ## Acceptance Criteria
 
-- [ ] ENH-470 conflict risk assessed before implementation
-- [ ] `ParallelOrchestrator.__init__()` accepts optional `event_bus: EventBus | None` parameter
-- [ ] `_on_worker_complete()` emits `parallel.worker_completed` event using flat dict format with `"event"` and `"ts"` keys
-- [ ] Event payload includes `issue_id`, `worker_name`, `status`, and `duration_seconds`
-- [ ] Both CLI construction sites thread `event_bus` (`cli/parallel.py:224`, `cli/sprint/run.py:387`)
-- [ ] Tests verify emission on success and failure paths
-- [ ] No emission when `event_bus` is `None` (backward compatibility)
+- [x] ENH-470 conflict risk assessed before implementation
+- [x] `ParallelOrchestrator.__init__()` accepts optional `event_bus: EventBus | None` parameter
+- [x] `_on_worker_complete()` emits `parallel.worker_completed` event using flat dict format with `"event"` and `"ts"` keys
+- [x] Event payload includes `issue_id`, `worker_name`, `status`, and `duration_seconds`
+- [x] Both CLI construction sites thread `event_bus` (`cli/parallel.py:224`, `cli/sprint/run.py:387`)
+- [x] Tests verify emission on success and failure paths
+- [x] No emission when `event_bus` is `None` (backward compatibility)
 
 ## Impact
 
@@ -151,12 +151,27 @@ event_bus.emit({
 
 ---
 
+## Resolution
+
+**Completed** | 2026-04-02
+
+### Changes Made
+- Added `event_bus: EventBus | None = None` parameter to `ParallelOrchestrator.__init__()` (`orchestrator.py:68`)
+- Added `parallel.worker_completed` event emission in `_on_worker_complete()` after shared trailing logic (`orchestrator.py:912-920`)
+- Threaded `EventBus` through `cli/parallel.py` and `cli/sprint/run.py` construction sites
+- Added 3 tests: success emission, failure emission, backward compatibility (no bus)
+
+### Verification
+- 108 tests pass, lint clean, mypy clean
+
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P4
+**Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P4
 
 ## Session Log
 - `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b679f3b-da40-413e-ade8-ef41c109581e.jsonl`
 - `/ll:refine-issue` - 2026-04-02T18:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/562ae113-f540-4eb1-854f-8e2587153d41.jsonl`
 - `/ll:format-issue` - 2026-04-02T18:47:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/41b7e13f-e7a5-4e5d-9839-ca0cca6a202b.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
+
+- `/ll:ready-issue` - 2026-04-02T20:47:27 - `unknown-session`

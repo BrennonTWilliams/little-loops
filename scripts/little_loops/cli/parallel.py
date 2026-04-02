@@ -219,13 +219,16 @@ Examples:
             state_file.unlink()
 
     # Create and run orchestrator
+    from little_loops.events import EventBus
     from little_loops.parallel import ParallelOrchestrator
 
+    event_bus = EventBus()
     orchestrator = ParallelOrchestrator(
         parallel_config=parallel_config,
         br_config=config,
         repo_path=project_root,
         verbose=args.verbose or not args.quiet,
+        event_bus=event_bus,
     )
 
     return orchestrator.run()

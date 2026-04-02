@@ -15,10 +15,11 @@ import subprocess
 import tempfile
 import threading
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.events import EventBus
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.git_lock import GitLock
@@ -64,6 +65,7 @@ class ParallelOrchestrator:
         repo_path: Path | None = None,
         verbose: bool = True,
         wave_label: str | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         """Initialize the orchestrator.
 
@@ -73,12 +75,14 @@ class ParallelOrchestrator:
             repo_path: Path to the git repository (default: current directory)
             verbose: Whether to output progress messages
             wave_label: Optional label for wave-based execution (e.g., "Wave 1")
+            event_bus: Optional EventBus for emitting worker completion events
         """
         self.parallel_config = parallel_config
         self.br_config = br_config
         self.repo_path = repo_path or Path.cwd()
         self.logger = Logger(verbose=verbose)
         self.wave_label = wave_label
+        self._event_bus = event_bus
         self._execution_duration: float = 0.0
 
         # Create shared git lock for serializing main repo operations
@@ -906,6 +910,17 @@ class ParallelOrchestrator:
         # Clean up stage tracking after callback completes (ENH-262)
         # Delay briefly so status reporter can show completion
         self.worker_pool.remove_worker_stage(result.issue_id)
+
+        # Emit worker completion event for extensions (ENH-921)
+        if self._event_bus:
+            self._event_bus.emit({
+                "event": "parallel.worker_completed",
+                "ts": datetime.now(UTC).isoformat(),
+                "issue_id": result.issue_id,
+                "worker_name": result.worktree_path.name,
+                "status": "success" if result.success else "failure",
+                "duration_seconds": result.duration,
+            })
 
     def _requeue_deferred_issues(self) -> None:
         """Re-queue deferred issues that no longer have overlaps (ENH-143)."""
