@@ -198,10 +198,10 @@ class LLEvent:
 
 ## Acceptance Criteria
 
-- [ ] Extension contract documented as a published schema
-- [ ] At least one emission point wired to the event bus
-- [ ] Reference extension (even a no-op logger) demonstrates the API works
-- [ ] No breaking changes to existing ll behavior when no extensions are registered
+- [x] Extension contract documented as a published schema
+- [x] At least one emission point wired to the event bus
+- [x] Reference extension (even a no-op logger) demonstrates the API works
+- [x] No breaking changes to existing ll behavior when no extensions are registered
 
 ## Impact
 
@@ -228,7 +228,21 @@ class LLEvent:
 
 ## Status
 
-**Open** | Created: 2026-04-01 | Priority: P4
+**Completed** | Created: 2026-04-01 | Completed: 2026-04-02 | Priority: P4
+
+## Resolution
+
+Implemented the core extension architecture with minimal scope matching acceptance criteria:
+
+- **`scripts/little_loops/events.py`**: `LLEvent` dataclass (type/timestamp/payload with `to_dict()`/`from_dict()` serialization) + `EventBus` multi-observer dispatcher with JSONL file sink support
+- **`scripts/little_loops/extension.py`**: `LLExtension` Protocol + `NoopLoggerExtension` reference implementation + `ExtensionLoader` (config-based `module:Class` loading + `importlib.metadata.entry_points` discovery)
+- **`scripts/little_loops/fsm/persistence.py`**: Replaced single-slot `_on_event` with `EventBus` in `PersistentExecutor`; backward-compat property preserves existing API
+- **`scripts/little_loops/cli/loop/_helpers.py`**: Updated to use `event_bus.register()` with `hasattr` guard for test mock compat
+- **`config-schema.json`**: Added `extensions` array property for config-based extension loading
+- **`scripts/pyproject.toml`**: Added `[project.entry-points."little_loops.extensions"]` group
+- **Public exports**: Added `LLEvent`, `EventBus`, `LLExtension`, `ExtensionLoader`, `NoopLoggerExtension` to `__init__.py`; added `EventCallback` to `fsm/__init__.py`
+
+**Deferred to follow-up issues**: Issue lifecycle emission, StateManager emission, parallel orchestrator emission (per confidence check recommendations to avoid wide change surface and ENH-470 conflict risk)
 
 ## Confidence Check Notes
 
@@ -244,6 +258,7 @@ _Added by `/ll:confidence-check` on 2026-04-01_
 - **`importlib.metadata.entry_points` is novel**: First production use; expect edge cases in test environments where packages aren't installed. Budget time for test harness setup.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-02T18:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:ready-issue` - 2026-04-02T17:49:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6966be3-9748-4703-ac3d-a3d40bced0b7.jsonl`
 - `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3576f2a-9a9d-4660-bfdd-ec5477ddd565.jsonl`
 - `/ll:refine-issue` - 2026-04-02T04:19:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cefa20fa-827b-4271-aacd-aafe384c904b.jsonl`

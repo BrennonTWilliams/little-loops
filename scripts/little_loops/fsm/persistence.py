@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from little_loops.events import EventBus
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecutor
 from little_loops.fsm.schema import FSMLoop
@@ -340,7 +341,19 @@ class PersistentExecutor:
         )
         self._last_result: dict[str, Any] | None = None
         self._continuation_prompt: str | None = None
-        self._on_event: EventCallback | None = None
+        self.event_bus = EventBus()
+
+    @property
+    def _on_event(self) -> EventCallback | None:
+        """Backward-compatible access to the first observer on the event bus."""
+        return self.event_bus._observers[0] if self.event_bus._observers else None
+
+    @_on_event.setter
+    def _on_event(self, callback: EventCallback | None) -> None:
+        """Backward-compatible setter: replaces all observers with this one."""
+        self.event_bus._observers.clear()
+        if callback is not None:
+            self.event_bus.register(callback)
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
@@ -377,9 +390,8 @@ class PersistentExecutor:
         if event_type == "handoff_detected":
             self._continuation_prompt = event.get("continuation")
 
-        # Delegate to secondary observer (e.g. progress display)
-        if self._on_event is not None:
-            self._on_event(event)
+        # Delegate to registered observers (e.g. progress display, extensions)
+        self.event_bus.emit(event)
 
     def _save_state(self) -> None:
         """Save current executor state to file."""

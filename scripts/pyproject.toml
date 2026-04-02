@@ -61,6 +61,10 @@ ll-deps = "little_loops.cli:main_deps"
 ll-gitignore = "little_loops.cli:main_gitignore"
 mcp-call = "little_loops.mcp_call:main"
 
+[project.entry-points."little_loops.extensions"]
+# Extensions register here for automatic discovery.
+# Example: my_ext = "my_package:MyExtension"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",

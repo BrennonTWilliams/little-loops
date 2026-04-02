@@ -5,6 +5,8 @@ and development workflows that can be configured for any software project.
 """
 
 from little_loops.config import BRConfig
+from little_loops.events import EventBus, LLEvent
+from little_loops.extension import ExtensionLoader, LLExtension, NoopLoggerExtension
 from little_loops.git_operations import check_git_status
 from little_loops.issue_lifecycle import (
     FailureType,
@@ -26,6 +28,13 @@ from little_loops.work_verification import (
 __version__ = "1.68.0"
 __all__ = [
     "BRConfig",
+    # events
+    "EventBus",
+    "LLEvent",
+    # extensions
+    "ExtensionLoader",
+    "LLExtension",
+    "NoopLoggerExtension",
     # git_operations
     "check_git_status",
     # work_verification

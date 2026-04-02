@@ -481,9 +481,12 @@ def run_foreground(
                 to_state = event.get("to", "")
                 print(f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
 
-    # Wire progress display via the proper observer slot on PersistentExecutor
+    # Wire progress display via the EventBus on PersistentExecutor
     if not quiet or show_diagrams:
-        executor._on_event = display_progress
+        if hasattr(executor, "event_bus"):
+            executor.event_bus.register(display_progress)
+        else:
+            executor._on_event = display_progress
 
     result = executor.run()
 

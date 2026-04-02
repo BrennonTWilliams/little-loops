@@ -86,6 +86,7 @@ from little_loops.fsm.evaluators import (
 from little_loops.fsm.executor import (
     ActionResult,
     ActionRunner,
+    EventCallback,
     ExecutionResult,
     FSMExecutor,
 )
@@ -133,6 +134,7 @@ __all__ = [
     "ActionResult",
     "ActionRunner",
     "DEFAULT_LLM_MODEL",
+    "EventCallback",
     "DEFAULT_LLM_PROMPT",
     "DEFAULT_LLM_SCHEMA",
     "DetectedSignal",

@@ -893,5 +893,12 @@
       "additionalProperties": false
     }
   },
+    "extensions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Extension module paths to load (format: 'module.path:ClassName'). Extensions receive structured events from the EventBus."
+    }
+  },
   "additionalProperties": false
 }
