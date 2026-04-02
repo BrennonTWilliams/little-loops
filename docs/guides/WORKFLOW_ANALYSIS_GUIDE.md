@@ -194,6 +194,9 @@ ll-workflows analyze \
 | `--patterns FILE` | `-p FILE` | Yes | Step 1 output YAML (from workflow-pattern-analyzer) |
 | `--output FILE` | `-o FILE` | No | Output YAML (default: `.ll/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | No | Print detailed progress |
+| `--format` | `-f` | No | Output format: `yaml` or `json` (default: `yaml`) |
+| `--overlap-threshold` | | No | Minimum entity overlap to cluster messages (default: `0.3`) |
+| `--boundary-threshold` | | No | Minimum boundary score to split workflow segments (default: `0.6`) |
 
 ### How the Analysis Works
 
