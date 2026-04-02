@@ -45,45 +45,82 @@ Improve the `ll-sprint show` command with richer detail and better output format
 
 ## Proposed Solution
 
-TBD - requires investigation. Key areas to modify:
+Modify the sprint `show` subcommand and its helper renderers. The sprint CLI is split into a package at `scripts/little_loops/cli/sprint/` with dedicated modules.
 
-- `scripts/little_loops/cli/sprint.py` — `_render_execution_plan()` and `show` subcommand handler
-- Reuse styled output helpers from `ll-issues list` (color utilities, table formatting)
-- Read `.sprint-state.json` for run state display
-- Add `--json` argument to the `show` subparser
-- Use `shutil.get_terminal_size()` for dynamic title width
+### Key Modifications
+
+1. **`show.py:_cmd_sprint_show()`** (line 154) — Main handler. Add description omission logic (line 190), human-friendly timestamp (line 191), composition breakdown after health summary (line 227), and sprint run state from `.sprint-state.json`.
+2. **`_helpers.py:_render_execution_plan()`** (line 15) — Replace `"=" * width` banners (lines 58-61) with `──` style separators. Increase title truncation from 45 chars (lines 83, 129) to dynamic width. Add issue file paths and readiness/confidence scores per issue.
+3. **`show.py:_render_dependency_graph()`** (line 23) — Replace `"=" * width` banners (lines 49-51) with lighter separators.
+4. **`__init__.py`** (line 145-149) — Add `--json` flag to `show_parser`, matching the pattern from `list_parser` at line 142.
+5. **`show.py`** — Add JSON output path using `print_json()` from `cli/output.py:97`.
+
+### Reusable Utilities
+
+- **`cli/output.py:terminal_width()`** (line 16) — Already wraps `shutil.get_terminal_size()`, used in `_helpers.py`. Use for dynamic title truncation.
+- **`cli/output.py:colorize()`** (line 90) — Already used throughout sprint rendering.
+- **`cli/output.py:print_json()`** (line 97) — Used by `_cmd_sprint_list` for `--json` output.
+- **`cli/loop/lifecycle.py:_format_relative_time()`** (line 22) — Formats seconds as `"3m ago"`, `"2h ago"`, etc. Should be moved to a shared location (e.g., `cli/output.py`) or imported directly.
+- **`IssueInfo.confidence_score` / `IssueInfo.outcome_confidence`** — Already parsed by `issue_parser.py` (lines 235-236). Available on objects returned by `SprintManager.load_issue_infos()`.
+- **`SprintState.from_dict()`** (sprint.py:103) and `_load_sprint_state()` (run.py:49) — Read `.sprint-state.json` with fields: `sprint_name`, `completed_issues`, `failed_issues`, `started_at`, `last_checkpoint`.
+- **`cli/issues/refine_status.py`** — Table rendering with readiness/confidence columns. Column definitions at lines 67-71 show width and label conventions.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/sprint.py` — main rendering logic
+- `scripts/little_loops/cli/sprint/show.py` — `_cmd_sprint_show()` handler (line 154): timestamp formatting, description omission, composition, run state, `--json` gate
+- `scripts/little_loops/cli/sprint/_helpers.py` — `_render_execution_plan()` (line 15): separator style, title truncation width, issue file paths, readiness/confidence scores per issue
+- `scripts/little_loops/cli/sprint/__init__.py` — `show_parser` definition (line 145): add `--json` argument
+- `scripts/little_loops/cli/output.py` — Consider adding `format_relative_time()` as shared utility (currently only in `cli/loop/lifecycle.py:22`)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/cli/sprint/__init__.py:20-23` — imports `_cmd_sprint_show`, `_render_dependency_graph`, `_render_health_summary` from `show.py`
+- `scripts/little_loops/cli/sprint/__init__.py:8` — imports `_render_execution_plan` from `_helpers.py`
+- `scripts/little_loops/cli/sprint/manage.py:10` — also imports `_render_execution_plan` from `_helpers.py`
+- `scripts/tests/test_sprint.py` — tests `_cmd_sprint_show` (lines 946, 969, 984, 1009, 1033), `_render_execution_plan`, `_render_health_summary`
 
 ### Similar Patterns
-- `scripts/little_loops/cli/issues.py` — `ll-issues list` output styling to match
+- `scripts/little_loops/cli/sprint/manage.py:16-52` — `_cmd_sprint_list()` with `--json` flag: check `getattr(args, "json", False)`, early return with `print_json([...])`. Follow this exact pattern for `show`.
+- `scripts/little_loops/cli/issues/refine_status.py` — Table rendering with readiness/confidence score columns, dynamic column elision based on terminal width
+- `scripts/little_loops/cli/loop/lifecycle.py:22-36` — `_format_relative_time()` converting seconds to human-friendly strings
 
 ### Tests
-- `scripts/tests/test_sprint.py` — add/update tests for new output features
+- `scripts/tests/test_sprint.py` (1897 lines) — Existing tests:
+  - `test_show_includes_dependency_analysis` (line 946)
+  - `test_show_skip_analysis_flag` (line 969)
+  - `test_show_color_output` (line 991)
+  - `test_show_no_color_output` (line 1015)
+  - Add new tests for: `--json` output, omitted empty description, human-friendly timestamps, composition line, run state display, wider titles, issue file paths, readiness/confidence scores
 
 ### Documentation
-- N/A
+- N/A (CLI output changes, no doc updates needed)
 
 ### Configuration
-- N/A
+- N/A (no new config keys needed)
 
 ## Implementation Steps
 
-1. Audit current `_render_execution_plan()` and `show` handler in `sprint.py`
-2. Refactor separator rendering to use lighter `──` style
-3. Add readiness/confidence score display per issue and composition breakdown
-4. Implement human-friendly timestamp formatting (reuse or create utility)
-5. Add `.sprint-state.json` run state reading and display
-6. Implement dynamic title truncation based on terminal width
-7. Add `--json` flag with structured output
-8. Add issue file path display
-9. Update tests for all new output features
+1. **Move `_format_relative_time()` to shared location** — Relocate from `cli/loop/lifecycle.py:22-36` to `cli/output.py` so both loop and sprint modules can use it. Update the import in `lifecycle.py`.
+
+2. **Replace separators in `_helpers.py` and `show.py`** — Change `"=" * width` (at `_helpers.py:58-61` and `show.py:49-51`) to `── Title (context) ──...` style. Pattern: `f"── {title} {'─' * (width - len(title) - 4)}"`.
+
+3. **Increase title truncation** — In `_helpers.py` lines 83 and 129, replace hardcoded `45` with dynamic calculation: `terminal_width() - 30` (accounting for prefix, priority, and padding). Minimum floor of 45.
+
+4. **Omit empty descriptions** — In `show.py:190`, guard with `if sprint.description: print(f"Description: {sprint.description}")`.
+
+5. **Human-friendly timestamps** — In `show.py:191`, parse `sprint.created` ISO string, format as `"2026-04-02 19:49 UTC"` with relative suffix using the shared `_format_relative_time()`.
+
+6. **Add composition breakdown** — After health summary (`show.py:227`), compute type/priority distribution from `issue_infos` and print: `Composition: 4 ENH | P3: 2, P4: 2`.
+
+7. **Add sprint run state** — In `show.py`, import `_get_sprint_state_file` and `SprintState.from_dict()`. If `.sprint-state.json` exists, load and display: `Last run: <date> — N/M completed, K failed (IDs)`.
+
+8. **Add readiness/confidence scores per issue** — In `_helpers.py:_render_execution_plan()`, access `issue.confidence_score` and `issue.outcome_confidence` from the `IssueInfo` objects. Display inline: `ENH-919: Title (P3) [ready: 85, conf: 72]`.
+
+9. **Add issue file paths** — In `_helpers.py`, after each issue line, add `│   <issue.path>` using the `IssueInfo.path` attribute.
+
+10. **Add `--json` flag** — In `__init__.py` at line 149, add `show_parser.add_argument("-j", "--json", ...)`. In `show.py:_cmd_sprint_show()`, add early `--json` branch following `_cmd_sprint_list` pattern (`manage.py:21-37`): build dict with sprint metadata, issues, waves, scores, state; output via `print_json()`.
+
+11. **Update tests** — In `scripts/tests/test_sprint.py`, add tests for: omitted empty description, human-friendly timestamp format, composition line, `--json` output structure, lighter separators, wider titles, file path display, readiness/confidence display, run state display.
 
 ## Success Metrics
 
@@ -117,6 +154,7 @@ TBD - requires investigation. Key areas to modify:
 `enhancement`, `cli`, `sprint`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-02T22:09:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
 - `/ll:capture-issue` - 2026-04-02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2d0784e-0b23-40cf-bd8f-79c2a103fa18.jsonl`
 
 ---
