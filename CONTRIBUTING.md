@@ -121,13 +121,14 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── loops/                # Built-in FSM loop definitions (14 YAML files)
-├── skills/               # 19 skill definitions (user-invocable workflows)
+├── loops/                # Built-in FSM loop definitions (34 YAML files)
+├── skills/               # 21 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── analyze-loop/                 # Analyze loop execution history
 │   ├── audit-claude-config/          # Audit plugin configuration
 │   ├── audit-docs/                   # Audit documentation accuracy
 │   ├── capture-issue/                # Capture issues from conversation
+│   ├── cleanup-loops/                # Find and clean stuck loop processes
 │   ├── confidence-check/             # Pre-implementation confidence check
 │   ├── go-no-go/                     # Adversarial GO/NO-GO issue assessment
 │   ├── configure/                    # Configure ll-config.json
@@ -140,6 +141,7 @@ little-loops/
 │   ├── map-dependencies/             # Discover and map issue dependencies
 │   ├── product-analyzer/             # Analyze codebase against product goals
 │   ├── review-loop/                  # Review and improve FSM loop configurations
+│   ├── update/                       # Update little-loops components
 │   ├── update-docs/                  # Identify stale or missing documentation
 │   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── templates/            # Project-type config templates

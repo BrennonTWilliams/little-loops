@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>8 specialized agents]
-        SKL[Skills<br/>19 composable skills]
+        SKL[Skills<br/>21 composable skills]
     end
 
     subgraph "Configuration"
@@ -96,7 +96,7 @@ little-loops/
 │       └── lib/
 │           └── common.sh    # Shared shell functions
 ├── loops/                   # Built-in FSM loop definitions (YAML); composable as sub-loops
-├── skills/                  # 19 skill definitions
+├── skills/                  # 21 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── analyze-loop/        # User-invoked
@@ -110,6 +110,8 @@ little-loops/
 │   ├── capture-issue/       # Proactive
 │   │   ├── SKILL.md
 │   │   └── templates.md
+│   ├── cleanup-loops/       # User-invoked
+│   │   └── SKILL.md
 │   ├── confidence-check/    # Proactive
 │   │   └── SKILL.md
 │   ├── configure/           # User-invoked
@@ -124,6 +126,8 @@ little-loops/
 │   ├── format-issue/        # User-invoked
 │   │   ├── SKILL.md
 │   │   └── templates.md
+│   ├── go-no-go/            # User-invoked
+│   │   └── SKILL.md
 │   ├── init/                # User-invoked
 │   │   ├── SKILL.md
 │   │   └── interactive.md
@@ -139,6 +143,8 @@ little-loops/
 │   ├── product-analyzer/    # User-invoked
 │   │   └── SKILL.md
 │   ├── review-loop/         # User-invoked
+│   │   └── SKILL.md
+│   ├── update/              # User-invoked
 │   │   └── SKILL.md
 │   ├── update-docs/         # User-invoked
 │   │   └── SKILL.md
