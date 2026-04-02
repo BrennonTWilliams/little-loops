@@ -33,6 +33,8 @@ pip install -e "./scripts[dev]"
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.state` | State persistence |
+| `little_loops.events` | Structured events and EventBus dispatcher |
+| `little_loops.extension` | Extension protocol, loader, and reference implementation |
 | `little_loops.logger` | Logging utilities |
 | `little_loops.logo` | CLI logo display |
 | `little_loops.frontmatter` | YAML frontmatter parsing |
@@ -4908,3 +4910,220 @@ raw = score_bm25(query, doc_words_list[0], doc_freq=doc_freq, avg_doc_len=avg_do
 normalized = raw / (raw + 1)  # map to [0, 1)
 print(f"BM25 normalized: {normalized:.3f}")
 ```
+
+---
+
+## little_loops.events
+
+Structured event system and EventBus dispatcher for the extension architecture.
+
+```python
+from little_loops.events import EventBus, LLEvent
+
+bus = EventBus()
+bus.register(lambda evt: print(f"Event: {evt['event']}"))
+bus.add_file_sink(Path(".ll/events.jsonl"))
+bus.emit(LLEvent(type="issue.completed", timestamp="2026-04-02T12:00:00Z", payload={"id": "BUG-001"}).to_dict())
+```
+
+### EventCallback
+
+Type alias for event observer callables.
+
+```python
+EventCallback = Callable[[dict[str, Any]], None]
+```
+
+A callable that accepts a single `dict[str, Any]` argument (the serialized event) and returns `None`. Used as the type for observers registered with `EventBus.register()`.
+
+### LLEvent
+
+Structured event dataclass for the extension system.
+
+```python
+@dataclass
+class LLEvent:
+    type: str                              # Event type identifier (e.g., "issue.completed")
+    timestamp: str                         # ISO 8601 timestamp string
+    payload: dict[str, Any] = field(default_factory=dict)  # Additional event data
+```
+
+#### Methods
+
+```python
+def to_dict(self) -> dict[str, Any]
+```
+Serialize to a flat dictionary. Field names are remapped: `type` becomes `"event"`, `timestamp` becomes `"ts"`, and `payload` keys are spread into the root.
+
+**Returns:** `{"event": self.type, "ts": self.timestamp, **self.payload}`
+
+```python
+@classmethod
+def from_dict(cls, data: dict[str, Any]) -> LLEvent
+```
+Deserialize from a flat dictionary. Pops `"event"` (fallback: `"type"`, `"unknown"`) for the type field and `"ts"` (fallback: `"timestamp"`, `""`) for timestamp. Remaining keys become the payload. Operates on a copy of `data`.
+
+```python
+@classmethod
+def from_raw_event(cls, raw: dict[str, Any]) -> LLEvent
+```
+Convenience wrapper over `from_dict`. Copies the input dict before parsing so the original is not mutated.
+
+### EventBus
+
+Central dispatcher that fans out events to registered observers and file sinks.
+
+```python
+from little_loops.events import EventBus, LLEvent
+from pathlib import Path
+
+bus = EventBus()
+bus.register(lambda evt: print(evt))
+bus.add_file_sink(Path(".ll/events.jsonl"))
+bus.emit({"event": "test", "ts": "2026-04-02T00:00:00Z"})
+```
+
+#### Constructor
+
+```python
+EventBus()
+```
+
+Initializes empty observer and file sink lists. No parameters.
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `register(callback: EventCallback) -> None` | Append an observer callback. No deduplication. |
+| `unregister(callback: EventCallback) -> None` | Remove an observer. Silently ignores if not found. |
+| `add_file_sink(path: Path) -> None` | Add a JSONL file sink. Creates parent directories if needed. |
+| `emit(event: dict[str, Any]) -> None` | Fan out event to all observers, then append JSON line to all file sinks. Per-observer exceptions are caught and logged. |
+| `read_events(path: Path) -> list[LLEvent]` | *(static)* Read a JSONL event log file. Returns `[]` if file does not exist. Skips invalid JSON lines. |
+
+---
+
+## little_loops.extension
+
+Extension protocol, loader, and reference implementation for the plugin extension system.
+
+```python
+from little_loops.extension import ExtensionLoader, LLExtension
+
+extensions = ExtensionLoader.load_all(config_paths=["my_package:MyExtension"])
+for ext in extensions:
+    ext.on_event(LLEvent(type="issue.completed", timestamp="2026-04-02T12:00:00Z"))
+```
+
+### ENTRY_POINT_GROUP
+
+```python
+ENTRY_POINT_GROUP = "little_loops.extensions"
+```
+
+Module-level constant defining the Python entry point group name used by `ExtensionLoader.from_entry_points()` and by external packages registering extensions in `pyproject.toml`.
+
+### LLExtension Protocol
+
+```python
+@runtime_checkable
+class LLExtension(Protocol):
+    def on_event(self, event: LLEvent) -> None: ...
+```
+
+Implement this protocol to create an extension that receives structured events from the EventBus. The `@runtime_checkable` decorator enables `isinstance(obj, LLExtension)` checks at runtime.
+
+### NoopLoggerExtension
+
+Reference implementation of `LLExtension` that appends events to a JSONL log file.
+
+```python
+from little_loops.extension import NoopLoggerExtension
+from pathlib import Path
+
+ext = NoopLoggerExtension(log_path=Path(".ll/my-events.jsonl"))
+ext.on_event(event)  # appends event.to_dict() as JSON line
+```
+
+#### Constructor
+
+```python
+NoopLoggerExtension(log_path: Path | None = None)
+```
+
+**Parameters:**
+- `log_path` - Path to the JSONL log file. Defaults to `Path(".ll/extension-events.jsonl")`. Parent directories are created on construction.
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `on_event(event: LLEvent) -> None` | Append `json.dumps(event.to_dict())` as a line to the log file. |
+
+### ExtensionLoader
+
+Discovers and instantiates extensions from config paths and Python entry points. All methods are static.
+
+#### Methods
+
+```python
+@staticmethod
+def from_config(extension_paths: list[str]) -> list[LLExtension]
+```
+Load extensions from `"module.path:ClassName"` strings. Each string is split on the last `":"`, the module is imported, and the class is instantiated with no arguments. Failures are caught and logged individually.
+
+```python
+@staticmethod
+def from_entry_points() -> list[LLExtension]
+```
+Discover extensions registered under the `"little_loops.extensions"` entry point group via `importlib.metadata.entry_points()`. Each discovered class is instantiated with no arguments. Includes Python 3.11 compatibility fallback.
+
+```python
+@staticmethod
+def load_all(config_paths: list[str] | None = None) -> list[LLExtension]
+```
+Combined loader. When `config_paths` is provided, loads from config first, then always loads from entry points. Returns the merged list.
+
+**Parameters:**
+- `config_paths` - Optional list of `"module:Class"` strings from the `extensions` config key. Defaults to `None`.
+
+**Returns:** List of instantiated extensions from both sources.
+
+### Configuration
+
+Extensions are configured in `.ll/ll-config.json` via the `extensions` key:
+
+```json
+{
+  "extensions": [
+    "my_package.ext:MyExtension",
+    "another_package:AnotherExtension"
+  ]
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `extensions` | `array` of `string` | `[]` | Extension module paths to load. Format: `"module.path:ClassName"`. Extensions receive structured events from the EventBus. |
+
+External packages can also register extensions for automatic discovery via Python entry points in `pyproject.toml`:
+
+```toml
+[project.entry-points."little_loops.extensions"]
+my_ext = "my_package:MyExtension"
+```
+
+### Creating a Custom Extension
+
+```python
+from little_loops.events import LLEvent
+
+class MyExtension:
+    """Custom extension that handles issue completion events."""
+
+    def on_event(self, event: LLEvent) -> None:
+        if event.type == "issue.completed":
+            print(f"Issue completed: {event.payload.get('id', 'unknown')}")
+```
+
+Register via config (`"my_package:MyExtension"`) or entry point. The class must implement `on_event(self, event: LLEvent) -> None` to satisfy the `LLExtension` protocol.

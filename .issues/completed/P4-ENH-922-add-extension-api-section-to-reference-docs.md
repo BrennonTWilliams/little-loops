@@ -42,7 +42,7 @@ Extension authors need clear API documentation to build on the extension archite
 
 ## Implementation Steps
 
-1. **Add module overview rows** — Insert two rows into the module overview table at `docs/reference/API.md:20-54`:
+1. **Add module overview rows** — Insert two rows into the module overview table at `docs/reference/API.md:20-55`:
    - `little_loops.events` — Structured events and EventBus dispatcher
    - `little_loops.extension` — Extension protocol, loader, and reference implementation
 
@@ -68,7 +68,7 @@ Extension authors need clear API documentation to build on the extension archite
 ## Integration Map
 
 ### Files to Modify
-- `docs/reference/API.md` — add Extension API section and add rows to module overview table (lines 20-54)
+- `docs/reference/API.md` — add Extension API section and add rows to module overview table (lines 20-55)
 
 ### Dependent Files (Callers/Importers)
 
@@ -82,7 +82,7 @@ _These are not files to modify, but callers/importers the documentation must acc
 - `scripts/pyproject.toml:64-66` — declares `[project.entry-points."little_loops.extensions"]` group
 
 ### Similar Patterns
-- `docs/reference/API.md` module overview table (lines 20-54) — add rows for `events` and `extension`
+- `docs/reference/API.md` module overview table (lines 20-55) — add rows for `events` and `extension`
 - Dataclass documentation pattern (lines 303-316, 512-533) — use for `LLEvent`
 - Protocol documentation pattern (lines 3938-3951, `ActionRunner`) — use for `LLExtension`
 - Class with constructor + methods (lines 61-297, `BRConfig`) — use for `EventBus`, `NoopLoggerExtension`
@@ -148,10 +148,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `docs/reference/API.md` has an "Extension API" section
-- [ ] `LLEvent`, `EventBus`, `LLExtension`, `ExtensionLoader` are documented
-- [ ] Configuration and entry point formats are described
-- [ ] At least one code example for creating a custom extension
+- [x] `docs/reference/API.md` has an "Extension API" section
+- [x] `LLEvent`, `EventBus`, `LLExtension`, `ExtensionLoader` are documented
+- [x] Configuration and entry point formats are described
+- [x] At least one code example for creating a custom extension
 
 ## Impact
 
@@ -175,10 +175,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P4
+**Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P4
+
+## Resolution
+
+**Action**: improve
+**Result**: Added `## little_loops.events` and `## little_loops.extension` sections to `docs/reference/API.md` documenting `LLEvent`, `EventBus`, `EventCallback`, `LLExtension` Protocol, `NoopLoggerExtension`, `ExtensionLoader`, configuration format, entry point registration, and a custom extension example. Added module overview table rows for both modules.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e8f8c7c-82fc-4408-a963-218fe8d78eea.jsonl`
 - `/ll:refine-issue` - 2026-04-02T18:54:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfc51b4f-d97b-423d-a709-58690d5b4d91.jsonl`
 - `/ll:format-issue` - 2026-04-02T18:47:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96cb2a22-5b05-4227-a2ab-5a4a047efa2e.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
+- `/ll:ready-issue` - 2026-04-02T20:48:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bda8160-2032-44ba-98ff-2c78bc74395e.jsonl`
