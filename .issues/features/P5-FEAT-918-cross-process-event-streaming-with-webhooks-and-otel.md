@@ -2,7 +2,7 @@
 discovered_date: 2026-04-02
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 53
+outcome_confidence: 46
 ---
 
 # FEAT-918: Cross-Process Event Streaming with Webhook and OpenTelemetry Support
@@ -689,6 +689,24 @@ _Added by `/ll:refine-issue` — all positions from runs 1–26 verified directl
 - **`run.py` positions CONFIRMED via direct read** — Lazy imports block: `from little_loops.config import BRConfig` at line **155**; `from little_loops.extension import wire_extensions` at line **156**; blank at line **157**; `config = BRConfig(Path.cwd())` at line **158**; `wire_extensions(executor.event_bus, config.extensions)` at line **159**; `cli_colors = config.cli.colors` at line **160**; `finally:` at line **172**; `lock_manager.release(fsm.name)` at line **173**. The run 24 consolidated Step 8 positions are accurate: `wire_transports` import inserts at line 157 (replacing blank, or as new line after 156); `wire_transports(executor.event_bus, config.events)` call inserts at line 160 (before `cli_colors`, which shifts to 161); `executor.close_transports()` inserts at line 173 (before `lock_manager.release`, which shifts to 174).
 - **The run 24 Consolidated Implementation Checklist remains the authoritative reference** — No corrections required.
 
+### Codebase Research Findings — Final Position Reconfirmation (run 30)
+
+_Added by `/ll:refine-issue` — all positions from runs 1–29 verified via parallel research agents against current file content:_
+
+- **All positions from runs 1–29 confirmed unchanged** — No code changes since run 29. `transport.py` does not exist; `EventsConfig` not in `features.py` or `core.py`; no partial implementation exists. The run 24 Consolidated Implementation Checklist remains the authoritative reference.
+
+- **`ParallelOrchestrator._event_bus` at line 85 IS in `ParallelOrchestrator.__init__` — confirmed by direct read** — `ParallelOrchestrator.__init__` (lines 61–104) accepts `event_bus: EventBus | None = None` at line 68 and stores it as `self._event_bus = event_bus` at line 85. `WorkerPool` does NOT receive `event_bus` — it is constructed at line 94 with `(parallel_config, br_config, self.logger, self.repo_path, self._git_lock)` only. The issue's teardown guidance (`if self._event_bus: self._event_bus.close_transports()` in `_cleanup()` at line 1248) is **correct**. `_cleanup()` does not currently reference `self._event_bus`; the insertion at line 1248 is valid and needed.
+
+- **`features.py` ends at line 286 (trailing blank) — confirmed** — Line 285 is the closing `)` of `SyncConfig.from_dict`; line 286 is a trailing blank line (the file has 286 lines). New dataclasses (`WebhookEventsConfig`, `OTelEventsConfig`, `EventsConfig`) append starting at line 287. Run 26 is authoritative; run 25's "no line 286" claim was incorrect.
+
+- **`add_file_sink` call sites: lines 174 and 188** — Method `test_file_sink` is defined at line 170; `bus.add_file_sink(log_file)` is called at line **174**. Method `test_file_sink_reads_back` is defined at line 184; `bus.add_file_sink(log_file)` is called at line **188**. Rewrite both with `bus.add_transport(JsonlTransport(log_file))`.
+
+- **`TestCleanup` confirmed at line 1725** — Class definition is at line 1725; docstring at 1726. Run 20's "1726" was pointing to the docstring. `test_cleanup_shuts_down_components` confirmed at line 1759.
+
+- **`test_cli_loop_lifecycle.py` class positions confirmed** — `TestCmdRunHandoffThreshold` at line 679; `TestCmdRunYAMLConfigOverrides` at line 766; new `TestCmdRunTransportWiring` class (run 29) should be added after line 855.
+
+- **`atexit` import confirmed at `lifecycle.py:6`** — `import atexit` is a top-level import (line 6, not lazy). No new import needed for `atexit.register(executor.close_transports)` at line 262.
+
 ### Codebase Research Findings — TestCleanup Patterns and Position Corrections (run 28)
 
 _Added by `/ll:refine-issue` — all positions from runs 1–27 verified via direct file read; corrections noted here:_
@@ -740,6 +758,307 @@ _Added by `/ll:refine-issue` — verified against current code; all positions fr
 
 - **All file positions from runs 1–28 confirmed unchanged by direct read** — `lifecycle.py`: `atexit.register(_cleanup_pid)` at line 209 ✓; `PersistentExecutor` at line 251 ✓; `from little_loops.config import BRConfig` at line 256 ✓; `from little_loops.extension import wire_extensions` at line 257 ✓; `config = BRConfig(Path.cwd())` at line 259 ✓; `wire_extensions(executor.event_bus, config.extensions)` at line 260 ✓; blank at line 261 ✓; `result = executor.resume()` at line 262 ✓. `events.py`: `_file_sinks: list[Path] = []` at line 76 ✓; `add_file_sink()` at lines 102–105 (def 102, docstring 103, mkdir 104, append 105) ✓; file-sink loop in `emit()` at lines 124–129 ✓. `transport.py` does not exist; no partial implementation present.
 
+### Codebase Research Findings — Test Class Layout and cmd_resume/cmd_run Transport Test Skeletons (run 30)
+
+_Added by `/ll:refine-issue` — verified against current code; all positions from runs 1–29 confirmed unchanged:_
+
+- **`lifecycle.py:258` is BLANK** — Confirmed via direct read: line 257 is `from little_loops.extension import wire_extensions`, line 258 is a blank line, line 259 is `config = BRConfig(Path.cwd())`. The run 24 consolidated checklist says "add `from little_loops.transport import wire_transports` at line 258" — this means replacing the blank at line 258 with the import (no line shift needed for lines 259+). Alternatively, insert as a new line at 258 (blank shifts to 259, `config` shifts to 260, etc.). Either approach works; replacing the blank is cleaner.
+
+- **`events.py` file-sink loop exact content (lines 124–129)** — `for sink_path in self._file_sinks:` (124), `try:` (125), `with open(sink_path, "a", encoding="utf-8") as f:` (126), `f.write(json.dumps(event) + "\n")` (127), `except Exception:` (128), `logger.warning("EventBus file sink write failed", exc_info=True)` (129). The new transport fan-out replaces this block with `for t in self._transports: try: t.send(event) / except Exception: logger.warning("EventBus transport send failed: %s", t, exc_info=True)`. The `json.dumps(event) + "\n"` encoding used here is the format that `JsonlTransport.send()` should also use.
+
+- **`test_cli_loop_lifecycle.py` class layout confirmed** — Class sequence: `TestCmdResume` (line 219) → atexit tests (lines 530–560) → plain atexit patch tests (625–640) → `TestCmdResumeExitCodes` (line 641) → `TestCmdRunHandoffThreshold` (line 679) → `TestCmdRunYAMLConfigOverrides` (ends line 855) → `TestFormatRelativeTime` (line 858). New transport test classes (`TestCmdResumeTransportWiring`, `TestCmdRunTransportWiring`) should be inserted between lines 855 and 858.
+
+- **No existing wire_extensions/wire_transports assertions anywhere in `test_cli_loop_lifecycle.py`** — Confirmed: neither `wire_extensions` nor `wire_transports` nor `close_transports` appear in the test file. FEAT-918 will add the first transport-wiring assertions in this file.
+
+- **`TestCmdResume` mock setup canonical pattern (lines 269–293)** — three-patch pattern used in every non-error-path test:
+  ```python
+  with (
+      patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+      patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+      patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+  ):
+      mock_persist_cls.return_value.load_state.return_value = None
+      mock_exec_cls.return_value.resume.return_value = mock_result
+      result = cmd_resume("test-loop", args, tmp_path, logger)
+  ```
+  Mock executor accessed via `mock_exec_cls.return_value`. Signal-handler tests add a fourth patch; FEAT-918 adds `wire_transports` and `atexit.register` patches as the fourth/fifth patches.
+
+- **`TestCmdResumeTransportWiring` skeleton** (add after `TestCmdResumeExitCodes` ends and before `TestCmdRunHandoffThreshold` at line 679, or after `TestCmdRunYAMLConfigOverrides` at 855):
+  ```python
+  class TestCmdResumeTransportWiring:
+      """Tests for wire_transports call in cmd_resume (FEAT-918)."""
+
+      def test_resume_wires_transports(self, tmp_path: Path) -> None:
+          """cmd_resume calls wire_transports with executor.event_bus and config.events."""
+          logger = MagicMock()
+          args = argparse.Namespace()
+          mock_fsm = MagicMock()
+          mock_result = MagicMock()
+          mock_result.final_state = "done"
+          mock_result.iterations = 1
+          mock_result.duration_ms = 1000
+          mock_result.terminated_by = "terminal"
+
+          with (
+              patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+              patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+              patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+              patch("little_loops.cli.loop.lifecycle.wire_transports") as mock_wire_transports,
+          ):
+              mock_persist_cls.return_value.load_state.return_value = None
+              mock_exec_cls.return_value.resume.return_value = mock_result
+              result = cmd_resume("test-loop", args, tmp_path, logger)
+
+          assert result == 0
+          mock_wire_transports.assert_called_once()
+          call_args = mock_wire_transports.call_args
+          assert call_args[0][0] is mock_exec_cls.return_value.event_bus
+
+      def test_resume_registers_close_transports_atexit(self, tmp_path: Path) -> None:
+          """cmd_resume registers executor.close_transports via atexit for teardown."""
+          logger = MagicMock()
+          args = argparse.Namespace()
+          mock_fsm = MagicMock()
+          mock_result = MagicMock()
+          mock_result.final_state = "done"
+          mock_result.iterations = 1
+          mock_result.duration_ms = 1000
+          mock_result.terminated_by = "terminal"
+
+          registered: list = []
+
+          with (
+              patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+              patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+              patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+              patch("little_loops.cli.loop.lifecycle.wire_transports"),
+              patch("little_loops.cli.loop.lifecycle.atexit.register", side_effect=registered.append),
+          ):
+              mock_persist_cls.return_value.load_state.return_value = None
+              mock_exec_cls.return_value.resume.return_value = mock_result
+              cmd_resume("test-loop", args, tmp_path, logger)
+
+          # registered[0] = _cleanup_pid (existing), registered[1] = close_transports (new)
+          assert mock_exec_cls.return_value.close_transports in registered
+  ```
+
+- **`TestCmdRunTransportWiring` placement confirmed: after line 855, before `TestFormatRelativeTime` at 858** — No `_make_args` needed (unit test, mock all dependencies). Patches: `little_loops.cli.loop.run.PersistentExecutor`, `little_loops.cli.loop.run.BRConfig`, `little_loops.cli.loop.run.wire_extensions`, `little_loops.cli.loop.run.wire_transports`, `little_loops.cli.loop.run.lock_manager`. Assert `mock_wire_transports.assert_called_once_with(mock_exec.event_bus, mock_config.events)` and `mock_exec.close_transports.assert_called_once()` (from `finally:` block).
+
+### Codebase Research Findings — Position Reconfirmation and Test Class Boundary Correction (run 31)
+
+_Added by `/ll:refine-issue` — all positions verified via direct file read against current code:_
+
+- **`TestCmdRunYAMLConfigOverrides` ends at line 856 (blank), not 855** — Run 30 stated insert new test classes "between lines 855 and 858." The actual layout: last assert at line 855; blank at line 856; blank at line 857; `class TestFormatRelativeTime:` at line 858. `TestCmdResumeTransportWiring` and `TestCmdRunTransportWiring` insert between lines 856–857 and line 858.
+
+- **`TestCmdRunHandoffThreshold`/`TestCmdRunYAMLConfigOverrides` confirmed as integration tests with no mocks** — Run 29 correctly identified this. Both classes call `cmd_run()` directly against real file-system fixtures with `dry_run=True`; neither patches `PersistentExecutor`, `wire_extensions`, or `atexit`. New FEAT-918 `TestCmdRunTransportWiring` must be a separate unit test class that mocks `PersistentExecutor`, `BRConfig`, `wire_extensions`, `wire_transports`, and `lock_manager` (placement: lines 856–857 area, before `TestFormatRelativeTime`).
+
+- **atexit registration count: currently 1** — `test_cli_loop_lifecycle.py:560` asserts `len(registered) == 1` for the existing `_cleanup_pid` registration. After FEAT-918 adds `atexit.register(executor.close_transports)` at line 262 in `lifecycle.py`, the count becomes 2. Run 30's `TestCmdResumeTransportWiring` skeleton uses `assert mock_exec_cls.return_value.close_transports in registered` (presence check, not count) — correct approach. The existing atexit test at line 560 will NOT need updating (it captures the count before FEAT-918 changes are applied).
+
+- **`run.py` positions re-confirmed** — Line 155: `from little_loops.config import BRConfig`; line 156: `from little_loops.extension import wire_extensions`; line 157: blank (→ insert `from little_loops.transport import wire_transports` here); line 158: `config = BRConfig(Path.cwd())`; line 159: `wire_extensions(executor.event_bus, config.extensions)`; line 160: `cli_colors = config.cli.colors` (→ insert `wire_transports(executor.event_bus, config.events)` before this); line 172: `finally:`; line 173: `lock_manager.release(fsm.name)` (→ insert `executor.close_transports()` before this).
+
+- **`features.py` ends at line 286 (trailing blank)** — Run 26 position confirmed. New `WebhookEventsConfig`, `OTelEventsConfig`, `EventsConfig` dataclasses append starting at line 287.
+
+- **All positions from runs 1–30 confirmed unchanged** — No code changes since run 30. `transport.py` does not exist; `EventsConfig` not in `features.py` or `core.py`; no partial implementation exists. The run 24 Consolidated Implementation Checklist remains the authoritative reference.
+
+### Codebase Research Findings — lifecycle.py Teardown Resolved and Executor Guard (run 32)
+
+_Added by `/ll:refine-issue` — verified against current code; all positions from runs 1–31 confirmed unchanged:_
+
+- **`lifecycle.py` teardown RESOLVED: use `try/finally`, NOT `atexit.register`** — Confidence check flagged a conflict between run 16 (`try/finally`) and run 24 Step 8 (`atexit.register`). The correct approach is `try/finally` wrapping lines 251–280, matching `cmd_run()`'s `try/finally` at `run.py:149–173`. `atexit` handlers fire at process exit — not synchronously when `executor.resume()` returns. For `WebhookTransport`, this means the background daemon batch thread may be killed by the interpreter before `close()` flushes the final batch. `try/finally` fires synchronously on both normal return and any raised exception, giving `WebhookTransport.close()` its `join(timeout=10.0)` window while the interpreter is still fully operational. The `atexit.register(executor.close_transports)` in run 24 Step 8 for `lifecycle.py` is **incorrect** — use `try/finally` only. The existing `atexit.register(_cleanup_pid)` at line 209 remains unchanged (PID file cleanup, separate concern).
+
+- **`lifecycle.py` has no conflicting `try/except` in the executor region** — The only `try/except` in `cmd_resume()` is at lines 211–218 (load_loop error handling). It returns early on failure and is completely outside the lines 251–280 region where the `try/finally` will be placed. No nested-try conflicts.
+
+- **`executor = None` guard required before `try:` in both `lifecycle.py` and `run.py`** — If `PersistentExecutor.__init__` raises (edge case), `executor` is unbound when `finally:` runs. Calling `executor.close_transports()` would raise `NameError`, which in `run.py` would prevent `lock_manager.release(fsm.name)` from executing — leaving the lock permanently held. Fix: initialize `executor = None` immediately before `try:` in both files; guard in `finally:` with `if executor is not None: executor.close_transports()`. Pattern:
+  ```python
+  executor = None
+  try:
+      executor = PersistentExecutor(fsm, loops_dir=loops_dir)
+      ...
+  finally:
+      if executor is not None:
+          executor.close_transports()
+      lock_manager.release(fsm.name)  # run.py only
+  ```
+  `lifecycle.py` has no lock manager, so its `finally:` contains only `if executor is not None: executor.close_transports()`. In `run.py`, the guard protects `lock_manager.release()` from being skipped by a `NameError`.
+
+- **`lifecycle.py` corrected insertion plan (supersedes run 24 Step 8 for `lifecycle.py`)**: (1) Add `executor = None` as new line 251 (before current `executor = PersistentExecutor(...)` which shifts to 252); (2) Add `try:` as new line 252 (indent all lines through 280 by 4 spaces); (3) Replace blank at line 258 with `from little_loops.transport import wire_transports`; (4) Add `wire_transports(executor.event_bus, config.events)` at blank line 261; (5) Add `finally:` + `if executor is not None: executor.close_transports()` after the last result statement (currently line 280, shifts after indenting). The `return EXIT_CODES.get(result.terminated_by, 1)` remains inside `try:` — `finally:` fires before the return value is propagated, guaranteeing teardown.
+
+- **`run.py` corrected `finally:` block (addendum to run 24 Step 8)**: Add `executor = None` as new line 149 (before current `try:` at line 149, which shifts to 150). In the existing `finally:` block (was line 172, now line 173): add `if executor is not None: executor.close_transports()` as first statement, then `lock_manager.release(fsm.name)`. The `executor = None` initialization ensures the guard is safe if `PersistentExecutor()` construction raises.
+
+- **Test skeleton corrections for `TestCmdResumeTransportWiring`** — Run 30's `test_resume_registers_close_transports_atexit` test asserts `mock_exec_cls.return_value.close_transports in registered` (atexit registration). This is incorrect with the `try/finally` approach. Replace with:
+  - `test_resume_closes_transports`: assert `mock_exec_cls.return_value.close_transports.assert_called_once()` directly (no atexit patch needed)
+  - `test_resume_closes_transports_on_exception`: set `mock_exec_cls.return_value.resume.side_effect = RuntimeError("crash")`, wrap `cmd_resume(...)` in `pytest.raises(RuntimeError)`, assert `mock_exec_cls.return_value.close_transports.assert_called_once()` — verifies `finally:` fires on exceptions too
+  - The existing atexit test at `test_cli_loop_lifecycle.py:560` (`len(registered) == 1`) remains **unchanged** — only `_cleanup_pid` uses atexit; transport teardown does NOT add a second atexit registration.
+
+- **OTel sub-loop depth — explicitly deferred** — `state_enter` events carry an optional `depth: int` field for sub-loops (spawned via handoff). The current `OTelTransport` design (stateful `_loop_span`, `_state_span`, `_action_span`) treats all events as belonging to a single loop trace. When `depth > 0`, a second `loop_start` event from the sub-loop would clobber `_loop_span`. Pragmatic deferral: for the initial implementation, `OTelTransport` should check `event.get("depth", 0) > 0` on `loop_start` and skip trace creation for sub-loops (log a warning). Sub-loop `state_enter`/`action_*` events without an active `_loop_span` should also be no-ops with a warning. Full nested-trace support (sub-loop spans as children of parent loop via W3C trace context) is a follow-on enhancement.
+
+- **`atexit` RegistrationCount CONFIRMED: stays at 1 for `cmd_resume`** — With `try/finally` (not `atexit`), the existing count of `len(registered) == 1` at `test_cli_loop_lifecycle.py:560` remains valid. FEAT-918 does NOT add a second atexit registration to `cmd_resume`.
+
+### Codebase Research Findings — Pre-Edit Baseline and Line Shift Warning (run 33)
+
+_Added by `/ll:refine-issue` — verified via direct Read against current code; all positions from runs 1–32 confirmed unchanged:_
+
+- **Pre-edit baseline confirmed for `run.py` (lines 149–173)**: `try:` at line 149, `executor = PersistentExecutor(fsm, loops_dir=loops_dir)` at line 150, `from little_loops.config import BRConfig` at line 155, `from little_loops.extension import wire_extensions` at line 156, blank at line 157, `config = BRConfig(Path.cwd())` at line 158, `wire_extensions(executor.event_bus, config.extensions)` at line 159, `cli_colors = config.cli.colors` at line 160, `finally:` at line 172, `lock_manager.release(fsm.name)` at line 173. **No `executor = None` guard exists** before the `try:`.
+
+- **Pre-edit baseline confirmed for `lifecycle.py` (lines 251–262)**: `executor = PersistentExecutor(fsm, loops_dir=loops_dir)` at line 251, blank at 252–253 region, `from little_loops.config import BRConfig` at line 256, `from little_loops.extension import wire_extensions` at line 257, blank at line 258, `config = BRConfig(Path.cwd())` at line 259, `wire_extensions(executor.event_bus, config.extensions)` at line 260, blank at line 261, `result = executor.resume()` at line 262. **No `executor = None` guard, no `try/finally`** in the executor region.
+
+- **LINE SHIFT WARNING for `run.py`**: Run 32 says "Add `executor = None` as new line 149 (before current `try:` at line 149, which shifts to 150)." After this insertion, all lines in the try/finally region shift +1. **Implementers must work from pre-edit baseline above** (the current file state), not from post-edit line numbers. Run 32's Step 8 describes the insertions as net changes to the pre-edit file; apply them as code transformations, not as absolute line positions in the modified file.
+
+- **LINE SHIFT WARNING for `lifecycle.py`**: Run 32 says "(1) Add `executor = None` as new line 251; (2) Add `try:` as new line 252 (indent all lines through 280 by 4 spaces)." After adding `executor = None` + `try:`, lines 251–280 shift by +2, AND require re-indentation. The blank at line 258 (replacing with `from little_loops.transport import wire_transports`) and blank at line 261 (adding `wire_transports(executor.event_bus, config.events)`) should be resolved **before** the `try:` indentation pass, or the inserted lines will also need re-indenting. Suggested order: (a) insert `executor = None` at line 251, (b) insert `try:` as line 252, (c) indent lines 253–282 by 4 spaces, (d) replace blank at line 260 with `wire_transports` import (now inside `try:`), (e) add `wire_transports(executor.event_bus, config.events)` at the new line 263 (after `wire_extensions` call), (f) add `finally:` + `if executor is not None: executor.close_transports()` after the return statement at end of function.
+
+- **`run.py` simplified insertion order** (avoids line confusion): Use code-level description rather than line numbers: (a) insert `executor: PersistentExecutor | None = None` immediately before the `try:` that creates `executor`; (b) add `from little_loops.transport import wire_transports` immediately after the `from little_loops.extension import wire_extensions` import; (c) add `wire_transports(executor.event_bus, config.events)` immediately after the `wire_extensions(executor.event_bus, config.extensions)` call; (d) add `if executor is not None: executor.close_transports()` as the first statement in the `finally:` block.
+
+- **All positions from runs 1–32 confirmed unchanged** — No source code changes since run 32. `transport.py` does not exist; `EventsConfig` not in `features.py` or `core.py`; no partial implementation exists.
+
+### Codebase Research Findings — `BRConfig.to_dict()` Gap, Test Patterns Confirmed (run 34)
+
+_Added by `/ll:refine-issue` — all positions from runs 1–33 verified unchanged via direct read:_
+
+- **`BRConfig.to_dict()` undocumented in all prior runs — decision required** — `core.py:347-487` contains a manually-constructed dict returning config sections for template variable substitution. `sync` IS included at lines 426-437 (nested: `{"enabled": ..., "provider": ..., "github": {...}}`). `refine_status`, `extensions`, and all post-sync additions are NOT included. FEAT-918's `EventsConfig` was never mentioned in connection with `to_dict()`. **Decision**: `events` config is runtime transport infrastructure (not command template substitution), similar to `extensions`. Following the pattern of `refine_status` and `extensions` being absent, do NOT add `events` to `to_dict()`. If following the `sync` pattern instead (which IS in `to_dict()`), add `"events": {"transports": self._events.transports, "webhook": {"url": self._events.webhook.url, "batch_ms": self._events.webhook.batch_ms}, "otel": {"endpoint": self._events.otel.endpoint, "service_name": self._events.otel.service_name}}` after the `sync` block at line 437. **Recommendation**: omit from `to_dict()` in initial implementation; add only if a use case for template substitution of `events` config arises.
+
+- **`test_config.py` pattern for EventsConfig — three-pattern approach confirmed** — Follow these test patterns (based on `TestGitHubSyncConfig`/`TestSyncConfig`/`TestBRConfigSyncIntegration`):
+  1. **Isolated dataclass tests** (no fixtures): `config = EventsConfig.from_dict({})` → assert defaults; `config = EventsConfig.from_dict({"transports": ["webhook"], "webhook": {"url": "http://x.com", "batch_ms": 500}})` → assert values.
+  2. **BRConfig defaults test** (uses `temp_project_dir`): `config = BRConfig(temp_project_dir)` → assert `config.events.transports == []`, `config.events.webhook.url is None`, `config.events.otel.endpoint == "http://localhost:4317"`.
+  3. **BRConfig with file** (uses `temp_project_dir`): write JSON to `temp_project_dir / ".ll" / "ll-config.json"`, construct `BRConfig(temp_project_dir)`, assert nested values. Pattern from `test_sync_in_to_dict`: also assert `events` absent from `to_dict()` result (or present, per decision above).
+  The `sample_config` fixture (`conftest.py:65-113`) is optional — tests can write JSON directly without it.
+
+- **`test_events.py:174` and `test_events.py:188` rewrite confirmed** — Exact current content: line 174 is `bus.add_file_sink(log_file)` (inside `test_file_sink`); line 188 is `bus.add_file_sink(log_file)` (inside `test_file_sink_reads_back`). Both are simple one-argument calls. Rewrite to `bus.add_transport(JsonlTransport(log_file))` — import `JsonlTransport` from `little_loops.transport` in the test file.
+
+- **`git_lock.py` exact retry loop pattern confirmed** — `_run_with_retry()` at `parallel/git_lock.py:110-181`. The retry condition is `if result.returncode != 0 and self._is_index_lock_error(result.stderr)` — git-specific. For `WebhookTransport`, the retry condition is an HTTP error response (non-2xx) or network exception. The backoff math is identical: `backoff = min(backoff * 2, self.max_backoff)`. The `for attempt in range(self.max_retries + 1)` loop with `attempt < self.max_retries` guard is the correct pattern. `WebhookTransport` retry fires on `httpx.RequestError` or `response.status_code >= 400` (with configurable retry-on codes).
+
+- **`core.py` property insertion confirmed** — `refine_status` property (lines 172–175): `return self._refine_status`. Line 176 is a blank line. `extensions` property (lines 177–180): `return self._raw_config.get("extensions", [])`. Insert new `events` property at line 176 (replacing blank, or as new lines 176-179, shifting `extensions` down). The `events` property must return `self._events` (typed dataclass), NOT `self._raw_config.get("events", [])` — `extensions` is the exception that reads raw config; all other properties return typed dataclass instances.
+
+- **All positions from runs 1–33 confirmed unchanged** — No code changes since run 33. `transport.py` does not exist; `EventsConfig` not in `features.py` or `core.py`; no partial implementation. The run 24 Consolidated Implementation Checklist remains authoritative; run 32 `lifecycle.py` teardown approach (try/finally, not atexit) supersedes run 24 Step 8 for `lifecycle.py`.
+
+### Codebase Research Findings — `TestCmdRunTransportWiring` Complete Skeleton and Mock Target Corrections (run 35)
+
+_Added by `/ll:refine-issue` — all positions from runs 1–34 confirmed unchanged via direct file read:_
+
+- **All positions from runs 1–34 confirmed unchanged** — `transport.py` does not exist; `EventsConfig` not in `features.py` or `core.py`; no partial implementation exists. File line counts: `events.py` 151, `run.py` 174, `lifecycle.py` 281, `features.py` 286, `core.py` 516, `orchestrator.py` 1252.
+
+- **`run_foreground` mock target CORRECTION** — `run_foreground` is imported at **module level** in `run.py` (line 17: `from little_loops.cli.loop._helpers import ... run_foreground`). The correct mock target is `little_loops.cli.loop.run.run_foreground` (a module-level attribute of `run.py`), NOT `little_loops.cli.loop._helpers.run_foreground`. This also applies to `register_loop_signal_handlers` (line 14 of `run.py`) — mock as `little_loops.cli.loop.run.register_loop_signal_handlers`.
+
+- **Lazy import mock targets for `cmd_run` unit tests** — These are imported inside the function body and resolved from their source module at call time:
+  - `LockManager` → mock: `little_loops.fsm.concurrency.LockManager`
+  - `PersistentExecutor` → mock: `little_loops.fsm.persistence.PersistentExecutor`
+  - `load_and_validate` → mock: `little_loops.fsm.validation.load_and_validate`
+  - `BRConfig` → mock: `little_loops.config.core.BRConfig` (re-exported via `little_loops.config`)
+  - `wire_extensions` → mock: `little_loops.extension.wire_extensions`
+  - `wire_transports` → mock: `little_loops.transport.wire_transports`
+
+- **`cmd_run` mock FSM requirements** — `load_and_validate` returns `(fsm, warnings)`. The mock FSM must have: `fsm.states = {}` (to pass context-variable loop at lines 86-101 without iteration errors), `fsm.scope = None` or `[]` (so `scope = fsm.scope or ["."]` gives `["."]`), `fsm.config = None` (so `isinstance(fsm.config.handoff_threshold, int)` check at line 68 short-circuits). Set `args.max_iterations = None`, `args.delay = None`, `args.no_llm = False`, `args.llm_model = None`, `args.input = None`, `args.context = []` to bypass FSM attribute overrides.
+
+- **`TestCmdRunTransportWiring` complete skeleton** (insert between lines 856 and 858, before `class TestFormatRelativeTime`):
+
+  ```python
+  class TestCmdRunTransportWiring:
+      """Tests for wire_transports call in cmd_run (FEAT-918)."""
+
+      def _make_args(self, **kwargs: object) -> argparse.Namespace:
+          defaults = {
+              "input": None, "context": [], "max_iterations": None, "delay": None,
+              "no_llm": False, "llm_model": None, "dry_run": False, "background": False,
+              "foreground_internal": True, "quiet": False, "verbose": False,
+              "show_diagrams": False, "clear": False, "queue": False,
+              "handoff_threshold": None, "builtin": False,
+          }
+          defaults.update(kwargs)
+          return argparse.Namespace(**defaults)
+
+      def test_run_wires_transports(self, tmp_path: Path) -> None:
+          """cmd_run calls wire_transports with executor.event_bus and config.events."""
+          from little_loops.cli.loop.run import cmd_run
+          from little_loops.logger import Logger
+
+          logger = MagicMock(spec=Logger)
+          mock_fsm = MagicMock()
+          mock_fsm.states = {}
+          mock_fsm.scope = None
+          mock_fsm.config = None
+
+          with (
+              patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])),
+              patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
+              patch("little_loops.fsm.concurrency.LockManager") as mock_lock_cls,
+              patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+              patch("little_loops.config.core.BRConfig") as mock_config_cls,
+              patch("little_loops.extension.wire_extensions"),
+              patch("little_loops.transport.wire_transports") as mock_wire_transports,
+              patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+          ):
+              mock_lock_cls.return_value.acquire.return_value = True
+              result = cmd_run("test-loop", self._make_args(), tmp_path, logger)
+
+          assert result == 0
+          mock_wire_transports.assert_called_once()
+          call_args = mock_wire_transports.call_args
+          assert call_args[0][0] is mock_exec_cls.return_value.event_bus
+          assert call_args[0][1] is mock_config_cls.return_value.events
+
+      def test_run_closes_transports(self, tmp_path: Path) -> None:
+          """cmd_run calls executor.close_transports() in finally block on normal exit."""
+          from little_loops.cli.loop.run import cmd_run
+          from little_loops.logger import Logger
+
+          logger = MagicMock(spec=Logger)
+          mock_fsm = MagicMock()
+          mock_fsm.states = {}
+          mock_fsm.scope = None
+          mock_fsm.config = None
+
+          with (
+              patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])),
+              patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
+              patch("little_loops.fsm.concurrency.LockManager") as mock_lock_cls,
+              patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+              patch("little_loops.config.core.BRConfig"),
+              patch("little_loops.extension.wire_extensions"),
+              patch("little_loops.transport.wire_transports"),
+              patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+          ):
+              mock_lock_cls.return_value.acquire.return_value = True
+              cmd_run("test-loop", self._make_args(), tmp_path, logger)
+
+          mock_exec_cls.return_value.close_transports.assert_called_once()
+
+      def test_run_closes_transports_on_exception(self, tmp_path: Path) -> None:
+          """cmd_run calls executor.close_transports() in finally block even when run raises."""
+          from little_loops.cli.loop.run import cmd_run
+          from little_loops.logger import Logger
+
+          logger = MagicMock(spec=Logger)
+          mock_fsm = MagicMock()
+          mock_fsm.states = {}
+          mock_fsm.scope = None
+          mock_fsm.config = None
+
+          with (
+              patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])),
+              patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
+              patch("little_loops.fsm.concurrency.LockManager") as mock_lock_cls,
+              patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+              patch("little_loops.config.core.BRConfig"),
+              patch("little_loops.extension.wire_extensions"),
+              patch("little_loops.transport.wire_transports"),
+              patch("little_loops.cli.loop.run.run_foreground", side_effect=RuntimeError("crash")),
+          ):
+              mock_lock_cls.return_value.acquire.return_value = True
+              with pytest.raises(RuntimeError, match="crash"):
+                  cmd_run("test-loop", self._make_args(), tmp_path, logger)
+
+          mock_exec_cls.return_value.close_transports.assert_called_once()
+  ```
+
+- **`BRConfig.to_dict()` decision CONFIRMED: omit `events`** — Run 34 left this open. Decision: do NOT add `events` to `to_dict()` in the initial implementation, matching the pattern of `refine_status` and `extensions` (both absent from `to_dict()`). The `events` config is runtime transport infrastructure, not command template substitution. Add a test: `assert "events" not in config.to_dict()` in `test_config.py` alongside the other `EventsConfig` tests.
+
+### Codebase Research Findings — Position Reconfirmation (run 36)
+
+_Added by `/ll:refine-issue` — all positions from runs 1–35 verified via parallel research agent against current file content:_
+
+- **All positions from runs 1–35 confirmed unchanged** — No code changes since run 35. `transport.py` does not exist; `EventsConfig` not in `features.py` or `core.py`; no partial implementation exists.
+- **`lifecycle.py` import block confirmed** — `from little_loops.config import BRConfig` at line 256; `from little_loops.extension import wire_extensions` at line 257; blank at line 258 (insert `from little_loops.transport import wire_transports` here); `config = BRConfig(Path.cwd())` at line 259; `wire_extensions(executor.event_bus, config.extensions)` at line 260; blank at line 261 (insert `wire_transports(executor.event_bus, config.events)` here); `result = executor.resume()` at line 262. Consistent with run 24 Step 8.
+- **The run 24 Consolidated Implementation Checklist remains the authoritative reference** — Run 32 `try/finally` approach supersedes run 24 Step 8's `atexit` suggestion for `lifecycle.py` teardown. Run 35 `TestCmdRunTransportWiring` skeleton and mock target corrections are the final test reference.
+
 ## Status
 
 **Open** | Created: 2026-04-02 | Priority: P5
@@ -749,13 +1068,28 @@ _Added by `/ll:refine-issue` — verified against current code; all positions fr
 _Updated by `/ll:confidence-check` on 2026-04-03_
 
 **Readiness Score**: 100/100 → PROCEED
-**Outcome Confidence**: 53/100 → LOW
+**Outcome Confidence**: 46/100 → LOW
 
 ### Outcome Risk Factors
-- **Complexity ceiling**: 12+ source files across 6 subsystems (transport, events, FSM persistence, 4 CLI entry points, config, packaging). OTel span state machine (`_loop_span`, `_state_span`, `_action_span` with manual context threading) and Unix socket multi-client broadcast are independently complex — plan for iteration on these two specifically.
-- **Navigation hazard**: The issue has multiple "Implementation Steps" sections at different precedence levels. **Start from the run 24 consolidated checklist** ("Consolidated Implementation Checklist and Test Patterns") — it supersedes the original steps (line 153), run 13 corrected steps, and all addenda.
+- **Complexity ceiling (0/25)**: 22 files across 6+ subsystems (events, config, CLI, persistence, parallel, docs). OTel span state machine (`_loop_span`, `_state_span`, `_action_span` with manual context threading) and Unix socket multi-client broadcast are independently complex — plan for iteration on these two.
+- **No existing threading test infrastructure**: WebhookTransport and UnixSocketTransport tests need threading harness built from scratch; follow `test_merge_coordinator.py:1405-1444` and `test_overlap_detector.py:158-184` patterns.
+- **Navigation hazard**: Multiple superseding "Implementation Steps" sections. **Step 7 final form in run 16** is the authoritative wiring reference (4 call sites: run.py, lifecycle.py, parallel.py, sprint/run.py). Run 32 `try/finally` approach supersedes run 24's `atexit` for lifecycle.py teardown.
+- **OTel sub-loop depth**: The `depth` field on sub-loop events is explicitly deferred — OTelTransport should no-op with a warning for sub-loop events (`depth > 0`). Full nested-trace support is a follow-on enhancement.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T14:17:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T14:10:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T14:00:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T13:51:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T13:41:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T13:35:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T13:26:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T13:18:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:format-issue` - 2026-04-03T13:13:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T13:07:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T12:59:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T12:53:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
@@ -837,3 +1171,8 @@ _Added by `/ll:refine-issue` — verified against current code:_
 - `/ll:refine-issue` - 2026-04-03T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:refine-issue` - 2026-04-03T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T14:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T14:10:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
