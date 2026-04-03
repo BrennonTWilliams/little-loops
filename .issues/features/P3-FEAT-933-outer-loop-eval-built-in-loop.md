@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-03
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 93
 ---
 
 # FEAT-933: Add outer-loop-eval Built-in Loop for Loop Observation and Improvement
@@ -63,6 +65,22 @@ Reuse patterns from:
 - `harness-single-shot.yaml` — capture + analyze structure
 - `evaluation-quality.yaml` — multi-dimensional scoring with routed remediation
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Shell-based dynamic sub-loop dispatch** (`eval-driven-development.yaml:36-40`): the established pattern for calling a loop by a context variable name is a shell action with `action: ll-loop run ${context.harness_name}` and `action_type: shell`. The `loop:` field does not support variable interpolation, so a shell action is the correct approach when the loop name comes from context.
+
+- **`ll-loop show` confirmed**: `ll-loop show <loop-name>` exists (`cli/loop/__init__.py:314-319`, `info.py:cmd_show`). The `analyze_definition` state can use `ll-loop show ${context.loop_name}` to read the YAML structure.
+
+- **Positional `input` arg confirmed**: `ll-loop run <loop-name> <input>` passes the positional input as `context['input']` in the sub-loop (`cli/loop/__init__.py:98-102`). The proposed shell action `ll-loop run ${context.loop_name} ${context.input}` is valid as long as `context.input` is empty-string when not provided (shell will pass empty string — wrap in quotes: `ll-loop run "${context.loop_name}" "${context.input}"`).
+
+- **`min_confidence`, not `confidence_threshold`**: The `llm_structured` evaluator field for confidence gating is `min_confidence` (default `0.5`, from `fsm/schema.py:75`). No built-in loop currently sets this explicitly. The Use Case section's mention of `confidence_threshold` is incorrect terminology — implementers should use `min_confidence` in the YAML.
+
+- **Sub-loop output capture**: In `run_sub_loop`, use `capture: sub_loop_output` on the shell action. The subsequent `analyze_execution` state can then reference `${captured.sub_loop_output.output}` for state transitions and verdicts text.
+
+- **`on_error` route for missing loop name**: When `run_sub_loop` gets a non-zero exit code (e.g., loop not found), `on_error` routes to `analyze_execution` per the Acceptance Criteria. Since `evaluate:` type won't be set for the shell state, use `on_error:` shorthand for non-zero exit codes.
+
 Context variables:
 ```yaml
 context:
@@ -84,10 +102,12 @@ context:
 - `scripts/little_loops/loops/agent-eval-improve.yaml` — closest structural analog
 - `scripts/little_loops/loops/evaluation-quality.yaml` — multi-dimensional eval pattern
 - `scripts/little_loops/loops/harness-single-shot.yaml` — capture + gate structure
+- `scripts/little_loops/loops/eval-driven-development.yaml:36-40` — exact pattern for shell-based dynamic loop dispatch via `ll-loop run ${context.harness_name}`
 
 ### Tests
 - `scripts/tests/test_fsm_interpolation.py` — verify `${context.loop_name}` resolves in shell actions
-- New: `scripts/tests/loops/test_outer_loop_eval.py` — validate schema, simulate dry-run
+- `scripts/tests/test_builtin_loops.py` — existing built-in loop schema validation patterns to follow
+- New: `scripts/tests/test_outer_loop_eval.py` — validate schema, simulate dry-run
 
 ### Documentation
 - `scripts/little_loops/loops/README.md` — catalog entry
@@ -97,12 +117,14 @@ context:
 
 ## Implementation Steps
 
-1. Study `agent-eval-improve.yaml` and `evaluation-quality.yaml` for structural patterns to reuse
-2. Create `scripts/little_loops/loops/outer-loop-eval.yaml` with the 6-state FSM design above
-3. Validate schema: `ll-loop validate outer-loop-eval`
-4. Dry-run against a simple loop: `ll-loop simulate outer-loop-eval issue-refinement`
-5. Add catalog entry to `scripts/little_loops/loops/README.md`
-6. Run existing FSM tests to confirm no regressions
+1. Read `scripts/little_loops/loops/agent-eval-improve.yaml` (eval/refine cycle) and `scripts/little_loops/loops/eval-driven-development.yaml:36-40` (shell-based dynamic sub-loop dispatch pattern) for structural patterns to copy
+2. Create `scripts/little_loops/loops/outer-loop-eval.yaml` with the 6-state FSM — use `action_type: shell` for `run_sub_loop` (not `loop:` field; see research notes above for correct shell quoting and capture key)
+3. Use `min_confidence` (not `confidence_threshold`) in any `llm_structured` evaluator config — see `scripts/little_loops/fsm/schema.py:75`
+4. Validate schema: `ll-loop validate outer-loop-eval`
+5. Dry-run against a simple built-in loop: `ll-loop simulate outer-loop-eval issue-refinement`
+6. Add new test file `scripts/tests/test_outer_loop_eval.py` following patterns in `scripts/tests/test_builtin_loops.py`
+7. Add catalog entry to `scripts/little_loops/loops/README.md`
+8. Run `python -m pytest scripts/tests/test_fsm_interpolation.py scripts/tests/test_builtin_loops.py scripts/tests/test_outer_loop_eval.py -v` to confirm no regressions
 
 ## Use Case
 
@@ -110,7 +132,7 @@ A developer has written a new `data-pipeline-monitor` loop and wants to verify i
 quality before deploying it. They run `ll-loop run outer-loop-eval data-pipeline-monitor`
 — the outer-loop-eval executes the pipeline loop once, then returns a report identifying
 that two states lack `on_error` routes and one `llm_structured` evaluator is missing a
-`confidence_threshold`. The developer applies the suggested YAML changes and re-runs
+`min_confidence` (the correct field name — not `confidence_threshold`). The developer applies the suggested YAML changes and re-runs
 to confirm clean execution.
 
 ## Acceptance Criteria
@@ -140,6 +162,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feat`, `loops`, `built-in-loop`, `loop-eval`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T06:41:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T06:37:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:format-issue` - 2026-04-03T06:31:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c25f637-5481-4d98-bba6-846f5500e0e9.jsonl`
 
 ---

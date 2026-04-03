@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-02
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-929: Add `--skip` flag to `ll-issues next-action` to prevent issue starvation
@@ -30,19 +32,28 @@ Confirmed via code inspection:
 
 The `issue-refinement` loop is designed to process all issues to readiness. Issue starvation defeats its purpose: one perpetually failing issue prevents the remaining 15+ issues from ever being touched. The `find_issues` function already has the `skip_ids` parameter — this enhancement just surfaces it through the CLI and wires the parent loop to use it.
 
+## Success Metrics
+
+- **Starvation prevention**: When `issue-refinement` encounters repeated failures on the same issue, subsequent iterations select a different issue — before: loop permanently stuck on same issue; after: lower-priority issues get processed
+- **CLI correctness**: `ll-issues next-action --skip ENH-929` excludes the specified ID and returns the next eligible issue — before: `--skip` flag not supported; after: returns correct next issue
+- **Backwards compatibility**: `ll-issues next-action` (no `--skip`) returns identical results to current behavior — before: all issues eligible; after: same behavior preserved
+
 ## Proposed Solution
 
-**1. `next_action.py`**: Add `--skip` argument
+**1. `cli/issues/__init__.py:342`**: Register `--skip` via shared helper (after existing `add_*_arg` calls on the `na` subparser)
 
 ```python
-parser.add_argument(
-    "--skip",
-    default="",
-    help="Comma-separated issue IDs to exclude from consideration",
-)
-skip_ids = {s.strip() for s in args.skip.split(",") if s.strip()}
+add_skip_arg(na)  # adds --skip / -s with default=None
+```
+
+**1b. `next_action.py:27`**: Parse skip IDs and pass to `find_issues` (using existing `parse_issue_ids` utility)
+
+```python
+skip_ids = parse_issue_ids(args.skip)  # returns set[str] or set()
 issues = find_issues(config, skip_ids=skip_ids or None)
 ```
+
+Note: `add_skip_arg` and `parse_issue_ids` already exist in `scripts/little_loops/cli_args.py:57` and `:197`. Import them the same way other `ll-issues` subcommands do.
 
 **2. `issue-refinement.yaml`**: Add failure branch and skip tracking
 
@@ -70,7 +81,7 @@ evaluate:
 
 ## Implementation Steps
 
-1. Add `--skip` argument to `cmd_next_action` in `scripts/little_loops/cli/issues/next_action.py`, parse as comma-separated set, pass to `find_issues(config, skip_ids=...)`
+1. In `scripts/little_loops/cli/issues/__init__.py:342`, call `add_skip_arg(na)` after the existing `add_config_arg(na)` to register `--skip`/`-s`. In `scripts/little_loops/cli/issues/next_action.py:27`, add `skip_ids = parse_issue_ids(args.skip)` and change the `find_issues` call to `find_issues(config, skip_ids=skip_ids or None)`. Both `add_skip_arg` and `parse_issue_ids` are already in `scripts/little_loops/cli_args.py`; import them the same way other subcommands do.
 2. In `scripts/little_loops/loops/issue-refinement.yaml`:
    - Add `handle_failure` state that appends the failed issue ID to `.loops/tmp/issue-refinement-skip-list`
    - Change `run_refine_to_ready.on_no` from `check_commit` to `handle_failure`
@@ -93,20 +104,38 @@ ll-issues next-action [--skip ISSUE_ID[,ISSUE_ID,...]]
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues/next_action.py` — add `--skip` argument, parse as comma-separated set, pass to `find_issues`
+- `scripts/little_loops/cli/issues/__init__.py:342` — call `add_skip_arg(na)` to register `--skip`/`-s` on the `next-action` subparser (after the existing `add_config_arg(na)` call at the end of the `na` subparser block)
+- `scripts/little_loops/cli/issues/next_action.py:27` — add `parse_issue_ids(args.skip)` call and pass `skip_ids` to `find_issues`
 - `scripts/little_loops/loops/issue-refinement.yaml` — add `handle_failure` state, update `evaluate` to pass skip list, update `init` to clear skip list
+- `docs/reference/CLI.md` — add `--skip` flag to `ll-issues next-action` documentation
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/issue_parser.py` — `find_issues()` already accepts `skip_ids`; no changes needed here
+- `scripts/little_loops/issue_parser.py:612` — `find_issues()` already accepts `skip_ids: set[str] | None = None`; filter applied at line 665 (`if info.issue_id in skip_ids: continue`); no changes needed
+- `scripts/little_loops/cli_args.py:57` — `add_skip_arg()` shared helper (no changes needed; just import and call)
+- `scripts/little_loops/cli_args.py:197` — `parse_issue_ids()` shared parser (no changes needed; just import and call)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/cli/issues/__init__.py:312-342` — the `na` subparser block where all `next-action` arguments are registered; the `--skip` arg goes here via `add_skip_arg(na)`, after the existing `add_config_arg(na)` at line 342
+- `scripts/little_loops/cli/issues/next_action.py:27-28` — `issues = find_issues(config)` at line 27; local re-sort at line 28 uses `(priority_int, -int(issue_id.split("-")[1]))` (descending ID as tiebreaker), which differs from `find_issues`'s own sort — the skip filter in `find_issues` operates before this re-sort, so behavior is correct
+- `scripts/little_loops/loops/issue-refinement.yaml:24` — `parse_id` state uses `capture: "input"`; the issue ID is stored as `captured["input"]["output"]`, making `${captured.input.output}` the correct interpolation in `handle_failure`
+- `scripts/little_loops/fsm/executor.py:458-464` — confirms capture dict structure: always `{output, stderr, exit_code, duration_ms}`; `${captured.input.output}` resolves via dot traversal in `interpolation.py:102-123`
+- `scripts/little_loops/fsm/executor.py:304-311` — `context_passthrough: true` extracts `.output` strings from `self.captured` into child FSM context; the child `refine-to-ready-issue` loop receives the issue ID as `context.input`
 
 ### Similar Patterns
-- N/A — first skip-list pattern in the codebase
+- `scripts/little_loops/loops/dead-code-cleanup.yaml:20-22,90` — identical exclusion-list pattern: appends failed items to `.loops/tmp/ll-dead-code-excluded.txt` one per line, reads file in subsequent states via `cat` to filter next scan
+- `scripts/little_loops/cli_args.py:57-72` — `add_skip_arg()` shared helper (already exists): adds `--skip`/`-s` string arg with `default=None`; use this instead of inline `add_argument` in `__init__.py`
+- `scripts/little_loops/cli_args.py:197` — `parse_issue_ids()` function: parses comma-separated IDs into a `set[str]`; used by `ll-auto`, `ll-parallel`, `ll-sprint` for skip/only filtering
 
 ### Tests
-- `scripts/tests/` — add CLI test for `--skip` flag in `ll-issues next-action` test suite
+- `scripts/tests/test_next_action.py` — existing `next-action` tests; add `--skip` integration tests here following the pattern: patch `sys.argv` with `["ll-issues", "next-action", "--skip", "ENH-929", "--config", str(temp_project_dir)]`, call `main_issues()`, assert on exit code and output
+- `scripts/tests/test_cli_args.py:435-472` — `TestAddSkipArg` class already tests the `add_skip_arg()` helper; no new tests needed there
+- `scripts/tests/test_builtin_loops.py` — has `TestIssueRefinementSubLoop` class; add assertions for the new `handle_failure` state and updated `evaluate` action
 
 ### Documentation
-- N/A
+- `docs/reference/CLI.md` — documents `ll-issues next-action`; update to add `--skip` flag description
 
 ### Configuration
 - N/A — skip list file (`.loops/tmp/issue-refinement-skip-list`) is ephemeral, not a config file
@@ -150,6 +179,10 @@ ll-issues next-action [--skip ISSUE_ID[,ISSUE_ID,...]]
 - Enhancement is accurately described; the fix is additive only
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T06:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T06:18:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:format-issue` - 2026-04-03T06:14:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:format-issue` - 2026-04-03T04:47:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d10376d2-598f-4355-a0dc-b5100fe5afca.jsonl`
