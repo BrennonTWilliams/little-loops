@@ -639,6 +639,50 @@ class TestCapture:
         assert result.captured["errors"]["output"] == "5"
         assert result.captured["warnings"]["output"] == "10"
 
+    def test_capture_strips_trailing_newline(self) -> None:
+        """Captured shell output has trailing newlines stripped (mirrors shell $() behavior)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="get_id",
+            states={
+                "get_id": StateConfig(
+                    action="get_id.sh",
+                    capture="current_item",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("get_id.sh", output="FEAT-001\n", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.captured["current_item"]["output"] == "FEAT-001"
+
+    def test_capture_strips_trailing_crlf(self) -> None:
+        """Captured output has trailing CR+LF stripped."""
+        fsm = FSMLoop(
+            name="test",
+            initial="get_id",
+            states={
+                "get_id": StateConfig(
+                    action="get_id.sh",
+                    capture="current_item",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("get_id.sh", output="FEAT-001\r\n", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.captured["current_item"]["output"] == "FEAT-001"
+
 
 class TestCaptureWorkflow:
     """Tests for capture-then-use workflow in execution."""

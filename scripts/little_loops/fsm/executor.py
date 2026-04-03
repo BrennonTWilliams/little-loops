@@ -457,7 +457,7 @@ class FSMExecutor:
         # Capture if requested
         if state.capture:
             self.captured[state.capture] = {
-                "output": result.output,
+                "output": result.output.rstrip("\n\r"),
                 "stderr": result.stderr,
                 "exit_code": result.exit_code,
                 "duration_ms": result.duration_ms,
