@@ -447,7 +447,10 @@ class GitHubSyncConfig:
     sync_completed: bool = False               # Include completed issues in sync
     state_file: str = ".ll/ll-sync-state.json"  # Sync state file path
     pull_template: str = "minimal"             # Template for pulled issues ("minimal" | "full")
+    pull_limit: int = 500                      # Max issues to fetch from GitHub per pull (ENH-825)
 ```
+
+> **Note**: When `pull_issues()` returns exactly `pull_limit` results, a warning is logged indicating the results may be truncated. Increase `sync.github.pull_limit` in `ll-config.json` if you have more issues than the default limit.
 
 ### SyncConfig
 
@@ -3546,6 +3549,8 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | `little_loops.fsm.schema` | FSM state machine schema definitions |
 | `little_loops.fsm.evaluators` | Verdict evaluators (exit_code, llm_structured, etc.) |
 | `little_loops.fsm.executor` | FSM execution engine |
+| `little_loops.fsm.runners` | Action runner protocol and default/simulation implementations |
+| `little_loops.fsm.types` | Core result types (`ExecutionResult`, `ActionResult`) |
 | `little_loops.fsm.interpolation` | Variable substitution (`${context.*}`, etc.) |
 | `little_loops.fsm.validation` | Schema validation utilities |
 | `little_loops.fsm.persistence` | Loop state persistence |

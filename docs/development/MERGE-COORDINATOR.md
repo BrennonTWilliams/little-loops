@@ -554,6 +554,8 @@ This component has evolved through real-world usage with issues discovered and f
 - **BUG-140**: Worktree merge race condition
 - **BUG-141**: Context state JSON not excluded from stash
 - **BUG-180**: Stale worktree base causing merge failures
+- **BUG-930**: Done/Active counts stuck at 0 in parallel merge path — fixed by calling `mark_completed()`/`mark_failed()` after `wait_for_completion()` in the parallel path, mirroring the sequential merge pattern
+- **BUG-931**: Commit leak recovery skips main reset when main has advanced — replaced warning-and-return in `_recover_committed_leaks()` with a surgical `git rebase --onto` to reapply work commits on top of the new main baseline
 
 Each issue added sophistication to handle edge cases that appear in production use.
 

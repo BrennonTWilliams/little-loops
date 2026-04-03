@@ -256,6 +256,8 @@ ll-loop run refine-to-ready-issue --context readiness_threshold=85 --context out
 
 To apply project-wide defaults, set `commands.confidence_gate.readiness_threshold` / `outcome_threshold` in `ll-config.json`, then install the loop locally (`ll-loop install refine-to-ready-issue`) and update its `context:` block defaults.
 
+**Timeout recovery**: If `confidence_check` times out (e.g., the LLM call hangs), the loop falls back to `check_scores_from_file` — a deterministic recovery state that reads `confidence_score` and `outcome_confidence` directly from the issue's frontmatter via `ll-issues show --json`. This avoids a cascading LLM timeout in the error path. If both scores meet the thresholds, the loop routes to `verify_issue`; otherwise it routes to `failed`.
+
 **Issue Management**
 
 | Loop | Description |
