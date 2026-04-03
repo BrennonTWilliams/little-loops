@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-02
 discovered_by: capture-issue
+confidence_score: 90
+outcome_confidence: 86
 ---
 
 # ENH-926: Add Topic-Based Event Filtering for Extensions
@@ -65,9 +67,10 @@ class LLExtension(Protocol):
 ### Files to Modify
 - `scripts/little_loops/events.py` — Add `filter` param to `EventBus.register()` (line 77), add filter check in `EventBus.emit()` (line 93), store filter patterns alongside observers in `_observers` (line 74)
 - `scripts/little_loops/extension.py` — Add `event_filter` attribute to `LLExtension` Protocol (line 29)
-- `scripts/little_loops/extension.py` — No changes needed to `ExtensionLoader` currently since extensions are wired to the bus externally; however, if the loader gains bus-wiring responsibility, `load_all()` (line 114) would need to pass `event_filter`
+- `scripts/little_loops/extension.py` — Update `wire_extensions()` (line 158) to read `ext.event_filter` and pass it to `bus.register()` — FEAT-927 completed wiring, making this step immediately actionable
 
 ### Dependent Files (Callers/Importers)
+- `scripts/little_loops/extension.py:158` — `wire_extensions()` calls `bus.register(_make_callback(ext))` — update to pass `getattr(ext, 'event_filter', None)` as filter argument
 - `scripts/little_loops/cli/loop/_helpers.py:487` — calls `executor.event_bus.register(display_progress)` — no filter needed (progress display wants all events)
 - `scripts/little_loops/fsm/persistence.py:356` — backward-compat `_on_event` setter calls `self.event_bus.register(callback)` — update to preserve no-filter default
 - `scripts/little_loops/fsm/persistence.py:349` — `_on_event` getter accesses `_observers[0]` directly — must update if observer storage structure changes
@@ -94,8 +97,9 @@ class LLExtension(Protocol):
 4. **Update `EventBus.unregister()`** to find observer by callback identity in the tuple list
 5. **Update backward-compat accessor** in `PersistentExecutor._on_event` property (persistence.py:349) to handle new tuple storage
 6. **Add `event_filter` to `LLExtension` Protocol** as `event_filter: str | list[str] | None` with default `None`
-7. **Add tests** — filter matching with `fnmatch` patterns (`fsm.*`, `issue.*`), multi-pattern list, `None` filter (all events), unregister with filters, edge cases (empty string pattern, no matching events)
-8. **Run full test suite**: `python -m pytest scripts/tests/test_events.py scripts/tests/test_extension.py -v`
+7. **Update `wire_extensions()`** in `extension.py:158` — change `bus.register(_make_callback(ext))` to `bus.register(_make_callback(ext), filter=getattr(ext, 'event_filter', None))` so the Protocol attribute takes effect
+8. **Add tests** — filter matching with `fnmatch` patterns (`fsm.*`, `issue.*`), multi-pattern list, `None` filter (all events), unregister with filters, edge cases (empty string pattern, no matching events); add `wire_extensions` filter test following the capture-list pattern in `test_extension.py:138-159`
+9. **Run full test suite**: `python -m pytest scripts/tests/test_events.py scripts/tests/test_extension.py -v`
 
 ## Codebase Research Findings
 
@@ -118,9 +122,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 Both are `Callable[[dict[str, Any]], None]` (takes raw dict, not `LLEvent`). The extension Protocol uses `LLEvent` in `on_event()`, but the EventBus dispatches raw dicts. This means filtering must operate on the raw dict's `"event"` key, not on `LLEvent.type`.
 
-### ExtensionLoader Is Not Wired to Any Live EventBus
+### ExtensionLoader Wiring — RESOLVED by FEAT-927
 
-`ExtensionLoader.load_all()` returns `list[LLExtension]` instances, but **no CLI entry point** calls `bus.register(ext.on_event)` for loaded extensions. The issue's Step 4 ("Update `ExtensionLoader` to wire filters from extensions") assumes wiring exists, but it doesn't. The `event_filter` attribute on `LLExtension` and the `ExtensionLoader` reading it are only useful once end-to-end wiring is implemented. Consider either: (a) implementing the wiring as part of this ENH, or (b) deferring the `event_filter` Protocol attribute until the wiring exists and scoping this ENH to just `EventBus.register(filter=...)`.
+**FEAT-927 has been completed.** `wire_extensions(bus, config_paths)` at `extension.py:132-161` now wires extensions to a live `EventBus` in all CLI entry points: `loop/run.py:159`, `loop/lifecycle.py:260`, `parallel.py:228`, `sprint/run.py:391`. The `event_filter` Protocol attribute is **immediately actionable** — `wire_extensions()` uses a `_make_callback(ext)` closure factory at `extension.py:152-156` and calls `bus.register(_make_callback(ext))` at line 158, which is precisely where `ext.event_filter` should be read and forwarded to `bus.register()`.
 
 ### PersistentExecutor Backward-Compat Accessor
 
@@ -128,11 +132,23 @@ Both are `Callable[[dict[str, Any]], None]` (takes raw dict, not `LLEvent`). The
 
 ### Current register() Call Sites
 
-Only **two** call sites for `EventBus.register()`:
-1. `scripts/little_loops/cli/loop/_helpers.py:487` — progress display callback (wants all events)
-2. `scripts/little_loops/fsm/persistence.py:356` — backward-compat setter (wants all events)
+**Four** production call sites for `EventBus.register()`:
+1. `scripts/little_loops/extension.py:158` — `wire_extensions()` registers per-extension closure for each loaded extension (key site to add `filter=ext.event_filter`)
+2. `scripts/little_loops/cli/loop/_helpers.py:487` — progress display callback (wants all events, no filter)
+3. `scripts/little_loops/fsm/persistence.py:356` — backward-compat `_on_event` setter (wants all events, no filter)
+4. `scripts/little_loops/events.py:79` — the definition itself
 
-Both pass no filter today, confirming that defaulting `filter=None` preserves current behavior with zero migration.
+All call sites pass no filter today; defaulting `filter=None` preserves current behavior with zero migration at all sites except `extension.py:158` where opt-in filtering is the goal.
+
+### Additional Direct `_observers` Access Locations
+
+**Verified (2026-04-02)**: Only `persistence.py:349` accesses `_observers` directly. The files previously flagged for audit (`cli/loop/lifecycle.py`, `cli/loop/info.py`, `git_operations.py`, `subprocess_utils.py`) do **not** access `_observers` — the `event_filter` reference in `info.py` is a local display variable, unrelated. No additional audit needed; update only `persistence.py:349`.
+
+### FSM Event Naming Inconsistency — Implementation Decision
+
+FSMExecutor emits bare event types (`loop_start`, `state_enter`, `action_start`, etc.) while other producers use dotted namespaces (`state.issue_completed`, `issue.failure_captured`, `parallel.worker_completed`). A `filter="fsm.*"` glob will **not** match bare names.
+
+**Decision**: Implement Option B — document that FSM events must be matched with bare names (e.g., `filter=["loop_start", "state_enter"]` or `filter="loop_*"`) in the API docs and implementation notes. Renaming FSM executor event types to add `fsm.` prefix is a separate breaking change and out of scope here.
 
 ## Impact
 
@@ -166,5 +182,7 @@ Both pass no filter today, confirming that defaulting `filter=None` preserves cu
 **Open** | Created: 2026-04-02 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb0c5f9d-1037-4e99-9314-fed616595469.jsonl`
+- `/ll:refine-issue` - 2026-04-03T01:21:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e1d3e02-18f1-4c88-9691-b73ab942451c.jsonl`
 - `/ll:refine-issue` - 2026-04-03T00:31:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5913db88-19b3-455b-8448-97664c8c42f8.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/997b167f-013b-46d4-a03f-9ff27d26a2a1.jsonl`
