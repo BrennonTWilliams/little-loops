@@ -25,22 +25,24 @@ In FSM loop states, defining both `next` and `on_error` on the same state makes 
 ## Root Cause
 
 - **File**: `scripts/little_loops/fsm/executor.py`
-- **Anchor**: `_transition()` — the unconditional `next` handling block
+- **Anchor**: `_execute_state()` at line 342 — the `next` short-circuit branch at lines 364-378
 - **Cause**: The executor short-circuits evaluation when `state.next` is set. It runs the action, then returns `state.next` unconditionally for any exit code ≥ 0. `on_error` is only consulted for negative exit codes (process killed by signal).
 
 ```python
-# executor.py — current behavior
+# executor.py:364–378 — current behavior
 if state.next:
-    result = self._run_action(state.action, state, ctx)
-    if result.exit_code is not None and result.exit_code < 0:
-        if state.on_error:
-            return interpolate(state.on_error, ctx)
-        self.request_shutdown()
-        return None
-    return interpolate(state.next, ctx)  # ← always, for exit codes 0, 1, 2, ...
+    if state.action:
+        result = self._run_action(state.action, state, ctx)
+        self.prev_result = { ... }
+        if result.exit_code is not None and result.exit_code < 0:  # line 374 — SIGKILL only
+            if state.on_error:
+                return interpolate(state.on_error, ctx)
+            self.request_shutdown()
+            return None
+    return interpolate(state.next, ctx)  # line 378 — always, for exit codes 0, 1, 2, ...
 ```
 
-The `on_error` only fires for signal kills (exit < 0), not ordinary shell failures (exit 1). This is undocumented and counterintuitive.
+The `on_error` only fires for signal kills (exit < 0), not ordinary shell failures (exit 1). The `_route()` method at lines 629-674 — which properly handles `on_error` for verdict == "error" — is **never called** when `state.next` is set; `_execute_state()` returns early at line 378.
 
 ## Current Behavior
 
@@ -84,33 +86,38 @@ Additionally, update `prompt-across-issues.yaml` `prepare_prompt` to replace `ne
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` — `_transition()` unconditional next block
-- `scripts/little_loops/loops/prompt-across-issues.yaml` — fix `prepare_prompt` to use `on_yes`/`on_error` instead of `next`/`on_error`
+- `scripts/little_loops/fsm/executor.py` — `_execute_state()` at line 342; `next` short-circuit block at lines 364-378 (add `exit_code != 0 and on_error` guard before the final `return state.next`)
+- `scripts/little_loops/loops/prompt-across-issues.yaml:59-73` — `prepare_prompt` state: `next: execute` + `on_error: advance` (1 affected state)
+- `scripts/little_loops/loops/general-task.yaml` — 4 states using `next` + `on_error`: lines 23-24, 43-44, 56-57, 89-90
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — 4 states using `next` + `on_error`: lines 18-19, 24-25, 30-31, 100-101
 
 ### Dependent Files (Callers/Importers)
-- All FSM loop YAML files that use `next` + `on_error` on the same state — audit needed
-- `scripts/little_loops/fsm/validation.py` — may want a new validation warning for this pattern
+- `scripts/little_loops/fsm/validation.py:213-284` — `_validate_state_routing()`: `has_next` is computed at line 248 but never compared against `has_shorthand`; validation warning for `next` + `on_error` co-presence should be added here
 
 ### Similar Patterns
-- Search for loop files with both `next:` and `on_error:` on same state: `grep -l "on_error" scripts/little_loops/loops/`
+- `on_yes`/`on_no`/`on_error` shorthand branching handled in `_route()` at `executor.py:663-673` — the proposed fix mirrors this pattern inside the `next` branch
+- Example of correct conditional branching: `general-task.yaml:75-77` uses `on_yes`/`on_no`/`on_error` without `next`
 
 ### Tests
-- `scripts/tests/` — add test: state with `next` + `on_error` should route to `on_error` when shell exits 1
-- Existing FSM routing tests for unconditional transition
+- `scripts/tests/test_fsm_executor.py:2244` — `test_sigkill_on_next_state_routes_via_on_error_if_configured` is the closest existing test (uses `exit_code=-9`); new test should mirror this with `exit_code=1`
+- New test class: `TestSignalHandling` at line 1997+ is the correct location; use `MockActionRunner` pattern from lines 26-86
 
 ### Documentation
-- `docs/` loop authoring guide — clarify `next` vs `on_yes` semantics
+- `docs/guides/LOOPS_GUIDE.md` — loop authoring guide; clarify `next` vs `on_yes` semantics
+- `docs/generalized-fsm-loop.md` — FSM loop architecture documentation
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. In `executor.py` `_transition()`, after the signal-kill check, add: if exit code != 0 and `on_error` defined, route to `on_error`
-2. Audit all built-in loops in `scripts/little_loops/loops/` for states with `next` + `on_error` — fix any that intended error routing
-3. Update `prompt-across-issues.yaml` `prepare_prompt` to use `on_yes: execute` instead of `next: execute`
-4. Add FSM executor test covering `next` + `on_error` with failing shell command
-5. (Optional) Add validation warning in `validation.py` for ambiguous `next` + `on_error` patterns
+1. In `executor.py:374-378` (`_execute_state()` `next` branch), after the `exit_code < 0` signal-kill check, insert: `if result.exit_code != 0 and state.on_error: return interpolate(state.on_error, ctx)` — exactly as shown in the Proposed Solution
+2. Add test to `scripts/tests/test_fsm_executor.py` in `TestSignalHandling` class (after line 2266): `test_shell_failure_on_next_state_routes_via_on_error_when_configured` — mirror `test_sigkill_on_next_state_routes_via_on_error_if_configured` (line 2244) but use `exit_code=1` instead of `-9`
+3. Audit and fix 9 affected states across 3 loops:
+   - `loops/general-task.yaml`: 4 states at lines 23-24, 43-44, 56-57, 89-90 — determine which intended error routing vs unconditional advance
+   - `loops/refine-to-ready-issue.yaml`: 4 states at lines 18-19, 24-25, 30-31, 100-101 — same determination
+   - `loops/prompt-across-issues.yaml:71-72`: `prepare_prompt` — replace `next: execute` with `on_yes: execute` (cleaner: removes ambiguity)
+4. (Optional) Add validation warning in `validation.py:248` (`_validate_state_routing()`): when `has_next` is true and `state.on_error` is also set, emit a deprecation-style warning
 
 ## Impact
 
@@ -132,6 +139,7 @@ Additionally, update `prompt-across-issues.yaml` `prepare_prompt` to replace `ne
 ---
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-03T22:16:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a85d9d85-aa09-48cc-87d7-2dd3a055329b.jsonl`
 - `/ll:capture-issue` - 2026-04-03T22:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1745900e-c050-4c53-81d7-10a084dba4e9.jsonl`
 
 ---
