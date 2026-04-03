@@ -1565,17 +1565,17 @@ class TestWorkerPoolHelpers:
 
         assert result is False
 
-    def test_recover_committed_leaks_skips_reset_when_main_advanced(
+    def test_recover_committed_leaks_rebases_when_main_advanced(
         self,
         worker_pool: WorkerPool,
         temp_repo_with_config: Path,
     ) -> None:
-        """_recover_committed_leaks() skips main reset when extra commits exist."""
+        """_recover_committed_leaks() attempts surgical rebase when main has advanced."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker"
         leaked_commits = ["sha_leaked"]
         baseline_sha = "baseline_sha"
 
-        reset_called = [False]
+        rebase_calls: list[list[str]] = []
 
         def mock_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["git", "cherry-pick"]:
@@ -1588,8 +1588,8 @@ class TestWorkerPoolHelpers:
             if args[:2] == ["rev-parse", "HEAD"]:
                 # Main has advanced further than the leaked commit
                 return subprocess.CompletedProcess(args, 0, "sha_even_newer\n", "")
-            if args[:2] == ["reset", "--hard"]:
-                reset_called[0] = True
+            if args[0] == "rebase":
+                rebase_calls.append(args)
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch("subprocess.run", side_effect=mock_subprocess_run):
@@ -1599,7 +1599,8 @@ class TestWorkerPoolHelpers:
                 )
 
         assert result is True
-        assert not reset_called[0]  # Reset should be skipped
+        assert len(rebase_calls) == 1
+        assert rebase_calls[0] == ["rebase", "--onto", baseline_sha, "sha_leaked"]
 
 
 class TestUpdateBranchBase:

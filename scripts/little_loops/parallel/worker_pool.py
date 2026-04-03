@@ -1269,11 +1269,32 @@ class WorkerPool:
                     f"{reset_result.stderr.strip()}"
                 )
         else:
-            self.logger.warning(
-                f"[{issue_id}] Main has additional commits beyond leaked ones "
+            # main has advanced past the leaked commits — attempt surgical rebase
+            # to excise only the leaked commits while preserving subsequent work
+            self.logger.info(
+                f"[{issue_id}] Main has advanced beyond leaked commits "
                 f"({current_main_sha[:8]} != {most_recent_leaked[:8]}) — "
-                f"skipping main reset, manual cleanup may be needed"
+                f"attempting surgical rebase to excise leaked commits"
             )
+            rebase_result = self._git_lock.run(
+                ["rebase", "--onto", baseline_head_sha, most_recent_leaked],
+                cwd=self.repo_path,
+                timeout=60,
+            )
+            if rebase_result.returncode == 0:
+                self.logger.info(
+                    f"[{issue_id}] Surgically removed leaked commits via rebase"
+                )
+            else:
+                self._git_lock.run(
+                    ["rebase", "--abort"],
+                    cwd=self.repo_path,
+                    timeout=10,
+                )
+                self.logger.warning(
+                    f"[{issue_id}] Surgical rebase failed — manual cleanup required: "
+                    f"{rebase_result.stderr.strip()}"
+                )
 
         self.logger.info(
             f"[{issue_id}] Recovered {len(leaked_commits)} commit(s): "
