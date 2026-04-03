@@ -1029,7 +1029,7 @@ class TestSprintShowDependencyVisualization:
 
         output = _render_execution_plan(waves, graph)
 
-        assert "EXECUTION PLAN (2 issues, 1 wave)" in output
+        assert "Execution Plan (2 issues, 1 wave)" in output
         assert "Wave 1 (parallel):" in output
         assert "BUG-001" in output
         assert "FEAT-002" in output
@@ -1083,7 +1083,7 @@ class TestSprintShowDependencyVisualization:
 
         output = _render_dependency_graph(waves, graph)
 
-        assert "DEPENDENCY GRAPH" in output
+        assert "Dependency Graph" in output
         assert "FEAT-001" in output
         assert "FEAT-002" in output
         assert "FEAT-003" in output
@@ -1142,7 +1142,7 @@ class TestSprintShowDependencyVisualization:
 
         output = _render_dependency_graph(waves, graph)
 
-        assert "DEPENDENCY GRAPH" in output
+        assert "Dependency Graph" in output
         assert "ENH-377 ──→ ENH-371" in output
         # Issues without edges should NOT appear
         assert "ENH-370" not in output
