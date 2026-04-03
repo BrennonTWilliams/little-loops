@@ -249,6 +249,7 @@ class GitHubSyncConfig:
     sync_completed: bool = False
     state_file: str = ".ll/ll-sync-state.json"
     pull_template: str = "minimal"
+    pull_limit: int = 500
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GitHubSyncConfig:
@@ -262,6 +263,7 @@ class GitHubSyncConfig:
             sync_completed=data.get("sync_completed", False),
             state_file=data.get("state_file", ".ll/ll-sync-state.json"),
             pull_template=data.get("pull_template", "minimal"),
+            pull_limit=data.get("pull_limit", 500),
         )
 
 
