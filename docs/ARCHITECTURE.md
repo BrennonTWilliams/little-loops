@@ -956,6 +956,23 @@ When an issue is moved to `.issues/completed/` via a `git mv` Bash call, a PostT
 
 ---
 
+### Context Efficiency
+
+> **Efficiency metric: tokens-per-task, not tokens-per-request.**
+
+For ll-auto, ll-parallel, and ll-sprint, the correct optimization target is minimizing total tokens consumed per completed issue, not per individual turn. Over-aggressive compression that causes retries, re-reads, or error recovery is less efficient than a longer conversation that completes the task cleanly.
+
+This principle is validated by published research on long-context LLM architectures (see `docs/research/LCM-Lossless-Context-Management.md`, Section 4.3): systems that aggressively chunk context introduce variance and error cascades, while systems that preserve working context through task completion achieve better reliability per token.
+
+**Implications for compression decisions:**
+- Compress at 80% context utilization (see `auto_handoff_threshold` in `### Context Monitor and Session Continuation`, above), not earlier
+- Prefer keeping relevant tool outputs in context over re-fetching when needed again
+- A failed task that restarts from scratch costs more tokens than a task that completes in a longer conversation
+
+**Relationship to ENH-499**: The inter-issue context checkpoint (implemented in ENH-499) applies this principle at issue boundaries — it triggers a structured summarization reset rather than re-running tool calls to reconstruct state.
+
+---
+
 ## Data Flow Summary
 
 ```mermaid

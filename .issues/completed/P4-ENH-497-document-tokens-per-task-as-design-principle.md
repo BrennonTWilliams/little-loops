@@ -62,22 +62,23 @@ Secondary benefit: it provides the conceptual foundation for the context degrada
 
 _Added by `/ll:refine-issue` — Exact insertion point in ARCHITECTURE.md:_
 
-**Best insertion point:** After `### Context Monitor and Session Continuation` section (which ends at approximately line 839), before `## Data Flow Summary` (at approximately line 842). This slots the new section inside `## Key Design Decisions` (line 694) alongside related automation design rationale.
+**Best insertion point:** After `### Session Log Auto-Linking` section (which ends at approximately line 957), before `## Data Flow Summary` (at line 959). This slots the new section inside `## Key Design Decisions` (line 793) alongside related automation design rationale. Note: a `### Session Log Auto-Linking` sub-section was added after the original refine-issue pass — the insertion point is still the last section in `## Key Design Decisions`.
 
 **Structure of `## Key Design Decisions` (existing sub-sections):**
 ```
-## Key Design Decisions (line 694)
-├── ### Git Worktree Isolation     (line 696)
-├── ### Sequential Merging         (line 719)
-├── ### State Persistence          (line 738)
-├── ### Merge Strategy             (line 757)
-├── ### Context Monitor and Session Continuation  (line 771)
-└── ### Context Efficiency         ← INSERT HERE (after ~line 839)
+## Key Design Decisions (line 793)
+├── ### Git Worktree Isolation     (line 795)
+├── ### Sequential Merging         (line 818)
+├── ### State Persistence          (line 835)
+├── ### Merge Strategy             (line 856)
+├── ### Context Monitor and Session Continuation  (line 870)
+├── ### Session Log Auto-Linking   (line 939)
+└── ### Context Efficiency         ← INSERT HERE (after ~line 957)
 
-## Data Flow Summary               (line 842)
+## Data Flow Summary               (line 959)
 ```
 
-**Existing 80% threshold documentation** (`docs/ARCHITECTURE.md:851`): The `auto_handoff_threshold: 80` config value is documented in the Context Monitor section (confirmed line 851 in current file). ENH-497's compression trigger recommendation directly references this — the new section should cross-link to the existing config block.
+**Existing 80% threshold documentation** (`docs/ARCHITECTURE.md:927`): The `auto_handoff_threshold: 80` config value is documented in the Context Monitor section (confirmed line 927 in current file). ENH-497's compression trigger recommendation directly references this — the new section should cross-link to the existing config block.
 
 **ENH-499 status (COMPLETED)**: ENH-499 (context degradation checkpoints) is in `.issues/completed/` — it was completed. Its proposed `context_checkpoint_threshold` (default 70%) is NOT present in `config-schema.json`, suggesting the inter-issue checkpoint threshold may have been implemented differently or omitted. The draft section below uses only the confirmed `auto_handoff_threshold: 80` value; do not reference `context_checkpoint_threshold` until confirmed.
 
@@ -85,7 +86,7 @@ _Added by `/ll:refine-issue` — Exact insertion point in ARCHITECTURE.md:_
 
 **Cross-reference scope confirmed**: `docs/reference/CLI.md` contains no context management coverage. Cross-references should target `docs/ARCHITECTURE.md` only; no changes needed to CLI docs.
 
-**Exact insertion point (confirmed)**: After the `---` separator at line 863 (end of `### Context Monitor and Session Continuation`), before `## Data Flow Summary` at line 865. The `---` separator at line 863 is the boundary line.
+**Exact insertion point (confirmed)**: After the `---` separator at line 957 (end of `### Session Log Auto-Linking`), before `## Data Flow Summary` at line 959. The `---` separator at line 957 is the boundary line.
 
 **Draft section content:**
 ```markdown
@@ -98,7 +99,7 @@ For ll-auto, ll-parallel, and ll-sprint, the correct optimization target is mini
 This principle is validated by published research on long-context LLM architectures (see `docs/research/LCM-Lossless-Context-Management.md`, Section 4.3): systems that aggressively chunk context introduce variance and error cascades, while systems that preserve working context through task completion achieve better reliability per token.
 
 **Implications for compression decisions:**
-- Compress at 80% context utilization (see `auto_handoff_threshold` in the section above), not earlier
+- Compress at 80% context utilization (see `auto_handoff_threshold` in `### Context Monitor and Session Continuation`, above), not earlier
 - Prefer keeping relevant tool outputs in context over re-fetching when needed again
 - A failed task that restarts from scratch costs more tokens than a task that completes in a longer conversation
 
@@ -116,7 +117,7 @@ This principle is validated by published research on long-context LLM architectu
 
 | Document | Relevance |
 |----------|-----------|
-| `docs/ARCHITECTURE.md` | Target file — new `### Context Efficiency` section inserts after line 839 (inside `## Key Design Decisions`); existing `auto_handoff_threshold` docs at lines 819–832 |
+| `docs/ARCHITECTURE.md` | Target file — new `### Context Efficiency` section inserts after line 957 (inside `## Key Design Decisions`); existing `auto_handoff_threshold` docs at lines 922–931 |
 
 ## Labels
 
@@ -127,6 +128,7 @@ This principle is validated by published research on long-context LLM architectu
 - **2026-04-01** — NEEDS_UPDATE. Removed completed blocker ENH-665 — issue is now unblocked. `docs/ARCHITECTURE.md` exists; no `### Context Efficiency` section present. Enhancement not yet applied.
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-03T04:13:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-enh-497-20260402-231010/4342c31e-fb4d-4bd4-9fcb-51fd10e4bb94.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
@@ -140,11 +142,19 @@ This principle is validated by published research on long-context LLM architectu
 - `/ll:confidence-check` - 2026-03-06 - Re-scored: ready=88 (up from 80), outcome_confidence=100 — all knowledge gaps closed: insertion point confirmed, draft finalized, ENH-499 status resolved, cross-reference scope narrowed
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no Context Efficiency section in ARCHITECTURE.md
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `### Context Efficiency` section still absent from ARCHITECTURE.md
+- `/ll:ready-issue` - 2026-04-02T23:10:00 - `session-unavailable`
+- `/ll:manage-issue` - 2026-04-02T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` - Implemented: added ### Context Efficiency section to docs/ARCHITECTURE.md
 
 ---
 
+## Resolution
+
+**Status**: Completed
+**Completed**: 2026-04-02
+**Resolved by**: Added `### Context Efficiency` section to `docs/ARCHITECTURE.md` after the `### Session Log Auto-Linking` section (line 959), inside `## Key Design Decisions`. The section establishes tokens-per-task as the primary efficiency metric, documents the 80% compression trigger, cites the LCM research paper, and cross-references ENH-499.
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Completed** | Created: 2026-02-24 | Priority: P4
 
 ## Blocked By
