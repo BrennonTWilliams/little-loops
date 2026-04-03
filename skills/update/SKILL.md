@@ -79,8 +79,11 @@ PKG_VERSION=$(python3 -c "import importlib.metadata; print(importlib.metadata.ve
 PLUGIN_VERSION="N/A"
 MARKETPLACE_VERSION="N/A"
 if [[ "$DO_MARKETPLACE" == true ]] || [[ "$DO_PLUGIN" == true ]]; then
-    PLUGIN_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/plugin.json')); print(d['version'])")
+    PLUGIN_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/plugin.json')); print(d['version'])" 2>/dev/null || echo "N/A")
     MARKETPLACE_VERSION=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])" 2>/dev/null || echo "N/A")
+    if [[ "$PLUGIN_VERSION" == "N/A" ]]; then
+        echo "[WARN] Not in little-loops repo — marketplace/plugin version unavailable"
+    fi
 fi
 ```
 
@@ -106,8 +109,8 @@ echo "========================================"
 
 Read the current marketplace version:
 ```bash
-MARKETPLACE_CURRENT=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])")
-MARKETPLACE_PLUGIN_ENTRY=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['plugins'][0]['version'])")
+MARKETPLACE_CURRENT=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['version'])" 2>/dev/null || echo "N/A")
+MARKETPLACE_PLUGIN_ENTRY=$(python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); print(d['plugins'][0]['version'])" 2>/dev/null || echo "N/A")
 ```
 
 **If `$MARKETPLACE_CURRENT == $PLUGIN_VERSION` and `$MARKETPLACE_PLUGIN_ENTRY == $PLUGIN_VERSION`:**

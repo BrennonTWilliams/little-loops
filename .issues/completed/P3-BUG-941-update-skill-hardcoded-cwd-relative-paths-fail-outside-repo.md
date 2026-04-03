@@ -2,7 +2,7 @@
 id: BUG-941
 type: BUG
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-04-03
 discovered_by: manual
 confidence_score: 95
@@ -136,6 +136,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-04-03 | Priority: P3
 
 
+## Resolution
+
+Added `2>/dev/null || echo "N/A"` guards to three unguarded CWD-relative `open()` calls:
+- `skills/update/SKILL.md` Step 2: `PLUGIN_VERSION` read (was blocking)
+- `skills/update/SKILL.md` Step 3: `MARKETPLACE_CURRENT` and `MARKETPLACE_PLUGIN_ENTRY` reads
+
+Added `[WARN] Not in little-loops repo — marketplace/plugin version unavailable` when `PLUGIN_VERSION == "N/A"`.
+
+Added regression test `test_plugin_version_read_has_error_guard` in `scripts/tests/test_update_skill.py`.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-03T22:31:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad07946c-b0f6-4d94-b84f-530ac6011cf6.jsonl`
 - `/ll:refine-issue` - 2026-04-03T22:19:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c218344-c76e-4907-8e91-e34462ce985b.jsonl`
 - `/ll:format-issue` - 2026-04-03T22:15:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa122d32-4468-49e6-9e4b-2982b06af79f.jsonl`
+- `/ll:manage-issue bug fix BUG-941` - 2026-04-03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
