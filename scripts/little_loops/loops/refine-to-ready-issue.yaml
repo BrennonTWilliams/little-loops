@@ -9,6 +9,8 @@ context:
 states:
   resolve_issue:
     action: >-
+      mkdir -p .loops/tmp &&
+      printf '0' > .loops/tmp/refine-to-ready-refine-count &&
       { [ -n "${context.input}" ] && printf '%s' "${context.input}" ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -40,13 +42,51 @@ states:
         (2) Outcome Confidence Score > ${context.outcome_threshold}. Answer NO if
         either score does not meet its threshold.
     on_yes: verify_issue
-    on_no: refine_issue
+    on_no: check_refine_limit
     on_error: check_scores_from_file
 
+  check_refine_limit:
+    action: |
+      FILE=".loops/tmp/refine-to-ready-refine-count"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    # target: 2 → allows 1 loopback (2 total refines: 1 initial + 1 retry)
+    # Increase target to allow more retries (e.g. target: 3 = 3 total refines)
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: refine_issue
+    on_no: failed
+    on_error: failed
+
   check_scores_from_file:
-    action: >-
-      ll-issues show ${captured.issue_id.output} --json |
-      python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if int(d.get('confidence') or 0) >= 90 and int(d.get('outcome') or 0) >= 75 else 1)"
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
+      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
+          capture_output=True, text=True
+      )
+      d = json.loads(r.stdout)
+      sys.exit(0 if int(d.get('confidence') or 0) >= readiness
+                 and int(d.get('outcome') or 0) >= outcome else 1)
+      PYEOF
     action_type: shell
     evaluate:
       type: exit_code
