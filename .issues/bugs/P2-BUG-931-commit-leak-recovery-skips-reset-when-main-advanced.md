@@ -69,11 +69,12 @@ Where `baseline_head_sha` is the SHA of `main` before any of the leaked commits 
 ## Implementation Steps
 
 1. Open `scripts/little_loops/parallel/worker_pool.py`
-2. Locate `_recover_committed_leaks()` (~line 1255)
-3. Identify the variables already computed: `current_main_sha`, `most_recent_leaked`, and the baseline SHA (first leaked commit's parent)
-4. In the `else` branch, add the `rebase --onto` attempt with `rebase --abort` fallback
-5. Ensure `_git_lock.run()` is used (not bare subprocess) to respect the git lock
-6. Add integration test: simulate leaked commits + concurrent merge, verify rebase path fires
+2. Locate `_recover_committed_leaks()` (line 1202) — method signature is `(self, leaked_commits: list[str], worktree_path: Path, baseline_head_sha: str, issue_id: str) -> bool`
+3. **`baseline_head_sha` is already a parameter** (line 1202) — it was captured at `worker_pool.py:260` via `_get_main_head_sha()` before the worktree was created. No re-computation needed.
+4. In the `else` branch (lines 1271–1276), replace the warning-and-return with the `rebase --onto` attempt
+5. Use `self._git_lock.run(["rebase", "--onto", baseline_head_sha, most_recent_leaked], cwd=self.repo_path, timeout=60)` — note `_git_lock.run()` prepends `"git"` automatically and uses `threading.RLock` to serialize; `cwd=self.repo_path` is the main repo (not worktree)
+6. On non-zero returncode, call `self._git_lock.run(["rebase", "--abort"], cwd=self.repo_path, timeout=10)`
+7. Update `scripts/tests/test_worker_pool.py:1568` (`test_recover_committed_leaks_skips_reset_when_main_advanced`) to assert rebase fires instead of skipping
 
 ## Verification
 
@@ -94,11 +95,14 @@ Commit leaks that survive recovery corrupt `main`'s git history with non-merge c
 - `scripts/little_loops/parallel/worker_pool.py` — `_git_lock.run()` used for all git operations; must be used here too
 
 ### Similar Patterns
-- `scripts/little_loops/parallel/orchestrator.py` — `_merge_sequential()` and `_on_worker_complete()` for existing merge/rebase patterns
+- `scripts/little_loops/parallel/orchestrator.py:975–979` — `_merge_sequential()` checks `merged_ids` and calls `mark_completed` or `mark_failed`; structural pattern for post-operation status checks
+- `scripts/little_loops/parallel/worker_pool.py:1259–1263` — existing `_git_lock.run(["reset", "--hard", baseline_head_sha], cwd=self.repo_path, timeout=30)` in the `if` branch — `_git_lock.run()` usage pattern to replicate for the rebase call
+- No existing `rebase --onto` usage exists anywhere in `scripts/little_loops/parallel/`; this will be the first instance
 
 ### Tests
+- `scripts/tests/test_worker_pool.py:1568` — `test_recover_committed_leaks_skips_reset_when_main_advanced` — currently asserts `reset_called[0] is False`; this test must be UPDATED to assert the rebase attempt fires instead
+- `scripts/tests/test_worker_pool.py:1507` — `test_recover_committed_leaks_cherry_pick_success` — reference for mocking `_git_lock.run` and `subprocess.run` in this method; reuse the same mock structure for the new rebase test
 - `python -m pytest scripts/tests/ -v -k "sprint or parallel or worktree or merge"`
-- Add integration test: simulate leaked commits + concurrent merge; verify rebase path fires and cleans up
 
 ### Documentation
 - N/A
@@ -134,6 +138,7 @@ Commit leaks that survive recovery corrupt `main`'s git history with non-merge c
 - Bug accurately describes the leaked commit persistence issue
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ea0ca77-c1cb-4ae8-865c-0bb7cb7aaee1.jsonl`

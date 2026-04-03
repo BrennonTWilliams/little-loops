@@ -77,9 +77,12 @@ Sprint operators monitoring `ll-sprint run` cannot track real progress because `
 - `scripts/little_loops/parallel/priority_queue.py` — `mark_completed()` (lines 110–118), `mark_failed()` called by fix
 
 ### Similar Patterns
-- `scripts/little_loops/parallel/orchestrator.py` — `_merge_sequential()` already calls `mark_completed()` correctly; mirror this pattern
+- `scripts/little_loops/parallel/orchestrator.py:975–979` — `_merge_sequential()` checks `if result.issue_id in self.merge_coordinator.merged_ids: self.queue.mark_completed(result.issue_id)` else `self.queue.mark_failed(result.issue_id)` — exact pattern to mirror
+- `scripts/little_loops/parallel/orchestrator.py:889–890` — feature-branch path calls `self.queue.mark_completed(result.issue_id)` then `self._complete_issue_lifecycle_if_needed(result.issue_id)` immediately after the success condition
 
 ### Tests
+- `scripts/tests/test_orchestrator.py:1233` — `test_on_worker_complete_success` in `TestOnWorkerComplete` — currently asserts `queue_merge` is called but does NOT assert `mark_completed`; this is the test to extend
+- `scripts/tests/test_orchestrator.py:1363` — `test_on_worker_complete_waits_for_merge` — asserts `wait_for_completion` ordering but not `mark_completed`; should also be updated
 - `python -m pytest scripts/tests/ -v -k "sprint or parallel or worktree or merge"`
 
 ### Documentation
@@ -115,6 +118,7 @@ Sprint operators monitoring `ll-sprint run` cannot track real progress because `
 - Bug accurately describes the stuck `Done: 0` counter issue
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ea0ca77-c1cb-4ae8-865c-0bb7cb7aaee1.jsonl`

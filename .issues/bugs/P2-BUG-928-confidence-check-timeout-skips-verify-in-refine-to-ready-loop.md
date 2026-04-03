@@ -84,6 +84,14 @@ check_scores_from_file:
 2. Change `confidence_check.on_error: failed` → `on_error: check_scores_from_file`
 3. In `check_scores_from_file`, compare scores against `context.readiness_threshold` and `context.outcome_threshold`; route to `verify_issue` if both pass, else `failed`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`ll-issues show` has no `--field` flag** (`scripts/little_loops/cli/issues/show.py:253–257`): the proposed shell command `ll-issues show ... --field confidence_score --field outcome_confidence` will fail. Use `ll-issues show <id> --json` instead — it outputs a JSON object where `confidence_score` maps to the `confidence` key and `outcome_confidence` maps to the `outcome` key.
+- **`context.outcome_confidence` is not an FSM context variable** (`refine-to-ready-issue.yaml:5–7`): the FSM context block only has `readiness_threshold` (90) and `outcome_threshold` (75). `outcome_confidence` is a frontmatter field on the issue file, not a `${context.*}` variable. The `check_scores_from_file` state must read it from `ll-issues show --json` output.
+- **The `output_contains` pattern `"..."` is a placeholder**: since `ll-issues show --json` returns a flat JSON object, the implementer must define a pattern that numerically validates both `confidence` ≥ `readiness_threshold` and `outcome` ≥ `outcome_threshold`. Consider using `llm_structured` evaluator (same as `confidence_check`) instead of `output_contains` to avoid brittle regex-based numeric comparison.
+
 ## Integration Map
 
 ### Files to Modify
@@ -93,10 +101,15 @@ check_scores_from_file:
 - `scripts/little_loops/cli/issues/next_action.py` — reads session log to determine `NEEDS_VERIFY`; behavior fixed indirectly when `verify_issue` is reached
 
 ### Similar Patterns
-- TBD — check other FSM loop YAMLs for `on_error: failed` patterns that bypass required states
+- `scripts/little_loops/loops/fix-quality-and-tests.yaml:22` — `on_error: fix-lint-format` routes errors to an active recovery state instead of terminal; closest analog to `on_error: check_scores_from_file`
+- `scripts/little_loops/loops/apo-contrastive.yaml:66` — `on_error: generate_variants` — another recovery routing pattern
+- `scripts/little_loops/loops/issue-refinement.yaml:28,48` — `on_error: evaluate` — errors re-enter the evaluation cycle rather than aborting
 
 ### Tests
-- TBD — identify or add tests for `refine-to-ready-issue.yaml` timeout handling
+- `scripts/tests/test_builtin_loops.py:452` — `TestRefineToReadyIssueSubLoop` — 5 existing tests for `refine-to-ready-issue.yaml`; none cover `confidence_check.on_error`
+- Add test asserting `confidence_check.on_error == "check_scores_from_file"` (mirrors `test_confidence_check_routes_to_verify_issue` at line 469)
+- Add test asserting `check_scores_from_file` state exists in `data["states"]` (mirrors `test_verify_issue_state_exists` at line 462)
+- `scripts/tests/test_builtin_loops.py:36` — `test_all_validate_as_valid_fsm` will catch undefined state references, so the new state must be structurally valid
 
 ### Documentation
 - N/A
@@ -138,6 +151,7 @@ check_scores_from_file:
 - Bug accurately describes the infinite re-processing cycle
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f43418ef-b4eb-43f5-b9ea-6b5a4a440f1c.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d10376d2-598f-4355-a0dc-b5100fe5afca.jsonl`
