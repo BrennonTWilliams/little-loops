@@ -17,25 +17,25 @@
 
 ## Executive Summary
 
-1 finding since the prior audit (2026-04-02 morning). Fixed directly in this audit session.
+1 finding since the prior audit (2026-04-02 afternoon). Fixed directly in this audit session.
 
 **Verdict: Clean.**
 
 ---
 
-## Prior Audit Resolution (2026-04-02 morning → 2026-04-02 afternoon)
+## Prior Audit Resolution (2026-04-02 afternoon → 2026-04-02 evening)
 
-The prior audit (2026-04-02 morning) closed with zero open findings. Its two fixes (LOOPS_GUIDE.md loop count, GETTING_STARTED.md deferred directory) verified in place.
+The prior audit (2026-04-02 afternoon) closed with zero open findings. Its fix (WORKFLOW_ANALYSIS_GUIDE.md missing `ll-workflows analyze` flags) verified in place.
 
 ---
 
-## Current Findings (2026-04-02 afternoon)
+## Current Findings (2026-04-02 evening)
 
 ### P4 — Low (1/1 resolved)
 
 | Issue | Resolution |
 |-------|------------|
-| `WORKFLOW_ANALYSIS_GUIDE.md` "Argument Reference" table for `ll-workflows analyze` (line 190) listed 4 flags but CLI exposes 7 — missing `--format/-f`, `--overlap-threshold`, `--boundary-threshold` | Fixed — added 3 missing flags to the table |
+| `LOOPS_GUIDE.md` line 613 stated "Five built-in APO loops" but the Built-in Loops table lists 7 (apo-beam, apo-contrastive, apo-feedback-refinement, apo-opro, apo-textgrad, examples-miner, prompt-regression-test) | Fixed — changed "Five" to "Seven" |
 
 ---
 
@@ -44,14 +44,18 @@ The prior audit (2026-04-02 morning) closed with zero open findings. Its two fix
 | Check | Result |
 |-------|--------|
 | File path references (30+ links) | All targets exist |
-| Anchor references | `ARCHITECTURE.md#context-monitor-and-session-continuation` confirmed (line 852) |
+| Anchor references | `ARCHITECTURE.md#context-monitor-and-session-continuation` confirmed (line 870) |
 | Loop YAML inventory | 33 documented = 33 files in `scripts/little_loops/loops/` |
 | Skill count | 21 documented = 21 directories in `skills/` |
 | CLI tool entries | 13 in CLAUDE.md, all in `pyproject.toml [project.scripts]` |
 | `ll-messages` flags | All documented flags match `--help` output |
-| `ll-workflows analyze` flags | Fixed — now matches `--help` output |
+| `ll-workflows analyze` flags | All documented flags confirmed present |
+| APO loop count | Fixed — "Seven" now matches built-in loops table |
 | Directory structure claims | `.issues/{bugs,features,enhancements,completed,deferred}` all exist |
 | Package name | `pip install little-loops` matches `pyproject.toml` |
+| Harness example YAMLs | `harness-single-shot.yaml`, `harness-multi-item.yaml` both exist |
+| `oracles/oracle-capture-issue.yaml` | Exists |
+| `skills/create-loop/{reference,loop-types}.md` | Both exist |
 
 ## Current State
 

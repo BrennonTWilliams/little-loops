@@ -610,7 +610,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 
 Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
 
-Five built-in APO loops ship with little-loops:
+Seven built-in APO loops ship with little-loops:
 
 ---
 
