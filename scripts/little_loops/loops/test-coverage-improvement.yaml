@@ -5,6 +5,7 @@
 # Validate: ll-loop test test-coverage-improvement
 
 name: test-coverage-improvement
+category: code-quality
 description: |
   Measure test coverage → identify uncovered code paths → prioritize by risk →
   write tests for the highest-priority gap → verify tests pass → remeasure →

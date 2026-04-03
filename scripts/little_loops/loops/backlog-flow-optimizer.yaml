@@ -1,4 +1,5 @@
 name: backlog-flow-optimizer
+category: issue-management
 description: |
   Iteratively diagnose the primary throughput bottleneck in the issue backlog
   and take targeted action. Detects whether bloat, oversized issues, or

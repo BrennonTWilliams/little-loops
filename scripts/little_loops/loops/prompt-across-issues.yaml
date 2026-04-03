@@ -1,4 +1,5 @@
 name: prompt-across-issues
+category: issue-management
 description: |
   Run an arbitrary prompt against every open/active issue, one at a time.
   Pass the prompt via the input parameter; use {issue_id} as a placeholder

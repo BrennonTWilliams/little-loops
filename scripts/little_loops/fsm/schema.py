@@ -486,6 +486,8 @@ class FSMLoop:
     on_handoff: Literal["pause", "spawn", "terminate"] = "pause"
     input_key: str = "input"
     config: LoopConfigOverrides | None = None
+    category: str = ""
+    labels: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -525,6 +527,11 @@ class FSMLoop:
             if config_dict:
                 result["config"] = config_dict
 
+        if self.category:
+            result["category"] = self.category
+        if self.labels:
+            result["labels"] = self.labels
+
         return result
 
     @classmethod
@@ -559,6 +566,8 @@ class FSMLoop:
             on_handoff=data.get("on_handoff", "pause"),
             input_key=data.get("input_key", "input"),
             config=loop_config,
+            category=data.get("category", ""),
+            labels=data.get("labels", []),
         )
 
     def get_all_state_names(self) -> set[str]:

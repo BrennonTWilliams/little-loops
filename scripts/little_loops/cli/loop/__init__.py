@@ -169,6 +169,20 @@ Examples:
     )
     list_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON array")
     list_parser.add_argument("--builtin", action="store_true", help="Show only built-in loops")
+    list_parser.add_argument(
+        "--category",
+        "-c",
+        type=str,
+        default=None,
+        help="Filter to loops in a specific category",
+    )
+    list_parser.add_argument(
+        "--label",
+        action="append",
+        dest="label",
+        metavar="LABEL",
+        help="Filter by label tag (repeatable)",
+    )
 
     # Status subcommand
     status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")

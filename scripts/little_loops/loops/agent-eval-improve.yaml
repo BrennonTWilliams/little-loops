@@ -1,4 +1,5 @@
 name: agent-eval-improve
+category: evaluation
 description: |
   Evaluate an AI agent on a task suite, score outputs (pass/fail + quality),
   identify failure patterns, and iteratively refine agent config/prompts

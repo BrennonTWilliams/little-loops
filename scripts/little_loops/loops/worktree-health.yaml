@@ -1,4 +1,5 @@
 name: worktree-health
+category: meta
 description: |
   Continuous monitoring of orphaned worktrees and stale branches. Periodically
   checks for worktrees left by interrupted ll-parallel runs and branches that

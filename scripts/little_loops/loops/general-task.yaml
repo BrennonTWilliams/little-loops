@@ -1,4 +1,5 @@
 name: "general-task"
+category: harness
 initial: define_done
 max_iterations: 100
 on_handoff: spawn

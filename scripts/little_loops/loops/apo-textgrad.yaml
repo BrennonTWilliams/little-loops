@@ -1,4 +1,5 @@
 name: apo-textgrad
+category: apo
 description: |
   TextGrad-style prompt optimization (APO technique): tests the current prompt
   against a set of labeled examples, computes a text gradient (failure pattern,

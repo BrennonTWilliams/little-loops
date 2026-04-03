@@ -13,6 +13,7 @@
 # Validate: ll-loop test harness-multi-item
 
 name: harness-multi-item
+category: harness
 description: |
   EXAMPLE: Multi-item harness demonstrating all evaluation phases in sequence.
   Discovers items from a dynamic list, processes each with a skill, and gates

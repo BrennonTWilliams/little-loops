@@ -2,7 +2,7 @@
 id: ENH-936
 type: ENH
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-04-03
 discovered_by: capture-issue
 confidence_score: 97
@@ -77,7 +77,7 @@ With 33+ loops and growing, users cannot quickly discover which loop to run. Iss
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema for loop YAML validation; new `category` (string) and `labels` (array of strings) properties must be declared here.
 
 ### Note: dataset-curation.yaml
-- `scripts/little_loops/loops/dataset-curation.yaml` already has `category`/`labels` fields in its YAML — it is the one existing loop using these fields. Inspect it as a concrete example of the intended format.
+- `scripts/little_loops/loops/dataset-curation.yaml` does NOT currently have `category`/`labels` fields — verified by search. No existing loop uses these fields yet. The intended format is: `category: data` (top-level string) and `labels: [curate, data-pipeline]` (top-level list of strings), consistent with the field description in Proposed Solution.
 
 ### Note: _load_loop_meta bypasses load_and_validate
 - `info.py:28` — `_load_loop_meta()` calls `yaml.safe_load` directly; it bypasses `fsm/validation.py`. The `cmd_list` filter logic can read `category`/`labels` from this lightweight function without touching the full FSM load pipeline.
@@ -94,6 +94,11 @@ With 33+ loops and growing, users cannot quickly discover which loop to run. Iss
 8. **`test_ll_loop_commands.py`**: update existing `test_list_*` namespace mocks to include `category=None, label=None`; add new tests for grouped display and `--category`/`--label` filtering; also check `test_fsm_schema.py` and `test_builtin_loops.py` for schema field coverage
 9. **Smoke test**: run `ll-loop list` and verify category-grouped output; run `ll-loop list --category apo` to verify filter
 
+## Scope Boundaries
+
+- **In scope**: Adding `category` and `labels` fields to loop YAML schema; updating `ll-loop list` to group/filter by these fields; annotating all built-in `loops/*.yaml` files
+- **Out of scope**: Changing existing loop behavior or execution logic; adding category to loop run/status/history commands; enforcing required categories (fields remain optional); adding category search to `ll-loop validate`; changing the loops directory structure
+
 ## Impact
 
 - **Priority**: P3 - Usability improvement, not blocking
@@ -109,6 +114,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `cli`, `usability`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-03T23:14:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9dcf7e0d-8060-4f90-bb1b-cfb3f91264ec.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ad79933-6e71-429b-bca6-5b79f40d8a4a.jsonl`
 - `/ll:refine-issue` - 2026-04-03T21:55:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
 
@@ -116,6 +122,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Completed** | 2026-04-03
+
+### Changes Made
+
+1. `scripts/little_loops/fsm/validation.py` — added `"category"` and `"labels"` to `KNOWN_TOP_LEVEL_KEYS`
+2. `scripts/little_loops/fsm/fsm-loop-schema.json` — added `category` (string) and `labels` (array of strings) properties
+3. `scripts/little_loops/fsm/schema.py` — added `category: str = ""` and `labels: list[str]` to `FSMLoop`; updated `from_dict()` and `to_dict()`
+4. `scripts/little_loops/cli/loop/info.py` — extended `_load_loop_meta()` to return dict; rewrote `cmd_list()` with `--category`/`--label` filtering and grouped-by-category display
+5. `scripts/little_loops/cli/loop/__init__.py` — added `--category` and `--label` args to list subparser
+6. All 34 `scripts/little_loops/loops/*.yaml` files — annotated with `category:` field
+7. `scripts/tests/test_ll_loop_commands.py` — updated existing tests; added `TestLoopListCategoryFilter` with 5 new tests
+8. `scripts/tests/test_ll_loop_integration.py` — updated `test_list_empty_loops_dir` to match new grouped output
+
+### Verification
+
+- 4174 tests pass, 5 skipped
+- `ruff check` passes
+- `mypy` passes on changed files
+
 ## Status
 
-**Open** | Created: 2026-04-03 | Priority: P3
+**Completed** | Created: 2026-04-03 | Priority: P3

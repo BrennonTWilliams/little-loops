@@ -1,4 +1,5 @@
 name: issue-size-split
+category: issue-management
 description: |
   Review issues for sizing, identify oversized ones, and split them into
   smaller issues. Iterates until no issues exceed the size threshold,

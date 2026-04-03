@@ -1,4 +1,5 @@
 name: docs-sync
+category: meta
 description: |
   Verify documentation matches the codebase, check for broken links, and
   fix discrepancies. Runs doc verification tools, link checkers, and

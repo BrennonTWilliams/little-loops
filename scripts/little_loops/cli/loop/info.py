@@ -25,17 +25,20 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.logger import Logger
 
 
-def _load_loop_meta(path: Path) -> str:
-    """Return description from a loop YAML file."""
+def _load_loop_meta(path: Path) -> dict[str, Any]:
+    """Return metadata from a loop YAML file (description, category, labels)."""
     import yaml
 
     try:
         with open(path) as f:
             spec = yaml.safe_load(f) or {}
         desc_raw = spec.get("description", "") or ""
-        return desc_raw.splitlines()[0] if desc_raw.strip() else ""
+        desc = desc_raw.splitlines()[0] if desc_raw.strip() else ""
+        category = spec.get("category", "") or ""
+        labels: list[str] = spec.get("labels", []) or []
+        return {"description": desc, "category": category, "labels": labels}
     except Exception:
-        return ""
+        return {"description": "", "category": "", "labels": []}
 
 
 def cmd_list(
@@ -83,7 +86,7 @@ def cmd_list(
     project_names: set[str] = set()
     yaml_files: list[Path] = []
     if not builtin_only and loops_dir.exists():
-        yaml_files = list(loops_dir.glob("*.yaml"))
+        yaml_files = sorted(loops_dir.glob("*.yaml"))
         project_names = {p.stem for p in yaml_files}
 
     # Collect built-in loops (excluding those overridden by project)
@@ -101,42 +104,73 @@ def cmd_list(
         print("No loops available")
         return 0
 
+    # Build combined metadata list
+    all_loops: list[dict[str, Any]] = []
+    for path in yaml_files:
+        meta = _load_loop_meta(path)
+        all_loops.append({"name": path.stem, "path": path, "builtin": False, **meta})
+    for path in builtin_files:
+        meta = _load_loop_meta(path)
+        all_loops.append({"name": path.stem, "path": path, "builtin": True, **meta})
+
+    # Apply --category filter
+    category_filter = getattr(args, "category", None)
+    if category_filter:
+        all_loops = [lp for lp in all_loops if lp["category"] == category_filter]
+
+    # Apply --label filter (action="append" → list or None)
+    label_filters: list[str] = getattr(args, "label", None) or []
+    if label_filters:
+        all_loops = [
+            lp
+            for lp in all_loops
+            if any(lf.lower() in [lb.lower() for lb in lp["labels"]] for lf in label_filters)
+        ]
+
+    if not all_loops:
+        if getattr(args, "json", False):
+            print_json([])
+            return 0
+        print("No loops match the given filters")
+        return 0
+
     if getattr(args, "json", False):
-        items: list[dict[str, Any]] = [{"name": p.stem, "path": str(p)} for p in sorted(yaml_files)]
-        items += [{"name": p.stem, "path": str(p), "built_in": True} for p in builtin_files]
+        items: list[dict[str, Any]] = []
+        for lp in all_loops:
+            item: dict[str, Any] = {
+                "name": lp["name"],
+                "path": str(lp["path"]),
+                "category": lp["category"],
+                "labels": lp["labels"],
+            }
+            if lp["builtin"]:
+                item["built_in"] = True
+            items.append(item)
         print_json(items)
         return 0
 
-    if yaml_files and builtin_files:
-        print(colorize(f"Project loops ({len(yaml_files)}):", "1"))
-        for path in sorted(yaml_files):
-            desc = _load_loop_meta(path)
-            name_str = colorize(path.stem, "36;1")
-            desc_str = f"  {colorize(desc, '2')}" if desc else ""
-            print(f"  {name_str}{desc_str}")
+    # Human-readable: group by category
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for lp in all_loops:
+        cat = lp["category"] or "uncategorized"
+        if cat not in buckets:
+            buckets[cat] = []
+        buckets[cat].append(lp)
+
+    # Sort categories; "uncategorized" always last
+    sorted_cats = sorted(c for c in buckets if c != "uncategorized")
+    if "uncategorized" in buckets:
+        sorted_cats.append("uncategorized")
+
+    for cat in sorted_cats:
+        group = buckets[cat]
+        print(colorize(f"{cat} ({len(group)}):", "1"))
+        for lp in group:
+            name_str = colorize(lp["name"], "36;1")
+            desc_str = f"  {colorize(lp['description'], '2')}" if lp["description"] else ""
+            tag_str = f"  {colorize('[built-in]', '2')}" if lp["builtin"] else ""
+            print(f"  {name_str}{desc_str}{tag_str}")
         print()
-        print(colorize(f"Built-in loops ({len(builtin_files)}):", "1"))
-        for path in builtin_files:
-            desc = _load_loop_meta(path)
-            name_str = colorize(path.stem, "36;1")
-            desc_str = f"  {colorize(desc, '2')}" if desc else ""
-            tag_str = colorize("[built-in]", "2")
-            print(f"  {name_str}{desc_str}  {tag_str}")
-    elif yaml_files:
-        print(colorize("Available loops:", "1"))
-        for path in sorted(yaml_files):
-            desc = _load_loop_meta(path)
-            name_str = colorize(path.stem, "36;1")
-            desc_str = f"  {colorize(desc, '2')}" if desc else ""
-            print(f"  {name_str}{desc_str}")
-    else:
-        print(colorize("Available loops:", "1"))
-        for path in builtin_files:
-            desc = _load_loop_meta(path)
-            name_str = colorize(path.stem, "36;1")
-            desc_str = f"  {colorize(desc, '2')}" if desc else ""
-            tag_str = colorize("[built-in]", "2")
-            print(f"  {name_str}{desc_str}  {tag_str}")
     return 0
 
 

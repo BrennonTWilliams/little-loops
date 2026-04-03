@@ -1,4 +1,5 @@
 name: issue-staleness-review
+category: issue-management
 description: |
   Find old issues, review their relevance, and close or reprioritize stale
   ones. Identifies issues that haven't been touched in a configurable number

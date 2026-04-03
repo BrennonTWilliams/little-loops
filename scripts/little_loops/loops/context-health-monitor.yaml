@@ -1,4 +1,5 @@
 name: context-health-monitor
+category: meta
 description: |
   Monitor context health via scratch file accumulation and session log size.
   Compact scratch files and archive stale outputs when pressure is detected.

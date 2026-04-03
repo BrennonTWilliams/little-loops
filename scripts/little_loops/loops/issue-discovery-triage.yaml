@@ -1,4 +1,5 @@
 name: issue-discovery-triage
+category: issue-management
 description: |
   Automated issue discovery and triage cycle. Scans the codebase for new
   technical issues, normalizes filenames/IDs, prioritizes by severity, and

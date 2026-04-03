@@ -136,6 +136,17 @@
         }
       },
       "additionalProperties": false
+    },
+    "category": {
+      "type": "string",
+      "description": "Grouping category for loop discovery (e.g., 'apo', 'code-quality', 'issue-management')"
+    },
+    "labels": {
+      "type": "array",
+      "description": "Tags for loop filtering",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "additionalProperties": false,

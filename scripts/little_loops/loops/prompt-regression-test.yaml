@@ -1,4 +1,5 @@
 name: prompt-regression-test
+category: evaluation
 description: |
   CI for prompts: run a prompt suite against an LLM endpoint, score outputs
   against expected results, compare to baseline, flag regressions, and

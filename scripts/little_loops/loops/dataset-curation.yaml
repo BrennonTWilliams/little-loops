@@ -7,6 +7,7 @@
 # Validate: ll-loop test dataset-curation
 
 name: dataset-curation
+category: data
 description: |
   Scan raw data → quality-gate each item (format, relevance, difficulty calibration) →
   reject/fix low-quality items → balance distribution → validate against schema →

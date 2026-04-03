@@ -90,6 +90,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "on_handoff",
         "input_key",
         "config",
+        "category",
+        "labels",
     }
 )
 

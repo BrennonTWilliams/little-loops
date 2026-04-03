@@ -1,4 +1,5 @@
 name: sprint-build-and-validate
+category: meta
 description: |
   Create a sprint from the backlog, validate all included issues are
   implementation-ready, fix any that aren't, and review the final sprint

@@ -1,4 +1,5 @@
 name: greenfield-builder
+category: harness
 input_key: spec
 description: |
   End-to-end greenfield project builder meta-loop. Takes one or more project

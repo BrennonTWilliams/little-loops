@@ -1,4 +1,5 @@
 name: rl-policy
+category: rl
 description: |
   Policy iteration loop — an agent acts in an environment, observes the outcome,
   scores the reward, and improves its policy until the reward target is reached.

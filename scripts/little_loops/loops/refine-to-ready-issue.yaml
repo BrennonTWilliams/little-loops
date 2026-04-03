@@ -1,4 +1,5 @@
 name: "refine-to-ready-issue"
+category: issue-management
 initial: resolve_issue
 max_iterations: 20
 on_handoff: spawn

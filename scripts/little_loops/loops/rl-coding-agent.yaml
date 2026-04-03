@@ -1,4 +1,5 @@
 name: rl-coding-agent
+category: rl
 description: |
   Policy+RLHF composite loop for agentic coding. An outer policy loop adapts the
   coding strategy (which files, which approach) while an inner RLHF loop polishes

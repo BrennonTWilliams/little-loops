@@ -1,4 +1,5 @@
 name: eval-driven-development
+category: evaluation
 description: |
   Reusable eval-driven development cycle: implement viable issues, run an eval
   harness, capture issues from failures, refine them, and iterate until the

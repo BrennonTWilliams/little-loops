@@ -1,4 +1,5 @@
 name: apo-feedback-refinement
+category: apo
 description: |
   Feedback-driven prompt refinement (APO technique): reads the target prompt,
   generates an improved candidate, evaluates it against criteria, applies feedback

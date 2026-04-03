@@ -1,4 +1,5 @@
 name: evaluation-quality
+category: evaluation
 description: |
   Multi-dimensional quality health check across issue quality (confidence scores,
   format status), code quality (test/lint), and backlog health (size, velocity).

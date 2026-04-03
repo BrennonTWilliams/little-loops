@@ -1,4 +1,5 @@
 name: apo-contrastive
+category: apo
 description: |
   Contrastive prompt optimization (APO technique): generates multiple prompt variants
   per iteration, scores them comparatively, selects and writes back the best-performing

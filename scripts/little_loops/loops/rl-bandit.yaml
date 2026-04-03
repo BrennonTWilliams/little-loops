@@ -1,4 +1,5 @@
 name: rl-bandit
+category: rl
 description: |
   Epsilon-greedy bandit loop — alternates between exploring new options and
   exploiting the best known one. Computes a reward score each round and

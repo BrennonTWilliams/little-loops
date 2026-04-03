@@ -1,4 +1,5 @@
 name: rl-rlhf
+category: rl
 description: |
   RLHF-style iterative improvement loop — generates a candidate output,
   scores its quality (0–10), and refines until the quality target is met.

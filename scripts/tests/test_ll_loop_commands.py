@@ -301,7 +301,7 @@ class TestCmdList:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Without --json, output is unchanged human-readable format."""
+        """Without --json, output groups loops by category (uncategorized when none set)."""
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
@@ -317,8 +317,149 @@ class TestCmdList:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "Available loops:" in out
+        assert "uncategorized" in out
         assert "my-loop" in out
+
+
+class TestLoopListCategoryFilter:
+    """Tests for --category and --label filtering in cmd_list."""
+
+    def test_category_filter_shows_only_matching(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--category shows only loops in that category."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop-apo.yaml").write_text("name: loop-apo\ncategory: apo\n")
+        (loops_dir / "loop-meta.yaml").write_text("name: loop-meta\ncategory: meta\n")
+
+        args = argparse.Namespace(running=False, status=None, json=False, category="apo", label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "loop-apo" in out
+        assert "loop-meta" not in out
+
+    def test_label_filter_shows_only_matching(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--label shows only loops with that label."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop-a.yaml").write_text(
+            "name: loop-a\ncategory: apo\nlabels:\n  - optimize\n  - prompt\n"
+        )
+        (loops_dir / "loop-b.yaml").write_text(
+            "name: loop-b\ncategory: meta\nlabels:\n  - health\n"
+        )
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=["optimize"])
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "loop-a" in out
+        assert "loop-b" not in out
+
+    def test_grouped_display_by_category(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without filters, loops are grouped by category with headers."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop-apo.yaml").write_text("name: loop-apo\ncategory: apo\n")
+        (loops_dir / "loop-meta.yaml").write_text("name: loop-meta\ncategory: meta\n")
+        (loops_dir / "loop-bare.yaml").write_text("name: loop-bare\n")
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "apo" in out
+        assert "meta" in out
+        assert "uncategorized" in out
+        assert "loop-apo" in out
+        assert "loop-meta" in out
+        assert "loop-bare" in out
+        # apo and meta headers should appear before uncategorized
+        assert out.index("apo") < out.index("uncategorized")
+        assert out.index("meta") < out.index("uncategorized")
+
+    def test_json_output_includes_category_and_labels(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """JSON output includes category and labels fields."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop-a.yaml").write_text(
+            "name: loop-a\ncategory: apo\nlabels:\n  - optimize\n"
+        )
+
+        args = argparse.Namespace(running=False, status=None, json=True, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert data[0]["category"] == "apo"
+        assert data[0]["labels"] == ["optimize"]
+
+    def test_no_match_filter_returns_message(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Filters with no match print a message and return 0."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop-a.yaml").write_text("name: loop-a\ncategory: apo\n")
+
+        args = argparse.Namespace(running=False, status=None, json=False, category="data", label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "No loops match" in out
 
 
 class TestCmdHistory:

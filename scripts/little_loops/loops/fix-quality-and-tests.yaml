@@ -1,4 +1,5 @@
 name: fix-quality-and-tests
+category: code-quality
 description: |
   Sequential quality gate: lint + format + types must be clean before tests are
   checked. Auto-fixes lint/format violations; analyzes and fixes type errors with

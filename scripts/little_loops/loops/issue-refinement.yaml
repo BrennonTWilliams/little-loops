@@ -1,4 +1,5 @@
 name: issue-refinement
+category: issue-management
 description: |
   Progressively refine all active issues through format → score → refine pipeline.
   Delegates refinement to the refine-to-ready-issue sub-loop for each issue.

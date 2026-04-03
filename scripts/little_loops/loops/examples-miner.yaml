@@ -1,4 +1,5 @@
 name: examples-miner
+category: data
 description: |
   Co-evolutionary examples mining loop for apo-textgrad: harvests skill invocations
   from completed issue session logs, quality-gates candidates through a three-layer

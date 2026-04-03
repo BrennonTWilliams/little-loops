@@ -1,4 +1,5 @@
 name: dead-code-cleanup
+category: code-quality
 description: |
   Find dead code, remove high-confidence items, and verify tests pass after
   each removal. Scans for unused imports, functions, and variables, removes

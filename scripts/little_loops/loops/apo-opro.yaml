@@ -1,4 +1,5 @@
 name: apo-opro
+category: apo
 description: |
   OPRO-style prompt optimization (APO technique): maintains a running history of
   previous candidates and their scores, proposes improved variants informed by
