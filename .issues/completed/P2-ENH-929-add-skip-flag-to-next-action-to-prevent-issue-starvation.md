@@ -167,7 +167,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P2
+**Completed** | Created: 2026-04-02 | Resolved: 2026-04-03 | Priority: P2
+
+## Resolution
+
+Implemented as described. All success metrics met:
+
+- `cli/issues/__init__.py`: Added `add_skip_arg(na)` before `add_config_arg(na)` on the `next-action` subparser
+- `cli/issues/next_action.py`: Added `parse_issue_ids(args.skip)` and pass `skip_ids` to `find_issues`
+- `issue-refinement.yaml`: Added `handle_failure` state (appends to skip list), changed `on_no` from `check_commit` to `handle_failure`, updated `evaluate` to pass skip list, updated `init` to clear skip list
+- `docs/reference/CLI.md`: Added `--skip` flag documentation and example
+- Tests: 8 new tests (3 CLI + 5 YAML structure); 4150 total pass
 
 ## Verification Notes
 
@@ -179,6 +189,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Enhancement is accurately described; the fix is additive only
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae5f2d8c-a912-40b2-b762-74de7662f6ff.jsonl`
+- `/ll:ready-issue` - 2026-04-03T20:34:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae5f2d8c-a912-40b2-b762-74de7662f6ff.jsonl`
 - `/ll:verify-issues` - 2026-04-03T06:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T06:18:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`

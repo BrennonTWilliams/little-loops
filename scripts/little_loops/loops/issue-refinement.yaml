@@ -6,11 +6,11 @@ description: |
 initial: init
 states:
   init:
-    action: mkdir -p .loops/tmp && rm -f .loops/tmp/issue-refinement-commit-count
+    action: mkdir -p .loops/tmp && rm -f .loops/tmp/issue-refinement-commit-count && rm -f .loops/tmp/issue-refinement-skip-list
     action_type: shell
     next: evaluate
   evaluate:
-    action: ll-issues next-action
+    action: ll-issues next-action --skip "$(cat .loops/tmp/issue-refinement-skip-list 2>/dev/null)"
     action_type: shell
     capture: "classify"
     evaluate:
@@ -30,7 +30,16 @@ states:
     loop: refine-to-ready-issue
     context_passthrough: true
     on_yes: check_commit
-    on_no: check_commit
+    on_no: handle_failure
+  handle_failure:
+    action: |
+      ID="${captured.input.output}"
+      FILE=".loops/tmp/issue-refinement-skip-list"
+      CURRENT=$(cat "$FILE" 2>/dev/null || echo "")
+      if [ -z "$CURRENT" ]; then printf '%s' "$ID" > "$FILE"
+      else printf ',%s' "$ID" >> "$FILE"; fi
+    action_type: shell
+    next: check_commit
   check_commit:
     action: |
       mkdir -p .loops/tmp

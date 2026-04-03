@@ -432,13 +432,46 @@ class TestIssueRefinementSubLoop:
         )
 
     def test_run_refine_to_ready_routes_to_check_commit(self, data: dict) -> None:
-        """run_refine_to_ready must route both on_yes and on_no to check_commit."""
+        """run_refine_to_ready on_yes must route to check_commit."""
         state = data["states"].get("run_refine_to_ready", {})
         assert state.get("on_yes") == "check_commit", (
             f"run_refine_to_ready.on_yes should be 'check_commit', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_commit", (
-            f"run_refine_to_ready.on_no should be 'check_commit', got {state.get('on_no')!r}"
+
+    def test_run_refine_to_ready_on_no_routes_to_handle_failure(self, data: dict) -> None:
+        """run_refine_to_ready on_no must route to handle_failure for skip-list tracking."""
+        state = data["states"].get("run_refine_to_ready", {})
+        assert state.get("on_no") == "handle_failure", (
+            f"run_refine_to_ready.on_no should be 'handle_failure', got {state.get('on_no')!r}"
+        )
+
+    def test_handle_failure_state_exists(self, data: dict) -> None:
+        """handle_failure state must exist to track failed issues in skip list."""
+        assert "handle_failure" in data["states"], (
+            "State 'handle_failure' not found in issue-refinement.yaml"
+        )
+
+    def test_handle_failure_next_is_check_commit(self, data: dict) -> None:
+        """handle_failure must route next to check_commit after appending to skip list."""
+        state = data["states"].get("handle_failure", {})
+        assert state.get("next") == "check_commit", (
+            f"handle_failure.next should be 'check_commit', got {state.get('next')!r}"
+        )
+
+    def test_evaluate_action_includes_skip_list(self, data: dict) -> None:
+        """evaluate action must pass skip list to ll-issues next-action."""
+        evaluate = data["states"].get("evaluate", {})
+        action = evaluate.get("action", "")
+        assert "issue-refinement-skip-list" in action, (
+            f"evaluate.action should reference issue-refinement-skip-list, got: {action!r}"
+        )
+
+    def test_init_action_clears_skip_list(self, data: dict) -> None:
+        """init action must clear the skip list at the start of each run."""
+        init = data["states"].get("init", {})
+        action = init.get("action", "")
+        assert "issue-refinement-skip-list" in action, (
+            f"init.action should clear issue-refinement-skip-list, got: {action!r}"
         )
 
     @pytest.mark.parametrize("state_name", REMOVED_STATES)

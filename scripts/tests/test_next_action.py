@@ -305,3 +305,97 @@ class TestIssuesCLINextAction:
         out = capsys.readouterr().out
         assert result == 0
         assert "ALL_DONE" in out
+
+
+class TestIssuesCLINextActionSkip:
+    """Tests for next-action --skip flag."""
+
+    def test_skip_excludes_issue_needing_format(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--skip excludes the named issue; returns next eligible issue instead."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        # BUG-001: needs format (no session commands) — higher priority
+        _make_issue(bugs_dir, "P2-BUG-001-first.md", "BUG-001: First issue")
+        # BUG-002: also needs format — lower priority
+        _make_issue(bugs_dir, "P3-BUG-002-second.md", "BUG-002: Second issue")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "next-action", "--skip", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 1
+        assert "BUG-001" not in out
+        assert "NEEDS_FORMAT BUG-002" in out
+
+    def test_skip_all_needing_work_returns_all_done(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--skip on the only issue needing work returns ALL_DONE."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(bugs_dir, "P3-BUG-001-test.md", "BUG-001: Test issue")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "next-action", "--skip", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "ALL_DONE" in out
+
+    def test_skip_multiple_ids(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--skip accepts comma-separated list; all named IDs are excluded."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(bugs_dir, "P1-BUG-001-a.md", "BUG-001: First")
+        _make_issue(bugs_dir, "P2-BUG-002-b.md", "BUG-002: Second")
+        _make_issue(bugs_dir, "P3-BUG-003-c.md", "BUG-003: Third")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-action",
+                "--skip",
+                "BUG-001,BUG-002",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 1
+        assert "BUG-001" not in out
+        assert "BUG-002" not in out
+        assert "NEEDS_FORMAT BUG-003" in out

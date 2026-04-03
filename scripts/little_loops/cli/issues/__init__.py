@@ -26,7 +26,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
     from little_loops.cli.issues.show import cmd_show
-    from little_loops.cli_args import add_config_arg
+    from little_loops.cli_args import add_config_arg, add_skip_arg
     from little_loops.config import BRConfig
 
     parser = argparse.ArgumentParser(
@@ -339,6 +339,7 @@ Examples:
         metavar="N",
         help="Minimum outcome_confidence to pass (default: 70)",
     )
+    add_skip_arg(na)
     add_config_arg(na)
 
     nx = subs.add_parser(

@@ -486,6 +486,7 @@ Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
 | `--refine-cap N` | `5` | Max `/ll:refine-issue` runs before moving on |
 | `--ready-threshold N` | `85` | Minimum readiness score to consider issue ready |
 | `--outcome-threshold N` | `70` | Minimum outcome confidence score to consider issue ready |
+| `--skip ISSUE_ID[,...]` | — | Comma-separated issue IDs to exclude (e.g. `ENH-929,BUG-001`); absent `--skip` preserves existing behavior |
 
 #### `ll-issues next-issue` / `ll-issues nx`
 
@@ -554,6 +555,7 @@ ll-issues refine-status --type BUG --format json
 ll-issues next-action                            # Next refinement action needed (exits 1 if work remains)
 ll-issues next-action --refine-cap 3             # Lower the refine-cap
 ll-issues next-action --ready-threshold 90       # Stricter readiness threshold
+ll-issues next-action --skip ENH-929,BUG-001     # Exclude specific issues from consideration
 ll-issues next-issue                             # Highest-confidence issue ID
 ll-issues next-issue --json                      # As JSON: {id, path, outcome_confidence, confidence_score, priority}
 ll-issues next-issue --path                      # File path only (for shell scripting)

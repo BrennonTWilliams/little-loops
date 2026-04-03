@@ -22,9 +22,11 @@ def cmd_next_action(config: BRConfig, args: argparse.Namespace) -> int:
     Returns:
         Exit code (1 = work remains, 0 = all done)
     """
+    from little_loops.cli_args import parse_issue_ids
     from little_loops.issue_parser import find_issues, is_formatted
 
-    issues = find_issues(config)
+    skip_ids = parse_issue_ids(getattr(args, "skip", None))
+    issues = find_issues(config, skip_ids=skip_ids or None)
     issues.sort(key=lambda i: (i.priority_int, -int(i.issue_id.split("-")[1])))
 
     refine_cap: int = getattr(args, "refine_cap", 5)
