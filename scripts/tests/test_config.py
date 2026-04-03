@@ -919,6 +919,16 @@ class TestGitHubSyncConfig:
         # Partial mapping replaces default (doesn't merge)
         assert config.label_mapping == {"BUG": "defect"}
 
+    def test_pull_limit_default(self) -> None:
+        """GitHubSyncConfig defaults pull_limit to 500."""
+        config = GitHubSyncConfig.from_dict({})
+        assert config.pull_limit == 500
+
+    def test_pull_limit_configurable(self) -> None:
+        """GitHubSyncConfig pull_limit can be set via from_dict."""
+        config = GitHubSyncConfig.from_dict({"pull_limit": 250})
+        assert config.pull_limit == 250
+
 
 class TestSyncConfig:
     """Tests for SyncConfig dataclass."""

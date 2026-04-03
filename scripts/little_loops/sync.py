@@ -516,6 +516,7 @@ class GitHubSyncManager:
             return result
 
         # List GitHub issues
+        pull_limit = self.sync_config.github.pull_limit
         try:
             gh_args = [
                 "issue",
@@ -523,7 +524,7 @@ class GitHubSyncManager:
                 "--json",
                 "number,title,body,labels,state,url",
                 "--limit",
-                "100",
+                str(pull_limit),
             ]
             if labels:
                 for label in labels:
@@ -534,6 +535,12 @@ class GitHubSyncManager:
             result.success = False
             result.errors.append(f"Failed to list GitHub issues: {e}")
             return result
+
+        if len(github_issues) >= pull_limit:
+            self.logger.warning(
+                f"Fetched {len(github_issues)} issues which equals the pull_limit ({pull_limit}). "
+                "Results may be truncated. Increase sync.github.pull_limit in ll-config.json to fetch more."
+            )
 
         # Get existing local issue IDs
         local_github_numbers = self._get_local_github_numbers()

@@ -510,6 +510,67 @@ class TestGitHubSyncManager:
         gh_args = mock_run.call_args[0][0]
         assert "--label" not in gh_args
 
+    def test_pull_uses_pull_limit_from_config(
+        self, mock_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """Pull uses pull_limit from GitHubSyncConfig instead of hardcoded 100."""
+        mock_config.sync.github.pull_limit = 250
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="[]", stderr=""
+                )
+                manager.pull_issues()
+
+        gh_args = mock_run.call_args[0][0]
+        limit_idx = gh_args.index("--limit")
+        assert gh_args[limit_idx + 1] == "250"
+
+    def test_pull_warns_when_result_count_equals_limit(
+        self, mock_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """Pull emits a warning when returned issue count equals pull_limit."""
+        mock_config.sync.github.pull_limit = 2
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        issues = [
+            {"number": 1, "title": "A", "body": "", "labels": [], "state": "OPEN", "url": ""},
+            {"number": 2, "title": "B", "body": "", "labels": [], "state": "OPEN", "url": ""},
+        ]
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=json.dumps(issues), stderr=""
+                )
+                manager.pull_issues()
+
+        mock_logger.warning.assert_called()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "truncat" in warning_msg.lower() or "limit" in warning_msg.lower()
+
+    def test_pull_no_warning_when_below_limit(
+        self, mock_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """Pull does not warn when returned issue count is below pull_limit."""
+        mock_config.sync.github.pull_limit = 500
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="[]", stderr=""
+                )
+                manager.pull_issues()
+
+        # No warning calls expected
+        mock_logger.warning.assert_not_called()
+
     def test_get_status(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
