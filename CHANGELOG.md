@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.69.0] - 2026-04-02
+
+### Added
+
+- **Extension Architecture (LLExtension Protocol)** — Introduced a formal extension protocol with `LLExtension`, `ExtensionLoader`, and `wire_extensions` API; extensions plug into the EventBus for live event observation without modifying core internals (FEAT-911)
+- **Greenfield Builder and Eval-Driven Development Loops** — Added `greenfield-builder` and `eval-driven-development` FSM automation loops for bootstrapping new projects and iterating on AI-evaluated output (FEAT-914)
+- **Topic-Based EventBus Filtering** — Extensions and subscribers can now filter events by topic pattern, enabling targeted observation without processing every emitted event (ENH-926)
+
+### Changed
+
+- **EventBus Emission in StateManager** — StateManager now emits lifecycle events on state transitions, making internal state changes observable by extensions (ENH-920)
+- **EventBus Emission in Parallel Orchestrator** — ll-parallel now emits issue start/complete/fail events on the EventBus for real-time parallel run observability (ENH-921)
+- **ExtensionLoader Wired to Live EventBus in CLI Entry Points** — Extensions registered via `wire_extensions` are now connected to the live EventBus at CLI startup (ENH-922)
+- **`ll-sprint show` Enhanced Detail and Output Quality** — Sprint show command now displays richer issue detail, cleaner formatting, and improved output structure (ENH-923)
+
+### Fixed
+
+- **context-monitor.sh Hook Timeout** — Reduced jq invocations from ~15 to ~5 per hook call, eliminating PostToolUse read hook timeouts under load (BUG-924)
+
+[1.69.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.68.0...v1.69.0
+
 ## [1.68.0] - 2026-04-02
 
 ### Added
