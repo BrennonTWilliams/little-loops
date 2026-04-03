@@ -56,12 +56,12 @@ A developer installs a third-party extension package that implements `LLExtensio
 
 ## Acceptance Criteria
 
-- [ ] `ExtensionLoader.load_all()` is called in CLI entry points that create an `EventBus`
-- [ ] Extension `on_event` callbacks receive `LLEvent` instances (not raw dicts)
-- [ ] Extensions loaded from both config paths and entry points are wired
-- [ ] Failed extension loads log warnings but don't crash the CLI
-- [ ] `NoopLoggerExtension` produces output when configured in `ll-config.json`
-- [ ] Existing behavior unchanged when no extensions are configured
+- [x] `ExtensionLoader.load_all()` is called in CLI entry points that create an `EventBus`
+- [x] Extension `on_event` callbacks receive `LLEvent` instances (not raw dicts)
+- [x] Extensions loaded from both config paths and entry points are wired
+- [x] Failed extension loads log warnings but don't crash the CLI
+- [x] `NoopLoggerExtension` produces output when configured in `ll-config.json`
+- [x] Existing behavior unchanged when no extensions are configured
 
 ## API/Interface
 
@@ -167,11 +167,28 @@ Minor gaps also found (not blockers for FEAT-927):
 
 ---
 
+## Resolution
+
+**Resolved** — 2026-04-02
+
+### Changes Made
+- Added `wire_extensions(bus, config_paths)` helper to `extension.py` that loads extensions via `ExtensionLoader.load_all()` and registers wrapped `on_event` callbacks on the bus using `LLEvent.from_raw_event()` to avoid dict mutation
+- Added `extensions` property to `BRConfig` returning `_raw_config.get("extensions", [])`
+- Wired extensions in all 4 CLI entry points: `cli/loop/run.py`, `cli/loop/lifecycle.py`, `cli/parallel.py`, `cli/sprint/run.py`
+- Added `wire_extensions` to package `__init__.py` exports
+- Added 5 tests covering: registration, no-extensions, failed loads, dict preservation, multiple extensions
+
+### Verification
+- All 34 extension+event tests pass
+- Lint clean (ruff)
+- Type check clean (mypy)
+
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P3
+**Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-03T00:49:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17240d9f-c05c-4a95-8d41-67e38cfe53f4.jsonl`
 - `/ll:refine-issue` - 2026-04-03T00:41:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/998ad8f8-102d-4374-80a7-c9a75706c7a7.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:35:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5913db88-19b3-455b-8448-97664c8c42f8.jsonl`
 - `/ll:confidence-check` - 2026-04-02T19:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59a96965-9adf-4cd8-9c40-8c3a7bb7b986.jsonl`

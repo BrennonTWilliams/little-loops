@@ -153,8 +153,10 @@ def cmd_run(
         register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
         from little_loops.config import BRConfig
+        from little_loops.extension import wire_extensions
 
         config = BRConfig(Path.cwd())
+        wire_extensions(executor.event_bus, config.extensions)
         cli_colors = config.cli.colors
         highlight_color = cli_colors.fsm_active_state
         edge_label_colors = cli_colors.fsm_edge_labels.to_dict()

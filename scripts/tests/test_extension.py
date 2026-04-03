@@ -1,16 +1,18 @@
-"""Tests for LLExtension Protocol, NoopLoggerExtension, and ExtensionLoader."""
+"""Tests for LLExtension Protocol, NoopLoggerExtension, ExtensionLoader, and wire_extensions."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
-from little_loops.events import LLEvent
+from little_loops.events import EventBus, LLEvent
 from little_loops.extension import (
     ExtensionLoader,
     LLExtension,
     NoopLoggerExtension,
+    wire_extensions,
 )
 
 
@@ -128,3 +130,97 @@ class TestExtensionLoader:
         with patch("little_loops.extension.entry_points", return_value=[]):
             extensions = ExtensionLoader.load_all()
         assert extensions == []
+
+
+class TestWireExtensions:
+    """Tests for wire_extensions() helper."""
+
+    def test_wire_extensions_registers_on_bus(self) -> None:
+        """wire_extensions loads extensions and registers them on EventBus."""
+        received: list[LLEvent] = []
+
+        class RecordingExtension:
+            def on_event(self, event: LLEvent) -> None:
+                received.append(event)
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[RecordingExtension()]):
+            extensions = wire_extensions(bus, config_paths=["fake:Extension"])
+
+        assert len(extensions) == 1
+
+        # Emit a raw dict event (as EventBus normally does)
+        bus.emit({"event": "fsm.state_enter", "ts": "2026-04-02T12:00:00Z", "state": "build"})
+
+        assert len(received) == 1
+        assert isinstance(received[0], LLEvent)
+        assert received[0].type == "fsm.state_enter"
+        assert received[0].timestamp == "2026-04-02T12:00:00Z"
+        assert received[0].payload == {"state": "build"}
+
+    def test_wire_extensions_no_extensions(self) -> None:
+        """wire_extensions with no config and no entry points returns empty list."""
+        bus = EventBus()
+        with patch("little_loops.extension.entry_points", return_value=[]):
+            extensions = wire_extensions(bus)
+
+        assert extensions == []
+        # Bus should still work normally
+        received: list[dict[str, Any]] = []
+        bus.register(lambda e: received.append(e))
+        bus.emit({"event": "test", "ts": "now"})
+        assert len(received) == 1
+
+    def test_wire_extensions_failed_load_doesnt_crash(self) -> None:
+        """wire_extensions handles failed extension loads gracefully."""
+        bus = EventBus()
+        with patch("little_loops.extension.entry_points", return_value=[]):
+            extensions = wire_extensions(bus, config_paths=["nonexistent.module:FakeExtension"])
+
+        assert extensions == []
+
+    def test_wire_extensions_preserves_original_event(self) -> None:
+        """wire_extensions wrapper uses from_raw_event to avoid mutating the shared dict."""
+        received_events: list[LLEvent] = []
+
+        class RecordingExtension:
+            def on_event(self, event: LLEvent) -> None:
+                received_events.append(event)
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[RecordingExtension()]):
+            wire_extensions(bus, config_paths=["fake:Extension"])
+
+        raw = {"event": "state_enter", "ts": "2026-04-02T12:00:00Z", "state": "build"}
+        bus.emit(raw)
+
+        # Original dict should not be mutated
+        assert "event" in raw
+        assert "ts" in raw
+        assert len(received_events) == 1
+
+    def test_wire_extensions_multiple_extensions(self) -> None:
+        """wire_extensions registers multiple extensions on the same bus."""
+        received_a: list[LLEvent] = []
+        received_b: list[LLEvent] = []
+
+        class ExtA:
+            def on_event(self, event: LLEvent) -> None:
+                received_a.append(event)
+
+        class ExtB:
+            def on_event(self, event: LLEvent) -> None:
+                received_b.append(event)
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
+            extensions = wire_extensions(bus)
+
+        assert len(extensions) == 2
+
+        bus.emit({"event": "test", "ts": "now", "data": 1})
+
+        assert len(received_a) == 1
+        assert len(received_b) == 1
+        assert received_a[0].type == "test"
+        assert received_b[0].type == "test"

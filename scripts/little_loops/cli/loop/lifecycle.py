@@ -253,6 +253,12 @@ def cmd_resume(
     # Register signal handlers for graceful shutdown (same as cmd_run)
     register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
+    from little_loops.config import BRConfig
+    from little_loops.extension import wire_extensions
+
+    config = BRConfig(Path.cwd())
+    wire_extensions(executor.event_bus, config.extensions)
+
     result = executor.resume()
 
     if result is None:

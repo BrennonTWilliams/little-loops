@@ -18,7 +18,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from little_loops.events import LLEvent
+from little_loops.events import EventBus, EventCallback, LLEvent
 
 logger = logging.getLogger(__name__)
 
@@ -127,3 +127,35 @@ class ExtensionLoader:
             extensions.extend(ExtensionLoader.from_config(config_paths))
         extensions.extend(ExtensionLoader.from_entry_points())
         return extensions
+
+
+def wire_extensions(
+    bus: EventBus,
+    config_paths: list[str] | None = None,
+) -> list[LLExtension]:
+    """Load extensions and register them on an EventBus.
+
+    Each extension's ``on_event`` callback is wrapped to convert the raw
+    ``dict[str, Any]`` dispatched by ``EventBus.emit()`` into an ``LLEvent``
+    using ``from_raw_event()`` (which copies the dict to avoid mutation).
+
+    Args:
+        bus: EventBus to register extension callbacks on
+        config_paths: Optional list of "module:Class" strings from config
+
+    Returns:
+        List of loaded extension instances
+    """
+    extensions = ExtensionLoader.load_all(config_paths)
+    for ext in extensions:
+
+        def _make_callback(e: LLExtension) -> EventCallback:
+            def _cb(event: dict[str, Any]) -> None:
+                e.on_event(LLEvent.from_raw_event(event))
+
+            return _cb
+
+        bus.register(_make_callback(ext))
+    if extensions:
+        logger.info("Wired %d extension(s) to EventBus", len(extensions))
+    return extensions

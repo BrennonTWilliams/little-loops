@@ -175,6 +175,11 @@ class BRConfig:
         return self._refine_status
 
     @property
+    def extensions(self) -> list[str]:
+        """Get extension config paths (e.g. ``["module:Class", ...]``)."""
+        return self._raw_config.get("extensions", [])
+
+    @property
     def repo_path(self) -> Path:
         """Get the repository root path."""
         return self.project_root

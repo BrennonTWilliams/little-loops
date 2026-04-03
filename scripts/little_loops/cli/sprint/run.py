@@ -385,8 +385,10 @@ def _cmd_sprint_run(
                 )
 
                 from little_loops.events import EventBus
+                from little_loops.extension import wire_extensions
 
                 event_bus = EventBus()
+                wire_extensions(event_bus, config.extensions)
                 orchestrator = ParallelOrchestrator(
                     parallel_config,
                     config,
