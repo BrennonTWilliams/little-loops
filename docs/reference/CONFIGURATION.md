@@ -204,7 +204,11 @@ For interactive editing, use `/ll:configure`.
       "fsm_active_state": "32",
       "fsm_edge_labels": {}
     }
-  }
+  },
+
+  "extensions": [
+    "my_package.ext:MyExtension"
+  ]
 }
 ```
 
@@ -594,6 +598,31 @@ Override the default ANSI color codes used for FSM diagram edge labels and conne
 ```
 
 Set `NO_COLOR=1` to disable all colorization regardless of config.
+
+### `extensions`
+
+<!-- TODO: update-docs stub — FEAT-927 — drafted 2026-04-02 -->
+
+> **Stub**: Auto-drafted by `/ll:update-docs`. Expand with full extension authoring example.
+
+List of extension module paths to load at startup. Each entry is a `"module.path:ClassName"` string. Extensions implement the `LLExtension` protocol and receive structured `LLEvent` notifications from the EventBus during ll-loop, ll-parallel, and ll-sprint runs.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `extensions` | `array` of `string` | `[]` | Extension module paths. Format: `"module.path:ClassName"`. |
+
+```json
+{
+  "extensions": [
+    "my_package.ext:MyExtension",
+    "another_pkg:AnotherExtension"
+  ]
+}
+```
+
+Extensions can also be auto-discovered via Python entry points — see [API Reference → Extension API](API.md#extension-api).
+
+<!-- END TODO stub -->
 
 ---
 

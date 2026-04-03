@@ -173,11 +173,12 @@ List all sprints.
 
 Show sprint details, dependency graph, and health summary.
 
-| Argument/Flag | Description |
-|---------------|-------------|
-| `sprint` | Sprint name |
-| `--config` | Path to project root |
-| `--skip-analysis` | Skip dependency analysis |
+| Argument/Flag | Short | Description |
+|---------------|-------|-------------|
+| `sprint` | | Sprint name |
+| `--json` | `-j` | Output as JSON (includes all fields) |
+| `--config` | | Path to project root |
+| `--skip-analysis` | | Skip dependency analysis |
 
 #### `ll-sprint edit <sprint>` / `ll-sprint e <sprint>`
 

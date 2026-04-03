@@ -441,11 +441,7 @@ sequenceDiagram
 
 ## Extension Architecture & Event Flow
 
-<!-- TODO: update-docs stub — EventBus wiring — drafted 2026-04-02 -->
-
-little-loops includes an extension architecture built on a structured event bus. Extensions implement the `LLExtension` protocol and receive `LLEvent` notifications from core subsystems.
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Expand with full event taxonomy and extension authoring guide.
+little-loops includes an extension architecture built on a structured event bus. Extensions implement the `LLExtension` protocol and receive `LLEvent` notifications from core subsystems. Topic-based filtering lets extensions subscribe only to the event namespaces they care about.
 
 ### Components
 
@@ -467,15 +463,37 @@ The `EventBus` is wired into the following subsystems, which emit events at key 
 | Issue Lifecycle | `issue_lifecycle.py` | Issue status transitions (move, close, defer) |
 | Parallel Orchestrator | `parallel/orchestrator.py` | Worker start/complete, merge events |
 
+Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`, so they receive events from all subsystems during a run:
+
+| CLI Entry Point | File | Extensions Wired |
+|-----------------|------|-----------------|
+| `ll-loop` | `cli/loop/run.py`, `cli/loop/lifecycle.py` | Yes — extensions registered before loop execution |
+| `ll-parallel` | `cli/parallel.py` | Yes — extensions registered before orchestrator starts |
+| `ll-sprint` | `cli/sprint/run.py` | Yes — extensions registered before sprint run |
+
 ### Extension Loading
 
 Extensions are loaded via two mechanisms:
 1. **Config paths**: `"extensions": ["my_package:MyExtension"]` in `ll-config.json`
 2. **Entry points**: `importlib.metadata` discovery under the `little_loops.extensions` group
 
-See [API Reference — Extension API](reference/API.md#extension-api) for full protocol and loader documentation.
+### Topic-Based Event Filtering
 
-<!-- END TODO stub -->
+Extensions can declare an `event_filter` class attribute to subscribe only to specific event namespaces, using fnmatch glob patterns matched against the event's `"event"` key:
+
+```python
+class MyExtension:
+    event_filter = "fsm.*"          # only FSM lifecycle events
+    # event_filter = ["fsm.*", "issue.*"]  # multiple namespaces
+    # event_filter = None           # all events (default)
+
+    def on_event(self, event: LLEvent) -> None:
+        ...
+```
+
+`wire_extensions()` forwards `event_filter` to `bus.register()`. If the attribute is absent or `None`, the extension receives all events.
+
+See [API Reference — Extension API](reference/API.md#extension-api) for full protocol, loader, and `wire_extensions()` documentation.
 
 ---
 

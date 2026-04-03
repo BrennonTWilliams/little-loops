@@ -307,12 +307,21 @@ ll-sprint list                          # all sprints, one per line
 ll-sprint list --verbose                # sprints with issue counts and descriptions
 ll-sprint list --json                   # output as JSON array
 ll-sprint show sprint-1                 # sprint details + wave visualization
+ll-sprint show sprint-1 --json          # structured JSON output
 ll-sprint show sprint-1 --skip-analysis # skip dependency analysis step
 ll-sprint analyze sprint-1              # file conflict analysis
 ll-sprint analyze sprint-1 --format json
 ```
 
-`ll-sprint show` is the primary inspection command. It displays the sprint YAML contents, validates that all issue files exist, and renders the dependency graph and wave structure — the same execution plan you'd see at the start of a run.
+`ll-sprint show` is the primary inspection command. It displays the sprint YAML contents, validates that all issue files exist, and renders the dependency graph and wave structure — the same execution plan you'd see at the start of a run. The output also includes:
+
+- **Composition breakdown** — issue count by type (BUG/FEAT/ENH) and priority distribution
+- **Sprint run state** — progress from `.sprint-state.json` if the sprint has been started
+- **Readiness/confidence scores** — per-issue scores from any completed confidence checks
+- **Issue file paths** — full paths shown in the execution plan for easy navigation
+- **Human-friendly timestamps** — relative time suffixes (e.g., "3 days ago") on dated fields
+
+Use `--json` to get all fields as structured JSON for scripting or integration.
 
 `ll-sprint analyze` focuses specifically on file overlap. It reads each issue's Integration Map and reports which files are touched by multiple issues, which pairs would contend, and which would be forced into sub-waves. Use this when planning a sprint with many issues touching the same subsystems.
 
