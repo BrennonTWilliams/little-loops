@@ -897,6 +897,11 @@ class ParallelOrchestrator:
                 # avoiding race conditions between worktree creation and merge ops.
                 # (BUG-140: Race condition between worktree creation and merge)
                 self.merge_coordinator.wait_for_completion(timeout=120)
+                if result.issue_id in self.merge_coordinator.merged_ids:
+                    self.queue.mark_completed(result.issue_id)
+                    self._complete_issue_lifecycle_if_needed(result.issue_id)
+                else:
+                    self.queue.mark_failed(result.issue_id)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
             self.queue.mark_failed(result.issue_id)

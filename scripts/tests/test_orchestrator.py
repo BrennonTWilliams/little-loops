@@ -1243,9 +1243,12 @@ class TestOnWorkerComplete:
             duration=10.0,
         )
 
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
+
         orchestrator._on_worker_complete(result)
 
         orchestrator.merge_coordinator.queue_merge.assert_called_once_with(result)  # type: ignore[attr-defined]
+        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
 
     def test_on_worker_complete_failure(
         self,
@@ -1391,6 +1394,7 @@ class TestOnWorkerComplete:
 
         orchestrator.merge_coordinator.queue_merge = mock_queue_merge  # type: ignore[method-assign]
         orchestrator.merge_coordinator.wait_for_completion = mock_wait_for_completion  # type: ignore[method-assign]
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
 
         orchestrator._on_worker_complete(result)
 

@@ -104,9 +104,23 @@ Sprint operators monitoring `ll-sprint run` cannot track real progress because `
 
 ---
 
+## Resolution
+
+**Fixed** | Resolved: 2026-04-03
+
+### Changes Made
+
+- `scripts/little_loops/parallel/orchestrator.py` — After `wait_for_completion()` in the parallel merge branch of `_on_worker_complete()`, added `mark_completed()` / `mark_failed()` calls mirroring the `_merge_sequential()` pattern. `Done` now increments and `Active` decrements in real time during parallel sprint runs.
+- `scripts/tests/test_orchestrator.py` — Updated `test_on_worker_complete_success` to set `merged_ids = ["BUG-001"]` and assert `mark_completed` is called. Updated `test_on_worker_complete_waits_for_merge` to set `merged_ids` so the new branch exercises the success path.
+
+### Verification
+
+- All 14 `on_worker_complete` tests pass.
+- 413 sprint/parallel/worktree/merge tests pass with no regressions.
+
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P2
+**Closed** | Created: 2026-04-02 | Resolved: 2026-04-03 | Priority: P2
 
 ## Verification Notes
 
@@ -119,6 +133,8 @@ Sprint operators monitoring `ll-sprint run` cannot track real progress because `
 - Bug accurately describes the stuck `Done: 0` counter issue
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-03T05:37:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a22a762-f90b-4d21-8b54-0d68359a5f3c.jsonl`
+- `/ll:ready-issue` - 2026-04-03T05:34:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76919c64-3158-40a0-b0d0-629a4e9f20d2.jsonl`
 - `/ll:verify-issues` - 2026-04-03T05:17:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
 - `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
