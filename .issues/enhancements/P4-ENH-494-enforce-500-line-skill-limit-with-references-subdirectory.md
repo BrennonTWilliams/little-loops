@@ -57,9 +57,9 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 
 **Current line counts (descending):**
 ```
-708  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 208 lines
-604  skills/confidence-check/SKILL.md     ← EXCEEDS by 104 lines (was 554)
-513  skills/manage-issue/SKILL.md         ← EXCEEDS by 13 lines (was 500 at boundary)
+711  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 211 lines
+600  skills/confidence-check/SKILL.md     ← EXCEEDS by 100 lines
+516  skills/manage-issue/SKILL.md         ← EXCEEDS by 16 lines
 386  skills/init/SKILL.md
 371  skills/capture-issue/SKILL.md
 356  skills/format-issue/SKILL.md
@@ -114,6 +114,7 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-03-22T05:05:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
 - `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
@@ -135,10 +136,10 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 
 ## Verification Notes
 
-- **Date**: 2026-04-01
+- **Date**: 2026-04-02
 - **Verdict**: NEEDS_UPDATE
-- Removed completed blocker FEAT-565. Still blocked by ENH-493 (open).
-- Now **4 skills** exceed 500 lines (was 3): `audit-claude-config/SKILL.md` = **708** (unchanged), `confidence-check/SKILL.md` = **604** (unchanged), `init/SKILL.md` = **581** (NEW exceeder), `manage-issue/SKILL.md` = **513** (unchanged). No `references/` subdirectories exist.
+- ENH-493 is now COMPLETED (in `completed/`) — removed from Blocked By. Issue is now unblocked.
+- **4 skills** exceed 500 lines: `audit-claude-config/SKILL.md` = **711** (was 708), `confidence-check/SKILL.md` = **600** (was 604, decreased), `init/SKILL.md` = **584** (was 581), `manage-issue/SKILL.md` = **516** (was 513). No `references/` subdirectories exist.
 
 ## Status
 
@@ -163,7 +164,6 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708, confidence-check: 524), making scope smaller than expected. However, the `references/` subdirectory pattern needs to be defined and documented before extracting content. Blocked by ENH-493 (trigger descriptions), ENH-491, and FEAT-441. Implement after those resolve and the pattern convention is established in CONTRIBUTING.md.
 
 ## Blocked By
-- ENH-493
 
 ---
 

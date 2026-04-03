@@ -86,6 +86,7 @@ Also consider adding `.ll/ll.local.md` to the `.gitignore` entries in Step 9 if 
 `enhancement`, `init`, `local-config`, `onboarding`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T02:58:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
@@ -105,9 +106,9 @@ Also consider adding `.ll/ll.local.md` to the `.gitignore` entries in Step 9 if 
 
 ## Verification Notes
 
-- **Date**: 2026-04-01
+- **Date**: 2026-04-02
 - **Verdict**: NEEDS_UPDATE
-- Removed completed blocker ENH-665. Still blocked by ENH-493 (open).
+- ENH-493 is now COMPLETED (in `completed/`) — removed from Blocked By. Issue is now unblocked.
 - `.ll/ll.local.md` still absent from init SKILL.md. Enhancement not yet applied.
 
 ## Status
@@ -116,5 +117,5 @@ Also consider adding `.ll/ll.local.md` to the `.gitignore` entries in Step 9 if 
 
 
 ## Blocked By
-- ENH-493
+
 ## Blocks

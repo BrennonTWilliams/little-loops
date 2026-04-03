@@ -102,15 +102,14 @@ Split into focused modules within the existing `fsm/` package:
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-03-19
+**Verdict**: NEEDS_UPDATE — Re-verified 2026-04-02
 
-- `executor.py` is exactly 1,070 lines (confirmed)
-- `ExecutionResult` at line 44, `ActionResult` at line 86 (within stated ~44-128 range)
-- `ActionRunner` at line 106, `DefaultActionRunner` at line 130, `SimulationActionRunner` at line 216 (within stated ~106-325 range)
-- `FSMExecutor` at line 337 (exactly matches stated ~337-1050)
-- `fsm/types.py` and `fsm/runners.py` do not exist — issue's proposed new files are accurate
-- All dependent files and test files confirmed to import from `executor.py` as described
-- **Confidence**: High
+- `executor.py` is now **1,076 lines** (was 1,070, +6); class structure unchanged
+- `ExecutionResult` at line 44, `ActionResult` at line 86 (within stated ~44-128 range) ✓
+- `ActionRunner` at line 106, `DefaultActionRunner` at line 130, `SimulationActionRunner` at line 216 ✓
+- `FSMExecutor` at line 337 ✓
+- `fsm/types.py` and `fsm/runners.py` still do not exist — extraction not yet applied
+- All dependent files confirmed unchanged
 
 ## Labels
 
@@ -127,6 +126,7 @@ _Added by `/ll:confidence-check` on 2026-03-19_
 - **Patch path breakage**: 14 test patches targeting `little_loops.fsm.executor.subprocess.*` and `little_loops.fsm.executor.time.*` will break once those modules move to `runners.py`. Step 5 acknowledges this, but the scope is broader than "minor" — `test_ll_loop_execution.py` alone has ~10 affected patches across `subprocess.Popen` and `subprocess.run`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
 - `/ll:verify-issues` - 2026-03-19T23:57:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

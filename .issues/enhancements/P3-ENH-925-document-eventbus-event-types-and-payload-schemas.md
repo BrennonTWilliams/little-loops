@@ -69,6 +69,15 @@ FEAT-916 proposes auto-generating JSON Schema from dataclasses as part of a full
 
 `enh`, `extension-api`, `documentation`, `captured`
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-02
+
+- Confirmed `event_bus.emit()` calls across 4 subsystems: `fsm/persistence.py:394`, `issue_lifecycle.py:529,619,695,794`, `parallel/orchestrator.py:916`, `state.py:107` ✓
+- FEAT-911 is COMPLETED — `extension.py` exists with `LLExtension` Protocol and `EventBus` wiring
+- No `docs/reference/EVENT-SCHEMA.md` exists — documentation gap is real
+- Enhancement not yet applied
+
 ---
 
 ## Status
@@ -76,4 +85,5 @@ FEAT-916 proposes auto-generating JSON Schema from dataclasses as part of a full
 **Open** | Created: 2026-04-02 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T02:58:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/997b167f-013b-46d4-a03f-9ff27d26a2a1.jsonl`
