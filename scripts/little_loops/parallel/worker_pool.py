@@ -1282,9 +1282,7 @@ class WorkerPool:
                 timeout=60,
             )
             if rebase_result.returncode == 0:
-                self.logger.info(
-                    f"[{issue_id}] Surgically removed leaked commits via rebase"
-                )
+                self.logger.info(f"[{issue_id}] Surgically removed leaked commits via rebase")
             else:
                 self._git_lock.run(
                     ["rebase", "--abort"],
