@@ -495,6 +495,39 @@ class TestRefineToReadyIssueSubLoop:
             f"verify_issue.on_error should be 'failed', got {state.get('on_error')!r}"
         )
 
+    def test_confidence_check_on_error_is_check_scores_from_file(self, data: dict) -> None:
+        """confidence_check.on_error must route to check_scores_from_file, not failed.
+
+        Routing to failed on timeout causes infinite NEEDS_VERIFY cycles when the issue
+        already has valid scores in its frontmatter.
+        """
+        state = data["states"].get("confidence_check", {})
+        assert state.get("on_error") == "check_scores_from_file", (
+            f"confidence_check.on_error should be 'check_scores_from_file', got {state.get('on_error')!r} — "
+            f"routing directly to 'failed' on timeout skips verify_issue and causes infinite NEEDS_VERIFY cycle"
+        )
+
+    def test_check_scores_from_file_state_exists(self, data: dict) -> None:
+        """check_scores_from_file state must exist as the error recovery path for confidence_check."""
+        assert "check_scores_from_file" in data["states"], (
+            "State 'check_scores_from_file' not found in refine-to-ready-issue.yaml — "
+            "required as fallback when confidence_check LLM evaluation times out"
+        )
+
+    def test_check_scores_from_file_routes_to_verify_issue(self, data: dict) -> None:
+        """check_scores_from_file.on_yes must route to verify_issue when scores meet thresholds."""
+        state = data["states"].get("check_scores_from_file", {})
+        assert state.get("on_yes") == "verify_issue", (
+            f"check_scores_from_file.on_yes should be 'verify_issue', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_scores_from_file_routes_to_failed_on_no(self, data: dict) -> None:
+        """check_scores_from_file.on_no must route to failed when scores are absent or below threshold."""
+        state = data["states"].get("check_scores_from_file", {})
+        assert state.get("on_no") == "failed", (
+            f"check_scores_from_file.on_no should be 'failed', got {state.get('on_no')!r}"
+        )
+
 
 class TestHarnessCapture:
     """Tests that harness YAML files wire execute output to check_semantic via capture/source."""

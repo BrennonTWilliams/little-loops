@@ -137,9 +137,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/loops/refine-to-ready-issue.yaml`:
+
+- Changed `confidence_check.on_error: failed` → `on_error: check_scores_from_file`
+- Added `check_scores_from_file` state: runs `ll-issues show <id> --json | python3 -c "..."` to read `confidence_score` and `outcome_confidence` from frontmatter and compare against thresholds (90/75). Routes to `verify_issue` if both pass, `failed` if either is absent or below threshold.
+- Evaluator is `exit_code` (deterministic, no LLM) to avoid another potential timeout in the recovery path.
+- Added 4 new tests in `scripts/tests/test_builtin_loops.py::TestRefineToReadyIssueSubLoop`: `test_confidence_check_on_error_is_check_scores_from_file`, `test_check_scores_from_file_state_exists`, `test_check_scores_from_file_routes_to_verify_issue`, `test_check_scores_from_file_routes_to_failed_on_no`.
+
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P2
+**Completed** | Created: 2026-04-02 | Resolved: 2026-04-03 | Priority: P2
 
 ## Verification Notes
 
@@ -151,6 +160,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Bug accurately describes the infinite re-processing cycle
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-03T05:25:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/194b369b-ada5-4faa-bf9d-afcfa22d790e.jsonl`
 - `/ll:verify-issues` - 2026-04-03T05:17:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
 - `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`

@@ -41,6 +41,17 @@ states:
         either score does not meet its threshold.
     on_yes: verify_issue
     on_no: refine_issue
+    on_error: check_scores_from_file
+
+  check_scores_from_file:
+    action: >-
+      ll-issues show ${captured.issue_id.output} --json |
+      python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if int(d.get('confidence') or 0) >= 90 and int(d.get('outcome') or 0) >= 75 else 1)"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: verify_issue
+    on_no: failed
     on_error: failed
 
   verify_issue:
