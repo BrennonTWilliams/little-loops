@@ -9,6 +9,8 @@ Tests cover:
 import argparse
 from pathlib import Path
 
+import pytest
+
 from little_loops.cli_args import (
     VALID_ISSUE_TYPES,
     VALID_PRIORITIES,
@@ -162,16 +164,12 @@ class TestParseIssueTypes:
 
     def test_invalid_type_exits(self) -> None:
         """Invalid type causes SystemExit with code 2."""
-        import pytest
-
         with pytest.raises(SystemExit) as exc_info:
             parse_issue_types("INVALID")
         assert exc_info.value.code == 2
 
     def test_mixed_valid_invalid_exits(self) -> None:
         """Mix of valid and invalid types causes SystemExit."""
-        import pytest
-
         with pytest.raises(SystemExit) as exc_info:
             parse_issue_types("BUG,INVALID")
         assert exc_info.value.code == 2
@@ -503,16 +501,12 @@ class TestParsePriorities:
 
     def test_invalid_priority_exits(self) -> None:
         """Invalid priority causes SystemExit with code 2."""
-        import pytest
-
         with pytest.raises(SystemExit) as exc_info:
             parse_priorities("P9")
         assert exc_info.value.code == 2
 
     def test_mixed_valid_invalid_exits(self) -> None:
         """Mix of valid and invalid priorities causes SystemExit."""
-        import pytest
-
         with pytest.raises(SystemExit) as exc_info:
             parse_priorities("P1,INVALID")
         assert exc_info.value.code == 2
@@ -637,3 +631,80 @@ class TestAddCommonParallelArgs:
         assert args.skip == "BUG-002"
         assert args.type == "ENH"
         assert args.config is not None
+
+
+class TestParseIssueIdsEdgeCases:
+    """Edge cases and invalid inputs for parse_issue_ids and parse_issue_ids_ordered."""
+
+    def test_whitespace_only_string(self) -> None:
+        """Whitespace-only string strips to empty — result is {''}."""
+        result = parse_issue_ids("   ")
+        assert result == {""}
+
+    def test_trailing_comma(self) -> None:
+        """Trailing comma produces an empty-string element."""
+        result = parse_issue_ids("BUG-001,")
+        assert result == {"BUG-001", ""}
+
+    def test_ordered_empty_string(self) -> None:
+        """Empty string returns list with one empty element (documents actual behavior)."""
+        result = parse_issue_ids_ordered("")
+        assert result == [""]
+
+    def test_ordered_trailing_comma(self) -> None:
+        """Trailing comma produces an empty-string element in ordered result."""
+        result = parse_issue_ids_ordered("BUG-001,")
+        assert result == ["BUG-001", ""]
+
+
+@pytest.mark.parametrize(
+    "candidate,pattern,expected",
+    [
+        ("ENH-732", "732", True),
+        ("ENH-732", "ENH-732", True),
+        ("ENH-732", "BUG-732", False),
+        ("ENH-732", "731", False),
+        ("ENH-732", "73", False),
+        ("BUG-001", "001", True),
+        ("BUG-001", "1", False),
+        ("BUG-001", "BUG-001", True),
+        ("FEAT-100", "100", True),
+        ("FEAT-100", "FEAT-100", True),
+        ("FEAT-100", "ENH-100", False),
+    ],
+)
+def test_id_matches_parametrized(candidate: str, pattern: str, expected: bool) -> None:
+    """_id_matches handles full IDs and numeric suffixes correctly."""
+    assert _id_matches(candidate, pattern) == expected
+
+
+class TestParseIssueTypesEdgeCases:
+    """Edge cases for parse_issue_types."""
+
+    def test_empty_string_exits(self) -> None:
+        """Empty string produces invalid type '' → SystemExit 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            parse_issue_types("")
+        assert exc_info.value.code == 2
+
+    def test_whitespace_only_exits(self) -> None:
+        """Whitespace-only string strips to '' which is invalid → SystemExit 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            parse_issue_types("   ")
+        assert exc_info.value.code == 2
+
+
+class TestParsePrioritiesEdgeCases:
+    """Edge cases for parse_priorities."""
+
+    def test_empty_string_exits(self) -> None:
+        """Empty string produces invalid priority '' → SystemExit 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            parse_priorities("")
+        assert exc_info.value.code == 2
+
+    def test_whitespace_only_exits(self) -> None:
+        """Whitespace-only string strips to '' which is invalid → SystemExit 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            parse_priorities("   ")
+        assert exc_info.value.code == 2

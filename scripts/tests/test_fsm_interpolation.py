@@ -269,6 +269,72 @@ class TestInterpolateDict:
         assert obj == {"val": "${context.x}"}
 
 
+class TestInterpolateDictErrorPropagation:
+    """Tests that errors in interpolate_dict and _interpolate_list propagate correctly."""
+
+    def test_dict_value_error_propagates(self) -> None:
+        """InterpolationError from a failing value bubbles up from interpolate_dict."""
+        ctx = InterpolationContext()  # no context vars
+        obj = {"cmd": "${context.missing_key}"}
+        with pytest.raises(InterpolationError, match="Path 'missing_key' not found in context"):
+            interpolate_dict(obj, ctx)
+
+    def test_nested_dict_error_propagates(self) -> None:
+        """Error in a nested dict value propagates up."""
+        ctx = InterpolationContext()
+        obj = {"outer": {"inner": "${context.nope}"}}
+        with pytest.raises(InterpolationError):
+            interpolate_dict(obj, ctx)
+
+    def test_list_value_error_propagates(self) -> None:
+        """InterpolationError from a list item bubbles up from interpolate_dict."""
+        ctx = InterpolationContext()
+        obj = {"items": ["${context.bad_var}"]}
+        with pytest.raises(InterpolationError):
+            interpolate_dict(obj, ctx)
+
+    def test_list_nested_dict_error_propagates(self) -> None:
+        """Error in a dict inside a list propagates up."""
+        ctx = InterpolationContext()
+        obj = {"items": [{"key": "${context.missing}"}]}
+        with pytest.raises(InterpolationError):
+            interpolate_dict(obj, ctx)
+
+
+class TestInterpolateEdgeCases:
+    """Additional edge cases for the interpolate function."""
+
+    def test_multiple_escape_sequences(self) -> None:
+        """Multiple $${...} escapes in one string are all converted."""
+        ctx = InterpolationContext()
+        result = interpolate("$${a} and $${b}", ctx)
+        assert result == "${a} and ${b}"
+
+    def test_escape_at_start(self) -> None:
+        """Escaped sequence at the very start of the string works."""
+        ctx = InterpolationContext()
+        result = interpolate("$${var}", ctx)
+        assert result == "${var}"
+
+    def test_unknown_namespace_in_string(self) -> None:
+        """Unknown namespace inside interpolate raises InterpolationError."""
+        ctx = InterpolationContext()
+        with pytest.raises(InterpolationError, match="Unknown namespace"):
+            interpolate("${bad_ns.something}", ctx)
+
+    def test_missing_captured_key(self) -> None:
+        """Accessing a missing captured variable raises InterpolationError."""
+        ctx = InterpolationContext(captured={})
+        with pytest.raises(InterpolationError, match="Path 'missing' not found in captured"):
+            interpolate("${captured.missing}", ctx)
+
+    def test_result_path_not_found(self) -> None:
+        """Missing path in result raises InterpolationError."""
+        ctx = InterpolationContext(result={"verdict": "yes"})
+        with pytest.raises(InterpolationError, match="Path 'confidence' not found in result"):
+            interpolate("${result.confidence}", ctx)
+
+
 class TestFormatDuration:
     """Tests for the _format_duration helper."""
 

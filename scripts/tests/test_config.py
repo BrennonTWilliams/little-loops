@@ -728,6 +728,42 @@ class TestBRConfig:
         assert parallel_config.dry_run is True
         assert parallel_config.max_issues == 10
 
+    def test_load_config_invalid_json_raises(self, temp_project_dir: Path) -> None:
+        """BRConfig raises json.JSONDecodeError when config file contains invalid JSON."""
+        import json as _json
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text("{ not valid json }")
+
+        import pytest
+
+        with pytest.raises(_json.JSONDecodeError):
+            BRConfig(temp_project_dir)
+
+    def test_load_config_empty_file_raises(self, temp_project_dir: Path) -> None:
+        """BRConfig raises json.JSONDecodeError when config file is empty."""
+        import json as _json
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text("")
+
+        import pytest
+
+        with pytest.raises(_json.JSONDecodeError):
+            BRConfig(temp_project_dir)
+
+    def test_resolve_variable_none_value(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """resolve_variable returns None when the resolved config value is None."""
+        sample_config["project"]["type_cmd"] = None
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.resolve_variable("project.type_cmd") is None
+
 
 class TestBRConfigAliases:
     """Tests for backwards compatibility aliases."""

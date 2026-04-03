@@ -386,6 +386,54 @@ class TestValidateGoals:
         assert any("placeholder or empty name" in w for w in warnings)
 
 
+class TestProductGoalsEdgeCases:
+    """Edge case and error tests for ProductGoals parsing."""
+
+    def test_from_file_unreadable(self, tmp_path: Path) -> None:
+        """from_file returns None when the file cannot be read (OSError)."""
+        goals_file = tmp_path / "ll-goals.md"
+        goals_file.write_text("---\nversion: 1\n---\n")
+        goals_file.chmod(0o000)
+        try:
+            goals = ProductGoals.from_file(goals_file)
+            assert goals is None
+        finally:
+            goals_file.chmod(0o644)
+
+    def test_from_content_frontmatter_is_list(self) -> None:
+        """from_content returns None when frontmatter parses to a list, not a dict."""
+        content = "---\n- item1\n- item2\n---\n# Body\n"
+        goals = ProductGoals.from_content(content)
+        assert goals is None
+
+    def test_from_content_frontmatter_is_scalar(self) -> None:
+        """from_content returns None when frontmatter is a plain scalar value."""
+        content = "---\njust a string\n---\n# Body\n"
+        goals = ProductGoals.from_content(content)
+        assert goals is None
+
+    def test_from_content_version_as_integer(self) -> None:
+        """version field as bare integer is coerced to string."""
+        content = "---\nversion: 2\npersona:\n  id: user\n  name: User\n  role: Role\npriorities:\n  - id: p1\n    name: Goal\n---\n"
+        goals = ProductGoals.from_content(content)
+        assert goals is not None
+        assert goals.version == "2"
+
+    def test_from_content_priorities_non_list(self) -> None:
+        """Non-list priorities field is silently ignored → empty priorities."""
+        content = "---\nversion: '1.0'\npersona:\n  id: user\n  name: User\n  role: Role\npriorities: not-a-list\n---\n"
+        goals = ProductGoals.from_content(content)
+        assert goals is not None
+        assert goals.priorities == []
+
+    def test_from_content_persona_not_a_dict(self) -> None:
+        """Non-dict persona field is silently ignored → persona is None."""
+        content = "---\nversion: '1.0'\npersona: just-a-string\npriorities:\n  - id: p1\n    name: Goal\n---\n"
+        goals = ProductGoals.from_content(content)
+        assert goals is not None
+        assert goals.persona is None
+
+
 @pytest.mark.integration
 class TestIntegration:
     """Integration tests using actual template file."""
