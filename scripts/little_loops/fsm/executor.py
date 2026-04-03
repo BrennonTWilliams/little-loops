@@ -375,6 +375,9 @@ class FSMExecutor:
                         return interpolate(state.on_error, ctx)
                     self.request_shutdown()
                     return None
+                # Non-zero exit: if on_error is defined, treat next as success path only
+                if result.exit_code != 0 and state.on_error:
+                    return interpolate(state.on_error, ctx)
             return interpolate(state.next, ctx)
 
         # Execute action if present

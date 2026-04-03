@@ -2307,6 +2307,28 @@ class TestSignalHandling:
         assert result.final_state == "handle_error"
         assert all("/refine" not in call for call in mock_runner.calls)
 
+    def test_shell_failure_on_next_state_routes_via_on_error_when_configured(self) -> None:
+        """Non-zero exit on a state with state.next and on_error routes to on_error, not next."""
+        fsm = FSMLoop(
+            name="test",
+            initial="score_issues",
+            states={
+                "score_issues": StateConfig(
+                    action="/score", next="refine_issues", on_error="handle_error"
+                ),
+                "refine_issues": StateConfig(action="/refine", next="score_issues"),
+                "handle_error": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/score", output="", exit_code=1)  # ordinary shell failure
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "handle_error"
+        assert all("/refine" not in call for call in mock_runner.calls)
+
     def test_normal_exit_on_next_state_still_routes_normally(self) -> None:
         """Non-negative exit codes on a state.next action still route to next normally."""
         fsm = FSMLoop(

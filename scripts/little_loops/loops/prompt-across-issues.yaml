@@ -68,7 +68,8 @@ states:
       echo "$PROMPT" | sed "s/{issue_id}/$ISSUE_ID/g"
     action_type: shell
     capture: final_prompt
-    next: execute
+    on_yes: execute
+    on_no: advance
     on_error: advance
 
   execute:
