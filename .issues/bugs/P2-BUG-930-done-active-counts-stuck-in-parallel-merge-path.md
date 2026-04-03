@@ -110,14 +110,16 @@ Sprint operators monitoring `ll-sprint run` cannot track real progress because `
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-02
+**Verdict**: VALID — Re-verified 2026-04-03
 
 - `scripts/little_loops/parallel/orchestrator.py` `_on_worker_complete()` parallel merge branch confirmed: `queue_merge(result)` at line 894, `wait_for_completion(timeout=120)` at line 899 — NO `mark_completed()` or `mark_failed()` call after wait ✓
 - Sequential path (`mark_completed` at line 868) and feature-branch path (line 889) both call `mark_completed()` correctly ✓
 - `PriorityQueue.mark_completed()` exists at `priority_queue.py` and is not called in the parallel merge branch ✓
+- Note: `_wait_for_completion()` at lines 1003–1009 does call `mark_completed` for all `merged_ids` at end-of-run, but this is only after all workers finish — Done remains 0 throughout active parallel execution ✓
 - Bug accurately describes the stuck `Done: 0` counter issue
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T05:17:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
 - `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`

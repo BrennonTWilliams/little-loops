@@ -129,15 +129,16 @@ Commit leaks that survive recovery corrupt `main`'s git history with non-merge c
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-02
+**Verdict**: VALID — Re-verified 2026-04-03
 
-- `scripts/little_loops/parallel/worker_pool.py` `_recover_committed_leaks()` at lines 1255–1276 confirmed ✓
-- `current_main_sha != most_recent_leaked` else branch (line 1271–1276): logs warning and returns without attempting rebase ✓
-- `_git_lock` is used throughout the method for all other git operations ✓
-- No `rebase --onto` logic exists in recovery path ✓
+- `scripts/little_loops/parallel/worker_pool.py` `_recover_committed_leaks()` at line 1202; method signature confirmed: `(self, leaked_commits, worktree_path, baseline_head_sha, issue_id)` — `baseline_head_sha` is a parameter ✓
+- Lines 1255–1276: else branch (lines 1271–1276) logs warning and returns without attempting rebase ✓
+- `_git_lock.run()` used throughout the method for git operations (e.g., `reset --hard` at line 1259) ✓
+- No `rebase --onto` logic exists anywhere in the recovery path ✓
 - Bug accurately describes the leaked commit persistence issue
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T05:17:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
 - `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`

@@ -143,14 +143,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-02
+**Verdict**: VALID — Re-verified 2026-04-03
 
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` line 44: `on_error: failed` confirmed on `confidence_check` state ✓
 - `scripts/little_loops/cli/issues/next_action.py:38`: `if "/ll:verify-issues" not in issue.session_commands` → returns `NEEDS_VERIFY` confirmed ✓
-- No `check_scores_from_file` state exists in `refine-to-ready-issue.yaml` ✓
+- No `check_scores_from_file` state exists in `refine-to-ready-issue.yaml` ✓ (states: resolve_issue, format_issue, refine_issue, confidence_check, verify_issue, done, failed)
 - Bug accurately describes the infinite re-processing cycle
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T05:17:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
 - `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f43418ef-b4eb-43f5-b9ea-6b5a4a440f1c.jsonl`
