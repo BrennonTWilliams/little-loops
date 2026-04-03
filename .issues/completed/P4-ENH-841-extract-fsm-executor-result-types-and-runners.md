@@ -77,7 +77,7 @@ Split into focused modules within the existing `fsm/` package:
 - `scripts/little_loops/fsm/runners.py` — `ActionRunner`, `DefaultActionRunner`, `SimulationActionRunner`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/fsm/persistence.py` — imports `ActionResult`, `ExecutionResult`, `EventCallback`, `FSMExecutor`
+- `scripts/little_loops/fsm/persistence.py` — imports `ExecutionResult`, `EventCallback`, `FSMExecutor`
 - `scripts/little_loops/cli/loop/testing.py` — imports `DefaultActionRunner`, `ActionResult`, `SimulationActionRunner`, `FSMExecutor`
 
 ### Tests
@@ -125,7 +125,20 @@ _Added by `/ll:confidence-check` on 2026-03-19_
 ### Concerns
 - **Patch path breakage**: 14 test patches targeting `little_loops.fsm.executor.subprocess.*` and `little_loops.fsm.executor.time.*` will break once those modules move to `runners.py`. Step 5 acknowledges this, but the scope is broader than "minor" — `test_ll_loop_execution.py` alone has ~10 affected patches across `subprocess.Popen` and `subprocess.run`.
 
+## Resolution
+
+Implemented 2026-04-02 via `/ll:manage-issue enhancement improve ENH-841`.
+
+**Changes made:**
+- Created `scripts/little_loops/fsm/types.py` — `ExecutionResult`, `ActionResult`, `EventCallback`
+- Created `scripts/little_loops/fsm/runners.py` — `ActionRunner`, `DefaultActionRunner`, `SimulationActionRunner`, `_now_ms`
+- Updated `scripts/little_loops/fsm/executor.py` — removed 285 lines of moved code; now imports from `types` and `runners`; backward-compatible re-exports maintained
+
+**Result:** `executor.py` reduced from 1,076 → 791 lines. All 385 tests pass. No patch path changes required — `subprocess` and `time` imports remain in `executor.py` (used by `FSMExecutor._run_subprocess`), so existing mock patches continue to work unchanged.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-03T04:33:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7050a4ed-6549-4a3d-9290-fa562df74c8d.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
@@ -137,4 +150,4 @@ _Added by `/ll:confidence-check` on 2026-03-19_
 
 ## Status
 
-**Open** | Created: 2026-03-19 | Priority: P4
+**Completed** | Created: 2026-03-19 | Resolved: 2026-04-02 | Priority: P4
