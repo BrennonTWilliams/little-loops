@@ -4995,11 +4995,35 @@ Initializes empty observer and file sink lists. No parameters.
 
 | Method | Description |
 |--------|-------------|
-| `register(callback: EventCallback) -> None` | Append an observer callback. No deduplication. |
-| `unregister(callback: EventCallback) -> None` | Remove an observer. Silently ignores if not found. |
+| `register(callback: EventCallback, filter: str \| list[str] \| None = None) -> None` | Append an observer callback with an optional glob filter. `None` (default) receives all events. |
+| `unregister(callback: EventCallback) -> None` | Remove an observer by identity. Silently ignores if not found. |
 | `add_file_sink(path: Path) -> None` | Add a JSONL file sink. Creates parent directories if needed. |
-| `emit(event: dict[str, Any]) -> None` | Fan out event to all observers, then append JSON line to all file sinks. Per-observer exceptions are caught and logged. |
+| `emit(event: dict[str, Any]) -> None` | Fan out event to matching observers, then append JSON line to all file sinks. Per-observer exceptions are caught and logged. |
 | `read_events(path: Path) -> list[LLEvent]` | *(static)* Read a JSONL event log file. Returns `[]` if file does not exist. Skips invalid JSON lines. |
+
+#### Filter parameter
+
+The `filter` argument to `register()` accepts a glob pattern string or list of patterns matched against the event's `"event"` key using `fnmatch`:
+
+```python
+# Subscribe to issue namespace only
+bus.register(my_callback, filter="issue.*")
+
+# Subscribe to multiple namespaces
+bus.register(my_callback, filter=["issue.*", "parallel.*"])
+
+# Subscribe to bare FSM event names
+bus.register(my_callback, filter=["state_enter", "loop_*"])
+
+# Subscribe to everything (default)
+bus.register(my_callback)
+```
+
+**Event namespace conventions:**
+- `issue.*` — issue lifecycle events (`issue.closed`, `issue.completed`, etc.)
+- `state.*` — state manager events (`state.issue_completed`, `state.issue_failed`)
+- `parallel.*` — parallel orchestrator events (`parallel.worker_completed`)
+- Bare names — FSM executor events (`state_enter`, `loop_start`, `action_start`, etc.)
 
 ---
 
@@ -5028,10 +5052,27 @@ Module-level constant defining the Python entry point group name used by `Extens
 ```python
 @runtime_checkable
 class LLExtension(Protocol):
+    event_filter: str | list[str] | None  # optional; defaults to None
     def on_event(self, event: LLEvent) -> None: ...
 ```
 
 Implement this protocol to create an extension that receives structured events from the EventBus. The `@runtime_checkable` decorator enables `isinstance(obj, LLExtension)` checks at runtime.
+
+Optionally declare `event_filter` as a class attribute to subscribe only to specific event namespaces. `wire_extensions()` reads this attribute and passes it to `bus.register()`. If the attribute is absent, the extension receives all events:
+
+```python
+class MyFSMExtension:
+    event_filter = ["state_enter", "loop_*"]  # bare FSM event names
+
+    def on_event(self, event: LLEvent) -> None:
+        print(f"FSM event: {event.type}")
+
+class MyIssueExtension:
+    event_filter = "issue.*"  # dotted namespace
+
+    def on_event(self, event: LLEvent) -> None:
+        print(f"Issue event: {event.type}")
+```
 
 ### NoopLoggerExtension
 

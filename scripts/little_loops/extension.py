@@ -31,7 +31,14 @@ class LLExtension(Protocol):
 
     Any class with an ``on_event`` method matching this signature is a valid
     extension. Extensions receive structured events from the EventBus.
+
+    Optionally, an extension may declare ``event_filter`` to subscribe only to
+    specific event namespaces via glob patterns (e.g. ``"issue.*"`` or
+    ``["issue.*", "parallel.*"]``).  ``None`` (the default) means the extension
+    receives every event.
     """
+
+    event_filter: str | list[str] | None
 
     def on_event(self, event: LLEvent) -> None:
         """Handle an event from little-loops.
@@ -155,7 +162,7 @@ def wire_extensions(
 
             return _cb
 
-        bus.register(_make_callback(ext))
+        bus.register(_make_callback(ext), filter=getattr(ext, "event_filter", None))
     if extensions:
         logger.info("Wired %d extension(s) to EventBus", len(extensions))
     return extensions

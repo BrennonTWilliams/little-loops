@@ -210,3 +210,111 @@ class TestEventBus:
         assert len(events) == 2
         assert events[0].type == "good"
         assert events[1].type == "also_good"
+
+
+class TestEventBusFilter:
+    """Tests for EventBus topic-based event filtering (ENH-926)."""
+
+    def test_filter_single_pattern(self) -> None:
+        """Observer registered with a glob filter only receives matching events."""
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e), filter="issue.*")
+
+        bus.emit({"event": "issue.closed", "ts": "now"})
+        bus.emit({"event": "state_enter", "ts": "now"})
+
+        assert len(received) == 1
+        assert received[0]["event"] == "issue.closed"
+
+    def test_filter_list_of_patterns(self) -> None:
+        """Observer registered with a list of patterns receives any matching event."""
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e), filter=["issue.*", "parallel.*"])
+
+        bus.emit({"event": "issue.closed", "ts": "now"})
+        bus.emit({"event": "parallel.worker_completed", "ts": "now"})
+        bus.emit({"event": "state_enter", "ts": "now"})
+
+        assert len(received) == 2
+        assert received[0]["event"] == "issue.closed"
+        assert received[1]["event"] == "parallel.worker_completed"
+
+    def test_filter_none_is_default_receives_all(self) -> None:
+        """Observer registered without filter (or filter=None) receives all events."""
+        received_no_arg: list[dict[str, Any]] = []
+        received_none: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received_no_arg.append(e))
+        bus.register(lambda e: received_none.append(e), filter=None)
+
+        bus.emit({"event": "issue.closed", "ts": "now"})
+        bus.emit({"event": "state_enter", "ts": "now"})
+        bus.emit({"event": "parallel.worker_completed", "ts": "now"})
+
+        assert len(received_no_arg) == 3
+        assert len(received_none) == 3
+
+    def test_filter_no_match_skips_callback(self) -> None:
+        """Observer with filter receives no events when none match."""
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e), filter="issue.*")
+
+        bus.emit({"event": "state_enter", "ts": "now"})
+        bus.emit({"event": "loop_start", "ts": "now"})
+
+        assert len(received) == 0
+
+    def test_unregister_with_filter(self) -> None:
+        """Filtered observer can be unregistered by callback identity."""
+        received: list[dict[str, Any]] = []
+        callback = lambda e: received.append(e)  # noqa: E731
+        bus = EventBus()
+        bus.register(callback, filter="issue.*")
+        bus.emit({"event": "issue.closed", "ts": "now"})
+        bus.unregister(callback)
+        bus.emit({"event": "issue.completed", "ts": "now"})
+
+        assert len(received) == 1
+        assert received[0]["event"] == "issue.closed"
+
+    def test_filter_exact_match_no_wildcard(self) -> None:
+        """Exact string filter (no wildcard) matches only that event type."""
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e), filter="state_enter")
+
+        bus.emit({"event": "state_enter", "ts": "now"})
+        bus.emit({"event": "state_exit", "ts": "now"})
+
+        assert len(received) == 1
+        assert received[0]["event"] == "state_enter"
+
+    def test_filter_wildcard_prefix(self) -> None:
+        """Wildcard suffix filter matches multiple event types sharing a prefix."""
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e), filter="state_*")
+
+        bus.emit({"event": "state_enter", "ts": "now"})
+        bus.emit({"event": "state_exit", "ts": "now"})
+        bus.emit({"event": "loop_start", "ts": "now"})
+
+        assert len(received) == 2
+
+    def test_filter_mixed_filtered_and_unfiltered(self) -> None:
+        """Filtered and unfiltered observers on the same bus work independently."""
+        all_events: list[dict[str, Any]] = []
+        fsm_events: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: all_events.append(e))
+        bus.register(lambda e: fsm_events.append(e), filter="state_*")
+
+        bus.emit({"event": "state_enter", "ts": "now"})
+        bus.emit({"event": "issue.closed", "ts": "now"})
+
+        assert len(all_events) == 2
+        assert len(fsm_events) == 1
+        assert fsm_events[0]["event"] == "state_enter"

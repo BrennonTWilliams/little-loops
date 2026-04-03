@@ -346,7 +346,7 @@ class PersistentExecutor:
     @property
     def _on_event(self) -> EventCallback | None:
         """Backward-compatible access to the first observer on the event bus."""
-        return self.event_bus._observers[0] if self.event_bus._observers else None
+        return self.event_bus._observers[0][0] if self.event_bus._observers else None
 
     @_on_event.setter
     def _on_event(self, callback: EventCallback | None) -> None:

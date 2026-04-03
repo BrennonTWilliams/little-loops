@@ -179,9 +179,29 @@ FSMExecutor emits bare event types (`loop_start`, `state_enter`, `action_start`,
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P4
+**Completed** | Created: 2026-04-02 | Resolved: 2026-04-02 | Priority: P4
+
+## Resolution
+
+Implemented topic-based event filtering for `EventBus` and the `LLExtension` Protocol.
+
+### Changes
+
+- **`scripts/little_loops/events.py`**: Added `filter: str | list[str] | None = None` parameter to `EventBus.register()`. Observer storage changed from `list[EventCallback]` to `list[tuple[EventCallback, list[str] | None]]`. `emit()` now uses `fnmatch.fnmatch()` to skip non-matching observers. `unregister()` finds callback by identity in tuple list.
+- **`scripts/little_loops/fsm/persistence.py`**: Updated `PersistentExecutor._on_event` getter to extract callback from new tuple storage (`_observers[0][0]`).
+- **`scripts/little_loops/extension.py`**: Added `event_filter: str | list[str] | None` to `LLExtension` Protocol. Updated `wire_extensions()` to pass `filter=getattr(ext, 'event_filter', None)` to `bus.register()`.
+- **`docs/reference/API.md`**: Updated `register()` signature and added filter usage examples with event namespace conventions.
+- **`scripts/tests/test_events.py`**: Added 8 new `TestEventBusFilter` tests (single pattern, list, None default, no match, unregister, exact match, wildcard, mixed).
+- **`scripts/tests/test_extension.py`**: Added 2 new `TestWireExtensions` filter tests.
+
+### Verification
+
+- 44/44 tests in `test_events.py` + `test_extension.py` pass
+- Full test suite: 4075 passed, 3 pre-existing failures in unrelated `test_cli.py`
+- ruff lint: clean, mypy: clean
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-03T01:29:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/674000f4-3c4b-4a7c-a50c-1de8dcc7434b.jsonl`
 - `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb0c5f9d-1037-4e99-9314-fed616595469.jsonl`
 - `/ll:refine-issue` - 2026-04-03T01:21:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e1d3e02-18f1-4c88-9691-b73ab942451c.jsonl`
 - `/ll:refine-issue` - 2026-04-03T00:31:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5913db88-19b3-455b-8448-97664c8c42f8.jsonl`

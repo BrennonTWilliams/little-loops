@@ -224,3 +224,40 @@ class TestWireExtensions:
         assert len(received_b) == 1
         assert received_a[0].type == "test"
         assert received_b[0].type == "test"
+
+    def test_wire_extensions_passes_event_filter(self) -> None:
+        """wire_extensions forwards event_filter from extension to bus.register()."""
+        received: list[LLEvent] = []
+
+        class FilteredExtension:
+            event_filter = "issue.*"
+
+            def on_event(self, event: LLEvent) -> None:
+                received.append(event)
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[FilteredExtension()]):
+            wire_extensions(bus, config_paths=["fake:Extension"])
+
+        bus.emit({"event": "issue.closed", "ts": "now"})
+        bus.emit({"event": "state_enter", "ts": "now"})
+
+        assert len(received) == 1
+        assert received[0].type == "issue.closed"
+
+    def test_wire_extensions_no_event_filter_receives_all(self) -> None:
+        """wire_extensions without event_filter on extension receives all events."""
+        received: list[LLEvent] = []
+
+        class UnfilteredExtension:
+            def on_event(self, event: LLEvent) -> None:
+                received.append(event)
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[UnfilteredExtension()]):
+            wire_extensions(bus, config_paths=["fake:Extension"])
+
+        bus.emit({"event": "issue.closed", "ts": "now"})
+        bus.emit({"event": "state_enter", "ts": "now"})
+
+        assert len(received) == 2

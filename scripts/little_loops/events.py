@@ -11,6 +11,7 @@ Public exports:
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 from collections.abc import Callable
@@ -71,19 +72,32 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._observers: list[EventCallback] = []
+        self._observers: list[tuple[EventCallback, list[str] | None]] = []
         self._file_sinks: list[Path] = []
 
-    def register(self, callback: EventCallback) -> None:
-        """Register an observer to receive events."""
-        self._observers.append(callback)
+    def register(self, callback: EventCallback, filter: str | list[str] | None = None) -> None:
+        """Register an observer to receive events.
+
+        Args:
+            callback: Callable that receives raw event dicts.
+            filter: Optional glob pattern(s) to match against the event's ``"event"`` key.
+                A single string (e.g. ``"issue.*"``) or a list of strings
+                (e.g. ``["issue.*", "parallel.*"]``).  ``None`` (default) means
+                the observer receives every event — preserving existing behaviour.
+                FSM executor events use bare names (``"state_enter"``, ``"loop_*"``);
+                other subsystems use dotted namespaces (``"issue.*"``, ``"parallel.*"``).
+        """
+        patterns: list[str] | None = None
+        if filter is not None:
+            patterns = [filter] if isinstance(filter, str) else list(filter)
+        self._observers.append((callback, patterns))
 
     def unregister(self, callback: EventCallback) -> None:
         """Remove an observer. No-op if not registered."""
-        try:
-            self._observers.remove(callback)
-        except ValueError:
-            pass
+        for i, (cb, _) in enumerate(self._observers):
+            if cb is callback:
+                del self._observers[i]
+                return
 
     def add_file_sink(self, path: Path) -> None:
         """Add a JSONL file sink. Events will be appended to this file."""
@@ -96,7 +110,12 @@ class EventBus:
         Observer exceptions are caught and logged to prevent one observer
         from blocking others.
         """
-        for observer in self._observers:
+        event_type = event.get("event", "")
+        for observer, filter_patterns in self._observers:
+            if filter_patterns is not None and not any(
+                fnmatch.fnmatch(event_type, p) for p in filter_patterns
+            ):
+                continue
             try:
                 observer(event)
             except Exception:
