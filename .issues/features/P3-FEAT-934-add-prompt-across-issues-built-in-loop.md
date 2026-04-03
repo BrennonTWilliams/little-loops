@@ -152,6 +152,83 @@ init:
     type: exit_code
 ```
 
+### Codebase Research Findings — Round 2
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Critical: `discover → advance → discover` will infinite-loop without a temp file**
+
+`harness-multi-item.yaml:28-51` `discover` runs `ll-issues list --json` fresh each
+iteration and prints `issues[0]`. For `harness-multi-item` this is safe because its
+quality gates (`check_stall`, `check_concrete`, `check_skill`, `check_semantic`,
+`check_invariants`) control advancement — the FSM keeps refining the same item until
+all gates pass and only then calls `advance → discover`. For `prompt-across-issues`,
+running an arbitrary prompt rarely changes issue `status`, so `discover` would always
+return the same first issue and the loop would never terminate.
+
+**Fix: Build a pending-list temp file in `init`; pop head in `advance`**
+
+Combine input validation and list initialization in a single `init` shell state:
+
+```yaml
+init:
+  action: |
+    if [ -z "${context.input}" ]; then
+      echo "ERROR: input prompt is required. Usage: ll-loop run prompt-across-issues \"<prompt>\""
+      exit 1
+    fi
+    mkdir -p .loops/tmp
+    ll-issues list --json | python3 -c "
+    import json, sys
+    issues = json.load(sys.stdin)
+    for i in issues:
+        print(i['id'])
+    " > .loops/tmp/prompt-across-issues-pending.txt
+    COUNT=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')
+    echo "Found $${COUNT} issues to process"
+  action_type: shell
+  evaluate:
+    type: exit_code
+  on_yes: discover
+  on_error: error
+
+discover:
+  action: |
+    if [ ! -s .loops/tmp/prompt-across-issues-pending.txt ]; then
+      exit 1
+    fi
+    head -1 .loops/tmp/prompt-across-issues-pending.txt
+  action_type: shell
+  capture: current_item
+  evaluate:
+    type: exit_code
+  on_yes: prepare_prompt
+  on_no: done
+  on_error: done
+
+advance:
+  action: |
+    sed -i '' '1d' .loops/tmp/prompt-across-issues-pending.txt
+    echo "Completed ${captured.current_item.output}"
+  action_type: shell
+  next: discover
+```
+
+Note: `sed -i '' '1d'` is the macOS form; Linux uses `sed -i '1d'`. If cross-platform
+support is needed, use `tail -n +2 file > file.tmp && mv file.tmp file` instead.
+
+**Shell variable escaping: `$${...}` for non-FSM shell variables in action strings**
+
+`greenfield-builder.yaml:30` uses `$${SPEC_LIST[@]}` — the double `$$` escapes the
+FSM template engine so it renders as `${SPEC_LIST[@]}` in the actual shell command.
+Any shell variable that is NOT an FSM context variable must be prefixed with `$$`
+(e.g., `$${COUNT}` → `${COUNT}` in the shell). Variables set and used within the same
+heredoc action (like `ISSUE_ID` and `PROMPT` in `prepare_prompt`) do not need escaping
+since they are not referenced in a separate FSM interpolation pass.
+
+**Complete corrected state flow:**
+`init → discover → prepare_prompt → execute → advance → (loop: discover | done | error)`
+
 ## API/Interface
 
 ```yaml
@@ -208,9 +285,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/loop/run.py:59-65` — injects the positional `input` CLI arg into `fsm.context["input"]` before execution; accessible as `${context.input}` in all action templates
 
 **Test file correction — structural tests for built-in loops are in `test_builtin_loops.py`:**
-- `scripts/tests/test_builtin_loops.py:48-83` — `test_expected_loops_exist` set must include `"prompt-across-issues"` for the new loop to pass CI
-- `scripts/tests/test_builtin_loops.py:19-30` — `test_all_validate_as_valid_fsm` runs `load_and_validate()` on every `*.yaml` in the loops directory automatically; the new loop is tested here for free
-- Add a `TestPromptAcrossIssuesLoop` class following the pattern at `scripts/tests/test_builtin_loops.py:277-375`
+- `scripts/tests/test_builtin_loops.py:48-82` — `test_expected_loops_exist` defines an exact set of 33 stem names (verified); add `"prompt-across-issues"` before `"prompt-regression-test"` (alphabetically, around line 78)
+- `scripts/tests/test_builtin_loops.py:36-44` — `test_all_validate_as_valid_fsm` globs `loops/*.yaml` automatically; the new file is validated for free with no test changes
+- `scripts/tests/test_builtin_loops.py:277-375` — `TestEvaluationQualityLoop` is the model class; pattern: class-level `LOOP_FILE` constant, single `data` pytest fixture (`yaml.safe_load`), `test_required_top_level_fields` (`name`/`initial`/`states`), `test_required_states_exist` (set comparison), `test_done_state_is_terminal`, plus loop-specific assertions on `action_type`, `capture`, and `action` string content
+- No base classes — all structural test classes are plain pytest classes with only a `data` fixture; `conftest.py` fixtures are not used
 - `test_loop_runner.py` does not exist as a test file; skip creating it
 
 **Callers of the discovery and execution infrastructure:**
@@ -241,17 +319,32 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    shell `sed` in a `prepare_prompt` state (see Proposed Solution above).
 
 3. Create `scripts/little_loops/loops/prompt-across-issues.yaml` with this state flow:
-   `init → discover → prepare_prompt → execute → advance → (loop | done | error)`
-   - `init`: validate `${context.input}` is non-empty; `exit 1` routes `on_error: error`
-   - `discover`: `ll-issues list --json | python3 -c "import json,sys; issues=json.load(sys.stdin); print(issues[0]['id']) if issues else sys.exit(1)"` (status filter not needed — default is active-only); `capture: current_item`; `on_yes: prepare_prompt`; `on_no: done`
+   `init → discover → prepare_prompt → execute → advance → (loop: discover | done | error)`
+
+   **⚠ Use temp-file iteration, NOT live `ll-issues list` on every `discover` call** (see
+   Proposed Solution → Round 2 findings for why and the corrected YAML):
+   - `init`: validate `${context.input}`; build pending list at `.loops/tmp/prompt-across-issues-pending.txt`; `on_yes: discover`, `on_error: error`
+   - `discover`: read `head -1` of pending file; exit 1 if empty → `on_no: done`; `capture: current_item`; `on_yes: prepare_prompt`
    - `prepare_prompt`: shell `sed` substitution of `{issue_id}` in `${context.input}`; `capture: final_prompt`; `next: execute`
    - `execute`: `action: "${captured.final_prompt.output}"`; `action_type: prompt`; `max_retries: 3`; `on_retry_exhausted: advance`; `next: advance`
-   - `advance`: echo progress; `next: discover`
+   - `advance`: `sed -i '' '1d'` removes processed item from pending file; `next: discover`
    - `done` / `error`: `terminal: true`
 
+   Shell variables that are not FSM context variables must use `$$` prefix in YAML action
+   strings (e.g., `$${COUNT}` renders as `${COUNT}` in the shell — see `greenfield-builder.yaml:30`).
+
 4. Add structural tests to `scripts/tests/test_builtin_loops.py`:
-   - Add `"prompt-across-issues"` to the `expected` set in `test_expected_loops_exist` (line ~48-83)
-   - Add `TestPromptAcrossIssuesLoop` class with fixtures following the pattern at line 277-375; test: required states exist, `init` validates input, `discover` captures `current_item`, `prepare_prompt` captures `final_prompt`, `execute` uses `${captured.final_prompt.output}`
+   - **Line 78**: Add `"prompt-across-issues"` to the `expected` set in `test_expected_loops_exist` (insert before `"prompt-regression-test"` alphabetically)
+   - Add `TestPromptAcrossIssuesLoop` class modeled on `TestEvaluationQualityLoop` (lines 277-375):
+     - `LOOP_FILE = BUILTIN_LOOPS_DIR / "prompt-across-issues.yaml"`
+     - `data` fixture: `yaml.safe_load(self.LOOP_FILE.read_text())`
+     - `test_required_top_level_fields`: assert `name`, `initial`, `states`
+     - `test_required_states_exist`: assert `{"init", "discover", "prepare_prompt", "execute", "advance", "done", "error"}` ⊆ `states`
+     - `test_done_state_is_terminal`: `data["states"]["done"]["terminal"] is True`
+     - `test_discover_captures_current_item`: `data["states"]["discover"]["capture"] == "current_item"`
+     - `test_prepare_prompt_captures_final_prompt`: `data["states"]["prepare_prompt"]["capture"] == "final_prompt"`
+     - `test_execute_uses_final_prompt`: assert `"${captured.final_prompt.output}"` in `data["states"]["execute"]["action"]`
+     - `test_advance_removes_from_pending_file`: assert `"pending.txt"` in `data["states"]["advance"]["action"]`
 
 5. Update `scripts/little_loops/loops/README.md` with entry for `prompt-across-issues`
 
@@ -270,11 +363,33 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feature`, `loops`, `captured`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-04-03_
+
+**Verdict: NEEDS_UPDATE**
+
+All file paths, line numbers, and implementation guidance verified accurate with one outdated count:
+
+- **Outdated**: Implementation step 4 states "32 stem names (verified)" in `test_builtin_loops.py:test_expected_loops_exist`. The current set has **33** entries — `greenfield-builder` was added after this issue was refined. The alphabetical insertion guidance ("add `"prompt-across-issues"` before `"prompt-regression-test"`, around line 78") remains correct. Update the count to 33 when implementing.
+
+All other claims verified valid against current codebase:
+- `interpolation.py:25` VARIABLE_PATTERN ✓, `schema.py:487` input_key ✓, `validation.py:432` load_and_validate ✓, `executor.py:404` _run_action ✓
+- `run.py:59-65` input injection ✓, `info.py:41-140` cmd_list ✓, `list_cmd.py:96-111` JSON output ✓
+- `_load_issues_with_status` returns `"active"` (not `"open"`) ✓
+- `harness-multi-item.yaml:40` filters `status == 'open'` (latent bug confirmed) ✓
+- `greenfield-builder.yaml:30` `$${SPEC_LIST[@]}` escaping ✓, init guard pattern ✓
+- `test_loop_runner.py` does not exist ✓, `loops/README.md` exists ✓
+- `TestEvaluationQualityLoop` lines 277–378 (issue says 277–375, off by 3 — trivial)
+
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-03T21:12:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da412530-a136-4ca2-8ad0-561ef83f8cfa.jsonl`
+- `/ll:refine-issue` - 2026-04-03T20:38:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9fb6d8e-2848-4332-aa27-d55b2a74404d.jsonl`
 - `/ll:verify-issues` - 2026-04-03T06:30:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc85b7a5-3260-4421-838d-a5b229e66e87.jsonl`
 - `/ll:refine-issue` - 2026-04-03T06:27:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:format-issue` - 2026-04-03T06:22:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
