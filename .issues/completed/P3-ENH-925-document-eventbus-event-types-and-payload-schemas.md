@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-04-02
 discovered_by: capture-issue
+testable: false
 ---
 
 # ENH-925: Document EventBus Event Types and Payload Schemas
@@ -65,6 +66,13 @@ FEAT-916 proposes auto-generating JSON Schema from dataclasses as part of a full
 | architecture | docs/ARCHITECTURE.md | Event persistence patterns and FSM executor design |
 | architecture | docs/reference/API.md | EventBus and extension API reference |
 
+## Scope Boundaries
+
+- No changes to EventBus implementation, event emission code, or payload structures
+- No changes to FSM executor, StateManager, issue lifecycle, or parallel orchestrator
+- JSON Schema file (`schemas/events.json`) is optional — not required for the doc to be complete
+- FEAT-916 Extension SDK scaffolding and test harness are explicitly out of scope
+
 ## Labels
 
 `enh`, `extension-api`, `documentation`, `captured`
@@ -80,10 +88,23 @@ FEAT-916 proposes auto-generating JSON Schema from dataclasses as part of a full
 
 ---
 
+## Resolution
+
+- **Status**: Completed
+- **Date**: 2026-04-02
+- **Files changed**:
+  - `docs/reference/EVENT-SCHEMA.md` — created; catalogs all 19 event types across 4 subsystems with payload field tables
+  - `docs/reference/API.md` — added cross-reference link in the `little_loops.events` section
+
+All 19 event types documented: 11 FSM executor events, 1 FSM persistence event, 2 StateManager events, 4 issue lifecycle events, 1 parallel orchestrator event.
+
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P3
+**Completed** | Created: 2026-04-02 | Priority: P3
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-03T03:26:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b73bcde2-df61-4356-b3d0-8afde9dcd38e.jsonl`
+- `/ll:manage-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-03T03:21:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3630281-fc7f-486c-9eed-1e0b2282b20e.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/997b167f-013b-46d4-a03f-9ff27d26a2a1.jsonl`

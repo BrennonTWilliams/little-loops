@@ -1,0 +1,522 @@
+# EventBus Event Types and Payload Schemas
+
+This document catalogs every event type emitted by little-loops subsystems. It is the primary reference for extension authors, external consumers (e.g. loop-viz), and internal development.
+
+> **Related Documentation:**
+> - [API Reference — EventBus and LLExtension](API.md#littleloopsevents) — bus registration, file sinks, filter patterns
+> - [Architecture Overview](../ARCHITECTURE.md) — Event persistence patterns and FSM executor design
+
+---
+
+## Wire Format
+
+All events are emitted as flat Python dicts and serialized to JSON:
+
+```json
+{
+  "event": "<event-type>",
+  "ts": "2026-04-02T12:00:00.123456",
+  "<field>": "<value>"
+}
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `event` | `str` | Event type identifier (see tables below) |
+| `ts` | `str` | ISO 8601 timestamp, UTC |
+| *(payload fields)* | varies | Type-specific fields documented per event |
+
+When received by an `LLExtension`, the raw dict is wrapped into an `LLEvent` dataclass:
+
+```python
+event.type      # the "event" key
+event.timestamp # the "ts" key
+event.payload   # all remaining keys as a dict
+```
+
+---
+
+## Naming Conventions
+
+| Namespace | Pattern | Source |
+|-----------|---------|--------|
+| FSM executor | bare names (`loop_start`, `state_enter`, …) | `fsm/executor.py` |
+| FSM persistence | bare names (`loop_resume`) | `fsm/persistence.py` |
+| StateManager | `state.*` | `state.py` |
+| Issue lifecycle | `issue.*` | `issue_lifecycle.py` |
+| Parallel orchestrator | `parallel.*` | `parallel/orchestrator.py` |
+
+Use these namespaces in `event_filter` patterns when registering observers:
+
+```python
+# Subscribe only to FSM events
+bus.register(callback, filter="state_*")
+
+# Subscribe only to issue lifecycle events
+bus.register(callback, filter="issue.*")
+
+# Subscribe to multiple namespaces
+bus.register(callback, filter=["issue.*", "parallel.*"])
+```
+
+---
+
+## Subsystem: FSM Executor
+
+**Source:** `little_loops.fsm.executor.FSMExecutor`  
+**Path:** `scripts/little_loops/fsm/executor.py`  
+**Flow:** `FSMExecutor._emit()` → `event_callback` → `EventBus.emit()`
+
+These events use bare names (no dot namespace) for historical compatibility.
+
+### `loop_start`
+
+Emitted once at the very beginning of loop execution, before any state is entered.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `loop` | `str` | Name of the FSM loop (from the loop YAML `name` field) |
+
+**Example:**
+```json
+{"event": "loop_start", "ts": "2026-04-02T12:00:00Z", "loop": "my-loop"}
+```
+
+---
+
+### `state_enter`
+
+Emitted when the executor enters a state, before the state's action is executed.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state being entered |
+| `iteration` | `int` | Current iteration count (1-based) |
+
+**Example:**
+```json
+{"event": "state_enter", "ts": "...", "state": "build", "iteration": 1}
+```
+
+---
+
+### `route`
+
+Emitted when the executor selects the next state after an evaluation.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `from` | `str` | always | Source state name |
+| `to` | `str` | always | Destination state name |
+| `reason` | `str` | optional | `"maintain"` when the loop is in maintain mode; absent otherwise |
+
+**Example:**
+```json
+{"event": "route", "ts": "...", "from": "build", "to": "test"}
+```
+
+---
+
+### `action_start`
+
+Emitted immediately before executing the current state's action.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | `str` | The resolved action string (interpolated prompt text or shell command) |
+| `is_prompt` | `bool` | `true` if the action is a Claude prompt; `false` if a shell command |
+
+**Example:**
+```json
+{"event": "action_start", "ts": "...", "action": "Run tests", "is_prompt": true}
+```
+
+---
+
+### `action_output`
+
+Emitted for each line of streaming output produced by the action. High-frequency event — may fire hundreds of times per state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `line` | `str` | A single line of output from the running action |
+
+**Example:**
+```json
+{"event": "action_output", "ts": "...", "line": "✓ 42 tests passed"}
+```
+
+---
+
+### `action_complete`
+
+Emitted after the action finishes, regardless of success or failure.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `exit_code` | `int` | always | Exit code of the action (0 = success) |
+| `duration_ms` | `int` | always | Wall-clock execution time in milliseconds |
+| `output_preview` | `str \| null` | always | Last 2 000 characters of the action's output; `null` if no output was produced |
+| `is_prompt` | `bool` | always | `true` for Claude prompt actions, `false` for shell commands |
+| `session_jsonl` | `str \| null` | prompt only | Absolute path to the Claude session JSONL file for this prompt run; `null` if path cannot be determined |
+
+**Example (shell command):**
+```json
+{
+  "event": "action_complete",
+  "ts": "...",
+  "exit_code": 0,
+  "duration_ms": 1234,
+  "output_preview": "Build succeeded",
+  "is_prompt": false
+}
+```
+
+**Example (Claude prompt):**
+```json
+{
+  "event": "action_complete",
+  "ts": "...",
+  "exit_code": 0,
+  "duration_ms": 45000,
+  "output_preview": "I have completed the task...",
+  "is_prompt": true,
+  "session_jsonl": "/Users/user/.claude/projects/.../abc123.jsonl"
+}
+```
+
+---
+
+### `evaluate`
+
+Emitted after the evaluator runs to determine the next routing decision.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `str` | Evaluation type: `"default"` (exit-code based) or the custom type declared in the state's `evaluate` config (e.g. `"llm"`) |
+| `verdict` | `str` | `"pass"` or `"fail"` |
+| *(detail fields)* | varies | Additional evaluator-specific fields (e.g. `score`, `reason` for LLM evaluators) |
+
+**Example (default exit-code evaluation):**
+```json
+{"event": "evaluate", "ts": "...", "type": "default", "verdict": "pass"}
+```
+
+---
+
+### `retry_exhausted`
+
+Emitted when a state exceeds its `max_retries` limit and the executor transitions to `on_retry_exhausted`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state that exhausted its retry budget |
+| `retries` | `int` | Number of retries that were attempted |
+| `next` | `str` | Name of the `on_retry_exhausted` target state |
+
+**Example:**
+```json
+{"event": "retry_exhausted", "ts": "...", "state": "test", "retries": 3, "next": "fail"}
+```
+
+---
+
+### `handoff_detected`
+
+Emitted when the executor detects a handoff signal in the action output, indicating the loop needs to be paused and resumed in a fresh session.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Current state name when the handoff was detected |
+| `iteration` | `int` | Current iteration count |
+| `continuation` | `str` | The continuation prompt payload extracted from the handoff signal |
+
+**Example:**
+```json
+{
+  "event": "handoff_detected",
+  "ts": "...",
+  "state": "implement",
+  "iteration": 3,
+  "continuation": "Continue from: implement auth middleware..."
+}
+```
+
+---
+
+### `handoff_spawned`
+
+Emitted when the handoff handler spawns a new child process to continue the loop.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pid` | `int` | PID of the spawned child process |
+| `state` | `str` | Current state name at the time of spawning |
+
+**Example:**
+```json
+{"event": "handoff_spawned", "ts": "...", "pid": 98765, "state": "implement"}
+```
+
+---
+
+### `loop_complete`
+
+Emitted once when the executor finishes, regardless of how it terminated.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `final_state` | `str` | Name of the state where execution ended |
+| `iterations` | `int` | Total number of iterations completed |
+| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), or the terminal state name |
+
+**Example:**
+```json
+{
+  "event": "loop_complete",
+  "ts": "...",
+  "final_state": "done",
+  "iterations": 5,
+  "terminated_by": "done"
+}
+```
+
+---
+
+## Subsystem: FSM Persistence
+
+**Source:** `little_loops.fsm.persistence.PersistentExecutor`  
+**Path:** `scripts/little_loops/fsm/persistence.py`
+
+### `loop_resume`
+
+Emitted when a paused or interrupted loop is resumed. Occurs after the executor state is restored from disk, before execution continues.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `loop` | `str` | always | Name of the loop being resumed |
+| `from_state` | `str` | always | State to resume from (as saved in the state file) |
+| `iteration` | `int` | always | Iteration count at the time of resume |
+| `from_handoff` | `bool` | optional | `true` when resuming from a `handoff_detected` pause; absent otherwise |
+| `continuation_prompt` | `str` | optional | The continuation prompt (only present when `from_handoff` is `true`) |
+
+**Example (normal resume):**
+```json
+{"event": "loop_resume", "ts": "...", "loop": "my-loop", "from_state": "test", "iteration": 2}
+```
+
+**Example (handoff resume):**
+```json
+{
+  "event": "loop_resume",
+  "ts": "...",
+  "loop": "my-loop",
+  "from_state": "implement",
+  "iteration": 3,
+  "from_handoff": true,
+  "continuation_prompt": "Continue from: implement auth middleware..."
+}
+```
+
+---
+
+## Subsystem: StateManager
+
+**Source:** `little_loops.state.StateManager`  
+**Path:** `scripts/little_loops/state.py`  
+**Flow:** `StateManager._emit()` → `EventBus.emit()`  
+**Filter pattern:** `"state.*"`
+
+These events track per-run issue processing state for `ll-auto` and `ll-sprint`.
+
+### `state.issue_completed`
+
+Emitted when an issue is marked as completed in the sequential run state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier (e.g. `"BUG-001"`) |
+| `status` | `str` | Always `"completed"` |
+
+**Example:**
+```json
+{"event": "state.issue_completed", "ts": "...", "issue_id": "BUG-001", "status": "completed"}
+```
+
+---
+
+### `state.issue_failed`
+
+Emitted when an issue is marked as failed in the sequential run state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier |
+| `reason` | `str` | Human-readable failure reason |
+| `status` | `str` | Always `"failed"` |
+
+**Example:**
+```json
+{
+  "event": "state.issue_failed",
+  "ts": "...",
+  "issue_id": "BUG-002",
+  "reason": "Command exited with code 1",
+  "status": "failed"
+}
+```
+
+---
+
+## Subsystem: Issue Lifecycle
+
+**Source:** `little_loops.issue_lifecycle`  
+**Path:** `scripts/little_loops/issue_lifecycle.py`  
+**Filter pattern:** `"issue.*"`
+
+These events are emitted by the standalone lifecycle functions used by `ll-auto`, `ll-sprint`, and `ll-parallel`.
+
+### `issue.failure_captured`
+
+Emitted when a new bug issue is automatically created from a failed parent issue.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | ID of the newly created bug issue |
+| `file_path` | `str` | Absolute path to the new bug issue file |
+| `parent_issue_id` | `str` | ID of the parent issue that triggered this capture |
+
+**Example:**
+```json
+{
+  "event": "issue.failure_captured",
+  "ts": "...",
+  "issue_id": "BUG-042",
+  "file_path": "/path/to/.issues/bugs/P1-BUG-042-....md",
+  "parent_issue_id": "ENH-025"
+}
+```
+
+---
+
+### `issue.closed`
+
+Emitted when an issue is closed without being implemented (e.g. invalid, duplicate, or already fixed).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier |
+| `file_path` | `str` | Absolute path to the issue file in `completed/` |
+| `close_reason` | `str` | Reason code, e.g. `"already_fixed"`, `"invalid_ref"`, `"duplicate"`, `"unknown"` |
+
+**Example:**
+```json
+{
+  "event": "issue.closed",
+  "ts": "...",
+  "issue_id": "BUG-015",
+  "file_path": "/path/to/.issues/completed/P2-BUG-015-....md",
+  "close_reason": "already_fixed"
+}
+```
+
+---
+
+### `issue.completed`
+
+Emitted when an issue successfully completes its full lifecycle and is moved to `completed/`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier |
+| `file_path` | `str` | Absolute path to the issue file in `completed/` |
+
+**Example:**
+```json
+{
+  "event": "issue.completed",
+  "ts": "...",
+  "issue_id": "ENH-025",
+  "file_path": "/path/to/.issues/completed/P3-ENH-025-....md"
+}
+```
+
+---
+
+### `issue.deferred`
+
+Emitted when an issue is moved to the deferred pool.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier |
+| `file_path` | `str` | Absolute path to the issue file in `deferred/` |
+| `reason` | `str` | Human-readable reason for deferral |
+
+**Example:**
+```json
+{
+  "event": "issue.deferred",
+  "ts": "...",
+  "issue_id": "FEAT-099",
+  "file_path": "/path/to/.issues/deferred/P2-FEAT-099-....md",
+  "reason": "Blocked on external dependency"
+}
+```
+
+---
+
+## Subsystem: Parallel Orchestrator
+
+**Source:** `little_loops.parallel.orchestrator.Orchestrator`  
+**Path:** `scripts/little_loops/parallel/orchestrator.py`  
+**Filter pattern:** `"parallel.*"`
+
+### `parallel.worker_completed`
+
+Emitted when a parallel worker finishes processing an issue in its isolated git worktree.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier processed by this worker |
+| `worker_name` | `str` | Name of the git worktree directory used by this worker |
+| `status` | `str` | `"success"` if the worker succeeded, `"failure"` otherwise |
+| `duration_seconds` | `float` | Wall-clock time in seconds for the entire worker run |
+
+**Example:**
+```json
+{
+  "event": "parallel.worker_completed",
+  "ts": "...",
+  "issue_id": "BUG-007",
+  "worker_name": "ll-worker-BUG-007-abc123",
+  "status": "success",
+  "duration_seconds": 142.7
+}
+```
+
+---
+
+## Quick Reference
+
+| Event | Namespace | Source |
+|-------|-----------|--------|
+| `loop_start` | FSM | `fsm/executor.py` |
+| `state_enter` | FSM | `fsm/executor.py` |
+| `route` | FSM | `fsm/executor.py` |
+| `action_start` | FSM | `fsm/executor.py` |
+| `action_output` | FSM | `fsm/executor.py` |
+| `action_complete` | FSM | `fsm/executor.py` |
+| `evaluate` | FSM | `fsm/executor.py` |
+| `retry_exhausted` | FSM | `fsm/executor.py` |
+| `handoff_detected` | FSM | `fsm/executor.py` |
+| `handoff_spawned` | FSM | `fsm/executor.py` |
+| `loop_complete` | FSM | `fsm/executor.py` |
+| `loop_resume` | FSM Persistence | `fsm/persistence.py` |
+| `state.issue_completed` | StateManager | `state.py` |
+| `state.issue_failed` | StateManager | `state.py` |
+| `issue.failure_captured` | Issue Lifecycle | `issue_lifecycle.py` |
+| `issue.closed` | Issue Lifecycle | `issue_lifecycle.py` |
+| `issue.completed` | Issue Lifecycle | `issue_lifecycle.py` |
+| `issue.deferred` | Issue Lifecycle | `issue_lifecycle.py` |
+| `parallel.worker_completed` | Parallel | `parallel/orchestrator.py` |

@@ -4917,6 +4917,8 @@ print(f"BM25 normalized: {normalized:.3f}")
 
 Structured event system and EventBus dispatcher for the extension architecture.
 
+> **Event catalog:** For a complete reference of all event types, payload fields, and subsystem namespaces, see [EVENT-SCHEMA.md](EVENT-SCHEMA.md).
+
 ```python
 from little_loops.events import EventBus, LLEvent
 
