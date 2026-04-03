@@ -16,6 +16,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `refine-to-ready-issue` | Pick the next issue and run format → refine → verify → confidence-check until ready |
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
+| `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder to inject each issue's ID |
 
 ## Sprint & Worktree
 

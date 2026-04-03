@@ -1,0 +1,100 @@
+name: prompt-across-issues
+description: |
+  Run an arbitrary prompt against every open/active issue, one at a time.
+  Pass the prompt via the input parameter; use {issue_id} as a placeholder
+  to inject each issue's ID. Issues are processed in priority order using a
+  temp-file pending list to avoid infinite loops. No quality gates — use
+  harness-multi-item if you need evaluation phases.
+
+  Usage:
+    ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}"
+    ll-loop run prompt-across-issues "/ll:normalize-issues {issue_id} --quick"
+initial: init
+max_iterations: 500
+timeout: 28800
+
+states:
+
+  init:
+    # Validate that the required input prompt was provided, then build a
+    # pending-list temp file from all active issues sorted by priority.
+    # Using a temp file (not live ll-issues list) prevents infinite loops:
+    # if the same issue is always first in the list, the loop would never advance.
+    action: |
+      if [ -z "${context.input}" ]; then
+        echo "ERROR: input prompt is required. Usage: ll-loop run prompt-across-issues \"<prompt>\""
+        exit 1
+      fi
+      mkdir -p .loops/tmp
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in issues:
+          print(i['id'])
+      " > .loops/tmp/prompt-across-issues-pending.txt
+      COUNT=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')
+      echo "Found $${COUNT} issues to process"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: discover
+    on_error: error
+
+  discover:
+    # Read the next issue ID from the head of the pending list.
+    # Exits 1 (→ done) if the file is empty or missing.
+    action: |
+      if [ ! -s .loops/tmp/prompt-across-issues-pending.txt ]; then
+        exit 1
+      fi
+      head -1 .loops/tmp/prompt-across-issues-pending.txt
+    action_type: shell
+    capture: current_item
+    evaluate:
+      type: exit_code
+    on_yes: prepare_prompt
+    on_no: done
+    on_error: done
+
+  prepare_prompt:
+    # Substitute {issue_id} with the captured issue ID using shell sed.
+    # FSM interpolation only handles ${...} syntax, so single-brace {issue_id}
+    # must be replaced here before the prompt is passed to execute.
+    # Variables set and used within a single action (ISSUE_ID, PROMPT) do not
+    # need the $$ escaping prefix — only shell vars referencing across FSM passes do.
+    action: |
+      ISSUE_ID="${captured.current_item.output}"
+      PROMPT="${context.input}"
+      echo "$PROMPT" | sed "s/{issue_id}/$ISSUE_ID/g"
+    action_type: shell
+    capture: final_prompt
+    next: execute
+    on_error: advance
+
+  execute:
+    # Run the prepared prompt as a Claude Code instruction for this issue.
+    # max_retries ensures a stuck or failing item is skipped rather than
+    # exhausting the entire iteration budget.
+    action: "${captured.final_prompt.output}"
+    action_type: prompt
+    max_retries: 3
+    on_retry_exhausted: advance
+    next: advance
+
+  advance:
+    # Remove the processed issue (first line) from the pending list and
+    # loop back to discover the next one.
+    # Using tail -n +2 instead of sed -i '' for cross-platform compatibility
+    # (sed -i '' is macOS-only; Linux requires sed -i).
+    action: |
+      tail -n +2 .loops/tmp/prompt-across-issues-pending.txt > .loops/tmp/prompt-across-issues-pending.tmp
+      mv .loops/tmp/prompt-across-issues-pending.tmp .loops/tmp/prompt-across-issues-pending.txt
+      echo "Completed ${captured.current_item.output}"
+    action_type: shell
+    next: discover
+
+  done:
+    terminal: true
+
+  error:
+    terminal: true

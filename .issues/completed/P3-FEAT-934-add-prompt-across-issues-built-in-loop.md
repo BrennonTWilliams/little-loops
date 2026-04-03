@@ -365,15 +365,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` — 2026-04-03_
+_Added by `/ll:verify-issues` — 2026-04-03; updated by `/ll:ready-issue` — 2026-04-03_
 
-**Verdict: NEEDS_UPDATE**
+**Verdict: VERIFIED**
 
-All file paths, line numbers, and implementation guidance verified accurate with one outdated count:
+All file paths, line numbers, and implementation guidance verified accurate. Previously noted count discrepancy (32 vs 33 stem names) was resolved in round-2 refine pass — Codebase Research Findings now correctly states **33** entries.
 
-- **Outdated**: Implementation step 4 states "32 stem names (verified)" in `test_builtin_loops.py:test_expected_loops_exist`. The current set has **33** entries — `greenfield-builder` was added after this issue was refined. The alphabetical insertion guidance ("add `"prompt-across-issues"` before `"prompt-regression-test"`, around line 78") remains correct. Update the count to 33 when implementing.
-
-All other claims verified valid against current codebase:
+All claims verified valid against current codebase:
 - `interpolation.py:25` VARIABLE_PATTERN ✓, `schema.py:487` input_key ✓, `validation.py:432` load_and_validate ✓, `executor.py:404` _run_action ✓
 - `run.py:59-65` input injection ✓, `info.py:41-140` cmd_list ✓, `list_cmd.py:96-111` JSON output ✓
 - `_load_issues_with_status` returns `"active"` (not `"open"`) ✓
@@ -385,6 +383,7 @@ All other claims verified valid against current codebase:
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-03T21:31:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/781cd409-1287-4ed8-8538-160976825726.jsonl`
 - `/ll:verify-issues` - 2026-04-03T21:12:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da412530-a136-4ca2-8ad0-561ef83f8cfa.jsonl`
 - `/ll:refine-issue` - 2026-04-03T20:38:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9fb6d8e-2848-4332-aa27-d55b2a74404d.jsonl`
 - `/ll:verify-issues` - 2026-04-03T06:30:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
@@ -396,6 +395,31 @@ All other claims verified valid against current codebase:
 
 ---
 
+## Resolution
+
+**Implemented** on 2026-04-03.
+
+### Changes Made
+
+- `scripts/little_loops/loops/prompt-across-issues.yaml` — new loop with state flow:
+  `init → discover → prepare_prompt → execute → advance → (loop: discover | done | error)`
+- `scripts/tests/test_builtin_loops.py` — added `"prompt-across-issues"` to
+  `test_expected_loops_exist` and `TestPromptAcrossIssuesLoop` structural test class
+- `scripts/little_loops/loops/README.md` — added entry under Issue Management section
+
+### Acceptance Criteria Verification
+
+- [x] `ll-loop run prompt-across-issues "<prompt>"` discovers all open/active issues and runs the prompt for each, sequentially — implemented via temp-file pending list
+- [x] `{issue_id}` placeholder substituted with current issue's ID via `prepare_prompt` shell sed state
+- [x] Empty/missing `input` exits in init state with descriptive error message
+- [x] `completed/` and `deferred/` issues excluded — `ll-issues list --json` defaults to `--status active`
+- [x] Loop respects `max_iterations` (500) and `timeout` (28800s) guards
+- [x] Discoverable via `ll-loop list` — globbed automatically by `info.py`
+- [x] `ll-loop test prompt-across-issues` dry-run passes — covered by `test_all_validate_as_valid_fsm`
+
+## Session Log
+- `/ll:manage-issue` - 2026-04-03T00:00:00Z - current session
+
 ## Status
 
-**Open** | Created: 2026-04-03 | Priority: P3
+**Completed** | Created: 2026-04-03 | Priority: P3

@@ -75,6 +75,7 @@ class TestBuiltinLoopFiles:
             "agent-eval-improve",
             "dataset-curation",
             "incremental-refactor",
+            "prompt-across-issues",
             "prompt-regression-test",
             "test-coverage-improvement",
             "eval-driven-development",
@@ -628,3 +629,70 @@ class TestBuiltinLoopOnBlockedCoverage:
             f"State '{state_name}' in {loop_file}: expected on_blocked={expected!r}, "
             f"got {state_data['on_blocked']!r}"
         )
+
+
+class TestPromptAcrossIssuesLoop:
+    """Structural tests for the prompt-across-issues FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "prompt-across-issues.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "prompt-across-issues"
+        assert data.get("initial") == "init"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"init", "discover", "prepare_prompt", "execute", "advance", "done", "error"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_error_state_is_terminal(self, data: dict) -> None:
+        """error state must have terminal: true."""
+        error_state = data["states"].get("error", {})
+        assert error_state.get("terminal") is True
+
+    def test_discover_captures_current_item(self, data: dict) -> None:
+        """discover state must capture as 'current_item'."""
+        discover_state = data["states"].get("discover", {})
+        assert discover_state.get("capture") == "current_item"
+
+    def test_prepare_prompt_captures_final_prompt(self, data: dict) -> None:
+        """prepare_prompt state must capture as 'final_prompt'."""
+        prepare_state = data["states"].get("prepare_prompt", {})
+        assert prepare_state.get("capture") == "final_prompt"
+
+    def test_execute_uses_final_prompt(self, data: dict) -> None:
+        """execute state action must reference ${captured.final_prompt.output}."""
+        execute_state = data["states"].get("execute", {})
+        action = execute_state.get("action", "")
+        assert "${captured.final_prompt.output}" in action
+
+    def test_advance_removes_from_pending_file(self, data: dict) -> None:
+        """advance state action must modify the pending.txt file."""
+        advance_state = data["states"].get("advance", {})
+        action = advance_state.get("action", "")
+        assert "pending" in action
+
+    def test_init_validates_input(self, data: dict) -> None:
+        """init state action must check that ${context.input} is non-empty."""
+        init_state = data["states"].get("init", {})
+        action = init_state.get("action", "")
+        assert "${context.input}" in action
+
+    def test_execute_has_max_retries(self, data: dict) -> None:
+        """execute state must define max_retries to prevent stuck items."""
+        execute_state = data["states"].get("execute", {})
+        assert execute_state.get("max_retries", 0) > 0
