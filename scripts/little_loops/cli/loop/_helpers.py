@@ -307,12 +307,8 @@ def run_foreground(
         print()
 
     current_iteration = [0]  # Use list to allow mutation in closure
-    last_parent_state: list[str | None] = [
-        None
-    ]  # Track last depth=0 state for sub-loop highlighting
-    current_child_fsm: list[FSMLoop | None] = [
-        None
-    ]  # Track active child FSM during sub-loop execution
+    last_state_at_depth: dict[int, str] = {}  # Track last known state per nesting depth
+    child_fsm_stack: dict[int, FSMLoop | None] = {}  # Active child FSM per depth
     loop_start_time = time.monotonic()
 
     def display_progress(event: dict) -> None:
@@ -334,25 +330,34 @@ def run_foreground(
                     elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
             if clear_screen and sys.stdout.isatty() and depth == 0:
                 print("\033[2J\033[H", end="", flush=True)
-            if depth == 0:
-                last_parent_state[0] = state
-                fsm_state = fsm.states.get(state)
-                if fsm_state is not None and fsm_state.loop is not None:
+            # Update last-known state at this depth and clear stale deeper entries
+            last_state_at_depth[depth] = state
+            for k in [k for k in last_state_at_depth if k > depth]:
+                del last_state_at_depth[k]
+            # Load child FSM for the current state at this depth
+            parent_at_depth = fsm if depth == 0 else child_fsm_stack.get(depth - 1)
+            if parent_at_depth is not None and state in parent_at_depth.states:
+                fsm_state = parent_at_depth.states[state]
+                if fsm_state.loop is not None:
                     try:
-                        current_child_fsm[0] = load_loop(
+                        child_fsm_stack[depth] = load_loop(
                             fsm_state.loop, executor.loops_dir, Logger()
                         )
                     except (FileNotFoundError, ValueError):
-                        pass  # leave current_child_fsm[0] unchanged on failure
+                        pass  # leave child_fsm_stack[depth] unchanged on failure
                 else:
-                    current_child_fsm[0] = None
+                    child_fsm_stack[depth] = None
+            else:
+                child_fsm_stack[depth] = None
+            # Clear stale deeper child FSM entries
+            for k in [k for k in child_fsm_stack if k > depth]:
+                del child_fsm_stack[k]
             if show_diagrams:
                 from little_loops.cli.loop.layout import _render_fsm_diagram
 
-                highlight = state if depth == 0 else last_parent_state[0]
                 diagram = _render_fsm_diagram(
                     fsm,
-                    highlight_state=highlight,
+                    highlight_state=last_state_at_depth.get(0),
                     highlight_color=highlight_color,
                     edge_label_colors=edge_label_colors,
                     badges=badges,
@@ -361,19 +366,20 @@ def run_foreground(
                 header = header_text + "=" * max(0, tw - len(header_text))
                 print(header, flush=True)
                 print(diagram, flush=True)
-                if depth > 0 and current_child_fsm[0] is not None:
-                    child_name = current_child_fsm[0].name
-                    separator_text = f"\u2500\u2500 sub-loop: {child_name} "
-                    separator = separator_text + "\u2500" * max(0, tw - len(separator_text))
-                    print(separator, flush=True)
-                    child_diagram = _render_fsm_diagram(
-                        current_child_fsm[0],
-                        highlight_state=state,
-                        highlight_color=highlight_color,
-                        edge_label_colors=edge_label_colors,
-                        badges=badges,
-                    )
-                    print(child_diagram, flush=True)
+                for d, child_fsm_at_d in sorted(child_fsm_stack.items()):
+                    if child_fsm_at_d is not None and (d + 1) in last_state_at_depth:
+                        child_name = child_fsm_at_d.name
+                        separator_text = f"\u2500\u2500 sub-loop: {child_name} "
+                        separator = separator_text + "\u2500" * max(0, tw - len(separator_text))
+                        print(separator, flush=True)
+                        child_diagram = _render_fsm_diagram(
+                            child_fsm_at_d,
+                            highlight_state=last_state_at_depth.get(d + 1),
+                            highlight_color=highlight_color,
+                            edge_label_colors=edge_label_colors,
+                            badges=badges,
+                        )
+                        print(child_diagram, flush=True)
             if not quiet:
                 print(
                     f"{indent}[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",

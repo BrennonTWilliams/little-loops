@@ -1854,6 +1854,158 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "sub-loop: child-loop" in out
 
+    def test_grandchild_sub_loop_diagram_rendered_at_depth_2(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """At depth=2, parent + child + grandchild FSM diagrams are all rendered.
+
+        Emits depth=0 → depth=1 → depth=2 events and asserts 6 total render calls:
+          - depth=0: 1 render (parent only)
+          - depth=1: 2 renders (parent + child)
+          - depth=2: 3 renders (parent + child + grandchild)
+        Two separator lines ('sub-loop: child-loop' and 'sub-loop: grandchild-loop') appear.
+        """
+        from unittest.mock import call, patch
+
+        from little_loops.cli.loop import layout as layout_mod
+
+        grandchild_fsm = make_test_fsm(
+            name="grandchild-loop",
+            initial="gc_state_1",
+            states={
+                "gc_state_1": make_test_state(action="echo gc"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        child_fsm = make_test_fsm(
+            name="child-loop",
+            initial="child_state_1",
+            states={
+                "child_state_1": StateConfig(loop="grandchild-loop", next="done"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        parent_fsm = make_test_fsm(
+            name="parent-loop",
+            initial="run_sub_loop",
+            states={
+                "run_sub_loop": StateConfig(loop="child-loop", next="done"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        events = [
+            {"event": "state_enter", "state": "run_sub_loop", "iteration": 1, "depth": 0},
+            {"event": "state_enter", "state": "child_state_1", "iteration": 1, "depth": 1},
+            {"event": "state_enter", "state": "gc_state_1", "iteration": 1, "depth": 2},
+        ]
+        executor = MockExecutor(events)
+
+        def mock_load_loop(name_or_path: str, loops_dir, logger):  # type: ignore[no-untyped-def]
+            if name_or_path == "child-loop":
+                return child_fsm
+            if name_or_path == "grandchild-loop":
+                return grandchild_fsm
+            raise FileNotFoundError(name_or_path)
+
+        with (
+            patch.object(
+                layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+            ) as mock_render,
+            patch("little_loops.cli.loop._helpers.load_loop", side_effect=mock_load_loop),
+        ):
+            run_foreground(executor, parent_fsm, self._make_args(show_diagrams=True))
+
+        # depth=0: 1 render (parent only)
+        # depth=1: 2 renders (parent + child)
+        # depth=2: 3 renders (parent + child + grandchild)
+        assert mock_render.call_count == 6, f"Expected 6 render calls, got {mock_render.call_count}"
+        calls = mock_render.call_args_list
+        # depth=0 event: parent only
+        assert calls[0].args[0] is parent_fsm
+        assert calls[0].kwargs["highlight_state"] == "run_sub_loop"
+        # depth=1 event: parent + child
+        assert calls[1].args[0] is parent_fsm
+        assert calls[1].kwargs["highlight_state"] == "run_sub_loop"
+        assert calls[2].args[0] is child_fsm
+        assert calls[2].kwargs["highlight_state"] == "child_state_1"
+        # depth=2 event: parent + child + grandchild
+        assert calls[3].args[0] is parent_fsm
+        assert calls[3].kwargs["highlight_state"] == "run_sub_loop"
+        assert calls[4].args[0] is child_fsm
+        assert calls[4].kwargs["highlight_state"] == "child_state_1"
+        assert calls[5].args[0] is grandchild_fsm
+        assert calls[5].kwargs["highlight_state"] == "gc_state_1"
+        out = capsys.readouterr().out
+        assert "sub-loop: child-loop" in out
+        assert "sub-loop: grandchild-loop" in out
+
+    def test_shallow_reentry_clears_deeper_sub_loop_diagrams(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Re-entering a shallower depth clears deeper sub-loop diagrams.
+
+        After depth=0 → depth=1 → depth=2, then another depth=0 event, only the
+        parent diagram is rendered (no child or grandchild).
+        """
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import layout as layout_mod
+
+        grandchild_fsm = make_test_fsm(
+            name="grandchild-loop",
+            initial="gc_state_1",
+            states={"gc_state_1": make_test_state(action="echo gc")},
+        )
+        child_fsm = make_test_fsm(
+            name="child-loop",
+            initial="child_state_1",
+            states={
+                "child_state_1": StateConfig(loop="grandchild-loop", next="done"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        parent_fsm = make_test_fsm(
+            name="parent-loop",
+            initial="run_sub_loop",
+            states={
+                "run_sub_loop": StateConfig(loop="child-loop", next="done"),
+                "done": make_test_state(terminal=True),
+            },
+        )
+        events = [
+            {"event": "state_enter", "state": "run_sub_loop", "iteration": 1, "depth": 0},
+            {"event": "state_enter", "state": "child_state_1", "iteration": 1, "depth": 1},
+            {"event": "state_enter", "state": "gc_state_1", "iteration": 1, "depth": 2},
+            # Re-enter depth=0: clears depth=1 and depth=2
+            {"event": "state_enter", "state": "done", "iteration": 2, "depth": 0},
+        ]
+        executor = MockExecutor(events)
+
+        def mock_load_loop(name_or_path: str, loops_dir, logger):  # type: ignore[no-untyped-def]
+            if name_or_path == "child-loop":
+                return child_fsm
+            if name_or_path == "grandchild-loop":
+                return grandchild_fsm
+            raise FileNotFoundError(name_or_path)
+
+        with (
+            patch.object(
+                layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+            ) as mock_render,
+            patch("little_loops.cli.loop._helpers.load_loop", side_effect=mock_load_loop),
+        ):
+            run_foreground(executor, parent_fsm, self._make_args(show_diagrams=True))
+
+        # depth=0 "run_sub_loop": 1 render
+        # depth=1 "child_state_1": 2 renders
+        # depth=2 "gc_state_1": 3 renders
+        # depth=0 "done": 1 render (no children — "done" has no loop, deeper levels cleared)
+        assert mock_render.call_count == 7, f"Expected 7 render calls, got {mock_render.call_count}"
+        # The last render call should be parent only with "done" highlighted
+        last_call = mock_render.call_args_list[-1]
+        assert last_call.args[0] is parent_fsm
+        assert last_call.kwargs["highlight_state"] == "done"
+
     def test_top_level_loop_header_shown_when_show_diagrams(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

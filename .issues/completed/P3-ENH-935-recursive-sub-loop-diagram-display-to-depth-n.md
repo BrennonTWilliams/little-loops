@@ -174,13 +174,29 @@ No public API changes. The `--show-diagrams` flag behavior is extended, not alte
 
 ---
 
+## Resolution
+
+**Completed** | 2026-04-03 | `/ll:manage-issue enhancement improve ENH-935`
+
+### Changes Made
+- `scripts/little_loops/cli/loop/_helpers.py`: Replaced single `last_parent_state`/`current_child_fsm` closure slots with `last_state_at_depth: dict[int, str]` and `child_fsm_stack: dict[int, FSMLoop | None]`. On each `state_enter`, updates the depth-keyed entry, clears stale deeper entries, loads the child FSM from the parent FSM at that depth, and renders all active sub-loop levels.
+- `scripts/tests/test_ll_loop_display.py`: Added `test_grandchild_sub_loop_diagram_rendered_at_depth_2` and `test_shallow_reentry_clears_deeper_sub_loop_diagrams`.
+- `docs/guides/LOOPS_GUIDE.md`: Updated depth-1 wording to reflect arbitrary depth-N support.
+- `docs/reference/CLI.md`: Updated `--show-diagrams` flag description for both `ll-loop run` and `ll-loop foreground` entries.
+
+### Verification
+- All 4166 tests pass (`python -m pytest scripts/tests/`)
+- New depth-2 and shallow-reentry tests pass; existing depth-0/1 tests unchanged
+
 ## Status
 
-**Open** | Created: 2026-04-03 | Priority: P3
+**Completed** | Created: 2026-04-03 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-03T22:44:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2bdb7a8-2c16-4553-abe8-2d4ad65a977a.jsonl`
 - `/ll:verify-issues` - 2026-04-03T21:58:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
 - `/ll:refine-issue` - 2026-04-03T21:55:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
 - `/ll:confidence-check` - 2026-04-03T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f7e84b3-4142-485f-b208-f3c6eab0403e.jsonl`
 - `/ll:format-issue` - 2026-04-03T21:51:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7874a99-6dd2-4c37-bbb7-a3cc34468974.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/225d2a56-bcaa-4bef-9bb5-92a00d3997ee.jsonl`
+- `/ll:manage-issue enhancement improve ENH-935` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

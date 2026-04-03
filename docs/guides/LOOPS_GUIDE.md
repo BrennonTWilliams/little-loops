@@ -1211,7 +1211,7 @@ When `--show-diagrams` is active and a state invokes a child loop, both FSM diag
 [child diagram — current child state highlighted]
 ```
 
-The parent state remains highlighted throughout child execution so you can track where you are in the outer pipeline. Sub-loop diagram display is supported for one level of nesting (depth-1 child loops).
+The parent state remains highlighted throughout child execution so you can track where you are in the outer pipeline. Sub-loop diagram display supports arbitrary nesting depth — each active sub-loop is shown below its parent with a separator, from depth-1 children down to depth-N grandchildren.
 
 ---
 
