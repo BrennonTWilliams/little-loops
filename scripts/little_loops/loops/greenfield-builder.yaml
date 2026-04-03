@@ -1,4 +1,5 @@
 name: greenfield-builder
+input_key: spec
 description: |
   End-to-end greenfield project builder meta-loop. Takes one or more project
   spec Markdown files and autonomously drives the project from zero to a
@@ -26,7 +27,7 @@ states:
         exit 1
       fi
       IFS=',' read -ra SPEC_LIST <<< "$SPECS"
-      for S in "${SPEC_LIST[@]}"; do
+      for S in "$${SPEC_LIST[@]}"; do
         S=$(echo "$S" | xargs)
         if [ ! -f "$S" ]; then
           echo "ERROR: Spec file not found: $S"
