@@ -9,6 +9,14 @@ discovered_by: capture-issue
 
 `ll-issues next-action` always returns the first issue needing work in priority order, with no mechanism to skip issues that have already failed. When the highest-priority issue's sub-loop fails repeatedly, all lower-priority issues are never processed. Adding a `--skip` flag and corresponding skip-list tracking in the parent `issue-refinement` loop prevents this starvation.
 
+## Current Behavior
+
+`ll-issues next-action` always returns the first issue needing work in priority order. There is no mechanism to exclude specific issues from consideration. When the highest-priority issue fails repeatedly in the `issue-refinement` loop, the loop continues selecting the same issue on every iteration, permanently blocking all lower-priority issues from being processed.
+
+## Expected Behavior
+
+`ll-issues next-action --skip ENH-929,BUG-001` excludes the specified issue IDs and returns the next eligible issue. The `issue-refinement` loop tracks failed issues in an ephemeral skip list and passes it to each `next-action` call, ensuring lower-priority issues are not starved by a single perpetually-failing issue.
+
 ## Context
 
 **Conversation mode**: Identified while reviewing a bug report (plan `keen-whistling-spring.md`) about the `issue-refinement` loop being stuck on a single issue. Confirmed as one of two interacting bugs. The fix is straightforward because `find_issues()` already accepts `skip_ids` — the CLI flag just needs to be wired up.
@@ -82,6 +90,32 @@ ll-issues next-action [--skip ISSUE_ID[,ISSUE_ID,...]]
 - IDs not present in the list are unaffected
 - Empty or absent `--skip` preserves existing behavior
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/issues/next_action.py` — add `--skip` argument, parse as comma-separated set, pass to `find_issues`
+- `scripts/little_loops/loops/issue-refinement.yaml` — add `handle_failure` state, update `evaluate` to pass skip list, update `init` to clear skip list
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_parser.py` — `find_issues()` already accepts `skip_ids`; no changes needed here
+
+### Similar Patterns
+- N/A — first skip-list pattern in the codebase
+
+### Tests
+- `scripts/tests/` — add CLI test for `--skip` flag in `ll-issues next-action` test suite
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A — skip list file (`.loops/tmp/issue-refinement-skip-list`) is ephemeral, not a config file
+
+## Scope Boundaries
+
+- **In scope**: Adding `--skip` CLI flag to `ll-issues next-action`; updating `issue-refinement.yaml` to maintain a per-run skip list and use it in the `evaluate` state; clearing the skip list in the `init` state
+- **Out of scope**: Persistent skip lists across separate loop runs; applying skip logic to other `ll-issues` subcommands; automatic retry policies or backoff; skip list UI in `ll-issues list`
+
 ## Related Key Documentation
 
 | Category | Document | Relevance |
@@ -93,11 +127,29 @@ ll-issues next-action [--skip ISSUE_ID[,ISSUE_ID,...]]
 
 `enhancement`, `loops`, `issue-refinement`, `cli`, `captured`
 
+## Impact
+
+- **Priority**: P2 — Directly causes issue starvation in `issue-refinement` loop; blocks multiple issues from ever being processed when one repeatedly fails
+- **Effort**: Small — `find_issues()` already accepts `skip_ids`; only CLI wiring and YAML loop update needed
+- **Risk**: Low — Additive change; absent `--skip` preserves existing behavior exactly
+- **Breaking Change**: No
+
 ---
 
 ## Status
 
 **Open** | Created: 2026-04-02 | Priority: P2
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-02
+
+- `scripts/little_loops/cli/issues/next_action.py:27`: `find_issues(config)` called with no skip argument ✓
+- `scripts/little_loops/issue_parser.py:615`: `find_issues` has `skip_ids: set[str] | None = None` parameter — not wired to CLI ✓
+- `scripts/little_loops/loops/issue-refinement.yaml:32-33`: `on_yes: check_commit`, `on_no: check_commit` — no failure/skip branch ✓
+- Enhancement is accurately described; the fix is additive only
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:format-issue` - 2026-04-03T04:47:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d10376d2-598f-4355-a0dc-b5100fe5afca.jsonl`
