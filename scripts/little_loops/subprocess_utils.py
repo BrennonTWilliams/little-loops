@@ -107,6 +107,18 @@ def run_claude_command(
     env = os.environ.copy()
     env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
 
+    if working_dir is not None:
+        git_path = Path(working_dir) / ".git"
+        if git_path.is_file():  # worktree: .git is a file, not a directory
+            gitdir_ref = git_path.read_text().strip()
+            if gitdir_ref.startswith("gitdir: "):
+                actual_gitdir = gitdir_ref[8:].strip()
+                # Resolve relative gitdir references to absolute paths
+                resolved = (Path(working_dir) / actual_gitdir).resolve()
+                env["GIT_DIR"] = str(resolved)
+                env["GIT_WORK_TREE"] = str(working_dir)
+                logger.debug("Worktree detected: GIT_DIR=%s", env["GIT_DIR"])
+
     process = subprocess.Popen(
         cmd_args,
         stdout=subprocess.PIPE,

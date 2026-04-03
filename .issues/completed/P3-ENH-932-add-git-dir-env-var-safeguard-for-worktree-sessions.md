@@ -123,7 +123,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P3
+**Completed** | Created: 2026-04-02 | Resolved: 2026-04-03 | Priority: P3
+
+## Resolution
+
+Implemented as specified. Added worktree detection block in `_run_claude_base()` (`subprocess_utils.py:110-121`) that reads `.git` file, parses `gitdir:` reference, resolves to absolute path, and sets `GIT_DIR`/`GIT_WORK_TREE` in the subprocess environment. Added debug logging for `GIT_DIR`. Three new tests cover: worktree detection + env enrichment, normal repo (`.git` dir → no enrichment), and `working_dir=None` → no enrichment. All 60 tests pass.
 
 ## Verification Notes
 
@@ -139,6 +143,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Enhancement logic and implementation approach are correct; ready for implementation
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-03T23:00:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57c48965-b26a-44a1-8566-d69211f3b424.jsonl`
 - `/ll:verify-issues` - 2026-04-03T06:48:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T06:46:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`

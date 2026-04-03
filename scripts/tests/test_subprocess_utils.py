@@ -289,6 +289,85 @@ class TestRunClaudeCommand:
 
         assert captured_cwd[0] == tmp_path
 
+    def test_sets_git_dir_env_for_worktree(self, tmp_path: Path) -> None:
+        """Sets GIT_DIR and GIT_WORK_TREE when working_dir/.git is a worktree file."""
+        actual_gitdir = tmp_path / "real_gitdir"
+        actual_gitdir.mkdir()
+        git_file = tmp_path / ".git"
+        git_file.write_text(f"gitdir: {actual_gitdir}\n")
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_env: dict[str, str] = {}
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_env.update(kwargs.get("env", {}))
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("test", working_dir=tmp_path)
+
+        assert "GIT_DIR" in captured_env
+        assert "GIT_WORK_TREE" in captured_env
+        assert captured_env["GIT_DIR"] == str(actual_gitdir.resolve())
+        assert captured_env["GIT_WORK_TREE"] == str(tmp_path)
+
+    def test_no_git_dir_env_for_normal_repo(self, tmp_path: Path) -> None:
+        """Does not set GIT_DIR when working_dir/.git is a directory (normal repo)."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_env: dict[str, str] = {}
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_env.update(kwargs.get("env", {}))
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("test", working_dir=tmp_path)
+
+        assert "GIT_DIR" not in captured_env
+        assert "GIT_WORK_TREE" not in captured_env
+
+    def test_no_git_dir_env_when_no_working_dir(self) -> None:
+        """Does not set GIT_DIR when working_dir is None."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_env: dict[str, str] = {}
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_env.update(kwargs.get("env", {}))
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("test")
+
+        assert "GIT_DIR" not in captured_env
+        assert "GIT_WORK_TREE" not in captured_env
+
 
 # =============================================================================
 # TestRunClaudeCommandOutputCapture
