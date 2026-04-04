@@ -107,12 +107,15 @@ Parameterization uses the existing `${context.*}` interpolation system — no ne
 - `context_passthrough: true` — existing mechanism for cross-loop variable sharing (runtime, not parse-time); defined in `StateConfig` at `schema.py:231`
 - `LoopConfigOverrides.from_dict` at `schema.py:429` — existing parse-time config merging pattern with nested-key traversal; model the resolver's dict-merge style after this
 - `StateConfig.from_dict` at `schema.py:279` — current implementation silently ignores unknown keys (e.g., `fragment:`), so no change is needed there; the resolver consumes `fragment:` before `from_dict` is ever called
+- **`interpolate_dict` at `scripts/little_loops/fsm/interpolation.py:209`** — closest structural analog to `resolve_fragments`: recursively walks a `dict[str, Any]`, returns a new dict (non-mutating), handles nested dicts and lists, passes non-string scalars through unchanged. Model `resolve_fragments` after this pattern.
 - YAML anchors (`&anchor` / `<<: *anchor`) — existing zero-cost same-file alternative; document as complementary pattern
 
 ### Tests
-- `scripts/tests/test_fsm_fragments.py` — new file; model structure after `scripts/tests/test_fsm_schema.py` (uses `FSMLoop.from_dict` with raw dicts) and `scripts/tests/test_fsm_schema_fuzz.py` (edge-case/error paths)
-- Test cases: fragment not found (fatal), import file not found (fatal), local `fragments:` block overrides imported same-name fragment, deep merge correctness (state keys win at every level), `fragment:` field absent = no-op, `KNOWN_TOP_LEVEL_KEYS` no longer warns for `import`/`fragments`
-- Existing coverage reference: `scripts/tests/test_fsm_schema.py:1797` (`test_fsm_loop_from_dict_with_config_block`) shows the config-block parse test pattern to follow
+- `scripts/tests/test_fsm_fragments.py` — new file; use these existing test helpers:
+  - `make_state()` / `make_fsm()` factory functions at `test_fsm_schema.py:39-77` — build minimal valid FSMs without boilerplate
+  - `tmp_path` + inline YAML write pattern from `test_fsm_executor.py:3436` — write library YAML to a temp dir, call `resolve_fragments` against it; this is the exact pattern for isolating fragment resolution tests
+  - `test_fsm_schema.py:1797` (`test_fsm_loop_from_dict_with_config_block`) — config-block parse pattern to model post-resolve `FSMLoop.from_dict` assertions after
+- Test cases: fragment not found → `ValueError`, import file not found → `FileNotFoundError`, local `fragments:` block overrides imported same-name fragment, deep merge correctness (state keys win at every level), `fragment:` absent = no-op, `KNOWN_TOP_LEVEL_KEYS` no longer warns for `import`/`fragments`
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — add "Reusable State Fragments" section after "Composable Sub-Loops"
@@ -131,7 +134,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Built-in loop migration targets (10 loops with `exit_code` evaluator — canonical `shell_exit` fragment candidates):**
 `dead-code-cleanup.yaml`, `docs-sync.yaml`, `fix-quality-and-tests.yaml`, `harness-multi-item.yaml`, `harness-single-shot.yaml`, `issue-refinement.yaml`, `prompt-across-issues.yaml`, `refine-to-ready-issue.yaml`, `sprint-build-and-validate.yaml`, `test-coverage-improvement.yaml` — all in `scripts/little_loops/loops/`
 
-**No existing deep-merge utility** — `_deep_merge(base, override)` must be written as a private helper inside the new resolver module (e.g., `scripts/little_loops/fsm/fragments.py`)
+**No existing deep-merge utility** — `_deep_merge(base, override)` must be written as a private helper inside the new resolver module (`scripts/little_loops/fsm/fragments.py`); model its recursive dict-walk after `interpolate_dict` at `interpolation.py:209` (same non-mutating, recurse-into-nested-dicts pattern)
 
 **`ll-loop show` integration point:** `scripts/little_loops/cli/loop/info.py:675` — `config_parts` list is built then printed; add an `imports` entry from `spec.get("import", [])` here; the raw `spec` dict is already available via `load_loop_with_spec()`
 
@@ -145,7 +148,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 3. **Validation hook** (`scripts/little_loops/fsm/validation.py`): (a) Add `"import"` and `"fragments"` to `KNOWN_TOP_LEVEL_KEYS` at line 76; (b) call `resolve_fragments(data, path.parent)` at line 479 before `FSMLoop.from_dict(data)`; (c) extend `validate_fsm()` to emit ERROR for unresolved `fragment:` references and WARNING for declared-but-unused fragments
 4. **CLI display** (`scripts/little_loops/cli/loop/info.py:675`): In `cmd_show`, append `f"imports: {', '.join(spec.get('import', []))}"` to `config_parts` when the list is non-empty
 5. **Built-in library** (`scripts/little_loops/loops/lib/common.yaml`): Create with `shell_exit`, `retry_counter`, `llm_quality_gate` fragments; migrate 10 built-in loops (see migration targets above) to use `import: [".loops/lib/common.yaml"]` + `fragment: shell_exit`
-6. **Tests** (`scripts/tests/test_fsm_fragments.py`): Cover `resolve_fragments` unit cases: missing fragment → `ValueError`, import file not found → `FileNotFoundError`, local overrides imported, deep merge at every nesting level, `fragment:` absent = no-op; follow dict-based test style from `test_fsm_schema.py:1797`
+6. **Tests** (`scripts/tests/test_fsm_fragments.py`): Cover `resolve_fragments` unit cases: missing fragment → `ValueError`, import file not found → `FileNotFoundError`, local overrides imported, deep merge at every nesting level, `fragment:` absent = no-op; use `make_state`/`make_fsm` helpers from `test_fsm_schema.py:39` and `tmp_path` + inline YAML write from `test_fsm_executor.py:3436`
 
 ## Impact
 
