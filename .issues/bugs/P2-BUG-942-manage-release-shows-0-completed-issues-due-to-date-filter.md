@@ -2,7 +2,7 @@
 discovered_date: 2026-04-03
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 75
+outcome_confidence: 85
 ---
 
 # BUG-942: manage-release Shows 0 Completed Issues Due to Date-Filter Approach
@@ -84,7 +84,8 @@ For each file returned, parse filename for type/ID and read for title and `githu
 - N/A — this is a command prompt file, not imported by Python code
 
 ### Similar Patterns
-- `scripts/little_loops/issue_discovery/extraction.py:126-127` — establishes the Python `git log <commit>..HEAD -- <paths>` pattern (with `--name-only`, no `--diff-filter`); same shape as the proposed fix
+- `scripts/little_loops/issue_discovery/extraction.py:126-154` — `_get_files_modified_since_commit()`: production Python `git log <commit>..HEAD --name-only -- <paths>` pattern with `returncode != 0 or not result.stdout.strip()` guard and `split("\n\n")` block parsing; same shape as the proposed git-first fix (lacks `--diff-filter=A` but otherwise equivalent)
+- `scripts/little_loops/issue_discovery/extraction.py:69-85` — `_extract_completion_date()`: already handles multi-label regex `r"\*\*(?:Completed|Closed)\*\*:\s*(\d{4}-\d{2}-\d{2})"` — supersedes the single-label version in `parsing.py`; relevant to companion ENH-943
 - `scripts/little_loops/issue_history/parsing.py:83-106` — `_parse_completion_date()`: the Python equivalent using regex `r"\*\*Completed\*\*:\s*(\d{4}-\d{2}-\d{2})"` with file mtime fallback — shows why the date-filter approach fails for files without the `**Completed**:` line
 
 ### Related Issues
@@ -122,6 +123,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-04T02:38:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
+- `/ll:confidence-check` - 2026-04-04T02:37:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
+- `/ll:refine-issue` - 2026-04-04T02:34:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
 - `/ll:confidence-check` - 2026-04-03T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
 - `/ll:refine-issue` - 2026-04-04T02:29:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
 - `/ll:format-issue` - 2026-04-04T02:25:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7308edca-cfb1-4076-acfb-845ecd8be944.jsonl`
