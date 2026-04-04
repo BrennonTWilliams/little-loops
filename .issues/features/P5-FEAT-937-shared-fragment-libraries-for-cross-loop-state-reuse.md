@@ -7,7 +7,7 @@ discovered_date: 2026-04-03
 discovered_by: capture-issue
 testable: true
 confidence_score: 100
-outcome_confidence: 64
+outcome_confidence: 68
 ---
 
 # FEAT-937: Shared Fragment Libraries for Cross-Loop State Reuse
@@ -70,6 +70,27 @@ states:
 Fragment merging is **deep-first-wins**: state-level fields override fragment fields at every level, including nested objects like `evaluate`. This allows a fragment to set `evaluate.type` and `evaluate.operator` while the state provides only `evaluate.target`.
 
 Parameterization uses the existing `${context.*}` interpolation system — no new namespace needed. Fragment resolution happens at parse time in `FSMLoop.from_dict`, so the engine never sees `fragment:` keys.
+
+## Use Case
+
+**Who**: Loop author (developer building or maintaining FSM loops in little-loops)
+
+**Context**: When authoring multiple loops that share common state patterns — e.g., a shell command evaluated by exit code, a retry counter, or an LLM quality gate — and currently must copy-paste these state definitions across loop files.
+
+**Goal**: Define a named state fragment once in a shared library file and reference it from any loop via `fragment: shell_exit` instead of duplicating the full state definition.
+
+**Outcome**: The importing loop resolves identically to a loop with the fragment fields inlined — no runtime overhead, no diverging copies, and a single canonical definition to maintain.
+
+## Acceptance Criteria
+
+- [ ] A loop file can declare `import: ["lib/common.yaml"]` and reference a fragment by name via `fragment: shell_exit` in a state definition
+- [ ] Fragment fields are deep-merged into the state dict; state-level keys override fragment keys at every nesting level (including nested objects like `evaluate`)
+- [ ] A loop with an unresolved `fragment:` reference (name not found in imported or local fragments) raises a fatal validation error (`ValueError`)
+- [ ] A loop with a missing `import:` file raises `FileNotFoundError` during `resolve_fragments`
+- [ ] A local `fragments:` block in the loop file overrides an imported fragment with the same name
+- [ ] `ll-loop show` displays the `import:` paths when the loop uses fragment imports
+- [ ] All 10 built-in loops migrated to use `shell_exit` from `lib/common.yaml` continue to pass `test_builtin_loops.py`
+- [ ] `KNOWN_TOP_LEVEL_KEYS` no longer emits warnings for `import` and `fragments` keys
 
 ## Motivation
 
@@ -207,6 +228,8 @@ def resolve_fragments(raw_loop_dict: dict, loop_dir: Path) -> dict:
 Verified 2026-04-03 by `/ll:verify-issues`. All file paths, line numbers, and code claims checked against current codebase. One stale line reference corrected: `test_fsm_executor.py:3436` → `3394` in the Tests/Similar Patterns section (Implementation Steps already had the correct value). All other references confirmed accurate.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a2b8459-47f1-4bd4-befc-c0f4cea78122.jsonl`
+- `/ll:format-issue` - 2026-04-04T04:33:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e17f5c60-c3c8-4649-9669-551706569266.jsonl`
 - `/ll:verify-issues` - 2026-04-04T04:22:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1d17848-e950-4ccb-89e0-b0c8a73d95d2.jsonl`
 - `/ll:refine-issue` - 2026-04-04T04:18:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57941e0f-80a7-42e3-8600-7abe18193082.jsonl`
 - `/ll:refine-issue` - 2026-04-04T04:17:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57941e0f-80a7-42e3-8600-7abe18193082.jsonl`
