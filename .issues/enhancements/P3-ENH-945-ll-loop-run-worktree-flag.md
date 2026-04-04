@@ -20,23 +20,50 @@ Currently `ll-loop run` executes in the main repo, making it unsuitable for loop
 
 ## Implementation Steps
 
-1. **Add `--worktree` flag to `run` subparser** in `scripts/little_loops/cli/loop/__init__.py` (around line 141 where other run flags are defined).
+1. **Add `--worktree` flag to `run` subparser** in `scripts/little_loops/cli/loop/__init__.py` (after `add_context_limit_arg` at line 154, before the `validate_parser` block at line 157).
 
-2. **Add branch naming helper** — generate branch name as `{timestamp}-{loop_name}` (e.g. `20260403-120000-my-loop`) using `datetime.now().strftime("%Y%m%d-%H%M%S")`.
+2. **Add branch naming helper** — generate branch name as `{timestamp}-{loop_name}` (e.g. `20260403-120000-my-loop`) using `datetime.now().strftime("%Y%m%d-%H%M%S")`. Sanitize the loop name for use as a git branch name (replace spaces and non-alphanumeric/dash chars with `-`).
 
-3. **Extract shared worktree setup utility** — refactor `WorkerPool._setup_worktree` (currently at `scripts/little_loops/parallel/worker_pool.py:520`) into a standalone function in a new or existing shared module (e.g. `scripts/little_loops/worktree_utils.py` or alongside `subprocess_utils.py`). This function should accept:
+3. **Extract shared worktree setup utility** — refactor `WorkerPool._setup_worktree` (`worker_pool.py:520–592`) and `WorkerPool._cleanup_worktree` (`worker_pool.py:646–700`) into standalone functions in `scripts/little_loops/worktree_utils.py`. The extracted `setup_worktree` must accept:
    - `repo_path: Path`
    - `worktree_path: Path`
    - `branch_name: str`
-   - `copy_files: list[str]` (defaults to `worktree_copy_files` from `AutomationConfig`)
+   - `copy_files: list[str]`
+   - `logger: Logger`
+   - `git_lock: GitLock` (import from `little_loops.parallel.git_lock`)
+
+   **Coupling to drop**: `_process_lock`/`_active_worktrees` (BUG-142 concurrent guard — irrelevant for single-threaded loop context) and `show_model` (ll-parallel-specific API check). The session marker write (`.ll-session-{pid}`, lines 590–592) should be retained for orphan cleanup compatibility.
+
+   **Cleanup function** (`cleanup_worktree`): The existing `_cleanup_worktree` only deletes git branches prefixed `parallel/` (line 684). The extracted function must also handle the `YYYYMMDD-HHMMSS-*` timestamp prefix used by loop runs — either by accepting an explicit `delete_branch: bool` flag or by removing the prefix guard entirely in the shared version.
 
 4. **Wire into `cmd_run`** (`scripts/little_loops/cli/loop/run.py`):
-   - If `args.worktree` is set, resolve worktree base from config (`parallel_config.worktree_base`, default `.worktrees/`), call the shared setup utility, then `os.chdir()` into the new worktree before executing the FSM.
-   - Register cleanup via `atexit` to run `git worktree remove --force` after the loop finishes (matching `ll-parallel`'s cleanup pattern).
+   - `BRConfig` is already instantiated at line 158; use `config.get_worktree_base()` (`config/core.py:246–248`) for the base path, and `config.parallel.worktree_copy_files` for the copy list.
+   - If `args.worktree` is set: call `setup_worktree()`, then `os.chdir(worktree_path)` before the `BRConfig(Path.cwd())` call at line 158 so the config picks up the worktree as project root.
+   - Set `os.environ["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"` before starting the FSM so Claude subprocess writes stay inside the worktree (same as `subprocess_utils.py:108`).
+   - Note: `subprocess_utils.run_claude_command` is worktree-aware (`subprocess_utils.py:107–129`) — when `working_dir` points to a worktree (`.git` is a file), it auto-sets `GIT_DIR`/`GIT_WORK_TREE`. After `os.chdir()`, subsequent `Path.cwd()` calls will return the worktree, so this resolves naturally.
+   - Register cleanup via `atexit.register()` (already imported at line 6) — follows the existing PID cleanup pattern at lines 119–122.
 
 5. **Log worktree path and branch** at startup so users can inspect or merge changes manually after the loop completes.
 
-6. **Update `ll-loop run --help`** text to document the flag.
+6. **Update `ll-loop run --help`** — add example to the epilog block at `__init__.py:86`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `worker_pool.py:532–536` — uses `self._git_lock.run(["worktree", "add", "-b", branch_name, str(worktree_path)], cwd=self.repo_path, timeout=60)` — the extracted function needs a `GitLock` instance
+- `worker_pool.py:541–553` — copies `user.email`/`user.name` git identity into worktree; retain this in extracted function
+- `worker_pool.py:559–564` — copies `.claude/` directory via `shutil.copytree`; retain
+- `worker_pool.py:568–584` — copies `worktree_copy_files` entries, skipping `.claude/` prefix (already covered); retain
+- `worker_pool.py:684` — branch deletion only fires when `branch_name.startswith("parallel/")` — **this guard must be relaxed** in the shared cleanup for loop branches
+- `run.py:6` — `atexit` already imported
+- `run.py:158` — `BRConfig(Path.cwd())` already constructed; no second instantiation needed
+- `automation.py:53` — `worktree_copy_files` field default: `[".claude/settings.local.json", ".env"]`
+- `automation.py:20` — `worktree_base` default: `".worktrees"`
+- `config/core.py:246–248` — `BRConfig.get_worktree_base()` returns `Path(project_root / automation.worktree_base)`; prefer this over manually constructing the path
+- `subprocess_utils.py:107–129` — `run_claude_command` auto-detects worktree `.git` files and sets `GIT_DIR`/`GIT_WORK_TREE`; no extra git env setup needed after `os.chdir()`
+- `subprocess_utils.py:108` — `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` must be set to prevent Claude write leakage (parallel sets this too)
+- `test_worker_pool.py:631–754` — reference test class `TestWorkerPoolWorktreeManagement`; uses `patch.object(pool._git_lock, "run", side_effect=mock_git_run)` — follow this for `worktree_utils` unit tests
 
 ## API / Interface
 
@@ -48,6 +75,37 @@ ll-loop run my-loop --worktree
 # Cleans up worktree on exit (unless --keep-worktree is added later)
 ```
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/__init__.py` — add `--worktree` flag to `run_parser` (after line 153, before `validate_parser`)
+- `scripts/little_loops/cli/loop/run.py` — wire worktree setup into `cmd_run`; `BRConfig` already created at line 158; `atexit` already imported at line 6
+
+### New File
+- `scripts/little_loops/worktree_utils.py` — extracted standalone setup/cleanup functions
+
+### Source of Extracted Logic
+- `scripts/little_loops/parallel/worker_pool.py:520–592` — `_setup_worktree` implementation to extract
+- `scripts/little_loops/parallel/worker_pool.py:646–700` — `_cleanup_worktree` implementation to extract
+- `scripts/little_loops/parallel/git_lock.py` — `GitLock` class used by both methods; must be imported in new util module
+
+### Config Access
+- `scripts/little_loops/config/automation.py:53` — `worktree_copy_files` lives on `ParallelAutomationConfig` (not `AutomationConfig`); access via `BRConfig.parallel.worktree_copy_files`
+- `scripts/little_loops/config/automation.py:20` — `worktree_base` default is `".worktrees"` on `AutomationConfig`; access via `BRConfig.parallel.base.worktree_base`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/parallel/worker_pool.py` — will call the new shared utility after refactor (no external API change)
+- `scripts/little_loops/parallel/merge_coordinator.py:1166` — has its own `_cleanup_worktree`; no change needed here (different cleanup context)
+
+### Tests
+- `scripts/tests/test_cli_loop_background.py` — reference pattern: `patch` + `MagicMock`, class-based with `setup_method`/`teardown_method`
+- New test file: `scripts/tests/test_cli_loop_worktree.py` (follow `test_cli_loop_background.py` structure)
+
+### Documentation
+- `scripts/little_loops/cli/loop/__init__.py:86` — epilog examples block; add `ll-loop run fix-types --worktree`
+- `docs/reference/CLI.md` — `ll-loop run` options table needs `--worktree` entry
+- `docs/reference/CONFIGURATION.md` — `worktree_base`/`worktree_copy_files` already documented; no new fields needed
+
 ## Key Files
 
 | File | Role |
@@ -55,7 +113,8 @@ ll-loop run my-loop --worktree
 | `scripts/little_loops/cli/loop/__init__.py` | Add `--worktree` arg to `run_parser` |
 | `scripts/little_loops/cli/loop/run.py` | Wire worktree setup into `cmd_run` |
 | `scripts/little_loops/parallel/worker_pool.py:520` | Source of `_setup_worktree` to extract |
-| `scripts/little_loops/config/automation.py` | `AutomationConfig.worktree_base` and `worktree_copy_files` |
+| `scripts/little_loops/parallel/git_lock.py` | `GitLock` — required by `_setup_worktree`; import in `worktree_utils.py` |
+| `scripts/little_loops/config/automation.py:53` | `worktree_copy_files` on `ParallelAutomationConfig`; `worktree_base` on `AutomationConfig` |
 | `scripts/little_loops/worktree_utils.py` | New shared module for extracted worktree logic |
 
 ## Acceptance Criteria
@@ -72,4 +131,5 @@ ll-loop run my-loop --worktree
 - ENH-944 (loop history timestamped folder) — both deal with per-run isolation
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-04T03:46:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/565f959b-61a4-42f3-bdb8-695305671cbd.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acae55c4-3efa-4b99-aa19-26b81fc88701.jsonl`
