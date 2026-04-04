@@ -72,6 +72,12 @@ As the issue count grows and workflows become more automated (ll-auto, ll-parall
 - `hooks/scripts/session-start.sh:76-97` — extend to output the body (non-frontmatter) of `ll.local.md` when it contains an `## Active Rules` section, so compliance rules surface in Claude's context at session start; currently the hook only outputs JSON from frontmatter (body is discarded)
 - `commands/ready-issue.md` — add decisions log query step to suppress violations where a matching `exception` entry with `rule_ref` exists (currently at Section 2, lines 139-183)
 - `commands/verify-issues.md` — add query step to surface rule violations and suppress false positives via `exception` entries (current violation categories at lines 67-80)
+- `skills/format-issue/SKILL.md` — add decisions log query step; Proposed Solution explicitly lists format-issue alongside ready-issue and verify-issues as a log reader
+- `config-schema.json` — add `decisions` object schema (`enabled`, `log_path`, `auto_generate`) matching `DecisionsConfig` fields
+
+**Optional (extend if auto-generation hook is implemented):**
+- `hooks/scripts/issue-completion-log.sh` — detect manage-issue completion to trigger `generate --from=completed`; currently the only viable hook-level trigger for post-implementation auto-generation (see Step 7)
+- `skills/capture-issue/SKILL.md` — optionally log a `decision` entry when the user makes a notable architectural choice at capture time (see Step 6)
 
 **Optional (if adding top-level CLI):**
 - `scripts/pyproject.toml:48` — add `ll-decisions = "little_loops.decisions:main"` entry point if a standalone `ll-decisions` binary is needed (vs. all ops under `ll-issues decisions`)
@@ -132,7 +138,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 5. **Sync to ll.local.md** — implement `sync_to_local_md(project_root)` in `scripts/little_loops/decisions.py`; writes `## Active Rules` section; extend `hooks/scripts/session-start.sh` (after line 97) to also output the body of `ll.local.md` so `## Active Rules` surfaces in Claude's context at session start
 6. **capture-issue integration** — update `skills/capture-issue/SKILL.md` to optionally log a `decision` entry when the user makes a notable architectural choice
 7. **Auto-generation from completed issues** — add `generate_from_completed(config)` to `decisions.py` using `scan_completed_issues()` from `scripts/little_loops/issue_history/parsing.py:208`; the hook system has no per-command event (only `PostToolUse`/`Bash` and `Stop`) so auto-triggering from manage-issue requires detecting manage-issue invocation in the `issue-completion-log.sh` hook OR exposing this as a manual `ll-issues decisions generate --from=completed` command
-8. **Validation integration** — update `skills/ready-issue/SKILL.md` and `skills/verify-issues/SKILL.md` to query decisions log: check active `required` rules, surface violations, suppress false positives where `exception` entry with matching `rule_ref` exists
+8. **Validation integration** — update `commands/ready-issue.md` and `commands/verify-issues.md` to query decisions log: check active `required` rules, surface violations, suppress false positives where `exception` entry with matching `rule_ref` exists; also update `skills/format-issue/SKILL.md` (listed in Proposed Solution alongside these two)
 9. **Tests** — write `scripts/tests/test_decisions.py` (CRUD, exception suppression, supersedes resolution) and `scripts/tests/test_cli_decisions.py` (CLI via `patch.object(sys, "argv")`); use `temp_project_dir` fixture from `conftest.py:56`
 10. **Docs** — update `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md` Key Directories and CLI Tools sections
 
