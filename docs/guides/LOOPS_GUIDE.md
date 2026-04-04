@@ -1381,12 +1381,14 @@ Local `fragments:` definitions override any imported fragment with the same name
 
 ### Built-in Library
 
-`scripts/little_loops/loops/lib/common.yaml` ships with two fragments used by all built-in loops:
+`scripts/little_loops/loops/lib/common.yaml` ships with four fragments used by all built-in loops:
 
 | Fragment | Provides | Caller must supply |
 |----------|----------|--------------------|
 | `shell_exit` | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
 | `retry_counter` | Shell counter script + `output_numeric` evaluator against `${context.max_retries}` | `context.counter_key`, `context.max_retries`, routing |
+| `llm_gate` | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
+| `numeric_gate` | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
 
 Built-in loops import it as `import: ["lib/common.yaml"]`. User loops in `.loops/` can do the same if they copy or symlink the library, or define their own.
 

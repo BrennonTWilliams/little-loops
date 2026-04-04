@@ -184,6 +184,111 @@ class TestResolveFragmentsInlineOnly:
         result = resolve_fragments(raw, tmp_path)
         assert "fragment" not in result["states"]["run"]
 
+    def test_llm_gate_inline_expands_action_type_and_evaluate_type(self, tmp_path: Path) -> None:
+        raw = {
+            "name": "test",
+            "initial": "check",
+            "fragments": {
+                "llm_gate": {"action_type": "prompt", "evaluate": {"type": "llm_structured"}},
+            },
+            "states": {
+                "check": {
+                    "fragment": "llm_gate",
+                    "action": "Is the task complete? Answer YES or NO.",
+                    "evaluate": {"prompt": "Is the task complete?"},
+                    "on_yes": "done",
+                    "on_no": "retry",
+                },
+                "done": {"terminal": True},
+                "retry": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["check"]
+        assert state["action_type"] == "prompt"
+        assert state["evaluate"]["type"] == "llm_structured"
+        assert state["evaluate"]["prompt"] == "Is the task complete?"
+        assert "fragment" not in state
+
+    def test_llm_gate_inline_evaluate_deep_merges(self, tmp_path: Path) -> None:
+        """Caller's evaluate.prompt merges with fragment's evaluate.type (not replaced)."""
+        raw = {
+            "name": "test",
+            "initial": "check",
+            "fragments": {
+                "llm_gate": {"action_type": "prompt", "evaluate": {"type": "llm_structured"}},
+            },
+            "states": {
+                "check": {
+                    "fragment": "llm_gate",
+                    "action": "Done?",
+                    "evaluate": {"prompt": "Done?"},
+                    "on_yes": "done",
+                    "on_no": "retry",
+                },
+                "done": {"terminal": True},
+                "retry": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["check"]
+        # Fragment provides type; caller provides prompt; both survive deep merge
+        assert state["evaluate"]["type"] == "llm_structured"
+        assert state["evaluate"]["prompt"] == "Done?"
+
+    def test_numeric_gate_inline_expands_action_type_and_evaluate_type(self, tmp_path: Path) -> None:
+        raw = {
+            "name": "test",
+            "initial": "count",
+            "fragments": {
+                "numeric_gate": {"action_type": "shell", "evaluate": {"type": "output_numeric"}},
+            },
+            "states": {
+                "count": {
+                    "fragment": "numeric_gate",
+                    "action": "echo 5",
+                    "evaluate": {"operator": "gt", "target": 0},
+                    "on_yes": "review",
+                    "on_no": "done",
+                },
+                "review": {"terminal": True},
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["count"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "output_numeric"
+        assert state["evaluate"]["operator"] == "gt"
+        assert state["evaluate"]["target"] == 0
+        assert "fragment" not in state
+
+    def test_numeric_gate_inline_evaluate_deep_merges(self, tmp_path: Path) -> None:
+        """Caller's evaluate.operator+target merge with fragment's evaluate.type."""
+        raw = {
+            "name": "test",
+            "initial": "count",
+            "fragments": {
+                "numeric_gate": {"action_type": "shell", "evaluate": {"type": "output_numeric"}},
+            },
+            "states": {
+                "count": {
+                    "fragment": "numeric_gate",
+                    "action": "wc -l file.txt",
+                    "evaluate": {"operator": "lt", "target": 10},
+                    "on_yes": "ok",
+                    "on_no": "fail",
+                },
+                "ok": {"terminal": True},
+                "fail": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["count"]
+        assert state["evaluate"]["type"] == "output_numeric"
+        assert state["evaluate"]["operator"] == "lt"
+        assert state["evaluate"]["target"] == 10
+
 
 # ---------------------------------------------------------------------------
 # resolve_fragments tests — with import: file loading
@@ -312,6 +417,171 @@ class TestResolveFragmentsImport:
         }
         result = resolve_fragments(raw, subdir)
         assert result["states"]["run"]["action_type"] == "shell"
+
+    def test_import_llm_gate_from_lib(self, tmp_path: Path) -> None:
+        """llm_gate loaded via import expands action_type and evaluate.type correctly."""
+        self._write_lib(
+            tmp_path / "lib",
+            """\
+            fragments:
+              llm_gate:
+                action_type: prompt
+                evaluate:
+                  type: llm_structured
+            """,
+        )
+        raw = {
+            "name": "test",
+            "initial": "check",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "check": {
+                    "fragment": "llm_gate",
+                    "action": "Is the task complete?",
+                    "evaluate": {"prompt": "Is it done?"},
+                    "on_yes": "done",
+                    "on_no": "retry",
+                },
+                "done": {"terminal": True},
+                "retry": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["check"]
+        assert state["action_type"] == "prompt"
+        assert state["evaluate"]["type"] == "llm_structured"
+        assert state["evaluate"]["prompt"] == "Is it done?"
+        assert "fragment" not in state
+
+    def test_import_numeric_gate_from_lib(self, tmp_path: Path) -> None:
+        """numeric_gate loaded via import expands action_type and evaluate.type correctly."""
+        self._write_lib(
+            tmp_path / "lib",
+            """\
+            fragments:
+              numeric_gate:
+                action_type: shell
+                evaluate:
+                  type: output_numeric
+            """,
+        )
+        raw = {
+            "name": "test",
+            "initial": "count",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "count": {
+                    "fragment": "numeric_gate",
+                    "action": "echo 5",
+                    "evaluate": {"operator": "gt", "target": 0},
+                    "on_yes": "review",
+                    "on_no": "done",
+                },
+                "review": {"terminal": True},
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["count"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "output_numeric"
+        assert state["evaluate"]["operator"] == "gt"
+        assert state["evaluate"]["target"] == 0
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# Real lib/common.yaml: verify llm_gate and numeric_gate are present
+# ---------------------------------------------------------------------------
+
+
+class TestCommonYamlNewFragments:
+    """Tests that llm_gate and numeric_gate exist in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_llm_gate_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "llm_gate" in data["fragments"], "llm_gate fragment missing from lib/common.yaml"
+
+    def test_llm_gate_has_correct_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["llm_gate"]["action_type"] == "prompt"
+
+    def test_llm_gate_has_correct_evaluate_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["llm_gate"]["evaluate"]["type"] == "llm_structured"
+
+    def test_numeric_gate_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "numeric_gate" in data["fragments"], "numeric_gate fragment missing from lib/common.yaml"
+
+    def test_numeric_gate_has_correct_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["numeric_gate"]["action_type"] == "shell"
+
+    def test_numeric_gate_has_correct_evaluate_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["numeric_gate"]["evaluate"]["type"] == "output_numeric"
+
+    def test_llm_gate_resolves_from_real_common_yaml(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "check",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "check": {
+                    "fragment": "llm_gate",
+                    "action": "Is the task complete?",
+                    "evaluate": {"prompt": "Is it done?"},
+                    "on_yes": "done",
+                    "on_no": "retry",
+                },
+                "done": {"terminal": True},
+                "retry": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["check"]
+        assert state["action_type"] == "prompt"
+        assert state["evaluate"]["type"] == "llm_structured"
+        assert state["evaluate"]["prompt"] == "Is it done?"
+        assert "fragment" not in state
+
+    def test_numeric_gate_resolves_from_real_common_yaml(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "count",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "count": {
+                    "fragment": "numeric_gate",
+                    "action": "echo 5",
+                    "evaluate": {"operator": "gt", "target": 0},
+                    "on_yes": "review",
+                    "on_no": "done",
+                },
+                "review": {"terminal": True},
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["count"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "output_numeric"
+        assert state["evaluate"]["operator"] == "gt"
+        assert state["evaluate"]["target"] == 0
+        assert "fragment" not in state
 
 
 # ---------------------------------------------------------------------------

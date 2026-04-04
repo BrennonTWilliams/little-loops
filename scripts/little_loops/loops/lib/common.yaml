@@ -35,3 +35,20 @@ fragments:
       type: output_numeric
       operator: lt
       target: "${context.max_retries}"
+
+  # llm_gate: LLM prompt state evaluated by structured yes/no output.
+  # State must supply: action (the prompt text), evaluate.prompt (the yes/no question),
+  # on_yes, on_no (and optionally on_error, timeout, capture)
+  llm_gate:
+    action_type: prompt
+    evaluate:
+      type: llm_structured
+
+  # numeric_gate: Shell command evaluated by numeric output comparison.
+  # State must supply: action (shell command that prints a number),
+  # evaluate.operator (eq|lt|gt|ge|le), evaluate.target (threshold),
+  # on_yes, on_no (and optionally on_error, timeout, capture)
+  numeric_gate:
+    action_type: shell
+    evaluate:
+      type: output_numeric
