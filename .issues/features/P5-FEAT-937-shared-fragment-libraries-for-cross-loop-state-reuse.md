@@ -6,6 +6,8 @@ status: open
 discovered_date: 2026-04-03
 discovered_by: capture-issue
 testable: true
+confidence_score: 100
+outcome_confidence: 64
 ---
 
 # FEAT-937: Shared Fragment Libraries for Cross-Loop State Reuse
@@ -190,5 +192,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-04-03 | Priority: P5
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42c53c22-403e-4bdc-b147-7dae4ff089f6.jsonl`
 - `/ll:refine-issue` - 2026-04-04T04:02:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ddb48b85-b51f-420f-ba05-37e1c4b6810b.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16657133-9de4-4706-850b-b65f32a1bda2.jsonl`
