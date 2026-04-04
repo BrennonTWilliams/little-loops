@@ -5139,10 +5139,6 @@ Combined loader. When `config_paths` is provided, loads from config first, then 
 
 ### wire_extensions
 
-<!-- TODO: update-docs stub — FEAT-927 — drafted 2026-04-02 -->
-
-> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in error-handling notes and event_filter forwarding details.
-
 Convenience helper that loads all extensions from config and registers them on an `EventBus`. This is the function called by CLI entry points (ll-loop, ll-parallel, ll-sprint) to activate extension callbacks at run time.
 
 ```python
@@ -5150,24 +5146,31 @@ from little_loops.extension import wire_extensions
 from little_loops.events import EventBus
 
 bus = EventBus()
-wire_extensions(bus, config.extensions)
+extensions = wire_extensions(bus, config.extensions)
 ```
 
 **Signature:**
 ```python
-def wire_extensions(bus: EventBus, config_paths: list[str]) -> None
+def wire_extensions(
+    bus: EventBus,
+    config_paths: list[str] | None = None,
+) -> list[LLExtension]
 ```
 
 **Parameters:**
 - `bus` - The `EventBus` instance to register extensions on.
-- `config_paths` - List of `"module.path:ClassName"` strings (from `BRConfig.extensions`). May be empty.
+- `config_paths` - Optional list of `"module.path:ClassName"` strings (from `BRConfig.extensions`). Pass `None` or omit to skip config-path loading (entry-point discovery still runs).
+
+**Returns:** List of all successfully loaded extension instances (from both config paths and entry points).
 
 **Behavior:**
 - Calls `ExtensionLoader.load_all(config_paths)` to discover extensions from both config paths and Python entry points.
-- For each loaded extension, wraps `ext.on_event` and calls `bus.register(callback, filter=ext.event_filter)` — forwarding any `event_filter` declared on the extension class.
-- Load failures are caught and logged per-extension; a single bad extension does not prevent others from loading.
+- For each loaded extension, wraps `ext.on_event` to convert the raw event dict into an `LLEvent` (using `LLEvent.from_raw_event()`, which copies the dict to prevent mutation), then calls `bus.register(callback, filter=getattr(ext, "event_filter", None))` — forwarding any `event_filter` declared on the extension class.
+- The forwarded `event_filter` is matched against the event's `type` field using `fnmatch` glob patterns. `None` (the default) means the extension receives every event.
 
-<!-- END TODO stub -->
+**Error handling:**
+- **Load failures** — both `ExtensionLoader.from_config()` and `from_entry_points()` catch all exceptions per extension, log a `WARNING` with the full traceback, and continue. A single bad extension never prevents others from loading; `wire_extensions` returns a partial list of the extensions that did succeed.
+- **Runtime failures** — if an extension's `on_event` raises during `EventBus.emit()`, the exception is caught and logged at `WARNING` level. Other registered observers still receive the event.
 
 ### Configuration
 

@@ -601,10 +601,6 @@ Set `NO_COLOR=1` to disable all colorization regardless of config.
 
 ### `extensions`
 
-<!-- TODO: update-docs stub — FEAT-927 — drafted 2026-04-02 -->
-
-> **Stub**: Auto-drafted by `/ll:update-docs`. Expand with full extension authoring example.
-
 List of extension module paths to load at startup. Each entry is a `"module.path:ClassName"` string. Extensions implement the `LLExtension` protocol and receive structured `LLEvent` notifications from the EventBus during ll-loop, ll-parallel, and ll-sprint runs.
 
 | Key | Type | Default | Description |
@@ -620,9 +616,35 @@ List of extension module paths to load at startup. Each entry is a `"module.path
 }
 ```
 
-Extensions can also be auto-discovered via Python entry points — see [API Reference → Extension API](API.md#extension-api).
+**Authoring an extension:**
 
-<!-- END TODO stub -->
+```python
+# my_package/ext.py
+from little_loops.events import LLEvent
+
+class MyExtension:
+    # Optional: subscribe only to matching event types (fnmatch glob).
+    # Omit or set to None to receive all events.
+    event_filter = "issue.*"
+
+    def on_event(self, event: LLEvent) -> None:
+        print(f"{event.type} — {event.payload}")
+```
+
+`event_filter` accepts a single glob string (e.g. `"issue.*"`) or a list of globs (e.g. `["issue.*", "parallel.*"]`). The filter is matched against the event's `type` field using Python's `fnmatch`. Omit `event_filter` or set it to `None` to receive every event.
+
+**Auto-discovery via entry points:**
+
+To have your extension loaded automatically without listing it in `ll-config.json`, register it under the `little_loops.extensions` entry-point group in your package's `pyproject.toml`:
+
+```toml
+[project.entry-points."little_loops.extensions"]
+my_ext = "my_package.ext:MyExtension"
+```
+
+After installing the package, `ll` will discover and load it on every run alongside any config-listed extensions.
+
+Extensions can also be auto-discovered via Python entry points — see [API Reference → Extension API](API.md#extension-api).
 
 ---
 
