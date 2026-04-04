@@ -9,6 +9,8 @@ context:
   max_issues: 8
   readiness_threshold: 85   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 70     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+import:
+  - lib/common.yaml
 states:
   assess_backlog:
     action_type: prompt
@@ -36,9 +38,7 @@ states:
     next: route_create
   route_create:
     action: "ll-sprint list 2>/dev/null | grep -q ."
-    action_type: shell
-    evaluate:
-      type: exit_code
+    fragment: shell_exit
     on_yes: validate_issues
     on_no: create_sprint
     on_error: create_sprint

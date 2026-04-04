@@ -5,6 +5,8 @@ description: |
   Delegates refinement to the refine-to-ready-issue sub-loop for each issue.
   Commits every 5 actions and continues until all issues meet quality thresholds.
 initial: init
+import:
+  - lib/common.yaml
 states:
   init:
     action: mkdir -p .loops/tmp && rm -f .loops/tmp/issue-refinement-commit-count && rm -f .loops/tmp/issue-refinement-skip-list
@@ -12,19 +14,15 @@ states:
     next: evaluate
   evaluate:
     action: ll-issues next-action --skip "$(cat .loops/tmp/issue-refinement-skip-list 2>/dev/null)"
-    action_type: shell
+    fragment: shell_exit
     capture: "classify"
-    evaluate:
-      type: exit_code
     on_yes: done
     on_no: parse_id
     on_error: done
   parse_id:
     action: echo "${captured.classify.output}" | awk 'NR==1{printf $2}'
-    action_type: shell
+    fragment: shell_exit
     capture: "input"
-    evaluate:
-      type: exit_code
     on_yes: run_refine_to_ready
     on_error: evaluate
   run_refine_to_ready:

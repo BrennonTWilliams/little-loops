@@ -7,6 +7,8 @@ description: |
 initial: scan
 scope:
   - "scripts/"
+import:
+  - lib/common.yaml
 states:
   scan:
     action_type: prompt
@@ -60,7 +62,7 @@ states:
       - Public API contracts
     next: verify_tests
   verify_tests:
-    action_type: shell
+    fragment: shell_exit
     timeout: 600
     action: |
       CMD=$(python3 -c "
@@ -72,8 +74,6 @@ states:
       mkdir -p .loops/tmp
       set -o pipefail
       eval "$CMD" 2>&1 | tee .loops/tmp/ll-dead-code-tests.txt
-    evaluate:
-      type: exit_code
     on_yes: commit
     on_no: revert_and_scan
     on_error: revert_and_scan

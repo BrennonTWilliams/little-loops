@@ -20,6 +20,8 @@ context:
   focus_dirs: ""               # optional comma-separated dirs to scope coverage
   test_cmd: ""                 # override test command; empty = read from ll-config.json
   coverage_cmd: ""             # override coverage command; empty = auto-detect
+import:
+  - lib/common.yaml
 states:
 
   measure:
@@ -139,7 +141,7 @@ states:
 
   verify_tests:
     # Run the test suite to ensure new tests pass and nothing is broken.
-    action_type: shell
+    fragment: shell_exit
     timeout: 600
     action: |
       CMD=$(python3 -c "
@@ -151,8 +153,6 @@ states:
       mkdir -p .loops/tmp
       set -o pipefail
       eval "$CMD" 2>&1 | tee .loops/tmp/ll-coverage-tests.txt
-    evaluate:
-      type: exit_code
     on_yes: commit
     on_no: fix_tests
     on_error: fix_tests

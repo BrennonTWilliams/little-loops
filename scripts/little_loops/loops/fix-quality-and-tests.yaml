@@ -6,6 +6,8 @@ description: |
   a dedicated investigation pass. After fixing test failures, loops back to
   check-quality to catch regressions.
 initial: check-quality
+import:
+  - lib/common.yaml
 states:
   check-quality:
     action: "Run `/ll:check-code lint,format,types` and report results."
@@ -63,7 +65,7 @@ states:
       Fix up to 5 errors per iteration to keep changes reviewable.
     next: check-quality
   check-tests:
-    action_type: shell
+    fragment: shell_exit
     timeout: 600
     action: |
       CMD=$(python3 -c "
@@ -75,8 +77,6 @@ states:
       mkdir -p .loops/tmp
       set -o pipefail
       eval "$CMD" 2>&1 | tee .loops/tmp/ll-test-results.txt
-    evaluate:
-      type: exit_code
     on_yes: done
     on_no: fix-tests
     on_error: fix-tests

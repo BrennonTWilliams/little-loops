@@ -706,6 +706,9 @@ def cmd_show(
             cfg_parts.append(f"max_continuations={fsm.config.max_continuations}")
         if cfg_parts:
             config_parts.append(f"config: {', '.join(cfg_parts)}")
+    imports = spec.get("import", [])
+    if imports:
+        config_parts.append(f"imports: {', '.join(imports)}")
     print("   " + " \u00b7 ".join(config_parts))
 
     # --- Description ---

@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 
+from little_loops.fsm.fragments import resolve_fragments
 from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "config",
         "category",
         "labels",
+        "import",
+        "fragments",
     }
 )
 
@@ -474,6 +477,9 @@ def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
                 severity=ValidationSeverity.WARNING,
             )
         )
+
+    # Resolve fragment libraries before parsing into dataclass
+    data = resolve_fragments(data, path.parent)
 
     # Parse into dataclass
     fsm = FSMLoop.from_dict(data)

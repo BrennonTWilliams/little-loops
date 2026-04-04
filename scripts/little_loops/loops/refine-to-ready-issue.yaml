@@ -6,6 +6,8 @@ on_handoff: spawn
 context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+import:
+  - lib/common.yaml
 
 states:
   resolve_issue:
@@ -88,9 +90,7 @@ states:
       sys.exit(0 if int(d.get('confidence') or 0) >= readiness
                  and int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
-    action_type: shell
-    evaluate:
-      type: exit_code
+    fragment: shell_exit
     on_yes: verify_issue
     on_no: failed
     on_error: failed

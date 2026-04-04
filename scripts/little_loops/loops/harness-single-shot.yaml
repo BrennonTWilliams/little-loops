@@ -21,6 +21,8 @@ description: |
 initial: execute
 max_iterations: 5         # total attempts before giving up
 timeout: 3600             # 1-hour wall clock limit (seconds)
+import:
+  - lib/common.yaml
 
 states:
 
@@ -63,9 +65,7 @@ states:
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")
       eval "$CMD" 2>&1
-    action_type: shell
-    evaluate:
-      type: exit_code
+    fragment: shell_exit
     on_yes: check_semantic            # tests pass → LLM quality check
     on_no: execute                    # tests fail → retry the skill
     on_error: execute

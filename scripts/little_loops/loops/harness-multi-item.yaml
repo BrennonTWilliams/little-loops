@@ -23,6 +23,8 @@ description: |
 initial: discover
 max_iterations: 200       # total budget across all items
 timeout: 14400            # 4-hour wall clock limit (seconds)
+import:
+  - lib/common.yaml
 
 states:
 
@@ -43,10 +45,8 @@ states:
           sys.exit(1)
       print(open_issues[0]['id'])
       "
-    action_type: shell
+    fragment: shell_exit
     capture: current_item             # stored as ${captured.current_item.output}
-    evaluate:
-      type: exit_code
     on_yes: execute                   # item found → process it
     on_no: done                       # list empty → all items processed
     on_error: done
@@ -93,9 +93,7 @@ states:
       mkdir -p .loops/tmp
       set -o pipefail
       eval "$CMD" 2>&1 | tee .loops/tmp/harness-multi-item-tests.txt
-    action_type: shell
-    evaluate:
-      type: exit_code
+    fragment: shell_exit
     on_yes: check_mcp                 # tests pass → MCP gate
     on_no: execute                    # tests fail → retry skill
     on_error: execute

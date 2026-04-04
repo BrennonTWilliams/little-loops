@@ -147,6 +147,18 @@
       "items": {
         "type": "string"
       }
+    },
+    "import": {
+      "type": "array",
+      "description": "Fragment library files to import (paths relative to this loop file's directory)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "fragments": {
+      "type": "object",
+      "description": "Named partial state definitions (local fragment library). Keys are fragment names; values are partial state dicts. Local fragments override same-name imported fragments.",
+      "additionalProperties": true
     }
   },
   "additionalProperties": false,
@@ -246,6 +258,10 @@
           "type": "boolean",
           "default": false,
           "description": "Pass parent context variables to child loop and merge child captures back into parent context."
+        },
+        "fragment": {
+          "type": "string",
+          "description": "Name of a fragment to inherit fields from. Fragment fields are deep-merged into the state; state-level keys override fragment keys at every nesting level. Consumed at parse time — the engine never sees this key."
         }
       },
       "additionalProperties": false

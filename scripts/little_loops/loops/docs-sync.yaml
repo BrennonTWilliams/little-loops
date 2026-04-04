@@ -8,22 +8,20 @@ initial: verify_docs
 scope:
   - "docs/"
   - "*.md"
+import:
+  - lib/common.yaml
 states:
   verify_docs:
     action: "ll-verify-docs 2>&1"
-    action_type: shell
+    fragment: shell_exit
     capture: verify_results
-    evaluate:
-      type: exit_code
     on_yes: check_links
     on_no: check_links
     on_error: check_links
   check_links:
     action: "ll-check-links 2>&1"
-    action_type: shell
+    fragment: shell_exit
     capture: link_results
-    evaluate:
-      type: exit_code
     on_yes: route_results
     on_no: route_results
     on_error: route_results

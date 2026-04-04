@@ -13,6 +13,8 @@ description: |
 initial: init
 max_iterations: 500
 timeout: 28800
+import:
+  - lib/common.yaml
 
 states:
 
@@ -35,9 +37,7 @@ states:
       " > .loops/tmp/prompt-across-issues-pending.txt
       COUNT=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')
       echo "Found $${COUNT} issues to process"
-    action_type: shell
-    evaluate:
-      type: exit_code
+    fragment: shell_exit
     on_yes: discover
     on_error: error
 
@@ -49,10 +49,8 @@ states:
         exit 1
       fi
       head -1 .loops/tmp/prompt-across-issues-pending.txt
-    action_type: shell
+    fragment: shell_exit
     capture: current_item
-    evaluate:
-      type: exit_code
     on_yes: prepare_prompt
     on_no: done
     on_error: done

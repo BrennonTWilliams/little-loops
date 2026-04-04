@@ -1,0 +1,37 @@
+# Common fragment library for little-loops built-in loops.
+#
+# Import in any loop with:
+#   import:
+#     - lib/common.yaml
+#
+# Then reference a fragment in a state:
+#   my_state:
+#     fragment: shell_exit
+#     action: "ruff check ."
+#     on_yes: done
+#     on_no: fix
+
+fragments:
+  # shell_exit: Shell command evaluated by exit code.
+  # State must supply: action, on_yes, on_no (and optionally on_error, timeout)
+  shell_exit:
+    action_type: shell
+    evaluate:
+      type: exit_code
+
+  # retry_counter: Shell state that increments a counter file and evaluates
+  # whether it is still below the retry limit.
+  # State must supply (via context interpolation):
+  #   context.counter_key  — filename under .loops/tmp/ for the counter
+  #   context.max_retries  — upper bound (lt comparison)
+  # State must supply routing: on_yes (continue), on_no (give up)
+  retry_counter:
+    action: |
+      FILE=".loops/tmp/${context.counter_key}"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1)); printf '%s' "$N" > "$FILE"; echo "$N"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_retries}"
