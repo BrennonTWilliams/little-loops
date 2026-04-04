@@ -127,12 +127,12 @@ ll-loop run my-loop --worktree
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop run my-loop --worktree` creates `.worktrees/TIMESTAMP-my-loop/` with a new branch of the same name
-- [ ] `.claude/` directory and `worktree_copy_files` are copied into the worktree (matching ll-parallel behavior)
-- [ ] Loop executes with CWD set to the worktree directory
-- [ ] Worktree is removed on exit (normal and signal-interrupted)
-- [ ] `WorkerPool._setup_worktree` is refactored to use the new shared utility (no code duplication)
-- [ ] Existing `ll-parallel` and `ll-sprint` tests still pass
+- [x] `ll-loop run my-loop --worktree` creates `.worktrees/TIMESTAMP-my-loop/` with a new branch of the same name
+- [x] `.claude/` directory and `worktree_copy_files` are copied into the worktree (matching ll-parallel behavior)
+- [x] Loop executes with CWD set to the worktree directory
+- [x] Worktree is removed on exit (normal and signal-interrupted)
+- [x] `WorkerPool._setup_worktree` is refactored to use the new shared utility (no code duplication)
+- [x] Existing `ll-parallel` and `ll-sprint` tests still pass
 
 ## Scope Boundaries
 
@@ -157,11 +157,22 @@ ll-loop run my-loop --worktree
 
 `enhancement`, `cli`, `loop`, `worktree`, `backlog`
 
+## Resolution
+
+Implemented via `scripts/little_loops/worktree_utils.py` (new shared module) + thin wiring in `cli/loop/run.py`. `WorkerPool._setup_worktree` and `_cleanup_worktree` now delegate to the shared utilities, eliminating code duplication across ll-parallel and ll-loop.
+
+**Key decisions:**
+- `cleanup_worktree` uses a `delete_branch: bool` flag instead of a prefix guard, allowing the loop path to always delete its temp branch while `WorkerPool` preserves its existing `parallel/` prefix behavior.
+- `os.chdir(worktree_path)` before `BRConfig(Path.cwd())` ensures the config and all Claude subprocess writes target the worktree.
+- `import re` was kept at the function's top-level scope (not inside the conditional) to avoid `UnboundLocalError` from Python's compile-time local variable analysis.
+
 ## Status
 
-**Open** | Created: 2026-04-03 | Priority: P3
+**Completed** | Created: 2026-04-03 | Resolved: 2026-04-03 | Priority: P3
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-04T04:08:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8882ce91-3f5e-414e-a856-613945bc80d6.jsonl`
+- `/ll:manage-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:ready-issue` - 2026-04-04T03:59:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9407c329-07e8-4ca7-972a-c2b00f652f3f.jsonl`
 - `/ll:refine-issue` - 2026-04-04T03:46:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/565f959b-61a4-42f3-bdb8-695305671cbd.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acae55c4-3efa-4b99-aa19-26b81fc88701.jsonl`

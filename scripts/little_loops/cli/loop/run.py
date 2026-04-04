@@ -147,6 +147,53 @@ def cmd_run(
             return 1
 
     try:
+        # Worktree isolation: create branch + directory before anything reads Path.cwd()
+        if getattr(args, "worktree", False):
+            from datetime import datetime
+
+            from little_loops.config import BRConfig as _MainBRConfig
+            from little_loops.parallel.git_lock import GitLock
+            from little_loops.worktree_utils import cleanup_worktree, setup_worktree
+
+            _main_config = _MainBRConfig(Path.cwd())
+            _worktree_base = _main_config.get_worktree_base()
+            _copy_files = _main_config.parallel.worktree_copy_files
+            _repo_path = Path.cwd()
+
+            _timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            _safe_name = re.sub(r"[^a-zA-Z0-9-]", "-", loop_name)
+            _branch_name = f"{_timestamp}-{_safe_name}"
+            _worktree_path = _worktree_base / _branch_name
+
+            _worktree_base.mkdir(parents=True, exist_ok=True)
+            _git_lock = GitLock(logger)
+
+            setup_worktree(
+                repo_path=_repo_path,
+                worktree_path=_worktree_path,
+                branch_name=_branch_name,
+                copy_files=_copy_files,
+                logger=logger,
+                git_lock=_git_lock,
+            )
+
+            logger.info(f"Worktree: {_worktree_path}")
+            logger.info(f"Branch:   {_branch_name}")
+
+            def _cleanup_worktree_on_exit() -> None:
+                cleanup_worktree(
+                    worktree_path=_worktree_path,
+                    repo_path=_repo_path,
+                    logger=logger,
+                    git_lock=_git_lock,
+                    delete_branch=True,
+                )
+
+            atexit.register(_cleanup_worktree_on_exit)
+
+            os.environ["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
+            os.chdir(_worktree_path)
+
         executor = PersistentExecutor(fsm, loops_dir=loops_dir)
 
         # Register signal handlers for graceful shutdown

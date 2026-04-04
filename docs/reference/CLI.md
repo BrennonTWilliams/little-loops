@@ -253,6 +253,7 @@ Run a loop.
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--builtin` | | Load loop from built-ins directory (bypasses project `.loops/` lookup) |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
+| `--worktree` | | Run loop in an isolated git worktree on a new branch named `TIMESTAMP-LOOP-NAME`; worktree and branch are removed on exit |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 
@@ -341,6 +342,7 @@ Show loop details and FSM structure. The header line displays active [per-loop c
 **Examples:**
 ```bash
 ll-loop fix-types                     # Run loop (shorthand for run)
+ll-loop run fix-types --worktree      # Run in isolated git worktree
 ll-loop run fix-types --dry-run       # Show execution plan
 ll-loop validate fix-types            # Validate loop definition
 ll-loop test fix-types                # Run single test iteration
