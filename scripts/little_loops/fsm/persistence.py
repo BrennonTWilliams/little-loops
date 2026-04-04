@@ -13,10 +13,9 @@ File structure:
     │   ├── fix-types.state.json
     │   └── fix-types.events.jsonl
     └── .history/               # Archived run logs (auto-populated)
-        └── fix-types/
-            └── 2024-01-15T103000/
-                ├── state.json
-                └── events.jsonl
+        └── 2024-01-15T103000-fix-types/
+            ├── state.json
+            └── events.jsonl
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -41,6 +41,14 @@ RUNNING_DIR = ".running"
 HISTORY_DIR = ".history"
 
 logger = logging.getLogger(__name__)
+
+_RUN_FOLDER = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
+
+
+def _parse_run_folder(name: str) -> tuple[str, str] | None:
+    """Return (run_id, loop_name) from a flat history folder name, or None."""
+    m = _RUN_FOLDER.match(name)
+    return (m.group(1), m.group(2)) if m else None
 
 
 def _iso_now() -> str:
@@ -253,7 +261,7 @@ class StatePersistence:
 
         Reads the current state to derive the run timestamp, then copies
         both state.json and events.jsonl into:
-            <loops_dir>/.history/<loop_name>/<run_id>/
+            <loops_dir>/.history/<run_id>-<loop_name>/
 
         where run_id is a compact ISO timestamp derived from started_at
         (e.g. "2024-01-15T103000" from "2024-01-15T10:30:00.123456+00:00").
@@ -276,7 +284,8 @@ class StatePersistence:
         else:
             run_id = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
 
-        archive_dir = self.loops_dir / HISTORY_DIR / self.loop_name / run_id
+        run_folder = f"{run_id}-{self.loop_name}"
+        archive_dir = self.loops_dir / HISTORY_DIR / run_folder
         archive_dir.mkdir(parents=True, exist_ok=True)
 
         if has_state:
@@ -562,8 +571,11 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
 def list_run_history(loop_name: str, loops_dir: Path | None = None) -> list[LoopState]:
     """List archived runs for a loop, newest first.
 
-    Reads state files from .loops/.history/<loop_name>/*/state.json and returns
-    them sorted by started_at descending (most recent run first).
+    Reads state files from .loops/.history/<run_id>-<loop_name>/state.json and
+    returns them sorted by started_at descending (most recent run first).
+
+    Also checks the legacy nested layout .loops/.history/<loop_name>/*/state.json
+    for backward compatibility with existing history folders.
 
     Args:
         loop_name: Name of the loop
@@ -574,18 +586,36 @@ def list_run_history(loop_name: str, loops_dir: Path | None = None) -> list[Loop
         Returns an empty list if no history exists.
     """
     base_dir = loops_dir or Path(".loops")
-    history_loop_dir = base_dir / HISTORY_DIR / loop_name
+    history_dir = base_dir / HISTORY_DIR
 
-    if not history_loop_dir.exists():
+    if not history_dir.exists():
         return []
 
     states: list[LoopState] = []
-    for state_file in history_loop_dir.glob("*/state.json"):
+
+    # Flat layout: <run_id>-<loop_name>/state.json
+    for state_file in history_dir.glob(f"*-{loop_name}/state.json"):
         try:
             data = json.loads(state_file.read_text())
             states.append(LoopState.from_dict(data))
         except (json.JSONDecodeError, KeyError):
             continue
+
+    # Backward compat: legacy nested layout <loop_name>/<run_id>/state.json
+    old_loop_dir = history_dir / loop_name
+    if old_loop_dir.exists():
+        logger.warning(
+            "Found legacy nested history at %s; migrate to flat layout by moving "
+            "each run to .history/<run_id>-%s/",
+            old_loop_dir,
+            loop_name,
+        )
+        for state_file in old_loop_dir.glob("*/state.json"):
+            try:
+                data = json.loads(state_file.read_text())
+                states.append(LoopState.from_dict(data))
+            except (json.JSONDecodeError, KeyError):
+                continue
 
     states.sort(key=lambda s: s.started_at, reverse=True)
     return states
@@ -605,7 +635,8 @@ def get_archived_events(
         List of event dictionaries, empty if not found.
     """
     base_dir = loops_dir or Path(".loops")
-    events_file = base_dir / HISTORY_DIR / loop_name / run_id / "events.jsonl"
+    run_folder = f"{run_id}-{loop_name}"
+    events_file = base_dir / HISTORY_DIR / run_folder / "events.jsonl"
 
     if not events_file.exists():
         return []

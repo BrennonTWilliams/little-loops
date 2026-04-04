@@ -238,7 +238,7 @@ def get_archived_events(loop_name: str, run_id: str, loops_dir: Path | None = No
 
 ## Status
 
-**Current**: backlog
+**Current**: completed
 **Reason**: Enhancement to loop history storage layout.
 
 ---
@@ -257,7 +257,23 @@ _Added by `/ll:confidence-check` on 2026-04-03_
 ### Outcome Risk Factors
 - Existing `.loops/.history/` nested folders in real projects will be orphaned immediately after the code change if migration is skipped. A compatibility read-fallback in `list_run_history()` is the lowest-risk approach for step 6.
 
+## Resolution
+
+**Resolved**: 2026-04-03
+
+### Changes Made
+
+- `scripts/little_loops/fsm/persistence.py`: Added `_parse_run_folder()` helper and `_RUN_FOLDER` regex; updated `archive_run()` to use flat `<run_id>-<loop_name>` folder; updated `list_run_history()` with flat glob + backward-compat shim for legacy nested layout; updated `get_archived_events()` to use flat path.
+- `scripts/little_loops/cli/loop/info.py`: Updated `_list_archived_runs()` to scan flat history dir and filter by `-<loop_name>` suffix; updated error message wording.
+- `scripts/tests/test_fsm_persistence.py`: Updated `TestArchiveRun` assertions for flat structure.
+- `scripts/tests/test_ll_loop_commands.py`: Updated all 9 archive fixture paths from nested to flat.
+- `skills/analyze-loop/SKILL.md`: Updated Step 1 to resolve run folder via `ls .loops/.history/*-<loop_name>/` instead of `ll-loop history --json`.
+- `docs/guides/LOOPS_GUIDE.md`: Updated archive path description to flat layout.
+- Module docstring in `persistence.py`: Updated directory layout diagram.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-04-04T03:22:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50cb4515-1983-4e26-8067-5cb3cb330ae4.jsonl`
 - `/ll:refine-issue` - 2026-04-04T03:19:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5732e705-6919-4555-ae9d-5c904b677c29.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/822c0254-1b23-4911-b834-f9fb8a3a70da.jsonl`
 - `/ll:refine-issue` - 2026-04-04T03:14:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c71751b5-4e08-4ee8-8ca6-6632b7bb4d7d.jsonl`

@@ -358,7 +358,7 @@ class TestArchiveRun:
         assert (archive_path / "events.jsonl").exists()
 
     def test_archive_run_directory_structure(self, tmp_loops_dir: Path) -> None:
-        """archive_run() creates .history/<loop_name>/<run_id>/ structure."""
+        """archive_run() creates .history/<run_id>-<loop_name>/ flat structure."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
         persistence.save_state(self._make_state("2024-01-15T10:30:00+00:00"))
@@ -366,9 +366,8 @@ class TestArchiveRun:
         archive_path = persistence.archive_run()
 
         assert archive_path is not None
-        # Should be inside .history/test-loop/
-        assert archive_path.parent.name == "test-loop"
-        assert archive_path.parent.parent.name == ".history"
+        # Should be directly inside .history/ (flat layout)
+        assert archive_path.parent.name == ".history"
 
     def test_archive_run_run_id_from_started_at(self, tmp_loops_dir: Path) -> None:
         """archive_run() derives run_id from started_at timestamp."""
@@ -379,9 +378,10 @@ class TestArchiveRun:
         archive_path = persistence.archive_run()
 
         assert archive_path is not None
+        # Flat folder: "<run_id>-<loop_name>"
         # run_id is compact form of "2024-01-15T10:30:00+00:00"
         # → strip :, ., + → "2024-01-15T103000000000"[:17] = "2024-01-15T103000"
-        assert archive_path.name == "2024-01-15T103000"
+        assert archive_path.name == "2024-01-15T103000-test-loop"
 
     def test_archive_run_returns_none_for_fresh_run(self, tmp_loops_dir: Path) -> None:
         """archive_run() returns None when there are no files to archive."""
@@ -441,10 +441,10 @@ class TestArchiveRun:
         assert not persistence.state_file.exists()
         assert not persistence.events_file.exists()
 
-        # But history exists
-        history_base = tmp_loops_dir / ".history" / "test-loop"
+        # But history exists (flat layout: run dirs are direct children of .history/)
+        history_base = tmp_loops_dir / ".history"
         assert history_base.exists()
-        run_dirs = list(history_base.iterdir())
+        run_dirs = [d for d in history_base.iterdir() if d.name.endswith("-test-loop")]
         assert len(run_dirs) == 1
         assert (run_dirs[0] / "state.json").exists()
         assert (run_dirs[0] / "events.jsonl").exists()
@@ -456,7 +456,7 @@ class TestArchiveRun:
 
         persistence.clear_all()
 
-        history_base = tmp_loops_dir / ".history" / "test-loop"
+        history_base = tmp_loops_dir / ".history"
         assert not history_base.exists()
 
     def test_multiple_archive_runs_coexist(self, tmp_loops_dir: Path) -> None:
@@ -474,8 +474,8 @@ class TestArchiveRun:
         persistence.append_event({"event": "run2"})
         persistence.clear_all()
 
-        history_base = tmp_loops_dir / ".history" / "test-loop"
-        run_dirs = sorted(history_base.iterdir())
+        history_base = tmp_loops_dir / ".history"
+        run_dirs = sorted(d for d in history_base.iterdir() if d.name.endswith("-test-loop"))
         assert len(run_dirs) == 2
 
     def test_list_run_history_returns_newest_first(self, tmp_loops_dir: Path) -> None:
@@ -511,7 +511,9 @@ class TestArchiveRun:
         archive_path = persistence.archive_run()
         assert archive_path is not None
 
-        events = get_archived_events("test-loop", archive_path.name, tmp_loops_dir)
+        # archive_path.name is "2024-01-15T103000-test-loop"; extract run_id (timestamp prefix)
+        run_id = archive_path.name[: -len("-test-loop")]
+        events = get_archived_events("test-loop", run_id, tmp_loops_dir)
 
         assert len(events) == 2
         assert events[0]["event"] == "loop_start"

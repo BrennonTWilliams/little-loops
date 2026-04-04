@@ -521,7 +521,7 @@ class TestHistoryTail:
     @pytest.fixture
     def many_events_file(self, tmp_path: Path) -> Path:
         """Create an archived events file with 10 events for tail testing."""
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events_file = archive_dir / "events.jsonl"
 
@@ -671,7 +671,7 @@ class TestHistoryTail:
     ) -> None:
         """--tail with empty events file handles gracefully."""
         # Create empty archived events file
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events_file = archive_dir / "events.jsonl"
         events_file.write_text("")
@@ -700,7 +700,7 @@ class TestHistoryTail:
         those action_output events should not consume the tail budget, hiding earlier
         iterations from the user.
         """
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events_file = archive_dir / "events.jsonl"
 
@@ -756,7 +756,7 @@ class TestHistoryTail:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """In verbose mode, action_output events count toward --tail as before."""
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events_file = archive_dir / "events.jsonl"
 
@@ -813,7 +813,7 @@ class TestHistoryTail:
         """--json outputs a valid JSON array of events."""
         from little_loops.cli.loop.info import cmd_history
 
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events = [
             {"event": "loop_start", "ts": "2026-01-13T10:00:00", "loop": "test-loop"},
@@ -842,7 +842,7 @@ class TestHistoryTail:
         """--json with --tail N returns only the last N events."""
         from little_loops.cli.loop.info import cmd_history
 
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events = [{"event": f"evt_{i}", "ts": f"2026-01-13T10:00:{i:02d}"} for i in range(5)]
         events_file = archive_dir / "events.jsonl"
@@ -882,7 +882,7 @@ class TestHistoryVerboseLLM:
     """Tests for --verbose LLM call details rendering in ll-loop history."""
 
     def _write_events(self, tmp_path: Path, events: list[dict[str, Any]]) -> None:
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events_file = archive_dir / "events.jsonl"
         with open(events_file, "w") as f:
@@ -2349,7 +2349,7 @@ class TestHistoryFiltering:
         """Create an archived events file with a variety of event types and states."""
         from datetime import datetime, timedelta
 
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events_file = archive_dir / "events.jsonl"
 
@@ -2537,7 +2537,7 @@ class TestHistorySinceShortForm:
     @pytest.fixture
     def loop_archive(self, tmp_path: Path) -> Path:
         """Create an archived events file for history testing."""
-        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-run-id-test-loop"
         archive_dir.mkdir(parents=True)
         events_file = archive_dir / "events.jsonl"
         events = [

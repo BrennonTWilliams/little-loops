@@ -29,16 +29,16 @@ Inspect loop execution history and synthesize actionable issues (BUG/ENH/FEAT) f
 
 ## Step 1: Resolve Loop Name
 
-If `loop_name` argument is provided, resolve the most recent run_id before proceeding to Step 2:
+If `loop_name` argument is provided, resolve the most recent run folder before proceeding to Step 2:
 
 ```bash
-ll-loop history <loop_name> --json
+ls -d .loops/.history/*-<loop_name>/ 2>/dev/null | sort | tail -1
 ```
 
-This outputs a JSON array of run summaries, sorted newest-first. Each entry contains a `run_id` field (compact ISO timestamp, e.g. `2026-03-19T204149`).
+This lists folders matching the flat layout `[TIMESTAMP]-[LOOP-NAME]` for the given loop, sorted lexicographically (ISO timestamps sort chronologically). The last entry is the most recent run.
 
-- If the array is **empty**: report "No archived runs found for `<loop_name>`." and stop.
-- Otherwise: extract `runs[0]["run_id"]` as `LATEST_RUN_ID` and proceed to Step 2.
+- If the output is **empty**: report "No archived runs found for `<loop_name>`." and stop.
+- Otherwise: extract the folder name (e.g. `.loops/.history/2026-03-19T204149-my-loop/`), strip the leading path and the `-<loop_name>` suffix to obtain `LATEST_RUN_ID` (the compact timestamp, e.g. `2026-03-19T204149`). Proceed to Step 2.
 
 Otherwise, enumerate candidate loops:
 

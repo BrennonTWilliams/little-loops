@@ -356,16 +356,18 @@ def _list_archived_runs(loop_name: str, loops_dir: Path, as_json: bool) -> int:
 
     from little_loops.fsm.persistence import HISTORY_DIR, LoopState
 
-    history_base = loops_dir / HISTORY_DIR / loop_name
+    history_base = loops_dir / HISTORY_DIR
     if not history_base.exists():
         print(f"No history for: {loop_name}")
         return 0
 
-    # Collect (run_id, state_or_None) pairs sorted newest first by run_id
+    # Flat layout: run dirs are <run_id>-<loop_name> directly under .history/
+    suffix = f"-{loop_name}"
     runs: list[tuple[str, LoopState | None]] = []
     for run_dir in sorted(history_base.iterdir(), key=lambda d: d.name, reverse=True):
-        if not run_dir.is_dir():
+        if not run_dir.is_dir() or not run_dir.name.endswith(suffix):
             continue
+        run_id = run_dir.name[: -len(suffix)]
         state_file = run_dir / "state.json"
         state: LoopState | None = None
         if state_file.exists():
@@ -374,7 +376,7 @@ def _list_archived_runs(loop_name: str, loops_dir: Path, as_json: bool) -> int:
                 state = LoopState.from_dict(data)
             except (ValueError, KeyError):
                 pass
-        runs.append((run_dir.name, state))
+        runs.append((run_id, state))
 
     if not runs:
         print(f"No history for: {loop_name}")
@@ -455,7 +457,7 @@ def cmd_history(
     events = get_archived_events(loop_name, run_id, loops_dir)
 
     if not events:
-        print(f"No events found for run: {loop_name}/{run_id}")
+        print(f"No events found for run {run_id} of loop {loop_name}")
         return 1
 
     w = terminal_width()
