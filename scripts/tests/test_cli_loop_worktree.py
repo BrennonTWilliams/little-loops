@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +13,8 @@ import pytest
 from little_loops.parallel.git_lock import GitLock
 from little_loops.worktree_utils import cleanup_worktree, setup_worktree
 
+if TYPE_CHECKING:
+    from little_loops.parallel.worker_pool import WorkerPool
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -25,9 +29,8 @@ def _ok(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess([], 0, "", "")
 
 
-def _ok_with_stdout(stdout: str) -> "Callable[..., subprocess.CompletedProcess[str]]":
+def _ok_with_stdout(stdout: str) -> Callable[..., subprocess.CompletedProcess[str]]:
     """Return a mock git-lock side_effect that yields stdout for every call."""
-    from collections.abc import Callable
 
     def _impl(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess([], 0, stdout, "")
@@ -126,9 +129,9 @@ class TestSetupWorktree:
                         git_lock=git_lock,
                     )
 
-        assert any(
-            ".claude" in str(src) for src, _ in copytree_calls
-        ), "Expected .claude/ to be copied"
+        assert any(".claude" in str(src) for src, _ in copytree_calls), (
+            "Expected .claude/ to be copied"
+        )
 
     def test_copies_configured_files(self, tmp_path: Path) -> None:
         """setup_worktree() copies non-.claude/ files from copy_files list."""
@@ -372,7 +375,7 @@ class TestCleanupWorktree:
 class TestWorkerPoolCleanupBackwardsCompat:
     """Verify WorkerPool._cleanup_worktree still only deletes parallel/ branches."""
 
-    def _make_pool(self, tmp_path: Path) -> "WorkerPool":
+    def _make_pool(self, tmp_path: Path) -> WorkerPool:
         from little_loops.config import BRConfig
         from little_loops.parallel.types import ParallelConfig
         from little_loops.parallel.worker_pool import WorkerPool

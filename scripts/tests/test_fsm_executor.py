@@ -3013,7 +3013,9 @@ class TestDefaultActionRunnerProcessTracking:
             kwargs["on_process_end"](mock_proc)  # type: ignore[index]
             return mock_completed
 
-        with patch("little_loops.fsm.runners.run_claude_command", side_effect=fake_run_claude_command):
+        with patch(
+            "little_loops.fsm.runners.run_claude_command", side_effect=fake_run_claude_command
+        ):
             result = runner.run("/ll:format_issue", timeout=10, is_slash_command=True)
 
         # _current_process was set during execution

@@ -22,8 +22,8 @@ def setup_worktree(
     worktree_path: Path,
     branch_name: str,
     copy_files: list[str],
-    logger: "Logger",
-    git_lock: "GitLock",
+    logger: Logger,
+    git_lock: GitLock,
 ) -> None:
     """Create a git worktree on a new branch and copy essential files.
 
@@ -102,8 +102,8 @@ def setup_worktree(
 def cleanup_worktree(
     worktree_path: Path,
     repo_path: Path,
-    logger: "Logger",
-    git_lock: "GitLock",
+    logger: Logger,
+    git_lock: GitLock,
     delete_branch: bool = True,
 ) -> None:
     """Remove a git worktree and optionally its associated branch.

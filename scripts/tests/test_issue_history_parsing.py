@@ -137,9 +137,7 @@ class TestParseCompletionDate:
         """When git log returns empty output, None is returned."""
         f = tmp_path / "P3-ENH-006-test.md"
         f.write_text("## Resolution\n\nNo date field here.\n")
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="", stderr=""
-        )
+        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         with patch("little_loops.issue_history.parsing.subprocess.run", return_value=mock_result):
             result = _parse_completion_date(f.read_text(), f)
         assert result is None
@@ -160,7 +158,8 @@ class TestParseCompletionDate:
         f = tmp_path / "P3-ENH-008-test.md"
         f.write_text("## Resolution\n\nNo date field here.\n")
         with patch(
-            "little_loops.issue_history.parsing.subprocess.run", side_effect=OSError("git not found")
+            "little_loops.issue_history.parsing.subprocess.run",
+            side_effect=OSError("git not found"),
         ):
             result = _parse_completion_date(f.read_text(), f)
         assert result is None

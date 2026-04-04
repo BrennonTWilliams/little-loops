@@ -92,9 +92,7 @@ def _parse_completion_date(content: str, file_path: Path) -> date | None:
         Completion date or None
     """
     # Try Resolution section: **Completed/Fixed/Closed/Date**: YYYY-MM-DD
-    match = re.search(
-        r"\*\*(?:Completed|Fixed|Closed|Date)\*\*:\s*(\d{4}-\d{2}-\d{2})", content
-    )
+    match = re.search(r"\*\*(?:Completed|Fixed|Closed|Date)\*\*:\s*(\d{4}-\d{2}-\d{2})", content)
     if match:
         try:
             return date.fromisoformat(match.group(1))

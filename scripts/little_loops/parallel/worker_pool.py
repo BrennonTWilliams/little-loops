@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import threading
@@ -612,7 +611,7 @@ class WorkerPool:
             text=True,
         )
         branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
-        delete_branch = bool(branch_name) and branch_name.startswith("parallel/")  # type: ignore[arg-type]
+        delete_branch = branch_name is not None and branch_name.startswith("parallel/")
 
         from little_loops.worktree_utils import cleanup_worktree
 
