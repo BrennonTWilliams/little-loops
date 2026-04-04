@@ -2699,7 +2699,9 @@ class TestProcessMergeFallbackSequence:
         # Make a change on the feature branch (conflicts with main's pending change)
         test_file = worktree_path / "test.txt"
         test_file.write_text("feature change\n")
-        subprocess.run(["git", "add", "test.txt"], cwd=worktree_path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "test.txt"], cwd=worktree_path, capture_output=True, check=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "feature: change test.txt"],
             cwd=worktree_path,
@@ -2751,7 +2753,7 @@ class TestProcessMergeFallbackSequence:
         assert "TEST-CONFLICT" in coordinator.failed_merges
 
 
-class TestStashPopConflictCleanup:
+class TestPopStashConflictCleanup:
     """Tests for _pop_stash when stash pop produces merge conflicts.
 
     When 'git stash pop' fails with unmerged entries, _pop_stash cleans up
@@ -2766,7 +2768,6 @@ class TestStashPopConflictCleanup:
         temp_git_repo: Path,
     ) -> None:
         """Stash pop with unmerged entries triggers checkout --theirs cleanup."""
-        from unittest.mock import call
 
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
         coordinator._stash_active = True
