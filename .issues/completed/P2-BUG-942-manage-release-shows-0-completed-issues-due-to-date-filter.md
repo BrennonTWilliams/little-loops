@@ -118,11 +118,24 @@ For each file returned, parse filename for type/ID and read for title and `githu
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Fixed**: 2026-04-03
+
+Replaced Agent 2's date-filter approach with `git log --diff-filter=A` in `commands/manage-release.md`. Also fixed Agent 1 to use the same smart tag detection. Both agents now correctly identify the baseline tag whether run before or after tagging.
+
+- Removed dependency on `completed_date` field (not written by `manage-issue`)
+- Added smart tag detection: when HEAD is exactly at a tag, uses `${CURRENT_TAG}^` to find the previous tag, preventing empty commit/issue ranges
+- Verified: `git log --diff-filter=A v1.69.0..v1.70.0 -- .issues/completed/` returns 16 files as expected
+
 ## Labels
 
-`bug`, `captured`
+`bug`, `fixed`
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-04T02:43:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c48f8c13-757e-4d26-8db0-bfb5d0373bae.jsonl`
+- `/ll:ready-issue` - 2026-04-04T02:41:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5730fd7f-44f9-49c7-bbda-9a59720ac3d7.jsonl`
+- `/ll:ready-issue` - 2026-04-04T02:41:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5730fd7f-44f9-49c7-bbda-9a59720ac3d7.jsonl`
 - `/ll:verify-issues` - 2026-04-04T02:38:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
 - `/ll:confidence-check` - 2026-04-04T02:37:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
 - `/ll:refine-issue` - 2026-04-04T02:34:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
@@ -134,4 +147,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-04-03 | Priority: P2
+**Completed** | Created: 2026-04-03 | Completed: 2026-04-03 | Priority: P2

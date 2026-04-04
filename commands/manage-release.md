@@ -145,11 +145,17 @@ Analyze git history for release preparation.
 1. List all existing tags:
    git tag --list --sort=-version:refname
 
-2. Identify the most recent tag:
-   git describe --tags --abbrev=0
+2. Identify the baseline tag for this release using smart detection:
+   # If HEAD is exactly at a tag (e.g., changelog run after tagging), use the tag before it
+   if git describe --exact-match HEAD >/dev/null 2>&1; then
+     CURRENT_TAG=$(git describe --exact-match HEAD)
+     PREV_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^")
+   else
+     PREV_TAG=$(git describe --tags --abbrev=0)
+   fi
 
-3. Get commits since last tag (or all commits if no tags):
-   git log <last_tag>..HEAD --pretty=format:"%H|%s|%an|%ad" --date=short
+3. Get commits since baseline tag (or all commits if no tags):
+   git log ${PREV_TAG}..HEAD --pretty=format:"%H|%s|%an|%ad" --date=short
 
 4. Parse conventional commits and categorize:
    - feat: → Features (minor bump)
@@ -175,18 +181,22 @@ Use Task tool with subagent_type="Explore"
 Prompt:
 Scan completed issues for release notes.
 
-1. First, determine the date of the last git tag:
-   git log --format=%ai $(git describe --tags --abbrev=0) -1
+1. Determine the baseline tag using smart detection (handles running before or after tagging):
+   if git describe --exact-match HEAD >/dev/null 2>&1; then
+     CURRENT_TAG=$(git describe --exact-match HEAD)
+     PREV_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^")
+   else
+     PREV_TAG=$(git describe --tags --abbrev=0)
+   fi
 
-2. Scan .issues/completed/ for all .md files
+2. List issue files added to .issues/completed/ since that baseline tag:
+   git log --diff-filter=A --name-only --format="" "${PREV_TAG}..HEAD" -- .issues/completed/
 
-3. For each completed issue file:
+3. For each file returned by git log:
    - Parse the filename for priority, type (BUG/FEAT/ENH), and issue ID
    - Read the file and extract:
      - Title from the H1 heading
-     - completed_date from the Resolution section
      - github_issue from frontmatter (if present)
-   - Include the issue if completed_date >= last_tag_date
 
 4. Categorize issues:
    - Features: FEAT-* issues
@@ -197,7 +207,7 @@ Scan completed issues for release notes.
    - With github_issue: "ISSUE-ID: Title (#github_number)"
    - Without github_issue: "ISSUE-ID: Title"
 
-Return: categorized list of issues, count per category, date range.
+Return: categorized list of issues, count per category.
 ```
 
 #### Agent 3: Version References
