@@ -337,7 +337,9 @@ class TestLoopListCategoryFilter:
         (loops_dir / "loop-apo.yaml").write_text("name: loop-apo\ncategory: apo\n")
         (loops_dir / "loop-meta.yaml").write_text("name: loop-meta\ncategory: meta\n")
 
-        args = argparse.Namespace(running=False, status=None, json=False, category="apo", label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category="apo", label=None
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -366,7 +368,9 @@ class TestLoopListCategoryFilter:
             "name: loop-b\ncategory: meta\nlabels:\n  - health\n"
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=["optimize"])
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=["optimize"]
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -450,7 +454,9 @@ class TestLoopListCategoryFilter:
         loops_dir.mkdir()
         (loops_dir / "loop-a.yaml").write_text("name: loop-a\ncategory: apo\n")
 
-        args = argparse.Namespace(running=False, status=None, json=False, category="data", label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category="data", label=None
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",

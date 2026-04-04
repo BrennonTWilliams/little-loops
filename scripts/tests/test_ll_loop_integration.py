@@ -259,9 +259,7 @@ states:
         captured = capsys.readouterr()
         # Built-in loops are shown when no project loops exist, grouped by category
         if "[built-in]" in captured.out:
-            assert any(
-                kw in captured.out for kw in ["(", "uncategorized", "No loops"]
-            )
+            assert any(kw in captured.out for kw in ["(", "uncategorized", "No loops"])
         else:
             assert "No loops" in captured.out or captured.out.strip() == ""
 

@@ -146,9 +146,9 @@ class TestUpdateSkillSkipLogic:
     def test_plugin_version_read_has_error_guard(self) -> None:
         """PLUGIN_VERSION read must use error guard to fail gracefully outside repo (BUG-941)."""
         content = SKILL_FILE.read_text()
-        lines = [l for l in content.split("\n") if "PLUGIN_VERSION=$(python3" in l]
+        lines = [line for line in content.split("\n") if "PLUGIN_VERSION=$(python3" in line]
         assert lines, "PLUGIN_VERSION=$(python3 ...) assignment not found in skill"
-        assert all("2>/dev/null" in l for l in lines), (
+        assert all("2>/dev/null" in line for line in lines), (
             "PLUGIN_VERSION read (Step 2) must include '2>/dev/null || echo \"N/A\"' "
             "to handle missing .claude-plugin/ outside the little-loops repo. See BUG-941."
         )

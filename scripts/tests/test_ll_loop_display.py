@@ -1865,7 +1865,7 @@ class TestDisplayProgressEvents:
           - depth=2: 3 renders (parent + child + grandchild)
         Two separator lines ('sub-loop: child-loop' and 'sub-loop: grandchild-loop') appear.
         """
-        from unittest.mock import call, patch
+        from unittest.mock import patch
 
         from little_loops.cli.loop import layout as layout_mod
 

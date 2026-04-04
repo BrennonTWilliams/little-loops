@@ -14,7 +14,6 @@ from little_loops.mcp_call import (
     call_mcp_tool,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -205,9 +204,7 @@ class TestCallMcpToolTimeout:
         proc.wait.return_value = 0
 
         with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
-            envelope, code = call_mcp_tool(
-                "my-server", "tool", {}, timeout=0, cwd=tmp_path
-            )
+            envelope, code = call_mcp_tool("my-server", "tool", {}, timeout=0, cwd=tmp_path)
         assert code == 124
         assert "timeout" in envelope["content"][0]["text"].lower()
 
@@ -226,9 +223,7 @@ class TestCallMcpToolTimeout:
         proc.wait.return_value = 0
 
         with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
-            envelope, code = call_mcp_tool(
-                "my-server", "tool", {}, timeout=0, cwd=tmp_path
-            )
+            envelope, code = call_mcp_tool("my-server", "tool", {}, timeout=0, cwd=tmp_path)
         assert code == 124
 
 
