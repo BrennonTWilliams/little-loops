@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.72.0] - 2026-04-04
+
+### Added
+
+- **outer-loop-eval Built-in Loop** — New built-in loop for observing and evaluating loop quality; 6-state FSM (analyze_definition, run_sub_loop, analyze_execution, generate_report, refine_analysis, done) (FEAT-933)
+- **Shared Fragment Libraries for Cross-Loop State Reuse** — Reusable state fragments in `.loops/lib/` for DRY state definition across loops; supports `import:` key and `fragment:` references with deep-merge semantics; migrates 10 built-in loops to shared `shell_exit` fragment (FEAT-937)
+- **rename-loop Skill** — New skill for renaming built-in or project-level loops and updating all references (89d40d7e)
+
+[1.72.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.71.0...v1.72.0
+
 ## [1.71.0] - 2026-04-03
 
 ### Added
