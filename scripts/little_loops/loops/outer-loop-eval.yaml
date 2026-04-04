@@ -1,0 +1,157 @@
+name: outer-loop-eval
+category: evaluation
+description: |
+  Observe and improve a target loop by loading its YAML definition, executing it
+  as a sub-loop, then performing structured analysis to identify structural problems,
+  logic gaps, flow inefficiencies, and component improvement opportunities.
+  Produces an actionable improvement report with suggested YAML changes.
+initial: analyze_definition
+max_iterations: 10
+timeout: 3600
+on_handoff: spawn
+context:
+  loop_name: ""   # Required: target loop name (built-in or project-level)
+  input: ""       # Optional: input value passed to the sub-loop
+
+states:
+
+  analyze_definition:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the target loop's YAML definition using:
+        ll-loop show ${context.loop_name}
+
+      Produce a structured analysis covering:
+      - State coverage: all states reachable and have terminal paths
+      - Missing routes: states with no on_error handler for failure paths
+      - Evaluator types: appropriate evaluator types for each decision state
+      - Context variable hygiene: all context vars referenced are defined and
+        initialized with sensible defaults
+      - Cycle risks: potential infinite loops or missing exit conditions
+
+      Format your analysis clearly with a labeled section for each dimension.
+      If the loop is not found, note that in your analysis and continue.
+    capture: definition_analysis
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    next: run_sub_loop
+
+  run_sub_loop:
+    action_type: shell
+    action: |
+      ll-loop run "${context.loop_name}" "${context.input}"
+    capture: sub_loop_output
+    on_error: analyze_execution
+    next: analyze_execution
+
+  analyze_execution:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Analyze the sub-loop execution output below. If the sub-loop failed to start
+      (e.g., loop not found or crashed), note that clearly and assess what the error
+      reveals about the loop definition or runtime environment.
+
+      Sub-loop output:
+      ${captured.sub_loop_output.output}
+
+      Parse and report:
+      - State transition sequence observed
+      - Retry counts per state (if visible)
+      - Evaluator verdicts encountered
+      - Terminal state reached (or error/crash if not reached)
+      - Unexpected paths or anomalies
+      - Overall execution health assessment
+    capture: execution_analysis
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    next: generate_report
+
+  generate_report:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Combine the definition analysis and execution analysis into a structured
+      improvement report for loop: ${context.loop_name}
+
+      Definition analysis:
+      ${captured.definition_analysis.output}
+
+      Execution analysis:
+      ${captured.execution_analysis.output}
+
+      Structure the report with these exact sections:
+
+      ## Structural Issues
+      (Missing states, unreachable states, undefined routes, orphaned states)
+
+      ## Logic Issues
+      (Incorrect evaluator types, wrong routing logic, incorrect context var usage,
+      evaluators missing min_confidence)
+
+      ## Flow Issues
+      (Redundant hops, retry exhaustion paths that skip important cleanup,
+      timeout risks, missing on_error routes)
+
+      ## Component Improvements
+      (Specific state-level suggestions: better prompts, more precise evaluators,
+      improved capture keys, clearer action text)
+
+      ## Suggested YAML Changes
+      (Concrete diff-style or annotated suggestions for the highest-priority fixes,
+      ready to copy into the YAML file)
+
+      For each section: include at least one concrete finding if issues were found,
+      or "None identified." if the section is clean.
+    capture: improvement_report
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    evaluate:
+      type: llm_structured
+      source: "${captured.improvement_report.output}"
+      prompt: >
+        Does this improvement report contain at least one concrete finding
+        (a specific issue, recommendation, or suggested change) rather than
+        only "None identified." entries across all sections?
+        Answer YES if it has at least one concrete finding.
+        Answer NO if every section contains only "None identified."
+      min_confidence: 0.7
+    on_yes: done
+    on_no: refine_analysis
+    on_error: done
+
+  refine_analysis:
+    action_type: prompt
+    timeout: 300
+    action: |
+      The improvement report lacks concrete findings. Re-examine the data more carefully.
+
+      Definition analysis:
+      ${captured.definition_analysis.output}
+
+      Execution analysis:
+      ${captured.execution_analysis.output}
+
+      Look harder for:
+      - Any state missing an on_error route for shell or sub-loop actions
+      - Any evaluator that could be more specific or use a tighter min_confidence
+      - Any context variable that is used but not initialized in the context block
+      - Any retry logic where on_retry_exhausted routes to a suboptimal state
+      - Any state where the prompt could be more targeted or structured
+      - Any cycle risk where max_iterations is the only exit mechanism
+
+      There is always room for improvement in a complex FSM. Produce at least one
+      concrete, actionable recommendation and update the improvement_report capture
+      with a revised version of the full report.
+    capture: improvement_report
+    on_blocked: $current
+    max_retries: 2
+    on_retry_exhausted: done
+    next: generate_report
+
+  done:
+    terminal: true
