@@ -12,6 +12,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.70.0] - 2026-04-03
+
+### Added
+
+- **Prompt-Across-Issues Built-In Loop** — New `prompt-across-issues` FSM automation loop for running a prompt across all issues in the backlog (ae5709f9)
+- **Refine Limit Guard and Dynamic Thresholds** — `refine-to-ready-issue` loop now enforces a maximum refinement round limit and uses dynamic confidence thresholds to prevent runaway loops (c295070c)
+- **`--skip` Flag for `ll-issues next-action`** — Added `--skip` flag to prevent issue starvation when a specific issue blocks the queue (256c5e82)
+- **Parallel Merge** — Completed ENH-825: parallel orchestrator now merges worktree results back to main concurrently (b2bfa48e)
+- **Category and Labels for FSM Loops** — Loop schema now supports `category` and `labels` fields; `ll-loop list` surfaces them for filtering (b49f29d8)
+
+### Changed
+
+- **Generalized Sub-Loop Diagram Display** — `ll-loop show` now renders nested sub-loop diagrams to arbitrary depth N, not just one level (b4a2bef5)
+- **GIT_DIR/GIT_WORK_TREE in Worktree Sessions** — Subprocess launcher now sets `GIT_DIR` and `GIT_WORK_TREE` env vars so git commands resolve correctly inside worktrees (c6b265f9)
+- **Configurable `pull_issues` Limit** — `SyncConfig` now exposes `pull_limit` to cap how many issues are pulled from GitHub per sync run (6981527a)
+- **FSM Executor Refactored** — Result types and runner functions extracted from `executor.py` into dedicated modules for better separation of concerns (e530b52c)
+
+### Fixed
+
+- **`on_error` Fires When `next` Is Also Defined** — FSM `on_error` handler now correctly activates on non-zero exit even when a `next` transition is present (80846d6f)
+- **Trailing Newlines Stripped from Shell Output** — Captured shell command output no longer includes trailing newlines that caused downstream comparison failures (beb25a5d)
+- **`input_key` and Template Variable Escaping in `greenfield-builder`** — Fixed missing `input_key` binding and incorrect template variable escaping in the greenfield-builder loop (90bc05a5)
+- **Surgical Rebase When Main Advances Past Leaked Commits** — `ll-parallel` now attempts a surgical rebase when the main branch has advanced past commits that leaked from a worktree (e2af31e6)
+- **Done/Active Counts in Parallel Merge Path** — Fixed incorrect Done and Active counters during the parallel merge phase (7c97439f)
+- **Score Fallback When `confidence_check` Times Out** — `refine-to-ready` loop now uses a fallback score when the confidence check subprocess times out (dc38c539)
+- **CWD-Relative Manifest Reads Guarded in Update Skill** — `update` skill no longer crashes when `.claude-plugin/` is absent from the current working directory (7bcecb4a)
+
+[1.70.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.69.0...v1.70.0
+
 ## [1.69.0] - 2026-04-02
 
 ### Added
