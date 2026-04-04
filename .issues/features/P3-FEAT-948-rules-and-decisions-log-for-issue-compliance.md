@@ -60,39 +60,81 @@ As the issue count grows and workflows become more automated (ll-auto, ll-parall
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+
+**New files (create):**
+- `scripts/little_loops/decisions.py` — core CRUD module (load/save/add/list/generate/sync); follow `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern
+- `scripts/little_loops/cli/issues/decisions.py` — CLI subcommand handler for `ll-issues decisions`; follow `scripts/little_loops/cli/issues/next_id.py:11` pattern
+
+**Modify existing:**
+- `scripts/little_loops/cli/issues/__init__.py:80` — add `decisions` subparser to `subs = parser.add_subparsers(...)` and dispatch at line ~386; same pattern as all other subcommands in this file
+- `scripts/little_loops/config/features.py` — add `DecisionsConfig` dataclass with `enabled: bool`, `log_path: str = ".ll/decisions.yaml"`, `auto_generate: list[str]` fields; follow `IssuesConfig` at line 59
+- `scripts/little_loops/config/core.py:95` — add `self._decisions = DecisionsConfig.from_dict(...)` to `_parse_config()` and expose as `@property def decisions()`
+- `hooks/scripts/session-start.sh:76-97` — extend to output the body (non-frontmatter) of `ll.local.md` when it contains an `## Active Rules` section, so compliance rules surface in Claude's context at session start; currently the hook only outputs JSON from frontmatter (body is discarded)
+- `commands/ready-issue.md` — add decisions log query step to suppress violations where a matching `exception` entry with `rule_ref` exists (currently at Section 2, lines 139-183)
+- `commands/verify-issues.md` — add query step to surface rule violations and suppress false positives via `exception` entries (current violation categories at lines 67-80)
+
+**Optional (if adding top-level CLI):**
+- `scripts/pyproject.toml:48` — add `ll-decisions = "little_loops.decisions:main"` entry point if a standalone `ll-decisions` binary is needed (vs. all ops under `ll-issues decisions`)
 
 ### Dependent Files (Callers/Importers)
-- `skills/capture-issue/SKILL.md` — may need to log decisions at capture time
-- `skills/ready-issue/` — validation step could check against log
-- `skills/verify-issues/` — can surface rule violations
-- `scripts/little_loops/` — CLI entry point(s) for the new log
+- `scripts/little_loops/cli/issues/__init__.py:9` — `main_issues()` dispatches all `ll-issues` subcommands; decisions handler added here
+- `scripts/little_loops/cli/__init__.py:24` — re-exports `main_issues`, no change needed
+- `hooks/scripts/session-start.sh:21` — already sets `LOCAL_FILE=".ll/ll.local.md"`; needs extension to output the body content
+- `skills/capture-issue/SKILL.md` — optional: log decisions at capture time
+- `commands/ready-issue.md` — validation command (not a skill); add decisions log query for exception suppression
+- `commands/verify-issues.md` — violation-surfacing command (not a skill); add rule violation query and false-positive suppression
 
 ### Similar Patterns
-- `.ll/ll-config.json` — structured config as a model for the log format
-- `scripts/little_loops/issues.py` — existing issue management CLI patterns
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/sprint.py:142-202` — YAML persistence pattern (to_dict/from_yaml/save); closest model for `decisions.py` CRUD
+- `scripts/little_loops/workflow_sequence/io.py:35` — `yaml.safe_load(f)` load pattern; `yaml.dump(data, f, default_flow_style=False, sort_keys=False)` write pattern
+- `scripts/little_loops/config/features.py:59` — `IssuesConfig` dataclass + `from_dict()` factory; model for `DecisionsConfig`
+- `scripts/little_loops/cli/issues/next_id.py:11` — minimal subcommand handler pattern (`cmd_next_id(config)`)
+- `scripts/little_loops/sync.py:176-181` — `yaml.dump` / `yaml.safe_load` for updating frontmatter YAML in-place
+- `scripts/little_loops/sprint.py:206-373` — `SprintManager` class: CRUD manager with `create`/`load`/`list_all`/`delete` over `.yaml` files; closest model for `DecisionsManager`
+- `scripts/little_loops/state.py:134-155` — atomic write pattern (`tempfile.mkstemp` + `os.replace`); use if log corruption risk is a concern
+- `scripts/little_loops/session_log.py:112-128` — markdown section insert-after pattern (for writing `## Active Rules` into `ll.local.md`)
+- `scripts/little_loops/issue_history/parsing.py:208-228` — `scan_completed_issues(completed_dir)` is the entry point for auto-generation from completed issues; returns `CompletedIssue` dataclass list; integrate here for `generate --from=completed`
 
 ### Tests
-- TBD — unit tests for log CRUD; integration tests for auto-generation from completed issues
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**New test files (create):**
+- `scripts/tests/test_decisions.py` — unit tests for `decisions.py`: load empty log, add entries per type, list with filters, exception suppression (rule_ref lookup), supersedes resolution (inactive entries), auto-generation stub
+- `scripts/tests/test_cli_decisions.py` — CLI tests using `patch.object(sys, "argv", ["ll-issues", "decisions", ...])` pattern from `scripts/tests/test_issues_cli.py:29`
+
+**Fixtures to use:**
+- `temp_project_dir` (conftest.py:56) — tmpdir with `.ll/` folder; write `decisions.yaml` to `temp_project_dir / ".ll" / "decisions.yaml"` in tests
+- `sample_config` (conftest.py:66) — base config dict; add `decisions` key with test config
 
 ### Documentation
 - `docs/ARCHITECTURE.md` — document new log as a persistence layer
 - `.claude/CLAUDE.md` — update Key Directories and CLI Tools sections
 
 ### Configuration
-- `.ll/ll-config.json` — may need a `decisions` config block (enabled, log path, auto-generate triggers)
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/config/features.py` — add `DecisionsConfig` with `enabled`, `log_path`, `auto_generate` fields; loaded from `ll-config.json` under a `"decisions"` key
+- `scripts/little_loops/config/core.py:95` — `_parse_config()` adds `self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))`
+- `config-schema.json` — add `decisions` object schema (enabled, log_path, auto_generate) matching `DecisionsConfig` fields
+- `pyyaml>=6.0` is already a dependency (`scripts/pyproject.toml:38`) — no new deps needed
 
 ## Implementation Steps
 
-1. Design log schema (entry format per `type: rule | decision | exception`, storage at `.ll/decisions.yaml`, ID allocation strategy)
-2. Implement core CRUD for the log (Python module in `scripts/little_loops/decisions.py`)
-3. Add CLI surface (`ll-issues decisions` subcommand: `list`, `add`, `generate`, `sync`)
-4. Implement `ll-decisions sync`: reads active `required` rules, writes `## Active Rules` section to `.ll/ll.local.md`
-5. Integrate manual entry creation into `capture-issue` workflow
-6. Add auto-generation from completed issues (post-`manage-issue` hook or `ll-history` integration)
-7. Add auto-generation from active issues (pre-implementation step in `confidence-check` or `ready-issue`)
-8. Add validation/query support to `verify-issues` and `ready-issue`, including exception suppression (suppress violations where a matching `exception` entry with `rule_ref` exists) and supersedes resolution (treat superseded rules as inactive)
-9. Update docs and CLAUDE.md
+1. **Design + schema** — define `@dataclass` entry types (`RuleEntry`, `DecisionEntry`, `ExceptionEntry`) in `scripts/little_loops/decisions.py`; storage at `.ll/decisions.yaml` using `yaml.safe_load` / `yaml.dump(default_flow_style=False, sort_keys=False)` pattern from `scripts/little_loops/sprint.py:184`
+2. **Config** — add `DecisionsConfig` to `scripts/little_loops/config/features.py` (after `IssuesConfig:59`); wire into `BRConfig._parse_config()` at `scripts/little_loops/config/core.py:95`; update `config-schema.json`
+3. **Core CRUD** — implement `load_decisions()`, `save_decisions()`, `add_entry()`, `list_entries(type, category, label)`, `resolve_active()` (supersedes-aware) in `scripts/little_loops/decisions.py`
+4. **CLI subcommand** — create `scripts/little_loops/cli/issues/decisions.py` with `cmd_decisions(config, args)`; register `decisions` subparser in `scripts/little_loops/cli/issues/__init__.py:80` following existing subcommand pattern; supports `list`, `add`, `generate`, `sync` sub-sub-commands
+5. **Sync to ll.local.md** — implement `sync_to_local_md(project_root)` in `scripts/little_loops/decisions.py`; writes `## Active Rules` section; extend `hooks/scripts/session-start.sh` (after line 97) to also output the body of `ll.local.md` so `## Active Rules` surfaces in Claude's context at session start
+6. **capture-issue integration** — update `skills/capture-issue/SKILL.md` to optionally log a `decision` entry when the user makes a notable architectural choice
+7. **Auto-generation from completed issues** — add `generate_from_completed(config)` to `decisions.py` using `scan_completed_issues()` from `scripts/little_loops/issue_history/parsing.py:208`; the hook system has no per-command event (only `PostToolUse`/`Bash` and `Stop`) so auto-triggering from manage-issue requires detecting manage-issue invocation in the `issue-completion-log.sh` hook OR exposing this as a manual `ll-issues decisions generate --from=completed` command
+8. **Validation integration** — update `skills/ready-issue/SKILL.md` and `skills/verify-issues/SKILL.md` to query decisions log: check active `required` rules, surface violations, suppress false positives where `exception` entry with matching `rule_ref` exists
+9. **Tests** — write `scripts/tests/test_decisions.py` (CRUD, exception suppression, supersedes resolution) and `scripts/tests/test_cli_decisions.py` (CLI via `patch.object(sys, "argv")`); use `temp_project_dir` fixture from `conftest.py:56`
+10. **Docs** — update `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md` Key Directories and CLI Tools sections
 
 ## Use Case
 
@@ -197,4 +239,5 @@ ll-issues decisions sync                        # write active required rules to
 **Open** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-04T21:54:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2617058-86bb-4762-8daf-c963cd330fc4.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d50b6641-c597-41dc-894f-47b323d241b9.jsonl`
