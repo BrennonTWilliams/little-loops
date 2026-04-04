@@ -2992,6 +2992,51 @@ class TestDefaultActionRunnerProcessTracking:
         runner = DefaultActionRunner()
         assert runner._current_process is None
 
+    def test_slash_command_current_process_lifecycle(self) -> None:
+        """_current_process is set during and cleared after a slash command run (BUG-946)."""
+        import subprocess as sp
+
+        runner = DefaultActionRunner()
+        captured: list[sp.Popen[str] | None] = []
+
+        mock_completed = MagicMock(spec=sp.CompletedProcess)
+        mock_completed.stdout = "some output\n"
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+
+        def fake_run_claude_command(**kwargs: object) -> sp.CompletedProcess[str]:
+            # Simulate on_process_start setting _current_process
+            mock_proc = MagicMock(spec=sp.Popen)
+            kwargs["on_process_start"](mock_proc)  # type: ignore[index]
+            captured.append(runner._current_process)
+            # Simulate on_process_end clearing _current_process
+            kwargs["on_process_end"](mock_proc)  # type: ignore[index]
+            return mock_completed
+
+        with patch("little_loops.fsm.runners.run_claude_command", side_effect=fake_run_claude_command):
+            result = runner.run("/ll:format_issue", timeout=10, is_slash_command=True)
+
+        # _current_process was set during execution
+        assert captured[0] is not None
+        # _current_process is cleared after completion
+        assert runner._current_process is None
+        assert result.exit_code == 0
+
+    def test_slash_command_timeout_returns_exit_code_124(self) -> None:
+        """Slash command timeout returns ActionResult with exit_code=124 (BUG-946)."""
+        import subprocess as sp
+
+        runner = DefaultActionRunner()
+
+        with patch(
+            "little_loops.fsm.runners.run_claude_command",
+            side_effect=sp.TimeoutExpired("claude", 1),
+        ):
+            result = runner.run("/ll:format_issue", timeout=1, is_slash_command=True)
+
+        assert result.exit_code == 124
+        assert runner._current_process is None
+
 
 class TestFSMExecutorProcessTracking:
     """Tests for FSMExecutor._current_process tracking (BUG-818)."""

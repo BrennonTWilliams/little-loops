@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from little_loops.fsm.types import ActionResult
+from little_loops.subprocess_utils import run_claude_command
 
 
 def _now_ms() -> int:
@@ -75,18 +76,44 @@ class DefaultActionRunner:
         start = _now_ms()
 
         if is_slash_command:
-            # Execute via Claude CLI
-            cmd = [
-                "claude",
-                "--dangerously-skip-permissions",
-                "--no-session-persistence",
-                "-p",
-                action,
-            ]
-        else:
-            # Shell command
-            cmd = ["bash", "-c", action]
+            # Execute via Claude CLI using run_claude_command() so that the
+            # subprocess loads the full plugin/tool context (including deferred
+            # tools like Skill). The old --no-session-persistence path prevented
+            # ToolSearch from resolving deferred tool schemas (BUG-946).
+            def _stream_cb(line: str, is_stderr: bool) -> None:
+                if not is_stderr and on_output_line:
+                    on_output_line(line)
 
+            def _on_proc_start(p: subprocess.Popen[str]) -> None:
+                self._current_process = p
+
+            def _on_proc_end(p: subprocess.Popen[str]) -> None:
+                self._current_process = None
+
+            try:
+                completed = run_claude_command(
+                    command=action,
+                    timeout=timeout,
+                    stream_callback=_stream_cb,
+                    on_process_start=_on_proc_start,
+                    on_process_end=_on_proc_end,
+                )
+            except subprocess.TimeoutExpired:
+                return ActionResult(
+                    output="",
+                    stderr="Action timed out",
+                    exit_code=124,
+                    duration_ms=timeout * 1000,
+                )
+            return ActionResult(
+                output=completed.stdout,
+                stderr=completed.stderr,
+                exit_code=completed.returncode,
+                duration_ms=_now_ms() - start,
+            )
+
+        # Shell command
+        cmd = ["bash", "-c", action]
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,

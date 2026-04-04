@@ -165,16 +165,32 @@ def run_claude_command(
 | `docs/ARCHITECTURE.md` | FSM executor and subprocess invocation design |
 | `docs/reference/API.md` | `run_claude_command()` API reference |
 
+## Resolution
+
+**Status**: Fixed
+**Completed**: 2026-04-03
+
+### Changes Made
+
+- `scripts/little_loops/fsm/runners.py` — Replaced the slash command subprocess branch in `DefaultActionRunner.run()` with a call to `run_claude_command()` (imported from `little_loops.subprocess_utils`). Added `on_process_start`/`on_process_end` callbacks to maintain `_current_process` for SIGTERM handling (required by BUG-592). Added `try/except subprocess.TimeoutExpired` to return `ActionResult(exit_code=124)` consistent with the shell command path.
+- `scripts/tests/test_fsm_executor.py` — Added two tests to `TestDefaultActionRunnerProcessTracking`: `test_slash_command_current_process_lifecycle` (verifies `_current_process` is set and cleared via callbacks) and `test_slash_command_timeout_returns_exit_code_124` (verifies timeout handling).
+
+### Verification
+
+- All 134 FSM tests pass (`python -m pytest scripts/tests/test_fsm_executor.py -k "fsm or DefaultActionRunner or ProcessTracking"`)
+
 ## Labels
 
 `bug`, `fsm`, `ll-loop`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-04T03:52:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e94e2071-e3f7-4324-98fe-e817a4961f94.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b333ee9b-a17d-4e46-80c3-e1e9b655ac40.jsonl`
 - `/ll:refine-issue` - 2026-04-04T03:48:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56740bd0-a1c0-4c17-82fe-d5a9a3b4cb7c.jsonl`
 
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b25bbd11-d148-42ec-b212-9c6172060a64.jsonl`
+- `/ll:manage-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---
 
-**Open** | Created: 2026-04-03 | Priority: P2
+**Completed** | Created: 2026-04-03 | Completed: 2026-04-03 | Priority: P2
