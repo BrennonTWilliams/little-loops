@@ -567,6 +567,71 @@ states:
 
 **Most users can omit this field** — it is only needed when running loops in parallel via `ll-parallel`. Single-loop use cases do not require scope declaration.
 
+#### import (Optional)
+
+The `import` field lists fragment library YAML files to load before states are parsed. Paths are resolved relative to the loop file's directory.
+
+**Type:** `list[str]` — library file paths (e.g. `["lib/common.yaml"]`)
+
+**When to use:**
+- You want to reference shared state fragments defined in a separate library file
+- Multiple loops should share the same canonical fragment definitions
+
+**Example:**
+```yaml
+name: "my-loop"
+initial: lint
+import:
+  - lib/common.yaml       # loads shell_exit, retry_counter, etc.
+states:
+  lint:
+    fragment: shell_exit
+    action: "ruff check ."
+    on_yes: done
+    on_no: fix
+  fix:
+    action: "/ll:check-code fix"
+    next: lint
+  done:
+    terminal: true
+```
+
+Import paths are resolved relative to the importing loop file's directory. For built-in loops in `scripts/little_loops/loops/`, `lib/common.yaml` resolves to `scripts/little_loops/loops/lib/common.yaml`.
+
+#### fragments (Optional)
+
+The `fragments` field defines named partial state definitions inline in the loop file, without a separate library file.
+
+**Type:** `object` — keys are fragment names; values are partial state dicts
+
+**Precedence:** Local `fragments:` overrides any imported fragment with the same name.
+
+**When to use:**
+- The fragment is specific to one loop and not worth sharing across files
+- You want to keep everything in a single YAML file
+
+**Example:**
+```yaml
+name: "my-loop"
+initial: check
+fragments:
+  my_gate:
+    action_type: shell
+    evaluate:
+      type: exit_code
+states:
+  check:
+    fragment: my_gate
+    action: "npm test"
+    on_yes: done
+    on_no: fix
+  fix:
+    action: "/ll:manage-issue bug fix"
+    next: check
+  done:
+    terminal: true
+```
+
 #### loop (Optional)
 
 The `loop` field declares a state as a **sub-loop invocation** — instead of running an action, the executor loads and runs another loop YAML as a child FSM. The parent routes based on the child's terminal outcome.
@@ -614,6 +679,55 @@ states:
 **Context passthrough details:**
 - Parent `context` + `captured` are merged into child's `context` before execution
 - After child completes, child `captured` values are stored in parent's `captured[<state_name>]`
+
+#### fragment (Optional)
+
+The `fragment` field references a named partial state definition from an imported library (`import:`) or the loop's own `fragments:` block. Fragment fields are merged into the state at **parse time** — state-level keys win at every nesting level, including nested objects like `evaluate`.
+
+**Type:** `str` — name of a fragment defined in `import:` libraries or the local `fragments:` block.
+
+**Related top-level keys:** `import:` (load library files) and `fragments:` (define inline fragments).
+
+**Mutually exclusive with:** nothing — `fragment:` composes freely with `action`, `capture`, `on_yes`, `timeout`, and any other state field.
+
+**When to use:**
+- The same `action_type` + `evaluate` combination appears in many states
+- You want a single canonical definition that multiple loops can share
+- You need to vary only one sub-field (e.g. `evaluate.target`) while inheriting the rest
+
+**Example — import and use a fragment:**
+```yaml
+import:
+  - lib/common.yaml       # provides shell_exit
+
+states:
+  check_tests:
+    fragment: shell_exit  # inherits action_type: shell + evaluate.type: exit_code
+    action: "pytest"
+    timeout: 600
+    on_yes: done
+    on_no: fix_tests
+```
+
+**Deep-merge example — override only one nested field:**
+```yaml
+fragments:
+  numeric_gate:
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 3
+
+states:
+  strict_check:
+    fragment: numeric_gate
+    action: "wc -l errors.txt"
+    evaluate:
+      target: 1            # overrides only target; type and operator from fragment
+    on_yes: done
+    on_no: fail
+```
 
 #### on_partial (Optional)
 

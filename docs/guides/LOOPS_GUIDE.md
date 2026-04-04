@@ -15,6 +15,7 @@
 - [Pattern: Using --check with Exit Code Evaluators](#pattern-using---check-with-exit-code-evaluators)
 - [Tips](#tips)
 - [Composable Sub-Loops](#composable-sub-loops)
+- [Reusable State Fragments](#reusable-state-fragments)
 - [Troubleshooting](#troubleshooting)
 - [Further Reading](#further-reading)
 
@@ -1215,6 +1216,96 @@ When `--show-diagrams` is active and a state invokes a child loop, both FSM diag
 ```
 
 The parent state remains highlighted throughout child execution so you can track where you are in the outer pipeline. Sub-loop diagram display supports arbitrary nesting depth — each active sub-loop is shown below its parent with a separator, from depth-1 children down to depth-N grandchildren.
+
+---
+
+## Reusable State Fragments
+
+A **fragment** is a named partial state definition stored in a library file. Any loop can import a library and reference a fragment by name — the fragment's fields are merged into the state at parse time, with state-level fields taking precedence. Fragments eliminate copy-pasted state structure (the same `action_type` + `evaluate` combination duplicated across states) without the overhead of a separate execution context.
+
+### Defining a Fragment Library
+
+Create a YAML file with a top-level `fragments:` dict. Each key is a fragment name; the value is a partial state dict:
+
+```yaml
+# .loops/lib/common.yaml
+fragments:
+  shell_exit:
+    action_type: shell
+    evaluate:
+      type: exit_code
+```
+
+### Importing and Using Fragments
+
+Add `import:` at the loop root with the library path (relative to the loop file's directory), then reference a fragment with `fragment: <name>` in any state:
+
+```yaml
+import:
+  - lib/common.yaml
+
+states:
+  check_tests:
+    fragment: shell_exit    # inherits action_type: shell + evaluate.type: exit_code
+    action: "pytest"
+    timeout: 600
+    on_yes: done
+    on_no: fix_tests
+```
+
+State-level fields override fragment fields at every nesting level, including nested objects. To change only one sub-field of `evaluate`, supply just that sub-field — the rest carry over from the fragment:
+
+```yaml
+states:
+  check_count:
+    fragment: retry_counter       # provides action_type, action script, evaluate.type/operator
+    evaluate:
+      target: 5                   # override only the target; type/operator from fragment
+    on_yes: keep_going
+    on_no: give_up
+```
+
+### Inline Fragments
+
+Define fragments directly in the loop file without an `import:` line:
+
+```yaml
+fragments:
+  my_gate:
+    action_type: shell
+    evaluate:
+      type: exit_code
+
+states:
+  lint:
+    fragment: my_gate
+    action: "ruff check ."
+    on_yes: done
+    on_no: fix
+```
+
+Local `fragments:` definitions override any imported fragment with the same name.
+
+### Built-in Library
+
+`scripts/little_loops/loops/lib/common.yaml` ships with two fragments used by all built-in loops:
+
+| Fragment | Provides | Caller must supply |
+|----------|----------|--------------------|
+| `shell_exit` | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
+| `retry_counter` | Shell counter script + `output_numeric` evaluator against `${context.max_retries}` | `context.counter_key`, `context.max_retries`, routing |
+
+Built-in loops import it as `import: ["lib/common.yaml"]`. User loops in `.loops/` can do the same if they copy or symlink the library, or define their own.
+
+### When to Use Fragments vs. Sub-Loops
+
+| Approach | Best for |
+|----------|----------|
+| Fragment (`fragment:`) | Sharing a state *structure* (action_type + evaluate) across many states in one or more loops |
+| Sub-loop (`loop:`) | Reusing a complete, well-tested loop as a pipeline stage with its own execution context |
+| Inline states | Custom logic that doesn't map to any reuse pattern |
+
+Fragment resolution is parse-time only — the engine never sees `fragment:` keys and there is no runtime overhead.
 
 ---
 

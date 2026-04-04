@@ -265,6 +265,8 @@ states:                         # State definitions
     terminal: boolean           # True if this is an end state
     capture: string             # Variable name to store output
     timeout: number             # Action-level timeout in seconds
+    fragment: string            # Name of a fragment to inherit fields from (parse-time only;
+                                # state-level keys override fragment keys at every nesting level)
 
 # Optional Loop-Level Settings
 context: object                 # Shared variables/config
@@ -277,6 +279,12 @@ maintain: boolean               # Restart after completion
 category: string                # Grouping category for loop discovery and ll-loop list filtering
                                 # (e.g. 'apo', 'code-quality', 'issue-management')
 labels: array[string]           # Arbitrary tags for loop filtering with ll-loop list --label
+import: array[string]           # Fragment library files to load, resolved relative to the loop
+                                # file's directory (e.g. ["lib/common.yaml"]). Loaded before
+                                # states are parsed.
+fragments: object               # Inline named fragment definitions — keys are fragment names,
+                                # values are partial state dicts. Local fragments override
+                                # same-name imported fragments.
 
 # Per-Loop Config Overrides (optional)
 config:
