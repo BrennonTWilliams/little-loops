@@ -1,15 +1,15 @@
 ---
 discovered_date: 2026-04-02
 discovered_by: capture-issue
-confidence_score: 100
-outcome_confidence: 78
+confidence_score: 98
+outcome_confidence: 79
 ---
 
 # FEAT-916: Extension SDK with Scaffolding Command and Test Harness
 
 ## Summary
 
-Provide developer experience tooling for extension authors: an `ll-create-extension` command that scaffolds a new extension repo with correct `pyproject.toml` entry points, a skeleton `on_event` handler, and a test harness (`LLTestBus`) that replays recorded `.events.jsonl` files through extensions for offline testing. Auto-generate JSON Schema documentation from typed event dataclasses.
+Provide developer experience tooling for extension authors: an `ll-create-extension` command that scaffolds a new extension repo with correct `pyproject.toml` entry points, a skeleton `on_event` handler, and a test harness (`LLTestBus`) that replays recorded `.events.jsonl` files through extensions for offline testing. The skeleton references `docs/reference/EVENT-SCHEMA.md` for event type documentation. JSON Schema generation is tracked separately in FEAT-919.
 
 ## Context
 
@@ -23,10 +23,9 @@ No extension system exists yet (FEAT-911 pending). Once FEAT-911 ships, extensio
 
 - `ll-create-extension <name>` scaffolds a new directory/repo with:
   - `pyproject.toml` with correct `[project.entry-points."little_loops.extensions"]`
-  - Skeleton `on_event` handler implementing `LLExtension` Protocol
+  - Skeleton `on_event` handler implementing `LLExtension` Protocol; comment links to `docs/reference/EVENT-SCHEMA.md` for event type reference
   - Example test using `LLTestBus`
 - `LLTestBus` class loads a recorded `.events.jsonl`, replays events through an extension, and exposes `delivered_events` for assertions — no real loop execution needed
-- JSON Schema auto-generated from `LLEvent` typed dataclasses and published as part of the extension SDK
 
 ## Motivation
 
@@ -35,10 +34,9 @@ Extension ecosystems live or die on developer experience. Scaffolding eliminates
 ## Proposed Solution
 
 1. Create `ll-create-extension` CLI command (new entry point in `scripts/pyproject.toml`)
-2. Add scaffolding templates under `templates/extension/` with Jinja2 or string substitution
+2. Add scaffolding templates under `templates/extension/` with string substitution; skeleton `extension.py` includes a comment linking to `docs/reference/EVENT-SCHEMA.md` for event type reference
 3. Implement `LLTestBus` in `scripts/little_loops/testing.py` — reads JSONL, replays through extension's `on_event`, collects results
-4. Add JSON Schema generation script that introspects `LLEvent` dataclass hierarchy and outputs `.json` schema files
-5. Include the test harness and schema as part of `pip install little-loops[dev]`
+4. Export `LLTestBus` from `scripts/little_loops/__init__.py`
 
 ## Integration Map
 
@@ -120,6 +118,14 @@ _Added by `/ll:refine-issue` — verified against current codebase state:_
 - **`event_filter` normalization (Implementation Step 3 updated)**: `LLExtension.event_filter` is typed `str | list[str] | None` (`extension.py:41`). `LLTestBus.replay()` must normalize it exactly as `EventBus.register()` does at `events.py:90-93`: wrap a bare string in a list, pass lists through as-is, `None` means no filter. Step 3 now includes the exact normalization code.
 - **`EventBus.read_events()` requires `Path`, not `str`** (`events.py:132`): `LLTestBus.from_jsonl(path: str | Path)` must call `Path(path)` before passing to `read_events()`.
 
+### Refinement Pass 6 — Post-ll-gitignore Alphabetical Ordering Correction (2026-04-04)
+
+_Added by `/ll:refine-issue` — verified against current codebase state:_
+
+- **`cli/__init__.py` alphabetical ordering correction (Implementation Step 1 affected)**: The `__all__` list is alphabetically sorted — confirmed by `main_gitignore` being inserted at line 40 between `main_deps` and `main_history`. Previous passes instructed inserting `"main_create_extension"` after `"main_verify_docs"` at line 48, which breaks alphabetical order. Correct `__all__` insertion: **after `"main_check_links"` at line 38** (between `main_check_links` and `main_deps`). Similarly, the import `from little_loops.cli.create_extension import main_create_extension` should be inserted **after `from little_loops.cli.auto import main_auto` at line 19** (between `auto` and `deps`), not "after line 34."
+- **`pyproject.toml` `mcp-call` line re-confirmed at 62**: `ll-gitignore` was added at line 61 since Pass 5, but `mcp-call` remains at line 62. `ll-create-extension` goes after line 62 — all existing references accurate.
+- **`scripts/little_loops/__init__.py` line numbers re-confirmed**: Insert `LLTestBus` import after line 31; add `"LLTestBus"` to `__all__` after `"wire_extensions"` at line 43 — both still accurate (no new imports added since Pass 5).
+
 ### Refinement Pass 5 — Inline Corrections and Verification
 
 _Added by `/ll:refine-issue` — verified current codebase state (2026-04-03):_
@@ -137,11 +143,10 @@ _Added by `/ll:refine-issue` — verified current codebase state (2026-04-03):_
 ## Implementation Steps
 
 1. Create `scripts/little_loops/cli/create_extension.py` with `main_create_extension()` (each CLI command has its own file — do not add to `auto.py`); re-export from `scripts/little_loops/cli/__init__.py` (add `from little_loops.cli.create_extension import main_create_extension` after line 34; add `"main_create_extension"` to `__all__` after `"main_verify_docs"` at line 48); register `ll-create-extension = "little_loops.cli:main_create_extension"` in `scripts/pyproject.toml` after the existing last entry `mcp-call` at line 62; use **only** `add_config_arg` + `add_dry_run_arg` from `scripts/little_loops/cli_args.py` (NOT `add_common_auto_args` — interface is: one positional `name` arg plus `--config` and `--dry-run`)
-2. Create `templates/extension/` scaffolding using `parts: list[str]` + `"\n".join()` pattern (see `scripts/little_loops/issue_template.py:40-114`); **do not add Jinja2** — use string `.replace()` for `{{name}}` substitution (see `scripts/little_loops/parallel/types.py:357-385`)
+2. Create `templates/extension/` scaffolding using `parts: list[str]` + `"\n".join()` pattern (see `scripts/little_loops/issue_template.py:40-114`); **do not add Jinja2** — use string `.replace()` for `{{name}}` substitution (see `scripts/little_loops/parallel/types.py:357-385`); skeleton `extension.py` must include a comment: `# See docs/reference/EVENT-SCHEMA.md for all available event types and payload fields`
 3. Implement `LLTestBus` in `scripts/little_loops/testing.py` as a standalone class (not an `EventBus` subclass): `from_jsonl(path: str | Path)` classmethod calls `Path(path)` then `EventBus.read_events(path)` (`events.py:132-150`, requires `Path` not str); store extensions in `_extensions: list[LLExtension]` via `register(ext: LLExtension)`; `replay()` filters events using `event_filter` normalization **matching `EventBus.register()` at `events.py:90-93`**: `ef = getattr(ext, "event_filter", None); patterns = ([ef] if isinstance(ef, str) else list(ef)) if ef is not None else None` — then skip event if `patterns is not None and not any(fnmatch.fnmatch(event.type, p) for p in patterns)`; call `ext.on_event(event)` directly for each passing `LLEvent`; expose `delivered_events: list[LLEvent]`. **Do NOT use the `_make_callback` closure pattern** — that is only needed when wrapping for `EventBus.register()` (raw dict layer); `LLTestBus` already has typed `LLEvent` objects
-4. Add JSON Schema generation for the known event type catalog: enumerate all 19 event types from `docs/reference/EVENT-SCHEMA.md` across 5 subsystems (NOT from dataclass introspection — `LLEvent` uses a flat `payload: dict[str, Any]`, no typed subclasses); output one schema file per event type
-5. Export `LLTestBus` from `scripts/little_loops/__init__.py`: add `from little_loops.testing import LLTestBus` **after line 31** (end of import block, after the `work_verification` closing `)`); add `"LLTestBus"` to `__all__` **after line 43** (`"wire_extensions",`, within the `# extensions` comment block at lines 39-43). **Do NOT add to `[dev]` optional-dependencies** — `LLTestBus` is a regular module, not an external tool; the `[dev]` group (`pyproject.toml:68-76`) is for external dev tools only
-6. Add `LLTestBus` API docs to the **existing** extension section in `docs/reference/API.md` at lines 5037-5209 (added by ENH-922, now completed); also document the create → develop → test → publish workflow; update `CONTRIBUTING.md` with extension development workflow
+4. Export `LLTestBus` from `scripts/little_loops/__init__.py`: add `from little_loops.testing import LLTestBus` **after line 31** (end of import block, after the `work_verification` closing `)`); add `"LLTestBus"` to `__all__` **after line 43** (`"wire_extensions",`, within the `# extensions` comment block at lines 39-43). **Do NOT add to `[dev]` optional-dependencies** — `LLTestBus` is a regular module, not an external tool; the `[dev]` group (`pyproject.toml:68-76`) is for external dev tools only
+5. Add `LLTestBus` API docs to the **existing** extension section in `docs/reference/API.md` at lines 5037-5209 (added by ENH-922, now completed); also document the create → develop → test → publish workflow; update `CONTRIBUTING.md` with extension development workflow
 
 ## API/Interface
 
@@ -174,15 +179,15 @@ A developer wants to build a Grafana dashboard extension. They run `ll-create-ex
 
 - [ ] `ll-create-extension <name>` produces a working, installable extension skeleton
 - [ ] Skeleton extension passes its own generated test suite out of the box
+- [ ] Skeleton `extension.py` includes a comment linking to `docs/reference/EVENT-SCHEMA.md`
 - [ ] `LLTestBus` can replay `.events.jsonl` files and expose delivered events for assertions
-- [ ] JSON Schema generated from all 19 event types in `docs/reference/EVENT-SCHEMA.md` is valid and published (NOTE: `LLEvent` is a flat dataclass with `payload: dict[str, Any]` — no type hierarchy to introspect; enumerate from schema doc)
 - [ ] Documentation covers the full create → develop → test → publish workflow
 
 ## Impact
 
 - **Priority**: P4 - Developer experience; valuable once extension ecosystem has traction
 - **Effort**: Medium - Scaffolding is straightforward; test harness needs careful API design
-- **Risk**: Medium - Schema generation from dataclasses requires maintenance as events evolve
+- **Risk**: Low - Purely additive new tooling; no changes to existing code paths
 - **Breaking Change**: No (new tooling only)
 - **Depends On**: FEAT-911
 
@@ -214,6 +219,8 @@ A developer wants to build a Grafana dashboard extension. They run `ll-create-ex
 **Open** | Created: 2026-04-02 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-04T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be4f3256-56a9-4589-bcf6-68479ffab453.jsonl`
+- `/ll:refine-issue` - 2026-04-04T20:51:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1a6b5c3-1492-44f3-bd9c-617b8c558a7d.jsonl`
 - `/ll:verify-issues` - 2026-04-03T07:40:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:confidence-check` - 2026-04-03T14:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T07:37:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
