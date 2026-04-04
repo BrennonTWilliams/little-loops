@@ -111,9 +111,7 @@ def resolve_fragments(raw_loop_dict: dict[str, Any], loop_dir: Path) -> dict[str
     states: dict[str, Any] = dict(result.get("states", {}))
 
     # Step 3: if no states reference a fragment, return early (no-op)
-    if not any(
-        isinstance(s, dict) and s.get("fragment") is not None for s in states.values()
-    ):
+    if not any(isinstance(s, dict) and s.get("fragment") is not None for s in states.values()):
         return result
 
     for state_name, state_dict in states.items():
