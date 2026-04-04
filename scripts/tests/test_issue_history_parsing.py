@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
@@ -13,6 +14,7 @@ from little_loops.issue_history import (
     scan_active_issues,
     scan_completed_issues,
 )
+from little_loops.issue_history.parsing import _parse_completion_date
 
 
 class TestParseCompletedIssue:
@@ -87,6 +89,81 @@ discovered_by: null
         issue = parse_completed_issue(issue_file)
 
         assert issue.discovered_by is None
+
+
+class TestParseCompletionDate:
+    """Tests for _parse_completion_date: field label variants and git-log fallback."""
+
+    def test_fixed_label(self, tmp_path: Path) -> None:
+        """**Fixed**: label is parsed correctly."""
+        f = tmp_path / "P1-BUG-001-test.md"
+        f.write_text("## Resolution\n\n- **Fixed**: 2026-02-14\n")
+        result = _parse_completion_date(f.read_text(), f)
+        assert result == date(2026, 2, 14)
+
+    def test_closed_label(self, tmp_path: Path) -> None:
+        """**Closed**: label is parsed correctly."""
+        f = tmp_path / "P1-BUG-002-test.md"
+        f.write_text("## Resolution\n\n- **Closed**: 2026-03-01\n")
+        result = _parse_completion_date(f.read_text(), f)
+        assert result == date(2026, 3, 1)
+
+    def test_date_label(self, tmp_path: Path) -> None:
+        """**Date**: label is parsed correctly."""
+        f = tmp_path / "P2-ENH-003-test.md"
+        f.write_text("## Resolution\n\n- **Date**: 2025-12-31\n")
+        result = _parse_completion_date(f.read_text(), f)
+        assert result == date(2025, 12, 31)
+
+    def test_completed_label_still_works(self, tmp_path: Path) -> None:
+        """**Completed**: label continues to work after the change."""
+        f = tmp_path / "P1-BUG-004-test.md"
+        f.write_text("## Resolution\n\n- **Completed**: 2026-01-15\n")
+        result = _parse_completion_date(f.read_text(), f)
+        assert result == date(2026, 1, 15)
+
+    def test_git_log_fallback_when_no_date_field(self, tmp_path: Path) -> None:
+        """When no date field found, git log --diff-filter=A is used as fallback."""
+        f = tmp_path / "P3-ENH-005-test.md"
+        f.write_text("## Resolution\n\nNo date field here.\n")
+        mock_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="2026-03-15\n", stderr=""
+        )
+        with patch("little_loops.issue_history.parsing.subprocess.run", return_value=mock_result):
+            result = _parse_completion_date(f.read_text(), f)
+        assert result == date(2026, 3, 15)
+
+    def test_git_log_fallback_returns_none_when_empty(self, tmp_path: Path) -> None:
+        """When git log returns empty output, None is returned."""
+        f = tmp_path / "P3-ENH-006-test.md"
+        f.write_text("## Resolution\n\nNo date field here.\n")
+        mock_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        with patch("little_loops.issue_history.parsing.subprocess.run", return_value=mock_result):
+            result = _parse_completion_date(f.read_text(), f)
+        assert result is None
+
+    def test_git_log_fallback_returns_none_on_nonzero_exit(self, tmp_path: Path) -> None:
+        """When git log returns non-zero exit code, None is returned."""
+        f = tmp_path / "P3-ENH-007-test.md"
+        f.write_text("## Resolution\n\nNo date field here.\n")
+        mock_result = subprocess.CompletedProcess(
+            args=[], returncode=128, stdout="", stderr="not a git repo"
+        )
+        with patch("little_loops.issue_history.parsing.subprocess.run", return_value=mock_result):
+            result = _parse_completion_date(f.read_text(), f)
+        assert result is None
+
+    def test_git_log_fallback_returns_none_on_oserror(self, tmp_path: Path) -> None:
+        """When subprocess.run raises OSError, None is returned."""
+        f = tmp_path / "P3-ENH-008-test.md"
+        f.write_text("## Resolution\n\nNo date field here.\n")
+        with patch(
+            "little_loops.issue_history.parsing.subprocess.run", side_effect=OSError("git not found")
+        ):
+            result = _parse_completion_date(f.read_text(), f)
+        assert result is None
 
 
 class TestScanCompletedIssues:

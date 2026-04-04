@@ -127,11 +127,18 @@ N/A — No public API changes. `_parse_completion_date` is a private function; i
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-04-03
+- **Summary**: Expanded `_parse_completion_date` regex to match `**Fixed**`, `**Closed**`, and `**Date**` labels in addition to `**Completed**`. Replaced unreliable `os.path.getmtime()` fallback with `git log --diff-filter=A` to retrieve the actual file-addition date from git history. Added `import subprocess` to parsing.py. Added 8 unit tests covering all label variants and all fallback edge cases.
+
 ## Labels
 
-`enhancement`, `captured`
+`enhancement`, `completed`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-04T02:44:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4abdc408-cbe5-44ef-be32-e7846d85a8cd.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/513b2986-7f48-4059-ab63-838c7c6a75f3.jsonl`
 - `/ll:refine-issue` - 2026-04-04T02:31:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
 - `/ll:format-issue` - 2026-04-04T02:27:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bdafe97-8085-444d-a19d-881e0fb50d3a.jsonl`

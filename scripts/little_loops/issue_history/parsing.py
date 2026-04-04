@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -90,20 +91,29 @@ def _parse_completion_date(content: str, file_path: Path) -> date | None:
     Returns:
         Completion date or None
     """
-    # Try Resolution section: **Completed**: YYYY-MM-DD
-    match = re.search(r"\*\*Completed\*\*:\s*(\d{4}-\d{2}-\d{2})", content)
+    # Try Resolution section: **Completed/Fixed/Closed/Date**: YYYY-MM-DD
+    match = re.search(
+        r"\*\*(?:Completed|Fixed|Closed|Date)\*\*:\s*(\d{4}-\d{2}-\d{2})", content
+    )
     if match:
         try:
             return date.fromisoformat(match.group(1))
         except ValueError:
             pass
 
-    # Fallback to file mtime
+    # Fallback to git log: date file was added to completed/ in git history
     try:
-        mtime = file_path.stat().st_mtime
-        return date.fromtimestamp(mtime)
-    except OSError:
-        return None
+        result = subprocess.run(
+            ["git", "log", "--diff-filter=A", "--format=%as", "-1", "--", str(file_path)],
+            capture_output=True,
+            text=True,
+            cwd=file_path.parent,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return date.fromisoformat(result.stdout.strip())
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 def _parse_resolution_action(content: str) -> str:
