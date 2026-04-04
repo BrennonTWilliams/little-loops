@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.71.0] - 2026-04-03
+
+### Added
+
+- **`--worktree` Flag for `ll-loop run`** — `ll-loop run` now supports `--worktree` for isolated branch execution in a temporary git worktree, preventing state leakage between loop runs (ENH-945)
+
+### Fixed
+
+- **`ll-loop` Slash Command Steps** — Fixed slash command steps failing due to ToolSearch timeout with `--no-session-persistence`; now uses `run_claude_command()` correctly (BUG-946)
+- **`manage-release` Completed Issues Count** — Fixed `manage-release` showing 0 completed issues due to date-filter approach; now uses git-log for accurate detection (BUG-942)
+- **Lint, Type, and Format Issues** — Resolved outstanding lint, type checking, and format issues across the scripts package (83592edd)
+
+### Changed
+
+- **Loop History Per-Run Timestamped Folder** — Loop execution history is now saved to flat timestamped folders per run, making individual runs easier to inspect (ENH-944)
+- **Expanded `_parse_completion_date` Regex** — `_parse_completion_date` now uses a broader regex with git-log as a fallback, improving date detection reliability (ENH-943)
+
+[1.71.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.70.0...v1.71.0
+
 ## [1.70.0] - 2026-04-03
 
 ### Added
