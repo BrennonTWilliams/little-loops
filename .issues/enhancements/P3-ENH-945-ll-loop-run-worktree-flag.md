@@ -14,6 +14,14 @@ discovered_by: capture-issue
 
 Add a `--worktree` flag to `ll-loop run` that creates a new git worktree on a new local branch named `TIMESTAMP-LOOP-NAME` and executes the loop inside that isolated environment, reusing the existing worktree infrastructure from `ll-parallel` and `ll-sprint`.
 
+## Current Behavior
+
+`ll-loop run` executes all loop steps directly in the main repository working directory. There is no built-in mechanism for running a loop in an isolated git worktree — users must create and configure worktrees manually before invoking `ll-loop run`.
+
+## Expected Behavior
+
+`ll-loop run my-loop --worktree` creates a new git worktree on a new branch named `TIMESTAMP-LOOP-NAME` (e.g. `20260403-120000-my-loop`), executes the loop inside that isolated directory, and removes the worktree on exit.
+
 ## Motivation
 
 Currently `ll-loop run` executes in the main repo, making it unsuitable for loops that perform potentially destructive or experimental file changes. Users who want loop isolation today must set up worktrees manually. The parallel and sprint CLIs already have a mature worktree setup pipeline (`_setup_worktree`, `worktree_copy_files`, `.claude/` copy logic) — this enhancement exposes that capability directly from `ll-loop run` with a single flag, enabling isolated loop execution without code duplication.
@@ -86,7 +94,7 @@ ll-loop run my-loop --worktree
 
 ### Source of Extracted Logic
 - `scripts/little_loops/parallel/worker_pool.py:520–592` — `_setup_worktree` implementation to extract
-- `scripts/little_loops/parallel/worker_pool.py:646–700` — `_cleanup_worktree` implementation to extract
+- `scripts/little_loops/parallel/worker_pool.py:646–689` — `_cleanup_worktree` implementation to extract
 - `scripts/little_loops/parallel/git_lock.py` — `GitLock` class used by both methods; must be imported in new util module
 
 ### Config Access
@@ -126,10 +134,34 @@ ll-loop run my-loop --worktree
 - [ ] `WorkerPool._setup_worktree` is refactored to use the new shared utility (no code duplication)
 - [ ] Existing `ll-parallel` and `ll-sprint` tests still pass
 
+## Scope Boundaries
+
+- No `--keep-worktree` flag in this issue (deferred to future enhancement)
+- No automatic push or PR creation from the worktree branch after completion
+- No interactive branch naming or selection
+- Cleanup is exit-based only (`atexit`/signal); no scheduled or periodic cleanup
+- `WorkerPool` callers continue to use the existing internal methods wrapping the new shared utility — no external API change to `ll-parallel` or `ll-sprint`
+
+## Impact
+
+- **Priority**: P3 — Convenience enhancement for users running experimental or destructive loops; existing workflows unaffected
+- **Effort**: Medium — Requires refactoring shared worktree utility out of `worker_pool.py` plus a new test file; reuses well-tested existing infrastructure
+- **Risk**: Low — New flag is strictly opt-in; existing `ll-parallel` and `ll-sprint` behavior is unchanged
+- **Breaking Change**: No
+
 ## Related Issues
 
 - ENH-944 (loop history timestamped folder) — both deal with per-run isolation
 
+## Labels
+
+`enhancement`, `cli`, `loop`, `worktree`, `backlog`
+
+## Status
+
+**Open** | Created: 2026-04-03 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-04T03:59:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9407c329-07e8-4ca7-972a-c2b00f652f3f.jsonl`
 - `/ll:refine-issue` - 2026-04-04T03:46:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/565f959b-61a4-42f3-bdb8-695305671cbd.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acae55c4-3efa-4b99-aa19-26b81fc88701.jsonl`

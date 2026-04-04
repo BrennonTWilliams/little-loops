@@ -524,72 +524,16 @@ class WorkerPool:
             worktree_path: Path for the new worktree
             branch_name: Name of the new branch
         """
-        # Remove existing worktree if present
-        if worktree_path.exists():
-            self._cleanup_worktree(worktree_path)
+        from little_loops.worktree_utils import setup_worktree
 
-        # Create new worktree with branch
-        result = self._git_lock.run(
-            ["worktree", "add", "-b", branch_name, str(worktree_path)],
-            cwd=self.repo_path,
-            timeout=60,
+        setup_worktree(
+            repo_path=self.repo_path,
+            worktree_path=worktree_path,
+            branch_name=branch_name,
+            copy_files=self.parallel_config.worktree_copy_files,
+            logger=self.logger,
+            git_lock=self._git_lock,
         )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to create worktree: {result.stderr}")
-
-        # Copy git identity from main repo
-        for config_key in ["user.email", "user.name"]:
-            value_result = self._git_lock.run(
-                ["config", config_key],
-                cwd=self.repo_path,
-            )
-            if value_result.returncode == 0 and value_result.stdout.strip():
-                # Worktree config operations don't need the main repo lock
-                subprocess.run(
-                    ["git", "config", config_key, value_result.stdout.strip()],
-                    cwd=worktree_path,
-                    capture_output=True,
-                )
-
-        # Copy .claude/ directory to establish project root for Claude Code (BUG-007)
-        # Claude Code uses .claude/ directory as highest priority for project root detection.
-        # Without this, Claude may detect the main repo as project root in worktrees,
-        # causing file writes to leak to the main repository.
-        claude_dir = self.repo_path / ".claude"
-        if claude_dir.exists() and claude_dir.is_dir():
-            dest_claude_dir = worktree_path / ".claude"
-            if dest_claude_dir.exists():
-                shutil.rmtree(dest_claude_dir)
-            shutil.copytree(claude_dir, dest_claude_dir)
-            self.logger.info("Copied .claude/ directory to worktree")
-
-        # Copy additional configured files from main repo to worktree
-        for file_path in self.parallel_config.worktree_copy_files:
-            if file_path.startswith(".claude/"):
-                continue  # Already copied with full .claude/ directory above
-            src = self.repo_path / file_path
-            if src.exists():
-                if src.is_dir():
-                    self.logger.warning(
-                        f"Skipping '{file_path}' in worktree_copy_files: "
-                        "is a directory (use symlinks or copytree for directories)"
-                    )
-                    continue
-                dest = worktree_path / file_path
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest)
-                self.logger.info(f"Copied {file_path} to worktree")
-            else:
-                self.logger.debug(f"Skipped {file_path} (not found in main repo)")
-
-        self.logger.info(f"Created worktree at {worktree_path} on branch {branch_name}")
-
-        # Write session marker so concurrent orchestrators can identify this process's
-        # worktrees and skip them during orphan cleanup (BUG-579)
-        if worktree_path.exists():
-            marker_path = worktree_path / f".ll-session-{os.getpid()}"
-            marker_path.write_text(str(os.getpid()))
 
         # Verify model if --show-model flag is set (requires API call)
         if self.parallel_config.show_model:
@@ -660,7 +604,7 @@ class WorkerPool:
                 )
                 return
 
-        # Get branch name before removing worktree (worktree operation, no lock needed)
+        # Only delete branches with the parallel/ prefix (legacy behavior for ll-parallel)
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=worktree_path,
@@ -668,25 +612,17 @@ class WorkerPool:
             text=True,
         )
         branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
+        delete_branch = bool(branch_name) and branch_name.startswith("parallel/")  # type: ignore[arg-type]
 
-        # Remove worktree (main repo operation)
-        self._git_lock.run(
-            ["worktree", "remove", "--force", str(worktree_path)],
-            cwd=self.repo_path,
-            timeout=30,
+        from little_loops.worktree_utils import cleanup_worktree
+
+        cleanup_worktree(
+            worktree_path=worktree_path,
+            repo_path=self.repo_path,
+            logger=self.logger,
+            git_lock=self._git_lock,
+            delete_branch=delete_branch,
         )
-
-        # If worktree removal failed, force delete directory
-        if worktree_path.exists():
-            shutil.rmtree(worktree_path, ignore_errors=True)
-
-        # Delete the branch if it was a parallel branch (main repo operation)
-        if branch_name and branch_name.startswith("parallel/"):
-            self._git_lock.run(
-                ["branch", "-D", branch_name],
-                cwd=self.repo_path,
-                timeout=10,
-            )
 
     def _run_claude_command(
         self,

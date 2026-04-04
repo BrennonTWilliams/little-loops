@@ -75,6 +75,7 @@ def main_loop() -> int:
         epilog="""
 Examples:
   %(prog)s fix-types              # Run loop from .loops/fix-types.yaml
+  %(prog)s run fix-types --worktree # Run in isolated git worktree
   %(prog)s run fix-types --dry-run  # Show execution plan
   %(prog)s validate fix-types     # Validate loop definition
   %(prog)s test fix-types         # Run single test iteration
@@ -149,6 +150,14 @@ Examples:
         "--builtin",
         action="store_true",
         help="Load loop from built-ins directory (bypasses project .loops/ lookup)",
+    )
+    run_parser.add_argument(
+        "--worktree",
+        action="store_true",
+        help=(
+            "Run loop in an isolated git worktree on a new branch named "
+            "TIMESTAMP-LOOP-NAME; worktree and branch are removed on exit"
+        ),
     )
     add_handoff_threshold_arg(run_parser)
     add_context_limit_arg(run_parser)
