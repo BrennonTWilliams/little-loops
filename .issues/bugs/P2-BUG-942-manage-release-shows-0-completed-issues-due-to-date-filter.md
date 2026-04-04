@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-03
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 75
 ---
 
 # BUG-942: manage-release Shows 0 Completed Issues Due to Date-Filter Approach
@@ -41,8 +43,16 @@ Release notes are unusable when they list 0 issues despite a real release. This 
 ## Root Cause
 
 - **File**: `commands/manage-release.md`
-- **Anchor**: Agent 2 prompt (issue scanning section)
+- **Anchor**: Agent 2 prompt (`commands/manage-release.md:170-201`)
 - **Cause**: Agent 2 scans all files in `completed/` and filters by `completed_date >= last_tag_date`. When no date fields are present, the Explore subagent finds nothing to compare and excludes all issues. Additionally, the `git describe --tags --abbrev=0` call without `^` offset returns the current tag when HEAD is exactly at a tag, yielding an empty `HEAD..HEAD` range.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Field name mismatch**: Agent 2 at `commands/manage-release.md:187` instructs the Explore subagent to extract `completed_date` from the Resolution section. The actual text written by `manage-issue` (per `skills/manage-issue/templates.md:343-365`) is `**Completed**: YYYY-MM-DD` — a bold-label prose line. The Explore subagent must infer the mapping from the literal text to the field name `completed_date`, which is unreliable. The Python implementation in `scripts/little_loops/issue_history/parsing.py:83-106` handles this via regex `r"\*\*Completed\*\*:\s*(\d{4}-\d{2}-\d{2})"`, but the Agent 2 prompt contains no such guidance.
+- **Agent 1 has the same `git describe` problem**: `commands/manage-release.md:149` uses the same bare `git describe --tags --abbrev=0` call to form the commit range `git log <last_tag>..HEAD`. When HEAD is at a tag, this range is also empty — meaning Agent 1 also returns 0 commits, compounding the empty changelog result.
+- **Wave 2 synthesis has no empty-result warning**: `commands/manage-release.md:225-244` merges Agent 1 and Agent 2 results with no guard against both returning zero items. The changelog action at `commands/manage-release.md:308-311` simply omits all empty sections, producing a version header with no body.
 
 ## Proposed Solution
 
@@ -74,7 +84,11 @@ For each file returned, parse filename for type/ID and read for title and `githu
 - N/A — this is a command prompt file, not imported by Python code
 
 ### Similar Patterns
-- N/A — Agent 2 is the only place that scans completed issues for changelog generation
+- `scripts/little_loops/issue_discovery/extraction.py:126-127` — establishes the Python `git log <commit>..HEAD -- <paths>` pattern (with `--name-only`, no `--diff-filter`); same shape as the proposed fix
+- `scripts/little_loops/issue_history/parsing.py:83-106` — `_parse_completion_date()`: the Python equivalent using regex `r"\*\*Completed\*\*:\s*(\d{4}-\d{2}-\d{2})"` with file mtime fallback — shows why the date-filter approach fails for files without the `**Completed**:` line
+
+### Related Issues
+- `.issues/enhancements/P3-ENH-943-expand-parse-completion-date-regex-and-git-log-fallback.md` — companion enhancement to improve the Python `parse_completion_date` regex and add a `git log` fallback; orthogonal to this fix but addresses the same root limitation
 
 ### Tests
 - Manual verification: run `/ll:manage-release changelog v1.70.0` after the fix and confirm 16 issues appear
@@ -87,9 +101,10 @@ For each file returned, parse filename for type/ID and read for title and `githu
 
 ## Implementation Steps
 
-1. Locate the Agent 2 prompt block in `commands/manage-release.md` (~lines 170–201).
-2. Replace the date-filter scanning logic with the `git log --diff-filter=A` approach (smart tag detection for pre-tag and post-tag scenarios).
-3. Verify against the known list of 16 issues (BUG-928, BUG-930, BUG-931, BUG-938, BUG-939, BUG-940, BUG-941, ENH-497, ENH-825, ENH-841, ENH-925, ENH-929, ENH-932, ENH-935, ENH-936, FEAT-934).
+1. Open `commands/manage-release.md` and locate Agent 2 at **lines 170–201** (exact confirmed).
+2. Replace the date-filter scanning logic (lines 178–199) with the `git log --diff-filter=A` approach from the Proposed Solution (smart tag detection covers both pre-tag and post-tag run scenarios).
+3. Also fix **Agent 1 at line 149**: replace the bare `git describe --tags --abbrev=0` with the same smart tag detection so that `git log <PREV_TAG>..HEAD` in Agent 1 also uses the correct previous-tag baseline when HEAD is at a tag.
+4. Verify against the known list of 16 issues (BUG-928, BUG-930, BUG-931, BUG-938, BUG-939, BUG-940, BUG-941, ENH-497, ENH-825, ENH-841, ENH-925, ENH-929, ENH-932, ENH-935, ENH-936, FEAT-934).
 
 ## Impact
 
@@ -107,6 +122,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-03T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
+- `/ll:refine-issue` - 2026-04-04T02:29:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
+- `/ll:format-issue` - 2026-04-04T02:25:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7308edca-cfb1-4076-acfb-845ecd8be944.jsonl`
 
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7308edca-cfb1-4076-acfb-845ecd8be944.jsonl`
 
