@@ -15,6 +15,7 @@
 - [Pattern: Using --check with Exit Code Evaluators](#pattern-using---check-with-exit-code-evaluators)
 - [Tips](#tips)
 - [Composable Sub-Loops](#composable-sub-loops)
+- [Loop Discovery: category and labels](#loop-discovery-category-and-labels)
 - [Reusable State Fragments](#reusable-state-fragments)
 - [Troubleshooting](#troubleshooting)
 - [Further Reading](#further-reading)
@@ -285,6 +286,12 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
 | `test-coverage-improvement` | Measure test coverage, identify uncovered code paths, write tests for highest-risk gaps, and converge when coverage target is met |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
+
+**Evaluation**
+
+| Loop | Description |
+|------|-------------|
+| `outer-loop-eval` | Analyze a target loop by loading its YAML definition, executing it as a sub-loop, and producing a structured improvement report covering state coverage, missing routes, evaluator types, context variable hygiene, and cycle risks |
 
 **Reinforcement Learning (RL)**
 
@@ -910,6 +917,62 @@ ll-loop run examples-miner \
 
 **Oracle sub-loop (v2)**: The `scripts/little_loops/loops/oracles/oracle-capture-issue.yaml` file provides a two-phase oracle (mechanical checks + semantic LLM scoring) that can be promoted to a sub-loop in a customized `examples-miner.yaml` via `loop: oracles/oracle-capture-issue` + `context_passthrough: true` on the `judge` state. The built-in `examples-miner.yaml` uses inline oracle scoring (v1 approach) — install and customize to enable sub-loop promotion.
 
+---
+
+### `prompt-regression-test` — Prompt CI / Regression Detection
+
+**Technique**: Run a prompt suite against an LLM endpoint, score outputs against expected results, compare scores to a stored baseline, flag regressions, and optionally trigger an `apo-textgrad` sub-loop to repair the regressed prompt before updating the baseline.
+
+**When to use**: Continuous integration for prompts — detect quality regressions when you change the model, system configuration, or surrounding code that a prompt depends on. Unlike other APO loops that optimize a prompt toward a target, `prompt-regression-test` defends a known-good baseline and only triggers optimization when a regression is detected.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `prompt_suite` | `prompts/` | Directory containing prompt files to test |
+| `baseline_file` | `.loops/tmp/prompt-baseline.json` | Stored baseline scores (created on first run) |
+| `pass_threshold` | `90` | Pass rate (0–100) at which the loop considers the suite healthy |
+
+**Invocation**:
+
+```bash
+# Run with defaults (tests all prompts in prompts/ directory)
+ll-loop run prompt-regression-test
+
+# Point at a specific prompt directory and threshold
+ll-loop run prompt-regression-test \
+  --context prompt_suite=tests/prompts/ \
+  --context pass_threshold=85
+
+# Install to project for customization
+ll-loop install prompt-regression-test
+```
+
+**FSM flow**:
+```
+run_suite ──→ score_outputs ──→ compare_baseline ──→ route_regression
+                                                       ├─ NO_REGRESSION ──→ report ──→ done
+                                                       └─ REGRESSION ──→ trigger_apo (sub-loop: apo-textgrad)
+                                                                              ├─ SUCCESS ──→ update_baseline ──→ done
+                                                                              └─ FAILURE/ERROR ──→ report ──→ done
+```
+
+**First run baseline**: On the first run `baseline_file` does not exist — the loop creates it from the initial suite results and exits with a clean report. Subsequent runs compare against this stored baseline. To reset: delete `baseline_file` before the next run.
+
+**Pairing with `examples-miner`** (recommended workflow for persistent regressions):
+
+```bash
+# Step 1: Mine a fresh example corpus for the regressed prompt
+ll-loop run examples-miner --context skill_name=my-prompt
+
+# Step 2: Run regression test — triggers apo-textgrad automatically on failure
+ll-loop run prompt-regression-test \
+  --context prompt_suite=prompts/ \
+  --context pass_threshold=90
+```
+
+---
+
 ### Choosing Between APO Loops
 
 | Trigger | Recommended loop |
@@ -920,13 +983,14 @@ ll-loop run examples-miner \
 | Want to explore multiple prompt candidates | `apo-beam` |
 | Have gradient-like feedback signals | `apo-textgrad` |
 | Building a training example corpus | `examples-miner` |
+| Prompt quality has regressed vs. baseline | `prompt-regression-test` |
 
-| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` |
-|---|---|---|---|---|---|
-| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) | Low (single targeted refinement) |
-| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) | Fast when examples have clear correct answers |
-| Local optima risk | High | Moderate | Moderate | Low | Low (example failures provide precise signal) |
-| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces | Prompts with measurable pass/fail examples (classification, extraction) |
+| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` | `prompt-regression-test` |
+|---|---|---|---|---|---|---|
+| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) | Low (single targeted refinement) | Low (one repair pass via apo-textgrad) |
+| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) | Fast when examples have clear correct answers | Fast when regression has concrete failing examples |
+| Local optima risk | High | Moderate | Moderate | Low | Low (example failures provide precise signal) | Low (triggered only by concrete regressions) |
+| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces | Prompts with measurable pass/fail examples (classification, extraction) | CI integration; defending a known-good quality baseline |
 
 ### Tips for APO Loops
 
@@ -1025,12 +1089,12 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 
 | Command | Description |
 |---------|-------------|
-| `ll-loop run <name>` | Run a loop (also: `ll-loop <name>`) |
+| `ll-loop run <name>` | Run a loop (also: `ll-loop <name>`); use `--worktree` for isolated branch execution |
 | `ll-loop validate <name>` | Check YAML for schema errors and unreachable states |
 | `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--json` for raw FSM config) |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions |
-| `ll-loop list` | List available loops (`--running` for active only, `--builtin` for built-ins only) |
+| `ll-loop list` | List available loops; `--running` for active only, `--builtin` for built-ins, `--category <cat>` / `--label <tag>` to filter by category or label |
 | `ll-loop status <name>` | Show current state and iteration count (`--json` for machine-readable output) |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
@@ -1216,6 +1280,35 @@ When `--show-diagrams` is active and a state invokes a child loop, both FSM diag
 ```
 
 The parent state remains highlighted throughout child execution so you can track where you are in the outer pipeline. Sub-loop diagram display supports arbitrary nesting depth — each active sub-loop is shown below its parent with a separator, from depth-1 children down to depth-N grandchildren.
+
+---
+
+## Loop Discovery: category and labels
+
+Every loop YAML can declare a `category` string and a `labels` list for filtering with `ll-loop list`:
+
+```yaml
+name: fix-quality-and-tests
+category: code-quality
+labels: [quality, lint, tests]
+```
+
+`ll-loop list` groups output by `category`. Loops without a category appear under `uncategorized`. Filter at the command line with:
+
+```bash
+ll-loop list --category code-quality          # loops in the code-quality category
+ll-loop list --label tests                    # loops carrying the "tests" label
+ll-loop list --builtin --category evaluation  # built-in evaluation loops only
+```
+
+`--label` can be repeated for an OR match: `--label tests --label lint` returns loops with either tag.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `category` | `string` | Grouping label shown as a header in `ll-loop list` output |
+| `labels` | `array[string]` | Arbitrary tags for finer-grained filtering |
+
+Both fields are optional and have no effect on loop execution.
 
 ---
 

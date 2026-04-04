@@ -476,6 +476,33 @@ Find stuck or stale `ll-loop` processes, diagnose root causes from state and eve
 
 **See also:** `/ll:analyze-loop`, `/ll:review-loop`, `ll-loop stop`
 
+### `/ll:rename-loop`
+Rename a loop (built-in or project-level) and update every reference to it so the loop system remains fully functional.
+
+**Arguments:**
+- `old_name` (required): Current loop name (bare identifier, no `.yaml` extension)
+- `new_name` (required): New loop name (kebab-case identifier; may include a sub-directory prefix like `oracles/name`)
+- `--dry-run` (flag): Preview all changes without applying them
+- `--yes` (flag): Skip the confirmation prompt
+
+**What it does:**
+1. Locates the loop file in `.loops/` (project) or `scripts/little_loops/loops/` (built-in)
+2. Renames the YAML file and updates its internal `name:` field
+3. Updates all `loop:` sub-loop references in other YAML files
+4. For built-in loops, updates tests and docs references
+5. Confirms the change plan before applying (unless `--yes` is set)
+
+**Usage:**
+```bash
+/ll:rename-loop fix-types fix-quality-and-tests
+/ll:rename-loop old-loop-name new-loop-name --dry-run   # preview only
+/ll:rename-loop old-name new-name --yes                 # skip confirmation
+```
+
+**Trigger keywords:** "rename loop", "rename a loop", "change loop name"
+
+**See also:** `/ll:create-loop`, `/ll:review-loop`, `ll-loop show`
+
 ### `/ll:workflow-automation-proposer`
 Synthesize workflow patterns into concrete automation proposals. Final step (Step 3) of the `/ll:analyze-workflows` pipeline.
 
@@ -534,6 +561,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `review-loop`^ | Review and improve existing FSM loop configurations |
 | `analyze-loop`^ | Analyze loop execution history and synthesize issues from failure patterns |
 | `cleanup-loops`^ | Find and clean stuck or stale loop processes |
+| `rename-loop`^ | Rename a loop and update all references |
 | `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
