@@ -81,6 +81,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **`on_error` route for missing loop name**: When `run_sub_loop` gets a non-zero exit code (e.g., loop not found), `on_error` routes to `analyze_execution` per the Acceptance Criteria. Since `evaluate:` type won't be set for the shell state, use `on_error:` shorthand for non-zero exit codes.
 
+- **`ll-loop simulate` confirmed**: `cmd_simulate` is implemented at `scripts/little_loops/cli/loop/testing.py:172`. The Implementation Steps command `ll-loop simulate outer-loop-eval issue-refinement` is valid.
+
+- **README section**: The `loops/README.md` has no "Meta/Analysis" section. Existing sections are: Issue Management, Sprint & Worktree, Code Quality, General Purpose, Quality Monitoring, RL, Agent Evaluation, APO, Data & Testing, Greenfield & Eval-Driven, Harness/Templates. Best fit for `outer-loop-eval` is either **"Quality Monitoring"** (alongside `evaluation-quality` and `context-health-monitor`) or **"Agent Evaluation"** (alongside `agent-eval-improve`). Recommend "Quality Monitoring" since the purpose is proactive quality checking, not agent improvement. Alternative: create a new "Loop Evaluation" section after "Agent Evaluation".
+
+- **`agent-eval-improve.yaml` full structure confirmed** (`agent-eval-improve.yaml:1-91`): 6 states (`run_eval`, `score_results`, `analyze_failures`, `route_quality`, `refine_config`, `done`). Uses `capture:` on prompt states; downstream states reference via `${captured.<key>.output}`. The `convergence` evaluator (`route_quality`) routes `target`/`progress`/`stall` via a `route:` table — usable as-is for `generate_report` if scoring output numerically, though `llm_structured` (as proposed) is simpler for text-based reports.
+
 Context variables:
 ```yaml
 context:
@@ -92,7 +98,7 @@ context:
 
 ### Files to Modify
 - `scripts/little_loops/loops/outer-loop-eval.yaml` — new loop definition (create)
-- `scripts/little_loops/loops/README.md` — add to catalog under "Meta/Analysis" section
+- `scripts/little_loops/loops/README.md` — add to catalog; see research note below for correct section
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/__init__.py` — `ll-loop list` will auto-discover new file
@@ -123,7 +129,7 @@ context:
 4. Validate schema: `ll-loop validate outer-loop-eval`
 5. Dry-run against a simple built-in loop: `ll-loop simulate outer-loop-eval issue-refinement`
 6. Add new test file `scripts/tests/test_outer_loop_eval.py` following patterns in `scripts/tests/test_builtin_loops.py`
-7. Add catalog entry to `scripts/little_loops/loops/README.md`
+7. Add catalog entry to `scripts/little_loops/loops/README.md` under "Quality Monitoring" section (or create "Loop Evaluation" section after "Agent Evaluation" — see research notes above)
 8. Run `python -m pytest scripts/tests/test_fsm_interpolation.py scripts/tests/test_builtin_loops.py scripts/tests/test_outer_loop_eval.py -v` to confirm no regressions
 
 ## Use Case
@@ -162,6 +168,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feat`, `loops`, `built-in-loop`, `loop-eval`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-04T18:52:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76ac4db8-bcc3-4fbf-b0ad-52eed4d8e24a.jsonl`
 - `/ll:verify-issues` - 2026-04-03T06:41:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T06:37:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
