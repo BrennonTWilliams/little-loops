@@ -5,6 +5,8 @@ priority: P4
 status: open
 discovered_date: 2026-04-04
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-947: Expand lib/common.yaml with More Reusable State Fragments
@@ -130,11 +132,39 @@ Fragment definitions are additive; all existing loops continue to work unchanged
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Fragment engine (read-only reference, no modifications needed):**
+- `scripts/little_loops/fsm/fragments.py:39-59` — `_deep_merge(base, override)`: caller's state fields always win; nested dicts (e.g., `evaluate:`) are recursively merged. A caller supplying `evaluate: {prompt: "..."}` on top of `llm_gate`'s `evaluate: {type: llm_structured}` yields `evaluate: {type: llm_structured, prompt: "..."}`. This is the core assertion to test.
+- `scripts/little_loops/fsm/fragments.py:62-135` — `resolve_fragments()`: loads imports (lines 89-102), merges inline fragments (104-108), expands `fragment:` refs (110-134). No changes needed — arbitrary fragment names are supported.
+
+**Test class specifics:**
+- `scripts/tests/test_fsm_fragments.py:82` — `TestResolveFragmentsInlineOnly`: primary location to add tests; uses inline Python dict `fragments:` block, no file I/O, calls `resolve_fragments(raw, tmp_path)`. Follow the `test_inline_fragment_expands_into_state` pattern at line 108.
+- `scripts/tests/test_fsm_fragments.py:193` — `TestResolveFragmentsImport`: add import-based test here using the `_write_lib(tmp_path / "lib", content)` helper; tests that `llm_gate`/`numeric_gate` load correctly from the actual `lib/common.yaml` file.
+- Key assertions for `llm_gate`: `state["action_type"] == "prompt"`, `state["evaluate"]["type"] == "llm_structured"`, caller `evaluate: {prompt: "..."}` merges (not replaces), `"fragment" not in state`.
+- Key assertions for `numeric_gate`: `state["action_type"] == "shell"`, `state["evaluate"]["type"] == "output_numeric"`, caller `evaluate: {operator: "gt", target: 0}` merges with fragment's `type`.
+
+**LOOPS_GUIDE.md exact locations:**
+- `docs/guides/LOOPS_GUIDE.md:1384` — prose "ships with **two** fragments" also needs updating to "four fragments"
+- `docs/guides/LOOPS_GUIDE.md:1386-1389` — the 2-row fragment table; insert 2 new rows after line 1389
+
+**`loops/README.md` status:**
+- `scripts/little_loops/loops/README.md` — confirmed no fragment references; no update needed
+
+**Loop import count note:**
+- The Dependent Files section above states "All 35 loop YAML files already `import: ["lib/common.yaml"]`" — verified count is **10** loops (not 11 as the refine note said). Total built-in loops is **36** (not 35). The remaining ~26 loops would need to add `import: [lib/common.yaml]` to use the new fragments. This is consistent with the "migration is optional" stance; the 35-loop count appears to reflect total built-in loops rather than loops that already import the library.
+
 ## Implementation Steps
 
-1. **Add fragments** to `scripts/little_loops/loops/lib/common.yaml`: `llm_gate` (after `retry_counter`) and `numeric_gate` (after `llm_gate`), with matching comment style
-2. **Add tests** to `scripts/tests/test_fsm_fragments.py`: deep-merge correctness for both new fragments, verify caller fields override fragment fields
-3. **Update docs** in `docs/guides/LOOPS_GUIDE.md`: add `llm_gate` and `numeric_gate` to the fragment reference table
+1. **Add fragments** to `scripts/little_loops/loops/lib/common.yaml` (after line 37, after `retry_counter`): `llm_gate` then `numeric_gate`, matching the comment style `# FragmentName: one-line purpose.\n# State must supply: ...`
+2. **Add tests** to `scripts/tests/test_fsm_fragments.py`:
+   - In `TestResolveFragmentsInlineOnly` (line 82): inline dict tests for each fragment's field expansion and `evaluate:` deep-merge behavior (see assertions above)
+   - In `TestResolveFragmentsImport` (line 193): import-based test using `_write_lib()` helper to verify `lib/common.yaml` loading
+3. **Update docs** in `docs/guides/LOOPS_GUIDE.md`:
+   - Line 1384: change "two fragments" → "four fragments"
+   - Lines 1386-1389: add two rows to the fragment table for `llm_gate` and `numeric_gate`
 4. **Optional migration**: update 2–3 built-in loops as usage examples (not required for the issue to be complete)
 
 ## Impact
@@ -165,4 +195,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-04-04 | Priority: P4
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-04T20:01:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/126b9c43-3c6d-4f01-99b2-083edd61af8b.jsonl`
+- `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea193db9-def8-4de5-b1e0-76e907c228ec.jsonl`
+- `/ll:refine-issue` - 2026-04-04T19:57:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b02d7260-c236-4cba-adfd-a7ad367dec08.jsonl`
+- `/ll:format-issue` - 2026-04-04T19:53:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea0d3c18-0b93-4810-b26d-0696b206409e.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5a4d820-f7ab-4175-bc5f-af74c64b0b11.jsonl`
