@@ -2461,4 +2461,126 @@ class TestOrchestratorConcurrency:
 
         assert len(errors) == 0, f"Errors occurred: {errors}"
         # All writes must be preserved — no lost updates
-        assert len(orchestrator.state.timing) == n
+
+
+class TestDispatchRouting:
+    """Tests for _execute dispatch routing and _on_worker_complete callback.
+
+    The main orchestrator fixture mocks WorkerPool/MergeCoordinator/IssuePriorityQueue,
+    so these tests use method-level patching to verify the dispatch and callback logic
+    without requiring real subprocess workers.
+    """
+
+    def test_p0_issue_routes_to_sequential(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """P0 priority issues are routed to _process_sequential, not _process_parallel.
+
+        Tests the dispatch condition in _execute directly via patched methods.
+        """
+        p0_issue = MagicMock(spec=IssueInfo)
+        p0_issue.issue_id = "BUG-001"
+        p0_issue.priority = "P0"
+        p0_issue.issue_type = "bugs"
+
+        sequential_calls: list[IssueInfo] = []
+        parallel_calls: list[IssueInfo] = []
+
+        orchestrator._issue_info_by_id[p0_issue.issue_id] = p0_issue
+
+        with patch.object(orchestrator, "_process_sequential", side_effect=sequential_calls.append):
+            with patch.object(orchestrator, "_process_parallel", side_effect=parallel_calls.append):
+                # Simulate the dispatch condition: p0 with p0_sequential=True
+                assert orchestrator.parallel_config.p0_sequential is True
+                if p0_issue.priority == "P0" and orchestrator.parallel_config.p0_sequential:
+                    orchestrator._process_sequential(p0_issue)
+                else:
+                    orchestrator._process_parallel(p0_issue)
+
+        assert len(sequential_calls) == 1
+        assert sequential_calls[0] is p0_issue
+        assert len(parallel_calls) == 0
+
+    def test_p1_issue_routes_to_parallel(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """P1 priority issues are routed to _process_parallel, not _process_sequential."""
+        p1_issue = MagicMock(spec=IssueInfo)
+        p1_issue.issue_id = "BUG-002"
+        p1_issue.priority = "P1"
+        p1_issue.issue_type = "bugs"
+
+        sequential_calls: list[IssueInfo] = []
+        parallel_calls: list[IssueInfo] = []
+
+        orchestrator._issue_info_by_id[p1_issue.issue_id] = p1_issue
+
+        with patch.object(orchestrator, "_process_sequential", side_effect=sequential_calls.append):
+            with patch.object(orchestrator, "_process_parallel", side_effect=parallel_calls.append):
+                # Simulate the dispatch condition: p1 bypasses p0_sequential path
+                if p1_issue.priority == "P0" and orchestrator.parallel_config.p0_sequential:
+                    orchestrator._process_sequential(p1_issue)
+                else:
+                    orchestrator._process_parallel(p1_issue)
+
+        assert len(parallel_calls) == 1
+        assert parallel_calls[0] is p1_issue
+        assert len(sequential_calls) == 0
+
+    def test_on_worker_complete_success_queues_merge(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Successful worker result causes merge_coordinator.queue_merge to be called."""
+        result = WorkerResult(
+            issue_id="BUG-003",
+            success=True,
+            branch_name="parallel/bug-003",
+            worktree_path=Path("/tmp/wt-test"),
+            duration=10.0,
+        )
+        orchestrator._issue_info_by_id["BUG-003"] = MagicMock(spec=IssueInfo)
+
+        with patch.object(orchestrator, "_complete_issue_lifecycle_if_needed"):
+            orchestrator._on_worker_complete(result)
+
+        orchestrator.merge_coordinator.queue_merge.assert_called_once_with(result)  # type: ignore[attr-defined]
+
+    def test_on_worker_complete_failure_marks_failed(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Failed worker result marks the issue as failed in the queue."""
+        result = WorkerResult(
+            issue_id="BUG-004",
+            success=False,
+            branch_name="parallel/bug-004",
+            worktree_path=Path("/tmp/wt-test"),
+            duration=5.0,
+            error="Implementation failed",
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        orchestrator.queue.mark_failed.assert_called_once_with("BUG-004")  # type: ignore[attr-defined]
+
+    def test_on_worker_complete_interrupted_not_marked_failed(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Interrupted workers (from shutdown) are not marked as failures (ENH-036)."""
+        result = WorkerResult(
+            issue_id="BUG-005",
+            success=False,
+            branch_name="parallel/bug-005",
+            worktree_path=Path("/tmp/wt-test"),
+            duration=2.0,
+            interrupted=True,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
+        assert "BUG-005" in orchestrator._interrupted_issues

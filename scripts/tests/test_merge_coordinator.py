@@ -2662,3 +2662,177 @@ class TestMergeLoopExceptionHandling:
         mock_logger.error.assert_called_once()
         logged_msg = mock_logger.error.call_args[0][0]
         assert "unexpected queue error" in logged_msg
+
+
+class TestProcessMergeFallbackSequence:
+    """End-to-end tests for the merge conflict fallback sequence.
+
+    Individual steps (stash, _handle_conflict, rebase) are tested elsewhere in isolation.
+    These tests call _process_merge with a real git conflict to verify the coordinated
+    path through the codebase: merge → conflict → rebase attempt → failure.
+    """
+
+    def _setup_conflict_repo(self, repo_path: Path) -> Path:
+        """Create a merge conflict scenario in repo_path.
+
+        Sets up:
+        - main branch: test.txt = "main change\\n"
+        - parallel/feature-test worktree: test.txt = "feature change\\n"
+        Both branches diverge from the same initial commit, causing a conflict
+        when the feature branch is merged into main.
+
+        Returns:
+            Path to the git worktree for the feature branch.
+        """
+        worktree_base = repo_path / ".worktrees"
+        worktree_base.mkdir()
+        worktree_path = worktree_base / "feature-test"
+
+        # Create feature branch as a worktree
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/feature-test", str(worktree_path)],
+            cwd=repo_path,
+            capture_output=True,
+            check=True,
+        )
+
+        # Make a change on the feature branch (conflicts with main's pending change)
+        test_file = worktree_path / "test.txt"
+        test_file.write_text("feature change\n")
+        subprocess.run(["git", "add", "test.txt"], cwd=worktree_path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "feature: change test.txt"],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+
+        # Make a conflicting change on main (same file, same line)
+        main_test_file = repo_path / "test.txt"
+        main_test_file.write_text("main change\n")
+        subprocess.run(["git", "add", "test.txt"], cwd=repo_path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "main: conflicting change to test.txt"],
+            cwd=repo_path,
+            capture_output=True,
+            check=True,
+        )
+
+        return worktree_path
+
+    def test_merge_conflict_triggers_full_fallback_to_failure(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Real merge conflict walks the full fallback: merge fails → rebase fails → FAILED.
+
+        This verifies the coordinated path through _process_merge → _handle_conflict →
+        git rebase (also conflicts) → _handle_failure, which was previously untested
+        end-to-end.
+        """
+        worktree_path = self._setup_conflict_repo(temp_git_repo)
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        worker_result = WorkerResult(
+            issue_id="TEST-CONFLICT",
+            branch_name="parallel/feature-test",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        coordinator._process_merge(request)
+
+        # Both git merge --no-ff and the subsequent git rebase attempt in _handle_conflict
+        # will fail on the same conflict — the request should be marked FAILED.
+        assert request.status == MergeStatus.FAILED
+        assert "TEST-CONFLICT" in coordinator.failed_merges
+
+
+class TestStashPopConflictCleanup:
+    """Tests for _pop_stash when stash pop produces merge conflicts.
+
+    When 'git stash pop' fails with unmerged entries, _pop_stash cleans up
+    via 'git checkout --theirs . && git reset HEAD' to preserve the merge
+    while discarding the conflicted stash. This path was previously untested.
+    """
+
+    def test_stash_pop_conflict_runs_theirs_checkout_cleanup(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Stash pop with unmerged entries triggers checkout --theirs cleanup."""
+        from unittest.mock import call
+
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        coordinator._stash_active = True
+        coordinator._current_issue_id = "BUG-STASH"
+
+        # Simulate: stash pop fails, status shows unmerged entries, cleanup succeeds
+        git_commands_run: list[list[str]] = []
+
+        def mock_git_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            git_commands_run.append(cmd)
+            result = MagicMock()
+            if cmd[:2] == ["stash", "pop"]:
+                result.returncode = 1
+                result.stderr = "CONFLICT (content): Merge conflict in some-file.txt"
+            elif cmd[:2] == ["status", "--porcelain"]:
+                result.returncode = 0
+                result.stdout = "UU some-file.txt\n"  # unmerged entry
+            else:
+                result.returncode = 0
+                result.stdout = ""
+                result.stderr = ""
+            return result
+
+        with patch.object(coordinator._git_lock, "run", side_effect=mock_git_run):
+            success = coordinator._pop_stash()
+
+        assert success is False  # pop failed
+        assert coordinator._stash_active is False
+        assert "BUG-STASH" in coordinator.stash_pop_failures
+
+        # Verify cleanup commands were issued
+        assert ["checkout", "--theirs", "."] in git_commands_run
+        assert ["reset", "HEAD"] in git_commands_run
+
+    def test_stash_pop_failure_without_unmerged_skips_cleanup(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Stash pop failure without unmerged entries does not run checkout --theirs."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        coordinator._stash_active = True
+        coordinator._current_issue_id = "BUG-STASH-2"
+
+        git_commands_run: list[list[str]] = []
+
+        def mock_git_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            git_commands_run.append(cmd)
+            result = MagicMock()
+            if cmd[:2] == ["stash", "pop"]:
+                result.returncode = 1
+                result.stderr = "error: Your local changes would be overwritten"
+            elif cmd[:2] == ["status", "--porcelain"]:
+                result.returncode = 0
+                result.stdout = " M modified-file.txt\n"  # regular modified, not unmerged
+            else:
+                result.returncode = 0
+                result.stdout = ""
+                result.stderr = ""
+            return result
+
+        with patch.object(coordinator._git_lock, "run", side_effect=mock_git_run):
+            success = coordinator._pop_stash()
+
+        assert success is False
+        assert "BUG-STASH-2" in coordinator.stash_pop_failures
+        # Cleanup should NOT have run (no unmerged entries)
+        assert ["checkout", "--theirs", "."] not in git_commands_run

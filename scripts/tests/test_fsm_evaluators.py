@@ -1111,6 +1111,38 @@ class TestDiffStallEvaluator:
         assert result.verdict == "yes"
         assert result.details["max_stall"] == 2
 
+    def test_first_call_resets_stale_count_file(self, mock_git, tmp_path) -> None:
+        """First call resets a stale count file to 0 even if it had a non-zero value.
+
+        If the state file was deleted (e.g., partial cleanup) but the count file
+        survived from a previous stalled loop, the next call should re-baseline
+        rather than carrying forward the stale stall count.
+        """
+        _, mock_result = mock_git
+        mock_result.stdout = "scripts/foo.py | 1 +"
+
+        # Pre-populate the count file with a stale non-zero value (stall_count = 3)
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True, exist_ok=True)
+
+        import hashlib
+
+        scope_str = "_root_"
+        cache_key = hashlib.md5(scope_str.encode()).hexdigest()[:12]
+        count_file = loops_tmp / f"ll-diff-stall-{cache_key}.count"
+        count_file.write_text("3")
+        # Do NOT write the state file — simulates partial cleanup
+
+        result = evaluate_diff_stall()
+
+        # First call should treat this as baseline: return yes, stall_count = 0
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 0
+        assert result.details["diff_changed"] is True
+
+        # Count file should now be reset to 0
+        assert count_file.read_text().strip() == "0"
+
 
 class TestMcpResultEvaluator:
     """Tests for the mcp_result evaluator."""
