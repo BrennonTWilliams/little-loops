@@ -143,6 +143,19 @@ git worktree list
    cat .worktrees/worker-1/.claude/settings.local.json
    ```
 
+### Git commands fail inside worktree sessions
+
+**Symptom**: `git status` / `git log` errors or wrong repo inside an `ll-parallel` / `ll-loop` subprocess spawned in a worktree
+
+**Cause**: In a git worktree, `.git` is a file (not a directory) pointing to the real gitdir. Some tools and subprocesses fail to resolve this automatically.
+
+**Solution**: `run_claude_command` in `subprocess_utils.py` automatically detects worktrees and sets `GIT_DIR` / `GIT_WORK_TREE` environment variables before spawning Claude. If you are invoking shell commands manually inside a worktree, set them yourself:
+```bash
+export GIT_DIR=$(cat .git | sed 's/gitdir: //')
+export GIT_WORK_TREE=$(pwd)
+git status   # now works correctly
+```
+
 ### Too many worktrees
 
 **Symptom**: Disk space issues or "too many open files"

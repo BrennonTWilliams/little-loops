@@ -258,6 +258,8 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 
 **Timeout recovery**: If `confidence_check` times out (e.g., the LLM call hangs), the loop falls back to `check_scores_from_file` — a deterministic recovery state that reads `confidence_score` and `outcome_confidence` directly from the issue's frontmatter via `ll-issues show --json`. This avoids a cascading LLM timeout in the error path. If both scores meet the thresholds, the loop routes to `verify_issue`; otherwise it routes to `failed`.
 
+**Refine limit guard**: The loop caps refinement retries at **2 total runs** per issue. After the second `/ll:refine-issue` run, `check_refine_limit` increments a counter stored in `.loops/tmp/refine-to-ready-refine-count`. If the limit is reached the loop routes to `failed` rather than looping indefinitely. Install the loop locally (`ll-loop install refine-to-ready-issue`) and edit the `check_refine_limit` state's `target:` value to allow more retries.
+
 **Issue Management**
 
 | Loop | Description |
@@ -267,6 +269,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
 | `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
+| `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
 

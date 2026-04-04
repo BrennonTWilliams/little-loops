@@ -274,6 +274,9 @@ backoff: number                 # Seconds between iterations
 timeout: number                 # Max total runtime in seconds (loop-level)
 default_timeout: number         # Default per-state action timeout in seconds (overridden by state-level timeout:)
 maintain: boolean               # Restart after completion
+category: string                # Grouping category for loop discovery and ll-loop list filtering
+                                # (e.g. 'apo', 'code-quality', 'issue-management')
+labels: array[string]           # Arbitrary tags for loop filtering with ll-loop list --label
 
 # Per-Loop Config Overrides (optional)
 config:
@@ -432,6 +435,8 @@ states:
 3. If `on_yes`/`on_no`/`on_error`/`on_blocked` → use shorthand routing
 4. If `terminal: true` → end loop
 5. Otherwise → error (no valid transition)
+
+> **`on_error` precedence**: When a shell action exits non-zero **and** `on_error` is defined, the executor routes to `on_error` even if `next` is not the active path. `next` is only followed on a zero exit code; a non-zero exit always triggers `on_error` when it is defined. This means you can combine `next` (happy-path unconditional hop) and `on_error` (error recovery) on the same state — they are not mutually exclusive.
 
 ---
 

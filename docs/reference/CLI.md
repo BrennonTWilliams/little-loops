@@ -262,12 +262,15 @@ Validate a loop definition file.
 
 #### `ll-loop list` / `ll-loop l`
 
-List available loops.
+List available loops. Output is grouped by `category` when categories are set. Loops without a category appear under `uncategorized`.
 
-| Flag | Description |
-|------|-------------|
-| `--running` | Only show currently running loops |
-| `--json` / `-j` | Output as JSON array |
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--running` | | Only show currently running loops |
+| `--builtin` | | Only show built-in loops (exclude project `.loops/`) |
+| `--category <cat>` | `-c` | Filter to loops with the given category (e.g. `apo`, `issue-management`, `code-quality`) |
+| `--label <tag>` | `-l` | Filter to loops that carry the given label tag; repeat for multiple tags (OR match) |
+| `--json` / `-j` | | Output as JSON array; each entry includes `name`, `path`, `category`, `labels`, and `built_in` (when applicable) |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 
