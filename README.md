@@ -86,7 +86,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
-- **22 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
+- **23 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 - **13 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
 - **35 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
@@ -120,6 +120,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:issue-workflow` | Quick reference for issue management workflow |
 | `/ll:issue-size-review` | Evaluate issue size/complexity and propose decomposition |
 | `/ll:map-dependencies` | Analyze cross-issue dependencies based on file overlap |
+| `/ll:wire-issue [path]` | Complete integration point wiring for refined issues |
 
 ### Planning & Implementation
 
@@ -226,6 +227,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `configure`^ | Session & Config | Interactively configure specific areas in ll-config.json |
 | `update`^ | Session & Config | Update little-loops components (marketplace, plugin, package) |
 | `go-no-go`^ | Planning & Implementation | Adversarial GO/NO-GO verdict via pro/con debate agents |
+| `wire-issue`^ | Issue Refinement | Complete integration point wiring for refined issues |
 
 ## CLI Tools
 
