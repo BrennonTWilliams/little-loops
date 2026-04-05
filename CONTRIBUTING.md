@@ -475,6 +475,22 @@ Skills are user-invocable workflows that activate based on trigger keywords or e
 - Test both success and error paths
 - Aim for meaningful coverage, not just line coverage
 
+## Event Schema Maintenance
+
+When adding a new `LLEvent` type or changing payload fields:
+
+1. Update `docs/reference/EVENT-SCHEMA.md` with the new type and its payload fields.
+2. Add or update the entry in `SCHEMA_DEFINITIONS` in `scripts/little_loops/generate_schemas.py`.
+3. Regenerate the JSON Schema files:
+
+   ```bash
+   python scripts/little_loops/generate_schemas.py docs/reference/schemas
+   # or via the installed CLI:
+   ll-generate-schemas
+   ```
+
+4. Commit the updated `.json` files in `docs/reference/schemas/` alongside the source change.
+
 ## Questions?
 
 - Check [docs/development/TROUBLESHOOTING.md](docs/development/TROUBLESHOOTING.md) for common issues

@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-retry_exhausted.json",
+  "title": "Retry Exhausted",
+  "description": "Emitted when all retries for a state are exhausted.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "retries",
+    "next"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name that exhausted retries"
+    },
+    "retries": {
+      "type": "integer",
+      "description": "Number of retries attempted"
+    },
+    "next": {
+      "type": "string",
+      "description": "Next state the FSM transitions to"
+    }
+  },
+  "additionalProperties": true
+}

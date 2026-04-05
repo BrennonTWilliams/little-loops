@@ -14,6 +14,7 @@ Provides command-line interfaces for automated issue management:
 - ll-check-links: Markdown link checking
 - ll-issues: Issue management and visualization utilities
 - ll-gitignore: Suggest and apply .gitignore patterns
+- ll-generate-schemas: Generate JSON Schema files for all LLEvent types
 """
 
 from little_loops.cli.auto import main_auto
@@ -25,6 +26,7 @@ from little_loops.cli.issues import main_issues
 from little_loops.cli.loop import main_loop
 from little_loops.cli.messages import main_messages
 from little_loops.cli.parallel import main_parallel
+from little_loops.cli.schemas import main_generate_schemas
 from little_loops.cli.sprint import (
     _render_dependency_graph,
     _render_execution_plan,
@@ -37,6 +39,7 @@ __all__ = [
     "main_auto",
     "main_check_links",
     "main_deps",
+    "main_generate_schemas",
     "main_gitignore",
     "main_history",
     "main_issues",

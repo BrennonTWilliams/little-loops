@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-action_complete.json",
+  "title": "Action Complete",
+  "description": "Emitted when an action finishes.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "exit_code",
+    "duration_ms",
+    "is_prompt"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "exit_code": {
+      "type": "integer",
+      "description": "Process exit code (0 = success)"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Execution duration in milliseconds"
+    },
+    "output_preview": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Short preview of output, null if none"
+    },
+    "is_prompt": {
+      "type": "boolean",
+      "description": "True if action was a Claude prompt"
+    },
+    "session_jsonl": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Path to Claude session JSONL file (prompt-only, null for shell commands)"
+    }
+  },
+  "additionalProperties": true
+}

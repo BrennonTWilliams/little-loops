@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-action_output.json",
+  "title": "Action Output",
+  "description": "Emitted for each line of output from a running action.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "line"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "line": {
+      "type": "string",
+      "description": "Output line text"
+    }
+  },
+  "additionalProperties": true
+}

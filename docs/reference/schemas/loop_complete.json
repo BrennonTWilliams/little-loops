@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-loop_complete.json",
+  "title": "Loop Complete",
+  "description": "Emitted when an FSM loop finishes execution.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "final_state",
+    "iterations",
+    "terminated_by"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "final_state": {
+      "type": "string",
+      "description": "Name of the terminal state reached"
+    },
+    "iterations": {
+      "type": "integer",
+      "description": "Total number of iterations executed"
+    },
+    "terminated_by": {
+      "type": "string",
+      "description": "What caused loop termination (e.g. terminal_state, max_iterations)"
+    }
+  },
+  "additionalProperties": true
+}

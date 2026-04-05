@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-handoff_detected.json",
+  "title": "Handoff Detected",
+  "description": "Emitted when a context-limit handoff is detected in a prompt action.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "iteration",
+    "continuation"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name where handoff was detected"
+    },
+    "iteration": {
+      "type": "integer",
+      "description": "Iteration count at handoff"
+    },
+    "continuation": {
+      "type": "string",
+      "description": "Continuation prompt text"
+    }
+  },
+  "additionalProperties": true
+}

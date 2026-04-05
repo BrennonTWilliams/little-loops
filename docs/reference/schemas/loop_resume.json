@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-loop_resume.json",
+  "title": "Loop Resume",
+  "description": "Emitted when a previously interrupted loop resumes from a persisted checkpoint.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "loop",
+    "from_state",
+    "iteration"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name"
+    },
+    "from_state": {
+      "type": "string",
+      "description": "State the loop resumes from"
+    },
+    "iteration": {
+      "type": "integer",
+      "description": "Iteration count at resume"
+    },
+    "from_handoff": {
+      "type": "boolean",
+      "description": "True if resuming from a context-limit handoff"
+    },
+    "continuation_prompt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Continuation prompt text (only present when from_handoff is true)"
+    }
+  },
+  "additionalProperties": true
+}

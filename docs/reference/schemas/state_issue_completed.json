@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-state.issue_completed.json",
+  "title": "State: Issue Completed",
+  "description": "Emitted by StateManager when an issue transitions to completed status.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "issue_id",
+    "status"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "issue_id": {
+      "type": "string",
+      "description": "Issue identifier"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed"
+      ],
+      "description": "Completion status"
+    }
+  },
+  "additionalProperties": true
+}
