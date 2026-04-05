@@ -42,6 +42,7 @@ Parse arguments for flags:
 ISSUE_ID=""
 AUTO_MODE=false
 CHECK_MODE=false
+SPRINT_NAME=""
 
 # Auto-enable in automation contexts
 if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
@@ -49,6 +50,7 @@ if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true
 # Explicit flags
 if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$ARGUMENTS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
+if [[ "$ARGUMENTS" =~ --sprint[[:space:]]+([^[:space:]]+) ]]; then SPRINT_NAME="${BASH_REMATCH[1]}"; fi
 
 # Extract issue ID (non-flag argument)
 for token in $ARGUMENTS; do
@@ -57,12 +59,16 @@ for token in $ARGUMENTS; do
         *) ISSUE_ID="$token" ;;
     esac
 done
+
+# --sprint implies --auto
+if [[ -n "$SPRINT_NAME" ]]; then AUTO_MODE=true; fi
 ```
 
 - **issue_id** (optional): Specific issue ID to review (e.g., `ENH-179`)
 - **flags** (optional):
   - `--auto` - Non-interactive mode: auto-decompose only Very Large issues (score ≥ 8) where decomposition is unambiguous. Skip Large issues (5-7) as ambiguous. Emit one status line per issue: `[ID] [action]: [summary]`
   - `--check` — Check-only mode for FSM loop evaluators. Run size scoring without decomposition, print `[ID] size: score N (oversized)` per issue scoring >= 5, exit 1 if any oversized, exit 0 if all pass. Implies `--auto`.
+  - `--sprint <name>` — Scope the audit to only the issues listed in the named sprint definition (`.sprints/<name>.yaml`). Implies `--auto`. A summary header `Sprint: <name> (N issues)` is shown in the output.
 
 ## Workflow
 
@@ -70,7 +76,34 @@ The skill follows a 5-phase workflow:
 
 ### Phase 1: Discovery
 
-Scan all active issues:
+**Sprint Mode** (`--sprint <name>`): When `SPRINT_NAME` is set, load issues from the sprint definition instead of scanning all active directories:
+
+```bash
+SPRINT_FILE=".sprints/${SPRINT_NAME}.yaml"
+if [ ! -f "$SPRINT_FILE" ]; then
+    echo "Error: Sprint '$SPRINT_NAME' not found at $SPRINT_FILE"
+    exit 1
+fi
+
+# Read the sprint YAML with the Read tool; parse the issues: list (flat list of bare IDs)
+# Resolve each ID to a file path using find:
+declare -a ISSUE_FILES
+for id in <sprint-issue-ids>; do
+    FILE=""
+    for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
+        if [ -d "$dir" ]; then
+            FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${id}[-_.]" | head -1)
+            if [ -n "$FILE" ]; then break; fi
+        fi
+    done
+    if [ -n "$FILE" ]; then ISSUE_FILES+=("$FILE")
+    else echo "Warning: Sprint issue $id not found in active issues (skipping)"; fi
+done
+
+echo "Sprint: $SPRINT_NAME (${#ISSUE_FILES[@]} issues)"
+```
+
+**Default (full backlog)**: Scan all active issues:
 
 1. Use Glob to find all `.md` files in:
    - `{{config.issues.base_dir}}/bugs/`
@@ -216,7 +249,7 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 
 ```
 ================================================================================
-ISSUE SIZE REVIEW
+ISSUE SIZE REVIEW                          [Sprint: <name> (N issues) | Full backlog]
 ================================================================================
 
 ## SUMMARY
@@ -292,6 +325,7 @@ ISSUE SIZE REVIEW
 | "Can we split ENH-179?" | Run issue size review targeting ENH-179 |
 | "Review sizes non-interactively" | `/ll:issue-size-review --auto` |
 | "Check if issues are sized for sprint" | `/ll:issue-size-review --check` |
+| "Check sizes for a specific sprint" | `/ll:issue-size-review --sprint my-sprint` |
 
 ## Size Thresholds
 

@@ -199,6 +199,7 @@ Concrete file:line references for each step:
 `enhancement`, `skills`, `sprint-planning`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-05T21:29:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a81d26a1-99d2-41ce-9d6b-c6e385bf377b.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9083c276-ec92-4f47-bfee-c9f15b2ddd69.jsonl`
 - `/ll:wire-issue` - 2026-04-05T21:23:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c747cefe-c8d3-48e7-a02e-9920ddcde2c8.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b8b1b50-91f2-4e52-9fe7-aaa56732c3ea.jsonl`
@@ -206,7 +207,20 @@ Concrete file:line references for each step:
 - `/ll:format-issue` - 2026-04-05T21:07:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e2c33bc-ffe1-4e5a-bd00-0c27ac671382.jsonl`
 
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5c0edf6-3337-46b9-8b9a-275f18759b63.jsonl`
+- `/ll:manage-issue` - 2026-04-05T21:33:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a115310-5225-49e1-b974-19424bbe5806.jsonl`
 
 ---
+
+---
+
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-04-05
+- **Implementation**:
+  - `skills/confidence-check/SKILL.md` — added `SPRINT_NAME` variable, `--sprint` extraction, `--all`/`--sprint` conflict guard, `AUTO_MODE=true` implication, Sprint Mode issue discovery section, batch report header update, `--sprint` usage examples and flag doc
+  - `skills/issue-size-review/SKILL.md` — added `SPRINT_NAME` variable, `--sprint` extraction, `AUTO_MODE=true` implication, Sprint Mode branch in Phase 1 Discovery, sprint summary header in output format, `--sprint` flag doc and examples
+  - `docs/reference/COMMANDS.md` — added `--sprint <name>` to Flag Conventions table, confidence-check Flags, and issue-size-review Flags
+  - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — added `--sprint` usage examples to Confidence Scoring and Size Review sections
 
 **Open** | Created: 2026-04-05 | Priority: P3

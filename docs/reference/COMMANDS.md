@@ -15,6 +15,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
+| `--sprint <name>` | Scope to issues in a named sprint definition | `map-dependencies`, `confidence-check`, `issue-size-review` |
 
 Not all commands support all flags. See individual command documentation for supported flags.
 
@@ -201,7 +202,7 @@ Pre-implementation confidence check that validates readiness and estimates outco
 **Arguments:**
 - `issue_id` (optional): Specific issue to check
 
-**Flags:** `--auto` (non-interactive), `--all` (batch all active issues)
+**Flags:** `--auto` (non-interactive), `--all` (batch all active issues), `--sprint <name>` (scope to sprint issues only)
 
 ### `/ll:issue-workflow`
 Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.
@@ -211,7 +212,7 @@ Quick reference for the little-loops issue management workflow. Displays the iss
 ### `/ll:issue-size-review`
 Evaluate the size and complexity of active issues and propose decomposition for large ones.
 
-**Flags:** `--auto` (non-interactive: auto-decomposes issues scoring >=8 only)
+**Flags:** `--auto` (non-interactive: auto-decomposes issues scoring >=8 only), `--sprint <name>` (scope to sprint issues only)
 
 **Trigger keywords:** "issue size review", "decompose issues", "split large issues"
 

@@ -35,6 +35,7 @@ ISSUE_ID=""
 AUTO_MODE=false
 ALL_MODE=false
 CHECK_MODE=false
+SPRINT_NAME=""
 
 # Auto-enable in automation contexts
 if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
@@ -43,6 +44,7 @@ if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true
 if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$ARGUMENTS" == *"--all"* ]]; then ALL_MODE=true; fi
 if [[ "$ARGUMENTS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
+if [[ "$ARGUMENTS" =~ --sprint[[:space:]]+([^[:space:]]+) ]]; then SPRINT_NAME="${BASH_REMATCH[1]}"; fi
 
 # Extract issue ID (non-flag argument)
 for token in $ARGUMENTS; do
@@ -59,10 +61,19 @@ if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
     exit 1
 fi
 
+# Validate: --sprint cannot be combined with --all
+if [[ "$ALL_MODE" == true ]] && [[ -n "$SPRINT_NAME" ]]; then
+    echo "Error: --sprint and --all cannot be combined"
+    exit 1
+fi
+
 # --all implies --auto (batch processing is inherently non-interactive)
 if [[ "$ALL_MODE" == true ]]; then
     AUTO_MODE=true
 fi
+
+# --sprint implies --auto (sprint batch is inherently non-interactive)
+if [[ -n "$SPRINT_NAME" ]]; then AUTO_MODE=true; fi
 ```
 
 - **issue_id** (optional): Issue ID to evaluate (e.g., `ENH-277`, `BUG-042`)
@@ -74,6 +85,7 @@ fi
   - `--auto` — Non-interactive mode (skip user prompts, use defaults)
   - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/ and deferred/. Implies `--auto`.
   - `--check` — Check-only mode for FSM loop evaluators. Run all evaluation logic without writes, print one line per failing issue (`[ID] check: score N/100 (below threshold)`), exit 1 if any fail, exit 0 if all pass. Implies `--auto`.
+  - `--sprint <name>` — Scope evaluation to only the issues listed in the named sprint definition (`.sprints/<name>.yaml`). Implies `--auto`. Cannot be combined with `--all`.
 
 ## Issue Discovery
 
@@ -121,6 +133,47 @@ echo "Found ${#ISSUE_FILES[@]} active issues to evaluate"
 ```
 
 When in batch mode, iterate through `ISSUE_FILES` and run the full workflow (Phases 1-4) for each issue, collecting results for the batch summary.
+
+### Sprint Mode (--sprint)
+
+When `SPRINT_NAME` is provided, load issues from the sprint definition instead of scanning all active directories:
+
+```bash
+SPRINT_FILE=".sprints/${SPRINT_NAME}.yaml"
+if [ ! -f "$SPRINT_FILE" ]; then
+    echo "Error: Sprint '$SPRINT_NAME' not found at $SPRINT_FILE"
+    exit 1
+fi
+
+# Read the sprint YAML and resolve each issue ID to a file path
+# The issues: key is a flat list of bare ID strings (e.g., ENH-175, FEAT-808)
+# Use the Read tool on $SPRINT_FILE to get the issues list, then resolve each ID:
+declare -a ISSUE_FILES
+# For each ID in the sprint's issues: list:
+for id in <sprint-issue-ids>; do
+    FILE=""
+    for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
+        if [ -d "$dir" ]; then
+            FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${id}[-_.]" | head -1)
+            if [ -n "$FILE" ]; then break; fi
+        fi
+    done
+    if [ -n "$FILE" ]; then
+        ISSUE_FILES+=("$FILE")
+    else
+        echo "Warning: Sprint issue $id not found in active issues (skipping)"
+    fi
+done
+
+if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
+    echo "No active issues found for sprint '$SPRINT_NAME'"
+    exit 0
+fi
+
+echo "Sprint: $SPRINT_NAME (${#ISSUE_FILES[@]} issues)"
+```
+
+After building `ISSUE_FILES`, iterate and evaluate exactly as in Batch Mode. The batch summary header should read `Sprint: <name> (N issues)` instead of `--all mode`.
 
 ## Workflow
 
@@ -526,7 +579,7 @@ When processing all issues, output a summary table after all individual evaluati
 
 ```
 ================================================================================
-CONFIDENCE CHECK BATCH REPORT: --all mode
+CONFIDENCE CHECK BATCH REPORT: --all mode | Sprint: <name> (N issues)
 ================================================================================
 
 ## READINESS SUMMARY
@@ -597,4 +650,8 @@ This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-plan
 # Check-only mode for FSM loop evaluators (exit 0 if all pass, exit 1 if any fail)
 /ll:confidence-check --all --check
 /ll:confidence-check ENH-277 --check
+
+# Sprint-scoped: evaluate only the issues in a named sprint
+/ll:confidence-check --sprint my-sprint
+/ll:confidence-check --sprint my-sprint --auto
 ```

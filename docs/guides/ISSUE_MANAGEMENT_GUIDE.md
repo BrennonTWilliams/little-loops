@@ -328,6 +328,7 @@ Issues that pass validation have their Status updated to `Ready`. Issues that fa
 /ll:confidence-check                 ← check all active issues
 /ll:confidence-check P2-BUG-042-... ← check one issue
 /ll:confidence-check --all --auto   ← batch, non-interactive
+/ll:confidence-check --sprint my-sprint ← sprint-scoped pre-flight check
 ```
 
 Complementary to `ready-issue`, this skill evaluates implementation readiness from the agent's perspective. It produces two scores:
@@ -341,11 +342,12 @@ Both scores are persisted to the issue's frontmatter as `confidence_score` and `
 
 ```
 /ll:issue-size-review
+/ll:issue-size-review --sprint my-sprint ← sprint-scoped size audit
 ```
 
 Reviews active issues for scope. Issues estimated at more than one session's work (typically >4 hours or >~200 LOC) are flagged for decomposition. The skill proposes how to split them: identifying a core issue and N satellite issues that can each be implemented independently.
 
-**Flags:** `--auto` — non-interactive mode for FSM loop automation. Auto-decomposes only issues scoring >=8.
+**Flags:** `--auto` — non-interactive mode for FSM loop automation. Auto-decomposes only issues scoring >=8. `--sprint <name>` — scope to issues in the named sprint only.
 
 Decomposed issues reference each other via the `blocked_by` field. Implementing in dependency order prevents integration conflicts.
 
