@@ -102,3 +102,39 @@ All guides pass accuracy, completeness, consistency, and link checks. No open fi
 ### Current State (2026-04-04)
 
 All guides pass accuracy, completeness, consistency, and link checks. No open findings.
+
+---
+
+## Audit: 2026-04-05
+
+**Auditor:** Claude Code  
+**Scope:** All files in `docs/guides/`
+
+### Auto-fix Applied
+
+| Fix | File | Change |
+|-----|------|--------|
+| `--since` short form | `WORKFLOW_ANALYSIS_GUIDE.md:91` | Added `-S` to short-form column in `ll-messages` flag table |
+
+### Verification Summary
+
+| Check | Result |
+|-------|--------|
+| File path references (all guides) | All targets exist ✓ |
+| `commands/handoff.md`, `commands/resume.md` | Both exist ✓ |
+| `ARCHITECTURE.md#context-monitor-and-session-continuation` anchor | Valid (line 870) ✓ |
+| Loop YAML inventory | 35 documented = 35 files in `scripts/little_loops/loops/` ✓ |
+| Skill count | 24 documented = 24 directories in `skills/` ✓ |
+| APO loop count | "Seven" matches 7 APO loops in table and directory ✓ |
+| `ll-messages` flags vs `--help` | All match (fixed `--since` short form) ✓ |
+| `ll-workflows analyze` flags vs `--help` | All match ✓ |
+| `ll-auto`, `ll-sprint` commands | All match ✓ |
+| `CONTEXT_HANDOFF_PATTERN` in `subprocess_utils.py` | Matches ✓ |
+| `pip install little-loops` | Matches `pyproject.toml` ✓ |
+| GitHub username `BrennonTWilliams/little-loops` | Matches git remote ✓ |
+| Harness YAMLs, oracle YAML | All exist ✓ |
+| `templates/ll-goals-template.md` | Exists ✓ |
+
+### Current State (2026-04-05)
+
+All guides pass accuracy, completeness, consistency, and link checks. No open findings.

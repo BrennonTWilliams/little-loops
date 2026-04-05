@@ -88,7 +88,7 @@ Key flags reference:
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--limit N` | `-n N` | Max messages to extract (default: 100) |
-| `--since DATE` | | Only messages after this date (YYYY-MM-DD or ISO) |
+| `--since DATE` | `-S` | Only messages after this date (YYYY-MM-DD or ISO) |
 | `--output FILE` | `-o FILE` | Output file path |
 | `--stdout` | | Print to terminal instead of file |
 | `--verbose` | `-v` | Show progress information |
