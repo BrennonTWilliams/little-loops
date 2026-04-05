@@ -35,7 +35,7 @@ Personal development preferences.
 ```
 commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
-skills/         # Skill definitions (22 skills)
+skills/         # Skill definitions (23 skills)
 hooks/          # Lifecycle hooks and prompts
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
@@ -53,7 +53,7 @@ Run `/ll:help` for full list. Both commands (`commands/*.md`) and skills (`skill
 - **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`^, `iterate-plan`, `confidence-check`^, `go-no-go`^
 - **Code Quality**: `check-code`, `run-tests`, `audit-docs`^, `update-docs`^, `find-dead-code`
 - **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
-- **Automation & Loops**: `create-loop`^, `loop-suggester`, `review-loop`^, `analyze-loop`^, `cleanup-loops`^, `workflow-automation-proposer`^
+- **Automation & Loops**: `create-loop`^, `loop-suggester`, `review-loop`^, `analyze-loop`^, `rename-loop`^, `cleanup-loops`^, `workflow-automation-proposer`^
 - **Meta-Analysis**: `audit-claude-config`^, `analyze-workflows`, `analyze-history`^
 - **Session & Config**: `init`^, `configure`^, `update`^, `help`, `handoff`, `resume`, `toggle-autoprompt`
 

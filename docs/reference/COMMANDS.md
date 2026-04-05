@@ -173,6 +173,16 @@ Refine issue files with codebase-driven research to fill knowledge gaps needed f
 - `issue_id` (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
 - `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview)
 
+### `/ll:wire-issue`
+Post-refinement wiring pass that completes the Integration Map by tracing every file that must change — callers, importers, config references, doc sections, tests, and side-effect files (plugin manifests, `__init__.py` exports, CLI registration hooks). Run after `/ll:refine-issue` when the integration map looks thin.
+
+**Arguments:**
+- `issue_id` (optional): Issue ID to wire (e.g., FEAT-948, ENH-277). Reads most recent active issue if omitted.
+
+**Flags:** `--auto` (non-interactive), `--dry-run` (preview without writing)
+
+**Trigger keywords:** "wire issue", "missing integration points", "complete the wiring", "trace dependencies", "wiring pass"
+
 ### `/ll:tradeoff-review-issues`
 Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.
 
@@ -537,6 +547,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `iterate-plan` | Update implementation plans |
 | `confidence-check`^ | Pre-implementation confidence check for readiness |
 | `refine-issue` | Refine issues with codebase-driven research |
+| `wire-issue`^ | Complete integration map — trace callers, config, docs, tests |
 | `tradeoff-review-issues` | Evaluate issues for utility vs complexity |
 | `issue-workflow`^ | Quick reference for issue management workflow |
 | `issue-size-review`^ | Evaluate issue size/complexity and propose decomposition |

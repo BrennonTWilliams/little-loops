@@ -37,6 +37,7 @@ Documentation for contributing to and developing little-loops.
 - [Contributing Guide](../CONTRIBUTING.md) - Development setup, guidelines, and workflow
 - [Architecture Overview](ARCHITECTURE.md) - System design, component relationships, and diagrams
 - [API Reference](reference/API.md) - Python module documentation with detailed class and method references
+- [Event Schema Reference](reference/EVENT-SCHEMA.md) - All LLEvent types, wire format, and machine-readable JSON schemas — primary reference for extension authors and external consumers
 - [Testing Guide](development/TESTING.md) - Testing patterns, conventions, and best practices
 - [E2E Testing](development/E2E_TESTING.md) - End-to-end testing guide for CLI workflows
 
