@@ -236,7 +236,9 @@ class TestResolveFragmentsInlineOnly:
         assert state["evaluate"]["type"] == "llm_structured"
         assert state["evaluate"]["prompt"] == "Done?"
 
-    def test_numeric_gate_inline_expands_action_type_and_evaluate_type(self, tmp_path: Path) -> None:
+    def test_numeric_gate_inline_expands_action_type_and_evaluate_type(
+        self, tmp_path: Path
+    ) -> None:
         raw = {
             "name": "test",
             "initial": "count",
@@ -520,7 +522,9 @@ class TestCommonYamlNewFragments:
 
     def test_numeric_gate_defined_in_common_yaml(self) -> None:
         data = self._load_common_yaml()
-        assert "numeric_gate" in data["fragments"], "numeric_gate fragment missing from lib/common.yaml"
+        assert "numeric_gate" in data["fragments"], (
+            "numeric_gate fragment missing from lib/common.yaml"
+        )
 
     def test_numeric_gate_has_correct_action_type(self) -> None:
         data = self._load_common_yaml()
