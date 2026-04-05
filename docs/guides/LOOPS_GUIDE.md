@@ -1513,4 +1513,5 @@ Fragment resolution is parse-time only — the engine never sees `fragment:` key
 - [Configuration Reference](../reference/CONFIGURATION.md) — Project-wide settings (test commands, paths, etc.) used by loop actions
 - `/ll:create-loop` — Interactive loop creation wizard (includes harness mode)
 - `/ll:review-loop` — Audit an existing loop for quality, correctness, and best practices
+- `/ll:rename-loop` — Rename a loop (built-in or project-level) and update all references in other YAMLs, tests, and docs
 - `ll-loop --help` — Full CLI reference for all loop subcommands

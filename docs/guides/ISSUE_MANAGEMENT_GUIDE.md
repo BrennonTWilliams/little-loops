@@ -184,15 +184,16 @@ Refinement transforms raw captures into implementation-ready issues. The steps r
 2. prioritize-issues   ← set P0-P5 prefix
 3. format-issue        ← promote to v2.0 template
 4. refine-issue        ← research codebase, fill gaps
-5. verify-issues       ← test claims against actual code
-6. tradeoff-review-issues ← prune low-value issues
+5. wire-issue          ← complete integration map (callers, config, docs, tests)
+6. verify-issues       ← test claims against actual code
+7. tradeoff-review-issues ← prune low-value issues
 ```
 
 > **When to skip steps:** `normalize` and `prioritize` are safe to run on every issue.
 > Skip `verify` for issues you just wrote yourself. Skip `align` if you're not using a goals doc.
-> Skip `refine` for small, well-understood bugs.
+> Skip `refine` for small, well-understood bugs. Skip `wire` unless the integration map feels incomplete.
 
-You don't have to run all six on every issue. A well-described issue captured from conversation might skip normalize and go straight to format → refine → verify.
+You don't have to run all seven on every issue. A well-described issue captured from conversation might skip normalize and go straight to format → refine → verify.
 
 ### Fixing Filenames
 
@@ -247,6 +248,25 @@ Searches the actual codebase to fill knowledge gaps in each issue. It reads rele
 - **Implementation Steps** — high-level outline grounded in actual code structure
 
 This is the most valuable refinement step for implementation accuracy. An issue with a well-researched Integration Map leads to complete changes; one without it leads to isolated fixes that break callers.
+
+### Completing the Integration Map (Wiring Pass)
+
+```
+/ll:wire-issue [issue-id]            ← wire one issue (issue_id required)
+/ll:wire-issue [issue-id] --auto     ← non-interactive
+```
+
+A post-refinement pass focused on **completeness of the Integration Map**. Where `refine-issue` fills knowledge gaps broadly, `wire-issue` traces everything that must change due to the planned implementation:
+
+- **Callers and importers** — every call site that references the changed code
+- **Config references** — config keys, environment variables, CLI flags affected
+- **Doc mentions** — documentation sections that describe the changed behavior
+- **Test coverage** — tests that exercise the affected code paths
+- **Side-effect files** — plugin manifests, `__init__.py` exports, registration hooks
+
+Run after `refine-issue` when the Integration Map looks thin — callers underspecified, test coverage missing, or side-effect files absent. Use `--dry-run` to preview what would be added without modifying the issue file.
+
+**Flags:** `--auto` — non-interactive mode for FSM loop automation. `--dry-run` — preview proposed additions.
 
 ### Verifying Against Codebase
 
