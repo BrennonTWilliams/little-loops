@@ -121,11 +121,25 @@ ll-issues next-issue --skip FEAT-007 --json
 
 `cli`, `issues`, `enhancement`, `captured`
 
+## Resolution
+
+**Completed** | Resolved: 2026-04-04 | Priority: P3
+
+### Changes Made
+
+1. `scripts/little_loops/cli/issues/__init__.py` — Added `add_skip_arg(nx)` before `add_config_arg(nx)` on the `next-issue` subparser (line 353)
+2. `scripts/little_loops/cli/issues/next_issue.py` — Added `parse_issue_ids` import and wired `skip_ids` through to `find_issues(config, skip_ids=skip_ids or None)`
+3. `scripts/tests/test_next_issue.py` — Added `TestNextIssueSkipFlag` class with three tests: skip top issue, skip only issue (exit 1), skip multiple comma-separated IDs
+4. `docs/reference/CLI.md` — Documented `--skip / -s` flag in the `next-issue` flag table and added example to the examples block
+
+All 13 tests pass. No infrastructure changes needed — `find_issues()`, `parse_issue_ids()`, and the `add_skip_arg` import were already in place.
+
 ## Status
 
-**Open** | Created: 2026-04-04 | Priority: P3
+**Completed** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-05T00:14:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72c02981-19e5-401b-b374-7664d84df03b.jsonl`
 - `/ll:refine-issue` - 2026-04-05T00:09:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae04c79e-46f8-4ca0-b76b-64b7b646d0fc.jsonl`
 
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4692f047-3b49-42de-a84b-22a59c6686a8.jsonl`

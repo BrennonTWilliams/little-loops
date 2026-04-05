@@ -350,6 +350,7 @@ Examples:
     nx.set_defaults(command="next-issue")
     nx.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
     nx.add_argument("--path", action="store_true", help="Output only the file path")
+    add_skip_arg(nx)
     add_config_arg(nx)
 
     nxs = subs.add_parser(

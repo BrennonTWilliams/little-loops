@@ -505,6 +505,7 @@ Print the issue ranked highest by outcome confidence and readiness score. Design
 |------|-------------|
 | `--json` / `-j` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}` |
 | `--path` | Output only the file path (useful for shell scripting: `$(ll-issues next-issue --path)`) |
+| `--skip / -s ISSUE_ID[,...]` | Comma-separated issue IDs to exclude (e.g. `FEAT-007,BUG-001`); absent `--skip` preserves existing behavior |
 | `--config` | Path to project root |
 
 #### `ll-issues next-issues [N]` / `ll-issues nxs [N]`
@@ -564,6 +565,7 @@ ll-issues next-action --skip ENH-929,BUG-001     # Exclude specific issues from 
 ll-issues next-issue                             # Highest-confidence issue ID
 ll-issues next-issue --json                      # As JSON: {id, path, outcome_confidence, confidence_score, priority}
 ll-issues next-issue --path                      # File path only (for shell scripting)
+ll-issues next-issue --skip FEAT-007,BUG-001     # Exclude specific issues from consideration
 ll-issues next-issues                            # All active issues in ranked order
 ll-issues next-issues 5                          # Top 5 ranked issues
 ll-issues nxs --json                             # Ranked list as JSON array

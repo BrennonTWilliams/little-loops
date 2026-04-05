@@ -22,9 +22,11 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         Exit code (0 = found, 1 = no issues)
     """
     from little_loops.cli.output import print_json
+    from little_loops.cli_args import parse_issue_ids
     from little_loops.issue_parser import find_issues
 
-    issues = find_issues(config)
+    skip_ids = parse_issue_ids(getattr(args, "skip", None))
+    issues = find_issues(config, skip_ids=skip_ids or None)
     if not issues:
         return 1
 

@@ -314,6 +314,124 @@ class TestNextIssueOutputFlags:
         assert data["confidence_score"] is None
 
 
+class TestNextIssueSkipFlag:
+    """Tests for --skip flag excluding specific issue IDs."""
+
+    def test_skip_excludes_top_issue(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Skipping the top-ranked issue returns the next eligible one."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-top.md",
+            "FEAT-001: Top",
+            outcome_confidence=90,
+            confidence_score=90,
+        )
+        _make_issue(
+            features_dir,
+            "P2-FEAT-002-second.md",
+            "FEAT-002: Second",
+            outcome_confidence=70,
+            confidence_score=70,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "next-issue", "--skip", "FEAT-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out == "FEAT-002"
+
+    def test_skip_only_issue_returns_exit_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Skipping the only issue returns exit code 1."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(features_dir, "P2-FEAT-001-only.md", "FEAT-001: Only", outcome_confidence=80)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "next-issue", "--skip", "FEAT-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        assert capsys.readouterr().out == ""
+
+    def test_skip_multiple_ids(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Comma-separated skip list excludes all named IDs."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            features_dir,
+            "P1-FEAT-001-first.md",
+            "FEAT-001: First",
+            outcome_confidence=90,
+            confidence_score=90,
+        )
+        _make_issue(
+            features_dir,
+            "P1-FEAT-002-second.md",
+            "FEAT-002: Second",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
+        _make_issue(
+            features_dir,
+            "P1-FEAT-003-third.md",
+            "FEAT-003: Third",
+            outcome_confidence=70,
+            confidence_score=70,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issue",
+                "--skip",
+                "FEAT-001,FEAT-002",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out == "FEAT-003"
+
+
 class TestNextIssueEdgeCases:
     """Tests for edge cases."""
 
