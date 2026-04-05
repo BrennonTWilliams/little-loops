@@ -86,7 +86,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
-- **23 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
+- **24 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 - **13 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
 - **35 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
@@ -222,6 +222,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `rename-loop`^ | Automation & Loops | Rename a loop and update all references to maintain full functionality |
 | `workflow-automation-proposer`^ | Automation & Loops | Synthesize workflow patterns into automation proposals |
 | `audit-claude-config`^ | Meta-Analysis | Comprehensive audit of Claude Code plugin configuration |
+| `improve-claude-md`^ | Meta-Analysis | Rewrite CLAUDE.md with `<important if>` blocks for scoped instruction attention |
 | `analyze-history`^ | Meta-Analysis | Analyze issue history for project health, trends, and progress |
 | `init`^ | Session & Config | Initialize little-loops configuration for a project |
 | `configure`^ | Session & Config | Interactively configure specific areas in ll-config.json |

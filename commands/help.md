@@ -170,6 +170,10 @@ META-ANALYSIS
     Skills: analyze-history
     CLI: ll-messages, ll-history, ll-workflows, ll-issues
 
+/ll:improve-claude-md [flags]
+    Rewrite CLAUDE.md using <important if="condition"> blocks for scoped instruction attention
+    Flags: --dry-run (preview without writing), --file <path> (default: .claude/CLAUDE.md)
+
 SESSION & CONFIG
 ----------------
 /ll:init [flags]
@@ -244,7 +248,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
 **Automation & Loops**: `create-loop`, `loop-suggester`
-**Meta-Analysis**: `audit-claude-config`, `analyze-workflows`
+**Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
 **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`
 
 ---

@@ -313,6 +313,18 @@ Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
 
 **Flags:** `--non-interactive`, `--fix`
 
+### `/ll:improve-claude-md`
+Rewrite a project's CLAUDE.md using `<important if="condition">` XML blocks. Applies the 9-step
+rewrite algorithm: leave foundational context (project identity, directory map, tech stack) bare;
+wrap commands in one block; break apart rules into individual narrow-condition blocks; wrap domain
+sections; delete linter-territory, code snippets, and vague instructions.
+
+**Flags:**
+- `--dry-run` — Preview the rewrite plan without modifying any file
+- `--file <path>` — Target a specific file (default: `.claude/CLAUDE.md` or `./CLAUDE.md`)
+
+**Trigger keywords:** "improve claude md", "rewrite claude md", "important if blocks", "instruction adherence", "restructure claude md"
+
 ### `/ll:analyze-workflows`
 Analyze user message history to identify patterns, workflows, and automation opportunities.
 
@@ -558,6 +570,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `audit-docs`^ | Check documentation accuracy |
 | `update-docs`^ | Identify stale or missing docs from recent commits and completed issues |
 | `audit-claude-config`^ | Comprehensive config audit |
+| `improve-claude-md`^ | Rewrite CLAUDE.md with `<important if>` blocks for scoped instruction attention |
 | `analyze-workflows` | Analyze user message patterns for automation |
 | `analyze-history`^ | Analyze issue history for project health and trends |
 | `commit` | Create git commits (supports `--auto` for non-interactive use) |

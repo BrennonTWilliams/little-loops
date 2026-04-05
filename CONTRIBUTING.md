@@ -122,7 +122,7 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── loops/                # Built-in FSM loop definitions (34 YAML files)
-├── skills/               # 21 skill definitions (user-invocable workflows)
+├── skills/               # 24 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── analyze-loop/                 # Analyze loop execution history
 │   ├── audit-claude-config/          # Audit plugin configuration
@@ -134,6 +134,7 @@ little-loops/
 │   ├── configure/                    # Configure ll-config.json
 │   ├── create-loop/                  # Create FSM loop configurations
 │   ├── format-issue/                 # Format issues to template v2.0
+│   ├── improve-claude-md/            # Rewrite CLAUDE.md with <important if> blocks
 │   ├── init/                         # Initialize project configuration
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference

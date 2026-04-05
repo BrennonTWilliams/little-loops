@@ -46,7 +46,7 @@ The prior audit (2026-04-02 afternoon) closed with zero open findings. Its fix (
 | File path references (30+ links) | All targets exist |
 | Anchor references | `ARCHITECTURE.md#context-monitor-and-session-continuation` confirmed (line 870) |
 | Loop YAML inventory | 35 documented = 35 files in `scripts/little_loops/loops/` |
-| Skill count | 23 documented = 23 directories in `skills/` |
+| Skill count | 24 documented = 24 directories in `skills/` |
 | CLI tool entries | 13 in CLAUDE.md, all in `pyproject.toml [project.scripts]` |
 | `ll-messages` flags | All documented flags match `--help` output |
 | `ll-workflows analyze` flags | All documented flags confirmed present |
@@ -90,7 +90,7 @@ All guides pass accuracy, completeness, consistency, and link checks. No open fi
 | Fragment library (lib/common.yaml, lib/cli.yaml) | Documented at LOOPS_GUIDE.md:1432 ✓ |
 | refine-to-ready-issue: timeout recovery + refine limit guard | Documented at LOOPS_GUIDE.md:261 ✓ |
 | Loop YAML inventory | 35 files in `scripts/little_loops/loops/` — LOOPS_GUIDE.md up to date ✓ |
-| Skill directory count | 23 directories in `skills/` — CLAUDE.md lists all except `rename-loop` |
+| Skill directory count | 24 directories in `skills/` — CLAUDE.md lists all except `rename-loop` |
 
 ### Findings (all resolved)
 
