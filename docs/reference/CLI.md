@@ -905,6 +905,28 @@ ll-check-links --timeout 30 --workers 5   # Custom timeout and concurrency
 
 ---
 
+### ll-generate-schemas
+
+Generate JSON Schema (draft-07) files for all 19 `LLEvent` types and write them to `docs/reference/schemas/`.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--output` | `-o` | Output directory (default: `docs/reference/schemas/` relative to cwd) |
+
+**Exit codes:** `0` = schemas generated successfully, `1` = error
+
+**Examples:**
+```bash
+ll-generate-schemas                          # Write to docs/reference/schemas/
+ll-generate-schemas -o path/to/schemas/      # Custom output directory
+```
+
+> **Note:** Run this after modifying `SCHEMA_DEFINITIONS` in `scripts/little_loops/generate_schemas.py` or adding a new `LLEvent` type. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the full schema maintenance workflow.
+
+---
+
 ### mcp-call
 
 Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads `.mcp.json` from the current directory, spawns the MCP server subprocess, performs the JSON-RPC initialize handshake, calls `tools/call`, and writes the MCP response envelope to stdout.

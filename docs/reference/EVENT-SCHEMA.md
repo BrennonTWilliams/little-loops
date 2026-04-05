@@ -497,6 +497,98 @@ Emitted when a parallel worker finishes processing an issue in its isolated git 
 
 ---
 
+## Machine-Readable Schemas
+
+Every event type listed in this document has a corresponding JSON Schema (draft-07) file committed to `docs/reference/schemas/`. These files can be used for programmatic validation, IDE autocomplete, and external tooling.
+
+```
+docs/reference/schemas/
+├── action_complete.json
+├── action_output.json
+├── action_start.json
+├── evaluate.json
+├── handoff_detected.json
+├── handoff_spawned.json
+├── issue_closed.json
+├── issue_completed.json
+├── issue_deferred.json
+├── issue_failure_captured.json
+├── loop_complete.json
+├── loop_resume.json
+├── loop_start.json
+├── parallel_worker_completed.json
+├── retry_exhausted.json
+├── route.json
+├── state_enter.json
+├── state_issue_completed.json
+└── state_issue_failed.json
+```
+
+### Naming Convention
+
+Event type identifiers map to filenames by replacing dots with underscores:
+
+| Event type | Schema file |
+|------------|-------------|
+| `loop_start` | `loop_start.json` |
+| `issue.completed` | `issue_completed.json` |
+| `state.issue_completed` | `state_issue_completed.json` |
+| `parallel.worker_completed` | `parallel_worker_completed.json` |
+
+### Schema Format
+
+Each file is a self-contained JSON Schema (draft-07) object. All schemas set `"additionalProperties": true` so forward-compatible extensions to event payloads do not break validation. Example (`loop_start.json`):
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-loop_start.json",
+  "title": "Loop Start",
+  "description": "Emitted when an FSM loop begins execution.",
+  "type": "object",
+  "required": ["event", "ts", "loop"],
+  "properties": {
+    "event": { "type": "string", "description": "Event type identifier" },
+    "ts":    { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp" },
+    "loop":  { "type": "string", "description": "Loop name" }
+  },
+  "additionalProperties": true
+}
+```
+
+### Programmatic Validation
+
+Use the `jsonschema` library to validate event dicts against the generated files:
+
+```python
+import json
+import jsonschema
+from pathlib import Path
+
+schema = json.loads(Path("docs/reference/schemas/loop_start.json").read_text())
+event = {"event": "loop_start", "ts": "2026-04-04T12:00:00Z", "loop": "my-loop"}
+jsonschema.validate(event, schema)  # raises jsonschema.ValidationError on failure
+```
+
+To resolve a schema path from an event type at runtime:
+
+```python
+def schema_path(event_type: str, base: Path) -> Path:
+    return base / f"{event_type.replace('.', '_')}.json"
+```
+
+### Regenerating
+
+To regenerate all schema files after adding or modifying an event type, run:
+
+```bash
+ll-generate-schemas
+```
+
+See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and the [schema maintenance workflow](../../CONTRIBUTING.md#event-schema-maintenance) in CONTRIBUTING.md.
+
+---
+
 ## Quick Reference
 
 | Event | Namespace | Source |
