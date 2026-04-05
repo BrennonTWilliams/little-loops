@@ -242,7 +242,20 @@ A developer has a large flat CLAUDE.md with many sections. They run `/ll:improve
 
 **Open** | Created: 2026-04-04 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-04-05:_
+
+**Verdict: NEEDS_UPDATE** — Issue is fundamentally valid. Two implementation step line references are stale:
+
+1. **`README.md:89` — wrong "from" value**: Wiring notes (Integration Map) say current value is `**22 skills**` → `**24 skills**`. Actual current value at line 89 is `**23 skills**`. Correct the update to `**23 skills**` → `**24 skills**`.
+
+2. **`commands/help.md:242` — wrong line number**: Issue says the Quick Reference Table Meta-Analysis entry is at line 242. Actual location is line **247** (`**Meta-Analysis**: \`audit-claude-config\`, \`analyze-workflows\``).
+
+All other file paths, line numbers, and code snippets verified accurate against the current codebase.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-05T21:33:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6decf54a-8d3a-4eba-a89f-8d76b49efd8d.jsonl`
 - `/ll:wire-issue` - 2026-04-05T05:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df4c58be-3e90-464d-a531-95de8b55d2c6.jsonl`
 - `/ll:verify-issues` - 2026-04-04T21:33:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbe4ecea-498a-46bf-8529-ec826525bb1b.jsonl`
