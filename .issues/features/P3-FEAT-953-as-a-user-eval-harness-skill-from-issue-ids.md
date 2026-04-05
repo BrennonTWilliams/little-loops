@@ -12,7 +12,7 @@ discovered_by: capture-issue
 
 ## Summary
 
-Create a new `/ll:create-eval-harness` skill (or similar name) that accepts one or more Issue IDs (open or completed), reads each issue's context and acceptance criteria, derives as-a-user evaluation criteria from that context, and generates a ready-to-run FSM harness YAML containing a `check_skill` evaluation gate that simulates a real user verifying the feature works as described.
+Create a new `/ll:create-eval-from-issues` skill that accepts one or more Issue IDs (open or completed), reads each issue's context and acceptance criteria, derives as-a-user evaluation criteria from that context, and generates a ready-to-run FSM harness YAML containing a `check_skill` evaluation gate that simulates a real user verifying the feature works as described.
 
 ## Current Behavior
 
@@ -20,7 +20,7 @@ There is no automated way to go from an issue file to a `check_skill`-based eval
 
 ## Expected Behavior
 
-Running `/ll:create-eval-harness FEAT-919 ENH-950` (or equivalent) should:
+Running `/ll:create-eval-from-issues FEAT-919 ENH-950` should:
 1. Read each named issue file and extract relevant context (title, use case, acceptance criteria, proposed solution)
 2. Synthesize concise "did this work as a user would expect?" evaluation criteria from that context
 3. Generate a harness YAML containing a `check_skill` state with those criteria embedded in an `llm_structured` evaluation prompt
@@ -37,7 +37,7 @@ This also enables a "issue-to-harness-to-loop" workflow: refine an issue → gen
 
 ## Proposed Solution
 
-### Skill: `/ll:create-eval-harness`
+### Skill: `/ll:create-eval-from-issues`
 
 **Arguments**: one or more issue IDs (e.g., `FEAT-919`, `ENH-950`)
 **Output**: `.loops/eval-harness-<slug>.yaml`
@@ -110,9 +110,9 @@ states:
 ## Integration Map
 
 ### Files to Modify
-- `skills/create-eval-harness/SKILL.md` — new skill definition
-- `skills/create-eval-harness/skill.md` (or `prompt.md`) — implementation prompt
-- `commands/create-eval-harness.md` — slash command entry point
+- `skills/create-eval-from-issues/SKILL.md` — new skill definition
+- `skills/create-eval-from-issues/skill.md` (or `prompt.md`) — implementation prompt
+- `commands/create-eval-from-issues.md` — slash command entry point
 
 ### Dependent Files (Callers/Importers)
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add reference to this skill in "Creating a Harness" section
@@ -131,15 +131,15 @@ states:
 ## Implementation Steps
 
 1. Read `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (already loaded) and `docs/guides/LOOPS_GUIDE.md` to understand required YAML structure for `check_skill` harnesses
-2. Create `skills/create-eval-harness/SKILL.md` with skill metadata
+2. Create `skills/create-eval-from-issues/SKILL.md` with skill metadata
 3. Implement the prompt/instruction file that drives:
    - Issue file resolution (via `ll-issues show <ID>`)
    - Context extraction (title, use case, proposed solution, acceptance criteria)
    - Criteria synthesis into `llm_structured` evaluation prompt
    - Variant A vs Variant B selection based on issue count
    - YAML generation and `ll-loop validate` call
-4. Register in `commands/create-eval-harness.md` and `plugin.json`
-5. Add a reference from `AUTOMATIC_HARNESSING_GUIDE.md` → "See also: `/ll:create-eval-harness`"
+4. Register in `commands/create-eval-from-issues.md` and `plugin.json`
+5. Add a reference from `AUTOMATIC_HARNESSING_GUIDE.md` → "See also: `/ll:create-eval-from-issues`"
 6. Write tests for the YAML generation logic
 
 ## Impact
@@ -153,13 +153,13 @@ states:
 
 ```bash
 # Single issue → single-shot harness
-/ll:create-eval-harness FEAT-919
+/ll:create-eval-from-issues FEAT-919
 
 # Multiple issues → multi-item harness
-/ll:create-eval-harness FEAT-919 ENH-950
+/ll:create-eval-from-issues FEAT-919 ENH-950
 
 # Completed issue (harness to verify regression doesn't recur)
-/ll:create-eval-harness BUG-347
+/ll:create-eval-from-issues BUG-347
 ```
 
 Output file written to: `.loops/eval-harness-<slug>.yaml`
