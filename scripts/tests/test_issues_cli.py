@@ -2307,3 +2307,173 @@ class TestIssuesCLIShortForms:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert len(data) <= 2
+
+
+class TestIssuesSkip:
+    """Tests for ll-issues skip sub-command."""
+
+    def test_skip_renames_file_with_default_priority(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """skip renames P0-BUG-001 to P5-BUG-001 by default."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        original = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        expected = issues_dir / "bugs" / "P5-BUG-001-critical-crash.md"
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "skip", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert not original.exists(), "Original file should be gone after rename"
+        assert expected.exists(), "Renamed file should exist with P5 prefix"
+
+    def test_skip_appends_skip_log_section(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """skip appends a ## Skip Log section with timestamp to the issue file."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "skip", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        renamed = issues_dir / "bugs" / "P5-BUG-001-critical-crash.md"
+        content = renamed.read_text()
+        assert "## Skip Log" in content
+        assert "**Date**:" in content
+        assert "**Reason**:" in content
+
+    def test_skip_custom_priority_and_reason(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """skip --priority P3 --reason 'text' renames to P3 and records reason."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        expected = issues_dir / "bugs" / "P3-BUG-001-critical-crash.md"
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "skip",
+                "BUG-001",
+                "--priority",
+                "P3",
+                "--reason",
+                "retry after CI fix",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert expected.exists()
+        content = expected.read_text()
+        assert "retry after CI fix" in content
+
+    def test_skip_prints_new_path_to_stdout(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """skip prints the new file path to stdout on success."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "skip", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "P5-BUG-001-critical-crash.md" in captured.out
+
+    def test_skip_not_found_returns_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """skip returns exit code 1 when the issue ID does not exist."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "skip", "BUG-999", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+
+    def test_skip_lowers_ranking(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """After skipping P0-BUG-001 to P5, the P1 issue now outranks it."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        original = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        skipped = issues_dir / "bugs" / "P5-BUG-001-critical-crash.md"
+        lower_priority = issues_dir / "bugs" / "P1-BUG-002-slow-query.md"
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "skip", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        # BUG-001 now lives at P5 — the lower-priority P1 issue still exists
+        assert not original.exists(), "P0 file should be renamed"
+        assert skipped.exists(), "P5 file should now exist"
+        assert lower_priority.exists(), "P1-BUG-002 is unaffected"
+        # P5 sorts after P1 — verify by filename comparison
+        assert skipped.name > lower_priority.name

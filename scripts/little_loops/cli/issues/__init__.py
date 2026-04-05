@@ -15,6 +15,7 @@ def main_issues() -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.append_log import cmd_append_log
+    from little_loops.cli.issues.skip import cmd_skip
     from little_loops.cli.issues.count_cmd import cmd_count
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
@@ -26,7 +27,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
     from little_loops.cli.issues.show import cmd_show
-    from little_loops.cli_args import add_config_arg, add_skip_arg
+    from little_loops.cli_args import VALID_PRIORITIES, add_config_arg, add_skip_arg
     from little_loops.config import BRConfig
 
     parser = argparse.ArgumentParser(
@@ -47,6 +48,7 @@ Sub-commands:
   next-action    Print the next refinement action for the highest-priority active issue
   next-issue     Print the issue ID ranked highest by outcome confidence and readiness
   next-issues    Print all active issues in ranked order (alias: nxs)
+  skip           Deprioritize an issue by bumping its priority prefix
 
 Examples:
   %(prog)s next-id
@@ -74,6 +76,8 @@ Examples:
   %(prog)s next-issues 5
   %(prog)s next-issues --json
   %(prog)s nxs --path
+  %(prog)s skip FEAT-955
+  %(prog)s skip BUG-042 --priority P4 --reason "retry after CI fix"
 """,
     )
 
@@ -371,6 +375,22 @@ Examples:
     nxs.add_argument("--path", action="store_true", help="Output one file path per line")
     add_config_arg(nxs)
 
+    sk = subs.add_parser(
+        "skip",
+        help="Deprioritize an issue by bumping its priority prefix",
+    )
+    sk.set_defaults(command="skip")
+    sk.add_argument("issue_id", help="Issue ID (e.g., 955, FEAT-955, P4-FEAT-955)")
+    sk.add_argument(
+        "--priority",
+        "-p",
+        choices=sorted(VALID_PRIORITIES),
+        default="P5",
+        help="Target priority (default: P5)",
+    )
+    sk.add_argument("--reason", default=None, help="Reason for skipping (appended to Skip Log)")
+    add_config_arg(sk)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -408,4 +428,6 @@ Examples:
         return cmd_next_issue(config, args)
     if args.command == "next-issues":
         return cmd_next_issues(config, args)
+    if args.command == "skip":
+        return cmd_skip(config, args)
     return 1

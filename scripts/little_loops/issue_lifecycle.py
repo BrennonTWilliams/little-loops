@@ -807,6 +807,71 @@ Reason: {reason}"""
         return False
 
 
+# =============================================================================
+# Issue Skip (Deprioritize)
+# =============================================================================
+
+
+def _build_skip_section(reason: str | None) -> str:
+    """Build the ## Skip Log section content."""
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    reason_text = reason or "No reason provided"
+    return f"""
+
+## Skip Log
+
+- **Date**: {now}
+- **Reason**: {reason_text}
+"""
+
+
+def skip_issue(original_path: Path, new_path: Path, reason: str | None = None) -> None:
+    """Deprioritize an issue by renaming its priority prefix.
+
+    Appends a ``## Skip Log`` entry with ISO timestamp and optional reason,
+    then renames the file in-place (same directory, new priority prefix).
+    Prefers ``git mv`` for tracked files to preserve history; falls back to
+    an atomic ``Path.rename`` for untracked files.
+
+    Args:
+        original_path: Current path to the issue file
+        new_path: Target path (same directory, new priority prefix)
+        reason: Optional reason text for the Skip Log entry
+
+    Raises:
+        FileNotFoundError: If original_path does not exist
+        FileExistsError: If new_path already exists
+    """
+    if not original_path.exists():
+        raise FileNotFoundError(f"Issue file not found: {original_path}")
+    if new_path.exists():
+        raise FileExistsError(f"Target already exists: {new_path}")
+
+    content = original_path.read_text(encoding="utf-8") + _build_skip_section(reason)
+
+    if _is_git_tracked(original_path):
+        try:
+            result = subprocess.run(
+                ["git", "mv", str(original_path), str(new_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            result = None  # type: ignore[assignment]
+
+        if result is None or result.returncode != 0:
+            # git mv failed — fall back to write + rename
+            original_path.write_text(content, encoding="utf-8")
+            original_path.rename(new_path)
+        else:
+            new_path.write_text(content, encoding="utf-8")
+    else:
+        # Not tracked — write updated content then rename atomically
+        original_path.write_text(content, encoding="utf-8")
+        original_path.rename(new_path)
+
+
 def undefer_issue(
     config: BRConfig,
     deferred_issue_path: Path,
