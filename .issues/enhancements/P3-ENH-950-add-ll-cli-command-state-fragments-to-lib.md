@@ -5,6 +5,8 @@ priority: P3
 status: open
 discovered_date: 2026-04-04
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-950: Add ll- CLI Command State Fragments to lib/
@@ -124,6 +126,18 @@ states:
 - **Consistent with `lib/common.yaml` precedent**: Tool-specific fragments follow the same library/import pattern already established for type-pattern fragments. Keeping them in a separate file avoids bloating `common.yaml` with tool-specific details.
 - **Lowers the bar for new loop authors**: Instead of looking up the exact `ll-issues next-action` invocation, a new loop author can just use `fragment: ll_issues_next`.
 
+## Success Metrics
+
+- `TestCliYamlFragments` test class passes: all ~10 fragments assert correct `action_type`, `evaluate.type`, and absence of `fragment:` key post-resolution
+- No regression in `test_builtin_loops.py` — all existing loops remain valid after the additive change
+- At least 1 built-in loop updated to use a `cli.yaml` fragment as a canonical usage example
+- Loop authors can implement a state that calls any ll- tool using `fragment: ll_<tool>` without writing the full `action_type`/`action`/`evaluate` block from scratch
+
+## Scope Boundaries
+
+- **In scope**: New `scripts/little_loops/loops/lib/cli.yaml` fragment library; `docs/guides/LOOPS_GUIDE.md` update to document the new library; optional migration of 1–2 built-in loops as usage examples
+- **Out of scope**: Forced migration of any existing loop (purely additive); changes to the FSM resolver/engine (`fsm/fragments.py`); adding fragments for CLI tools not already shipped in little-loops; modifications to `lib/common.yaml`; changes to import semantics or fragment deep-merge behavior
+
 ## Proposed Solution
 
 1. Create `scripts/little_loops/loops/lib/cli.yaml` with one fragment per major ll- CLI tool.
@@ -144,9 +158,16 @@ Fragment merging semantics are already correct: callers can override `action` or
 
 ### Candidate Built-in Loop Migrations (optional)
 - `scripts/little_loops/loops/docs-sync.yaml` — `ll-check-links 2>&1` → `fragment: ll_check_links`
-- `scripts/little_loops/loops/eval-driven-development.yaml` — `ll-auto --priority P1,P2 --quiet` → `fragment: ll_auto` + override
-- `scripts/little_loops/loops/issue-refinement.yaml` — `ll-issues next-action ...` → `fragment: ll_issues_next` + override
-- `scripts/little_loops/loops/backlog-flow-optimizer.yaml` — `ll-history summary` → `fragment: ll_history_summary`
+- `scripts/little_loops/loops/eval-driven-development.yaml` — `ll-auto --priority P1,P2 --quiet` → `fragment: ll_auto` + `action:` override; also `ll-loop run ${context.harness_name}` → `fragment: ll_loop_run`
+- `scripts/little_loops/loops/issue-refinement.yaml` — `ll-issues next-action --skip "$(cat ...)"` → `fragment: ll_issues_next` + `action:` override
+- `scripts/little_loops/loops/backlog-flow-optimizer.yaml` — `ll-history summary 2>/dev/null || echo "..."` embedded in multi-line shell block → standalone `fragment: ll_history_summary` state
+- `scripts/little_loops/loops/evaluation-quality.yaml` — `ll-issues list --json | python3 -c "..."`, `ll-history summary`, and three `ll-loop run` calls
+- `scripts/little_loops/loops/prompt-across-issues.yaml` — `ll-issues list --json | python3 -c "..."` and `ll-loop run`
+- `scripts/little_loops/loops/issue-discovery-triage.yaml` — `ll-issues list --json 2>/dev/null | python3 -c "..."` (two occurrences)
+- `scripts/little_loops/loops/sprint-build-and-validate.yaml` — `ll-sprint list 2>/dev/null | grep -q .` → `fragment: ll_sprint_list`
+- `scripts/little_loops/loops/outer-loop-eval.yaml` — `ll-loop show ${context.loop_name}` → `fragment: ll_loop_show` (if added); `ll-loop run` → `fragment: ll_loop_run`
+- `scripts/little_loops/loops/examples-miner.yaml` — `ll-messages --skill ... --examples-format ...` → `fragment: ll_messages` + `action:` override
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `ll-issues next-issue` and `ll-issues show` calls
 
 Migration is optional; fragments are additive and all existing loops remain valid.
 
@@ -154,9 +175,57 @@ Migration is optional; fragments are additive and all existing loops remain vali
 - `scripts/tests/test_fsm_fragments.py` — add a new `TestCliYamlFragments` class (matching `TestCommonYamlNewFragments` pattern); verify each fragment resolves correctly from `lib/cli.yaml` via the `import:` path; assert `action_type`, `evaluate.type`, and that `fragment:` key is absent post-resolution
 - `scripts/tests/test_builtin_loops.py` — passes without modification (no forced migration)
 
+#### Test Class Implementation Notes
+
+`_write_lib()` (line 301) hardcodes `lib_dir / "common.yaml"` as the output filename — it cannot be reused for `cli.yaml`. The `TestCliYamlFragments` class should follow the **`TestCommonYamlNewFragments` pattern** (lines 500–588), not `TestResolveFragmentsImport`:
+
+```python
+class TestCliYamlFragments:
+    @staticmethod
+    def _load_cli_yaml() -> dict:
+        import yaml
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "cli.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_ll_auto_defined_in_cli_yaml(self) -> None: ...
+    def test_ll_auto_has_correct_action_type(self) -> None: ...
+    def test_ll_auto_has_correct_evaluate_type(self) -> None: ...
+    # ... one set per representative fragment
+    def test_ll_auto_resolves_from_real_cli_yaml(self, tmp_path: Path) -> None:
+        # Uses loops_dir (real package dir) with "import": ["lib/cli.yaml"]
+        # and resolve_fragments(raw, loops_dir)
+        ...
+```
+
+For import-based round-trip tests, pass `loops_dir` (the real `loops/` package directory) as `loop_dir` to `resolve_fragments`, mirroring how `test_llm_gate_resolves_from_real_common_yaml` works.
+
 ### Similar Patterns
 - `scripts/little_loops/loops/lib/common.yaml` — direct precedent; match its comment style ("State must supply: ..." convention)
-- `scripts/tests/test_fsm_fragments.py:193` (`TestResolveFragmentsImport`) — use `_write_lib()` helper + `tmp_path` write pattern for tests
+- `scripts/tests/test_fsm_fragments.py:500` (`TestCommonYamlNewFragments`) — correct test class pattern for `TestCliYamlFragments` (uses `_load_cli_yaml()` static method loading real file from disk, not `_write_lib()`)
+- `scripts/tests/test_fsm_fragments.py:301` (`_write_lib` in `TestResolveFragmentsImport`) — note: hardcodes `"common.yaml"` filename; cannot be reused for cli.yaml tests
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — confirmed exact `action:` strings from existing built-in loops:_
+
+| Fragment | Confirmed `action:` (from loop) | Source loop |
+|---|---|---|
+| `ll_check_links` | `"ll-check-links 2>&1"` | `docs-sync.yaml:22` |
+| `ll_auto` | `ll-auto` (bare; callers add `--priority P1,P2 --quiet` via override) | `eval-driven-development.yaml:21` |
+| `ll_issues_list` | `"ll-issues list --json"` (`--json` appears in 4+ loops consistently) | `evaluation-quality.yaml:21` |
+| `ll_issues_next` | `"ll-issues next-action"` (bare; `--skip "..."` added via override in `issue-refinement.yaml:16`) | `issue-refinement.yaml:16` |
+| `ll_issues_next_issue` | `"ll-issues next-issue"` | `refine-to-ready-issue.yaml:18` |
+| `ll_history_summary` | `"ll-history summary"` (bare; `2>/dev/null \|\| echo "(no history available)"` is caller logic) | `backlog-flow-optimizer.yaml:30` |
+| `ll_sprint_list` | `"ll-sprint list"` | `sprint-build-and-validate.yaml:40` |
+| `ll_loop_run` | `"ll-loop run ${context.loop_name}"` | `eval-driven-development.yaml:38`, `evaluation-quality.yaml:130` |
+| `ll_messages` | `"ll-messages --stdout"` (bare; callers add `--skill`, `--examples-format`, etc.) | `examples-miner.yaml:31` |
+
+**Verified ll-issues subcommands**: `next-id`, `list`, `search`, `count`, `show`, `sequence`, `impact-effort`, `refine-status`, `append-log`, `next-action`, `next-issue`, `next-issues` (`scripts/little_loops/cli/issues/__init__.py:80–411`)
+
+**Verified ll-history subcommands**: `summary`, `analyze`, `export` (`scripts/little_loops/cli/history.py:12`)
+
+**ll-messages**: no subcommands; key flags are `--stdout`, `--skill`, `--examples-format`, `--context-window`, `--since` (`scripts/little_loops/cli/messages.py:11`)
 
 ### Configuration
 - N/A — library paths are specified in loop YAML `import:` lists; no config changes needed
@@ -167,6 +236,10 @@ Migration is optional; fragments are additive and all existing loops remain vali
 2. **Add tests** in `scripts/tests/test_fsm_fragments.py` — new `TestCliYamlFragments` class using `_write_lib()` + `load_and_validate` or direct `resolve_fragments` calls; assert field values for representative fragments
 3. **Update docs** in `docs/guides/LOOPS_GUIDE.md` — add `lib/cli.yaml` to the fragment libraries section with an import example and fragment table
 4. **Optional migration** — update 1–2 built-in loops as usage examples
+
+## API/Interface
+
+N/A — no Python API or CLI argument changes; new behavior is YAML-configuration only. Loop authors opt in by adding `lib/cli.yaml` to their loop's `import:` list; no existing interface is modified.
 
 ## Impact
 
@@ -192,4 +265,8 @@ Migration is optional; fragments are additive and all existing loops remain vali
 **Open** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-05T02:38:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49da5993-75c6-4b4d-93c4-ba9bc4ef448c.jsonl`
+- `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7bc55c4-b62b-4d59-8a1c-6a95345cac75.jsonl`
+- `/ll:refine-issue` - 2026-04-05T02:35:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95ce988b-f206-41ae-85d4-9555453395d7.jsonl`
+- `/ll:format-issue` - 2026-04-05T02:31:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/640c5857-8f87-4989-9daa-c473686be6fc.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e9b42f4-37e6-4e91-aec1-c44dae744686.jsonl`
