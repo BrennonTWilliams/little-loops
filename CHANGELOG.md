@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.73.0] - 2026-04-05
+
+### Added
+
+- **JSON Schema Generation for Event Types** — 19 machine-readable JSON Schema files for all `LLEvent` types in `docs/reference/schemas/`; CLI command `ll-generate-schemas` (FEAT-919)
+- **`wire-issue` Skill** — Post-refinement integration wiring pass tracing dependency graphs, missing callers, registrations, doc coupling, and test gaps; supports `--auto` and `--dry-run` (FEAT-951)
+- **`max_refine_count` Configuration** — Lifetime refinement cap for `refine-to-ready-issue` loop; configurable via `ll-config.json` (3502f2fd)
+
+### Changed
+
+- **Expanded `lib/common.yaml` State Fragments** — Added `llm_gate` and `numeric_gate` reusable fragments covering 15+ built-in loop patterns (ENH-947)
+- **CLI Fragment Library `lib/cli.yaml`** — 12 tool-specific fragments for `ll-auto`, `ll-issues`, `ll-history`, and more; eliminates copy-paste of CLI invocations (ENH-950)
+- **`--skip` Flag for `ll-issues next-issue`** — Prevents loop starvation by excluding specified issues from queue selection (ENH-952)
+
+### Fixed
+
+- **`confidence_check` Loop** — Replaced `llm_structured` eval with `shell_exit` for reliable exit-code-based confidence checking (391c5ad4)
+
+[1.73.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.72.0...v1.73.0
+
 ## [1.72.0] - 2026-04-04
 
 ### Added
