@@ -523,6 +523,33 @@ Print all active issues in ranked order by outcome confidence and readiness scor
 | `--path` | Output file paths instead of issue IDs |
 | `--config` | Path to project root |
 
+#### `ll-issues skip <issue_id>` / `ll-issues sk`
+
+Deprioritize an active issue by bumping its priority prefix and appending a `## Skip Log` entry. Use this to move refinement failures or blocked issues out of the active queue without completing or deleting them.
+
+| Argument / Flag | Short | Description |
+|-----------------|-------|-------------|
+| `<issue_id>` | | Issue to deprioritize. Accepts numeric ID (`955`), type+ID (`FEAT-955`), or full prefix (`P3-FEAT-955`) |
+| `--priority` | `-p` | Target priority P0–P5 (default: `P5`) |
+| `--reason TEXT` | | Reason text appended to the `## Skip Log` entry in the issue file |
+
+**Behavior:**
+- Renames the issue file with the new priority prefix (e.g., `P3-FEAT-955` → `P5-FEAT-955`) using `git mv` for tracked files to preserve history, falling back to an atomic rename for untracked files
+- Appends a `## Skip Log` section with ISO timestamp and the provided reason (or `"No reason provided"` if omitted)
+- If the issue is already at the target priority, the file is not renamed but the Skip Log entry is still appended
+- Only works on issues in active directories (`bugs/`, `features/`, `enhancements/`); exits with error for `completed/` or `deferred/`
+- Prints the new file path to stdout on success
+
+**Examples:**
+```bash
+ll-issues skip FEAT-955                                          # Deprioritize to P5 (default)
+ll-issues skip 955 --priority P4                                 # Deprioritize to P4
+ll-issues skip BUG-042 --reason "retry after CI fix"             # With reason
+ll-issues sk ENH-123 -p P3 --reason "blocked on upstream change"
+```
+
+---
+
 #### `ll-issues append-log <issue_path> <log_command>` / `ll-issues al`
 
 Append a session log entry to an issue file.
@@ -570,6 +597,8 @@ ll-issues next-issues                            # All active issues in ranked o
 ll-issues next-issues 5                          # Top 5 ranked issues
 ll-issues nxs --json                             # Ranked list as JSON array
 ll-issues nxs --path                             # Ranked list as file paths
+ll-issues skip FEAT-955                          # Deprioritize to P5
+ll-issues skip BUG-042 --priority P4 --reason "retry after CI fix"
 ll-issues append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
 ```
 
