@@ -114,9 +114,7 @@ class TestImproveClaudeMdAlgorithmSidecar:
         assert ALGORITHM_FILE.exists(), "Algorithm file not found"
         content = ALGORITHM_FILE.read_text()
         for step_num in range(1, 10):
-            assert str(step_num) in content, (
-                f"algorithm.md must cover step {step_num}"
-            )
+            assert str(step_num) in content, f"algorithm.md must cover step {step_num}"
 
     def test_algorithm_documents_narrow_conditions(self) -> None:
         """algorithm.md must document narrow vs broad condition guidance."""

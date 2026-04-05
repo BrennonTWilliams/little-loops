@@ -15,7 +15,6 @@ def main_issues() -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.append_log import cmd_append_log
-    from little_loops.cli.issues.skip import cmd_skip
     from little_loops.cli.issues.count_cmd import cmd_count
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
@@ -27,6 +26,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
     from little_loops.cli.issues.show import cmd_show
+    from little_loops.cli.issues.skip import cmd_skip
     from little_loops.cli_args import VALID_PRIORITIES, add_config_arg, add_skip_arg
     from little_loops.config import BRConfig
 
