@@ -2,6 +2,8 @@
 id: BUG-954
 discovered_date: 2026-04-05
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-954: Nested `${}` in `check_lifetime_limit` causes `InterpolationError` crashing `refine-to-ready-issue` loop
@@ -24,7 +26,7 @@ Any automation using `refine-to-ready-issue` as a sub-loop hangs indefinitely. T
 
 ## Proposed Solution
 
-Replace the nested bash fallback on line 46 of `refine-to-ready-issue.yaml` with a non-nested equivalent that the interpolation engine can resolve:
+Replace the nested bash fallback in `check_lifetime_limit` of `refine-to-ready-issue.yaml` with a non-nested equivalent that the interpolation engine can resolve:
 
 ```bash
 # Before (broken — nested ${} unsupported by interpolation regex):
@@ -66,19 +68,29 @@ MAX_TOTAL=${MAX_TOTAL:-${context.max_refine_count}}
 ### Dependent Files (Callers/Importers)
 - Any project-level loop YAML that invokes `refine-to-ready-issue` as a `loop` action
 - `scripts/little_loops/fsm/interpolation.py` — root regex (consider hardening against nested `${}` in a follow-up)
+- `scripts/little_loops/fsm/executor.py:423` — `interpolate(action_template, ctx)` call site where `InterpolationError` originates
 - `scripts/little_loops/fsm/executor.py:275` — catches `InterpolationError` and calls `_finish("error")`
 
 ### Similar Patterns
-- Other `*.yaml` loop files in `scripts/little_loops/loops/` that use bash fallback with `${VAR:-${...}}` syntax should be audited
+- Audit of all loop YAMLs in `scripts/little_loops/loops/` confirmed **only one occurrence** of `${VAR:-${context.*}}` nested syntax: `refine-to-ready-issue.yaml:46` — no other files need fixing
+- Safe single-level `${context.VAR}` form used correctly in `scripts/little_loops/loops/rl-coding-agent.yaml:56,64` — follow this pattern
+- `refine-to-ready-issue.yaml:43` itself already uses the safe single-level form (`${context.max_refine_count}` inside a Python heredoc default)
 
 ### Tests
-- `scripts/tests/` — add test asserting `check_lifetime_limit` executes (not errors) when `context.max_refine_count` is set
+- Add test to `scripts/tests/test_fsm_interpolation.py` — follow `TestInterpolate.test_numeric_value` pattern (line ~180): construct `InterpolationContext(context={"max_refine_count": 5})`, call `interpolate("[ -z \"$MAX_TOTAL\" ] && MAX_TOTAL=${context.max_refine_count}", ctx)`, assert `"MAX_TOTAL=5"` in result
+- Or add executor-level test to `scripts/tests/test_fsm_executor.py` — follow `TestVariableInterpolation.test_context_interpolation` pattern (line ~535): use `MockActionRunner` and assert the resolved action string reaches the runner
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
 1. Open `scripts/little_loops/loops/refine-to-ready-issue.yaml`, locate line 46
 2. Replace `MAX_TOTAL=${MAX_TOTAL:-${context.max_refine_count}}` with `[ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count}`
-3. Audit other loop YAMLs for the same nested `${VAR:-${...}}` pattern
+3. ~~Audit other loop YAMLs for the same nested `${VAR:-${...}}` pattern~~ — confirmed via grep: `refine-to-ready-issue.yaml:46` is the only occurrence; no other files need changes
 4. Add a test for `check_lifetime_limit` execution with a set `max_refine_count`
 5. Re-run `auto-issue-processor` and confirm `action_start` appears for `check_lifetime_limit`
 
@@ -104,5 +116,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ee6c09c-8ee0-4bad-8093-0998a2a2b822.jsonl`
+- `/ll:refine-issue` - 2026-04-05T20:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7aaf98df-ca35-41ef-907a-497c0d4415fb.jsonl`
+- `/ll:format-issue` - 2026-04-05T20:47:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93bb5375-947f-4363-9244-b165bc2b59d1.jsonl`
 
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3203fd4-ea84-4c13-b186-96678a2c9062.jsonl`
