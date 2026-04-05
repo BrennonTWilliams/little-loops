@@ -43,7 +43,7 @@ states:
       print(cfg.get('commands', {}).get('max_refine_count', ${context.max_refine_count}))
       PYEOF
       )
-      MAX_TOTAL=${MAX_TOTAL:-${context.max_refine_count}}
+      [ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count}
 
       TOTAL_REFINES=$(ll-issues refine-status "${captured.issue_id.output}" --json 2>/dev/null \
         | python3 -c "

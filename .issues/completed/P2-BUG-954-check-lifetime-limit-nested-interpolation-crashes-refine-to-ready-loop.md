@@ -111,13 +111,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-04-05 | Priority: P2
+**Resolved** | Created: 2026-04-05 | Resolved: 2026-04-05 | Priority: P2
+
+## Resolution
+
+- **Fix**: Replaced nested `${MAX_TOTAL:-${context.max_refine_count}}` on line 46 of `scripts/little_loops/loops/refine-to-ready-issue.yaml` with `[ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count}`.
+- **Tests added**: Two regression tests in `scripts/tests/test_fsm_interpolation.py::TestInterpolate` — `test_check_lifetime_limit_bash_fallback` (validates fixed form) and `test_nested_variable_syntax_raises_interpolation_error` (documents broken nested pattern).
+- **Root cause confirmed**: `VARIABLE_PATTERN = re.compile(r"\$\{([^}]+)\}")` in `interpolation.py:25` stops at the first `}`, mangling the nested expression into an unknown namespace.
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-05T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe65ef92-61d7-48e7-9480-2ddbdda7849a.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ee6c09c-8ee0-4bad-8093-0998a2a2b822.jsonl`
 - `/ll:refine-issue` - 2026-04-05T20:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7aaf98df-ca35-41ef-907a-497c0d4415fb.jsonl`
 - `/ll:format-issue` - 2026-04-05T20:47:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93bb5375-947f-4363-9244-b165bc2b59d1.jsonl`
 
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3203fd4-ea84-4c13-b186-96678a2c9062.jsonl`
+- `/ll:manage-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe65ef92-61d7-48e7-9480-2ddbdda7849a.jsonl`

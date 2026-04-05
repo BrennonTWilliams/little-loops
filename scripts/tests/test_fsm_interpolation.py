@@ -212,6 +212,30 @@ class TestInterpolate:
         result = interpolate("${context.a.b.c.d}", ctx)
         assert result == "deep"
 
+    def test_check_lifetime_limit_bash_fallback(self) -> None:
+        """[ -z ] bash fallback resolves single-level ${context.*} without crashing.
+
+        Regression test for BUG-954: the old nested form
+        ${MAX_TOTAL:-${context.max_refine_count}} caused InterpolationError
+        because the regex captured up to the first } and produced an unknown
+        namespace.  The fixed form uses a plain POSIX test so the only
+        interpolation token is a simple ${context.max_refine_count}.
+        """
+        ctx = InterpolationContext(context={"max_refine_count": 5})
+        result = interpolate('[ -z "$MAX_TOTAL" ] && MAX_TOTAL=${context.max_refine_count}', ctx)
+        assert "MAX_TOTAL=5" in result
+
+    def test_nested_variable_syntax_raises_interpolation_error(self) -> None:
+        """Nested ${VAR:-${context.*}} syntax raises InterpolationError.
+
+        Documents the known-broken pattern from BUG-954.  The regex captures
+        up to the first } giving namespace 'MAX_TOTAL:-${context.max_refine_count'
+        which has no registered handler.  Use the POSIX-test form instead.
+        """
+        ctx = InterpolationContext(context={"max_refine_count": 5})
+        with pytest.raises(InterpolationError):
+            interpolate("MAX_TOTAL=${MAX_TOTAL:-${context.max_refine_count}}", ctx)
+
 
 class TestInterpolateDict:
     """Tests for the interpolate_dict function."""
