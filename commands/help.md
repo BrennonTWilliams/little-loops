@@ -62,6 +62,11 @@ ISSUE REFINEMENT
     Refine issue with codebase-driven research to fill knowledge gaps
     Flags: --auto (non-interactive), --dry-run (preview)
 
+/ll:wire-issue <issue_id> [flags]
+    Trace full codebase wiring for a refined issue — finds missing callers,
+    registrations, docs, and tests the implementation plan must touch
+    Flags: --auto (non-interactive), --dry-run (preview)
+
 /ll:verify-issues
     Verify all issue files against current codebase state
 
@@ -233,7 +238,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 ## Quick Reference Table
 
 **Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`
-**Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`
+**Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`
 **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`, `iterate-plan`
 **Scanning & Analysis**: `find-dead-code`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
