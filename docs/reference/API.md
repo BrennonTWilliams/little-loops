@@ -2873,6 +2873,36 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
 | `append-log` | Append a session log entry to an issue file |
 
+#### next-issue
+
+```
+ll-issues next-issue [--json] [--path] [--skip ISSUE_IDS]
+ll-issues nx [--json] [--path] [--skip ISSUE_IDS]
+```
+
+Print the single highest-confidence active issue ID. Uses the same sort key as `next-issues`.
+
+**Output flags:**
+- `--json` - Output as a JSON object with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`
+- `--path` - Output only the file path instead of the issue ID
+
+**Filter flags:**
+- `--skip ISSUE_IDS` - Comma-separated list of issue IDs to exclude (e.g., `BUG-003,FEAT-004`). Useful in FSM loops to skip issues already attempted in the current session.
+
+**Exit codes:** 0 when an issue is found; 1 when no active issues exist (after filtering).
+
+**Sort key**: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int`
+
+**Examples:**
+```bash
+ll-issues next-issue                      # print top issue ID
+ll-issues nx --json                       # top issue as JSON object
+ll-issues nx --path                       # top issue file path
+ll-issues nx --skip BUG-003,FEAT-004      # skip specific issues
+```
+
+**FSM loop use**: Use `--skip` to avoid re-selecting issues already processed in the current loop run. Pair with `next-issues` when you need the full ranked list.
+
 #### next-issues
 
 ```

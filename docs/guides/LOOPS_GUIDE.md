@@ -999,6 +999,56 @@ ll-loop run prompt-regression-test \
 - **Check the prompt file after each run**: the loop writes back to the file in-place. Use `git diff` to review the evolution across iterations.
 - **Install to customize**: run `ll-loop install apo-feedback-refinement` to copy the YAML to `.loops/` and edit state actions or add custom evaluation logic.
 
+## Evaluation Loops
+
+Loops in this category analyze other loops — auditing their YAML definitions, running them as sub-loops, and producing structured improvement reports.
+
+### `outer-loop-eval` — Loop Structure & Execution Auditor
+
+**Technique**: Load a target loop's YAML definition, execute it as a sub-loop against an optional input, then combine a static definition analysis with a live execution trace to produce a structured improvement report covering five dimensions: Structural Issues, Logic Issues, Flow Issues, Component Improvements, and Suggested YAML Changes.
+
+**When to use**: After writing or significantly modifying a loop — or before sharing it. `outer-loop-eval` catches missing `on_error` routes, cycle risks, uninitialized context variables, evaluator type mismatches, and redundant state hops that manual review often misses.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `loop_name` | _(required)_ | Target loop name — built-in (`outer-loop-eval`) or project-level (`.loops/my-loop`) |
+| `input` | `""` | Optional input value passed to the sub-loop when it runs |
+
+**Invocation**:
+
+```bash
+# Audit a built-in loop
+ll-loop run outer-loop-eval --context loop_name=issue-refinement
+
+# Audit a project-level loop with an input
+ll-loop run outer-loop-eval \
+  --context loop_name=my-custom-loop \
+  --context input="some context value"
+
+# Install to project for customization
+ll-loop install outer-loop-eval
+```
+
+**FSM flow**:
+```
+analyze_definition → run_sub_loop → analyze_execution → generate_report
+                                                             ├─ YES (has findings) → done
+                                                             └─ NO (all "None identified.") → refine_analysis → generate_report
+```
+
+**Execution failure handling**: If the target loop fails to start (not found, crashes on launch), `outer-loop-eval` captures the error output and feeds it to `analyze_execution` as-is. The final report will still include structural findings derived from the definition analysis — making the audit useful even when the sub-loop cannot run.
+
+**Report sections**: The improvement report always includes these exact headings:
+- **Structural Issues** — unreachable states, undefined routes, orphaned states
+- **Logic Issues** — incorrect evaluator types, wrong routing, context variable misuse
+- **Flow Issues** — redundant hops, timeout risks, missing `on_error` routes
+- **Component Improvements** — state-level suggestions: better prompts, tighter evaluators, clearer capture keys
+- **Suggested YAML Changes** — concrete diff-style or annotated edits ready to copy into the YAML file
+
+---
+
 ## Harness Loops
 
 > **Advanced** — See [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) for the
