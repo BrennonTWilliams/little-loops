@@ -323,6 +323,7 @@ Command customization for `/ll:manage-issue`:
 | `confidence_gate.readiness_threshold` | `85` | Minimum readiness score (1-100) required to proceed |
 | `confidence_gate.outcome_threshold` | `70` | Minimum outcome confidence score (1-100) required to proceed |
 | `tdd_mode` | `false` | Enable TDD mode: write failing tests before implementation |
+| `max_refine_count` | `5` | Maximum lifetime `/ll:refine-issue` calls per issue (1–20); enforced by the `refine-to-ready-issue` loop |
 
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `readiness_threshold`, implementation halts. Use `--force-implement` to bypass.
 

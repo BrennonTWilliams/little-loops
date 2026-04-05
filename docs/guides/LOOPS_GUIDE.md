@@ -258,9 +258,9 @@ ll-loop run refine-to-ready-issue --context readiness_threshold=85 --context out
 
 To apply project-wide defaults, set `commands.confidence_gate.readiness_threshold` / `outcome_threshold` in `ll-config.json`, then install the loop locally (`ll-loop install refine-to-ready-issue`) and update its `context:` block defaults.
 
-**Timeout recovery**: If `confidence_check` times out (e.g., the LLM call hangs), the loop falls back to `check_scores_from_file` — a deterministic recovery state that reads `confidence_score` and `outcome_confidence` directly from the issue's frontmatter via `ll-issues show --json`. This avoids a cascading LLM timeout in the error path. If both scores meet the thresholds, the loop routes to `verify_issue`; otherwise it routes to `failed`.
+**Timeout recovery**: If `confidence_check` encounters an unexpected Python error, the loop falls back to `check_scores_from_file` — a deterministic recovery state that reads `confidence_score` and `outcome_confidence` directly from the issue's frontmatter via `ll-issues show --json`. If both scores meet the thresholds, the loop routes to `verify_issue`; otherwise it routes to `failed`.
 
-**Refine limit guard**: The loop caps refinement retries at **2 total runs** per issue. After the second `/ll:refine-issue` run, `check_refine_limit` increments a counter stored in `.loops/tmp/refine-to-ready-refine-count`. If the limit is reached the loop routes to `failed` rather than looping indefinitely. Install the loop locally (`ll-loop install refine-to-ready-issue`) and edit the `check_refine_limit` state's `target:` value to allow more retries.
+**Refine limit guard**: The loop enforces a **lifetime cap** on total `/ll:refine-issue` calls per issue across all loop runs. Before each refinement, the `check_lifetime_limit` state reads the issue's cumulative `refine_count` from `ll-issues refine-status --json` and compares it against `commands.max_refine_count` in `ll-config.json` (default: **5**, range: 1–20). If the cap is reached, the loop routes to `failed` rather than refining indefinitely. To raise the limit, set `commands.max_refine_count` in your `ll-config.json`.
 
 **Issue Management**
 
