@@ -117,11 +117,31 @@ fi
 7. Register in `commands/help.md:167` — add entry after `analyze-workflows` block; also update Quick Reference Table at line 242
 8. Run `/ll:audit-claude-config` to validate the skill file is discovered correctly
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Run `ll-verify-docs --fix` after step 1 — auto-patches skill count in `README.md:89`, `CONTRIBUTING.md:125`, and `docs/ARCHITECTURE.md:99` (all three are in the `DOC_FILES` scan list in `scripts/little_loops/doc_counts.py:12-16`)
+10. Update `docs/ARCHITECTURE.md` directory tree (lines 100–152) — add `improve-claude-md/` entry in alphabetical sort position (between `init/` and `issue-size-review/`)
+11. Update `CONTRIBUTING.md` directory tree (lines 126–146) — add `improve-claude-md/` entry
+12. Update `docs/reference/COMMANDS.md` — add `### /ll:improve-claude-md` section after `### /ll:audit-claude-config` (after line 308); add Quick Reference Table row in Meta-Analysis group (after line 559)
+13. Update `docs/guides/AUDIT_REPORT.md:49,93` — update skill count `23` → `24` manually (not in `ll-verify-docs` `DOC_FILES` scan list)
+14. Write `scripts/tests/test_improve_claude_md_skill.py` — follow `scripts/tests/test_update_skill.py` pattern: `TestImproveClaudeMdSkillExists` class with `test_skill_file_exists`, `test_algorithm_file_exists`, and key-content assertions
+15. Update `README.md:205-228` — add row to `## Skills` table for `improve-claude-md`^ (Capability Group: Meta-Analysis)
+
 ## Integration Map
 
 ### Files to Modify
 - `CLAUDE.md` — add `improve-claude-md` to skill index
 - `commands/*.md` — add to `/ll:help` listing
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` — add `### /ll:improve-claude-md` entry section (after `### /ll:audit-claude-config` at line 308) and Quick Reference Table row (after line 559) [Agent 1 finding]
+- `docs/ARCHITECTURE.md` — update Mermaid count (line 26: `21 composable skills` → `24`), directory comment (line 99: `21 skill definitions` → `24`), add `improve-claude-md/` to skills directory tree (lines 100–152, alphabetical order) [Agent 2 finding]
+- `README.md:89` — update `**22 skills**` → `**24 skills**` (can use `ll-verify-docs --fix`) [Agent 1 finding]
+- `CONTRIBUTING.md:125` — update `21 skill definitions` → `24 skill definitions`; add `improve-claude-md/` to explicit directory tree (lines 126–146) [Agent 2 finding]
+- `docs/guides/AUDIT_REPORT.md:49,93` — manually update skill count `23` → `24` (this file is NOT in `ll-verify-docs` `DOC_FILES` scan list at `scripts/little_loops/doc_counts.py:12-16`) [Agent 2 finding]
+- `README.md:205-228` — full `## Skills` table (one row per skill); add `improve-claude-md`^ row with Capability Group `Meta-Analysis` [Agent 2 finding]
 
 ### New Files
 - `skills/improve-claude-md/SKILL.md` — new skill implementing the 9-step algorithm
@@ -134,7 +154,9 @@ fi
 - `skills/format-issue/SKILL.md` — reference for multi-step, flagged skill pattern
 
 ### Tests
-- N/A — skill file only, no Python code
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_improve_claude_md_skill.py` — new test file; follow pattern in `scripts/tests/test_update_skill.py` (`TestImproveClaudeMdSkillExists` class with `test_skill_file_exists`, `test_algorithm_file_exists`, and key-content assertions; include `PLUGIN_JSON`/`MARKETPLACE_JSON` cross-file sync checks) [Agent 3 finding]
 
 ### Documentation
 - `CLAUDE.md` — skill index listing update
@@ -162,6 +184,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ```
 
 **Note**: Root-level `CLAUDE.md` does not exist in this repo — only `.claude/CLAUDE.md`.
+
+**Stale count in step 6** _(corrected by `/ll:wire-issue`)_: `.claude/CLAUDE.md:38` currently reads `(23 skills)` (23 directories on disk as of wiring pass). After adding `improve-claude-md`, the correct target is `(24 skills)` — not `(22 skills)` as originally written.
 
 ## Use Case
 
@@ -219,6 +243,7 @@ A developer has a large flat CLAUDE.md with many sections. They run `/ll:improve
 **Open** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-05T05:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df4c58be-3e90-464d-a531-95de8b55d2c6.jsonl`
 - `/ll:verify-issues` - 2026-04-04T21:33:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbe4ecea-498a-46bf-8529-ec826525bb1b.jsonl`
 - `/ll:refine-issue` - 2026-04-04T21:30:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da715ef7-17a9-4847-a68b-48525c65ce91.jsonl`
