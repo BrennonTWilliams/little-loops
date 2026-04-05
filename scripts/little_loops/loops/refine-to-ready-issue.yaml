@@ -6,6 +6,7 @@ on_handoff: spawn
 context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+  max_refine_count: 5       # canonical: commands.max_refine_count in ll-config.json
 import:
   - lib/common.yaml
 
@@ -24,7 +25,50 @@ states:
   format_issue:
     action: "/ll:format-issue ${captured.issue_id.output} --auto"
     action_type: slash_command
-    next: refine_issue
+    next: check_lifetime_limit
+    on_error: failed
+
+  check_lifetime_limit:
+    action: |
+      MAX_TOTAL=$(python3 << 'PYEOF'
+      import json
+      from pathlib import Path
+      p = Path('.ll/ll-config.json')
+      cfg = {}
+      if p.exists():
+          try:
+              cfg = json.loads(p.read_text())
+          except Exception:
+              pass
+      print(cfg.get('commands', {}).get('max_refine_count', ${context.max_refine_count}))
+      PYEOF
+      )
+      MAX_TOTAL=${MAX_TOTAL:-${context.max_refine_count}}
+
+      TOTAL_REFINES=$(ll-issues refine-status "${captured.issue_id.output}" --json 2>/dev/null \
+        | python3 -c "
+      import json, sys
+      try:
+          d = json.loads(sys.stdin.read())
+          print(int(d.get('refine_count', 0)))
+      except Exception:
+          print(0)
+      " 2>/dev/null || echo 0)
+
+      if [ "$TOTAL_REFINES" -ge "$MAX_TOTAL" ]; then
+        echo 1
+      else
+        echo 0
+      fi
+    action_type: shell
+    # 0 = under lifetime cap → proceed; 1 = cap reached → block
+    # Cap is commands.max_refine_count in ll-config.json (default: ${context.max_refine_count})
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 1
+    on_yes: refine_issue
+    on_no: failed
     on_error: failed
 
   refine_issue:
@@ -56,13 +100,14 @@ states:
       printf '%s' "$N" > "$FILE"
       echo "$N"
     action_type: shell
-    # target: 2 → allows 1 loopback (2 total refines: 1 initial + 1 retry)
-    # Increase target to allow more retries (e.g. target: 3 = 3 total refines)
+    # target: 2 → allows 1 loopback per run (2 total refines: 1 initial + 1 retry)
+    # Increase target to allow more retries (e.g. target: 3 = 3 total refines per run)
+    # Lifetime refine cap is enforced separately by check_lifetime_limit
     evaluate:
       type: output_numeric
       operator: lt
       target: 2
-    on_yes: refine_issue
+    on_yes: check_lifetime_limit
     on_no: failed
     on_error: failed
 
