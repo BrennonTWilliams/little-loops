@@ -47,23 +47,35 @@ No changes to `find_issues()` or `parse_issue_ids()` — both already handle thi
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/issue_parser.py:612` — `find_issues()` already accepts `skip_ids: set[str] | None`
-- `scripts/little_loops/cli_args.py:57` — `add_skip_arg()` already exists
-- `scripts/little_loops/cli_args.py:197` — `parse_issue_ids()` already exists
+- `scripts/little_loops/issue_parser.py:612` — `find_issues(config, category=None, skip_ids: set[str] | None = None, ...)` confirmed
+- `scripts/little_loops/cli_args.py:57` — `add_skip_arg(parser, help_text=None)` confirmed
+- `scripts/little_loops/cli_args.py:197` — `parse_issue_ids(value) -> set[str] | None` confirmed
+- `scripts/little_loops/cli/issues/__init__.py:29` — `add_skip_arg` already imported (`from little_loops.cli_args import add_config_arg, add_skip_arg`) — no import change needed
 
 ### Similar Patterns
 
-- `scripts/little_loops/cli/issues/__init__.py:342` — `add_skip_arg(na)` for `next-action` (exact pattern to copy)
-- `scripts/little_loops/cli/issues/next_action.py` — reference impl for wiring `skip_ids`
+- `scripts/little_loops/cli/issues/__init__.py:342` — `add_skip_arg(na)` for `next-action`; insertion point for `next-issue` is line 353 (before `add_config_arg(nx)`, after `--path` arg)
+- `scripts/little_loops/cli/issues/next_action.py:25-29` — exact wiring to replicate:
+  ```python
+  from little_loops.cli_args import parse_issue_ids
+  from little_loops.issue_parser import find_issues, is_formatted
+  skip_ids = parse_issue_ids(getattr(args, "skip", None))
+  issues = find_issues(config, skip_ids=skip_ids or None)
+  ```
 - Completed ENH-929 — identical change for `next-action`
 
 ### Tests
 
-- `scripts/tests/cli/issues/` — add test for `next-issue --skip FEAT-NNN` verifying the skipped issue is excluded
+- `scripts/tests/test_next_issue.py` — add `TestNextIssueSkipFlag` class following existing `TestNextIssueSorting` pattern; helpers `_make_issue`, `_setup_dirs`, `_write_config` already present
 
 ### Documentation
 
-- N/A
+- `docs/reference/CLI.md` — update `next-issue` entry to document `--skip / -s` flag
+
+### Loop Callers (context only — no changes needed)
+
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — calls `ll-issues next-issue`; parent loop would pass `--skip` to prevent starvation
+- `scripts/little_loops/loops/prompt-across-issues.yaml` — also references `next-issue`
 
 ### Configuration
 
@@ -71,10 +83,18 @@ No changes to `find_issues()` or `parse_issue_ids()` — both already handle thi
 
 ## Implementation Steps
 
-1. Add `add_skip_arg(nx)` to `next-issue` subparser in `__init__.py`
-2. Wire `parse_issue_ids` + `find_issues(config, skip_ids=skip_ids)` in `next_issue.py`
-3. Add a unit test: `next-issue --skip <top-issue-id>` returns the second-ranked issue
-4. Verify `next-issue` (no `--skip`) is unchanged
+1. In `scripts/little_loops/cli/issues/__init__.py:353` — add `add_skip_arg(nx)` before `add_config_arg(nx)` (mirrors the `add_skip_arg(na)` call at line 342 for `next-action`; `add_skip_arg` is already imported at line 29)
+2. In `scripts/little_loops/cli/issues/next_issue.py` — add `from little_loops.cli_args import parse_issue_ids` import and replace `issues = find_issues(config)` (line 27) with:
+   ```python
+   skip_ids = parse_issue_ids(getattr(args, "skip", None))
+   issues = find_issues(config, skip_ids=skip_ids or None)
+   ```
+3. In `scripts/tests/test_next_issue.py` — add `TestNextIssueSkipFlag` class modeled after `TestIssuesCLINextActionSkip` in `test_next_action.py:310-401` with three tests:
+   - `test_skip_excludes_top_issue`: two issues, skip the higher-ranked one, assert lower-ranked is returned (exit 0)
+   - `test_skip_only_issue_returns_exit_1`: skip the only issue, assert exit code 1 (no issues)
+   - `test_skip_multiple_ids`: comma-separated skip list, assert all named IDs excluded
+4. In `docs/reference/CLI.md` — update `next-issue` entry to document `--skip / -s`
+5. Run `python -m pytest scripts/tests/test_next_issue.py -v` to verify all tests pass
 
 ## Impact
 
@@ -106,5 +126,6 @@ ll-issues next-issue --skip FEAT-007 --json
 **Open** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-05T00:09:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae04c79e-46f8-4ca0-b76b-64b7b646d0fc.jsonl`
 
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4692f047-3b49-42de-a84b-22a59c6686a8.jsonl`
