@@ -75,7 +75,8 @@ For interactive editing, use `/ll:configure`.
       "readiness_threshold": 85,
       "outcome_threshold": 70
     },
-    "tdd_mode": false
+    "tdd_mode": false,
+    "max_refine_count": 5
   },
 
   "scan": {
