@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-04-04
 discovered_by: split-from-FEAT-916
-confidence_score: 85
-outcome_confidence: 70
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # FEAT-919: JSON Schema Generation for Event Types
@@ -24,6 +24,16 @@ No machine-readable schema exists. Extension authors and non-Python tools must p
 - `docs/reference/schemas/` contains one `.json` schema file per event type (19 total)
 - A generation script at `scripts/little_loops/generate_schemas.py` (or a CLI flag) regenerates all schema files from the known event type catalog
 - Schema files are valid JSON Schema (draft-07 or later)
+
+## Use Case
+
+**Who**: Non-Python tooling author (dashboard builder, log analyzer, monitoring integration)
+
+**Context**: Needs to validate or process `LLEvent` payloads in a non-Python tool and wants a machine-readable contract rather than parsing `docs/reference/EVENT-SCHEMA.md` manually
+
+**Goal**: Import a JSON Schema file for a specific event type (e.g., `state_enter.json`) and use it to validate incoming event payloads
+
+**Outcome**: Validation passes for well-formed events; schema violations are caught without writing custom parsing logic for each event type
 
 ## Motivation
 
@@ -70,6 +80,63 @@ Schemas live in `docs/reference/schemas/` (documentation artifact, not in the Py
 ### Documentation
 - `CONTRIBUTING.md` — add note on regenerating schemas when adding a new event type
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Files to Modify (CLI registration — follow project conventions)**
+- `scripts/little_loops/cli/schemas.py` (new) — thin CLI entry point; business logic stays in `generate_schemas.py`. Follow pattern in `scripts/little_loops/cli/docs.py:9-98`
+- `scripts/little_loops/cli/__init__.py:19-53` — add `from little_loops.cli.schemas import main_generate_schemas` and include in `__all__`
+- `scripts/pyproject.toml:48-63` — add `ll-generate-schemas = "little_loops.cli:main_generate_schemas"` under `[project.scripts]`
+
+**Wire Format (Critical for Schema Structure)**
+
+`LLEvent.to_dict()` at `events.py:42-48` **flattens** payload into the top-level dict:
+
+```json
+{"event": "<type>", "ts": "<ISO8601>", ...payload_fields_inlined}
+```
+
+JSON Schemas must validate this **flat** structure — `event` and `ts` are top-level required fields on every schema. There is **no `payload` wrapper key** in the wire format. Exception: `evaluate` emits `{"event": "evaluate", "ts": "...", "type": "<evaluator_type>", "verdict": "..."}` — `type` here is a payload field at the wire level, not the event identifier.
+
+**JSON Schema Convention** (from `scripts/little_loops/fsm/fsm-loop-schema.json`)
+
+- `"$schema": "http://json-schema.org/draft-07/schema#"`
+- `"$id": "little-loops://<filename>.json"` — use `"little-loops://event-<event_type>.json"` for event schemas
+- Include `title` and `description` fields
+
+**Similar Patterns**
+- `scripts/little_loops/cli/docs.py:9-98` — closest analogue: `main_verify_docs() -> int` with lazy imports + `argparse.RawDescriptionHelpFormatter`
+- `scripts/little_loops/cli/history.py:269-270` — `Path.write_text(json.dumps(..., indent=2))` + `mkdir(parents=True, exist_ok=True)` before writing output
+- `scripts/tests/test_cli_docs.py:21-186` — test pattern: `patch("sys.argv", [...])` + call `main_*()` + assert return code
+- `scripts/tests/test_cli_messages_save.py:15-30` — test pattern: `tmp_path` + `assert file.exists()` + `json.loads(file.read_text())`
+
+**Complete Payload Fields (from `docs/reference/EVENT-SCHEMA.md`)**
+
+All payload fields appear **inline** in the wire JSON alongside `event` and `ts`:
+
+| Event Type | Payload fields |
+|---|---|
+| `loop_start` | `loop: str` |
+| `state_enter` | `state: str`, `iteration: int` |
+| `route` | `from: str`, `to: str`, `reason: str` (optional) |
+| `action_start` | `action: str`, `is_prompt: bool` |
+| `action_output` | `line: str` |
+| `action_complete` | `exit_code: int`, `duration_ms: int`, `output_preview: str\|null`, `is_prompt: bool`, `session_jsonl: str\|null` (prompt-only) |
+| `evaluate` | `type: str`, `verdict: str`, optional evaluator-specific detail fields |
+| `retry_exhausted` | `state: str`, `retries: int`, `next: str` |
+| `handoff_detected` | `state: str`, `iteration: int`, `continuation: str` |
+| `handoff_spawned` | `pid: int`, `state: str` |
+| `loop_complete` | `final_state: str`, `iterations: int`, `terminated_by: str` |
+| `loop_resume` | `loop: str`, `from_state: str`, `iteration: int`, `from_handoff: bool` (optional), `continuation_prompt: str` (optional, when `from_handoff` is true) |
+| `state.issue_completed` | `issue_id: str`, `status: "completed"` |
+| `state.issue_failed` | `issue_id: str`, `reason: str`, `status: "failed"` |
+| `issue.failure_captured` | `issue_id: str`, `file_path: str`, `parent_issue_id: str` |
+| `issue.closed` | `issue_id: str`, `file_path: str`, `close_reason: str` |
+| `issue.completed` | `issue_id: str`, `file_path: str` |
+| `issue.deferred` | `issue_id: str`, `file_path: str`, `reason: str` |
+| `parallel.worker_completed` | `issue_id: str`, `worker_name: str`, `status: str`, `duration_seconds: float` |
+
 ## Implementation Steps
 
 1. Read `docs/reference/EVENT-SCHEMA.md` to extract payload field definitions for all 19 event types
@@ -77,12 +144,28 @@ Schemas live in `docs/reference/schemas/` (documentation artifact, not in the Py
 3. Run the script and commit the 19 generated `.json` files to `docs/reference/schemas/`
 4. Add a `CONTRIBUTING.md` note: "When adding a new event type, update `EVENT-SCHEMA.md` and run `python scripts/little_loops/generate_schemas.py` to regenerate schemas"
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — CLI registration and test steps missing from above:_
+
+5. Create `scripts/little_loops/cli/schemas.py` as a thin entry point with `main_generate_schemas() -> int`; follow the pattern in `scripts/little_loops/cli/docs.py:9-98` (lazy imports inside function body, `argparse.RawDescriptionHelpFormatter`, return `int` exit code)
+6. Inside the generator, call `output_dir.mkdir(parents=True, exist_ok=True)` before writing — pattern: `scripts/little_loops/cli/history.py:269`; write each schema via `Path(...).write_text(json.dumps(schema, indent=2))`
+7. Add `from little_loops.cli.schemas import main_generate_schemas` to `scripts/little_loops/cli/__init__.py` and include in `__all__` — pattern: `cli/__init__.py:19-53`
+8. Add `ll-generate-schemas = "little_loops.cli:main_generate_schemas"` to `scripts/pyproject.toml` under `[project.scripts]` — pattern: `pyproject.toml:48-63`
+9. Write `scripts/tests/test_generate_schemas.py` using `tmp_path` fixture + `assert file.exists()` + `json.loads(file.read_text())` to spot-check field names — pattern: `scripts/tests/test_cli_messages_save.py:15-30`
+
 ## Acceptance Criteria
 
 - [ ] 19 schema files exist in `docs/reference/schemas/`, one per event type
 - [ ] Each schema is valid JSON Schema and covers the known top-level payload fields from `EVENT-SCHEMA.md`
 - [ ] Generation script can be re-run idempotently (overwrites existing files)
 - [ ] `CONTRIBUTING.md` documents the regeneration workflow
+
+## API/Interface
+
+N/A - No public Python API changes
+
+Output artifact: `docs/reference/schemas/<event_type>.json` — one file per event type (19 total). Filenames use `_` in place of `.` for filesystem safety (e.g., `state.issue_completed` → `state_issue_completed.json`). Each file is a valid JSON Schema (draft-07) covering the known top-level payload fields for that event type.
 
 ## Impact
 
@@ -110,4 +193,7 @@ Schemas live in `docs/reference/schemas/` (documentation artifact, not in the Py
 **Open** | Created: 2026-04-04 | Priority: P5
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e4f6cfd-636d-4792-9a4c-92d415af7aa5.jsonl`
+- `/ll:refine-issue` - 2026-04-05T02:50:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5220b845-c800-42be-a6a4-bb7a3ba497cc.jsonl`
+- `/ll:format-issue` - 2026-04-05T02:45:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7958e8d2-a116-487b-bcf4-0dbe75ee95ea.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - split from FEAT-916
