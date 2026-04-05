@@ -671,6 +671,131 @@ class TestLoadAndValidateIntegration:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Real lib/cli.yaml: verify ll- CLI tool fragments are present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestCliYamlFragments:
+    """Tests that ll- CLI tool fragments exist in the real lib/cli.yaml."""
+
+    @staticmethod
+    def _load_cli_yaml() -> dict:
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "cli.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_ll_auto_defined(self) -> None:
+        data = self._load_cli_yaml()
+        assert "ll_auto" in data["fragments"], "ll_auto fragment missing from lib/cli.yaml"
+
+    def test_ll_auto_has_correct_action_type(self) -> None:
+        data = self._load_cli_yaml()
+        assert data["fragments"]["ll_auto"]["action_type"] == "shell"
+
+    def test_ll_auto_has_correct_evaluate_type(self) -> None:
+        data = self._load_cli_yaml()
+        assert data["fragments"]["ll_auto"]["evaluate"]["type"] == "exit_code"
+
+    def test_ll_check_links_defined(self) -> None:
+        data = self._load_cli_yaml()
+        assert "ll_check_links" in data["fragments"]
+
+    def test_ll_check_links_has_correct_action(self) -> None:
+        data = self._load_cli_yaml()
+        assert data["fragments"]["ll_check_links"]["action"] == "ll-check-links 2>&1"
+
+    def test_ll_issues_list_defined(self) -> None:
+        data = self._load_cli_yaml()
+        assert "ll_issues_list" in data["fragments"]
+
+    def test_ll_issues_list_has_correct_action(self) -> None:
+        data = self._load_cli_yaml()
+        assert data["fragments"]["ll_issues_list"]["action"] == "ll-issues list --json"
+
+    def test_ll_issues_next_defined(self) -> None:
+        data = self._load_cli_yaml()
+        assert "ll_issues_next" in data["fragments"]
+
+    def test_ll_issues_next_has_correct_action(self) -> None:
+        data = self._load_cli_yaml()
+        assert data["fragments"]["ll_issues_next"]["action"] == "ll-issues next-action"
+
+    def test_ll_loop_run_defined(self) -> None:
+        data = self._load_cli_yaml()
+        assert "ll_loop_run" in data["fragments"]
+
+    def test_ll_loop_run_has_context_interpolation(self) -> None:
+        data = self._load_cli_yaml()
+        assert "${context.loop_name}" in data["fragments"]["ll_loop_run"]["action"]
+
+    def test_all_fragments_are_shell_type(self) -> None:
+        data = self._load_cli_yaml()
+        for name, frag in data["fragments"].items():
+            assert frag.get("action_type") == "shell", (
+                f"Fragment {name!r} expected action_type: shell, got {frag.get('action_type')!r}"
+            )
+
+    def test_all_fragments_have_exit_code_evaluate(self) -> None:
+        data = self._load_cli_yaml()
+        for name, frag in data["fragments"].items():
+            assert frag.get("evaluate", {}).get("type") == "exit_code", (
+                f"Fragment {name!r} expected evaluate.type: exit_code"
+            )
+
+    def test_ll_auto_resolves_from_real_cli_yaml(self, tmp_path: Path) -> None:
+        """Full resolve_fragments integration against the real lib/cli.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "run",
+            "import": ["lib/cli.yaml"],
+            "states": {
+                "run": {
+                    "fragment": "ll_auto",
+                    "on_yes": "done",
+                    "on_no": "retry",
+                },
+                "done": {"terminal": True},
+                "retry": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["run"]
+        assert state["action_type"] == "shell"
+        assert state["action"] == "ll-auto"
+        assert state["evaluate"]["type"] == "exit_code"
+        assert "fragment" not in state
+
+    def test_ll_check_links_resolves_with_action_override(self, tmp_path: Path) -> None:
+        """Caller can override action while keeping action_type/evaluate from fragment."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "check",
+            "import": ["lib/cli.yaml"],
+            "states": {
+                "check": {
+                    "fragment": "ll_check_links",
+                    "capture": "link_results",
+                    "on_yes": "done",
+                    "on_no": "fix",
+                },
+                "done": {"terminal": True},
+                "fix": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["check"]
+        assert state["action_type"] == "shell"
+        assert state["action"] == "ll-check-links 2>&1"
+        assert state["evaluate"]["type"] == "exit_code"
+        assert state["capture"] == "link_results"
+        assert "fragment" not in state
+
+
 class TestBuiltinLoopMigration:
     def test_builtin_loops_load_after_migration(self) -> None:
         """All 10 built-in loops that use fragment: shell_exit must still validate."""

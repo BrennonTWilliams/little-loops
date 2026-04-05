@@ -1429,9 +1429,13 @@ states:
 
 Local `fragments:` definitions override any imported fragment with the same name.
 
-### Built-in Library
+### Built-in Libraries
 
-`scripts/little_loops/loops/lib/common.yaml` ships with four fragments used by all built-in loops:
+Two libraries ship with little-loops, both in `scripts/little_loops/loops/lib/`:
+
+#### `lib/common.yaml` — type-pattern fragments
+
+Generic structure fragments (action_type + evaluate combinator) used by all built-in loops:
 
 | Fragment | Provides | Caller must supply |
 |----------|----------|--------------------|
@@ -1440,7 +1444,46 @@ Local `fragments:` definitions override any imported fragment with the same name
 | `llm_gate` | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
 | `numeric_gate` | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
 
-Built-in loops import it as `import: ["lib/common.yaml"]`. User loops in `.loops/` can do the same if they copy or symlink the library, or define their own.
+#### `lib/cli.yaml` — ll- CLI tool fragments
+
+Tool-specific fragments with pre-filled `action` fields for every major ll- CLI tool. Import with `lib/cli.yaml`; override `action` to add flags:
+
+```yaml
+import:
+  - lib/cli.yaml
+
+states:
+  check_links:
+    fragment: ll_check_links     # provides action_type, action, evaluate
+    capture: link_results
+    on_yes: done
+    on_no: fix_links
+
+  run_auto:
+    fragment: ll_auto
+    action: "ll-auto --priority P1,P2 --quiet"   # override action to add flags
+    on_yes: done
+    on_no: retry
+```
+
+| Fragment | Default `action` | Notes |
+|----------|-----------------|-------|
+| `ll_auto` | `ll-auto` | Override `action` to add `--priority`, `--quiet`, etc. |
+| `ll_issues_list` | `ll-issues list --json` | |
+| `ll_issues_next` | `ll-issues next-action` | Override `action` to add `--skip "..."` |
+| `ll_issues_next_issue` | `ll-issues next-issue` | |
+| `ll_history_summary` | `ll-history summary` | Override `action` to add `2>/dev/null` fallback |
+| `ll_check_links` | `ll-check-links 2>&1` | |
+| `ll_messages` | `ll-messages --stdout` | Override `action` to add `--skill`, `--examples-format`, etc. |
+| `ll_deps` | `ll-deps check` | |
+| `ll_sprint_list` | `ll-sprint list` | |
+| `ll_parallel` | `ll-parallel` | |
+| `ll_workflows` | `ll-workflows` | |
+| `ll_loop_run` | `ll-loop run ${context.loop_name}` | Requires `context.loop_name` |
+
+All `lib/cli.yaml` fragments use `action_type: shell` + `evaluate.type: exit_code`.
+
+Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same if they copy or symlink the library, or define their own.
 
 ### When to Use Fragments vs. Sub-Loops
 

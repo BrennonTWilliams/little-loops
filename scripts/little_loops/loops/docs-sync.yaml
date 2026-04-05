@@ -10,6 +10,7 @@ scope:
   - "*.md"
 import:
   - lib/common.yaml
+  - lib/cli.yaml
 states:
   verify_docs:
     action: "ll-verify-docs 2>&1"
@@ -19,8 +20,7 @@ states:
     on_no: check_links
     on_error: check_links
   check_links:
-    action: "ll-check-links 2>&1"
-    fragment: shell_exit
+    fragment: ll_check_links
     capture: link_results
     on_yes: route_results
     on_no: route_results

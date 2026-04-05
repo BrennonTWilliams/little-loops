@@ -104,6 +104,24 @@ See `ll-loop --help` and the [FSM Loop documentation](../docs/ARCHITECTURE.md) f
 
 To start from a built-in template: `ll-loop install <name>` copies it to `.loops/<name>.yaml` for local customization.
 
+### Fragment Libraries
+
+Built-in fragment libraries are in `lib/`:
+
+| Library | Purpose |
+|---------|---------|
+| `lib/common.yaml` | Generic type-pattern fragments (`shell_exit`, `llm_gate`, `retry_counter`, `numeric_gate`) |
+| `lib/cli.yaml` | Pre-filled ll- CLI tool fragments (`ll_auto`, `ll_check_links`, `ll_issues_list`, `ll_loop_run`, etc.) |
+
+Import a library in any loop:
+
+```yaml
+import:
+  - lib/cli.yaml
+```
+
+See [`docs/guides/LOOPS_GUIDE.md`](../docs/guides/LOOPS_GUIDE.md) for fragment authoring and the full fragment table.
+
 ### Composing Loops
 
 Any built-in loop can be used as a **sub-loop** inside another loop via the `loop:` field on a state. This lets you chain existing loops into multi-step pipelines without duplicating their logic:

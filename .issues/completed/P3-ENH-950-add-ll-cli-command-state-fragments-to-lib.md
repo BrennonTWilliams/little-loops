@@ -260,11 +260,32 @@ N/A — no Python API or CLI argument changes; new behavior is YAML-configuratio
 
 ---
 
+## Resolution
+
+**Completed** | 2026-04-04
+
+### Changes Made
+
+- **Created** `scripts/little_loops/loops/lib/cli.yaml` — 12 fragments covering all major ll- CLI tools (`ll_auto`, `ll_issues_list`, `ll_issues_next`, `ll_issues_next_issue`, `ll_history_summary`, `ll_check_links`, `ll_messages`, `ll_deps`, `ll_sprint_list`, `ll_parallel`, `ll_workflows`, `ll_loop_run`)
+- **Added** `TestCliYamlFragments` class (15 tests) to `scripts/tests/test_fsm_fragments.py`
+- **Updated** `docs/guides/LOOPS_GUIDE.md` — expanded "Built-in Library" to "Built-in Libraries" with a full `lib/cli.yaml` fragment table and usage example
+- **Updated** `scripts/little_loops/loops/README.md` — added "Fragment Libraries" section documenting both lib files
+- **Migrated** `scripts/little_loops/loops/docs-sync.yaml` — `check_links` state now uses `fragment: ll_check_links` as canonical usage example
+
+### Verification
+
+- 15/15 `TestCliYamlFragments` tests pass
+- 71/71 `test_builtin_loops.py` tests pass (no regression)
+- 51/51 `test_fsm_fragments.py` tests pass
+
 ## Status
 
-**Open** | Created: 2026-04-04 | Priority: P3
+**Completed** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-05T02:48:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5017ef73-cf52-4dec-b281-0a8ba2920433.jsonl`
+- `/ll:manage-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-05T02:45:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4be041a8-dfd8-474c-a023-85d8144368d7.jsonl`
 - `/ll:verify-issues` - 2026-04-05T02:38:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49da5993-75c6-4b4d-93c4-ba9bc4ef448c.jsonl`
 - `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7bc55c4-b62b-4d59-8a1c-6a95345cac75.jsonl`
 - `/ll:refine-issue` - 2026-04-05T02:35:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95ce988b-f206-41ae-85d4-9555453395d7.jsonl`
