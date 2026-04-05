@@ -186,7 +186,9 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         {
             "final_state": _str("Name of the terminal state reached"),
             "iterations": _int("Total number of iterations executed"),
-            "terminated_by": _str("What caused loop termination (e.g. terminal_state, max_iterations)"),
+            "terminated_by": _str(
+                "What caused loop termination (e.g. terminal_state, max_iterations)"
+            ),
         },
         ["final_state", "iterations", "terminated_by"],
     ),
