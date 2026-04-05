@@ -319,6 +319,7 @@ Current Commands Configuration
     readiness_threshold:  {{config.commands.confidence_gate.readiness_threshold}}
     outcome_threshold:    {{config.commands.confidence_gate.outcome_threshold}}
   tdd_mode:         {{config.commands.tdd_mode}}
+  max_refine_count: {{config.commands.max_refine_count}}
 ```
 
 ### Round 1 (4 questions)
@@ -372,7 +373,7 @@ questions:
     multiSelect: false
 ```
 
-### Round 2 (1 question)
+### Round 2 (2 questions)
 
 ```yaml
 questions:
@@ -385,6 +386,19 @@ questions:
         description: "Yes, write tests before implementation (Red/Green)"
       - label: "false"
         description: "No, standard implementation flow (default)"
+    multiSelect: false
+
+  - header: "Max refines"
+    question: "Maximum lifetime /ll:refine-issue calls per issue (enforced by the refine-to-ready-issue loop)?"
+    options:
+      - label: "{{current max_refine_count}} (keep)"
+        description: "Keep current setting"
+      - label: "3"
+        description: "3 (strict)"
+      - label: "5"
+        description: "5 (default)"
+      - label: "10"
+        description: "10 (permissive)"
     multiSelect: false
 ```
 

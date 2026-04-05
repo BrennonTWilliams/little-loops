@@ -77,6 +77,7 @@ Commands Configuration
     readiness_threshold:  {{config.commands.confidence_gate.readiness_threshold}}  (default: 85)
     outcome_threshold:    {{config.commands.confidence_gate.outcome_threshold}}    (default: 70)
   tdd_mode:         {{config.commands.tdd_mode}}                   (default: false)
+  max_refine_count: {{config.commands.max_refine_count}}           (default: 5)
 
 Edit: /ll:configure commands
 ```

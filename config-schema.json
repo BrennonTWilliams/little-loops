@@ -327,6 +327,13 @@
           "type": "boolean",
           "description": "Enable TDD mode: write failing tests before implementation in manage-issue",
           "default": false
+        },
+        "max_refine_count": {
+          "type": "integer",
+          "description": "Maximum total lifetime /ll:refine-issue calls allowed per issue. Enforced by the refine-to-ready-issue loop via ll-issues refine-status.",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20
         }
       },
       "additionalProperties": false

@@ -252,6 +252,7 @@ The following questions have been removed and their defaults applied silently:
 - `sync_completed` → always No (# Default: sync.github.sync_completed = false)
 - `gate_readiness` → always 85 (# Default: commands.confidence_gate.readiness_threshold = 85)
 - `gate_outcome` → always 70 (# Default: commands.confidence_gate.outcome_threshold = 70)
+- `max_refine_count` → always 5 (# Default: commands.max_refine_count = 5; configurable via /ll:configure commands)
 - `sprints_workers` → always 2 (# Default: sprints.default_max_workers = 2)
 - `auto_timeout` → always 3600 (# Default: automation.timeout_seconds = 3600)
 
