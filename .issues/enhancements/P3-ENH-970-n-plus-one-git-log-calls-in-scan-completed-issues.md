@@ -3,6 +3,8 @@ discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # ENH-970: N+1 `git log` subprocess calls in `scan_completed_issues`
@@ -72,6 +74,7 @@ Pass this map into `parse_completed_issue` (or `_parse_completion_date`) so the 
 
 - Only optimize the git-log fallback path; frontmatter-based date parsing is already O(1) per file and needs no change
 - Do not change the `parse_completed_issue` public API signature if it would break callers; use a keyword argument with a default
+- `_parse_completion_date` is a private function but is imported directly by `list_cmd.py:66` and `search.py:287` — adding `batch_dates: dict[str, date] | None = None` as a trailing kwarg is safe for those callers since they pass only positional args
 
 ## Success Metrics
 
@@ -84,26 +87,52 @@ Pass this map into `parse_completed_issue` (or `_parse_completion_date`) so the 
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_history/analysis.py` — calls `scan_completed_issues`
-- `scripts/little_loops/cli/history.py` — entry point for `ll-history analyze`
+- `scripts/little_loops/cli/history.py:199,213,250` — entry point; calls `scan_completed_issues(completed_dir)` three times (summary, analyze, export subcommands)
+- `scripts/little_loops/cli/issues/list_cmd.py:66` — imports `_parse_completion_date` directly (private import; any signature change must stay backward-compatible)
+- `scripts/little_loops/cli/issues/search.py:287` — imports `_parse_completion_date` directly (same constraint)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_history/__init__.py:119,121,162-163` — re-exports `parse_completed_issue` and `scan_completed_issues` via `__all__`; `_batch_completion_dates` (new private function) must NOT be added to `__all__` or the re-export list — verify during implementation [Agent 1 finding]
 
 ### Similar Patterns
-- N/A
+
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/issue_discovery/extraction.py:105-154` — `_get_files_modified_since_commit`: batches a list of file paths into one `git log --name-only` call, parses blank-line-separated blocks of `SHA\nfile\nfile\n`, builds a `set` for O(1) lookup. This is the direct template for `_batch_completion_dates`.
+- `scripts/tests/test_sync.py:1147-1184` — `test_diff_all_summary`: creates N issue files, patches subprocess, asserts `mock_run.assert_called_once()` — exact pattern to follow for the batch-count test in `test_issue_history_parsing.py`
 
 ### Tests
 - `scripts/tests/test_issue_history_parsing.py` — add test asserting `git log` is called once (not N times) for a batch of files without frontmatter dates
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli.py:2665,2682,2699,2717,2732,2747,2764,2780,2797` — patches `scan_completed_issues` via `patch.object(issue_history, "scan_completed_issues", ...)` at 9 sites; mocks at the package boundary so fully unaffected by the internal change — no update needed [Agent 1/2 finding]
+- `scripts/tests/test_issue_history_cli.py` — exercises `ll-history` CLI subcommands against empty `completed_dir`; no subprocess is invoked, so no update needed [Agent 2/3 finding]
+
 ### Documentation
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:1411` — documents `parse_completed_issue(file_path)` signature in the function table; if `batch_dates` is added as a public kwarg update this entry to reflect `parse_completed_issue(file_path, *, batch_dates=None)` [Agent 2 finding]
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. Implement `_batch_completion_dates(completed_dir)` using a single `git log --name-only` call
-2. Call it at the top of `scan_completed_issues` to build a `filename → date` cache
-3. Pass the cache into `_parse_completion_date` (optional kwarg) to skip subprocess for cached files
-4. Write tests verifying subprocess call count for a batch of dateless files
+1. **`parsing.py`** — Implement `_batch_completion_dates(completed_dir: Path) -> dict[str, date]` following the pattern in `extraction.py:105-154`: gather all `.md` filenames from `completed_dir`, run one `subprocess.run(["git", "log", "--diff-filter=A", "--name-only", "--format=%x00%as", "--"] + filenames, cwd=completed_dir.parent)`, parse blank-line-separated output blocks into a `dict[str, date]`
+2. **`parsing.py`** — Add `batch_dates: dict[str, date] | None = None` kwarg to `_parse_completion_date(content, file_path, *, batch_dates=None)`; check `batch_dates.get(file_path.name)` before the regex and subprocess fallback
+3. **`parsing.py`** — Add `batch_dates: dict[str, date] | None = None` kwarg to `parse_completed_issue`; thread it through to `_parse_completion_date`
+4. **`parsing.py`** — At the top of `scan_completed_issues` (before the `for` loop at line 222), call `batch_dates = _batch_completion_dates(completed_dir)` and pass it into each `parse_completed_issue(file_path, batch_dates=batch_dates)` call
+5. **`test_issue_history_parsing.py`** — Add a test that creates 3+ dateless files, patches `"little_loops.issue_history.parsing.subprocess.run"`, calls `scan_completed_issues`, and asserts `mock_run.assert_called_once()` (the batch call) — following `test_sync.py:1147-1184`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Verify `scripts/little_loops/issue_history/__init__.py` — confirm `_batch_completion_dates` is NOT added to `__all__` (lines 162-163) or the re-export block (lines 115-122); it must remain private to `parsing.py`
+7. Update `docs/reference/API.md:1411` — if `batch_dates` is exposed in `parse_completed_issue`'s public signature, update the function table row to reflect the new signature; skip if treated as implementation-only internal kwarg
 
 ## Impact
 
@@ -121,6 +150,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `performance`, `history`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-06T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6754a238-4073-43e9-ac63-703a9e538194.jsonl`
+- `/ll:wire-issue` - 2026-04-06T20:37:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51a254ec-b4db-4c0f-b7bc-ad19c6e68d61.jsonl`
+- `/ll:refine-issue` - 2026-04-06T20:33:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cbda785-663c-4888-af21-1ff5ba23b2e1.jsonl`
+- `/ll:format-issue` - 2026-04-06T20:29:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/439192fb-9b5f-4fa1-8d53-a7347a3df92b.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Status
