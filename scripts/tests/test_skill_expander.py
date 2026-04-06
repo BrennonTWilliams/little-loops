@@ -16,7 +16,6 @@ from little_loops.skill_expander import (
     expand_skill,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -253,7 +252,9 @@ class TestExpandSkillAgainstRealManageIssue:
         result = expand_skill("manage-issue", ["bug", "implement", "BUG-001"], config)
 
         if result is None:
-            pytest.skip("manage-issue skill file not found (expected in skills/manage-issue/SKILL.md)")
+            pytest.skip(
+                "manage-issue skill file not found (expected in skills/manage-issue/SKILL.md)"
+            )
 
         assert "{{config." not in result, "Unresolved {{config.xxx}} placeholders remain"
         assert "$ARGUMENTS" not in result, "$ARGUMENTS token was not substituted"

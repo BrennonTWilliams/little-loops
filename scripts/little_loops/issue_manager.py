@@ -19,7 +19,6 @@ from types import FrameType
 
 from little_loops.cli_args import _id_matches
 from little_loops.config import BRConfig
-from little_loops.skill_expander import expand_skill
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.events import EventBus
 from little_loops.git_operations import check_git_status, verify_work_was_done
@@ -34,6 +33,7 @@ from little_loops.issue_lifecycle import (
 from little_loops.issue_parser import IssueInfo, IssueParser, find_issues
 from little_loops.logger import Logger, format_duration
 from little_loops.output_parsing import parse_ready_issue_output
+from little_loops.skill_expander import expand_skill
 from little_loops.state import ProcessingState, StateManager
 from little_loops.subprocess_utils import (
     detect_context_handoff,
@@ -559,8 +559,7 @@ def process_issue_inplace(
             # rounds stay compact (not hundreds of lines).
             _slash_cmd = f"/ll:manage-issue {type_name} {action} {issue_arg}"
             _initial_cmd = (
-                expand_skill("manage-issue", [type_name, action, issue_arg], config)
-                or _slash_cmd
+                expand_skill("manage-issue", [type_name, action, issue_arg], config) or _slash_cmd
             )
             result = run_with_continuation(
                 _initial_cmd,
