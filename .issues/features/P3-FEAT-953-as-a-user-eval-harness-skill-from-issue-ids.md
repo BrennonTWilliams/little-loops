@@ -206,6 +206,34 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_fsm_schema.py:1-78` — `FSMLoop`, `load_and_validate`, `validate_fsm` import helpers
 - `scripts/tests/test_issues_cli.py` — existing `ll-issues` CLI tests for reference
 
+### Codebase Research Findings — Pass 2 (2026-04-05)
+
+_Added by `/ll:refine-issue` — second research pass:_
+
+**CRITICAL: `ll-issues show --json` does NOT return section text**
+- `scripts/little_loops/cli/issues/show.py:191-205` — `_parse_card_fields()` outputs exactly 13 keys: `{path, title, priority, status, effort, confidence, outcome, summary, integration_files, risk, labels, history, issue_id}`. The `## Expected Behavior`, `## Use Case`, and `## Acceptance Criteria` sections are **not extracted** by this command.
+- **Required two-step approach**: call `ll-issues show <ID> --json` to get the `path` field, then read the file at `path` directly to extract Expected Behavior, Use Case, and Acceptance Criteria section text for prompt synthesis.
+
+**`harness-single-shot.yaml` — generated harness is purpose-built, not a template copy**
+- `scripts/little_loops/loops/harness-single-shot.yaml:93-111` — the `check_skill` state is **commented out** in this template; its active path is `execute → check_stall → check_concrete → check_semantic → check_invariants → done`.
+- The eval harness this skill generates is **simpler and purpose-built**: only `execute → check_skill → done`. The template files are reference for YAML syntax only, not the base to copy from.
+
+**Variant B `discover` state — embed IDs at generation time**
+- `scripts/little_loops/loops/harness-multi-item.yaml:31-52` — the template's `discover` state calls `ll-issues list --json` dynamically. For eval harnesses with known argument IDs, the discover state must embed them at YAML generation time (Python one-liner iterating over the provided ID list), or use sequential chained states (`execute_<id> → check_skill_<id>` per issue) to avoid FSM iteration complexity with static lists.
+
+**`check_skill` action type for eval harnesses**
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — `check_skill` requires: `action`, `action_type`, `evaluate.type: llm_structured`, `evaluate.prompt`, `on_yes`, `on_no`; `timeout` strongly recommended.
+- Use `action_type: prompt` (not `slash_command`) for synthesized evaluation text. The multi-item template uses `slash_command` for `/ll:ready-issue`; eval harnesses use `prompt` instead.
+
+**FEAT-958 — `$ARGUMENTS` required in SKILL.md**
+- `P2-FEAT-958` adds `skill_expander.py` to pre-expand skills for `ll-auto`/`ll-parallel` subprocess contexts. The new SKILL.md must use `$ARGUMENTS` for issue ID inputs so `expand_skill()` substitutes them correctly in automation contexts.
+
+**Skill frontmatter — canonical pattern**
+- `skills/create-loop/SKILL.md:1-8` — only `description` (pipe block) and `allowed-tools` (list of `Bash(pattern)` strings). For this skill, `allowed-tools` needs: `Bash(ll-issues:*, ll-loop:*, mkdir:*, python3:*)`.
+
+**`ll-loop validate` sequencing**
+- `scripts/little_loops/cli/loop/config_cmds.py:11` — resolves `.loops/<name>.yaml`; the file must be written to disk **before** calling `ll-loop validate <slug>`.
+
 ## Implementation Steps
 
 1. Read `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` and `docs/guides/LOOPS_GUIDE.md` to understand required YAML structure for `check_skill` harnesses
@@ -223,6 +251,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `TestEvalHarnessVariantA` — 1 issue → `initial: execute`, has `execute` + `check_skill` states with `llm_structured` evaluator, no `check_invariants`
    - `TestEvalHarnessVariantB` — 2+ issues → `initial: discover`, has `discover` and `advance` states
    - `TestEvalHarnessValidation` — generated YAML passes `ll-loop validate` (follow `test_create_loop.py:35-56` tmp_path pattern)
+
+_Implementation note (pass 2):_ Step 1 uses `ll-issues show <ID> --json` to get the `path` field only. Step 2's section extraction (Expected Behavior, Use Case, Acceptance Criteria) must read the file at `path` directly — these sections are not in the JSON output. Also: for Variant B with 2+ issues, embed the provided IDs in the discover state at YAML generation time (not via `ll-issues list --json`).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -276,6 +306,8 @@ Output file written to: `.loops/eval-harness-<slug>.yaml`
 ---
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-06T00:58:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/939a8053-9122-41ec-8fff-99b298dfeccd.jsonl`
+- `/ll:refine-issue` - 2026-04-06T00:09:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/268fcca1-a1c4-4429-ba8d-170a904b26bb.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5687071-7876-4a35-b7e9-92c5939ccb33.jsonl`
 - `/ll:wire-issue` - 2026-04-05T23:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc42f8b7-ff6d-415c-84bd-3f5e4acbdf99.jsonl`
 - `/ll:refine-issue` - 2026-04-05T23:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6ae4919-971a-4b3a-a67d-3ca5428504f5.jsonl`
