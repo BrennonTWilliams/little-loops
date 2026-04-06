@@ -640,6 +640,18 @@ def find_issues(
     completed_dir = config.get_completed_dir()
     deferred_dir = config.get_deferred_dir()
 
+    # Pre-materialize filename sets once to avoid O(N) stat syscalls in the hot loop
+    completed_names = (
+        frozenset(p.name for p in completed_dir.glob("*.md"))
+        if completed_dir.exists()
+        else frozenset()
+    )
+    deferred_names = (
+        frozenset(p.name for p in deferred_dir.glob("*.md"))
+        if deferred_dir.exists()
+        else frozenset()
+    )
+
     # Determine which categories to search
     if category:
         categories = [category] if category in config.issue_categories else []
@@ -653,11 +665,9 @@ def find_issues(
 
         for issue_file in issue_dir.glob("*.md"):
             # Pre-flight check: skip if already exists in completed or deferred directory
-            completed_path = completed_dir / issue_file.name
-            if completed_path.exists():
+            if issue_file.name in completed_names:
                 continue
-            deferred_path = deferred_dir / issue_file.name
-            if deferred_path.exists():
+            if issue_file.name in deferred_names:
                 continue
 
             info = parser.parse_file(issue_file)

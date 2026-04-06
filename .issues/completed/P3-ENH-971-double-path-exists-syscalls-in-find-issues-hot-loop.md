@@ -160,13 +160,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `performance`, `captured`
 
+## Resolution
+
+- **Completed**: 2026-04-06
+- **Solution**: Pre-materialized `completed_names` and `deferred_names` as `frozenset` before the category loop in `find_issues`. Replaced per-file `Path.exists()` calls with O(1) `in` membership tests.
+- **Files Changed**: `scripts/little_loops/issue_parser.py` (6-line change), `scripts/tests/test_issue_parser.py` (new `test_find_issues_skip_check_uses_two_globs_not_stat_per_file`)
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T21:14:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8aa967c-eaf9-442d-8599-474377c1b812.jsonl`
 - `/ll:confidence-check` - 2026-04-06T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86cc90f6-dad7-44a0-bba5-c09e343e690a.jsonl`
 - `/ll:wire-issue` - 2026-04-06T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5071c3bc-b6a1-4a9c-b8ff-fb3cdbc35a5d.jsonl`
 - `/ll:refine-issue` - 2026-04-06T21:06:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5071c3bc-b6a1-4a9c-b8ff-fb3cdbc35a5d.jsonl`
 - `/ll:format-issue` - 2026-04-06T21:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/372e180e-3c92-4d33-a2a3-bde54ba69314.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
+- `/ll:manage-issue` - 2026-04-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ## Status
 
-**Open** | Created: 2026-04-06 | Priority: P3
+**Completed** | Created: 2026-04-06 | Completed: 2026-04-06 | Priority: P3

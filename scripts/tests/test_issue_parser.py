@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from little_loops.config import BRConfig
 from little_loops.issue_parser import (
@@ -975,6 +976,46 @@ class TestFindIssues:
         issue_ids = [i.issue_id for i in issues]
         # Priority sort: BUG-020 (P1) before BUG-010 (P3)
         assert issue_ids == ["BUG-020", "BUG-010"]
+
+    def test_find_issues_skip_check_uses_two_globs_not_stat_per_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """find_issues must issue exactly 2 glob calls for skip-check regardless of file count."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        deferred_dir = temp_project_dir / ".issues" / "deferred"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        deferred_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create several active issues
+        for i in range(1, 6):
+            (bugs_dir / f"P1-BUG-{i:03d}-issue.md").write_text(f"# BUG-{i:03d}: Issue\n\nContent.")
+
+        real_glob = Path.glob
+
+        def counting_glob(self: Path, pattern: str):  # type: ignore[override]
+            return real_glob(self, pattern)
+
+        with patch.object(Path, "glob", autospec=True, side_effect=counting_glob) as mock_glob:
+            find_issues(config, category="bugs")
+
+        # The two skip-check globs are: completed_dir.glob("*.md") and deferred_dir.glob("*.md").
+        # One additional glob per category (issue_dir.glob("*.md")) is expected — that's fine.
+        # What we assert is that the skip-check globs are called exactly twice total (not once per file).
+        skip_check_calls = [
+            c for c in mock_glob.call_args_list
+            if c.args[1] == "*.md" and c.args[0] in (
+                config.get_completed_dir(), config.get_deferred_dir()
+            )
+        ]
+        assert len(skip_check_calls) == 2, (
+            f"Expected 2 skip-check glob calls, got {len(skip_check_calls)}"
+        )
 
 
 class TestFindHighestPriorityIssue:
