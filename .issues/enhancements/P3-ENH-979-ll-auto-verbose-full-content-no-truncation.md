@@ -5,7 +5,7 @@ confidence_score: 100
 outcome_confidence: 86
 ---
 
-# ENH-969: ll-auto --verbose Should Show Full Content Without Truncation
+# ENH-979: ll-auto --verbose Should Show Full Content Without Truncation
 
 ## Summary
 
