@@ -15,6 +15,7 @@ states:
     action: >-
       mkdir -p .loops/tmp &&
       printf '0' > .loops/tmp/refine-to-ready-refine-count &&
+      printf '0' > .loops/tmp/refine-to-ready-wire-done &&
       { [ -n "${context.input}" ] && printf '%s' "${context.input}" ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -61,21 +62,45 @@ states:
         echo 0
       fi
     action_type: shell
-    # 0 = under lifetime cap → proceed; 1 = cap reached → block
+    # 0 = under lifetime cap → proceed; 1 = cap reached → invoke issue-size-review
     # Cap is commands.max_refine_count in ll-config.json (default: ${context.max_refine_count})
     evaluate:
       type: output_numeric
       operator: lt
       target: 1
     on_yes: refine_issue
-    on_no: failed
+    on_no: breakdown_issue
     on_error: failed
 
   refine_issue:
     action: "/ll:refine-issue ${captured.issue_id.output} --auto"
     action_type: slash_command
-    next: confidence_check
+    next: check_wire_done
     on_error: failed
+
+  check_wire_done:
+    action: |
+      cat .loops/tmp/refine-to-ready-wire-done 2>/dev/null || echo 0
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 1
+    on_yes: wire_issue      # 0 → not yet wired → run wire
+    on_no: confidence_check # 1 → already wired → skip
+    on_error: confidence_check
+
+  wire_issue:
+    action: "/ll:wire-issue ${captured.issue_id.output} --auto"
+    action_type: slash_command
+    next: mark_wire_done
+    on_error: confidence_check  # wiring failure is non-fatal
+
+  mark_wire_done:
+    action: printf '1' > .loops/tmp/refine-to-ready-wire-done
+    action_type: shell
+    next: confidence_check
+    on_error: confidence_check
 
   confidence_check:
     action: "/ll:confidence-check ${captured.issue_id.output}"
@@ -107,7 +132,7 @@ states:
         sys.exit(0 if int(d.get('confidence') or 0) >= readiness
                    and int(d.get('outcome') or 0) >= outcome else 1)
         PYEOF
-    on_yes: verify_issue
+    on_yes: done
     on_no: check_refine_limit
     on_error: check_scores_from_file  # safety net for unexpected Python errors
 
@@ -155,12 +180,12 @@ states:
                  and int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
     fragment: shell_exit
-    on_yes: verify_issue
+    on_yes: done
     on_no: failed
     on_error: failed
 
-  verify_issue:
-    action: "/ll:verify-issues ${captured.issue_id.output}"
+  breakdown_issue:
+    action: "/ll:issue-size-review ${captured.issue_id.output} --auto"
     action_type: slash_command
     next: done
     on_error: failed

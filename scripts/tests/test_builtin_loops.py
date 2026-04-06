@@ -485,7 +485,7 @@ class TestIssueRefinementSubLoop:
 
 
 class TestRefineToReadyIssueSubLoop:
-    """Tests that refine-to-ready-issue.yaml includes a verify_issue state before done."""
+    """Tests that refine-to-ready-issue.yaml routes correctly through wire, breakdown, and confidence states."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "refine-to-ready-issue.yaml"
 
@@ -494,52 +494,18 @@ class TestRefineToReadyIssueSubLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_verify_issue_state_exists(self, data: dict) -> None:
-        """verify_issue state must exist so session_commands is populated before sub-loop exits."""
-        assert "verify_issue" in data["states"], (
-            "State 'verify_issue' not found in refine-to-ready-issue.yaml — "
-            "next-action gates NEEDS_VERIFY on this command being in session_commands"
-        )
-
-    def test_confidence_check_routes_to_verify_issue(self, data: dict) -> None:
-        """confidence_check.on_yes must route to verify_issue, not directly to done."""
+    def test_confidence_check_routes_to_done(self, data: dict) -> None:
+        """confidence_check.on_yes must route directly to done (verify_issue was removed)."""
         confidence_check = data["states"].get("confidence_check", {})
-        assert confidence_check.get("on_yes") == "verify_issue", (
-            f"confidence_check.on_yes should be 'verify_issue', got {confidence_check.get('on_yes')!r} — "
-            f"routing directly to 'done' skips /ll:verify-issues and causes infinite NEEDS_VERIFY cycle"
-        )
-
-    def test_verify_issue_is_slash_command(self, data: dict) -> None:
-        """verify_issue must use action_type: slash_command to invoke /ll:verify-issues."""
-        state = data["states"].get("verify_issue", {})
-        assert state.get("action_type") == "slash_command", (
-            f"verify_issue.action_type should be 'slash_command', got {state.get('action_type')!r}"
-        )
-
-    def test_verify_issue_routes_to_done(self, data: dict) -> None:
-        """verify_issue.next must be 'done' (unconditional success transition)."""
-        state = data["states"].get("verify_issue", {})
-        assert state.get("next") == "done", (
-            f"verify_issue.next should be 'done', got {state.get('next')!r}"
-        )
-
-    def test_verify_issue_on_error_is_failed(self, data: dict) -> None:
-        """verify_issue.on_error must route to 'failed' terminal state."""
-        state = data["states"].get("verify_issue", {})
-        assert state.get("on_error") == "failed", (
-            f"verify_issue.on_error should be 'failed', got {state.get('on_error')!r}"
+        assert confidence_check.get("on_yes") == "done", (
+            f"confidence_check.on_yes should be 'done', got {confidence_check.get('on_yes')!r}"
         )
 
     def test_confidence_check_on_error_is_check_scores_from_file(self, data: dict) -> None:
-        """confidence_check.on_error must route to check_scores_from_file, not failed.
-
-        Routing to failed on timeout causes infinite NEEDS_VERIFY cycles when the issue
-        already has valid scores in its frontmatter.
-        """
+        """confidence_check.on_error must route to check_scores_from_file, not failed."""
         state = data["states"].get("confidence_check", {})
         assert state.get("on_error") == "check_scores_from_file", (
-            f"confidence_check.on_error should be 'check_scores_from_file', got {state.get('on_error')!r} — "
-            f"routing directly to 'failed' on timeout skips verify_issue and causes infinite NEEDS_VERIFY cycle"
+            f"confidence_check.on_error should be 'check_scores_from_file', got {state.get('on_error')!r}"
         )
 
     def test_check_scores_from_file_state_exists(self, data: dict) -> None:
@@ -549,11 +515,11 @@ class TestRefineToReadyIssueSubLoop:
             "required as fallback when confidence_check LLM evaluation times out"
         )
 
-    def test_check_scores_from_file_routes_to_verify_issue(self, data: dict) -> None:
-        """check_scores_from_file.on_yes must route to verify_issue when scores meet thresholds."""
+    def test_check_scores_from_file_routes_to_done(self, data: dict) -> None:
+        """check_scores_from_file.on_yes must route to done when scores meet thresholds."""
         state = data["states"].get("check_scores_from_file", {})
-        assert state.get("on_yes") == "verify_issue", (
-            f"check_scores_from_file.on_yes should be 'verify_issue', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "done", (
+            f"check_scores_from_file.on_yes should be 'done', got {state.get('on_yes')!r}"
         )
 
     def test_check_scores_from_file_routes_to_failed_on_no(self, data: dict) -> None:
@@ -561,6 +527,113 @@ class TestRefineToReadyIssueSubLoop:
         state = data["states"].get("check_scores_from_file", {})
         assert state.get("on_no") == "failed", (
             f"check_scores_from_file.on_no should be 'failed', got {state.get('on_no')!r}"
+        )
+
+    def test_verify_issue_state_absent(self, data: dict) -> None:
+        """verify_issue state must not exist — it was removed in ENH-980."""
+        assert "verify_issue" not in data["states"], (
+            "State 'verify_issue' should have been removed; confidence_check.on_yes now routes to 'done'"
+        )
+
+    def test_check_lifetime_limit_routes_to_breakdown_issue(self, data: dict) -> None:
+        """check_lifetime_limit.on_no must route to breakdown_issue (not failed)."""
+        state = data["states"].get("check_lifetime_limit", {})
+        assert state.get("on_no") == "breakdown_issue", (
+            f"check_lifetime_limit.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
+        )
+
+    def test_breakdown_issue_state_exists(self, data: dict) -> None:
+        """breakdown_issue state must exist to invoke /ll:issue-size-review on cap exhaustion."""
+        assert "breakdown_issue" in data["states"], (
+            "State 'breakdown_issue' not found in refine-to-ready-issue.yaml"
+        )
+
+    def test_breakdown_issue_is_slash_command(self, data: dict) -> None:
+        """breakdown_issue must use action_type: slash_command."""
+        state = data["states"].get("breakdown_issue", {})
+        assert state.get("action_type") == "slash_command", (
+            f"breakdown_issue.action_type should be 'slash_command', got {state.get('action_type')!r}"
+        )
+
+    def test_breakdown_issue_action_contains_auto(self, data: dict) -> None:
+        """breakdown_issue action must include --auto to avoid blocking on interactive input."""
+        state = data["states"].get("breakdown_issue", {})
+        assert "--auto" in state.get("action", ""), (
+            "breakdown_issue action must include '--auto' flag to prevent interactive stalling"
+        )
+
+    def test_breakdown_issue_routes_to_done(self, data: dict) -> None:
+        """breakdown_issue.next must be 'done' on success."""
+        state = data["states"].get("breakdown_issue", {})
+        assert state.get("next") == "done", (
+            f"breakdown_issue.next should be 'done', got {state.get('next')!r}"
+        )
+
+    def test_breakdown_issue_on_error_is_failed(self, data: dict) -> None:
+        """breakdown_issue.on_error must route to 'failed'."""
+        state = data["states"].get("breakdown_issue", {})
+        assert state.get("on_error") == "failed", (
+            f"breakdown_issue.on_error should be 'failed', got {state.get('on_error')!r}"
+        )
+
+    def test_check_wire_done_state_exists(self, data: dict) -> None:
+        """check_wire_done state must exist to gate wire_issue to once per run."""
+        assert "check_wire_done" in data["states"], (
+            "State 'check_wire_done' not found in refine-to-ready-issue.yaml"
+        )
+
+    def test_check_wire_done_evaluate_output_numeric_lt_1(self, data: dict) -> None:
+        """check_wire_done must use output_numeric lt 1 to detect whether wire has run."""
+        state = data["states"].get("check_wire_done", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_wire_done evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("operator") == "lt", (
+            f"check_wire_done evaluate.operator should be 'lt', got {evaluate.get('operator')!r}"
+        )
+        assert evaluate.get("target") == 1, (
+            f"check_wire_done evaluate.target should be 1, got {evaluate.get('target')!r}"
+        )
+
+    def test_wire_issue_state_exists(self, data: dict) -> None:
+        """wire_issue state must exist to run /ll:wire-issue once per loop run."""
+        assert "wire_issue" in data["states"], (
+            "State 'wire_issue' not found in refine-to-ready-issue.yaml"
+        )
+
+    def test_wire_issue_action_contains_auto(self, data: dict) -> None:
+        """wire_issue action must include --auto to avoid blocking on interactive input."""
+        state = data["states"].get("wire_issue", {})
+        assert "--auto" in state.get("action", ""), (
+            "wire_issue action must include '--auto' flag to prevent interactive stalling"
+        )
+
+    def test_wire_issue_on_error_is_confidence_check(self, data: dict) -> None:
+        """wire_issue.on_error must route to confidence_check (wiring failure is non-fatal)."""
+        state = data["states"].get("wire_issue", {})
+        assert state.get("on_error") == "confidence_check", (
+            f"wire_issue.on_error should be 'confidence_check', got {state.get('on_error')!r}"
+        )
+
+    def test_mark_wire_done_state_exists(self, data: dict) -> None:
+        """mark_wire_done state must exist to set the wire-done flag after wiring."""
+        assert "mark_wire_done" in data["states"], (
+            "State 'mark_wire_done' not found in refine-to-ready-issue.yaml"
+        )
+
+    def test_mark_wire_done_routes_to_confidence_check(self, data: dict) -> None:
+        """mark_wire_done.next must route to confidence_check."""
+        state = data["states"].get("mark_wire_done", {})
+        assert state.get("next") == "confidence_check", (
+            f"mark_wire_done.next should be 'confidence_check', got {state.get('next')!r}"
+        )
+
+    def test_wire_done_flag_initialized_in_resolve_issue(self, data: dict) -> None:
+        """resolve_issue action must initialize the wire-done flag file."""
+        state = data["states"].get("resolve_issue", {})
+        assert "refine-to-ready-wire-done" in state.get("action", ""), (
+            "resolve_issue action must initialize '.loops/tmp/refine-to-ready-wire-done' flag"
         )
 
 

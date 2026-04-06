@@ -2,7 +2,7 @@
 id: ENH-980
 type: ENH
 priority: P3
-status: needs-refinement
+status: completed
 discovered_date: 2026-04-06
 discovered_by: capture-issue
 confidence_score: 100
@@ -189,6 +189,29 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_GUIDE.md:263` — "If the cap is reached, the loop routes to `failed`"; after ENH-980, `check_lifetime_limit.on_no` routes to `breakdown_issue` (which invokes `/ll:issue-size-review`) — update wording [Agent 2 finding]
 - `scripts/little_loops/loops/README.md:17` — describes loop as "format → refine → verify → confidence-check until ready"; `verify` maps to the removed `verify_issue` state — update to remove `verify` step [Agent 2 finding]
 
+## Scope Boundaries
+
+- Only modifies `scripts/little_loops/loops/refine-to-ready-issue.yaml` — no other loop YAMLs change
+- Does not modify the `/ll:wire-issue` or `/ll:issue-size-review` skills themselves
+- Does not alter the `check_refine_limit` per-run count logic or confidence gate thresholds
+- Does not change the `ll-issues` CLI or issue frontmatter schema
+- Per-run wire-done flag applies only to `refine-to-ready-issue` loop; no cross-loop state
+
+## Impact
+
+- **Priority**: P3 - Internal loop improvement; unblocks issues stuck at lifetime cap without disrupting normal flows
+- **Effort**: Small - YAML-only change to one file; all new states reuse existing `/ll:` skill invocations
+- **Risk**: Low - Internal loop behavior change; existing `test_all_validate_as_valid_fsm` catches schema regressions
+- **Breaking Change**: No — existing loop callers unaffected; `done`/`failed` terminals are unchanged
+
+## Labels
+
+`enhancement`, `loop`, `automation`, `issue-management`
+
+## Status
+
+**Open** | Created: 2026-04-06 | Priority: P3
+
 ## Acceptance Criteria
 
 - [ ] When an issue has `refine_count >= max_refine_count`, the loop invokes `/ll:issue-size-review` instead of `failed`
@@ -201,7 +224,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] In `test_builtin_loops.py::TestRefineToReadyIssueSubLoop`: the 4 `verify_issue`-specific tests are deleted, the 2 routing tests updated to assert `done`, and new tests added for `breakdown_issue`, `check_wire_done`, `wire_issue`, `mark_wire_done` states
 - [ ] `python -m pytest scripts/tests/test_builtin_loops.py -v` passes with no failures
 
+## Resolution
+
+Implemented all 11 steps from the issue spec:
+
+- `resolve_issue`: added `printf '0' > .loops/tmp/refine-to-ready-wire-done` initialization
+- `refine_issue.next`: changed `confidence_check` → `check_wire_done`
+- Added `check_wire_done` gate (output_numeric lt 1): routes to `wire_issue` or `confidence_check`
+- Added `wire_issue` state: invokes `/ll:wire-issue --auto`, `on_error: confidence_check` (non-fatal)
+- Added `mark_wire_done` state: sets flag, routes to `confidence_check`
+- `check_lifetime_limit.on_no`: changed `failed` → `breakdown_issue`
+- Added `breakdown_issue` state: invokes `/ll:issue-size-review --auto`, `next: done`, `on_error: failed`
+- `confidence_check.on_yes`: changed `verify_issue` → `done`
+- `check_scores_from_file.on_yes`: changed `verify_issue` → `done`
+- Removed `verify_issue` state entirely
+- Updated `TestRefineToReadyIssueSubLoop`: deleted 4 verify_issue tests, updated 2 routing assertions, added 10 new state tests (82 passed)
+- Updated `docs/guides/LOOPS_GUIDE.md` and `scripts/little_loops/loops/README.md`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T18:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/299df6f7-7611-4247-b449-bb79bb5d4793.jsonl`
 - `/ll:wire-issue` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c19e4f3-adca-4de2-89ad-68e21cdbc39d.jsonl`
 - `/ll:refine-issue` - 2026-04-06T18:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c19e4f3-adca-4de2-89ad-68e21cdbc39d.jsonl`
 - `/ll:capture-issue` - 2026-04-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ada54d0e-7627-4ccc-942e-94e1829287a7.jsonl`
