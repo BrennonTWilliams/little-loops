@@ -515,7 +515,7 @@ Investigate the error output above and address the root cause.
 ---
 
 ## Status
-**Open** | Created: {datetime.now().isoformat()} | Priority: P1
+**Open** | Created: {_iso_now()} | Priority: P1
 
 ## Related Issues
 - [{parent_info.issue_id}]({parent_info.path})

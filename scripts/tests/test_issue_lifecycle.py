@@ -657,6 +657,8 @@ class TestCreateIssueFromFailure:
         assert "## Summary" in content
         assert "## Current Behavior" in content
         assert error_output.split("\n")[0] in content
+        assert "Created:" in content
+        assert "+00:00" in content
         mock_logger.success.assert_called()
 
     def test_extracts_error_message(

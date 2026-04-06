@@ -110,7 +110,7 @@ class StateManager:
     def state(self) -> ProcessingState:
         """Get current state, creating new if needed."""
         if self._state is None:
-            self._state = ProcessingState(timestamp=datetime.now().isoformat())
+            self._state = ProcessingState(timestamp=_iso_now())
         return self._state
 
     def load(self) -> ProcessingState | None:
@@ -140,7 +140,7 @@ class StateManager:
         empty or partially-written file.
         """
         try:
-            self.state.timestamp = datetime.now().isoformat()
+            self.state.timestamp = _iso_now()
             data = json.dumps(self.state.to_dict(), indent=2)
             tmp_fd, tmp_path = tempfile.mkstemp(dir=self.state_file.parent, suffix=".tmp")
             try:

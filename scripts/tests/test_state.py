@@ -36,7 +36,7 @@ class TestProcessingState:
         state = ProcessingState(
             current_issue="/path/to/issue.md",
             phase="implementing",
-            timestamp="2025-01-01T12:00:00",
+            timestamp="2025-01-01T12:00:00+00:00",
             completed_issues=["BUG-001", "BUG-002"],
             failed_issues={"BUG-003": "Timeout"},
             attempted_issues={"BUG-001", "BUG-002", "BUG-003"},
@@ -48,7 +48,7 @@ class TestProcessingState:
 
         assert result["current_issue"] == "/path/to/issue.md"
         assert result["phase"] == "implementing"
-        assert result["timestamp"] == "2025-01-01T12:00:00"
+        assert result["timestamp"] == "2025-01-01T12:00:00+00:00"
         assert result["completed_issues"] == ["BUG-001", "BUG-002"]
         assert result["failed_issues"] == {"BUG-003": "Timeout"}
         assert set(result["attempted_issues"]) == {"BUG-001", "BUG-002", "BUG-003"}
@@ -72,7 +72,7 @@ class TestProcessingState:
         data = {
             "current_issue": "/path/to/issue.md",
             "phase": "verifying",
-            "timestamp": "2025-01-01T14:00:00",
+            "timestamp": "2025-01-01T14:00:00+00:00",
             "completed_issues": ["FEAT-001"],
             "failed_issues": {"FEAT-002": "Merge conflict"},
             "attempted_issues": ["FEAT-001", "FEAT-002"],
@@ -84,7 +84,7 @@ class TestProcessingState:
 
         assert state.current_issue == "/path/to/issue.md"
         assert state.phase == "verifying"
-        assert state.timestamp == "2025-01-01T14:00:00"
+        assert state.timestamp == "2025-01-01T14:00:00+00:00"
         assert state.completed_issues == ["FEAT-001"]
         assert state.failed_issues == {"FEAT-002": "Merge conflict"}
         assert state.attempted_issues == {"FEAT-001", "FEAT-002"}
@@ -111,7 +111,7 @@ class TestProcessingState:
         original = ProcessingState(
             current_issue="/test/path.md",
             phase="testing",
-            timestamp="2025-01-01T00:00:00",
+            timestamp="2025-01-01T00:00:00+00:00",
             completed_issues=["A", "B"],
             failed_issues={"C": "error"},
             attempted_issues={"A", "B", "C"},
@@ -202,7 +202,7 @@ class TestStateManager:
 
         assert state is not None
         assert state.phase == "idle"
-        assert state.timestamp != ""  # Should have a timestamp
+        assert "+00:00" in state.timestamp
 
     def test_load_nonexistent_file(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test loading from non-existent file returns None."""
@@ -217,7 +217,7 @@ class TestStateManager:
         state_data = {
             "current_issue": "/test.md",
             "phase": "implementing",
-            "timestamp": "2025-01-01T00:00:00",
+            "timestamp": "2025-01-01T00:00:00+00:00",
             "completed_issues": ["BUG-001"],
             "failed_issues": {},
             "attempted_issues": ["BUG-001"],
@@ -258,7 +258,7 @@ class TestStateManager:
         assert saved_data["current_issue"] == "/test.md"
         assert saved_data["phase"] == "processing"
         assert "BUG-001" in saved_data["completed_issues"]
-        assert saved_data["timestamp"] != ""  # Should be updated
+        assert "+00:00" in saved_data["timestamp"]
 
     def test_cleanup(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test cleanup removes state file."""
