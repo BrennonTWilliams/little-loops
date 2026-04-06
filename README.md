@@ -174,6 +174,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:audit-claude-config [scope]` | Audit Claude Code plugin configuration |
 | `/ll:analyze-workflows [file]` | Analyze user message patterns for automation |
 | `/ll:analyze-history` | Analyze issue history for project health and trends |
+| `/ll:improve-claude-md` | Rewrite CLAUDE.md with `<important if>` blocks for scoped instruction attention |
 
 ### Session & Config
 
