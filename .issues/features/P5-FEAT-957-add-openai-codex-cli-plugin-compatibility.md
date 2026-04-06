@@ -58,6 +58,29 @@ codex-plugin/
 
 **State directory**: `${LL_STATE_DIR:-.claude}` mechanism (established by FEAT-769) used as-is; Codex init sets `LL_STATE_DIR=".codex"`.
 
+## API/Interface
+
+N/A - No public Python API changes.
+
+New CLI flag exposed via `ll:init`:
+```
+ll:init --codex    # Detect Codex CLI and register codex-plugin/
+```
+
+New environment variable (established by FEAT-769, reused here):
+```
+LL_STATE_DIR=".codex"   # Set by codex init to redirect state files
+```
+
+Plugin entry point (internal, not a public API):
+```typescript
+// codex-plugin/index.ts
+export default {
+  name: "little-loops",
+  // hooks wired to Codex CLI lifecycle events
+}
+```
+
 ## Integration Map
 
 ### Prerequisites
@@ -107,6 +130,7 @@ _No documents linked._
 `feature`, `codex`, `compatibility`, `hooks`
 
 ## Session Log
+- `/ll:format-issue` - 2026-04-05T23:24:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80483a00-b614-43e6-8ba2-461cc77fadae.jsonl`
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d4087be-1201-4786-a118-8eb18c18f952.jsonl`
 
 ---
