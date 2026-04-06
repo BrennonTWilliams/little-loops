@@ -298,7 +298,8 @@ sequenceDiagram
         Manager->>Manager: Find highest priority issue
 
         Note over Manager,Claude: Phase 1: Validation
-        Manager->>Claude: /ll:ready-issue ISSUE-ID
+        Manager->>Manager: expand_skill("ready-issue") → prompt string
+        Manager->>Claude: expanded prompt (or /ll:ready-issue fallback)
         Claude-->>Manager: READY / NOT_READY / CLOSE
 
         alt READY
@@ -973,6 +974,8 @@ This principle is validated by published research on long-context LLM architectu
 - A failed task that restarts from scratch costs more tokens than a task that completes in a longer conversation
 
 **Relationship to ENH-499**: The inter-issue context checkpoint (implemented in ENH-499) applies this principle at issue boundaries — it triggers a structured summarization reset rather than re-running tool calls to reconstruct state.
+
+- **Skill pre-expansion** (`skill_expander.expand_skill`) eliminates the `ToolSearch → Skill` deferred-tool round-trip when `ll-auto` spawns Claude subprocesses: the full skill/command Markdown is read, config placeholders substituted, and the resulting self-contained prompt string is passed directly. This removes one tool call from every Phase 1 and Phase 2 invocation.
 
 ---
 

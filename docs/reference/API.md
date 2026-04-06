@@ -5240,3 +5240,43 @@ class MyExtension:
 ```
 
 Register via config (`"my_package:MyExtension"`) or entry point. The class must implement `on_event(self, event: LLEvent) -> None` to satisfy the `LLExtension` protocol.
+
+---
+
+## little_loops.skill_expander
+
+Pre-expands skill and command Markdown files into self-contained prompt strings for subprocess invocation. Used by `ll-auto` to eliminate the `ToolSearch → Skill` deferred-tool round-trip when spawning Claude subprocesses.
+
+### expand_skill
+
+```python
+def expand_skill(name: str, args: list[str], config: BRConfig) -> str | None
+```
+
+Reads the Markdown source for *name*, strips frontmatter, substitutes `{{config.xxx}}` placeholders, converts relative `(file.md)` link targets to absolute paths, and replaces the `$ARGUMENTS` token with the joined *args*.
+
+**Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `str` | Skill or command name (e.g. `"manage-issue"`, `"ready-issue"`) |
+| `args` | `list[str]` | Arguments that would normally follow the slash command |
+| `config` | `BRConfig` | Project configuration used for `{{config.xxx}}` placeholder substitution |
+
+**Returns**: Fully-expanded prompt string, or `None` on any failure (file not found, substitution error, etc.). Callers should fall back to the original slash command when `None` is returned.
+
+**Resolution order**: `skills/{name}/SKILL.md` → `commands/{name}.md`
+
+**Plugin root**: Reads `CLAUDE_PLUGIN_ROOT` env var first; falls back to the directory three levels above `skill_expander.py`.
+
+**Example**
+
+```python
+from little_loops.config import BRConfig
+from little_loops.skill_expander import expand_skill
+
+config = BRConfig.load()
+prompt = expand_skill("ready-issue", ["FEAT-123"], config)
+if prompt is None:
+    prompt = "/ll:ready-issue FEAT-123"  # fallback
+```

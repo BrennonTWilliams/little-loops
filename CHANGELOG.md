@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **JSON Schema Generation for Event Types** — 19 machine-readable JSON Schema files for all `LLEvent` types in `docs/reference/schemas/`; CLI command `ll-generate-schemas` (FEAT-919)
 - **`wire-issue` Skill** — Post-refinement integration wiring pass tracing dependency graphs, missing callers, registrations, doc coupling, and test gaps; supports `--auto` and `--dry-run` (FEAT-951)
 - **`max_refine_count` Configuration** — Lifetime refinement cap for `refine-to-ready-issue` loop; configurable via `ll-config.json` (3502f2fd)
+- **Skill Pre-Expansion (`skill_expander`)** — `ll-auto` now pre-expands skill/command Markdown into self-contained prompt strings before spawning Claude subprocesses, eliminating the `ToolSearch → Skill` deferred-tool round-trip. Falls back transparently to the original slash command on any failure. (`fc296bdf`)
 
 ### Changed
 
