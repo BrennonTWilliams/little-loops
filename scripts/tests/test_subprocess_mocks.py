@@ -225,9 +225,7 @@ class TestRunClaudeCommand:
         hidden_calls = [c for c in calls if "line 5" in c]
         assert len(hidden_calls) == 0, "Should not show line 5 or beyond in abbreviated mode"
 
-    def test_prompt_display_shows_all_lines_for_short_command(
-        self, mock_logger: MagicMock
-    ) -> None:
+    def test_prompt_display_shows_all_lines_for_short_command(self, mock_logger: MagicMock) -> None:
         """Short prompts (<=5 lines) show all lines with no trailer."""
         short_command = "line A\nline B\nline C"
 
