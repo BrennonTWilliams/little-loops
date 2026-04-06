@@ -54,9 +54,9 @@ codex-plugin/
 ```
 
 **Config path resolution** (extend Python layer already updated by FEAT-769):
-- Probe `.codex/ll-config.json` first, fall back to `.claude/ll-config.json`
+- Probe `.codex/ll-config.json` first, fall back to `.ll/ll-config.json`
 
-**State directory**: `${LL_STATE_DIR:-.claude}` mechanism (established by FEAT-769) used as-is; Codex init sets `LL_STATE_DIR=".codex"`.
+**State directory**: `${LL_STATE_DIR:-.ll}` mechanism (established by FEAT-769) used as-is; Codex init sets `LL_STATE_DIR=".codex"`.
 
 ## API/Interface
 
@@ -101,6 +101,47 @@ export default {
 - Plugin registration mechanism (equivalent of `"plugin"` key in `opencode.json`)
 - Detection signal for `ll:init` (binary name, env var, config file presence)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**FEAT-769 status**: As of 2026-04-05, `P4-FEAT-769-add-opencode-plugin-compatibility.md` is **open and unimplemented**. No `opencode-plugin/` directory exists; `LL_STATE_DIR` env var is absent from all Python and shell files. FEAT-957 cannot begin until FEAT-769 ships.
+
+**Current state directory**: Hook scripts have already been migrated from `.claude/` to `.ll/`. The default for `${LL_STATE_DIR}` should be `.ll`, not `.claude`.
+
+**Files to Modify — Full List with Line References**
+
+Shell config layer:
+- `hooks/scripts/lib/common.sh:184-192` — `ll_resolve_config()`: add `.codex/` as first probe candidate; automatically propagates to `context-monitor.sh`, `check-duplicate-issue-id.sh`, and `user-prompt-check.sh` (all source this library)
+- `hooks/scripts/session-start.sh:13,16,64-72` — **independent** (does NOT source `lib/common.sh`); must patch shell probe at line 16, embedded Python probe at lines 64-72, and state cleanup `rm -f .ll/ll-context-state.json` at line 13 separately
+- `hooks/scripts/session-cleanup.sh:14,20` — **independent** (does NOT source `lib/common.sh`); own hardcoded `CONFIG_FILE=".ll/ll-config.json"` at line 20 and cleanup at line 14; patching `lib/common.sh` does NOT cover this file
+- `hooks/scripts/context-monitor.sh:180,268,309` — three hardcoded `.ll/` paths NOT covered by `ll_resolve_config()`: `precompact_file` at line 180, cleanup `rm -f` at line 268, `HANDOFF_FILE` at line 309
+- `hooks/scripts/precompact-state.sh:28,66` — `STATE_DIR=".ll"` at line 28 (change to `${LL_STATE_DIR:-.ll}`); `CONTINUE_PROMPT=".ll/ll-continue-prompt.md"` at line 66 is **not derived from `STATE_DIR`** — needs a separate patch
+
+Python config layer:
+- `scripts/little_loops/config/core.py:75,87-93` — `CONFIG_DIR = ".ll"` at line 75; `_load_config()` at lines 87-93 builds a single path with no fallback; extend to probe `.codex/ll-config.json` before `.ll/ll-config.json`
+
+Python CLI injection sites for `LL_STATE_DIR` (follow `LL_HANDOFF_THRESHOLD` pattern at `auto.py:74-82`):
+- `scripts/little_loops/cli/auto.py:77` — add `os.environ["LL_STATE_DIR"] = ".codex"` alongside `LL_HANDOFF_THRESHOLD`
+- `scripts/little_loops/cli/parallel.py:173` — same pattern
+- `scripts/little_loops/cli/loop/run.py:74` — same pattern
+- `scripts/little_loops/cli/sprint/run.py:103` — same pattern
+
+Additional Python paths (not in original Integration Map):
+- `scripts/little_loops/subprocess_utils.py:32` — module-level `CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")`; needs `.codex/` probe
+
+Init skill:
+- `skills/init/SKILL.md:43-60` — flag-parsing block has no `--opencode` or `--codex` flags yet; add Codex detection (probe `codex.json` or `which codex`) following the settings detection pattern at lines 406-419
+
+**Test Files**
+- `scripts/tests/test_config.py:458-481` — add `test_load_config_codex_path()` modeled after `test_load_config_from_file` (line 458); add `test_load_config_fallback_to_ll()` modeled after `test_load_config_without_file` (line 473)
+- `scripts/tests/conftest.py:55-62` — add `codex_project_dir` fixture creating `.codex/` alongside existing `temp_project_dir` (creates `.ll/`)
+- `scripts/tests/test_hooks_integration.py:22-36,247-262` — add hook config fixture variant placing config at `.codex/ll-config.json`; use env var injection pattern at lines 247-262 for `LL_STATE_DIR=".codex"`
+
+**OpenCode Reference Pattern** (for `codex-plugin/` structure):
+- `opencode.json` plugin key: `{ "plugin": ["@ll/opencode-plugin"] }` — Codex equivalent format is unknown (see Research Required above)
+- Claude Code hooks use `$CLAUDE_PLUGIN_ROOT` in every command; OpenCode and Codex JS plugins handle event wiring internally via the plugin SDK instead
+
 ## Implementation Steps
 
 1. **Research Codex CLI plugin API** — identify SDK package, runtime, event names, and registration format; update this issue with findings before implementation
@@ -112,6 +153,20 @@ export default {
 7. **Extend `ll:init`** — add `--codex` detection and plugin registration alongside `--opencode`
 8. **Extend config fallback chain** — add `.codex/` probe to `config/core.py` and `lib/common.sh` (if not already done by FEAT-769)
 9. **Tests and docs** — add `test_config.py` Codex path tests; update `docs/ARCHITECTURE.md`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete file references per step:_
+
+- **Step 1** — External research only; no codebase anchor. OpenCode reference in `P4-FEAT-769-add-opencode-plugin-compatibility.md:76-84` for event name mapping table.
+- **Step 2** — Model `codex-plugin/` directory structure after FEAT-769's planned `opencode-plugin/` layout; at minimum: `package.json`, `index.ts`, `hooks/session.ts`, `hooks/tool.ts`, `hooks/compact.ts`
+- **Step 3** — Mirrors `hooks/scripts/session-start.sh` logic; includes config load at `session-start.sh:16,64-72` and local overrides from `.ll/ll.local.md` (`session-start.sh:75`)
+- **Step 4** — Mirrors `hooks/scripts/context-monitor.sh`; key paths: `STATE_FILE` at line 29, `HANDOFF_FILE` at line 309, threshold read via `LL_HANDOFF_THRESHOLD` at line 26
+- **Step 5** — Mirrors `hooks/scripts/check-duplicate-issue-id.sh`; config read via `ll_resolve_config()` at `lib/common.sh:184`
+- **Step 6** — Mirrors `hooks/scripts/precompact-state.sh:28-30,66` and `hooks/scripts/session-cleanup.sh:14,20`
+- **Step 7** — Modify `skills/init/SKILL.md:43-60` (flag-parsing); add detection probe following pattern at lines 406-419; write `codex.json` plugin registration (format TBD from step 1 research)
+- **Step 8** — Patch `scripts/little_loops/config/core.py:75,87-93`; patch `hooks/scripts/lib/common.sh:184-192`; also patch independent scripts `session-start.sh:16,64`, `session-cleanup.sh:20`; patch `precompact-state.sh:28,66` and `context-monitor.sh:180,268,309`; inject `LL_STATE_DIR` at `cli/auto.py:77`, `cli/parallel.py:173`, `cli/loop/run.py:74`, `cli/sprint/run.py:103`; patch `subprocess_utils.py:32`
+- **Step 9** — Add tests at `scripts/tests/test_config.py:458` (codex path) and `test_hooks_integration.py:22` (codex fixture); add `codex_project_dir` fixture to `scripts/tests/conftest.py:55`
 
 ## Impact
 
@@ -130,6 +185,7 @@ _No documents linked._
 `feature`, `codex`, `compatibility`, `hooks`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-06T02:33:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c273f16-a946-4cde-a3ce-1eb1a83742ae.jsonl`
 - `/ll:format-issue` - 2026-04-05T23:24:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80483a00-b614-43e6-8ba2-461cc77fadae.jsonl`
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d4087be-1201-4786-a118-8eb18c18f952.jsonl`
 

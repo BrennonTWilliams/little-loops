@@ -6,7 +6,7 @@ priority: P3
 status: open
 discovered_date: 2026-04-04
 discovered_by: capture-issue
-confidence_score: 95
+confidence_score: 96
 outcome_confidence: 71
 ---
 
@@ -234,6 +234,70 @@ _Added by `/ll:refine-issue` — second research pass:_
 **`ll-loop validate` sequencing**
 - `scripts/little_loops/cli/loop/config_cmds.py:11` — resolves `.loops/<name>.yaml`; the file must be written to disk **before** calling `ll-loop validate <slug>`.
 
+### Codebase Research Findings — Pass 3 (2026-04-05)
+
+_Added by `/ll:refine-issue` — third research pass:_
+
+**Variant B discover state — exact FSM structure (resolve ambiguity from Pass 2)**
+- `scripts/little_loops/loops/harness-multi-item.yaml:31-52` — `discover` uses `fragment: shell_exit` (not `action_type: shell`); this routes on exit code (0 = `on_yes`, non-zero = `on_no`). Also requires `capture: current_item` — downstream states reference `${captured.current_item.output}`.
+- `scripts/little_loops/loops/harness-multi-item.yaml:170-177` — `advance` uses `action_type: shell`, single `next: discover` (unconditional loop-back). Replace the `echo` body with any per-item bookkeeping needed.
+- **Resolved approach for hardcoded IDs**: embed the provided IDs in the `discover` action as a Python inline that tracks processed items via a temp file. Example skeleton (generated at YAML write time with actual IDs substituted):
+  ```yaml
+  discover:
+    action: |
+      python3 -c "
+      import sys
+      ids = ['FEAT-919', 'ENH-950']
+      pf = '/tmp/eval-harness-feat-919-enh-950-processed.txt'
+      try: processed = open(pf).read().split()
+      except FileNotFoundError: processed = []
+      remaining = [i for i in ids if i not in processed]
+      if not remaining: sys.exit(1)
+      print(remaining[0])
+      "
+    fragment: shell_exit
+    capture: current_item
+    on_yes: execute
+    on_no: done
+    on_error: done
+  advance:
+    action: |
+      echo "${captured.current_item.output}" >> /tmp/eval-harness-feat-919-enh-950-processed.txt
+    action_type: shell
+    next: discover
+  ```
+
+**Harness top-level keys — `category` field required**
+- `scripts/little_loops/loops/harness-single-shot.yaml:14-26` — top-level keys in order: `name`, `category`, `description`, `initial`, `max_iterations`, `timeout`, `import`, `states`.
+- Set `category: harness` to match built-in templates. Verify `category` is in `KNOWN_TOP_LEVEL_KEYS` at `scripts/little_loops/fsm/validation.py:77` before using a novel value like `eval-harness`.
+
+**`allowed-tools` exact format — single list entry with comma-separated patterns**
+- `skills/create-loop/SKILL.md:6-8` — one list item, all permitted `Bash` command prefixes comma-separated inside parens:
+  ```yaml
+  allowed-tools:
+    - Bash(ll-issues:*, ll-loop:*, mkdir:*)
+  ```
+  Python invocations (`python3 -c ...`) are wrapped in shell commands; if `python3` must be called directly, add `python3:*` to the pattern list. Do NOT list each prefix as a separate list entry.
+
+**Slug generation — inline shell pattern for skill body**
+- `scripts/little_loops/issue_parser.py:99-110` — canonical `slugify()`: strips non-word chars, collapses hyphens/whitespace to `-`, lowercases. Not directly callable from SKILL.md shell body.
+- Inline shell equivalent for harness filename: `echo "${ISSUE_IDS[*]}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'` → e.g., `feat-919-enh-950`. Filename: `eval-harness-feat-919-enh-950.yaml`.
+
+**`$ARGUMENTS` multi-ID array collection — no existing precedent; use array-append pattern**
+- Existing skills using `for token in $ARGUMENTS` (`confidence-check/SKILL.md:29-76`, `issue-size-review/SKILL.md:37-65`) overwrite a single `ISSUE_ID` variable — designed for one ID only.
+- For multi-ID collection, extend to array-append:
+  ```bash
+  ISSUE_IDS=()
+  for token in $ARGUMENTS; do
+    case "$token" in
+      --*) ;; # skip flags
+      *) ISSUE_IDS+=("$token") ;;
+    esac
+  done
+  ```
+  After parsing: `${#ISSUE_IDS[@]}` = count; `${ISSUE_IDS[@]}` = all IDs; `${ISSUE_IDS[0]}` = first.
+- FEAT-958's `_substitute_arguments()` will do `" ".join(args)` — so `ll-auto` passing `["FEAT-919", "ENH-950"]` produces `"FEAT-919 ENH-950"` as the `$ARGUMENTS` string, correctly iterated by the loop.
+
 ## Implementation Steps
 
 1. Read `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` and `docs/guides/LOOPS_GUIDE.md` to understand required YAML structure for `check_skill` harnesses
@@ -253,6 +317,13 @@ _Added by `/ll:refine-issue` — second research pass:_
    - `TestEvalHarnessValidation` — generated YAML passes `ll-loop validate` (follow `test_create_loop.py:35-56` tmp_path pattern)
 
 _Implementation note (pass 2):_ Step 1 uses `ll-issues show <ID> --json` to get the `path` field only. Step 2's section extraction (Expected Behavior, Use Case, Acceptance Criteria) must read the file at `path` directly — these sections are not in the JSON output. Also: for Variant B with 2+ issues, embed the provided IDs in the discover state at YAML generation time (not via `ll-issues list --json`).
+
+_Implementation note (pass 3):_
+- **$ARGUMENTS parsing**: use array-append pattern (`ISSUE_IDS+=("$token")`) — no existing skill does this, it's new territory but straightforward shell.
+- **Variant B YAML**: `discover` uses `fragment: shell_exit` + `capture: current_item`; `advance` uses `action_type: shell` + `next: discover`; embed hardcoded IDs in a Python inline with temp-file tracking. See concrete skeleton in "Pass 3" codebase research findings above.
+- **Slug**: `echo "${ISSUE_IDS[*]}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'` → use as filename slug.
+- **`allowed-tools`**: single list entry `Bash(ll-issues:*, ll-loop:*, mkdir:*)` — add `python3:*` only if Python is invoked as a top-level command (not inside a `bash -c` or inline action).
+- **Harness `category`**: use `category: harness` and verify it's in `KNOWN_TOP_LEVEL_KEYS` at `fsm/validation.py:77` before running validate.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -306,6 +377,8 @@ Output file written to: `.loops/eval-harness-<slug>.yaml`
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/25aa6a0b-949e-46ba-9178-f61248747068.jsonl`
+- `/ll:refine-issue` - 2026-04-06T01:31:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/daa723cc-f2b4-443a-83b3-c5f718e4db32.jsonl`
 - `/ll:wire-issue` - 2026-04-06T00:58:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/939a8053-9122-41ec-8fff-99b298dfeccd.jsonl`
 - `/ll:refine-issue` - 2026-04-06T00:09:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/268fcca1-a1c4-4429-ba8d-170a904b26bb.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5687071-7876-4a35-b7e9-92c5939ccb33.jsonl`
