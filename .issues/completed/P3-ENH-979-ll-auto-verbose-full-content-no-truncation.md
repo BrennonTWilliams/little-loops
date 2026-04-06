@@ -148,6 +148,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Resolved** | 2026-04-06 | P3
+
+### Changes Made
+
+- `scripts/little_loops/issue_manager.py`: Added `preview_full: bool = False` to `run_claude_command()` — conditionally skips both vertical and horizontal truncation when `True`. Added same param to `run_with_continuation()` and `process_issue_inplace()`, threading through all internal call sites (Phase 1 ready-issue call, fallback/retry call, Phase 2 `run_with_continuation` call).
+- `scripts/little_loops/issue_manager.py` (`AutoManager.__init__`): Added `preview_full: bool = False` parameter; stored as `self._preview_full`. Passed to `process_issue_inplace` in `_process_issue()`.
+- `scripts/little_loops/cli/auto.py`: Pass `preview_full=args.verbose` to `AutoManager` so the raw `--verbose` flag (not the derived `verbose or not quiet`) controls truncation bypass.
+
+### Tests Added
+
+- `test_subprocess_mocks.py::test_prompt_display_full_shows_all_lines_when_preview_full_true` — 20-line command with `preview_full=True` shows all lines, no trailer.
+- `test_subprocess_mocks.py::test_prompt_display_full_skips_line_truncation` — 200-char line with `preview_full=True` shows full line, no `...` suffix.
+- `test_issue_manager.py::TestAutoManagerQuietMode::test_auto_manager_verbose_stores_preview_full` — `AutoManager(preview_full=True)._preview_full is True`.
+- `test_cli.py::test_main_auto_verbose_short_flag` — updated to assert `preview_full=True` is passed when `-v` flag used.
+
 ## Status
 
-**Open** | Created: 2026-04-06 | Priority: P3
+**Completed** | Created: 2026-04-06 | Priority: P3
