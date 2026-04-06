@@ -835,3 +835,29 @@ class TestRefineWavesForContention:
         assert notes[2] is not None  # sub-wave 2
         assert notes[2].parent_wave_index == 1
         assert "src/b.py" in notes[1].contended_paths
+
+    def test_contended_paths_multi_file_overlap(self) -> None:
+        """contended_paths collects all overlapping files across all pairs in one pass.
+
+        Validates semantic equivalence of the merged single-loop implementation:
+        each pair's overlapping paths must appear in the WaveContentionNote,
+        regardless of which pair produces them.
+        """
+        a = _make_issue_with_content("FEAT-001", "modifies src/alpha.py\nmodifies src/shared.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/alpha.py\nmodifies src/beta.py")
+        c = _make_issue_with_content("FEAT-003", "modifies src/shared.py\nmodifies src/beta.py")
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        # All three pairs overlap — three sub-waves
+        assert len(result) == 3
+        # Collect all contended_paths from all notes
+        all_contended: set[str] = set()
+        for note in notes:
+            if note is not None:
+                all_contended.update(note.contended_paths)
+        # Every overlapping file should appear in at least one note
+        assert "src/alpha.py" in all_contended
+        assert "src/shared.py" in all_contended
+        assert "src/beta.py" in all_contended

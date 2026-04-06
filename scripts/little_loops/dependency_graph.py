@@ -375,13 +375,16 @@ def refine_waves_for_contention(
             content = issue.path.read_text() if issue.path.exists() else ""
             hints[issue.issue_id] = extract_file_hints(content, issue.issue_id)
 
-        # Build conflict adjacency: issue_id -> set of conflicting issue_ids
+        # Single pass — build conflict adjacency and collect contended paths together
         conflicts: dict[str, set[str]] = {issue.issue_id: set() for issue in wave}
+        contended: set[str] = set()
         for i, a in enumerate(wave):
             for b in wave[i + 1 :]:
-                if hints[a.issue_id].overlaps_with(hints[b.issue_id], config=config):
+                paths = hints[a.issue_id].get_overlapping_paths(hints[b.issue_id], config=config)
+                if paths:
                     conflicts[a.issue_id].add(b.issue_id)
                     conflicts[b.issue_id].add(a.issue_id)
+                    contended |= paths
 
         # If no conflicts, keep wave as-is
         if not any(conflicts.values()):
@@ -389,13 +392,6 @@ def refine_waves_for_contention(
             annotations.append(None)
             continue
 
-        # Collect all contended paths for display
-        contended: set[str] = set()
-        for i, a in enumerate(wave):
-            for b in wave[i + 1 :]:
-                contended.update(
-                    hints[a.issue_id].get_overlapping_paths(hints[b.issue_id], config=config)
-                )
         contended_paths = sorted(contended)
 
         # Greedy graph coloring — assign each issue the lowest color
