@@ -610,3 +610,127 @@ class TestExportShortForms:
             result = main_history()
 
         assert result == 0
+
+
+class TestExportTypeScoring:
+    """Tests for --type and --scoring wiring in ll-history export (FEAT-978)."""
+
+    def test_export_type_bug(self, tmp_path: Path) -> None:
+        """--type BUG is forwarded to synthesize_docs as issue_type='BUG'."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-history", "export", "cli", "--type", "BUG", "-d", str(tmp_path / ".issues")],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,
+            patch("builtins.print"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert mock_synth.call_args.kwargs["issue_type"] == "BUG"
+
+    def test_export_type_feat(self, tmp_path: Path) -> None:
+        """--type FEAT is forwarded to synthesize_docs as issue_type='FEAT'."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-history", "export", "cli", "--type", "FEAT", "-d", str(tmp_path / ".issues")],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,
+            patch("builtins.print"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert mock_synth.call_args.kwargs["issue_type"] == "FEAT"
+
+    def test_export_type_default_none(self, tmp_path: Path) -> None:
+        """export without --type passes issue_type=None to synthesize_docs."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-history", "export", "cli", "-d", str(tmp_path / ".issues")],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,
+            patch("builtins.print"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert mock_synth.call_args.kwargs["issue_type"] is None
+
+    def test_export_scoring_bm25(self, tmp_path: Path) -> None:
+        """--scoring bm25 is forwarded to synthesize_docs as scoring='bm25'."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-history", "export", "cli", "--scoring", "bm25", "-d", str(tmp_path / ".issues")],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,
+            patch("builtins.print"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert mock_synth.call_args.kwargs["scoring"] == "bm25"
+
+    def test_export_scoring_hybrid(self, tmp_path: Path) -> None:
+        """--scoring hybrid is forwarded to synthesize_docs as scoring='hybrid'."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-history", "export", "cli", "--scoring", "hybrid", "-d", str(tmp_path / ".issues")],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,
+            patch("builtins.print"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert mock_synth.call_args.kwargs["scoring"] == "hybrid"

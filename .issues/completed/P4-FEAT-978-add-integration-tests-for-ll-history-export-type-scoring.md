@@ -16,7 +16,7 @@ The `ll-history export` subcommand accepts `--type` (BUG/FEAT/ENH) and `--scorin
 ## Location
 
 - **File**: `scripts/little_loops/cli/history.py`
-- **Line(s)**: 246–274 (at scan commit: 96d74cda)
+- **Line(s)**: 245–275
 - **Anchor**: `in function main_history` — `if args.command == "export":` branch
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/96d74cda12b892bac305b81a527c66021302df6a/scripts/little_loops/cli/history.py#L246-L274)
 - **Code**:
@@ -47,12 +47,12 @@ A developer runs `ll-history export --type BUG -o bugs-report.md` to generate a 
 
 ## Acceptance Criteria
 
-- [ ] Test for `export --type BUG` asserts `synthesize_docs` called with `issue_type="BUG"`
-- [ ] Test for `export --type FEAT` asserts `synthesize_docs` called with `issue_type="FEAT"`
-- [ ] Test for `export --scoring bm25` asserts `synthesize_docs` called with `scoring="bm25"`
-- [ ] Test for `export --scoring hybrid` asserts `synthesize_docs` called with `scoring="hybrid"`
-- [ ] Test for `export` without `--type` asserts `synthesize_docs` called with `issue_type=None` (default)
-- [ ] All tests follow the existing mock pattern in `test_issue_history_cli.py`
+- [x] Test for `export --type BUG` asserts `synthesize_docs` called with `issue_type="BUG"`
+- [x] Test for `export --type FEAT` asserts `synthesize_docs` called with `issue_type="FEAT"`
+- [x] Test for `export --scoring bm25` asserts `synthesize_docs` called with `scoring="bm25"`
+- [x] Test for `export --scoring hybrid` asserts `synthesize_docs` called with `scoring="hybrid"`
+- [x] Test for `export` without `--type` asserts `synthesize_docs` called with `issue_type=None` (default)
+- [x] All tests follow the existing mock pattern in `test_issue_history_cli.py`
 
 ## Proposed Solution
 
@@ -60,7 +60,7 @@ Follow the existing `test_export_output_short_form` / `test_export_since_short_f
 
 **Critical wiring details** (verified from `history.py:120-266`):
 - `export` takes a required positional `topic` argument before any flags (history.py:125)
-- `--type` stores to `args.issue_type` via `dest="issue_type"` (history.py:171), forwarded as `issue_type=args.issue_type` (history.py:264)
+- `--type` stores to `args.issue_type` via `dest="issue_type"` (history.py:172), forwarded as `issue_type=args.issue_type` (history.py:264)
 - `--scoring` defaults to `"intersection"`, not `None` (history.py:179)
 - Correct patch target: `"little_loops.issue_history.synthesize_docs"` (imported inside `main_history()`, so patching `little_loops.cli.history.synthesize_docs` has no effect)
 - Must also patch `"little_loops.issue_history.analysis._load_issue_contents"` (always present in existing export tests)
@@ -170,11 +170,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `testing`, `history`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T19:53:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10a66d29-5307-47ea-8903-f7abe84520b1.jsonl`
 - `/ll:confidence-check` - 2026-04-06T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b757c13-9fa6-46d5-adc8-41469f3d50af.jsonl`
 - `/ll:wire-issue` - 2026-04-06T19:47:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/debd6d1f-97c9-4122-a56e-7ef00bfe4414.jsonl`
 - `/ll:refine-issue` - 2026-04-06T19:42:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb9359c5-37f9-4a27-9a64-8ba21767ecda.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
+## Resolution
+
+Added `TestExportTypeScoring` class to `scripts/tests/test_issue_history_cli.py` with 5 test methods covering all acceptance criteria. Tests patch `little_loops.issue_history.synthesize_docs` and assert on `call_args.kwargs` to verify CLI argument wiring. All 39 tests in the file pass.
+
 ## Status
 
-**Open** | Created: 2026-04-06 | Priority: P4
+**Completed** | Created: 2026-04-06 | Completed: 2026-04-06 | Priority: P4
