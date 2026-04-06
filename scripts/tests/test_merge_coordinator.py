@@ -2179,6 +2179,39 @@ class TestCircuitBreaker:
         assert coordinator._paused is True
         assert coordinator._consecutive_failures == 3
 
+    def test_exception_path_trips_circuit_breaker(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Exception-path failures (e.g. RuntimeError from git ops) should increment
+        _consecutive_failures and trip the circuit breaker after 3 failures."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        worktree_path = temp_git_repo / ".worktrees" / "test"
+        worktree_path.mkdir(parents=True)
+
+        # Make _check_and_recover_index raise so the exception propagates to
+        # the except block (rather than returning False which hits the early-return path)
+        coordinator._check_and_recover_index = MagicMock(
+            side_effect=RuntimeError("checkout failed")
+        )
+
+        for i in range(3):
+            request = MergeRequest(
+                worker_result=WorkerResult(
+                    issue_id=f"TEST-{i}",
+                    branch_name="parallel/test",
+                    worktree_path=worktree_path,
+                    success=True,
+                )
+            )
+            coordinator._process_merge(request)
+
+        assert coordinator._paused is True
+        assert coordinator._consecutive_failures == 3
+
     def test_lifecycle_commit_failure_handles_gracefully(
         self,
         default_config: ParallelConfig,

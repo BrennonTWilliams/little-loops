@@ -744,6 +744,13 @@ class MergeCoordinator:
             # These are excluded from stash to prevent pop conflicts, so they must
             # be committed to avoid blocking the merge (BUG-018 fix)
             if not self._commit_pending_lifecycle_moves():
+                self._consecutive_failures += 1
+                if self._consecutive_failures >= 3:
+                    self._paused = True
+                    self.logger.error(
+                        f"Circuit breaker tripped after {self._consecutive_failures} consecutive failures. "
+                        "Merge coordinator paused. Manual recovery required."
+                    )
                 self._handle_failure(request, "Failed to commit pending lifecycle moves")
                 return
 
@@ -916,6 +923,13 @@ class MergeCoordinator:
             self._finalize_merge(request)
 
         except Exception as e:
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= 3:
+                self._paused = True
+                self.logger.error(
+                    f"Circuit breaker tripped after {self._consecutive_failures} consecutive failures. "
+                    "Merge coordinator paused. Manual recovery required."
+                )
             self._handle_failure(request, str(e))
 
         finally:
