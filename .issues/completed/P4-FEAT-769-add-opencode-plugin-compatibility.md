@@ -282,6 +282,7 @@ _Updated by `/ll:confidence-check` on 2026-03-20 (post-refine-issue run 5 — Op
 - **JS test gap**: No Bun test runner; 6 new plugin files have zero automated coverage at completion; establish Bun testing setup in step 11 as a scope item, not an afterthought
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-06T04:30:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
@@ -300,7 +301,22 @@ _Updated by `/ll:confidence-check` on 2026-03-20 (post-refine-issue run 5 — Op
 - `/ll:format-issue` - 2026-03-20T00:02:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd2aa170-6761-45f4-b494-2ab248f32aea.jsonl`
+- `/ll:issue-size-review` - 2026-04-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-15 | Priority: P4
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-05
+- **Reason**: Issue too large for single session (score: 9/11 — 3 language subsystems, 13+ files, 11 implementation steps)
+
+### Decomposed Into
+- FEAT-959: OpenCode Python Path Abstraction
+- FEAT-960: OpenCode Shell Hooks Path Abstraction
+- FEAT-961: OpenCode JS/TS Plugin Implementation
+- FEAT-962: OpenCode ll:init Support, Tests, and Docs
+
+---
+
+**Decomposed** | Created: 2026-03-15 | Priority: P4
