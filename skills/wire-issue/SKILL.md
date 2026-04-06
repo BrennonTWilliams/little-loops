@@ -450,6 +450,7 @@ WIRE ISSUE: {{ISSUE_ID}}
 - Run `/ll:confidence-check {{ISSUE_ID}}` to re-evaluate readiness with full wiring
 - Run `/ll:ready-issue {{ISSUE_ID}}` to validate the enriched issue
 - Run `/ll:manage-issue` to implement
+- If `/ll:confidence-check` or `/ll:ready-issue` still fail after this wiring pass (and 2+ prior refinement passes), run `/ll:issue-size-review {{ISSUE_ID}}` — a persistent readiness gap after wiring often signals the issue is too large or ambiguously scoped, not just under-researched
 
 ================================================================================
 ```
