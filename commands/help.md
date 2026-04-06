@@ -151,6 +151,11 @@ AUTOMATION & LOOPS
 /ll:create-loop
     Interactive FSM loop creation wizard
 
+/ll:create-eval-from-issues <issue-id> [issue-id...]
+    Generate a ready-to-run FSM eval harness YAML from one or more issue IDs
+    Synthesizes execute prompt and llm_structured evaluation criteria from issue context
+    Output: .loops/eval-harness-<slug>.yaml (validated before writing)
+
 /ll:loop-suggester [file]
     Suggest FSM loops from user message history
 
@@ -247,7 +252,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Scanning & Analysis**: `find-dead-code`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
-**Automation & Loops**: `create-loop`, `loop-suggester`
+**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
 **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`
 

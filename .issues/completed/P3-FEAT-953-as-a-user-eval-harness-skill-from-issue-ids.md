@@ -372,11 +372,38 @@ Output file written to: `.loops/eval-harness-<slug>.yaml`
 
 ## Status
 
-**Open** | Created: 2026-04-04 | Priority: P3
+**Completed** | Created: 2026-04-04 | Priority: P3
+
+---
+
+## Resolution
+
+**Implemented**: 2026-04-05
+
+### Changes Made
+- `skills/create-eval-from-issues/SKILL.md` — new skill with full instruction body: argument parsing, issue resolution, context extraction, prompt synthesis, Variant A/B selection, YAML generation, and validate-before-write sequence
+- `scripts/tests/test_create_eval_from_issues.py` — 37 tests covering Variant A structure, Variant B structure, and FSM validation via `load_and_validate` and `ll-loop validate` CLI
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — added `See Also` entry pointing to `/ll:create-eval-from-issues`
+- `commands/help.md` — added to AUTOMATION & LOOPS section and quick reference table
+- `docs/reference/COMMANDS.md` — added full command reference entry with variants, usage, and see-also
+- `.claude/CLAUDE.md` — skill count bumped from 24→25 (via ll-verify-docs --fix); listing updated
+- `README.md` — added to Automation & Loops command table and skills table
+- `CONTRIBUTING.md` — added `create-eval-from-issues/` to skill directory tree
+- `docs/ARCHITECTURE.md` — added to skill directory listing
+
+### Acceptance Criteria Verification
+- [x] Running `/ll:create-eval-from-issues FEAT-919` resolves the issue file and writes `.loops/eval-harness-feat-919.yaml`
+- [x] The generated harness `execute` state contains a synthesized natural-language prompt (from Expected Behavior / Use Case)
+- [x] The generated harness `check_skill` state contains synthesized `llm_structured` criteria (from Acceptance Criteria / Use Case outcome)
+- [x] Single issue → Variant A (`initial: execute`); 2+ issues → Variant B with `discover` state iterating over issue IDs
+- [x] Generated harness passes `ll-loop validate` before being written to disk
+- [x] Both open and completed issue IDs are accepted as input
+- [x] Synthesized criteria include observable success signal and failure signal from issue context
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T03:44:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8eb8f495-f258-45c3-8250-67b2a514d24b.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/25aa6a0b-949e-46ba-9178-f61248747068.jsonl`
 - `/ll:refine-issue` - 2026-04-06T01:31:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/daa723cc-f2b4-443a-83b3-c5f718e4db32.jsonl`
 - `/ll:wire-issue` - 2026-04-06T00:58:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/939a8053-9122-41ec-8fff-99b298dfeccd.jsonl`

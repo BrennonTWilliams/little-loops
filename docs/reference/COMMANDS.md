@@ -400,6 +400,28 @@ Create FSM loop configurations interactively.
 
 **See also:** `docs/generalized-fsm-loop.md` for FSM schema details.
 
+### `/ll:create-eval-from-issues`
+Generate a ready-to-run FSM eval harness YAML from one or more issue IDs. Reads each issue's Expected Behavior, Use Case, and Acceptance Criteria sections to synthesize a natural-language execute prompt and `llm_structured` evaluation criteria — no hand-authoring required.
+
+**Arguments:**
+- `issue_ids` (required): One or more issue IDs (e.g., `FEAT-919`, `ENH-950`). Accepts open and completed issues.
+
+**Output:** `.loops/eval-harness-<slug>.yaml` (validated with `ll-loop validate` before writing)
+
+**Variants:**
+- Single issue → Variant A: `initial: execute`, states: `execute → check_skill → done`
+- 2+ issues → Variant B: `initial: discover`, states: `discover → execute → check_skill → advance → done`
+
+**No `check_invariants`**: eval harnesses measure user experience quality, not code diff size.
+
+**Usage:**
+```bash
+/ll:create-eval-from-issues FEAT-919
+/ll:create-eval-from-issues FEAT-919 ENH-950
+```
+
+**See also:** `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `/ll:create-loop`
+
 ### `/ll:loop-suggester`
 Analyze user message history to suggest FSM loop configurations automatically.
 
@@ -582,6 +604,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
 | `create-loop`^ | Interactive FSM loop creation |
+| `create-eval-from-issues`^ | Generate eval harness YAML from issue IDs |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
 | `analyze-loop`^ | Analyze loop execution history and synthesize issues from failure patterns |
