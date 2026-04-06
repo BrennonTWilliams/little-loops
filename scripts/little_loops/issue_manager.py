@@ -19,6 +19,7 @@ from types import FrameType
 
 from little_loops.cli_args import _id_matches
 from little_loops.config import BRConfig
+from little_loops.skill_expander import expand_skill
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.events import EventBus
 from little_loops.git_operations import check_git_status, verify_work_was_done
@@ -138,6 +139,7 @@ def run_with_continuation(
     max_continuations: int = 3,
     repo_path: Path | None = None,
     idle_timeout: int = 0,
+    resume_command: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -152,6 +154,10 @@ def run_with_continuation(
         max_continuations: Maximum number of continuation attempts
         repo_path: Repository root path
         idle_timeout: Kill process if no output for this many seconds (0 to disable)
+        resume_command: Command to use for continuation rounds instead of appending
+            ``--resume`` to ``initial_command``.  Useful when ``initial_command``
+            is expanded skill content (hundreds of lines) — the short slash
+            command is passed here so continuation rounds stay compact.
 
     Returns:
         Final CompletedProcess result
@@ -197,10 +203,13 @@ def run_with_continuation(
             continuation_count += 1
             logger.info(f"Starting continuation session #{continuation_count}")
 
-            # Re-invoke the original command with --resume flag so the skill
-            # lifecycle (including completion/file-move) runs in the new session.
-            # The skill reads .ll/ll-continue-prompt.md for context.
-            current_command = f"{initial_command} --resume"
+            # Re-invoke with --resume so the skill lifecycle (including
+            # completion/file-move) runs in the new session.  When a short
+            # resume_command was provided (e.g. the original slash command),
+            # use that instead of appending --resume to the (potentially
+            # multi-hundred-line) expanded initial_command.
+            _base = resume_command if resume_command is not None else initial_command
+            current_command = f"{_base} --resume"
             continue
 
         # No handoff signal, we're done
@@ -323,8 +332,10 @@ def process_issue_inplace(
     logger.info(f"Phase 1: Verifying issue {info.issue_id}...")
     with timed_phase(logger, "Phase 1 (ready-issue)") as phase1_timing:
         if not dry_run:
+            _ready_slash = f"/ll:ready-issue {info.issue_id}"
+            _ready_cmd = expand_skill("ready-issue", [info.issue_id], config) or _ready_slash
             result = run_claude_command(
-                f"/ll:ready-issue {info.issue_id}",
+                _ready_cmd,
                 logger,
                 timeout=config.automation.timeout_seconds,
                 stream_output=config.automation.stream_output,
@@ -373,8 +384,13 @@ def process_issue_inplace(
                             relative_path = _compute_relative_path(info.path)
 
                             # Retry with explicit path
+                            _retry_slash = f"/ll:ready-issue {relative_path}"
+                            _retry_cmd = (
+                                expand_skill("ready-issue", [str(relative_path)], config)
+                                or _retry_slash
+                            )
                             retry_result = run_claude_command(
-                                f"/ll:ready-issue {relative_path}",
+                                _retry_cmd,
                                 logger,
                                 timeout=config.automation.timeout_seconds,
                                 stream_output=config.automation.stream_output,
@@ -537,15 +553,24 @@ def process_issue_inplace(
             else:
                 issue_arg = info.issue_id
 
-            # Use run_with_continuation to handle context exhaustion
+            # Use run_with_continuation to handle context exhaustion.
+            # Pre-expand the skill so the subprocess needs no ToolSearch.
+            # Pass the short slash command as resume_command so continuation
+            # rounds stay compact (not hundreds of lines).
+            _slash_cmd = f"/ll:manage-issue {type_name} {action} {issue_arg}"
+            _initial_cmd = (
+                expand_skill("manage-issue", [type_name, action, issue_arg], config)
+                or _slash_cmd
+            )
             result = run_with_continuation(
-                f"/ll:manage-issue {type_name} {action} {issue_arg}",
+                _initial_cmd,
                 logger,
                 timeout=config.automation.timeout_seconds,
                 stream_output=config.automation.stream_output,
                 max_continuations=config.automation.max_continuations,
                 repo_path=config.repo_path,
                 idle_timeout=config.automation.idle_timeout_seconds,
+                resume_command=_slash_cmd,
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")

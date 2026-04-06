@@ -1019,7 +1019,62 @@ class TestRunWithContinuation:
         assert result.returncode == 1
 
     def test_continuation_uses_resume_flag(self, temp_project_dir: Path) -> None:
-        """Test that continuation re-invokes original command with --resume (BUG-327)."""
+        """Test that continuation uses resume_command (or initial_command) with --resume appended."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        first_result = MagicMock()
+        first_result.returncode = 0
+        first_result.stdout = "CONTEXT_HANDOFF\n"
+        first_result.stderr = ""
+        first_result.args = ["claude", "-p", "first"]
+
+        second_result = MagicMock()
+        second_result.returncode = 0
+        second_result.stdout = "Done"
+        second_result.stderr = ""
+        second_result.args = ["claude", "-p", "resume"]
+
+        commands_received: list[str] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            commands_received.append(command)
+            if len(commands_received) == 1:
+                return first_result
+            return second_result
+
+        handoff_responses = iter([True, False])
+
+        # When resume_command is provided, continuation must use it (not initial_command).
+        expanded_initial = "# Expanded skill content\n" * 50  # simulate multi-hundred-line prompt
+        slash_cmd = "/ll:manage-issue bug fix BUG-327"
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch(
+                "little_loops.issue_manager.detect_context_handoff",
+                side_effect=lambda _: next(handoff_responses),
+            ):
+                with patch(
+                    "little_loops.issue_manager.read_continuation_prompt",
+                    return_value="# Some prompt content",
+                ):
+                    run_with_continuation(
+                        expanded_initial,
+                        mock_logger,
+                        max_continuations=3,
+                        resume_command=slash_cmd,
+                    )
+
+        assert len(commands_received) == 2
+        assert commands_received[0] == expanded_initial
+        # Continuation must use the short resume_command, not the expanded initial_command
+        assert commands_received[1] == f"{slash_cmd} --resume"
+
+    def test_continuation_falls_back_to_initial_when_no_resume_command(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Test that without resume_command, continuation appends --resume to initial_command."""
         from little_loops.issue_manager import run_with_continuation
 
         mock_logger = MagicMock()
