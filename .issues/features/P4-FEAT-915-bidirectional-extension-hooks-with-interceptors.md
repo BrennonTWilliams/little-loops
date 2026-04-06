@@ -575,6 +575,7 @@ _Added by `/ll:confidence-check` on 2026-04-03_
 **Open** | Created: 2026-04-02 | Priority: P4
 
 ## Session Log
+- `/ll:format-issue` - 2026-04-06T04:34:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42b4ffbf-f1c8-49af-9c70-592b7bd6958e.jsonl`
 - `/ll:confidence-check` - 2026-04-03T14:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:refine-issue` - 2026-04-03T08:35:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
 - `/ll:confidence-check` - 2026-04-03T13:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
