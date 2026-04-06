@@ -6,6 +6,8 @@ priority: P3
 status: open
 discovered_date: 2026-04-04
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 71
 ---
 
 # FEAT-953: as-a-user eval harness skill from issue IDs
@@ -29,11 +31,30 @@ Running `/ll:create-eval-from-issues FEAT-919 ENH-950` should:
 For a single issue: produce a Variant A (single-shot) harness targeting the issue's skill.
 For multiple issues: produce a Variant B (multi-item) harness that iterates over each issue's associated skill.
 
+## Use Case
+
+**Who**: A developer using little-loops who has implemented one or more issues and wants automated validation of the result
+
+**Context**: After running `/ll:manage-issue` or completing implementation work, they want a structured eval harness that tests the feature from a real user's perspective — without hand-authoring YAML
+
+**Goal**: Generate a valid FSM harness YAML that exercises the skill described in the issue(s) and evaluates success using the issue's acceptance criteria and use case language
+
+**Outcome**: A `.loops/eval-harness-<slug>.yaml` file written to disk, validated by `ll-loop validate`, and ready to run immediately with `ll-loop run`
+
 ## Motivation
 
 The `check_skill` evaluation gate is the highest-fidelity phase in the harness pipeline — it's the only phase that evaluates from a real user's perspective. But it's currently the hardest to author because it requires translating issue language into a precise, testable evaluation prompt. This skill closes that gap: an issue already contains the user story, use case, and acceptance criteria; those are exactly the inputs needed to define a meaningful as-a-user eval.
 
 This also enables a "issue-to-harness-to-loop" workflow: refine an issue → generate a harness → run the loop unattended.
+
+## Acceptance Criteria
+
+- [ ] Running `/ll:create-eval-from-issues FEAT-919` resolves the issue file and writes `.loops/eval-harness-feat-919.yaml`
+- [ ] Generated harness contains a `check_skill` state with synthesized as-a-user evaluation criteria drawn from the issue's use case and acceptance criteria
+- [ ] Single issue → Variant A harness (`initial: execute`); 2+ issues → Variant B harness with `discover` state iterating over issue IDs
+- [ ] Generated harness passes `ll-loop validate` before being written to disk
+- [ ] Both open and completed issue IDs are accepted as input
+- [ ] Synthesized criteria include the observable success signal and failure signal from the issue context
 
 ## Proposed Solution
 
@@ -119,6 +140,10 @@ states:
 - `skills/create-loop/loop-types.md` — optionally reference as an alternative entry point for check_skill harnesses
 - `.claude-plugin/plugin.json` — register new skill
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `commands/help.md` — static hardcoded help text; add `create-eval-from-issues` to AUTOMATION & LOOPS section (~line 149–158) and quick reference table (~line 244–251) [Agent 1]
+- `docs/reference/COMMANDS.md` — full command-by-command reference; needs new entry for `/ll:create-eval-from-issues` [Agent 1]
+
 ### Similar Patterns
 - `skills/create-loop/` — existing harness creation wizard; this skill is a focused alternative for the `check_skill` path
 - `skills/refine-issue/` — reads issue files and extracts structured content
@@ -127,6 +152,46 @@ states:
 
 ### Tests
 - `scripts/tests/` — add unit tests for criteria synthesis logic and YAML generation
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.claude/CLAUDE.md:38` — skill count `24 → 25`; manual (not in `DOC_FILES` for `ll-verify-docs`) [Agent 2]
+- `.claude/CLAUDE.md:56` — Commands & Skills listing; add `create-eval-from-issues`^ to Automation & Loops category [Agent 2]
+- `README.md:89` — skill count `24 → 25` (auto-fixable via `ll-verify-docs --fix`) [Agent 1/2]
+- `README.md:206-231` — Skills table; add new row for `create-eval-from-issues`^ (manual) [Agent 2]
+- `CONTRIBUTING.md:125` — skill count `24 → 25` (auto-fixable) [Agent 1/2]
+- `CONTRIBUTING.md:126-147` — explicit skill directory tree; add `create-eval-from-issues/` entry (manual) [Agent 2]
+- `docs/ARCHITECTURE.md:26,99` — skill counts in Mermaid diagram and directory tree header (auto-fixable) [Agent 1/2]
+- `docs/ARCHITECTURE.md:100-155` — explicit skill directory listing; add `create-eval-from-issues/` alphabetically (manual) [Agent 2]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Correction — `commands/create-eval-from-issues.md` is NOT needed.** Skills under `skills/*/SKILL.md` are auto-discovered by the plugin manifest (`/.claude-plugin/plugin.json:20` — `"skills": ["./skills"]`). A parallel `commands/` entry would duplicate the registration.
+
+**Key integration points:**
+- `scripts/little_loops/cli/issues/show.py:17` — `_resolve_issue_id()` handles all three ID formats (`953`, `FEAT-953`, `P3-FEAT-953`); searches all categories including completed/deferred
+- `scripts/little_loops/cli/issues/show.py:360` — `cmd_show()` with `--json` flag outputs `{path, title, summary, status, issue_id}` — use `ll-issues show <ID> --json` to extract context
+- `scripts/little_loops/cli/loop/config_cmds.py:11` — `cmd_validate()` implements `ll-loop validate`; resolves `.loops/<name>.yaml` first, then built-ins
+- `scripts/little_loops/fsm/validation.py:292` — `validate_fsm()` checks state refs, terminal state existence, required evaluator fields
+- `scripts/little_loops/fsm/validation.py:77` — `KNOWN_TOP_LEVEL_KEYS`; generated YAML must only use these top-level keys
+- `scripts/little_loops/loops/harness-multi-item.yaml:118-134` — exact `check_skill` state YAML structure to model for Variant B
+- `scripts/little_loops/loops/harness-single-shot.yaml:93-111` — commented `check_skill` block for Variant A
+
+**Model skill files:**
+- `skills/create-loop/SKILL.md:1-8` — canonical skill frontmatter (`description`, `allowed-tools` with glob-restricted Bash)
+- `skills/manage-issue/SKILL.md:1-22` — argument declarations pattern (`argument-hint`, `arguments` list with `name/description/required`)
+- `skills/create-loop/SKILL.md:174-208` — save-and-validate sequence (mkdir, check-exists, Write tool, `ll-loop validate`)
+- `commands/refine-issue.md:70-99` — all-categories issue locate shell pattern
+
+**Test files:**
+- `scripts/tests/test_outer_loop_eval.py:1-140` — structural test pattern for a specific loop YAML (exact model to follow)
+- `scripts/tests/test_create_loop.py:35-56` — `tmp_path/.loops` fixture + `ll-loop validate` CLI invocation pattern
+- `scripts/tests/test_builtin_loops.py:46-86` — `test_expected_loops_exist` registry (update only if harness ships as built-in)
+- `scripts/tests/test_fsm_schema.py:1-78` — `FSMLoop`, `load_and_validate`, `validate_fsm` import helpers
+- `scripts/tests/test_issues_cli.py` — existing `ll-issues` CLI tests for reference
 
 ## Implementation Steps
 
@@ -141,6 +206,36 @@ states:
 4. Register in `commands/create-eval-from-issues.md` and `plugin.json`
 5. Add a reference from `AUTOMATIC_HARNESSING_GUIDE.md` → "See also: `/ll:create-eval-from-issues`"
 6. Write tests for the YAML generation logic
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+Concrete references for each step:
+
+1. **Harness guide already understood** — `harness-single-shot.yaml` uses `initial: execute`, `max_iterations: 5`, `timeout: 3600`; `harness-multi-item.yaml` uses `initial: discover`, `max_iterations: 200`, `timeout: 14400`; both include `import: [lib/common.yaml]`
+2. **Create `skills/create-eval-from-issues/SKILL.md`** — copy frontmatter from `skills/create-loop/SKILL.md:1-8`; add `arguments` block from `skills/manage-issue/SKILL.md:8-21`; `allowed-tools` should include `Bash(ll-issues:*, ll-loop:*, mkdir:*, test:*)`; no separate `prompt.md` — `SKILL.md` is both metadata and full instruction body
+3. **Implement prompt body**:
+   - Issue resolution: `ll-issues show <ID> --json` → parse `path` field; handles open and completed IDs via `_resolve_issue_id()` at `show.py:17`
+   - `check_skill` state: model exactly from `harness-multi-item.yaml:118-134` — fields: `action`, `action_type: prompt`, `timeout`, `evaluate.type: llm_structured`, `evaluate.prompt`, `on_yes`, `on_no`
+   - Save sequence: follow `skills/create-loop/SKILL.md:174-208` — `mkdir -p .loops/`, check existing, Write tool, then `ll-loop validate <slug>`
+   - Session log: `ll-issues append-log <issue-file> /ll:create-eval-from-issues` (see `commands/refine-issue.md:385-395`)
+4. **No `commands/create-eval-from-issues.md` needed** — `"skills": ["./skills"]` in `plugin.json:20` auto-discovers all `skills/*/SKILL.md`; creating a commands/ file would create a duplicate `/ll:create-eval-from-issues` route
+5. **Update `AUTOMATIC_HARNESSING_GUIDE.md`** — add "See also" link in the harness creation section
+6. **Tests** — create `scripts/tests/test_create_eval_from_issues.py` modeled on `test_outer_loop_eval.py:1-140`:
+   - `TestEvalHarnessVariantA` — 1 issue → `initial: execute`, has `check_skill` state with `llm_structured` evaluator
+   - `TestEvalHarnessVariantB` — 2+ issues → `initial: discover`, has `discover` and `advance` states
+   - `TestEvalHarnessValidation` — generated YAML passes `ll-loop validate` (follow `test_create_loop.py:35-56` tmp_path pattern)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `commands/help.md` — add `create-eval-from-issues` entry to AUTOMATION & LOOPS section (~line 149–158) and quick reference table (~line 244–251)
+8. Update `docs/reference/COMMANDS.md` — add command reference entry for `/ll:create-eval-from-issues`
+9. Update `.claude/CLAUDE.md:38,56` — bump skill count from 24 to 25; add `create-eval-from-issues`^ to the Automation & Loops listing in Commands & Skills section
+10. Run `ll-verify-docs --fix` — auto-updates skill counts in `README.md:89`, `CONTRIBUTING.md:125`, `docs/ARCHITECTURE.md:26,99`
+11. Manually add `create-eval-from-issues/` to directory listings in `README.md:206-231` (skills table), `CONTRIBUTING.md:126-147` (directory tree), and `docs/ARCHITECTURE.md:100-155` (skill listing)
 
 ## Impact
 
@@ -184,4 +279,8 @@ Output file written to: `.loops/eval-harness-<slug>.yaml`
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5687071-7876-4a35-b7e9-92c5939ccb33.jsonl`
+- `/ll:wire-issue` - 2026-04-05T23:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc42f8b7-ff6d-415c-84bd-3f5e4acbdf99.jsonl`
+- `/ll:refine-issue` - 2026-04-05T23:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6ae4919-971a-4b3a-a67d-3ca5428504f5.jsonl`
+- `/ll:format-issue` - 2026-04-05T23:24:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80483a00-b614-43e6-8ba2-461cc77fadae.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdd75d9a-15c4-4632-b6fd-adac60caf156.jsonl`
