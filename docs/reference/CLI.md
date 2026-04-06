@@ -49,6 +49,7 @@ Process all backlog issues sequentially in priority order. On startup, `ll-auto`
 | `--config` | | Path to project root |
 | `--category` | `-c` | Filter to category: `bugs`, `features`, `enhancements` |
 | `--priority` | `-p` | Comma-separated priority levels to process (e.g., `P1,P2`) |
+| `--verbose` | `-v` | Show full prompt text; default shows abbreviated 5-line preview |
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |

@@ -113,7 +113,19 @@ def run_claude_command(
     Returns:
         CompletedProcess with stdout/stderr captured
     """
-    logger.info(f"Running: claude --dangerously-skip-permissions -p {command!r}")
+    from little_loops.cli.output import terminal_width
+
+    lines = command.strip().splitlines()
+    line_count = len(lines)
+    tw = terminal_width()
+    max_line = tw - 4
+    logger.info(f"Running: claude --dangerously-skip-permissions -p ({line_count} lines)")
+    show_count = min(5, line_count)
+    for line in lines[:show_count]:
+        display = line[:max_line] + "..." if len(line) > max_line else line
+        logger.info(f"  {display}")
+    if line_count > show_count:
+        logger.info(f"  ... ({line_count - show_count} more lines)")
 
     def stream_callback(line: str, is_stderr: bool) -> None:
         if stream_output:

@@ -201,6 +201,69 @@ class TestRunClaudeCommand:
 
         assert detected == ["test-model"]
 
+    def test_prompt_display_abbreviated_for_long_command(self, mock_logger: MagicMock) -> None:
+        """Long prompts show (N lines) header, first 5 lines, and '... (N more lines)' trailer."""
+        long_command = "\n".join(f"line {i}" for i in range(20))
+
+        with patch("little_loops.issue_manager._run_claude_base") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+            from little_loops.issue_manager import run_claude_command
+
+            run_claude_command(long_command, mock_logger, stream_output=False)
+
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        header_calls = [c for c in calls if "(20 lines)" in c]
+        assert len(header_calls) == 1, "Should log '(20 lines)' header"
+
+        preview_calls = [c for c in calls if "line 0" in c or "line 4" in c]
+        assert len(preview_calls) == 2, "Should show first 5 lines (line 0 and line 4 visible)"
+
+        trailer_calls = [c for c in calls if "15 more lines" in c]
+        assert len(trailer_calls) == 1, "Should log '... (15 more lines)' trailer"
+
+        hidden_calls = [c for c in calls if "line 5" in c]
+        assert len(hidden_calls) == 0, "Should not show line 5 or beyond in abbreviated mode"
+
+    def test_prompt_display_shows_all_lines_for_short_command(
+        self, mock_logger: MagicMock
+    ) -> None:
+        """Short prompts (<=5 lines) show all lines with no trailer."""
+        short_command = "line A\nline B\nline C"
+
+        with patch("little_loops.issue_manager._run_claude_base") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+            from little_loops.issue_manager import run_claude_command
+
+            run_claude_command(short_command, mock_logger, stream_output=False)
+
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        header_calls = [c for c in calls if "(3 lines)" in c]
+        assert len(header_calls) == 1, "Should log '(3 lines)' header"
+
+        assert any("line A" in c for c in calls), "Should show 'line A'"
+        assert any("line C" in c for c in calls), "Should show 'line C'"
+
+        trailer_calls = [c for c in calls if "more lines" in c]
+        assert len(trailer_calls) == 0, "No trailer for short prompts"
+
+    def test_prompt_display_truncates_long_lines(self, mock_logger: MagicMock) -> None:
+        """Lines longer than terminal_width - 4 are truncated with '...' suffix."""
+        long_line = "x" * 200
+        command = f"{long_line}\nshort line"
+
+        with patch("little_loops.issue_manager._run_claude_base") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            with patch("little_loops.cli.output.terminal_width", return_value=80):
+                from little_loops.issue_manager import run_claude_command
+
+                run_claude_command(command, mock_logger, stream_output=False)
+
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        truncated_calls = [c for c in calls if "..." in c and "x" * 10 in c]
+        assert len(truncated_calls) >= 1, "Long line should be truncated with '...'"
+
 
 class TestCheckGitStatus:
     """Tests for check_git_status in issue_manager.py."""
