@@ -77,18 +77,30 @@ The `_iso_now()` helper at `issue_lifecycle.py:27` is already the canonical UTC-
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/state.py` — lines 113, 143
-- `scripts/little_loops/issue_lifecycle.py` — line 518
+- `scripts/little_loops/state.py` — lines 113, 143 (`StateManager.state` property and `save()`)
+- `scripts/little_loops/issue_lifecycle.py` — line 518 (`create_issue_from_failure` status f-string)
+- `scripts/little_loops/issue_manager.py` — line 919 (`ProcessingState(timestamp=datetime.now().isoformat())` — fourth naive site, not in original scan)
 
 ### Dependent Files (Callers/Importers)
-- Any code that reads `ProcessingState.timestamp` and parses it as a datetime
+- `scripts/little_loops/issue_manager.py` — imports `StateManager`/`ProcessingState`; reads `.timestamp` field (also a write site, see above)
+- `scripts/little_loops/parallel/orchestrator.py` — imports from `issue_lifecycle`; uses `create_issue_from_failure`
+- `scripts/little_loops/cli/issues/skip.py` — imports from `issue_lifecycle`
+- `scripts/little_loops/__init__.py` — imports from `issue_lifecycle`
 
 ### Similar Patterns
-- `issue_lifecycle.py:27` `_iso_now()` — reference implementation to reuse
+- `state.py:20-22` — `_iso_now()` helper defined in `state.py` itself; use this for lines 113 and 143 (not the one in `issue_lifecycle.py`)
+- `issue_lifecycle.py:25-27` — `_iso_now()` helper in `issue_lifecycle.py`; use for line 518 and line 919 fix in `issue_manager.py`
+- `scripts/tests/test_fsm_persistence.py:332,496` — model UTC assertion pattern: `assert result == "2024-01-15T11:00:00+00:00"`
 
 ### Tests
-- `scripts/tests/test_state.py` — add assertion that saved timestamp ends with `+00:00`
-- `scripts/tests/test_issue_lifecycle.py` — add assertion that `create_issue_from_failure` produces a UTC timestamp in the Status section
+- `scripts/tests/test_state.py:205,261` — currently only asserts `timestamp != ""`; update to assert `"+00:00" in timestamp`
+- `scripts/tests/test_state.py:36,76,114` — hardcoded naive fixture strings (`"2025-01-01T12:00:00"`) will need updating to `"2025-01-01T12:00:00+00:00"` format (or use `datetime.now(UTC).isoformat()` in fixtures)
+- `scripts/tests/test_issue_lifecycle.py:633-736` (`TestCreateIssueFromFailure`) — no existing assertion on the `Created:` timestamp line; add one asserting `"+00:00"` is present in the Status section
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_state.py:51` — asserts `result["timestamp"] == "2025-01-01T12:00:00"` (paired assertion for fixture at :39); must update alongside the fixture to `"2025-01-01T12:00:00+00:00"`
+- `scripts/tests/test_state.py:87` — asserts `state.timestamp == "2025-01-01T14:00:00"` (paired assertion for fixture at :75); must update alongside the fixture to `"2025-01-01T14:00:00+00:00"`
+- `scripts/tests/test_state.py:220` — fourth naive timestamp fixture `"2025-01-01T00:00:00"` in `test_load_existing_file`; not mentioned in existing issue — update to `"2025-01-01T00:00:00+00:00"`
 
 ### Documentation
 - N/A
@@ -96,11 +108,27 @@ The `_iso_now()` helper at `issue_lifecycle.py:27` is already the canonical UTC-
 ### Configuration
 - N/A
 
+### Out-of-Scope Naive Calls (do NOT fix in this issue)
+- `issue_lifecycle.py:170,216` — `datetime.now().strftime("%Y-%m-%d")` (date-only, timezone irrelevant)
+- `issue_lifecycle.py:717,729,817` — `datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")` with misleading literal `Z` suffix on local time; separate bug worth a dedicated issue
+
 ## Implementation Steps
 
-1. Replace `datetime.now().isoformat()` with `datetime.now(UTC).isoformat()` in `state.py` (lines 113 and 143)
-2. Replace `datetime.now().isoformat()` with `_iso_now()` in `issue_lifecycle.py` line 518
-3. Add/update tests to assert timestamps are UTC-aware
+1. In `state.py` lines 113 and 143, replace `datetime.now().isoformat()` with `_iso_now()` (the helper is already defined at `state.py:20-22` — no new import needed)
+2. In `issue_lifecycle.py` line 518, replace `datetime.now().isoformat()` with `_iso_now()` (already defined at `issue_lifecycle.py:25-27`)
+3. In `issue_manager.py` line 919, replace `datetime.now().isoformat()` with `_iso_now()` — add `from little_loops.issue_lifecycle import _iso_now` if not already imported, or `from little_loops.state import _iso_now`
+4. Update `test_state.py` hardcoded naive timestamp fixtures at lines 36, 76, 114 to use `+00:00`-suffixed strings (e.g., `"2025-01-01T12:00:00+00:00"`)
+5. Strengthen `test_state.py:205,261` assertions from `!= ""` to `assert "+00:00" in state.timestamp`
+6. Add a test in `TestCreateIssueFromFailure` (`test_issue_lifecycle.py:633`) asserting the Status section contains a UTC-aware `Created:` timestamp: `assert "Created:" in content` and `assert "+00:00" in content`
+7. Run `python -m pytest scripts/tests/test_state.py scripts/tests/test_issue_lifecycle.py -v`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `test_state.py:51` — change `assert result["timestamp"] == "2025-01-01T12:00:00"` to `"2025-01-01T12:00:00+00:00"` (paired with fixture update at :39 from Step 4)
+9. Update `test_state.py:87` — change `assert state.timestamp == "2025-01-01T14:00:00"` to `"2025-01-01T14:00:00+00:00"` (paired with fixture update at :75 from Step 4)
+10. Update `test_state.py:220` — change `"timestamp": "2025-01-01T00:00:00"` fixture in `test_load_existing_file` to `"2025-01-01T00:00:00+00:00"`
 
 ## Impact
 
@@ -118,6 +146,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `datetime`, `captured`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-06T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c54bab8-6d66-4299-8536-f9754fcca2a4.jsonl`
+- `/ll:refine-issue` - 2026-04-06T19:15:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71d7d560-3e7b-4d8f-a782-7e0c62fdfa6c.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Status
