@@ -132,11 +132,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `parallel`, `data-loss`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T18:04:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21f19bed-97fc-4565-8516-1dab2c921bc1.jsonl`
 - `/ll:refine-issue` - 2026-04-06T18:00:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c681f349-9672-4ba6-84ba-7219aa7c4e3a.jsonl`
 - `/ll:format-issue` - 2026-04-06T17:57:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55295d1d-bc37-4e4a-994a-bf5011f65b45.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 - `/ll:confidence-check` - 2026-04-06T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5ada5db-6f30-4aaf-a2f5-bcf633c40d46.jsonl`
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/parallel/merge_coordinator.py` `_handle_conflict`.
+
+Before calling `_handle_failure` on stash pop failure, the code now:
+1. Runs `git stash show -p` and logs the diff as a `warning` for diagnostics.
+2. Runs `git stash drop` to clean up the orphaned stash entry.
+
+A new test `test_stash_drop_called_on_pop_failure_after_rebase` was added to `TestMergeStrategySkipsRebaseRetry` asserting that `git stash drop` is called when stash pop returns non-zero.
+
 ## Status
 
-**Open** | Created: 2026-04-06 | Priority: P3
+**Completed** | Created: 2026-04-06 | Resolved: 2026-04-06 | Priority: P3

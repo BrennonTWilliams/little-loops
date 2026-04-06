@@ -1878,6 +1878,95 @@ class TestMergeStrategySkipsRebaseRetry:
         )
         assert len(requeued) == 0, "Should NOT re-queue when stash pop fails"
 
+    def test_stash_drop_called_on_pop_failure_after_rebase(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should call git stash drop to clean up orphaned stash when pop fails after rebase.
+
+        Ensures the worktree stash entry is not left orphaned when stash pop fails —
+        git stash drop must be issued before _handle_failure so the entry is cleaned up
+        before the worktree is eventually destroyed.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        worktree_path = temp_git_repo / ".worktrees" / "test-stash-drop"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/test-stash-drop", str(worktree_path)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+
+        test_file = worktree_path / "test.txt"
+        test_file.write_text("worktree content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "worktree commit"],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+
+        worker_result = WorkerResult(
+            issue_id="TEST-967",
+            branch_name="parallel/test-stash-drop",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        coordinator._handle_failure = MagicMock()  # type: ignore[method-assign]
+        coordinator._queue.put = MagicMock()  # type: ignore[method-assign]
+
+        stash_drop_calls: list[list[str]] = []
+        original_run = subprocess.run
+
+        def mock_subprocess_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            if cmd[:2] == ["git", "status"]:
+                return subprocess.CompletedProcess(
+                    cmd, returncode=0, stdout="M test.txt\n", stderr=""
+                )
+            if cmd[:3] == ["git", "stash", "push"]:
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+            if cmd[:2] == ["git", "fetch"]:
+                return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="no remote")
+            if cmd[:2] == ["git", "rebase"]:
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+            if cmd[:3] == ["git", "stash", "pop"]:
+                return subprocess.CompletedProcess(
+                    cmd,
+                    returncode=1,
+                    stdout="",
+                    stderr="CONFLICT (content): Merge conflict in test.txt",
+                )
+            if cmd[:4] == ["git", "stash", "show", "-p"]:
+                return subprocess.CompletedProcess(
+                    cmd, returncode=0, stdout="diff --git a/test.txt\n+content\n", stderr=""
+                )
+            if cmd[:3] == ["git", "stash", "drop"]:
+                stash_drop_calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+            return original_run(cmd, **kwargs)
+
+        with patch(
+            "little_loops.parallel.merge_coordinator.subprocess.run",
+            side_effect=mock_subprocess_run,
+        ):
+            coordinator._handle_conflict(request, used_merge_strategy=False)
+
+        assert len(stash_drop_calls) == 1, (
+            "git stash drop must be called once to clean up the orphaned stash entry"
+        )
+        coordinator._handle_failure.assert_called_once()  # type: ignore[attr-defined]
+        coordinator._queue.put.assert_not_called()  # type: ignore[attr-defined]
+
 
 class TestThreadLifecycle:
     """Tests for thread lifecycle management."""

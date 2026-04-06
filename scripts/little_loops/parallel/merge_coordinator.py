@@ -1044,6 +1044,24 @@ class MergeCoordinator:
                             f"Stash pop failed for {result.issue_id} after rebase: "
                             f"{pop_result.stderr.strip()}"
                         )
+                        show_result = subprocess.run(
+                            ["git", "stash", "show", "-p"],
+                            cwd=result.worktree_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=30,
+                        )
+                        if show_result.returncode == 0 and show_result.stdout:
+                            self.logger.warning(
+                                f"Dropping unrecoverable worktree stash for {result.issue_id}:\n"
+                                f"{show_result.stdout[:2000]}"
+                            )
+                        subprocess.run(
+                            ["git", "stash", "drop"],
+                            cwd=result.worktree_path,
+                            capture_output=True,
+                            timeout=10,
+                        )
                         self._handle_failure(request, "Stash pop conflict after rebase")
                         return
                 self._queue.put(request)
