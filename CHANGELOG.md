@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.74.0] - 2026-04-06
+
+### Added
+
+- **`create-eval-from-issues` Skill** — New `/ll:create-eval-from-issues` skill generates FSM eval harnesses from issue IDs for automated user-perspective quality evaluation (FEAT-953)
+- **`improve-claude-md` Skill** — New `/ll:improve-claude-md` skill rewrites CLAUDE.md using `<important if>` block restructuring for improved LLM instruction adherence (FEAT-949)
+- **`ll-issues skip` Subcommand** — New `ll-issues skip <ID>` deprioritizes stuck issues with optional priority override and audit trail (FEAT-955)
+- **Sprint Scoping for `confidence-check` and `issue-size-review`** — Both skills now support `--sprint <name>` to restrict analysis to sprint-specific issues (ENH-956)
+- **`issue-size-review` Usage Documentation** — Added guidance clarifying when to invoke `issue-size-review` as a follow-up to failed readiness checks (ENH-963)
+
+### Fixed
+
+- **Nested `${}` in `check_lifetime_limit`** — Replaced broken bash variable interpolation in the `refine-to-ready-issue` loop that was silently crashing automation runs (BUG-954)
+
+[1.74.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.73.0...v1.74.0
+
 ## [1.73.0] - 2026-04-05
 
 ### Added
