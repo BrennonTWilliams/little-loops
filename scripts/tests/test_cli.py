@@ -499,6 +499,7 @@ class TestMainAutoIntegration:
             assert result == 0
             call_kwargs = mock_manager_cls.call_args.kwargs
             assert call_kwargs["verbose"] is True
+            assert call_kwargs["preview_full"] is True
 
 
 class TestMainParallelIntegration:

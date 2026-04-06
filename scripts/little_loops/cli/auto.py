@@ -98,6 +98,7 @@ Examples:
         type_prefixes=type_prefixes,
         priority_filter=priority_filter,
         verbose=args.verbose or not args.quiet,
+        preview_full=args.verbose,
     )
 
     return manager.run()

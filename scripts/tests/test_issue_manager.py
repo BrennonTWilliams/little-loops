@@ -838,6 +838,40 @@ class TestAutoManagerQuietMode:
 
         assert manager.logger.verbose is True
 
+    def test_auto_manager_verbose_stores_preview_full(self, temp_project_dir: Path) -> None:
+        """AutoManager stores _preview_full=True when preview_full=True, False otherwise."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"}
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        config = BRConfig(temp_project_dir)
+        manager_full = AutoManager(config, preview_full=True)
+        assert manager_full._preview_full is True
+
+        manager_default = AutoManager(config, preview_full=False)
+        assert manager_default._preview_full is False
+
 
 class TestRunClaudeCommand:
     """Tests for run_claude_command function (ENH-207)."""
@@ -2517,6 +2551,7 @@ class TestAutoManagerModelDetection:
             logger: Any,
             dry_run: bool = False,
             on_model_detected: Any = None,
+            preview_full: bool = False,
         ) -> IssueProcessingResult:
             if on_model_detected:
                 on_model_detected("claude-sonnet-4-6")

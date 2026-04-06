@@ -98,6 +98,7 @@ def run_claude_command(
     stream_output: bool = True,
     idle_timeout: int = 0,
     on_model_detected: Callable[[str], None] | None = None,
+    preview_full: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -109,6 +110,7 @@ def run_claude_command(
         idle_timeout: Kill process if no output for this many seconds (0 to disable)
         on_model_detected: Optional callback invoked with the model name from the
             stream-json system/init event.
+        preview_full: If True, display the full command without truncation (for --verbose).
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -120,9 +122,9 @@ def run_claude_command(
     tw = terminal_width()
     max_line = tw - 4
     logger.info(f"Running: claude --dangerously-skip-permissions -p ({line_count} lines)")
-    show_count = min(5, line_count)
+    show_count = line_count if preview_full else min(5, line_count)
     for line in lines[:show_count]:
-        display = line[:max_line] + "..." if len(line) > max_line else line
+        display = line if preview_full else (line[:max_line] + "..." if len(line) > max_line else line)
         logger.info(f"  {display}")
     if line_count > show_count:
         logger.info(f"  ... ({line_count - show_count} more lines)")
@@ -152,6 +154,7 @@ def run_with_continuation(
     repo_path: Path | None = None,
     idle_timeout: int = 0,
     resume_command: str | None = None,
+    preview_full: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -189,6 +192,7 @@ def run_with_continuation(
             timeout=timeout,
             stream_output=stream_output,
             idle_timeout=idle_timeout,
+            preview_full=preview_full,
         )
 
         all_stdout.append(result.stdout)
@@ -313,6 +317,7 @@ def process_issue_inplace(
     logger: Logger,
     dry_run: bool = False,
     on_model_detected: Callable[[str], None] | None = None,
+    preview_full: bool = False,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
 
@@ -353,6 +358,7 @@ def process_issue_inplace(
                 stream_output=config.automation.stream_output,
                 idle_timeout=config.automation.idle_timeout_seconds,
                 on_model_detected=on_model_detected,
+                preview_full=preview_full,
             )
             if result.returncode != 0:
                 logger.warning("ready-issue command failed to execute, continuing anyway...")
@@ -408,6 +414,7 @@ def process_issue_inplace(
                                 stream_output=config.automation.stream_output,
                                 idle_timeout=config.automation.idle_timeout_seconds,
                                 on_model_detected=on_model_detected,
+                                preview_full=preview_full,
                             )
 
                             if retry_result.returncode != 0:
@@ -582,6 +589,7 @@ def process_issue_inplace(
                 repo_path=config.repo_path,
                 idle_timeout=config.automation.idle_timeout_seconds,
                 resume_command=_slash_cmd,
+                preview_full=preview_full,
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
@@ -741,6 +749,7 @@ class AutoManager:
         type_prefixes: set[str] | None = None,
         priority_filter: set[str] | None = None,
         verbose: bool = True,
+        preview_full: bool = False,
     ) -> None:
         """Initialize the auto manager.
 
@@ -756,6 +765,7 @@ class AutoManager:
             type_prefixes: If provided, only process issues with these type prefixes
             priority_filter: If provided, only process issues with these priority levels
             verbose: Whether to output progress messages
+            preview_full: If True, show full command content without truncation (--verbose flag).
         """
         self.config = config
         self.dry_run = dry_run
@@ -766,6 +776,7 @@ class AutoManager:
         self.skip_ids = skip_ids or set()
         self.type_prefixes = type_prefixes
         self.priority_filter = priority_filter
+        self._preview_full = preview_full
 
         self.logger = Logger(verbose=verbose)
         self.event_bus = EventBus()
@@ -1002,7 +1013,8 @@ class AutoManager:
                 self.logger.info(f"model: {m}")
 
         result = process_issue_inplace(
-            info, self.config, self.logger, self.dry_run, on_model_detected=on_model
+            info, self.config, self.logger, self.dry_run, on_model_detected=on_model,
+            preview_full=self._preview_full,
         )
 
         # Map result back to state tracking

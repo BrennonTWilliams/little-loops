@@ -262,6 +262,45 @@ class TestRunClaudeCommand:
         truncated_calls = [c for c in calls if "..." in c and "x" * 10 in c]
         assert len(truncated_calls) >= 1, "Long line should be truncated with '...'"
 
+    def test_prompt_display_full_shows_all_lines_when_preview_full_true(
+        self, mock_logger: MagicMock
+    ) -> None:
+        """preview_full=True shows all lines with no '... (N more lines)' trailer."""
+        long_command = "\n".join(f"line {i}" for i in range(20))
+
+        with patch("little_loops.issue_manager._run_claude_base") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+            from little_loops.issue_manager import run_claude_command
+
+            run_claude_command(long_command, mock_logger, stream_output=False, preview_full=True)
+
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+
+        trailer_calls = [c for c in calls if "more lines" in c]
+        assert len(trailer_calls) == 0, "No truncation trailer when preview_full=True"
+
+        assert any("line 5" in c for c in calls), "line 5 should be visible with preview_full=True"
+        assert any("line 19" in c for c in calls), "line 19 should be visible with preview_full=True"
+
+    def test_prompt_display_full_skips_line_truncation(self, mock_logger: MagicMock) -> None:
+        """preview_full=True shows long lines in full without '...' suffix."""
+        long_line = "x" * 200
+        command = f"{long_line}\nshort line"
+
+        with patch("little_loops.issue_manager._run_claude_base") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            with patch("little_loops.cli.output.terminal_width", return_value=80):
+                from little_loops.issue_manager import run_claude_command
+
+                run_claude_command(command, mock_logger, stream_output=False, preview_full=True)
+
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        truncated_calls = [c for c in calls if "x" * 10 in c and c.endswith("...')")]
+        assert len(truncated_calls) == 0, "Long lines must not be truncated when preview_full=True"
+        full_line_calls = [c for c in calls if "x" * 200 in c]
+        assert len(full_line_calls) >= 1, "Full 200-char line should appear when preview_full=True"
+
 
 class TestCheckGitStatus:
     """Tests for check_git_status in issue_manager.py."""
