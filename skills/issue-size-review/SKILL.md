@@ -23,6 +23,7 @@ Proactively offer or invoke this skill when the user:
 - Asks to audit or review issue sizes
 - Mentions context running out during issue work
 - Says "this issue is too big" or similar
+- An issue fails `/ll:ready-issue` or `/ll:confidence-check` after two or more refinement passes — persistent readiness gaps often signal the issue needs decomposition rather than more research
 
 ## How to Use
 

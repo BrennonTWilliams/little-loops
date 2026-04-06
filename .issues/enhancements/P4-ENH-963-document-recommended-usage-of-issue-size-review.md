@@ -40,9 +40,17 @@ The guidance should state:
 2. Update `/ll:issue-workflow` command or skill to include a decision branch: "still failing readiness after 2+ refinement passes → run issue-size-review"
 3. Optionally update the "Next Steps" output of `/ll:ready-issue` and `/ll:confidence-check` to suggest `issue-size-review` when scores are persistently low
 
-## Related Key Documentation
+## Integration Map
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+### Files Modified
+- `skills/issue-size-review/SKILL.md` — new bullet in `## When to Activate` for the persistent-readiness-failure trigger
+- `skills/issue-workflow/SKILL.md` — blockquote note after Refinement Phase command list directing to `issue-size-review` on repeated NOT_READY
+- `commands/ready-issue.md` — new conditional line in `## NEXT_STEPS` output template for 2+ refinement pass NOT_READY
+- `skills/confidence-check/SKILL.md` — new `### Escalation` block in output template under `### Gaps to Address`
+
+### Related Key Documentation
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:341-353` — "Size Review & Decomposition" section (no changes needed; describes flags)
+- `docs/reference/COMMANDS.md:212-217` — `issue-size-review` command entry (no changes needed)
 
 ## Labels
 
@@ -51,6 +59,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-06T04:49:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c769f1ff-fff7-4e6f-9950-bab87fe646ba.jsonl`
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f81b809e-fe37-4e61-92be-ecdf125880d9.jsonl`
 
 ---

@@ -360,6 +360,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 
 ## NEXT_STEPS
 - [Recommended actions if not ready]
+- [If NOT_READY and issue has been refined 2+ times: "Run `/ll:issue-size-review [ISSUE_ID]` — persistent readiness gaps often mean the issue is too large or ambiguously scoped, not just under-researched"]
 - [Or "Proceed to implementation with: `/ll:manage-issue [issue_type] [action] [ISSUE_ID]`" if ready/corrected]
 - [Or "Reopen completed issue [ISSUE_ID] as regression" if REGRESSION_LIKELY]
 ```

@@ -78,6 +78,8 @@ Quick reference for managing issues with the little-loops plugin.
 /ll:ready-issue [id]           # Final validation before implementation
 ```
 
+> **Stuck on readiness?** If `/ll:ready-issue` returns `NOT_READY` after 2+ refinement passes, run `/ll:issue-size-review [id]` — a persistent readiness gap often means the issue is too large or poorly scoped, not just under-researched.
+
 ### 3. Planning & Implementation Phase
 ```bash
 /ll:create-sprint [name]       # Create sprint with curated issue list
