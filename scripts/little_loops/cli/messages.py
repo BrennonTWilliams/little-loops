@@ -195,6 +195,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
             msg.session_id for msg in messages if skill_pattern.search(msg.content)
         }
         messages = [msg for msg in messages if msg.session_id in matching_sessions]
+        commands = [c for c in commands if c.session_id in matching_sessions]
 
     if not messages and not commands:
         logger.warning("No user messages or commands found")

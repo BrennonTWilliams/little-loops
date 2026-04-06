@@ -1819,10 +1819,10 @@ class TestMainMessagesAdditionalCoverage:
             assert "Project folder:" in captured.out or "Limit:" in captured.out
 
     def test_skill_filter_narrows_to_matching_sessions(self) -> None:
-        """--skill filters messages to sessions where the skill was invoked."""
+        """--skill filters both messages and commands to sessions where the skill was invoked."""
         from datetime import datetime
 
-        from little_loops.user_messages import UserMessage
+        from little_loops.user_messages import CommandRecord, UserMessage
 
         trigger_content = (
             "<command-message>ll:capture-issue</command-message>\n"
@@ -1840,24 +1840,34 @@ class TestMainMessagesAdditionalCoverage:
             session_id="sess-other",
             uuid="uuid-2",
         )
+        non_matching_cmd = CommandRecord(
+            content="git status",
+            timestamp=datetime(2026, 1, 1, 0, 30, 0),
+            session_id="sess-other",
+            uuid="uuid-3",
+            tool="Bash",
+        )
 
         with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [matching_msg, non_matching_msg]
-                with patch("little_loops.cli.messages._save_combined") as mock_save:
-                    mock_save.return_value = Path("/output.jsonl")
+                with patch("little_loops.user_messages.extract_commands") as mock_cmds:
+                    mock_cmds.return_value = [non_matching_cmd]
+                    with patch("little_loops.cli.messages._save_combined") as mock_save:
+                        mock_save.return_value = Path("/output.jsonl")
 
-                    with patch.object(sys, "argv", ["ll-messages", "--skill", "capture-issue"]):
-                        from little_loops.cli import main_messages
+                        with patch.object(sys, "argv", ["ll-messages", "--skill", "capture-issue"]):
+                            from little_loops.cli import main_messages
 
-                        result = main_messages()
+                            result = main_messages()
 
         assert result == 0
         saved_items = mock_save.call_args.args[0]
         session_ids = {item.session_id for item in saved_items}
         assert "sess-match" in session_ids
         assert "sess-other" not in session_ids
+        assert not any(item.session_id == "sess-other" for item in saved_items)
 
     def test_examples_format_produces_example_records(
         self, capsys: pytest.CaptureFixture[str]

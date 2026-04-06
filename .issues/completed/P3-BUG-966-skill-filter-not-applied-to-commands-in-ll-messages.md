@@ -152,11 +152,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `cli`, `messages`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T17:48:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f8663eb-63a3-47d6-828c-c1e560e0c9cf.jsonl`
 - `/ll:refine-issue` - 2026-04-06T17:45:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e865744b-5f95-469a-aa99-0a969bc7ec79.jsonl`
 - `/ll:format-issue` - 2026-04-06T17:43:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ca7e8b3-b4f4-4de0-9e63-9207ac71f450.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 - `/ll:confidence-check` - 2026-04-06T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4488fe91-5adc-4748-9bdd-d954babb961d.jsonl`
 
+## Resolution
+
+- **Fixed in**: `scripts/little_loops/cli/messages.py:197`
+- **Change**: Added `commands = [c for c in commands if c.session_id in matching_sessions]` after the messages filter in the `--skill` block, ensuring both lists are restricted to matching sessions before being merged into `combined`.
+- **Test**: Extended `test_skill_filter_narrows_to_matching_sessions` in `scripts/tests/test_cli.py` to mock `extract_commands` returning a `CommandRecord` with a non-matching `session_id` and assert it is excluded from the saved output.
+
 ## Status
 
-**Open** | Created: 2026-04-06 | Priority: P3
+**Completed** | Created: 2026-04-06 | Resolved: 2026-04-06 | Priority: P3
