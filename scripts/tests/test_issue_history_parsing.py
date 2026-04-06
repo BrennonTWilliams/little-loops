@@ -165,6 +165,79 @@ class TestParseCompletionDate:
         assert result is None
 
 
+class TestBatchCompletionDates:
+    """Tests for _batch_completion_dates and the N+1 fix in scan_completed_issues."""
+
+    def test_scan_completed_issues_single_git_log_call(self, tmp_path: Path) -> None:
+        """scan_completed_issues must call git log at most once regardless of file count."""
+        completed_dir = tmp_path / "completed"
+        completed_dir.mkdir()
+
+        # Create 3 dateless files — each would trigger its own git log without the fix
+        for i in range(1, 4):
+            (completed_dir / f"P1-BUG-{i:03d}-issue.md").write_text("# BUG\n\nNo date.\n")
+
+        batch_output = (
+            "\x002026-01-10\n"
+            "\n"
+            "completed/P1-BUG-001-issue.md\n"
+            "completed/P1-BUG-002-issue.md\n"
+            "\n"
+            "\x002026-01-05\n"
+            "\n"
+            "completed/P1-BUG-003-issue.md\n"
+        )
+        mock_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=batch_output, stderr=""
+        )
+        with patch(
+            "little_loops.issue_history.parsing.subprocess.run", return_value=mock_result
+        ) as mock_run:
+            issues = scan_completed_issues(completed_dir)
+
+        mock_run.assert_called_once()
+        assert len(issues) == 3
+        dates = {i.issue_id: i.completed_date for i in issues}
+        assert dates["BUG-001"] == date(2026, 1, 10)
+        assert dates["BUG-002"] == date(2026, 1, 10)
+        assert dates["BUG-003"] == date(2026, 1, 5)
+
+    def test_batch_dates_not_found_returns_none(self, tmp_path: Path) -> None:
+        """Files missing from the batch result get None as the completion date."""
+        completed_dir = tmp_path / "completed"
+        completed_dir.mkdir()
+        (completed_dir / "P2-ENH-001-enh.md").write_text("# ENH\n\nNo date.\n")
+
+        # Batch returns empty (file not in git history yet)
+        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch(
+            "little_loops.issue_history.parsing.subprocess.run", return_value=mock_result
+        ):
+            issues = scan_completed_issues(completed_dir)
+
+        assert len(issues) == 1
+        assert issues[0].completed_date is None
+
+    def test_frontmatter_date_skips_git_log_entirely(self, tmp_path: Path) -> None:
+        """Files with an inline Resolution date never trigger any git log call."""
+        completed_dir = tmp_path / "completed"
+        completed_dir.mkdir()
+        (completed_dir / "P1-BUG-001-dated.md").write_text(
+            "## Resolution\n\n- **Completed**: 2026-03-01\n"
+        )
+
+        # Batch returns empty; per-file fallback must not be called either
+        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch(
+            "little_loops.issue_history.parsing.subprocess.run", return_value=mock_result
+        ) as mock_run:
+            issues = scan_completed_issues(completed_dir)
+
+        # Only the one batch call is made; no per-file call
+        mock_run.assert_called_once()
+        assert issues[0].completed_date == date(2026, 3, 1)
+
+
 class TestScanCompletedIssues:
     """Tests for scan_completed_issues function."""
 

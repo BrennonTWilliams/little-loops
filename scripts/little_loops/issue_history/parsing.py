@@ -21,11 +21,15 @@ from little_loops.text_utils import extract_file_paths
 logger = logging.getLogger(__name__)
 
 
-def parse_completed_issue(file_path: Path) -> CompletedIssue:
+def parse_completed_issue(
+    file_path: Path, *, batch_dates: dict[str, date] | None = None
+) -> CompletedIssue:
     """Parse a completed issue file.
 
     Args:
         file_path: Path to the issue markdown file
+        batch_dates: Optional pre-fetched mapping of filename → add-date from a batch
+            git log call; when provided, skips the per-file subprocess call.
 
     Returns:
         CompletedIssue with parsed metadata
@@ -55,7 +59,7 @@ def parse_completed_issue(file_path: Path) -> CompletedIssue:
     discovered_date = _parse_discovered_date(fm)
 
     # Parse completion date from Resolution section or file mtime
-    completed_date = _parse_completion_date(content, file_path)
+    completed_date = _parse_completion_date(content, file_path, batch_dates=batch_dates)
 
     return CompletedIssue(
         path=file_path,
@@ -81,12 +85,59 @@ def _parse_discovered_by(fm: dict[str, Any]) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _parse_completion_date(content: str, file_path: Path) -> date | None:
+def _batch_completion_dates(completed_dir: Path) -> dict[str, date]:
+    """Fetch git add-dates for all files in completed_dir in one git log call.
+
+    Args:
+        completed_dir: Path to .issues/completed/
+
+    Returns:
+        Mapping from filename (basename only) to the date it was first added in git.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "git", "log",
+                "--diff-filter=A",
+                "--name-only",
+                "--format=%x00%as",
+                "--",
+                str(completed_dir),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=completed_dir.parent,
+        )
+    except OSError:
+        return {}
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return {}
+
+    dates: dict[str, date] = {}
+    current_date: date | None = None
+    for line in result.stdout.splitlines():
+        if line.startswith("\x00"):
+            try:
+                current_date = date.fromisoformat(line[1:])
+            except ValueError:
+                current_date = None
+        elif line.strip() and current_date:
+            dates[Path(line.strip()).name] = current_date
+    return dates
+
+
+def _parse_completion_date(
+    content: str, file_path: Path, *, batch_dates: dict[str, date] | None = None
+) -> date | None:
     """Extract completion date from Resolution section or file mtime.
 
     Args:
         content: File content
-        file_path: Path for mtime fallback
+        file_path: Path for git log fallback
+        batch_dates: Optional pre-fetched mapping of filename → add-date from a batch
+            git log call; when provided, skips the per-file subprocess call if the
+            file is found in the mapping.
 
     Returns:
         Completion date or None
@@ -98,6 +149,10 @@ def _parse_completion_date(content: str, file_path: Path) -> date | None:
             return date.fromisoformat(match.group(1))
         except ValueError:
             pass
+
+    # Check batch map before falling back to per-file git log
+    if batch_dates is not None:
+        return batch_dates.get(file_path.name)
 
     # Fallback to git log: date file was added to completed/ in git history
     try:
@@ -219,9 +274,11 @@ def scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]:
     if not completed_dir.exists():
         return issues
 
+    batch_dates = _batch_completion_dates(completed_dir)
+
     for file_path in sorted(completed_dir.glob("*.md")):
         try:
-            issue = parse_completed_issue(file_path)
+            issue = parse_completed_issue(file_path, batch_dates=batch_dates)
             issues.append(issue)
         except Exception as e:
             logger.warning("Failed to parse %s: %s", file_path, e)

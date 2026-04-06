@@ -16,7 +16,7 @@ outcome_confidence: 86
 ## Location
 
 - **File**: `scripts/little_loops/issue_history/parsing.py`
-- **Line(s)**: 84–113 (`_parse_completion_date`), 208–228 (`scan_completed_issues`) (at scan commit: 96d74cda)
+- **Line(s)**: 84–114 (`_parse_completion_date`), 208–230 (`scan_completed_issues`) (verified current)
 - **Anchor**: `in function _parse_completion_date` and `in function scan_completed_issues`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/96d74cda12b892bac305b81a527c66021302df6a/scripts/little_loops/issue_history/parsing.py#L84)
 - **Code**:
@@ -150,12 +150,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `performance`, `history`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T20:44:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75274ce2-43ca-4a3e-980c-35a20fd15a5a.jsonl`
 - `/ll:confidence-check` - 2026-04-06T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6754a238-4073-43e9-ac63-703a9e538194.jsonl`
 - `/ll:wire-issue` - 2026-04-06T20:37:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51a254ec-b4db-4c0f-b7bc-ad19c6e68d61.jsonl`
 - `/ll:refine-issue` - 2026-04-06T20:33:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cbda785-663c-4888-af21-1ff5ba23b2e1.jsonl`
 - `/ll:format-issue` - 2026-04-06T20:29:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/439192fb-9b5f-4fa1-8d53-a7347a3df92b.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-04-06
+- **Summary**: Added `_batch_completion_dates` to fetch all git add-dates in one subprocess call. Updated `_parse_completion_date` to accept `batch_dates` kwarg and return from the map before falling back to per-file git log. Updated `parse_completed_issue` to thread `batch_dates` through. Updated `scan_completed_issues` to pre-fetch the batch map and pass it into every `parse_completed_issue` call. Added three tests verifying the single-call guarantee, missing-file fallback (None), and frontmatter bypass.
+
 ## Status
 
-**Open** | Created: 2026-04-06 | Priority: P3
+**Completed** | Created: 2026-04-06 | Completed: 2026-04-06 | Priority: P3

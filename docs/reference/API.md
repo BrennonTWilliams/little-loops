@@ -1408,7 +1408,7 @@ Analysis of completed issues for project health insights.
 
 | Function | Purpose |
 |----------|---------|
-| `parse_completed_issue(file_path)` | Parse a single completed issue file |
+| `parse_completed_issue(file_path, *, batch_dates=None)` | Parse a single completed issue file |
 | `scan_completed_issues(completed_dir)` | Scan completed directory for all issues |
 | `scan_active_issues(base_dir, categories)` | Scan active issue directories |
 
