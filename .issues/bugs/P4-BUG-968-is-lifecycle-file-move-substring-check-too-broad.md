@@ -3,6 +3,8 @@ discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-968: `_is_lifecycle_file_move` substring check matches unrelated paths
@@ -88,27 +90,55 @@ return (
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/merge_coordinator.py` — `_is_lifecycle_file_move`
+- `scripts/little_loops/parallel/merge_coordinator.py` — `_is_lifecycle_file_move` (lines 393–403)
+- `scripts/little_loops/parallel/merge_coordinator.py:178–186` — secondary `in`-check block in `_stash_local_changes` for non-rename entries (modified/added files in lifecycle dirs); identical substring pattern, same bug; not addressed in current Implementation Steps _(Wiring pass added by `/ll:wire-issue`:)_
 
 ### Dependent Files (Callers/Importers)
-- `_stash_local_changes` in the same file — calls `_is_lifecycle_file_move`
+- `scripts/little_loops/parallel/merge_coordinator.py:168` — `_stash_local_changes` calls `_is_lifecycle_file_move` to skip lifecycle moves before stash
+- `scripts/little_loops/parallel/merge_coordinator.py:427` — `_commit_pending_lifecycle_moves` calls `_is_lifecycle_file_move` to find uncommitted lifecycle moves before merge
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/parallel/orchestrator.py:26` — imports `MergeCoordinator`; no change needed (private method, signature unchanged)
+- `scripts/little_loops/parallel/__init__.py:37` — re-exports `MergeCoordinator` in `__all__`; no change needed
 
 ### Similar Patterns
 - N/A
 
 ### Tests
-- `scripts/tests/test_merge_coordinator.py` — add test for `_is_lifecycle_file_move` with edge case paths containing `issues/completed/` as a substring
+- `scripts/tests/test_merge_coordinator.py` — existing class `TestLifecycleFileMoveExclusion` (line ~836) covers true-positive and non-rename cases; add a new test method in this class for the false-positive edge cases (e.g., `my-issues/completed/`, `third-party-issues/completed/`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_merge_coordinator.py::TestLifecycleFileMoveExclusion` — **missing: `deferred/` true-positive tests** (`.issues/deferred/`, `issues/deferred/` → should return `True`); none exist anywhere in the file
+- `scripts/tests/test_merge_coordinator.py::TestLifecycleFileMoveExclusion` — **missing: `deferred/` false-positive boundary** (`my-issues/deferred/file.md` → should return `False` after fix)
+- `scripts/tests/test_merge_coordinator.py::TestLifecycleFileMoveEdgeCases` (line ~2686) — edge case class exists; note this as the alternate location for boundary tests
+- Convention: the existing file uses grouped `assert` calls inside single test methods (not `@pytest.mark.parametrize`); new tests should follow this style
 
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/MERGE-COORDINATOR.md:161` — method table describes `_is_lifecycle_file_move` as "Identifies issue file renames to completed/" — omits `deferred/`; update description after fix
+- `docs/development/MERGE-COORDINATOR.md:550` — battle-tested evolution log (`BUG-018` entry); per project convention, add a BUG-968 entry here once fixed
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. Replace unanchored `in` substring checks with `startswith` checks in `_is_lifecycle_file_move`
-2. Add parametrized test cases covering: true positive (`.issues/completed/`), root-relative (`issues/completed/`), false positive (e.g., `my-issues/completed/`)
+1. In `merge_coordinator.py:395–404`, replace the 8-clause `return` expression in `_is_lifecycle_file_move` with 4 `startswith` checks (`.issues/completed/`, `.issues/deferred/`, `issues/completed/`, `issues/deferred/`), dropping all `in` substring checks
+2. In `scripts/tests/test_merge_coordinator.py`, add a new test method to `TestLifecycleFileMoveExclusion` that asserts `_is_lifecycle_file_move` returns `False` for `my-issues/completed/` and `third-party-issues/completed/` paths
+3. Run `python -m pytest scripts/tests/test_merge_coordinator.py::TestLifecycleFileMoveExclusion -v` to confirm all cases pass
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+4. In `merge_coordinator.py:178–186`, fix the secondary `in`-check block in `_stash_local_changes` — same substring pattern applied to non-rename entries (modified/added files in lifecycle dirs); replace all `in` checks with `startswith` to mirror the fix in step 1
+5. In `scripts/tests/test_merge_coordinator.py::TestLifecycleFileMoveExclusion`, add tests for `deferred/` paths:
+   - True-positive: `.issues/bugs/file.md -> .issues/deferred/file.md` → `True`
+   - True-positive: `issues/bugs/file.md -> issues/deferred/file.md` → `True`
+   - False-positive boundary: `my-issues/deferred/file.md -> my-issues/deferred/v2.md` → `False`
+6. Update `docs/development/MERGE-COORDINATOR.md:161` — change method description from "renames to completed/" to "renames to completed/ or deferred/"
+7. Update `docs/development/MERGE-COORDINATOR.md:550` — add BUG-968 entry to the battle-tested evolution log
 
 ## Impact
 
@@ -126,6 +156,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `parallel`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6b83689-e38b-4d5c-9bf2-3397041e577d.jsonl`
+- `/ll:wire-issue` - 2026-04-06T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:refine-issue` - 2026-04-06T19:03:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b8e371d7-b665-4469-820b-3fefb8f3907f.jsonl`
+- `/ll:format-issue` - 2026-04-06T19:02:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b62b3af5-f0ff-40bf-954c-77e65503e981.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Status
