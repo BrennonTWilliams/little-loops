@@ -1047,6 +1047,56 @@ class TestLifecycleFileMoveExclusion:
         assert result is False
         assert coordinator._stash_active is False
 
+    def test_is_lifecycle_file_move_rejects_substring_false_positives(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should NOT match paths where issues/completed/ appears as a substring mid-path."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # These paths contain "issues/completed/" as a substring but are NOT lifecycle moves
+        assert not coordinator._is_lifecycle_file_move(
+            "R  src/old.py -> my-issues/completed/file.py"
+        )
+        assert not coordinator._is_lifecycle_file_move(
+            "R  src/old.py -> third-party-issues/completed/patch.md"
+        )
+        assert not coordinator._is_lifecycle_file_move(
+            "R  src/old.py -> my-issues/deferred/file.md"
+        )
+        assert not coordinator._is_lifecycle_file_move(
+            "R  src/old.py -> third-party-issues/deferred/note.md"
+        )
+
+    def test_is_lifecycle_file_move_detects_deferred_moves(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should detect renames moving files into the deferred directory."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # True-positive: moves into .issues/deferred/ (with dot prefix)
+        assert coordinator._is_lifecycle_file_move(
+            "R  .issues/bugs/P1-BUG-001.md -> .issues/deferred/P1-BUG-001.md"
+        )
+        assert coordinator._is_lifecycle_file_move(
+            "R  .issues/features/P3-FEAT-007.md -> .issues/deferred/P3-FEAT-007.md"
+        )
+
+        # True-positive: moves into issues/deferred/ (without dot prefix)
+        assert coordinator._is_lifecycle_file_move(
+            "R  issues/bugs/P1-BUG-001.md -> issues/deferred/P1-BUG-001.md"
+        )
+
+        # False-positive boundary: path merely contains "deferred/" as a substring
+        assert not coordinator._is_lifecycle_file_move(
+            "R  my-issues/deferred/v1.md -> my-issues/deferred/v2.md"
+        )
+
 
 class TestCommitPendingLifecycleMoves:
     """Tests for _commit_pending_lifecycle_moves functionality (BUG-018 fix)."""

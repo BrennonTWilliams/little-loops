@@ -173,16 +173,14 @@ class MergeCoordinator:
             file_path = line[3:].split(" -> ")[-1].strip()
             if file_path == state_file_str or file_path.endswith(state_file_name):
                 continue  # Skip state file - orchestrator manages it independently
-            # Skip files in completed/deferred directory - these are lifecycle-managed
-            # Handle both .issues/completed/ (with dot) and issues/completed/ (without dot)
+            # Skip files in completed/deferred directory - these are lifecycle-managed.
+            # Handle both .issues/completed/ (with dot) and issues/completed/ (without dot).
+            # Use startswith to anchor the match and avoid false positives on paths like
+            # "my-issues/completed/file.py" that contain the substring but are unrelated.
             if (
-                ".issues/completed/" in file_path
-                or file_path.startswith(".issues/completed/")
-                or "issues/completed/" in file_path
-                or file_path.startswith("issues/completed/")
-                or ".issues/deferred/" in file_path
+                file_path.startswith(".issues/completed/")
                 or file_path.startswith(".issues/deferred/")
-                or "issues/deferred/" in file_path
+                or file_path.startswith("issues/completed/")
                 or file_path.startswith("issues/deferred/")
             ):
                 self.logger.debug(
@@ -391,15 +389,13 @@ class MergeCoordinator:
 
         dest_path = parts[1].strip()
 
-        # Check if destination is in completed or deferred directory (with or without dot prefix)
+        # Check if destination is in completed or deferred directory (with or without dot prefix).
+        # Use startswith to anchor the match to the path root, preventing false positives on
+        # paths like "my-issues/completed/file.py" that contain the substring but are unrelated.
         return (
-            ".issues/completed/" in dest_path
-            or dest_path.startswith(".issues/completed/")
-            or "issues/completed/" in dest_path
-            or dest_path.startswith("issues/completed/")
-            or ".issues/deferred/" in dest_path
+            dest_path.startswith(".issues/completed/")
             or dest_path.startswith(".issues/deferred/")
-            or "issues/deferred/" in dest_path
+            or dest_path.startswith("issues/completed/")
             or dest_path.startswith("issues/deferred/")
         )
 

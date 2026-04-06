@@ -158,7 +158,7 @@ The coordinator implements 7 specialized error detectors:
 | `_is_unmerged_files_error()` | Detects pre-existing unmerged files |
 | `_is_rebase_in_progress()` | Checks for incomplete rebase |
 | `_detect_conflict_commit()` | Extracts commit hash from rebase conflict output |
-| `_is_lifecycle_file_move()` | Identifies issue file renames to completed/ |
+| `_is_lifecycle_file_move()` | Identifies issue file renames to completed/ or deferred/ |
 
 ### Index Recovery System
 
@@ -556,6 +556,7 @@ This component has evolved through real-world usage with issues discovered and f
 - **BUG-180**: Stale worktree base causing merge failures
 - **BUG-930**: Done/Active counts stuck at 0 in parallel merge path — fixed by calling `mark_completed()`/`mark_failed()` after `wait_for_completion()` in the parallel path, mirroring the sequential merge pattern
 - **BUG-931**: Commit leak recovery skips main reset when main has advanced — replaced warning-and-return in `_recover_committed_leaks()` with a surgical `git rebase --onto` to reapply work commits on top of the new main baseline
+- **BUG-968**: `_is_lifecycle_file_move` substring check too broad — replaced unanchored `in` checks with `startswith` in both `_is_lifecycle_file_move` and the secondary block in `_stash_local_changes`, preventing false positives on paths like `my-issues/completed/file.py`
 
 Each issue added sophistication to handle edge cases that appear in production use.
 

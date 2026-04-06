@@ -16,7 +16,7 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/parallel/merge_coordinator.py`
-- **Line(s)**: 393–403 (at scan commit: 96d74cda)
+- **Line(s)**: 395–404 (updated from 393–403 at scan commit: 96d74cda)
 - **Anchor**: `in function MergeCoordinator._is_lifecycle_file_move`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/96d74cda12b892bac305b81a527c66021302df6a/scripts/little_loops/parallel/merge_coordinator.py#L393-L403)
 - **Code**:
@@ -156,12 +156,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `parallel`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-06T19:12:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/420e9f9b-7fa3-4f03-ad77-42422a7ce8b6.jsonl`
 - `/ll:confidence-check` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6b83689-e38b-4d5c-9bf2-3397041e577d.jsonl`
 - `/ll:wire-issue` - 2026-04-06T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-04-06T19:03:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b8e371d7-b665-4469-820b-3fefb8f3907f.jsonl`
 - `/ll:format-issue` - 2026-04-06T19:02:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b62b3af5-f0ff-40bf-954c-77e65503e981.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
+## Resolution
+
+**Fixed** | Resolved: 2026-04-06
+
+Replaced all unanchored `in` substring checks with `startswith` in both `_is_lifecycle_file_move` (lines 395–404) and the secondary block in `_stash_local_changes` (lines 178–186). Added tests for false-positive edge cases (`my-issues/completed/`, `third-party-issues/completed/`) and missing `deferred/` true-positive and boundary cases. Updated `docs/development/MERGE-COORDINATOR.md` method table and battle-tested evolution log.
+
+## Session Log
+- `/ll:manage-issue` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
 ## Status
 
-**Open** | Created: 2026-04-06 | Priority: P4
+**Completed** | Created: 2026-04-06 | Priority: P4
