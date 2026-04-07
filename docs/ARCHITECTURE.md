@@ -925,7 +925,7 @@ flowchart TB
 4. **Fresh session** spawned with continuation prompt
 5. **Work continues** seamlessly from saved state
 
-**Configuration** (disabled by default):
+**Configuration** (enabled by default):
 ```json
 {
   "context_monitor": {

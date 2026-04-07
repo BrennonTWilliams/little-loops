@@ -327,23 +327,23 @@ grep state_file .ll/ll-config.json
 
 **Symptom**: No warnings appear when context fills up
 
-**Cause**: Context monitoring is disabled by default
+**Cause**: Hook not installed or `jq` missing
 
 **Solution**:
-1. Enable in `.ll/ll-config.json`:
+1. Verify hook is installed (run `/ll:init` or check `hooks/hooks.json` is active)
+2. Verify `jq` is installed (required for the hook):
+   ```bash
+   jq --version
+   ```
+3. Check `context_monitor` is not explicitly disabled in `.ll/ll-config.json`:
    ```json
    {
      "context_monitor": {
-       "enabled": true,
-       "auto_handoff_threshold": 80
+       "enabled": true
      }
    }
    ```
-2. Verify `jq` is installed (required for the hook):
-   ```bash
-   which jq
-   ```
-3. Check state file is being updated:
+4. Check state file is being updated:
    ```bash
    cat .ll/ll-context-state.json
    ```

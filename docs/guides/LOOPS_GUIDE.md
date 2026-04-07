@@ -297,7 +297,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 
 | Loop | Description |
 |------|-------------|
-| `agent-eval-improve` | Evaluate an AI agent on a task suite, score outputs, identify failure patterns, and iteratively refine agent config/prompts until quality target is reached |
+| `agent-eval-improve` | Evaluate an AI agent on a task suite, score outputs, identify failure patterns, and iteratively refine agent config/prompts until quality target is reached. Exits `done` on convergence or no actionable patterns; exits `failed` when any state exhausts its `max_retries` |
 | `rl-bandit` | Epsilon-greedy bandit loop — explore vs exploit rounds routing on reward convergence |
 | `rl-coding-agent` | Policy+RLHF composite loop for agentic coding — outer policy loop adapts coding strategy while inner RLHF loop polishes each artifact to a quality threshold |
 | `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
