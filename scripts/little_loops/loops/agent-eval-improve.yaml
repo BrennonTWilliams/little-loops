@@ -24,7 +24,7 @@ states:
     capture: eval_results
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: failed
     next: score_results
   score_results:
     action_type: prompt
@@ -37,7 +37,7 @@ states:
     capture: scores
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: failed
     next: analyze_failures
   analyze_failures:
     action_type: prompt
@@ -50,7 +50,7 @@ states:
     capture: failure_analysis
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: failed
     evaluate:
       type: llm_structured
       prompt: >
@@ -60,6 +60,7 @@ states:
         no patterns emerged, or no actionable fixes were identified.
     on_yes: route_quality
     on_no: done
+    on_error: failed
   route_quality:
     action_type: shell
     action: |
@@ -73,6 +74,7 @@ states:
       target: done
       progress: refine_config
       stall: done
+      error: failed
   refine_config:
     action_type: prompt
     timeout: 600
@@ -85,7 +87,9 @@ states:
       Document what was changed and why.
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: failed
     next: run_eval
   done:
+    terminal: true
+  failed:
     terminal: true
