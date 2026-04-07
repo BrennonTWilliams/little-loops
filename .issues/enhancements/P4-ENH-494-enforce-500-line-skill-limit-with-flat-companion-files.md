@@ -2,8 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
-confidence_score: 95
-outcome_confidence: 63
+confidence_score: 98
+outcome_confidence: 71
 ---
 
 # ENH-494: Enforce 500-Line SKILL.md Limit with Flat Companion Files
@@ -53,7 +53,12 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
    - `manage-issue`: remove duplicated Arguments block at `SKILL.md:449–516`
 3. Add inline `See [companion.md](companion.md) for <description>` links at each extraction point (follow pattern from `format-issue/SKILL.md:190` or `review-loop/SKILL.md:69`); add `## Additional Resources` terminal section (follow `create-loop/SKILL.md:295–299`)
 4. Update `CONTRIBUTING.md:436–462` ("Adding Skills" section) with 500-line limit, companion-file naming convention, and referencing patterns
-5. Optionally add `ll-verify-skills` lint command: extend `scripts/little_loops/doc_counts.py:61–79` (`count_files()` via `rglob("SKILL.md")`) and register CLI entry point in `scripts/pyproject.toml:57–58` — follow `ll-verify-docs` pattern in `scripts/little_loops/cli/docs.py:9–98`; **do not extend `ll-check-links`** (that tool validates URLs, not file sizes)
+### Wiring Phase (added by `/ll:wire-issue`)
+
+5. Update `docs/ARCHITECTURE.md:104–106,115–116,136–138` — add new companion filenames to the verbose file-level directory tree for `audit-claude-config/`, `confidence-check/`, and `init/`
+6. Add companion file existence tests (follow `test_improve_claude_md_skill.py:29–34` pattern) asserting that all 3 new companion files exist on disk after implementation
+
+_The `ll-verify-skills` CLI lint command is tracked separately in ENH-977 (blocked by this issue)._
 
 ### Codebase Research Findings
 
@@ -136,17 +141,22 @@ _Added by `/ll:refine-issue` 2026-04-07 — codebase pattern analysis. Decision 
 - `skills/init/<companion>.md` — Display Summary template, CLAUDE.md blocks, Completion Message
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/doc_counts.py:61–79` — `count_files()` uses `rglob("SKILL.md")` to enumerate skills; natural hook for a line-count check extension
-- `scripts/little_loops/cli/docs.py:9–98` — `main_verify_docs()` pattern to follow when adding `ll-verify-skills` CLI entry point
-- `scripts/pyproject.toml:57–58` — `ll-verify-docs` and `ll-check-links` registrations; add `ll-verify-skills` here if implementing optional lint check
+
+_No code-level callers. SKILL.md files are consumed directly by Claude Code when skills are activated._
 
 ### Tests
-- `wc -l skills/*/SKILL.md` should show all files ≤ 500 lines
-- `scripts/tests/test_doc_counts.py` — pattern to follow for testing a skill-size checker
-- `scripts/tests/test_link_checker.py` — structural reference for doc-validation test patterns
+- `wc -l skills/*/SKILL.md` should show all files ≤ 500 lines after implementation
+- New (required): companion file existence tests following `test_improve_claude_md_skill.py:29–34` pattern — assert that `skills/audit-claude-config/<companion>.md`, `skills/confidence-check/<companion>.md`, and `skills/init/<companion>.md` exist on disk
+- `scripts/tests/test_skill_expander.py:238–261` — `TestExpandSkillAgainstRealManageIssue` reads the real `skills/manage-issue/SKILL.md`; passes unchanged after trimming (no config tokens removed), but monitor if any new companion file introduces unresolved `{{config.*}}` references
 
 ### Documentation
 - `CONTRIBUTING.md:436–462` — "Adding Skills" section; insert 500-line limit, companion-file naming convention, and referencing pattern
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md:104–106` — verbose file-level directory tree lists `audit-claude-config/` companion files by name (`report-template.md`); add new companion filename when created
+- `docs/ARCHITECTURE.md:115–116` — tree shows `confidence-check/` as `└── SKILL.md` only; update to two-item list with new companion file
+- `docs/ARCHITECTURE.md:136–138` — tree shows `init/` with `SKILL.md` + `interactive.md`; add new companion file as third entry
+
 
 ## Impact
 
@@ -166,6 +176,8 @@ _Added by `/ll:refine-issue` 2026-04-07 — codebase pattern analysis. Decision 
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/130838b8-fd77-4b29-856d-341e6961f971.jsonl`
+- `/ll:wire-issue` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88123d93-05ff-43e6-a74f-96331f455d15.jsonl`
 - `/ll:confidence-check` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/418318f8-5c1d-44e5-ba71-c29bc3d183f0.jsonl`
 - `/ll:refine-issue` - 2026-04-07T20:50:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88123d93-05ff-43e6-a74f-96331f455d15.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
@@ -255,3 +267,5 @@ Update first — Implement ENH-493 (rewrite skill descriptions as trigger docume
 Update first - Blocked by ENH-493 (rewrite skill descriptions as trigger documents). Content must be split into `references/` directories only after the trigger description style is finalized, so reorganized reference material is consistent with the new description style. Scope has grown to 3 violating skills (audit-claude-config: 708L, confidence-check: 604L, manage-issue: 513L). Implementation is straightforward once ENH-493 resolves.
 
 ## Blocks
+
+- ENH-977: Add `ll-verify-skills` CLI lint command
