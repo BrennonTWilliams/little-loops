@@ -441,6 +441,7 @@ ISSUE REFINED: [ISSUE-ID]
 - [Modified | Not modified (--dry-run)]
 
 ## NEXT STEPS
+- Run `/ll:wire-issue [ID]` to add integration wiring (callers, entry points, test hooks)
 - Run `/ll:ready-issue [ID]` to validate the enriched issue
 - Run `/ll:manage-issue` to implement
 - If `/ll:ready-issue` continues to score NOT_READY after 2+ refinement passes, run `/ll:issue-size-review [ID]` — a persistent readiness gap often means the issue is too large or poorly scoped, not just under-researched

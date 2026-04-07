@@ -2,6 +2,7 @@
 id: ENH-981
 discovered_date: 2026-04-07
 discovered_by: capture-issue
+testable: false
 ---
 
 # ENH-981: Add /ll:wire-issue as first Next Steps item in refine-issue
@@ -68,6 +69,12 @@ Edit `commands/refine-issue.md`: locate the `Next Steps` bullet list and prepend
 3. Insert `- Run \`/ll:wire-issue [ID]\` to add integration wiring (callers, entry points, test hooks)` as the first bullet, before the `/ll:ready-issue` bullet
 4. Verify the section reads in order: wire-issue → ready-issue → manage-issue
 
+## Scope Boundaries
+
+- Only `commands/refine-issue.md` Next Steps section is in scope
+- No changes to `skills/capture-issue/SKILL.md` or other workflow diagrams (those are separate issues if desired)
+- No changes to the workflow flow diagrams or integration tables in refine-issue.md
+
 ## Impact
 
 - **Priority**: P3 - Low-friction doc fix that improves workflow discoverability
@@ -79,15 +86,20 @@ Edit `commands/refine-issue.md`: locate the `Next Steps` bullet list and prepend
 
 _No documents linked._
 
+## Resolution
+
+Added `/ll:wire-issue [ID]` as the first bullet in the `## NEXT STEPS` section of `commands/refine-issue.md` (line 444), before the existing `/ll:ready-issue` bullet. The section now reads: wire-issue → ready-issue → manage-issue.
+
 ## Labels
 
-`enhancement`, `captured`
+`enhancement`, `completed`
 
 ## Status
 
-**Open** | Created: 2026-04-07 | Priority: P3
+**Completed** | Created: 2026-04-07 | Completed: 2026-04-07 | Priority: P3
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-07T18:36:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aff59e17-bf42-492e-855a-73322684e41f.jsonl`
 - `/ll:capture-issue` - 2026-04-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a14635ac-d01b-4670-8032-74bc9a150bc1.jsonl`
