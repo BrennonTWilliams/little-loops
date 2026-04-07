@@ -3,8 +3,17 @@
   "_meta": {
     "name": "Python (Generic)",
     "description": "Standard Python project with pytest, ruff, and mypy",
-    "detect": ["pyproject.toml", "setup.py", "requirements.txt"],
-    "tags": ["python", "pytest", "ruff", "mypy"]
+    "detect": [
+      "pyproject.toml",
+      "setup.py",
+      "requirements.txt"
+    ],
+    "tags": [
+      "python",
+      "pytest",
+      "ruff",
+      "mypy"
+    ]
   },
   "project": {
     "src_dir": "src/",
@@ -16,7 +25,10 @@
     "run_cmd": null
   },
   "scan": {
-    "focus_dirs": ["src/", "tests/"],
+    "focus_dirs": [
+      "src/",
+      "tests/"
+    ],
     "exclude_patterns": [
       "**/__pycache__/**",
       "**/.venv/**",
@@ -29,12 +41,27 @@
   "issues": {
     "base_dir": ".issues",
     "categories": {
-      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
-      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+      "bugs": {
+        "prefix": "BUG",
+        "dir": "bugs",
+        "action": "fix"
+      },
+      "features": {
+        "prefix": "FEAT",
+        "dir": "features",
+        "action": "implement"
+      },
+      "enhancements": {
+        "prefix": "ENH",
+        "dir": "enhancements",
+        "action": "improve"
+      }
     }
   },
   "product": {
     "enabled": false
+  },
+  "context_monitor": {
+    "enabled": true
   }
 }

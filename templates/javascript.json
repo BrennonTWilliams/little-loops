@@ -3,9 +3,17 @@
   "_meta": {
     "name": "JavaScript (Node.js)",
     "description": "JavaScript/Node.js project with npm tooling",
-    "detect": ["package.json"],
-    "detect_exclude": ["tsconfig.json"],
-    "tags": ["javascript", "node", "npm"]
+    "detect": [
+      "package.json"
+    ],
+    "detect_exclude": [
+      "tsconfig.json"
+    ],
+    "tags": [
+      "javascript",
+      "node",
+      "npm"
+    ]
   },
   "project": {
     "src_dir": "src/",
@@ -17,7 +25,12 @@
     "run_cmd": "npm start"
   },
   "scan": {
-    "focus_dirs": ["src/", "lib/", "tests/", "test/"],
+    "focus_dirs": [
+      "src/",
+      "lib/",
+      "tests/",
+      "test/"
+    ],
     "exclude_patterns": [
       "**/node_modules/**",
       "**/dist/**",
@@ -28,12 +41,27 @@
   "issues": {
     "base_dir": ".issues",
     "categories": {
-      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
-      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+      "bugs": {
+        "prefix": "BUG",
+        "dir": "bugs",
+        "action": "fix"
+      },
+      "features": {
+        "prefix": "FEAT",
+        "dir": "features",
+        "action": "implement"
+      },
+      "enhancements": {
+        "prefix": "ENH",
+        "dir": "enhancements",
+        "action": "improve"
+      }
     }
   },
   "product": {
     "enabled": false
+  },
+  "context_monitor": {
+    "enabled": true
   }
 }

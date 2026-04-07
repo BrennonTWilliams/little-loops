@@ -137,7 +137,19 @@ After Step 10 (Update Allowed Tools), add an optional **Install Hooks** step usi
 
 ## Status
 
-**Open** | Created: 2026-04-07 | Priority: P2
+**Resolved** | Created: 2026-04-07 | Resolved: 2026-04-07 | Priority: P2
+
+## Resolution
+
+All three root causes addressed:
+
+1. **BUG fixed** (`hooks/scripts/context-monitor.sh`): Removed the `if [ -f ".ll/ll-continue-prompt.md" ]` block from `read_state()` (lines 151–153). New sessions always initialize `handoff_complete=false`; the existing post-threshold mtime check in `main()` handles mid-session completion correctly.
+
+2. **Config default updated** (`config-schema.json`, all 9 project templates): Changed `context_monitor.enabled` default from `false` to `true` in the schema. Added `"context_monitor": { "enabled": true }` to all 9 project templates (`generic`, `python-generic`, `typescript`, `javascript`, `go`, `rust`, `dotnet`, `java-maven`, `java-gradle`).
+
+3. **UX gap closed** (`skills/init/SKILL.md`): Added Step 10.5 "Install Hooks" between Step 10 (Update Allowed Tools) and Step 11 (Update CLAUDE.md), following the same pattern as `/ll:configure hooks install`.
+
+**Test updated**: `test_fresh_state_with_handoff_file_sets_handoff_complete_true` renamed and inverted to `test_fresh_state_with_handoff_file_sets_handoff_complete_false` to assert the now-correct behavior.
 
 ---
 
@@ -152,6 +164,9 @@ _Added by `/ll:confidence-check` on 2026-04-07_
 - Root Cause 2 description is slightly inaccurate: the 9 project templates do NOT currently contain a `context_monitor` section at all — they inherit the schema default of `false`. Fix 2 should **add** `"context_monitor": { "enabled": true }` to each template (not change an existing `false` to `true`). Only `config-schema.json` needs its `default` changed from `false` to `true`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abe81a48-a273-4e2f-a3a9-b810a4e39861.jsonl`
+- `/ll:ready-issue` - 2026-04-07T19:35:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf8f51e0-e38e-4de5-9384-4face842c9bd.jsonl`
+- `/ll:ready-issue` - 2026-04-07T19:35:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf8f51e0-e38e-4de5-9384-4face842c9bd.jsonl`
 - `/ll:refine-issue` - 2026-04-07T19:30:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c9a2724-b9e4-42d4-b1b4-4bc2c2c47b3f.jsonl`
 - `/ll:verify-issues` - 2026-04-07T19:17:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/653d74f3-fee7-47f3-a22d-96f6bc8e8e29.jsonl`
 - `/ll:capture-issue` - 2026-04-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c6be417-02b7-4fc4-ae0c-cb10fe731c0a.jsonl`

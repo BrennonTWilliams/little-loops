@@ -528,10 +528,14 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
-    def test_fresh_state_with_handoff_file_sets_handoff_complete_true(
+    def test_fresh_state_with_handoff_file_sets_handoff_complete_false(
         self, hook_script: Path, test_config: Path, tmp_path: Path
     ):
-        """Fresh state initializes handoff_complete=true when ll-continue-prompt.md exists."""
+        """Fresh state initializes handoff_complete=false even when ll-continue-prompt.md exists.
+
+        The continue-prompt file persists across sessions and must NOT suppress reminders in a
+        new session. The post-threshold mtime check in main() handles marking complete mid-session.
+        """
         import os
 
         original_dir = os.getcwd()
@@ -564,8 +568,9 @@ class TestContextMonitor:
             state_file = tmp_path / "ll-context-state.json"
             assert state_file.exists()
             state = json.loads(state_file.read_text())
-            assert state["handoff_complete"] is True, (
-                f"Expected handoff_complete=true when handoff file exists, got: {state['handoff_complete']}"
+            assert state["handoff_complete"] is False, (
+                f"Expected handoff_complete=false on fresh state even when handoff file exists, "
+                f"got: {state['handoff_complete']}"
             )
 
         finally:

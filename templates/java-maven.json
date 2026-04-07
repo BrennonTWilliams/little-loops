@@ -3,8 +3,14 @@
   "_meta": {
     "name": "Java (Maven)",
     "description": "Java project with Maven build system",
-    "detect": ["pom.xml"],
-    "tags": ["java", "maven", "jvm"]
+    "detect": [
+      "pom.xml"
+    ],
+    "tags": [
+      "java",
+      "maven",
+      "jvm"
+    ]
   },
   "project": {
     "src_dir": "src/main/java/",
@@ -16,7 +22,10 @@
     "run_cmd": "mvn exec:java"
   },
   "scan": {
-    "focus_dirs": ["src/main/java/", "src/test/java/"],
+    "focus_dirs": [
+      "src/main/java/",
+      "src/test/java/"
+    ],
     "exclude_patterns": [
       "**/target/**",
       "**/.idea/**",
@@ -26,12 +35,27 @@
   "issues": {
     "base_dir": ".issues",
     "categories": {
-      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
-      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+      "bugs": {
+        "prefix": "BUG",
+        "dir": "bugs",
+        "action": "fix"
+      },
+      "features": {
+        "prefix": "FEAT",
+        "dir": "features",
+        "action": "implement"
+      },
+      "enhancements": {
+        "prefix": "ENH",
+        "dir": "enhancements",
+        "action": "improve"
+      }
     }
   },
   "product": {
     "enabled": false
+  },
+  "context_monitor": {
+    "enabled": true
   }
 }

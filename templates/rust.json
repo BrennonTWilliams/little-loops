@@ -3,8 +3,13 @@
   "_meta": {
     "name": "Rust",
     "description": "Rust project with Cargo tooling",
-    "detect": ["Cargo.toml"],
-    "tags": ["rust", "cargo"]
+    "detect": [
+      "Cargo.toml"
+    ],
+    "tags": [
+      "rust",
+      "cargo"
+    ]
   },
   "project": {
     "src_dir": "src/",
@@ -16,7 +21,11 @@
     "run_cmd": "cargo run"
   },
   "scan": {
-    "focus_dirs": ["src/", "tests/", "benches/"],
+    "focus_dirs": [
+      "src/",
+      "tests/",
+      "benches/"
+    ],
     "exclude_patterns": [
       "**/target/**"
     ]
@@ -24,12 +33,27 @@
   "issues": {
     "base_dir": ".issues",
     "categories": {
-      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
-      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+      "bugs": {
+        "prefix": "BUG",
+        "dir": "bugs",
+        "action": "fix"
+      },
+      "features": {
+        "prefix": "FEAT",
+        "dir": "features",
+        "action": "implement"
+      },
+      "enhancements": {
+        "prefix": "ENH",
+        "dir": "enhancements",
+        "action": "improve"
+      }
     }
   },
   "product": {
     "enabled": false
+  },
+  "context_monitor": {
+    "enabled": true
   }
 }

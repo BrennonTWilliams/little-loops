@@ -145,12 +145,10 @@ read_state() {
     else
         # Ensure directory exists
         mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
-        # If a handoff file already exists from a prior session, start with handoff_complete=true
-        # so the hook does not re-fire reminders for a handoff that was already completed.
+        # Always start new sessions with handoff_complete=false. The continue-prompt file persists
+        # across sessions and must NOT suppress reminders in a new session. The post-threshold
+        # mtime check in main() handles marking complete mid-session.
         local handoff_complete="false"
-        if [ -f ".ll/ll-continue-prompt.md" ]; then
-            handoff_complete="true"
-        fi
         local init_state
         init_state=$(cat <<EOF
 {

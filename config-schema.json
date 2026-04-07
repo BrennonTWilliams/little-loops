@@ -446,12 +446,12 @@
     },
     "context_monitor": {
       "type": "object",
-      "description": "Proactive context monitoring with automatic handoff before hitting limits (disabled by default)",
+      "description": "Proactive context monitoring with automatic handoff before hitting limits",
       "properties": {
         "enabled": {
           "type": "boolean",
           "description": "Enable proactive context monitoring with auto-handoff",
-          "default": false
+          "default": true
         },
         "auto_handoff_threshold": {
           "type": "integer",
