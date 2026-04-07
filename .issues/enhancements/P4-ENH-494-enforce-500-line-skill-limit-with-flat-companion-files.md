@@ -2,27 +2,27 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
-confidence_score: 86
-outcome_confidence: 72
+confidence_score: 95
+outcome_confidence: 63
 ---
 
-# ENH-494: Enforce 500-Line SKILL.md Limit with references/ Subdirectory Pattern
+# ENH-494: Enforce 500-Line SKILL.md Limit with Flat Companion Files
 
 ## Summary
 
-Skills should stay under 500 lines to minimize context consumption when loaded. Overflow content belongs in a `skills/<name>/references/` subdirectory that is loaded on demand. This is a direct application of progressive disclosure: skills should be cheap to load, with full reference material available but not forced into context.
+Skills should stay under 500 lines to minimize context consumption when loaded. Overflow content belongs in flat companion files alongside `SKILL.md` in `skills/<name>/` — the established pattern already used by 11 of 25 skills. This is a direct application of progressive disclosure: skills should be cheap to load, with full reference material available but not forced into context.
 
 ## Current Behavior
 
 Some skills (e.g., `manage-issue`, `review-sprint`, `confidence-check`) likely exceed 500 lines. All skill content is loaded into context whenever the skill is active, regardless of whether the full content is needed for the current task.
 
-There is no `references/` subdirectory convention and no enforcement of a line limit.
+There is no enforced line limit, and the existing flat companion-file pattern is not consistently applied to oversized skills.
 
 ## Expected Behavior
 
 - All `SKILL.md` files remain at or under 500 lines
-- Detailed reference material, examples, and extended documentation live in `skills/<name>/references/*.md`
-- The `SKILL.md` links to reference files with clear "see also" pointers
+- Overflow content lives in flat companion files directly in `skills/<name>/` alongside `SKILL.md`
+- The `SKILL.md` links to companion files with clear "see also" pointers
 - A linting check (or documentation convention) establishes 500 lines as the limit
 
 ## Motivation
@@ -31,70 +31,122 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 
 ## Proposed Solution
 
-1. Audit all 16 `skills/*/SKILL.md` files for line count: `wc -l skills/*/SKILL.md`
+1. Audit all skills for line count: `wc -l skills/*/SKILL.md`
 2. For any skill exceeding 500 lines, identify what content is "reference" vs. "operational"
-3. Create `skills/<name>/references/` directories for overflow content
-4. Add "See also" links in `SKILL.md` pointing to reference files
+3. Extract overflow to flat companion files in `skills/<name>/` (e.g., `scoring.md`, `templates.md`)
+4. Add "See also" links in `SKILL.md` pointing to companion files
 5. Document the 500-line convention in `CONTRIBUTING.md`
-6. Optionally add a `ll-check-links` or similar lint check for skill size
+6. Optionally add a `ll-verify-skills` lint command to enforce the limit in CI
 
 ## Scope Boundaries
 
-- **In scope**: Auditing skill sizes, extracting overflow to `references/`, documenting the convention
+- **In scope**: Auditing skill sizes, extracting overflow to flat companion files, documenting the convention
 - **Out of scope**: Changing skill logic or rewriting skill content substantively
 
 ## Implementation Steps
 
 1. ~~Run `wc -l skills/*/SKILL.md | sort -n` to identify oversized skills~~ (**Done — see Research Findings below**)
-2. For each violating skill, extract reference/example sections to `references/` files
-3. Add `## See Also` section in `SKILL.md` with links
-4. Update `CONTRIBUTING.md` with the 500-line limit and `references/` pattern
-5. Optionally extend `ll-check-links` to also check skill line counts
+2. Extract overflow content per skill using the flat companion-file pattern:
+   - `audit-claude-config`: extract `SKILL.md:231–407` (Task 3 sub-agent prompt) + `SKILL.md:261–315` (settings table) → new companion file
+   - `confidence-check`: extract `SKILL.md:189–385` (scoring criteria) + `SKILL.md:530–615` (output templates) → new companion file
+   - `init`: extract `SKILL.md:130–201` (Display Summary template), `SKILL.md:505–550` (CLAUDE.md blocks), `SKILL.md:554–583` (Completion Message) → new companion file
+   - `manage-issue`: remove duplicated Arguments block at `SKILL.md:449–516`
+3. Add inline `See [companion.md](companion.md) for <description>` links at each extraction point (follow pattern from `format-issue/SKILL.md:190` or `review-loop/SKILL.md:69`); add `## Additional Resources` terminal section (follow `create-loop/SKILL.md:295–299`)
+4. Update `CONTRIBUTING.md:436–462` ("Adding Skills" section) with 500-line limit, companion-file naming convention, and referencing patterns
+5. Optionally add `ll-verify-skills` lint command: extend `scripts/little_loops/doc_counts.py:61–79` (`count_files()` via `rglob("SKILL.md")`) and register CLI entry point in `scripts/pyproject.toml:57–58` — follow `ll-verify-docs` pattern in `scripts/little_loops/cli/docs.py:9–98`; **do not extend `ll-check-links`** (that tool validates URLs, not file sizes)
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — Skill line count audit:_
+_Added by `/ll:refine-issue` — Skill line count audit (updated 2026-04-07):_
 
 **Current line counts (descending):**
 ```
 711  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 211 lines
-600  skills/confidence-check/SKILL.md     ← EXCEEDS by 100 lines
+660  skills/confidence-check/SKILL.md     ← EXCEEDS by 160 lines  (+60 since 2026-04-02)
+617  skills/init/SKILL.md                 ← EXCEEDS by 117 lines  (+33 since 2026-04-02)
 516  skills/manage-issue/SKILL.md         ← EXCEEDS by 16 lines
-386  skills/init/SKILL.md
-371  skills/capture-issue/SKILL.md
-356  skills/format-issue/SKILL.md
-335  skills/audit-docs/SKILL.md
-305  skills/create-loop/SKILL.md
-304  skills/configure/SKILL.md
-295  skills/workflow-automation-proposer/SKILL.md
+480  skills/wire-issue/SKILL.md
+431  skills/format-issue/SKILL.md
+422  skills/go-no-go/SKILL.md
+421  skills/review-loop/SKILL.md
+377  skills/capture-issue/SKILL.md
+371  skills/issue-size-review/SKILL.md
+361  skills/configure/SKILL.md
+350  skills/analyze-loop/SKILL.md
+338  skills/audit-docs/SKILL.md
+324  skills/create-loop/SKILL.md
+298  skills/workflow-automation-proposer/SKILL.md
+292  skills/create-eval-from-issues/SKILL.md
+284  skills/update/SKILL.md
+284  skills/cleanup-loops/SKILL.md
 280  skills/product-analyzer/SKILL.md
-275  skills/issue-size-review/SKILL.md
-173  skills/map-dependencies/SKILL.md
-168  skills/issue-workflow/SKILL.md
-116  skills/analyze-history/SKILL.md
+275  skills/update-docs/SKILL.md
+262  skills/rename-loop/SKILL.md
+207  skills/map-dependencies/SKILL.md
+197  skills/improve-claude-md/SKILL.md
+172  skills/issue-workflow/SKILL.md
+135  skills/analyze-history/SKILL.md
 ```
 
-**3 skills now exceed 500 lines** (was 2):
-- `audit-claude-config/SKILL.md` (708 lines) — extract wave definitions, sub-agent prompt templates, or audit checklists to `references/`
-- `confidence-check/SKILL.md` (604 lines, was 533) — extract scoring rubrics or evaluation criteria to `references/`
-- `manage-issue/SKILL.md` (513 lines, was 500) — extract phase details or reference patterns to `references/`
+**4 skills exceed 500 lines:**
+- `audit-claude-config/SKILL.md` (711L) — extract Task 3 sub-agent prompt body (`skills/audit-claude-config/SKILL.md:231–407`, ~177L) and recognized-settings-key table (`SKILL.md:261–315`, ~55L) to a companion file
+- `confidence-check/SKILL.md` (660L) — extract Phase 2 scoring criteria tables (`SKILL.md:189–385`, ~196L) and output format templates (`SKILL.md:530–615`, ~86L) to a companion file
+- `init/SKILL.md` (617L) — extract Display Summary template (`SKILL.md:130–201`, ~73L), CLAUDE.md content blocks (`SKILL.md:505–550`, ~46L), and Completion Message template (`SKILL.md:554–583`, ~30L) to a companion file; `interactive.md` is already extracted
+- `manage-issue/SKILL.md` (516L) — only 16 lines over; duplicated Arguments block at `SKILL.md:449–516` (~67L) is the primary target; `templates.md` already handles most overflow
 
-**No `references/` subdirectories exist yet** — this PR establishes the convention from scratch
+**No companion files exist yet for the 4 oversized skills** — this PR establishes them.
+
+### Companion File Pattern (Decided: Flat)
+
+_Added by `/ll:refine-issue` 2026-04-07 — codebase pattern analysis. Decision applied 2026-04-07._
+
+**Decision**: Use the established flat pattern — supplemental files live directly in `skills/<name>/` alongside `SKILL.md`. This is already used by **11 of 25 skills**:
+
+| Skill | Companion Files |
+|-------|----------------|
+| `audit-claude-config/` | `report-template.md` |
+| `audit-docs/` | `templates.md` |
+| `capture-issue/` | `templates.md` |
+| `configure/` | `areas.md`, `show-output.md` |
+| `create-loop/` | `templates.md`, `loop-types.md`, `reference.md` |
+| `format-issue/` | `templates.md` |
+| `improve-claude-md/` | `algorithm.md` |
+| `init/` | `interactive.md` |
+| `manage-issue/` | `templates.md` |
+| `review-loop/` | `reference.md` |
+| `update-docs/` | `templates.md` |
+
+**Established referencing conventions** (two patterns in use):
+- `See [filename.md](filename.md) for <description>` — inline at the step where content is needed (used by `format-issue/SKILL.md:190`, `capture-issue/SKILL.md:184`, `configure/SKILL.md:154`, `init/SKILL.md:125`)
+- `Read [filename.md](filename.md) now` — imperative read instruction (used by `review-loop/SKILL.md:69`)
+- `## Additional Resources` terminal section (used by `create-loop/SKILL.md:295–299`, `init/SKILL.md:587–590`)
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/*/SKILL.md` — oversized skills only
-- `CONTRIBUTING.md` — add convention documentation
+- `skills/audit-claude-config/SKILL.md` — extract Task 3 sub-agent prompt (`SKILL.md:231–407`) and settings table (`SKILL.md:261–315`)
+- `skills/confidence-check/SKILL.md` — extract scoring criteria (`SKILL.md:189–385`) and output templates (`SKILL.md:530–615`)
+- `skills/init/SKILL.md` — extract Display Summary template (`SKILL.md:130–201`), CLAUDE.md blocks (`SKILL.md:505–550`), Completion Message (`SKILL.md:554–583`)
+- `skills/manage-issue/SKILL.md` — remove duplicated Arguments block at `SKILL.md:449–516`
+- `CONTRIBUTING.md:436–462` — "Adding Skills" section; add 500-line limit and companion-file convention (currently documents directory structure only, no size guidance)
 
 ### New Files
-- `skills/<name>/references/*.md` — one or more per oversized skill
+- `skills/audit-claude-config/<companion>.md` — Task 3 sub-agent prompt + settings table
+- `skills/confidence-check/<companion>.md` — scoring criteria + output templates
+- `skills/init/<companion>.md` — Display Summary template, CLAUDE.md blocks, Completion Message
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/doc_counts.py:61–79` — `count_files()` uses `rglob("SKILL.md")` to enumerate skills; natural hook for a line-count check extension
+- `scripts/little_loops/cli/docs.py:9–98` — `main_verify_docs()` pattern to follow when adding `ll-verify-skills` CLI entry point
+- `scripts/pyproject.toml:57–58` — `ll-verify-docs` and `ll-check-links` registrations; add `ll-verify-skills` here if implementing optional lint check
 
 ### Tests
 - `wc -l skills/*/SKILL.md` should show all files ≤ 500 lines
+- `scripts/tests/test_doc_counts.py` — pattern to follow for testing a skill-size checker
+- `scripts/tests/test_link_checker.py` — structural reference for doc-validation test patterns
 
 ### Documentation
-- `CONTRIBUTING.md` — new section on skill size limits
+- `CONTRIBUTING.md:436–462` — "Adding Skills" section; insert 500-line limit, companion-file naming convention, and referencing pattern
 
 ## Impact
 
@@ -107,13 +159,15 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 
 | Document | Relevance |
 |----------|-----------|
-| `CONTRIBUTING.md` | Development conventions — target file for 500-line limit and `references/` pattern documentation |
+| `CONTRIBUTING.md` | Development conventions — target file for 500-line limit and companion-file pattern documentation |
 
 ## Labels
 
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/418318f8-5c1d-44e5-ba71-c29bc3d183f0.jsonl`
+- `/ll:refine-issue` - 2026-04-07T20:50:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88123d93-05ff-43e6-a74f-96331f455d15.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
@@ -140,7 +194,7 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 - **Date**: 2026-04-02
 - **Verdict**: NEEDS_UPDATE
 - ENH-493 is now COMPLETED (in `completed/`) — removed from Blocked By. Issue is now unblocked.
-- **4 skills** exceed 500 lines: `audit-claude-config/SKILL.md` = **711** (was 708), `confidence-check/SKILL.md` = **600** (was 604, decreased), `init/SKILL.md` = **584** (was 581), `manage-issue/SKILL.md` = **516** (was 513). No `references/` subdirectories exist.
+- **4 skills** exceed 500 lines: `audit-claude-config/SKILL.md` = **711** (was 708), `confidence-check/SKILL.md` = **600** (was 604, decreased), `init/SKILL.md` = **584** (was 581), `manage-issue/SKILL.md` = **516** (was 513). No companion files exist for these 4 skills yet.
 
 ## Status
 
