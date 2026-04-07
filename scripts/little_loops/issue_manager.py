@@ -13,7 +13,6 @@ import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from types import FrameType
 
@@ -124,7 +123,9 @@ def run_claude_command(
     logger.info(f"Running: claude --dangerously-skip-permissions -p ({line_count} lines)")
     show_count = line_count if preview_full else min(5, line_count)
     for line in lines[:show_count]:
-        display = line if preview_full else (line[:max_line] + "..." if len(line) > max_line else line)
+        display = (
+            line if preview_full else (line[:max_line] + "..." if len(line) > max_line else line)
+        )
         logger.info(f"  {display}")
     if line_count > show_count:
         logger.info(f"  ... ({line_count - show_count} more lines)")
@@ -1013,7 +1014,11 @@ class AutoManager:
                 self.logger.info(f"model: {m}")
 
         result = process_issue_inplace(
-            info, self.config, self.logger, self.dry_run, on_model_detected=on_model,
+            info,
+            self.config,
+            self.logger,
+            self.dry_run,
+            on_model_detected=on_model,
             preview_full=self._preview_full,
         )
 

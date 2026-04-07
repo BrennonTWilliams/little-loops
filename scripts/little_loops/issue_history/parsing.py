@@ -97,7 +97,8 @@ def _batch_completion_dates(completed_dir: Path) -> dict[str, date]:
     try:
         result = subprocess.run(
             [
-                "git", "log",
+                "git",
+                "log",
                 "--diff-filter=A",
                 "--name-only",
                 "--format=%x00%as",

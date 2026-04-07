@@ -281,7 +281,9 @@ class TestRunClaudeCommand:
         assert len(trailer_calls) == 0, "No truncation trailer when preview_full=True"
 
         assert any("line 5" in c for c in calls), "line 5 should be visible with preview_full=True"
-        assert any("line 19" in c for c in calls), "line 19 should be visible with preview_full=True"
+        assert any("line 19" in c for c in calls), (
+            "line 19 should be visible with preview_full=True"
+        )
 
     def test_prompt_display_full_skips_line_truncation(self, mock_logger: MagicMock) -> None:
         """preview_full=True shows long lines in full without '...' suffix."""

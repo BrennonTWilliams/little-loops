@@ -1008,10 +1008,10 @@ class TestFindIssues:
         # One additional glob per category (issue_dir.glob("*.md")) is expected — that's fine.
         # What we assert is that the skip-check globs are called exactly twice total (not once per file).
         skip_check_calls = [
-            c for c in mock_glob.call_args_list
-            if c.args[1] == "*.md" and c.args[0] in (
-                config.get_completed_dir(), config.get_deferred_dir()
-            )
+            c
+            for c in mock_glob.call_args_list
+            if c.args[1] == "*.md"
+            and c.args[0] in (config.get_completed_dir(), config.get_deferred_dir())
         ]
         assert len(skip_check_calls) == 2, (
             f"Expected 2 skip-check glob calls, got {len(skip_check_calls)}"

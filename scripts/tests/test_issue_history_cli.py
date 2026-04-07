@@ -698,7 +698,15 @@ class TestExportTypeScoring:
             patch.object(
                 sys,
                 "argv",
-                ["ll-history", "export", "cli", "--scoring", "bm25", "-d", str(tmp_path / ".issues")],
+                [
+                    "ll-history",
+                    "export",
+                    "cli",
+                    "--scoring",
+                    "bm25",
+                    "-d",
+                    str(tmp_path / ".issues"),
+                ],
             ),
             patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
             patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,
@@ -722,7 +730,15 @@ class TestExportTypeScoring:
             patch.object(
                 sys,
                 "argv",
-                ["ll-history", "export", "cli", "--scoring", "hybrid", "-d", str(tmp_path / ".issues")],
+                [
+                    "ll-history",
+                    "export",
+                    "cli",
+                    "--scoring",
+                    "hybrid",
+                    "-d",
+                    str(tmp_path / ".issues"),
+                ],
             ),
             patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
             patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,

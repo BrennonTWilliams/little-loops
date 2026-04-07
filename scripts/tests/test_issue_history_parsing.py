@@ -210,9 +210,7 @@ class TestBatchCompletionDates:
 
         # Batch returns empty (file not in git history yet)
         mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        with patch(
-            "little_loops.issue_history.parsing.subprocess.run", return_value=mock_result
-        ):
+        with patch("little_loops.issue_history.parsing.subprocess.run", return_value=mock_result):
             issues = scan_completed_issues(completed_dir)
 
         assert len(issues) == 1
