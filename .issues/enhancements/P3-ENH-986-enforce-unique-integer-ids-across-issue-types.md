@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-07
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-986: Enforce Unique Integer IDs Across Issue Types
@@ -153,6 +155,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-04-07 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e44fb90d-b4e4-4ad9-9419-1afaa1fdfa63.jsonl`
 - `/ll:wire-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-04-08T01:51:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35ae828f-0aec-4a66-9fb1-4a01389cf7d4.jsonl`
 - `/ll:format-issue` - 2026-04-08T01:46:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/465921c9-f0f4-460c-8b95-af465f70d003.jsonl`
