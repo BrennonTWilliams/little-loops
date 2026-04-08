@@ -42,7 +42,7 @@ states:
       cp .loops/tmp/recursive-refine-queue.txt \
         .loops/tmp/recursive-refine-original-queue.txt
       COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
-      echo "Queued ${COUNT} issue(s) for recursive refinement"
+      echo "Queued $COUNT issue(s) for recursive refinement"
     fragment: shell_exit
     on_yes: dequeue_next
     on_no: failed
@@ -180,7 +180,7 @@ states:
         > .loops/tmp/recursive-refine-queue.txt
       echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
       CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
-      echo "Parent ${captured.input.output} decomposed; enqueued ${CHILD_COUNT} child issue(s)"
+      echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -230,7 +230,7 @@ states:
           > .loops/tmp/recursive-refine-queue.txt
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
         CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
-        echo "Parent ${captured.input.output} decomposed by size-review; enqueued ${CHILD_COUNT} child issue(s)"
+        echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
       else
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
         echo "Skipped: ${captured.input.output} (no further decomposition possible)"
@@ -254,8 +254,8 @@ states:
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Recursive Refine Summary ===\n\n'
-      printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "${PASSED_LIST:-none}"
-      printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "${SKIPPED_LIST:-none}"
+      printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
+      printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
       printf '\n'
     action_type: shell
     terminal: true
