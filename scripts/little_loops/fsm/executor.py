@@ -41,7 +41,7 @@ from little_loops.fsm.runners import (
 )
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
-from little_loops.fsm.types import ActionResult, EventCallback, ExecutionResult
+from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.session_log import get_current_session_jsonl
 
 
@@ -150,6 +150,11 @@ class FSMExecutor:
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
         self._depth: int = 0
+
+        # Extension hook registries — populated by wire_extensions()
+        self._contributed_actions: dict[str, ActionRunner] = {}
+        self._contributed_evaluators: dict[str, Evaluator] = {}
+        self._interceptors: list[Any] = []
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
@@ -429,7 +434,27 @@ class FSMExecutor:
 
         # Route based on verdict
         verdict = eval_result.verdict if eval_result else "yes"
-        return self._route(state, verdict, ctx)
+        route_ctx = RouteContext(
+            state_name=self.current_state,
+            state=state,
+            verdict=verdict,
+            action_result=action_result,
+            eval_result=eval_result,
+            ctx=ctx,
+            iteration=self.iteration,
+        )
+        for interceptor in self._interceptors:
+            if hasattr(interceptor, "before_route"):
+                decision = interceptor.before_route(route_ctx)
+                if isinstance(decision, RouteDecision):
+                    if decision.next_state is None:
+                        return None  # veto
+                    return decision.next_state  # redirect — bypass _route()
+        next_state = self._route(state, verdict, ctx)
+        for interceptor in self._interceptors:
+            if hasattr(interceptor, "after_route"):
+                interceptor.after_route(route_ctx)
+        return next_state
 
     def _run_action(
         self,
@@ -462,6 +487,14 @@ class FSMExecutor:
             result = self._run_subprocess(
                 cmd,
                 timeout=state.timeout or self.fsm.default_timeout or 30,
+                on_output_line=_on_line,
+            )
+        elif action_mode == "contributed":
+            runner = self._contributed_actions[state.action_type]
+            result = runner.run(
+                action,
+                timeout=state.timeout or self.fsm.default_timeout or 3600,
+                is_slash_command=False,
                 on_output_line=_on_line,
             )
         else:
@@ -632,7 +665,14 @@ class FSMExecutor:
         else:
             eval_input = raw_output
 
-        if state.evaluate.type == "llm_structured" and not self.fsm.llm.enabled:
+        if state.evaluate.type in self._contributed_evaluators:
+            result = self._contributed_evaluators[state.evaluate.type](
+                state.evaluate,
+                eval_input,
+                action_result.exit_code if action_result else 0,
+                ctx,
+            )
+        elif state.evaluate.type == "llm_structured" and not self.fsm.llm.enabled:
             result = EvaluationResult(
                 verdict="error",
                 details={"error": "LLM evaluation disabled via --no-llm"},
@@ -725,6 +765,8 @@ class FSMExecutor:
             return "prompt"
         if state.action_type == "shell":
             return "shell"
+        if state.action_type in self._contributed_actions:
+            return "contributed"
         # Heuristic: / prefix = slash_command (prompt mode)
         if state.action is not None and state.action.startswith("/"):
             return "prompt"

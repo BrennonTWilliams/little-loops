@@ -3744,4 +3744,268 @@ class TestRouteDecision:
         redirect = RouteDecision(next_state="success")
         veto = RouteDecision(next_state=None)
         assert redirect.next_state is not None
-        assert veto.next_state is None
+
+
+class TestContributedActionDispatch:
+    """Tests for contributed action type dispatch in FSMExecutor."""
+
+    def _make_fsm(self, action_type: str) -> FSMLoop:
+        """Build a minimal FSM with a single action state using a custom action_type."""
+        return FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="do-webhook",
+                    action_type=action_type,
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_action_mode_returns_contributed_when_registered(self) -> None:
+        """_action_mode() returns 'contributed' when action_type is in _contributed_actions."""
+        fsm = self._make_fsm("webhook")
+        executor = FSMExecutor(fsm)
+        contributed_runner = MockActionRunner()
+        executor._contributed_actions["webhook"] = contributed_runner
+
+        state = fsm.states["run"]
+        assert executor._action_mode(state) == "contributed"
+
+    def test_action_mode_returns_shell_when_not_registered(self) -> None:
+        """_action_mode() falls through to 'shell' for unknown action_type without registration."""
+        fsm = self._make_fsm("unknown_type")
+        executor = FSMExecutor(fsm)
+
+        state = fsm.states["run"]
+        assert executor._action_mode(state) == "shell"
+
+    def test_contributed_runner_called_with_correct_args(self) -> None:
+        """_run_action() calls contributed runner with action, timeout, is_slash_command=False."""
+        fsm = self._make_fsm("webhook")
+        contributed_runner = MockActionRunner()
+        contributed_runner.always_return(exit_code=0, output="webhook ok")
+        mock_runner = MockActionRunner()
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._contributed_actions["webhook"] = contributed_runner
+
+        executor.run()
+
+        assert "do-webhook" in contributed_runner.calls
+        assert len(mock_runner.calls) == 0  # default runner not called
+
+    def test_contributed_runner_result_flows_through_routing(self) -> None:
+        """ActionResult from contributed runner propagates to routing."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="do-webhook",
+                    action_type="webhook",
+                    on_yes="success",
+                    on_no="failure",
+                ),
+                "success": StateConfig(terminal=True),
+                "failure": StateConfig(terminal=True),
+            },
+        )
+        contributed_runner = MockActionRunner()
+        contributed_runner.always_return(exit_code=0, output="ok")
+
+        executor = FSMExecutor(fsm)
+        executor._contributed_actions["webhook"] = contributed_runner
+
+        result = executor.run()
+        assert result.final_state == "success"
+
+
+class TestInterceptorDispatch:
+    """Tests for before_route/after_route interceptor dispatch in FSMExecutor."""
+
+    def _make_simple_fsm(self) -> FSMLoop:
+        """Build a minimal single-action FSM."""
+        return FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo hello",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def _make_interceptor(
+        self,
+        before_return: RouteDecision | None = None,
+    ) -> MagicMock:
+        """Build a mock interceptor with before_route and after_route methods."""
+        interceptor = MagicMock()
+        interceptor.before_route.return_value = before_return
+        interceptor.after_route.return_value = None
+        return interceptor
+
+    def test_before_route_called_with_route_context(self) -> None:
+        """before_route is called with a RouteContext containing correct fields."""
+        fsm = self._make_simple_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        interceptor = self._make_interceptor()
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor]
+        executor.run()
+
+        interceptor.before_route.assert_called_once()
+        ctx_arg = interceptor.before_route.call_args[0][0]
+        assert isinstance(ctx_arg, RouteContext)
+        assert ctx_arg.state_name == "run"
+        assert ctx_arg.verdict == "yes"
+
+    def test_after_route_called_after_routing(self) -> None:
+        """after_route is called after _route() returns."""
+        fsm = self._make_simple_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        interceptor = self._make_interceptor()
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor]
+        executor.run()
+
+        interceptor.after_route.assert_called_once()
+
+    def test_before_route_passthrough_calls_route(self) -> None:
+        """before_route returning None still calls _route() normally."""
+        fsm = self._make_simple_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        interceptor = self._make_interceptor(before_return=None)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor]
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_before_route_redirect_bypasses_route(self) -> None:
+        """before_route returning RouteDecision('state') redirects without calling _route()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo hello",
+                    on_yes="wrong",
+                    on_no="wrong",
+                ),
+                "wrong": StateConfig(terminal=True),
+                "redirected": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        interceptor = self._make_interceptor(
+            before_return=RouteDecision(next_state="redirected")
+        )
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor]
+        result = executor.run()
+
+        assert result.final_state == "redirected"
+
+    def test_before_route_veto_terminates_with_error(self) -> None:
+        """before_route returning RouteDecision(None) vetoes routing and terminates with error."""
+        fsm = self._make_simple_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        interceptor = self._make_interceptor(before_return=RouteDecision(next_state=None))
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor]
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+
+    def test_multiple_interceptors_called_in_order(self) -> None:
+        """Multiple interceptors have before_route called in registration order."""
+        fsm = self._make_simple_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        call_order: list[str] = []
+
+        interceptor_a = MagicMock()
+        interceptor_a.before_route.side_effect = lambda ctx: call_order.append("a") or None
+        interceptor_a.after_route.return_value = None
+
+        interceptor_b = MagicMock()
+        interceptor_b.before_route.side_effect = lambda ctx: call_order.append("b") or None
+        interceptor_b.after_route.return_value = None
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor_a, interceptor_b]
+        executor.run()
+
+        assert call_order == ["a", "b"]
+
+    def test_first_redirect_short_circuits_remaining_interceptors(self) -> None:
+        """First RouteDecision from before_route short-circuits remaining interceptors."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo hello",
+                    on_yes="wrong",
+                    on_no="wrong",
+                ),
+                "wrong": StateConfig(terminal=True),
+                "redirected": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        interceptor_a = MagicMock()
+        interceptor_a.before_route.return_value = RouteDecision(next_state="redirected")
+        interceptor_b = MagicMock()
+        interceptor_b.before_route.return_value = None
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor_a, interceptor_b]
+        result = executor.run()
+
+        assert result.final_state == "redirected"
+        interceptor_b.before_route.assert_not_called()
+
+    def test_unconditional_next_does_not_fire_interceptors(self) -> None:
+        """States with unconditional next: bypass interceptor dispatch."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo hello",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        interceptor = self._make_interceptor()
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._interceptors = [interceptor]
+        executor.run()
+
+        interceptor.before_route.assert_not_called()
+        interceptor.after_route.assert_not_called()

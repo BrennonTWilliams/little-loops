@@ -53,7 +53,7 @@ self._contributed_evaluators: dict[str, Evaluator] = {}
 self._interceptors: list[Any] = []
 ```
 
-`Any` is already imported at `executor.py:19` — no new import needed.
+`Any` is already imported at `executor.py:20` — no new import needed.
 
 ### 2. Contributed Action Dispatch
 
@@ -270,15 +270,15 @@ After implementation, verify these existing tests still pass without modificatio
 
 ## Acceptance Criteria
 
-- [ ] `_contributed_actions`, `_contributed_evaluators`, `_interceptors` initialized in `FSMExecutor.__init__()`
-- [ ] `_action_mode()` returns `"contributed"` when `state.action_type` is in `_contributed_actions`
-- [ ] `_run_action()` dispatches to contributed runner when mode is `"contributed"`
-- [ ] `_evaluate()` calls contributed evaluator before `evaluate()` when type is in `_contributed_evaluators`
-- [ ] `before_route` interceptors fire before `_route()` with correct `RouteContext`; veto returns `None`; redirect bypasses `_route()`
-- [ ] `after_route` interceptors fire after `_route()` returns
-- [ ] Existing action/evaluator dispatch paths unchanged when no contributed types registered
-- [ ] `state.next:` and sub-loop branches do NOT fire interceptors
-- [ ] All three existing test suites (TestActionType, TestActionTypeMcpTool, direct _evaluate() calls) pass
+- [x] `_contributed_actions`, `_contributed_evaluators`, `_interceptors` initialized in `FSMExecutor.__init__()`
+- [x] `_action_mode()` returns `"contributed"` when `state.action_type` is in `_contributed_actions`
+- [x] `_run_action()` dispatches to contributed runner when mode is `"contributed"`
+- [x] `_evaluate()` calls contributed evaluator before `evaluate()` when type is in `_contributed_evaluators`
+- [x] `before_route` interceptors fire before `_route()` with correct `RouteContext`; veto returns `None`; redirect bypasses `_route()`
+- [x] `after_route` interceptors fire after `_route()` returns
+- [x] Existing action/evaluator dispatch paths unchanged when no contributed types registered
+- [x] `state.next:` and sub-loop branches do NOT fire interceptors
+- [x] All three existing test suites (TestActionType, TestActionTypeMcpTool, direct _evaluate() calls) pass
 
 ## Impact
 
@@ -292,12 +292,25 @@ After implementation, verify these existing tests still pass without modificatio
 
 `feature`, `fsm`, `executor`, `extension-hooks`, `decomposed`
 
+## Resolution
+
+Implemented all 5 surgical edits to `scripts/little_loops/fsm/executor.py`:
+1. Added `Evaluator` import from `fsm/types.py`; initialized `_contributed_actions`, `_contributed_evaluators`, `_interceptors` in `__init__()` after `self._depth`
+2. `_action_mode()`: added contributed check after the `shell` guard, returns `"contributed"`
+3. `_run_action()`: added `elif action_mode == "contributed"` branch dispatching to registered runner
+4. `_evaluate()`: prepended contributed evaluator lookup before `llm_structured` guard
+5. `_execute_state()`: replaced bare `_route()` call with full interceptor dispatch loop (`before_route` / core route / `after_route`)
+
+Added 27 new tests across `TestContributedActionDispatch`, `TestContributedEvaluatorDispatch`, and `TestInterceptorDispatch`. All 301 tests pass.
+
 ## Status
 
-**Open** | Created: 2026-04-07 | Priority: P4
+**Completed** | Created: 2026-04-07 | Resolved: 2026-04-07 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T03:05:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e2eceb3f-1e12-4ebd-be7b-b82613b2c751.jsonl`
 - `/ll:wire-issue` - 2026-04-08T02:44:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f501fbe-c8b1-423a-afe0-0db40d370b5b.jsonl`
 - `/ll:refine-issue` - 2026-04-08T02:39:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99ccfc8b-d45d-41ce-bc44-dbb43c9bb507.jsonl`
 - `/ll:format-issue` - 2026-04-08T02:35:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcc3b663-4002-4345-93fd-f9fde61a5879.jsonl`
+- `/ll:manage-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e2eceb3f-1e12-4ebd-be7b-b82613b2c751.jsonl`
 - `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f3aa3c7-ca33-4c8b-b435-c5b746906130.jsonl`

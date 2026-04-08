@@ -1597,3 +1597,105 @@ states:
         assert "SIMULATION: imperative-test" in captured.out
         # With all-pass scenario, terminates on success
         assert "terminal" in captured.out
+
+
+class TestContributedEvaluatorDispatch:
+    """Tests for contributed evaluator dispatch in FSMExecutor._evaluate()."""
+
+    def _make_ctx(self) -> "InterpolationContext":
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        return InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+    def test_contributed_evaluator_called_when_type_registered(self) -> None:
+        """_evaluate() dispatches to contributed callable when type is in _contributed_evaluators."""
+        from unittest.mock import MagicMock
+
+        from little_loops.fsm.evaluators import EvaluationResult
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+
+        contributed = MagicMock(return_value=EvaluationResult(verdict="yes", details={}))
+        executor._contributed_evaluators["custom_eval"] = contributed
+
+        state = make_test_state(
+            action="echo test",
+            evaluate=EvaluateConfig(type="custom_eval"),
+            on_yes="done",
+        )
+        action_result = ActionResult(output="hello", stderr="", exit_code=0, duration_ms=10)
+        ctx = self._make_ctx()
+
+        result = executor._evaluate(state, action_result, ctx)
+
+        contributed.assert_called_once_with(
+            state.evaluate,
+            "hello",  # eval_input
+            0,        # exit_code
+            ctx,
+        )
+        assert result is not None
+        assert result.verdict == "yes"
+
+    def test_builtin_evaluate_not_called_when_contributed_handles(self) -> None:
+        """Built-in evaluate() is NOT called when contributed evaluator handles the type."""
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.fsm.evaluators import EvaluationResult
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+
+        contributed = MagicMock(return_value=EvaluationResult(verdict="yes", details={}))
+        executor._contributed_evaluators["custom_eval"] = contributed
+
+        state = make_test_state(
+            action="echo test",
+            evaluate=EvaluateConfig(type="custom_eval"),
+            on_yes="done",
+        )
+        action_result = ActionResult(output="out", stderr="", exit_code=0, duration_ms=10)
+
+        with patch("little_loops.fsm.executor.evaluate") as mock_builtin:
+            executor._evaluate(state, action_result, self._make_ctx())
+
+        mock_builtin.assert_not_called()
+
+    def test_fallback_to_builtin_when_type_not_registered(self) -> None:
+        """_evaluate() falls through to built-in evaluate() when type is not contributed."""
+        from unittest.mock import patch
+
+        from little_loops.fsm.evaluators import EvaluationResult
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+        # _contributed_evaluators is empty by default
+
+        state = make_test_state(
+            action="echo test",
+            evaluate=EvaluateConfig(type="exit_code"),
+            on_yes="done",
+        )
+        action_result = ActionResult(output="", stderr="", exit_code=0, duration_ms=10)
+
+        with patch(
+            "little_loops.fsm.executor.evaluate",
+            return_value=EvaluationResult(verdict="yes", details={}),
+        ) as mock_builtin:
+            executor._evaluate(state, action_result, self._make_ctx())
+
+        mock_builtin.assert_called_once()
