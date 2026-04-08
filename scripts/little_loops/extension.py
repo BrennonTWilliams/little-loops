@@ -222,12 +222,10 @@ def wire_extensions(
         if hasattr(ext, "on_event"):
             bus.register(_make_callback(ext), filter=getattr(ext, "event_filter", None))
 
-    from little_loops.fsm.persistence import PersistentExecutor as _PE
-
     fsm_executor: FSMExecutor | None
     if executor is None:
         fsm_executor = None
-    elif isinstance(executor, _PE):
+    elif hasattr(executor, "_executor"):
         fsm_executor = executor._executor
     else:
         fsm_executor = executor

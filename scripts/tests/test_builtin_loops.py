@@ -81,6 +81,7 @@ class TestBuiltinLoopFiles:
             "eval-driven-development",
             "greenfield-builder",
             "outer-loop-eval",
+            "auto-refine-and-implement",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
