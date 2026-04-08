@@ -7,17 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`auto-refine-and-implement` Built-in Loop** — New issue-management loop that refines each backlog issue to ready (via `refine-to-ready-issue` sub-loop) then implements it (via `/ll:manage-issue`); skips and tracks issues that fail refinement; runs until backlog is exhausted (FEAT-996)
-- **`ReferenceInterceptorExtension`** — Passthrough reference implementation of `InterceptorExtension` in `extensions/reference_interceptor.py`; copy-paste starting point for custom interceptors (FEAT-995)
-- **`before_issue_close` Veto Hook** — `close_issue()` now accepts an `interceptors` list; any interceptor returning `False` from `before_issue_close()` vetoes the close and aborts the move (FEAT-994)
-- **`wire_extensions()` Executor Support** — `wire_extensions()` gains an optional `executor` parameter; when provided, extensions implementing `ActionProviderExtension`, `EvaluatorProviderExtension`, or `InterceptorExtension` are wired into the `FSMExecutor` registry (FEAT-993)
-
 ### Planned
 
 - Windows compatibility testing
 - Performance benchmarks for large repositories
+
+## [1.76.0] - 2026-04-08
+
+### Added
+
+- **`recursive-refine` Built-In Loop** — New built-in FSM loop that recursively refines all backlog issues through nested sub-loops; handles JSON input unpacking and runs until all issues are refined or exhausted (FEAT-1000)
+- **`auto-refine-and-implement` Built-In Loop** — New issue-management loop that refines each backlog issue to ready (via `refine-to-ready-issue` sub-loop) then implements it (via `/ll:manage-issue`); skips and tracks issues that fail refinement; runs until backlog is exhausted (FEAT-996)
+- **`ReferenceInterceptorExtension`** — Passthrough reference implementation of `InterceptorExtension` in `extensions/reference_interceptor.py`; copy-paste starting point for custom interceptors (FEAT-995)
+- **`before_issue_close` Veto Hook** — `close_issue()` now accepts an `interceptors` list; any interceptor returning `False` from `before_issue_close()` vetoes the close and aborts the move (FEAT-994)
+- **`wire_extensions()` Executor Support** — `wire_extensions()` gains an optional `executor` parameter; when provided, extensions implementing `ActionProviderExtension`, `EvaluatorProviderExtension`, or `InterceptorExtension` are wired into the `FSMExecutor` registry (FEAT-993)
+- **FSMExecutor Core Hook Dispatch** — Attributes, action, evaluator, and interceptor dispatch wired into `FSMExecutor`; extension registry integration complete (FEAT-987)
+- **Log Discovery and Extraction for `ll-loop` and `ll-commands`** — New log discovery and extraction capabilities for loop and command execution history (FEAT-1001)
+- **`ll-logs` Documentation and Wiring** — Documentation and wiring updates for log management across ll-loop and ll-commands (FEAT-1004)
+
+### Changed
+
+- **`ll-loop` JSON Input Auto-Unpack** — `ll-loop run` now automatically unpacks JSON input into named context variables for cleaner loop state management (ENH-999)
+- **`ll-auto` Shell Action for Issue Implementation** — Replaced `implement_issue` prompt with `ll-auto --only` shell action in loops for more reliable execution (ENH-997)
+- **Enforce Cross-Type Integer ID Uniqueness** — `duplicate-id` hook now enforces unique integer IDs across all issue types, not just within a single type (ENH-986)
+
+### Fixed
+
+- **`recursive-refine` Loop Bash Interpolation Clash** — Dropped braces from bare bash variables to fix syntax clash causing immediate loop exit (BUG-999)
+- **`outer-loop-eval` Silent Failure on Empty Loop Name** — Added input validation to prevent hallucinated reports when `loop_name` is empty (BUG-998)
+- **`ll-loop --show-diagrams --clear` Ghost Fragments** — Used alternate screen buffer to prevent ghost diagram fragments in scrollback (BUG-989)
+
+[1.76.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.75.0...v1.76.0
 
 ## [1.75.0] - 2026-04-07
 
