@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from little_loops.fsm.evaluators import EvaluationResult
+    from little_loops.fsm.interpolation import InterpolationContext
+    from little_loops.fsm.schema import EvaluateConfig
 
 
 @dataclass
@@ -68,3 +73,10 @@ class ActionResult:
 
 # Type for event callback
 EventCallback = Callable[[dict[str, Any]], None]
+
+# Type for evaluator functions
+# Parameter order: config, output, exit_code, context — matches evaluate() call signature
+Evaluator = Callable[
+    ["EvaluateConfig", str, int, "InterpolationContext"],
+    "EvaluationResult",
+]

@@ -16,9 +16,15 @@ import json
 import logging
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from little_loops.events import EventBus, EventCallback, LLEvent
+from little_loops.issue_parser import IssueInfo
+
+if TYPE_CHECKING:
+    from little_loops.fsm.executor import RouteContext, RouteDecision
+    from little_loops.fsm.runners import ActionRunner
+    from little_loops.fsm.types import Evaluator
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +52,48 @@ class LLExtension(Protocol):
         Args:
             event: Structured event with type, timestamp, and payload
         """
+        ...
+
+
+class InterceptorExtension(Protocol):
+    """Protocol for extensions that intercept FSM routing decisions.
+
+    Detected via hasattr() in wire_extensions() — no @runtime_checkable needed.
+    All methods are optional to implement individually; detection is per-method.
+    """
+
+    def before_route(self, context: RouteContext) -> RouteDecision | None:
+        """Called before routing; return RouteDecision to redirect or veto, None to pass through."""
+        ...
+
+    def after_route(self, context: RouteContext) -> None:
+        """Called after routing is resolved (observational only)."""
+        ...
+
+    def before_issue_close(self, info: IssueInfo) -> bool | None:
+        """Called before an issue is closed; return False to veto, None to pass through."""
+        ...
+
+
+class ActionProviderExtension(Protocol):
+    """Protocol for extensions that contribute custom actions to FSM loops.
+
+    Detected via hasattr() in wire_extensions() — no @runtime_checkable needed.
+    """
+
+    def provided_actions(self) -> dict[str, ActionRunner]:
+        """Return a mapping of action name → ActionRunner for injection into the executor."""
+        ...
+
+
+class EvaluatorProviderExtension(Protocol):
+    """Protocol for extensions that contribute custom evaluators to FSM loops.
+
+    Detected via hasattr() in wire_extensions() — no @runtime_checkable needed.
+    """
+
+    def provided_evaluators(self) -> dict[str, Evaluator]:
+        """Return a mapping of evaluator type name → Evaluator callable."""
         ...
 
 

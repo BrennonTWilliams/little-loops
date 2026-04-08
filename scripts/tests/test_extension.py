@@ -261,3 +261,66 @@ class TestWireExtensions:
         bus.emit({"event": "state_enter", "ts": "now"})
 
         assert len(received) == 2
+
+
+class TestNewProtocols:
+    """Structural compliance tests for InterceptorExtension, ActionProviderExtension,
+    EvaluatorProviderExtension, and the IssueInfo import smoke test."""
+
+    def test_smoke_import_interceptor_extension(self) -> None:
+        """Importing InterceptorExtension from public API succeeds (no circular import)."""
+        from little_loops import InterceptorExtension  # noqa: F401 — import is the test
+
+        assert InterceptorExtension is not None
+
+    def test_smoke_import_action_provider_extension(self) -> None:
+        """Importing ActionProviderExtension from public API succeeds."""
+        from little_loops import ActionProviderExtension  # noqa: F401
+
+        assert ActionProviderExtension is not None
+
+    def test_smoke_import_evaluator_provider_extension(self) -> None:
+        """Importing EvaluatorProviderExtension from public API succeeds."""
+        from little_loops import EvaluatorProviderExtension  # noqa: F401
+
+        assert EvaluatorProviderExtension is not None
+
+    def test_interceptor_extension_protocol_satisfied(self) -> None:
+        """A class with before_route, after_route, before_issue_close satisfies the protocol."""
+        from little_loops.extension import InterceptorExtension
+
+        class MyInterceptor:
+            def before_route(self, context: object) -> object:
+                return None
+
+            def after_route(self, context: object) -> None:
+                pass
+
+            def before_issue_close(self, info: object) -> None:
+                return None
+
+        interceptor = MyInterceptor()
+        # Structural typing: instance should be usable as the protocol type
+        _: InterceptorExtension = interceptor  # type: ignore[assignment]
+
+    def test_action_provider_extension_protocol_satisfied(self) -> None:
+        """A class with provided_actions() satisfies ActionProviderExtension."""
+        from little_loops.extension import ActionProviderExtension
+
+        class MyActionProvider:
+            def provided_actions(self) -> dict:
+                return {}
+
+        provider = MyActionProvider()
+        _: ActionProviderExtension = provider  # type: ignore[assignment]
+
+    def test_evaluator_provider_extension_protocol_satisfied(self) -> None:
+        """A class with provided_evaluators() satisfies EvaluatorProviderExtension."""
+        from little_loops.extension import EvaluatorProviderExtension
+
+        class MyEvaluatorProvider:
+            def provided_evaluators(self) -> dict:
+                return {}
+
+        provider = MyEvaluatorProvider()
+        _: EvaluatorProviderExtension = provider  # type: ignore[assignment]

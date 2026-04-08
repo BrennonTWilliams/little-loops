@@ -89,6 +89,8 @@ from little_loops.fsm.executor import (
     EventCallback,
     ExecutionResult,
     FSMExecutor,
+    RouteContext,
+    RouteDecision,
 )
 from little_loops.fsm.handoff_handler import (
     HandoffBehavior,
@@ -124,6 +126,7 @@ from little_loops.fsm.signal_detector import (
     SignalDetector,
     SignalPattern,
 )
+from little_loops.fsm.types import Evaluator
 from little_loops.fsm.validation import (
     ValidationError,
     load_and_validate,
@@ -134,6 +137,7 @@ __all__ = [
     "ActionResult",
     "ActionRunner",
     "DEFAULT_LLM_MODEL",
+    "Evaluator",
     "EventCallback",
     "DEFAULT_LLM_PROMPT",
     "DEFAULT_LLM_SCHEMA",
@@ -155,6 +159,8 @@ __all__ = [
     "LoopState",
     "PersistentExecutor",
     "RouteConfig",
+    "RouteContext",
+    "RouteDecision",
     "STOP_SIGNAL",
     "ScopeLock",
     "SignalDetector",

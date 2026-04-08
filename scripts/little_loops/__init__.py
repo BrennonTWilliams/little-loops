@@ -7,7 +7,10 @@ and development workflows that can be configured for any software project.
 from little_loops.config import BRConfig
 from little_loops.events import EventBus, LLEvent
 from little_loops.extension import (
+    ActionProviderExtension,
+    EvaluatorProviderExtension,
     ExtensionLoader,
+    InterceptorExtension,
     LLExtension,
     NoopLoggerExtension,
     wire_extensions,
@@ -37,7 +40,10 @@ __all__ = [
     "EventBus",
     "LLEvent",
     # extensions
+    "ActionProviderExtension",
+    "EvaluatorProviderExtension",
     "ExtensionLoader",
+    "InterceptorExtension",
     "LLExtension",
     "NoopLoggerExtension",
     "wire_extensions",

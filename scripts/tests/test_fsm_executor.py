@@ -8,13 +8,17 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from little_loops.fsm.evaluators import EvaluationResult
 from little_loops.fsm.executor import (
     ActionResult,
     DefaultActionRunner,
     ExecutionResult,
     FSMExecutor,
+    RouteContext,
+    RouteDecision,
     SimulationActionRunner,
 )
+from little_loops.fsm.interpolation import InterpolationContext
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
@@ -3634,3 +3638,110 @@ class TestSubLoopExecution:
         executor.run()
         depth2_events = [e for e in events if e.get("depth") == 2]
         assert len(depth2_events) > 0, "Expected grandchild events forwarded with depth=2"
+
+
+class TestRouteContext:
+    """Tests for the RouteContext dataclass."""
+
+    def _make_ctx(self) -> InterpolationContext:
+        return InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="check",
+            iteration=1,
+            loop_name="test-loop",
+            started_at="2026-04-07T00:00:00Z",
+            elapsed_ms=0,
+        )
+
+    def test_basic_construction(self) -> None:
+        """RouteContext holds all required fields."""
+        state = StateConfig(terminal=True)
+        ctx = self._make_ctx()
+        route_ctx = RouteContext(
+            state_name="check",
+            state=state,
+            verdict="yes",
+            action_result=None,
+            eval_result=None,
+            ctx=ctx,
+            iteration=1,
+        )
+        assert route_ctx.state_name == "check"
+        assert route_ctx.verdict == "yes"
+        assert route_ctx.action_result is None
+        assert route_ctx.eval_result is None
+        assert route_ctx.iteration == 1
+
+    def test_with_action_result(self) -> None:
+        """RouteContext accepts a populated ActionResult."""
+        state = StateConfig(on_yes="done", on_no="retry")
+        ctx = self._make_ctx()
+        action_result = ActionResult(output="ok", stderr="", exit_code=0, duration_ms=100)
+        route_ctx = RouteContext(
+            state_name="run",
+            state=state,
+            verdict="yes",
+            action_result=action_result,
+            eval_result=None,
+            ctx=ctx,
+            iteration=3,
+        )
+        assert route_ctx.action_result is action_result
+        assert route_ctx.iteration == 3
+
+    def test_with_eval_result(self) -> None:
+        """RouteContext accepts a populated EvaluationResult."""
+        state = StateConfig(on_yes="done")
+        ctx = self._make_ctx()
+        eval_result = EvaluationResult(verdict="yes", details={"score": 1})
+        route_ctx = RouteContext(
+            state_name="eval",
+            state=state,
+            verdict="yes",
+            action_result=None,
+            eval_result=eval_result,
+            ctx=ctx,
+            iteration=2,
+        )
+        assert route_ctx.eval_result is eval_result
+        assert route_ctx.eval_result.verdict == "yes"
+
+    def test_optional_fields_none(self) -> None:
+        """action_result and eval_result can both be None."""
+        state = StateConfig(terminal=True)
+        ctx = self._make_ctx()
+        route_ctx = RouteContext(
+            state_name="done",
+            state=state,
+            verdict="yes",
+            action_result=None,
+            eval_result=None,
+            ctx=ctx,
+            iteration=1,
+        )
+        assert route_ctx.action_result is None
+        assert route_ctx.eval_result is None
+
+
+class TestRouteDecision:
+    """Tests for the RouteDecision dataclass."""
+
+    def test_redirect(self) -> None:
+        """RouteDecision with a state name represents a redirect."""
+        decision = RouteDecision(next_state="other-state")
+        assert decision.next_state == "other-state"
+
+    def test_veto(self) -> None:
+        """RouteDecision with next_state=None represents a veto."""
+        decision = RouteDecision(next_state=None)
+        assert decision.next_state is None
+
+    def test_redirect_is_truthy_check(self) -> None:
+        """next_state=None (veto) differs from a non-None redirect."""
+        redirect = RouteDecision(next_state="success")
+        veto = RouteDecision(next_state=None)
+        assert redirect.next_state is not None
+        assert veto.next_state is None

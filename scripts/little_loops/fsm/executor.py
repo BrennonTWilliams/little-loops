@@ -14,6 +14,7 @@ import json
 import subprocess
 import threading
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,32 @@ from little_loops.session_log import get_current_session_jsonl
 def _iso_now() -> str:
     """Get current time as ISO 8601 string."""
     return datetime.now(UTC).isoformat()
+
+
+@dataclass
+class RouteContext:
+    """Context passed to before_route / after_route interceptors."""
+
+    state_name: str
+    state: StateConfig
+    verdict: str
+    action_result: ActionResult | None
+    eval_result: EvaluationResult | None
+    ctx: InterpolationContext
+    iteration: int
+
+
+@dataclass
+class RouteDecision:
+    """Returned by before_route to redirect or veto a routing transition.
+
+    Return semantics for before_route:
+      None (implicit)         → passthrough, routing proceeds normally
+      RouteDecision("state")  → redirect, bypass _route() and use "state" directly
+      RouteDecision(None)     → veto, _execute_state() returns None → _finish("error")
+    """
+
+    next_state: str | None  # str → redirect; None → veto
 
 
 class FSMExecutor:
