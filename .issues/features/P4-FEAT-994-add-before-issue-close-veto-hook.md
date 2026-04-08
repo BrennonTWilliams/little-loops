@@ -11,6 +11,18 @@ outcome_confidence: 85
 
 Add an `interceptors: list[Any] | None = None` parameter to `close_issue()`, insert a veto dispatch loop before file I/O, and update `orchestrator.py` callers to pass `interceptors=executor._interceptors`.
 
+## Current Behavior
+
+`close_issue()` emits `"issue.closed"` after the file move but has no pre-move veto hook. Interceptors registered via `wire_extensions()` have no opportunity to inspect or veto a close before file I/O occurs.
+
+## Expected Behavior
+
+When `close_issue()` is called with `interceptors` populated, each interceptor's `before_issue_close()` method is dispatched before any file I/O. If any interceptor returns `False`, `close_issue()` immediately returns `False` without moving files. Interceptors returning `None` or truthy values allow closure to proceed normally.
+
+## Motivation
+
+FEAT-993 registers interceptors into `executor._interceptors` via `wire_extensions()`, but without a dispatch point in `close_issue()`, those interceptors cannot influence issue closure. Extension authors implementing `before_issue_close()` need a pre-file-I/O veto hook to control when issues are allowed to close — for example, to prevent closure during certain loop states.
+
 ## Parent Issue
 
 Decomposed from FEAT-985: wire_extensions() Upgrade, before_issue_close Hook, Reference Extension, and Tests
@@ -59,11 +71,15 @@ if interceptors:
 
 ### 2. Update Orchestrator Callers
 
-- `scripts/little_loops/parallel/orchestrator.py:861–867` — `_on_worker_complete()`: passes 5 positional args today; add `interceptors=executor._interceptors` if `ParallelOrchestrator` stores a reference to interceptors; otherwise pass `interceptors=None` (see gap note below)
-- `scripts/little_loops/parallel/orchestrator.py:964–970` — `_merge_sequential()`: same pattern as above
+- `scripts/little_loops/parallel/orchestrator.py:861–867` — `_on_worker_complete()`: passes 5 positional args today; add `interceptors=None` (no executor in scope — see resolved gap below)
+- `scripts/little_loops/parallel/orchestrator.py:964–970` — `_merge_sequential()`: same; add `interceptors=None`
 - `scripts/little_loops/issue_manager.py:502–508` — no executor context; no change needed (defaults to `None`)
 
-**Gap — orchestrator interceptor source**: `ParallelOrchestrator` coordinates workers in separate processes, each with their own `FSMExecutor`. The orchestrator itself does not own an `FSMExecutor`. Verify whether `ParallelOrchestrator` stores a top-level interceptors list populated at startup (e.g., from `wire_extensions()` return value), or whether the orchestrator callers should simply pass `interceptors=None` until a parent-level interceptors list is added.
+**Resolved Gap — orchestrator interceptor source**: `ParallelOrchestrator` does **not** own an `FSMExecutor` and has no `_interceptors` attribute. Workers run in separate subprocesses, each with their own executor. At both orchestrator `close_issue()` call sites, only `self` (the orchestrator) and `result` (a `WorkerResult`) are in scope — no executor variable exists.
+
+Additionally, `wire_extensions()` is called at the CLI layer (`cli/parallel.py:228`, `cli/sprint/run.py:391`) **without** an `executor=` argument, so the interceptors injection path (`extension.py:224–241`) is never entered for parallel/sprint runs. The return value of `wire_extensions()` is discarded at both call sites, and `ParallelOrchestrator.__init__` has no parameter to accept interceptors.
+
+**Conclusion**: Orchestrator callers should pass `interceptors=None` (or omit the kwarg) in this issue. Forwarding interceptors through the parallel pipeline would require a future issue to: (1) add an `interceptors` parameter to `ParallelOrchestrator.__init__`, (2) update `cli/parallel.py` and `cli/sprint/run.py` to capture and filter `wire_extensions()` return value, and (3) pass it to the orchestrator constructor.
 
 ### 3. Update Test Assertions
 
@@ -71,6 +87,33 @@ if interceptors:
 - `scripts/tests/test_orchestrator.py:1289` — patches `little_loops.issue_lifecycle.close_issue` (definition module); no kwarg assertions currently; update after orchestrator callers are determined
 - `scripts/tests/test_orchestrator.py:1540` — same patch, `_merge_sequential` path; update accordingly
 - `scripts/tests/test_orchestrator.py:2078` — same patch, `interrupted=True` path; `close_issue` is never reached here (guarded by `return` at line 851); assertion confirms `mark_completed` and `mark_failed` are not called — no kwarg update needed
+
+## API/Interface
+
+Extended `close_issue()` signature in `issue_lifecycle.py`:
+
+```python
+def close_issue(
+    info: IssueInfo,
+    config: BRConfig,
+    logger: Logger,
+    close_reason: str | None,
+    close_status: str | None,
+    fix_commit: str | None = None,
+    files_changed: list[str] | None = None,
+    event_bus: EventBus | None = None,
+    interceptors: list[Any] | None = None,  # NEW — veto hook dispatch
+) -> bool:
+```
+
+**Interceptor protocol** (`before_issue_close` hook):
+
+```python
+class MyExtension:
+    def before_issue_close(self, info: IssueInfo) -> bool | None:
+        """Return False to veto closure; None or True to allow."""
+        ...
+```
 
 ## Integration Map
 
@@ -82,17 +125,40 @@ if interceptors:
 ### Files Unchanged
 - `scripts/little_loops/issue_manager.py:502–508` — 5 positional args, no executor context; no change needed
 
+### Context-Only (No Modifications)
+- `scripts/little_loops/cli/parallel.py:225–235` — calls `wire_extensions()` without `executor=`; discards return value; constructs `ParallelOrchestrator` without interceptors
+- `scripts/little_loops/cli/sprint/run.py:387–397` — same pattern as `cli/parallel.py`
+- `scripts/little_loops/extension.py:187–245` — `wire_extensions()` injects interceptors into `executor._interceptors` only when `executor=` is passed; returns full extension list
+- `scripts/little_loops/fsm/executor.py:157` — `self._interceptors: list[Any] = []`; only populated via `wire_extensions(..., executor=executor)` in loop CLI paths
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/parallel/orchestrator.py` — calls `close_issue()` at `_on_worker_complete()` and `_merge_sequential()`
+- `scripts/little_loops/issue_manager.py` — calls `close_issue()` (no interceptor context; no change needed)
+
+### Similar Patterns
+
+- N/A — first veto hook in `close_issue()`; the `before_issue_close` dispatch pattern mirrors future pre-action hooks
+
 ### Tests
 - `scripts/tests/test_issue_lifecycle.py` — add `before_issue_close` veto and passthrough tests
 - `scripts/tests/test_issue_manager.py:1520` — update mock assertion for `interceptors` kwarg
 - `scripts/tests/test_orchestrator.py:1289, 1540, 2078` — update assertions after callers pass `interceptors=executor._interceptors`
 
+### Documentation
+
+- N/A — no user-facing docs reference `close_issue()` internals
+
+### Configuration
+
+- N/A — no config changes required
+
 ## Implementation Steps
 
 1. Add `interceptors: list[Any] | None = None` param to `close_issue()` in `issue_lifecycle.py:544`
 2. Insert veto dispatch loop between line 595 (logger.info) and line 597 (try block)
-3. Update `orchestrator.py:861` to pass `interceptors=executor._interceptors`
-4. Update `orchestrator.py:964` to pass `interceptors=executor._interceptors`
+3. Update `orchestrator.py:861` (`_on_worker_complete`) to add `interceptors=None` kwarg
+4. Update `orchestrator.py:964` (`_merge_sequential`) to add `interceptors=None` kwarg
 5. Add `before_issue_close` veto and passthrough tests to `test_issue_lifecycle.py`
 6. Update `test_issue_manager.py:1520` mock assertion
 7. Update `test_orchestrator.py:1289, 1540, 2078` mock assertions
@@ -102,7 +168,7 @@ if interceptors:
 - [ ] `close_issue()` accepts `interceptors: list[Any] | None = None`
 - [ ] `before_issue_close` hook fires before file I/O; `False` return vetoes closure
 - [ ] `close_issue()` returns `False` when vetoed (no files moved)
-- [ ] Orchestrator callers pass `interceptors=executor._interceptors` at both call sites
+- [ ] Orchestrator callers pass `interceptors=None` at both call sites (no executor in orchestrator scope; interceptor forwarding is a future issue)
 - [ ] `issue_manager.py` caller unchanged (no executor context)
 - [ ] Veto and passthrough tests pass in `test_issue_lifecycle.py`
 - [ ] Existing orchestrator and issue_manager test assertions updated
@@ -139,5 +205,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `executor.py:157` — `self._interceptors: list[Any] = []` confirmed
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-08T05:39:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22ca8212-2a52-4f10-a3ed-90023ad7d499.jsonl`
+- `/ll:format-issue` - 2026-04-08T05:36:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d14cc21c-1436-4133-a150-4c74955a0244.jsonl`
 - `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
 - `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`

@@ -81,9 +81,10 @@ states:
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — sub-loop invoked by name
 
 ### Similar Patterns
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — skip tracking pattern, `context.input` passthrough
-- `scripts/little_loops/loops/issue-discovery-triage.yaml` — outer loop structure reference
-- `scripts/little_loops/loops/backlog-flow-optimizer.yaml` — outer loop + sub-skill delegation
+- `scripts/little_loops/loops/issue-refinement.yaml` — **closest analog**: outer loop with skip tracking + `refine-to-ready-issue` sub-loop via `context_passthrough: true`; uses `import: [lib/common.yaml]`, `capture: "input"`, comma-separated skip-list
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — sub-loop invoked by name; reads `context.input` as the injected issue ID when `context_passthrough: true` is set
+- `scripts/little_loops/loops/backlog-flow-optimizer.yaml` — outer loop + sub-skill delegation reference
+- `scripts/little_loops/loops/lib/cli.yaml` — has `ll_issues_next_issue` fragment, but skip tracking requires inline `get_next_issue` state (fragment insufficient)
 
 ### Tests
 - `scripts/tests/fixtures/fsm/` — may want a fixture for multi-state outer loop with sub-loop delegation
@@ -98,10 +99,29 @@ states:
 ## Implementation Steps
 
 1. Copy `auto-issue-processor.yaml` into `scripts/little_loops/loops/auto-refine-and-implement.yaml`
-2. Apply the 7 structural fixes: category, description, import, timeout, max_iterations, implement action, name
-3. Verify `context_passthrough: true` on `refine_issue` correctly passes issue ID to sub-loop
-4. Update `scripts/little_loops/loops/README.md` with a catalog entry
-5. Smoke-test: run `ll-loop auto-refine-and-implement` against a test backlog issue
+2. Apply the 7 structural fixes: `category`, `description`, `import`, `timeout`, `max_iterations`, implement action, `name`
+3. **`get_next_issue` state**: keep `capture: input` (load-bearing — downstream states reference `${captured.input.output}` and `context_passthrough` forwards it as `context.input` to `refine-to-ready-issue`); update skip file path to `.loops/tmp/auto-refine-and-implement-skipped.txt`
+4. **`implement_issue` state**: replace `ll-auto --only ${captured.input.output}` with a `action_type: prompt` state — `/ll:manage-issue` is a Claude Code command, not a shell binary (see `harness-single-shot.yaml:34` pattern):
+   ```yaml
+   implement_issue:
+     action: "Run /ll:manage-issue to implement issue ${captured.input.output}."
+     action_type: prompt
+     capture: implement_result
+     next: get_next_issue
+   ```
+5. **`skip_issue` state**: update `.loops/tmp/auto-issue-processor-skipped.txt` → `.loops/tmp/auto-refine-and-implement-skipped.txt`
+6. Update `scripts/little_loops/loops/README.md` — add row to the **Issue Management** table: `| auto-refine-and-implement | For each backlog issue in priority order: refine to ready, then implement; skips issues that fail refinement |`
+7. Smoke-test: run `ll-loop auto-refine-and-implement` against a test backlog issue
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `auto-issue-processor.yaml:33` — current `implement_issue` uses `action_type: shell` with `ll-auto --only`; this **cannot** be kept — `ll-auto` CLI dependency is fragile and `action_type: shell` cannot invoke slash commands
+- `harness-single-shot.yaml:34` — established pattern for `/ll:manage-issue` as `action_type: prompt`
+- `issue-refinement.yaml:33-41` — skip tracking pattern used in built-ins: comma-sep written in `handle_failure` state, consumed inline in next-issue call; cleaner than newline+paste
+- `refine-to-ready-issue.yaml:19` — child loop reads `${context.input}` when injected; falls back to `ll-issues next-issue` when running standalone — `context_passthrough: true` in parent triggers this injection path
+- `lib/common.yaml` — `shell_exit` fragment can simplify shell states that only evaluate exit code, but the `get_next_issue` skip-tracking logic needs to remain inline
 
 ## Acceptance Criteria
 
@@ -130,6 +150,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `automation`, `loops`, `issue-management`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-08T05:40:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/854f6e93-e4ac-4f1e-8b05-80b1a030ce8f.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76fbeb1f-5361-408b-ba48-b8f1bb2afc2f.jsonl`
 
 ---
