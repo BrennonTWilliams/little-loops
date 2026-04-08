@@ -12,6 +12,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.75.0] - 2026-04-07
+
+### Added
+
+- **Bidirectional Extension Hooks with Interceptors** — Contributed actions and bidirectional plugin extension hooks (FEAT-915)
+- **`ll-history` Integration Tests** — Integration tests for `ll-history export --type` and `--scoring` CLI options (FEAT-978)
+- **`ll-auto --verbose` Full Content** — `--verbose` now displays full prompt content without truncation for complete debugging visibility (ENH-979)
+- **`/ll:wire-issue` in Refine-Issue Next Steps** — Added `/ll:wire-issue` as first recommended next step in refine-issue workflow (ENH-981)
+
+### Changed
+
+- **Route Over-Refined Issues to `issue-size-review`** — Loops now redirect over-refined issues to the size review workflow instead of failing (ENH-980)
+- **`ll-auto` Prompt Display Formatting** — Improved prompt display formatting for better readability (ENH-964)
+- **`refine_waves_for_contention` Performance** — Eliminated double pair iteration when conflicts exist (ENH-973)
+- **`find_issues` Hot Loop Performance** — Replaced double `Path.exists()` syscalls with frozenset lookup (ENH-971)
+- **`scan_completed_issues` Performance** — Replaced N+1 `git log` subprocess calls with batched calls (ENH-970)
+
+### Fixed
+
+- **Handoff Reminder Silenced by Stale Continue-Prompt File** — Context monitor now resets `handoff_complete` to `false` on new sessions (BUG-982)
+- **Naive `datetime.now()` Usage** — Replaced timezone-naive datetime calls with `_iso_now()` in state manager and issue lifecycle (BUG-969)
+- **`_is_lifecycle_file_move` Substring Match Too Broad** — Anchored lifecycle path checks with `startswith` to prevent false matches (BUG-968)
+- **Orphaned Worktree Stash on Pop Failure** — Fixed stash orphan when `git stash pop` fails in `_handle_conflict` (BUG-967)
+- **`--skill` Filter Not Applied to Commands in `ll-messages`** — Skill session filter now correctly applies to the commands list (BUG-966)
+- **Circuit Breaker Bypass on Exception Path** — `_consecutive_failures` now incremented on all failure paths including exceptions (BUG-965)
+- **`agent-eval-improve` Loop Missing Terminal State** — Added `failed` terminal state to prevent infinite loops on evaluation failure (aafc47fb)
+
+[1.75.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.74.0...v1.75.0
+
 ## [1.74.0] - 2026-04-06
 
 ### Added
