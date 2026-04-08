@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
-confidence_score: 90
-outcome_confidence: 85
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # FEAT-994: Add `before_issue_close` Veto Hook to `close_issue()`
@@ -176,13 +176,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `close_issue()` accepts `interceptors: list[Any] | None = None`
-- [ ] `before_issue_close` hook fires before file I/O; `False` return vetoes closure
-- [ ] `close_issue()` returns `False` when vetoed (no files moved)
-- [ ] Orchestrator callers pass `interceptors=None` at both call sites (no executor in orchestrator scope; interceptor forwarding is a future issue)
-- [ ] `issue_manager.py` caller unchanged (no executor context)
-- [ ] Veto and passthrough tests pass in `test_issue_lifecycle.py`
-- [ ] Existing orchestrator and issue_manager test assertions updated
+- [x] `close_issue()` accepts `interceptors: list[Any] | None = None`
+- [x] `before_issue_close` hook fires before file I/O; `False` return vetoes closure
+- [x] `close_issue()` returns `False` when vetoed (no files moved)
+- [x] Orchestrator callers pass `interceptors=None` at both call sites (no executor in orchestrator scope; interceptor forwarding is a future issue)
+- [x] `issue_manager.py` caller unchanged (no executor context)
+- [x] Veto and passthrough tests pass in `test_issue_lifecycle.py`
+- [x] Existing orchestrator and issue_manager test assertions updated
 
 ## Impact
 
@@ -197,7 +197,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P4
+**Completed** | Created: 2026-04-08 | Completed: 2026-04-08 | Priority: P4
+
+## Resolution
+
+**Status**: Implemented
+**Reason**: feature_implemented
+**Completed**: 2026-04-08
+
+### Changes Made
+- `scripts/little_loops/issue_lifecycle.py`: Added `interceptors: list[Any] | None = None` param to `close_issue()`; inserted veto dispatch loop before file I/O; added `from typing import Any` import
+- `scripts/little_loops/parallel/orchestrator.py`: Added explicit `interceptors=None` kwarg to both `close_issue()` call sites (`_on_worker_complete` and `_merge_sequential`)
+- `scripts/tests/test_issue_lifecycle.py`: Added 4 new tests to `TestCloseIssue`: veto prevents close, passthrough allows close, multiple interceptors called in order, first veto short-circuits remaining interceptors
 
 ### Codebase Research Findings
 
@@ -216,6 +227,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `executor.py:157` — `self._interceptors: list[Any] = []` confirmed
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-08T00:00:00 - implemented FEAT-994: before_issue_close veto hook
+- `/ll:ready-issue` - 2026-04-08T05:48:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7ed2dcf-ec05-45d3-acce-9b9fe52c883a.jsonl`
+- `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d5edce3-b3e1-49e0-8dee-543319933326.jsonl`
 - `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto-issue-processor.yaml`
 - `/ll:refine-issue` - 2026-04-08T05:39:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22ca8212-2a52-4f10-a3ed-90023ad7d499.jsonl`
 - `/ll:format-issue` - 2026-04-08T05:36:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d14cc21c-1436-4133-a150-4c74955a0244.jsonl`

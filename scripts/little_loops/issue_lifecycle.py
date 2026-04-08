@@ -14,6 +14,7 @@ import subprocess
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from little_loops.config import BRConfig
 from little_loops.events import EventBus
@@ -550,6 +551,7 @@ def close_issue(
     fix_commit: str | None = None,
     files_changed: list[str] | None = None,
     event_bus: EventBus | None = None,
+    interceptors: list[Any] | None = None,
 ) -> bool:
     """Close an issue by moving it to completed with closure status.
 
@@ -565,6 +567,9 @@ def close_issue(
         fix_commit: SHA of the commit that fixed the issue (for regression tracking)
         files_changed: List of files modified by the fix (for regression tracking)
         event_bus: Optional EventBus for event emission
+        interceptors: Optional list of interceptor objects; each may implement
+            ``before_issue_close(info) -> bool | None``.  Returning ``False``
+            vetoes the close; ``None`` or any truthy value allows it to proceed.
 
     Returns:
         True if successful, False otherwise
@@ -593,6 +598,14 @@ def close_issue(
         close_reason = "unknown"
 
     logger.info(f"Closing {info.issue_id}: {close_status} (reason: {close_reason})")
+
+    # before_issue_close interceptors — veto check before any file I/O
+    if interceptors:
+        for interceptor in interceptors:
+            if hasattr(interceptor, "before_issue_close"):
+                result = interceptor.before_issue_close(info)
+                if result is False:
+                    return False
 
     try:
         # Prepare content with resolution section

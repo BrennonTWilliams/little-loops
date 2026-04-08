@@ -975,6 +975,133 @@ class TestCloseIssue:
         assert result is True
         mock_logger.info.assert_called()
 
+    def test_interceptor_veto_prevents_close(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Interceptor returning False vetoes close; no files are moved."""
+        veto_interceptor = MagicMock()
+        veto_interceptor.before_issue_close.return_value = False
+
+        result = close_issue(
+            sample_issue_info,
+            sample_config,
+            mock_logger,
+            close_reason="already_fixed",
+            close_status="Closed - Already Fixed",
+            interceptors=[veto_interceptor],
+        )
+
+        assert result is False
+        veto_interceptor.before_issue_close.assert_called_once_with(sample_issue_info)
+        # Original file must not have been moved
+        assert sample_issue_info.path.exists()
+        completed = sample_config.get_completed_dir() / sample_issue_info.path.name
+        assert not completed.exists()
+
+    def test_interceptor_passthrough_allows_close(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Interceptor returning None allows close to proceed normally."""
+        allow_interceptor = MagicMock()
+        allow_interceptor.before_issue_close.return_value = None
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src = Path(cmd[2])
+                dst = Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = close_issue(
+                sample_issue_info,
+                sample_config,
+                mock_logger,
+                close_reason="already_fixed",
+                close_status="Closed - Already Fixed",
+                interceptors=[allow_interceptor],
+            )
+
+        assert result is True
+        allow_interceptor.before_issue_close.assert_called_once_with(sample_issue_info)
+        completed = sample_config.get_completed_dir() / sample_issue_info.path.name
+        assert completed.exists()
+
+    def test_multiple_interceptors_called_in_order(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Multiple interceptors are called in registration order."""
+        call_order: list[str] = []
+
+        interceptor_a = MagicMock()
+        interceptor_a.before_issue_close.side_effect = lambda info: call_order.append("a") or None
+        interceptor_b = MagicMock()
+        interceptor_b.before_issue_close.side_effect = lambda info: call_order.append("b") or None
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src = Path(cmd[2])
+                dst = Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = close_issue(
+                sample_issue_info,
+                sample_config,
+                mock_logger,
+                close_reason="already_fixed",
+                close_status="Closed - Already Fixed",
+                interceptors=[interceptor_a, interceptor_b],
+            )
+
+        assert result is True
+        assert call_order == ["a", "b"]
+
+    def test_first_veto_short_circuits_remaining_interceptors(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """First interceptor returning False short-circuits remaining interceptors."""
+        interceptor_a = MagicMock()
+        interceptor_a.before_issue_close.return_value = False
+        interceptor_b = MagicMock()
+        interceptor_b.before_issue_close.return_value = None
+
+        result = close_issue(
+            sample_issue_info,
+            sample_config,
+            mock_logger,
+            close_reason="already_fixed",
+            close_status="Closed - Already Fixed",
+            interceptors=[interceptor_a, interceptor_b],
+        )
+
+        assert result is False
+        interceptor_a.before_issue_close.assert_called_once_with(sample_issue_info)
+        interceptor_b.before_issue_close.assert_not_called()
+        # Original file must not have been moved
+        assert sample_issue_info.path.exists()
+
 
 # =============================================================================
 # Tests: Complete Issue Lifecycle Flow

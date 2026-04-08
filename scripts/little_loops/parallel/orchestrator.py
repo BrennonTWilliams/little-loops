@@ -864,6 +864,7 @@ class ParallelOrchestrator:
                     self.logger,
                     result.close_reason,
                     result.close_status,
+                    interceptors=None,
                 ):
                     self.queue.mark_completed(result.issue_id)
                 else:
@@ -967,6 +968,7 @@ class ParallelOrchestrator:
                 self.logger,
                 result.close_reason,
                 result.close_status,
+                interceptors=None,
             ):
                 self.queue.mark_completed(result.issue_id)
             else:
