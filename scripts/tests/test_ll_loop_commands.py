@@ -2212,7 +2212,9 @@ states:
         assert fsm.context[fsm.input_key] == raw
         assert fsm.context["loop_name"] == ""
 
-    def test_json_input_partial_keys_match_unpacks_only_matched(self, multi_context_loop: Path) -> None:
+    def test_json_input_partial_keys_match_unpacks_only_matched(
+        self, multi_context_loop: Path
+    ) -> None:
         """JSON object with only some keys matching context unpacks only matched keys."""
         import json
 
