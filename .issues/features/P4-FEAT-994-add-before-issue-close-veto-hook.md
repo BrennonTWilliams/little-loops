@@ -128,7 +128,9 @@ class MyExtension:
 ### Context-Only (No Modifications)
 - `scripts/little_loops/cli/parallel.py:225–235` — calls `wire_extensions()` without `executor=`; discards return value; constructs `ParallelOrchestrator` without interceptors
 - `scripts/little_loops/cli/sprint/run.py:387–397` — same pattern as `cli/parallel.py`
-- `scripts/little_loops/extension.py:187–245` — `wire_extensions()` injects interceptors into `executor._interceptors` only when `executor=` is passed; returns full extension list
+- `scripts/little_loops/cli/loop/run.py:206` — calls `wire_extensions(executor.event_bus, config.extensions, executor=executor)`; interceptors path IS entered; extensions with `before_issue_close` will be registered into `executor._interceptors`
+- `scripts/little_loops/cli/loop/lifecycle.py:260` — same pattern as `loop/run.py`; another FSM loop entry point that fully populates `_interceptors` including `before_issue_close` implementors
+- `scripts/little_loops/extension.py:187–245` — `wire_extensions()` injects interceptors into `executor._interceptors` only when `executor=` is passed; returns full extension list; `extension.py:240` already gates on `hasattr(ext, "before_issue_close")`
 - `scripts/little_loops/fsm/executor.py:157` — `self._interceptors: list[Any] = []`; only populated via `wire_extensions(..., executor=executor)` in loop CLI paths
 
 ### Dependent Files (Callers/Importers)
@@ -141,13 +143,20 @@ class MyExtension:
 - N/A — first veto hook in `close_issue()`; the `before_issue_close` dispatch pattern mirrors future pre-action hooks
 
 ### Tests
-- `scripts/tests/test_issue_lifecycle.py` — add `before_issue_close` veto and passthrough tests
-- `scripts/tests/test_issue_manager.py:1520` — update mock assertion for `interceptors` kwarg
-- `scripts/tests/test_orchestrator.py:1289, 1540, 2078` — update assertions after callers pass `interceptors=executor._interceptors`
+- `scripts/tests/test_issue_lifecycle.py` — add `before_issue_close` veto and passthrough tests to `TestCloseIssue` (lines 843–977); follow the `event_bus=` kwarg test pattern at line 1495 (`TestEventBusEmission`)
+- `scripts/tests/test_issue_manager.py:1520` — `mock_close.assert_called_once()` (no kwarg check); no change needed since `issue_manager.py` never passes `interceptors`
+- `scripts/tests/test_orchestrator.py:1289` — `patch("little_loops.issue_lifecycle.close_issue")`; assertion is on `queue.mark_completed`, not `close_issue` call args; no kwarg assertion to update
+- `scripts/tests/test_orchestrator.py:1540` — same; assertion on `queue.mark_completed` only; no kwarg assertion to update
+- `scripts/tests/test_orchestrator.py:2078` — confirmed unreachable (`interrupted=True` path returns before `close_issue` call); no change needed
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_lifecycle.py` — new test cases needed beyond basic veto/passthrough: (a) multiple interceptors called in order, (b) first-interceptor veto short-circuits remaining interceptors without calling them; follow `TestInterceptorDispatch` patterns in `test_fsm_executor.py:3938–3987`
+- `scripts/tests/test_extension.py:483–499` — `test_interceptor_extension_protocol_satisfied` already verifies `before_issue_close` is part of the `InterceptorExtension` protocol; no change needed but confirms protocol is pre-wired
 
 ### Documentation
 
-- N/A — no user-facing docs reference `close_issue()` internals
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:1963–1988` — `close_issue()` signature block; currently omits `event_bus` (pre-existing gap) and will omit `interceptors` after this change; update tracked under FEAT-995
 
 ### Configuration
 
@@ -159,9 +168,11 @@ class MyExtension:
 2. Insert veto dispatch loop between line 595 (logger.info) and line 597 (try block)
 3. Update `orchestrator.py:861` (`_on_worker_complete`) to add `interceptors=None` kwarg
 4. Update `orchestrator.py:964` (`_merge_sequential`) to add `interceptors=None` kwarg
-5. Add `before_issue_close` veto and passthrough tests to `test_issue_lifecycle.py`
-6. Update `test_issue_manager.py:1520` mock assertion
-7. Update `test_orchestrator.py:1289, 1540, 2078` mock assertions
+5. Add `before_issue_close` veto and passthrough tests to `test_issue_lifecycle.py` (`TestCloseIssue` class, after line 977); follow `event_bus=` kwarg pattern at line 1495
+6. Add multiple-interceptor ordering test and short-circuit test (follow `TestInterceptorDispatch` in `test_fsm_executor.py:3938–3987`)
+7. `test_issue_manager.py:1525` — `assert_called_once()` has no kwarg check; no update needed since `issue_manager.py` never passes `interceptors`
+8. `test_orchestrator.py:1289, 1540` — assertions are on `queue.mark_completed`, not `close_issue` call args; no kwarg assertions to update
+9. `test_orchestrator.py:2078` — `close_issue` is unreachable in interrupted path; no change needed
 
 ## Acceptance Criteria
 
@@ -205,6 +216,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `executor.py:157` — `self._interceptors: list[Any] = []` confirmed
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto-issue-processor.yaml`
 - `/ll:refine-issue` - 2026-04-08T05:39:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22ca8212-2a52-4f10-a3ed-90023ad7d499.jsonl`
 - `/ll:format-issue` - 2026-04-08T05:36:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d14cc21c-1436-4133-a150-4c74955a0244.jsonl`
 - `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`

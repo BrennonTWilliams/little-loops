@@ -1,0 +1,56 @@
+name: "auto-refine-and-implement"
+category: issue-management
+description: |
+  For each backlog issue (priority order): refine to ready via refine-to-ready-issue,
+  then implement. Skips issues that fail refinement and tracks them to avoid retrying.
+  Loops until backlog is exhausted.
+initial: get_next_issue
+max_iterations: 100
+timeout: 28800
+on_handoff: spawn
+import:
+  - lib/common.yaml
+context:
+  max_issues: 100
+
+states:
+  get_next_issue:
+    action: |
+      mkdir -p .loops/tmp
+      SKIPPED=""
+      if [ -f .loops/tmp/auto-refine-and-implement-skipped.txt ]; then
+        SKIPPED=$(paste -sd ',' .loops/tmp/auto-refine-and-implement-skipped.txt)
+      fi
+      if [ -n "$SKIPPED" ]; then
+        ll-issues next-issue --skip "$SKIPPED"
+      else
+        ll-issues next-issue
+      fi
+    action_type: shell
+    capture: input
+    on_yes: refine_issue
+    on_no: done
+    on_error: done
+
+  refine_issue:
+    loop: refine-to-ready-issue
+    context_passthrough: true
+    on_success: implement_issue
+    on_failure: skip_issue
+    on_error: skip_issue
+
+  implement_issue:
+    action: "Run /ll:manage-issue to implement issue ${captured.input.output}."
+    action_type: prompt
+    capture: implement_result
+    next: get_next_issue
+
+  skip_issue:
+    action: |
+      echo "Skipping ${captured.input.output} after refinement failure"
+      echo "${captured.input.output}" >> .loops/tmp/auto-refine-and-implement-skipped.txt
+    action_type: shell
+    next: get_next_issue
+
+  done:
+    terminal: true

@@ -3,7 +3,7 @@ id: FEAT-996
 type: FEAT
 priority: P4
 title: "Add auto-refine-and-implement built-in loop"
-status: open
+status: completed
 discovered_date: 2026-04-08
 discovered_by: capture-issue
 ---
@@ -149,7 +149,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `automation`, `loops`, `issue-management`, `captured`
 
+## Resolution
+
+Implemented in `scripts/little_loops/loops/auto-refine-and-implement.yaml`. Promoted from `auto-issue-processor.yaml` with all 7 structural fixes applied: `category`, `description`, `import`, `timeout`, `max_iterations` (100), `action_type: prompt` for implement_issue, and updated skip file path. README catalog updated. Old `auto-issue-processor.yaml` remains in project root as user reference.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-08 - implemented
 - `/ll:refine-issue` - 2026-04-08T05:40:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/854f6e93-e4ac-4f1e-8b05-80b1a030ce8f.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76fbeb1f-5361-408b-ba48-b8f1bb2afc2f.jsonl`
 
