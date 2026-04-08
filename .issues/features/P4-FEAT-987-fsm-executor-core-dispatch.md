@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-04-07
 discovered_by: issue-size-review
-confidence_score: 90
-outcome_confidence: 82
+confidence_score: 100
+outcome_confidence: 86
 parent_issue: FEAT-984
 ---
 
