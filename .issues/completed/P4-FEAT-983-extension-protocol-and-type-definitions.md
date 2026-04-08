@@ -75,7 +75,7 @@ class RouteContext:
     action_result: ActionResult | None       # None when state has no action field — types.py:52
     eval_result:   EvaluationResult | None   # None when state has no evaluator — evaluators.py:40
     ctx:           InterpolationContext      # ctx.result pre-populated at route time — interpolation.py:37
-    iteration:     int                       # 1-based iteration counter — executor.py:96
+    iteration:     int                       # 1-based iteration counter — executor.py:93
 
 @dataclass
 class RouteDecision:
@@ -133,7 +133,7 @@ Use forward-reference strings to avoid circular imports (`EvaluateConfig` in `sc
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - `scripts/little_loops/issue_parser.py:202` — `IssueInfo` dataclass definition. Must be imported in `extension.py` for `before_issue_close(self, info: IssueInfo)`. Add `from little_loops.issue_parser import IssueInfo` to `extension.py` imports.
-- `scripts/little_loops/fsm/executor.py:93` — `self.iteration = 0` (initialized as 0; incremented to 1-based before `_execute_state()` is called). The issue comment "executor.py:96" is shifted — actual line is 93.
+- `scripts/little_loops/fsm/executor.py:93` — `self.iteration = 0` (initialized as 0; incremented to 1-based before `_execute_state()` is called).
 - `scripts/little_loops/fsm/evaluators.py:40-50` — `EvaluationResult` dataclass fields: `verdict: str` (line 49), `details: dict[str, Any]` (line 50).
 - `scripts/little_loops/extension.py:165` — `wire_extensions()` detection uses `getattr(ext, "event_filter", None)` exclusively — no `isinstance()` against Protocol types. New protocols must also be detected via `hasattr()`, not `isinstance()`, confirming `@runtime_checkable` is unnecessary on the new Protocols.
 - `scripts/little_loops/fsm/__init__.py:86-92` — existing `from little_loops.fsm.executor import (...)` block already exports `ActionResult`, `ActionRunner`, `EventCallback`, `ExecutionResult`, `FSMExecutor`. `RouteContext` and `RouteDecision` join this block.
@@ -179,13 +179,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `InterceptorExtension` Protocol defined in `extension.py` with `before_route`, `after_route`, `before_issue_close` methods
-- [ ] `ActionProviderExtension` Protocol defined with `provided_actions()` returning `dict[str, ActionRunner]`
-- [ ] `EvaluatorProviderExtension` Protocol defined with `provided_evaluators()` returning `dict[str, Evaluator]`
-- [ ] `RouteContext` and `RouteDecision` defined as `@dataclass` with correct field types
-- [ ] `Evaluator` type alias added to `fsm/types.py` after `EventCallback` (line 70)
-- [ ] All new types exported from `__init__.py` files
-- [ ] Existing `NoopLoggerExtension` and observe-only extension tests continue to pass
+- [x] `InterceptorExtension` Protocol defined in `extension.py` with `before_route`, `after_route`, `before_issue_close` methods
+- [x] `ActionProviderExtension` Protocol defined with `provided_actions()` returning `dict[str, ActionRunner]`
+- [x] `EvaluatorProviderExtension` Protocol defined with `provided_evaluators()` returning `dict[str, Evaluator]`
+- [x] `RouteContext` and `RouteDecision` defined as `@dataclass` with correct field types
+- [x] `Evaluator` type alias added to `fsm/types.py` after `EventCallback` (line 70)
+- [x] All new types exported from `__init__.py` files
+- [x] Existing `NoopLoggerExtension` and observe-only extension tests continue to pass
 
 ## API/Interface
 
@@ -237,9 +237,15 @@ Evaluator = Callable[["EvaluateConfig", str, int, "InterpolationContext"], "Eval
 
 ## Status
 
-**Open** | Created: 2026-04-07 | Priority: P4
+**Completed** | Created: 2026-04-07 | Resolved: 2026-04-07 | Priority: P4
+
+## Resolution
+
+Implemented all type definitions as specified. Three Protocol classes (`InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`) added to `extension.py`; `RouteContext` and `RouteDecision` dataclasses added to `fsm/executor.py`; `Evaluator` type alias added to `fsm/types.py` with `TYPE_CHECKING` imports to avoid circular imports. All types exported from both `__init__.py` files. 4422 tests pass.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-07T00:00:00 - implemented FEAT-983 — extension protocol and type definitions
+- `/ll:ready-issue` - 2026-04-08T02:16:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de2f2afe-3578-4944-87f3-ea4946505e3f.jsonl`
 - `/ll:confidence-check` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fed4a5e7-1236-4d5f-b7d7-a7de0154ff53.jsonl`
 - `/ll:wire-issue` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/MEMORY.md`
 - `/ll:refine-issue` - 2026-04-07T23:49:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7a07ce-ed95-46ff-8782-94f65304e6aa.jsonl`
