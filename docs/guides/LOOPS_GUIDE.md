@@ -269,11 +269,46 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
 | `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
+| `auto-refine-and-implement` | For each backlog issue in priority order: refine to ready via `refine-to-ready-issue`, then implement via `/ll:manage-issue`; skips issues that fail refinement and tracks them to avoid retrying; loops until backlog is exhausted |
 | `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
+
+### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
+
+**Technique**: For each backlog issue in priority order, run `refine-to-ready-issue` as a sub-loop to bring it to ready status, then invoke `/ll:manage-issue` to implement it. Issues that fail refinement are recorded in a skip list and excluded from subsequent `ll-issues next-issue` calls so the loop never retries a persistently failing issue.
+
+**When to use**: When you want fully-automated end-to-end issue processing — from raw backlog to committed implementation — without manual intervention between refinement and implementation. Prefer `issue-refinement` if you only want to refine issues without implementing them, or `ll-auto` for direct implementation without the refinement pass.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `max_issues` | `100` | Maximum number of issues to process before exiting |
+
+**Invocation**:
+```bash
+# Process entire backlog
+ll-loop run auto-refine-and-implement
+
+# Limit to first 10 issues
+ll-loop run auto-refine-and-implement --context max_issues=10
+```
+
+**FSM flow**:
+```
+get_next_issue → [issue found?]
+  ├─ YES → refine_issue (sub-loop: refine-to-ready-issue) → [success?]
+  │         ├─ YES → implement_issue (/ll:manage-issue) → get_next_issue (loop)
+  │         └─ NO  → skip_issue → get_next_issue (loop)
+  └─ NO → done
+```
+
+**Skip tracking**: Issues that fail refinement are appended (one per line) to `.loops/tmp/auto-refine-and-implement-skipped.txt`. Each `get_next_issue` reads this file and passes the IDs as `--skip` to `ll-issues next-issue`, preventing infinite retry loops for persistently-unrefineable issues.
+
+**Notes**: The loop runs up to 100 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize the refinement thresholds or post-implementation steps.
 
 **Code Quality**
 

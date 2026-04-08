@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`auto-refine-and-implement` Built-in Loop** — New issue-management loop that refines each backlog issue to ready (via `refine-to-ready-issue` sub-loop) then implements it (via `/ll:manage-issue`); skips and tracks issues that fail refinement; runs until backlog is exhausted (FEAT-996)
+- **`ReferenceInterceptorExtension`** — Passthrough reference implementation of `InterceptorExtension` in `extensions/reference_interceptor.py`; copy-paste starting point for custom interceptors (FEAT-995)
+- **`before_issue_close` Veto Hook** — `close_issue()` now accepts an `interceptors` list; any interceptor returning `False` from `before_issue_close()` vetoes the close and aborts the move (FEAT-994)
+- **`wire_extensions()` Executor Support** — `wire_extensions()` gains an optional `executor` parameter; when provided, extensions implementing `ActionProviderExtension`, `EvaluatorProviderExtension`, or `InterceptorExtension` are wired into the `FSMExecutor` registry (FEAT-993)
+
 ### Planned
 
 - Windows compatibility testing
