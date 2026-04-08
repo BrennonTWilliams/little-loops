@@ -1695,7 +1695,9 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=True):
-            run_foreground(executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=True))
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=True)
+            )
         out = capsys.readouterr().out
         assert "\033[2J\033[H" in out
         assert "\033[?1049h" in out
@@ -1709,7 +1711,9 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=False):
-            run_foreground(executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=True))
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=True)
+            )
         out = capsys.readouterr().out
         assert "\033[2J" not in out
         assert "\033[?1049h" not in out
@@ -1723,7 +1727,9 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=True):
-            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True))
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+            )
         out = capsys.readouterr().out
         assert "\033[?1049h" in out
         assert out.index("\033[?1049h") < out.index("\033[2J\033[H")
@@ -1735,7 +1741,9 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=True):
-            run_foreground(executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=False))
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=False)
+            )
         out = capsys.readouterr().out
         assert "\033[?1049h" not in out
         assert "\033[2J\033[H" in out
@@ -1747,7 +1755,9 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=True):
-            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=False))
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=False)
+            )
         out = capsys.readouterr().out
         assert "\033[?1049h" not in out
 
@@ -1760,7 +1770,9 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=True):
-            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True))
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+            )
         out = capsys.readouterr().out
         assert "\033[?1049l" in out
 
