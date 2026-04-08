@@ -287,6 +287,46 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `test-coverage-improvement` | Measure test coverage, identify uncovered code paths, write tests for highest-risk gaps, and converge when coverage target is met |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
 
+### `context-health-monitor` — Scratch File Pressure Monitor
+
+**Technique**: Measure scratch directory size and session log age, emit a diagnosis tag (`PRESSURE_SCRATCH`, `PRESSURE_OUTPUTS`, or `CONTEXT_HEALTHY`), then compact or archive based on the diagnosis. Runs until healthy or until `max_iterations` is reached.
+
+**When to use**: During long automation runs (`ll-auto`, `ll-parallel`) where scratch files accumulate. Symptoms that warrant a run: scratch dir >500 KB, per-file summaries growing stale, or loop reasoning speed degrading due to context bloat.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `scratch_size_kb_warn` | `500` | Scratch dir size (KB) above which pressure is flagged |
+| `log_age_days_warn` | `7` | Age in days above which output files are eligible for archiving |
+| `scratch_dir` | `.loops/tmp` | Directory to monitor and compact |
+
+**Invocation**:
+```bash
+# Run with defaults
+ll-loop run context-health-monitor
+
+# Lower threshold for aggressive compaction
+ll-loop run context-health-monitor \
+  --context scratch_size_kb_warn=200 \
+  --context scratch_dir=/tmp/ll-scratch
+```
+
+**FSM flow**:
+```
+assess_context → self_assess → route
+                                 ├─ CONTEXT_HEALTHY → done
+                                 ├─ PRESSURE_SCRATCH → compact_scratch → verify → done
+                                 └─ PRESSURE_OUTPUTS → archive_outputs → done
+```
+
+**Diagnosis tags**:
+- `CONTEXT_HEALTHY` — No action needed; scratch dir is below threshold
+- `PRESSURE_SCRATCH` — Scratch files are large; Claude compacts them by summarizing to essential findings
+- `PRESSURE_OUTPUTS` — Output files are stale; archived to `{scratch_dir}/archive/`
+
+**Notes**: `compact_scratch` summarizes large files in-place rather than deleting them — files referenced in active issues are preserved. Use `ll-loop install context-health-monitor` to add a pre-run hook that triggers it automatically before long sprints.
+
 **Evaluation**
 
 | Loop | Description |
@@ -302,6 +342,50 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `rl-coding-agent` | Policy+RLHF composite loop for agentic coding — outer policy loop adapts coding strategy while inner RLHF loop polishes each artifact to a quality threshold |
 | `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
 | `rl-rlhf` | RLHF-style loop — generate candidate output, score quality, refine until target met |
+
+### `agent-eval-improve` — Agent Quality Improvement Loop
+
+**Technique**: Run an agent against a task suite, score pass/fail per task, identify failure patterns, and apply targeted config/prompt refinements — iterating until quality converges at the target threshold or no actionable patterns remain.
+
+**When to use**: When an agent or prompt consistently fails on a subset of tasks and the failure mode is unclear. Useful for: refining tool-calling agents, tightening classification prompts, and diagnosing agents that succeed on simple cases but fail on edge cases.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `agent_config` | _(required)_ | Path to the agent config file to evaluate |
+| `task_suite` | _(required)_ | Path to the task suite file or directory |
+| `quality_threshold` | `0.85` | Target pass rate (0.0–1.0) to converge and exit |
+
+**Invocation**:
+```bash
+# Basic evaluation loop
+ll-loop run agent-eval-improve \
+  --context agent_config=.loops/my-agent.yaml \
+  --context task_suite=evals/tasks.json
+
+# With a lower quality bar (early development)
+ll-loop run agent-eval-improve \
+  --context agent_config=.loops/my-agent.yaml \
+  --context task_suite=evals/tasks.json \
+  --context quality_threshold=0.70
+```
+
+**FSM flow**:
+```
+run_eval → score_results → analyze_failures
+                               ├─ YES (patterns found) → route_quality
+                               └─ NO (no actionable patterns) → done
+                                        │
+                             ┌──────────┴──────────┐
+                         done (converged)    refine_config → run_eval
+```
+
+**Exit states**:
+- `done` — Quality converged at or above `quality_threshold`, or no actionable failure patterns were found
+- `failed` — Any state exhausted `max_retries` (2 retries). Check `captured.eval_results` via `ll-loop history agent-eval-improve` to diagnose
+
+**Notes**: Each state has `max_retries: 2` with `on_retry_exhausted: failed`. Use `ll-loop install agent-eval-improve` to copy the YAML to `.loops/` and customize scoring logic or add domain-specific evaluation steps.
 
 **Automatic Prompt Optimization (APO)**
 

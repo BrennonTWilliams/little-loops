@@ -175,10 +175,21 @@ Refine issue files with codebase-driven research to fill knowledge gaps needed f
 - `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview)
 
 ### `/ll:wire-issue`
-Post-refinement wiring pass that completes the Integration Map by tracing every file that must change — callers, importers, config references, doc sections, tests, and side-effect files (plugin manifests, `__init__.py` exports, CLI registration hooks). Run after `/ll:refine-issue` when the integration map looks thin.
+Post-refinement wiring pass that completes an issue's **Integration Map** — the structured record of every file that must change when the issue is implemented. Where `/ll:refine-issue` fills in the _what_ and _why_, `wire-issue` traces the _where_: every caller, importer, config entry, doc section, test file, and side-effect file that the implementation will touch.
+
+**The Integration Map** lives in the issue file under `## Integration Map`. A thin map might list 3–5 files; a wired map covers 10–20+, including non-obvious side effects like `__init__.py` exports, CLI registration hooks, and plugin manifests. Thin maps are the primary cause of incomplete implementations.
+
+**When to run**: After `/ll:refine-issue` when the Integration Map section looks sparse — few files listed, no test files, no doc sections. Also before `/ll:confidence-check` to ensure the readiness score reflects full scope.
+
+**Wiring categories searched**:
+- **Callers**: functions/classes in other modules that call the target code
+- **Config**: keys in `ll-config.json`, `config-schema.json`, `plugin.json`
+- **Tests**: existing test files that cover the area, test files that should be created/updated
+- **Docs**: sections in `docs/` that describe the changed behavior
+- **Side effects**: `__init__.py` exports, CLI entry points, hook registrations, marketplace entries
 
 **Arguments:**
-- `issue_id` (optional): Issue ID to wire (e.g., FEAT-948, ENH-277). Reads most recent active issue if omitted.
+- `issue_id` (optional): Issue ID to wire (e.g., `FEAT-948`, `ENH-277`). Reads most recent active issue if omitted.
 
 **Flags:** `--auto` (non-interactive), `--dry-run` (preview without writing)
 
@@ -210,9 +221,17 @@ Quick reference for the little-loops issue management workflow. Displays the iss
 **Trigger keywords:** "issue workflow", "issue lifecycle", "what commands for issues"
 
 ### `/ll:issue-size-review`
-Evaluate the size and complexity of active issues and propose decomposition for large ones.
+Evaluate the size and complexity of active issues and propose decomposition for large ones. Assigns a complexity score (1–10) based on file count, section count, scope of changes, and estimated session time. Issues scoring **8 or above** are flagged as candidates for decomposition.
 
-**Flags:** `--auto` (non-interactive: auto-decomposes issues scoring >=8 only), `--sprint <name>` (scope to sprint issues only)
+**When to use**: After refinement, before sprint planning. Signals that an issue may be too large: the Integration Map touches >8 files, the Proposed Solution has >5 distinct steps, or the issue spans multiple unrelated subsystems.
+
+**Scoring scale**: 1–4 = small (implement directly); 5–7 = medium (review scope before implementing); 8–10 = large (decompose before implementing).
+
+**Decomposition output**: For each oversized issue, proposes 2–4 smaller child issues with independent scopes, clear dependencies between them, and a suggested execution order. Child issues can be created directly from the output.
+
+**Flags:**
+- `--auto`: Non-interactive; auto-decomposes issues scoring ≥8 without prompting
+- `--sprint <name>`: Scope to issues in a named sprint definition only
 
 **Trigger keywords:** "issue size review", "decompose issues", "split large issues"
 

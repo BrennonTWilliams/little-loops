@@ -867,6 +867,51 @@ Find all cycles in the graph using DFS.
 
 **Returns:** List of cycles, each cycle is a list of issue IDs
 
+### WaveContentionNote
+
+Annotation returned when `refine_waves_for_contention()` splits a wave due to file overlap between issues.
+
+```python
+@dataclass
+class WaveContentionNote:
+    contended_paths: list[str]   # Files that caused the split
+    sub_wave_index: int          # 0-based index of this sub-wave within the parent wave
+    total_sub_waves: int         # Total sub-waves the parent wave was split into
+    parent_wave_index: int = 0   # 0-based index of the original unsplit wave
+```
+
+### refine_waves_for_contention
+
+```python
+def refine_waves_for_contention(
+    waves: list[list[IssueInfo]],
+    *,
+    config: DependencyMappingConfig | None = None,
+) -> tuple[list[list[IssueInfo]], list[WaveContentionNote | None]]
+```
+
+Refine execution waves by splitting issues that would edit the same files. Uses greedy graph coloring so no two issues in the same sub-wave modify the same files. Called automatically by `ll-sprint` before each wave is dispatched to parallel workers.
+
+**Parameters:**
+- `waves` — Execution waves from `DependencyGraph.get_execution_waves()`
+- `config` — Optional `DependencyMappingConfig` for file-hint extraction tuning
+
+**Returns:** `(refined_waves, contention_notes)` — parallel lists of equal length. `contention_notes[i]` is `None` for waves that were not split, and a `WaveContentionNote` for sub-waves that were.
+
+**Example:**
+```python
+from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
+
+graph = DependencyGraph.from_issues(issues)
+waves = graph.get_execution_waves()
+refined, notes = refine_waves_for_contention(waves)
+
+for i, (wave, note) in enumerate(zip(refined, notes)):
+    if note:
+        print(f"Wave {i}: sub-wave {note.sub_wave_index+1}/{note.total_sub_waves} "
+              f"(split on: {note.contended_paths})")
+```
+
 ---
 
 ## little_loops.dependency_mapper
@@ -1411,6 +1456,26 @@ Analysis of completed issues for project health insights.
 | `parse_completed_issue(file_path, *, batch_dates=None)` | Parse a single completed issue file |
 | `scan_completed_issues(completed_dir)` | Scan completed directory for all issues |
 | `scan_active_issues(base_dir, categories)` | Scan active issue directories |
+
+#### parse_completed_issue
+
+```python
+def parse_completed_issue(
+    file_path: Path,
+    *,
+    batch_dates: dict[str, date] | None = None,
+) -> CompletedIssue | None
+```
+
+Parse a single completed issue file.
+
+**Parameters:**
+- `file_path` — Path to the completed issue `.md` file
+- `batch_dates` — Optional pre-fetched filename→date mapping from `_batch_completion_dates()`. When provided, the completion date is resolved via an O(1) dict lookup instead of a per-file `git log` subprocess call. Pass this when calling from inside a loop over many issue files.
+
+**Returns:** `CompletedIssue` dataclass, or `None` if the file cannot be parsed.
+
+**Performance note**: Without `batch_dates`, each call runs one `git log` subprocess to determine when the file was added to the repo. For scanning an entire directory, prefer `scan_completed_issues()` — it pre-fetches all completion dates in a single `git log` call and passes the resulting map to each `parse_completed_issue()` call automatically (ENH-970).
 
 #### Analysis
 

@@ -115,7 +115,7 @@ For interactive editing, use `/ll:configure`.
   },
 
   "context_monitor": {
-    "enabled": false,
+    "enabled": true,
     "auto_handoff_threshold": 80,
     "context_limit_estimate": 1000000,
     "use_transcript_baseline": true
@@ -346,15 +346,25 @@ Codebase scanning configuration:
 
 ### `prompt_optimization`
 
-Automatic prompt optimization settings (`/ll:toggle-autoprompt`):
+Automatic prompt optimization settings (`/ll:toggle-autoprompt`). When enabled, each user message is evaluated for clarity before being sent to Claude — ambiguous or under-specified prompts are rewritten to be more actionable.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `true` | Enable automatic prompt optimization |
 | `mode` | `"quick"` | Optimization mode (`"quick"` or `"thorough"`) |
 | `confirm` | `true` | Show diff and ask for confirmation before applying |
-| `bypass_prefix` | `*` | Prefix to bypass optimization |
-| `clarity_threshold` | `6` | Minimum clarity score (1-10) to pass through unchanged |
+| `bypass_prefix` | `*` | Prefix character to skip optimization for that message |
+| `clarity_threshold` | `6` | Minimum clarity score (1–10) to pass through unchanged |
+
+**Mode differences**:
+- `quick` — Checks wording clarity and specificity only. Fast (< 1 s). Catches vague requests like "fix the bug" but won't add codebase-specific context.
+- `thorough` — Also searches the codebase for relevant files, patterns, and conventions to enrich the prompt with concrete references. Slower (5–15 s depending on project size) but produces significantly more precise prompts.
+
+**`clarity_threshold`**: Prompts that score at or above this value (1–10) are passed through unchanged. Score 1–5 = vague/generic; 6 = adequately specific; 7–10 = precise with concrete references. Lower the threshold to optimize more aggressively; raise it to reduce interruptions on already-clear prompts.
+
+**`bypass_prefix`**: Prepend this character to any message to skip optimization entirely for that message. Default `*`, so `*just do it` skips optimization. Useful for one-off commands, raw prompts, or when the optimization would lose intentional ambiguity.
+
+**When to disable**: Turn off (`enabled: false`) for codebases with domain-specific shorthand where optimization rewrites valid terminology, or when running in fully automated pipelines where prompts are pre-authored.
 
 ### `continuation`
 
@@ -376,7 +386,7 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Enable context window monitoring |
+| `enabled` | `true` | Enable context window monitoring (enabled by default; all project templates include this setting) |
 | `auto_handoff_threshold` | `80` | Context usage percentage to trigger handoff warning |
 | `context_limit_estimate` | `1000000` | Fallback/override for the context window token limit. Auto-detection reads the model from the JSONL transcript and selects the correct limit for known models (claude-*-4* → 200 000). Set this only to override auto-detection or when using an unknown/custom model. Also overridable via `LL_CONTEXT_LIMIT` env var. |
 | `use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Improves accuracy from ±30–50% to ±5–15%. Falls back to pure heuristics when unavailable. |
