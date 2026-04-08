@@ -291,7 +291,22 @@ Option 1 keeps `close_issue()` decoupled from both `EventBus` internals and `FSM
 **Open** | Created: 2026-04-07 | Priority: P4
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-08T05:12:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
 - `/ll:wire-issue` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto.jsonl`
 - `/ll:refine-issue` - 2026-04-08T00:32:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c382aff-97a4-46a3-8961-ff8991a9761a.jsonl`
 - `/ll:format-issue` - 2026-04-08T00:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c4a940a-aa45-4b73-ac86-b855f9c1ae7d.jsonl`
 - `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b2501d7-f66b-4a19-80a6-6fecea4283e8.jsonl`
+- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-08
+- **Reason**: Issue too large for single session (score: 11/11)
+
+### Decomposed Into
+- FEAT-993: Extend `wire_extensions()` with Executor Support
+- FEAT-994: Add `before_issue_close` Veto Hook to `close_issue()`
+- FEAT-995: Reference Interceptor Extension and Docs Update
