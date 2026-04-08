@@ -242,6 +242,14 @@ ll-loop run general-task --context input="Refactor the auth module to use depend
 ll-loop run general-task "Refactor the auth module to use dependency injection"
 ```
 
+> **JSON input shorthand**: Any loop that accepts context variables can receive them as a single JSON object positional argument. If the object's keys match defined context variables, each key is unpacked directly into context. If the JSON is invalid or keys don't match, the value is stored as a string in `context[input_key]` (the loop's configured input variable, usually `input`).
+>
+> ```bash
+> # Equivalent: pass multiple context vars as a JSON object (auto-unpacked)
+> ll-loop run recursive-refine '{"input": "FEAT-42,FEAT-43"}'
+> ll-loop run outer-loop-eval '{"loop_name": "issue-refinement", "input": "some value"}'
+> ```
+
 The loop follows a structured cycle:
 
 1. **Define Done** — writes verifiable acceptance criteria to `.loops/tmp/general-task-dod.md`
@@ -312,6 +320,58 @@ get_next_issue → [issue found?]
 **Skip tracking**: Issues that fail refinement are appended (one per line) to `.loops/tmp/auto-refine-and-implement-skipped.txt`. Each `get_next_issue` reads this file and passes the IDs as `--skip` to `ll-issues next-issue`, preventing infinite retry loops for persistently-unrefineable issues.
 
 **Notes**: The loop runs up to 100 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize the refinement thresholds or post-implementation steps.
+
+### `recursive-refine` — Depth-First Issue Refinement with Decomposition
+
+**Technique**: Accepts a single issue ID or a comma-separated list. For each issue, delegates `format → refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop. If the sub-loop exits without meeting thresholds, the loop runs `/ll:issue-size-review` to check whether the issue should be decomposed. When child issues are detected (either from the sub-loop's `breakdown_issue` path or from an explicit size-review), they are prepended to the queue depth-first and refined before the next sibling. Issues that cannot be decomposed further are recorded as skipped.
+
+**When to use**: When you have one or more issues you want refined to ready status, including any children that get split off along the way. Prefer `issue-refinement` for full-backlog refinement; use `recursive-refine` when you want targeted, tree-aware refinement of a specific set of issues.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `readiness_threshold` | `90` | Minimum confidence score for an issue to be considered ready (override via `commands.confidence_gate.readiness_threshold` in `ll-config.json`) |
+| `outcome_threshold` | `75` | Minimum outcome confidence score (override via `commands.confidence_gate.outcome_threshold` in `ll-config.json`) |
+| `max_refine_count` | `5` | Maximum `/ll:refine-issue` calls per issue lifetime; issues that exhaust this cap are routed to size-review instead of failing (override via `commands.max_refine_count` in `ll-config.json`) |
+
+**Invocation**:
+```bash
+# Refine a single issue (positional input)
+ll-loop run recursive-refine "FEAT-42"
+
+# Refine multiple issues (depth-first: children of FEAT-42 resolved before FEAT-43)
+ll-loop run recursive-refine "FEAT-42,FEAT-43,BUG-17"
+
+# JSON shorthand: pass as a JSON object — keys auto-unpacked into context variables
+ll-loop run recursive-refine '{"input": "FEAT-42,FEAT-43"}'
+
+# Alternatively, set via --context flag
+ll-loop run recursive-refine --context input="FEAT-42"
+```
+
+**FSM flow**:
+```
+parse_input → dequeue_next → [queue empty?]
+  ├─ YES → done (prints summary)
+  └─ NO  → capture_baseline → run_refine (sub-loop: refine-to-ready-issue)
+              ├─ on_success → check_passed → [thresholds met?]
+              │                ├─ YES → dequeue_next (loop)
+              │                └─ NO  → detect_children
+              └─ on_failure/on_error → detect_children → [children found from sub-loop?]
+                                        ├─ YES → enqueue_children → dequeue_next (depth-first)
+                                        └─ NO  → size_review_snap → run_size_review → enqueue_or_skip → dequeue_next
+```
+
+**Summary output**: When the queue is exhausted, `done` emits a structured summary:
+```
+=== Recursive Refine Summary ===
+
+Passed  (2): FEAT-42, FEAT-43
+Skipped (1): BUG-17
+```
+
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`.
 
 **Code Quality**
 

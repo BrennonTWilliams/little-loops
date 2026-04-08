@@ -10,8 +10,8 @@ description: |
   until every issue in the full tree passes thresholds or is skipped.
 
   Usage:
-    ll-loop run recursive-refine --input "ISSUE_ID"
-    ll-loop run recursive-refine --input "ID1,ID2,ID3"
+    ll-loop run recursive-refine "ISSUE_ID"
+    ll-loop run recursive-refine "ID1,ID2,ID3"
 initial: parse_input
 max_iterations: 500
 timeout: 28800
@@ -29,7 +29,7 @@ states:
     # newline-delimited queue file, and initialise per-run tracking files.
     action: |
       if [ -z "${context.input}" ]; then
-        echo "ERROR: input is required. Usage: ll-loop run recursive-refine --input \"ID1,ID2\""
+        echo "ERROR: input is required. Usage: ll-loop run recursive-refine \"ID1,ID2\""
         exit 1
       fi
       mkdir -p .loops/tmp
