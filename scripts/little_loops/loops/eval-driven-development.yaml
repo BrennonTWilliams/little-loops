@@ -76,7 +76,7 @@ states:
         Return "no" if any gates failed or produced errors.
     on_yes: done
     on_no: refine_issues
-    on_error: refine_issues
+    on_error: failed
     on_blocked: refine_issues
 
   # Refine newly captured issues to implementation readiness.
@@ -96,4 +96,7 @@ states:
     next: implement
 
   done:
+    terminal: true
+
+  failed:
     terminal: true
