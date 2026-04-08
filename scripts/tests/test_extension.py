@@ -262,6 +262,189 @@ class TestWireExtensions:
 
         assert len(received) == 2
 
+    def test_wire_extensions_hasattr_on_event_guard(self) -> None:
+        """Extensions without on_event are not registered on the bus (no AttributeError)."""
+        received: list[LLEvent] = []
+
+        class OnEventExtension:
+            def on_event(self, event: LLEvent) -> None:
+                received.append(event)
+
+        class InterceptorOnlyExtension:
+            def before_route(self, context: object) -> object:
+                return None
+
+        bus = EventBus()
+        with patch.object(
+            ExtensionLoader,
+            "load_all",
+            return_value=[OnEventExtension(), InterceptorOnlyExtension()],
+        ):
+            extensions = wire_extensions(bus)
+
+        assert len(extensions) == 2
+        bus.emit({"event": "test", "ts": "now"})
+        assert len(received) == 1  # Only OnEventExtension fires
+
+    def test_wire_extensions_priority_sort(self) -> None:
+        """Extensions are sorted by priority (ascending) before registration."""
+        order: list[str] = []
+
+        class LowPriorityExt:
+            priority = 10
+
+            def on_event(self, event: LLEvent) -> None:
+                order.append("low")
+
+        class HighPriorityExt:
+            priority = 1
+
+            def on_event(self, event: LLEvent) -> None:
+                order.append("high")
+
+        bus = EventBus()
+        # Load in reverse priority order to verify sort works
+        with patch.object(
+            ExtensionLoader, "load_all", return_value=[LowPriorityExt(), HighPriorityExt()]
+        ):
+            wire_extensions(bus)
+
+        bus.emit({"event": "test", "ts": "now"})
+        assert order == ["high", "low"]
+
+    def test_wire_extensions_with_executor_populates_actions(self) -> None:
+        """When executor is provided, provided_actions() are added to _contributed_actions."""
+        from unittest.mock import MagicMock
+
+        class ActionExt:
+            def on_event(self, event: LLEvent) -> None:
+                pass
+
+            def provided_actions(self) -> dict:
+                return {"my_action": MagicMock()}
+
+        executor = MagicMock()
+        executor._contributed_actions = {}
+        executor._contributed_evaluators = {}
+        executor._interceptors = []
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[ActionExt()]):
+            wire_extensions(bus, executor=executor)
+
+        assert "my_action" in executor._contributed_actions
+
+    def test_wire_extensions_with_executor_populates_evaluators(self) -> None:
+        """When executor is provided, provided_evaluators() are added to _contributed_evaluators."""
+        from unittest.mock import MagicMock
+
+        class EvalExt:
+            def on_event(self, event: LLEvent) -> None:
+                pass
+
+            def provided_evaluators(self) -> dict:
+                return {"my_eval": MagicMock()}
+
+        executor = MagicMock()
+        executor._contributed_actions = {}
+        executor._contributed_evaluators = {}
+        executor._interceptors = []
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[EvalExt()]):
+            wire_extensions(bus, executor=executor)
+
+        assert "my_eval" in executor._contributed_evaluators
+
+    def test_wire_extensions_with_executor_populates_interceptors(self) -> None:
+        """Extensions with interceptor methods are added to executor._interceptors."""
+
+        class InterceptorExt:
+            def before_route(self, context: object) -> object:
+                return None
+
+        executor_obj = type("Executor", (), {
+            "_contributed_actions": {},
+            "_contributed_evaluators": {},
+            "_interceptors": [],
+        })()
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[InterceptorExt()]):
+            wire_extensions(bus, executor=executor_obj)
+
+        assert len(executor_obj._interceptors) == 1
+        assert isinstance(executor_obj._interceptors[0], InterceptorExt)
+
+    def test_wire_extensions_conflict_detection_actions(self) -> None:
+        """Duplicate action names across extensions raise ValueError."""
+        from unittest.mock import MagicMock
+
+        action = MagicMock()
+
+        class ExtA:
+            def provided_actions(self) -> dict:
+                return {"shared_action": action}
+
+        class ExtB:
+            def provided_actions(self) -> dict:
+                return {"shared_action": action}
+
+        executor_obj = type("Executor", (), {
+            "_contributed_actions": {},
+            "_contributed_evaluators": {},
+            "_interceptors": [],
+        })()
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
+            import pytest
+            with pytest.raises(ValueError, match="action 'shared_action' already registered"):
+                wire_extensions(bus, executor=executor_obj)
+
+    def test_wire_extensions_conflict_detection_evaluators(self) -> None:
+        """Duplicate evaluator names across extensions raise ValueError."""
+        from unittest.mock import MagicMock
+
+        evaluator = MagicMock()
+
+        class ExtA:
+            def provided_evaluators(self) -> dict:
+                return {"shared_eval": evaluator}
+
+        class ExtB:
+            def provided_evaluators(self) -> dict:
+                return {"shared_eval": evaluator}
+
+        executor_obj = type("Executor", (), {
+            "_contributed_actions": {},
+            "_contributed_evaluators": {},
+            "_interceptors": [],
+        })()
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
+            import pytest
+            with pytest.raises(ValueError, match="evaluator 'shared_eval' already registered"):
+                wire_extensions(bus, executor=executor_obj)
+
+    def test_wire_extensions_no_executor_no_second_pass(self) -> None:
+        """Without executor, extensions with provided_actions/evaluators are still loaded cleanly."""
+        from unittest.mock import MagicMock
+
+        class ActionExt:
+            def on_event(self, event: LLEvent) -> None:
+                pass
+
+            def provided_actions(self) -> dict:
+                return {"my_action": MagicMock()}
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[ActionExt()]):
+            extensions = wire_extensions(bus)  # no executor — no error
+
+        assert len(extensions) == 1
+
 
 class TestNewProtocols:
     """Structural compliance tests for InterceptorExtension, ActionProviderExtension,

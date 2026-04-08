@@ -203,7 +203,7 @@ def cmd_run(
         from little_loops.extension import wire_extensions
 
         config = BRConfig(Path.cwd())
-        wire_extensions(executor.event_bus, config.extensions)
+        wire_extensions(executor.event_bus, config.extensions, executor=executor)
         cli_colors = config.cli.colors
         highlight_color = cli_colors.fsm_active_state
         edge_label_colors = cli_colors.fsm_edge_labels.to_dict()

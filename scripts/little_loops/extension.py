@@ -22,7 +22,7 @@ from little_loops.events import EventBus, EventCallback, LLEvent
 from little_loops.issue_parser import IssueInfo
 
 if TYPE_CHECKING:
-    from little_loops.fsm.executor import RouteContext, RouteDecision
+    from little_loops.fsm.executor import FSMExecutor, RouteContext, RouteDecision
     from little_loops.fsm.runners import ActionRunner
     from little_loops.fsm.types import Evaluator
 
@@ -187,30 +187,59 @@ class ExtensionLoader:
 def wire_extensions(
     bus: EventBus,
     config_paths: list[str] | None = None,
+    executor: FSMExecutor | None = None,
 ) -> list[LLExtension]:
-    """Load extensions and register them on an EventBus.
+    """Load extensions and register them on an EventBus and optional FSMExecutor.
 
     Each extension's ``on_event`` callback is wrapped to convert the raw
     ``dict[str, Any]`` dispatched by ``EventBus.emit()`` into an ``LLEvent``
     using ``from_raw_event()`` (which copies the dict to avoid mutation).
 
+    When ``executor`` is provided, a second pass populates
+    ``executor._contributed_actions``, ``executor._contributed_evaluators``,
+    and ``executor._interceptors`` from each extension that implements the
+    corresponding protocols.
+
     Args:
         bus: EventBus to register extension callbacks on
         config_paths: Optional list of "module:Class" strings from config
+        executor: Optional FSMExecutor to populate with contributed types
 
     Returns:
         List of loaded extension instances
     """
     extensions = ExtensionLoader.load_all(config_paths)
+    extensions = sorted(extensions, key=lambda e: getattr(e, "priority", 0))
+
+    def _make_callback(e: LLExtension) -> EventCallback:
+        def _cb(event: dict[str, Any]) -> None:
+            e.on_event(LLEvent.from_raw_event(event))
+
+        return _cb
+
     for ext in extensions:
+        if hasattr(ext, "on_event"):
+            bus.register(_make_callback(ext), filter=getattr(ext, "event_filter", None))
 
-        def _make_callback(e: LLExtension) -> EventCallback:
-            def _cb(event: dict[str, Any]) -> None:
-                e.on_event(LLEvent.from_raw_event(event))
+    if executor is not None:
+        for ext in extensions:
+            if hasattr(ext, "provided_actions"):
+                for name in ext.provided_actions():
+                    if name in executor._contributed_actions:
+                        raise ValueError(
+                            f"Extension conflict: action '{name}' already registered by another extension"
+                        )
+                executor._contributed_actions.update(ext.provided_actions())
+            if hasattr(ext, "provided_evaluators"):
+                for name in ext.provided_evaluators():
+                    if name in executor._contributed_evaluators:
+                        raise ValueError(
+                            f"Extension conflict: evaluator '{name}' already registered by another extension"
+                        )
+                executor._contributed_evaluators.update(ext.provided_evaluators())
+            if hasattr(ext, "before_route") or hasattr(ext, "after_route") or hasattr(ext, "before_issue_close"):
+                executor._interceptors.append(ext)
 
-            return _cb
-
-        bus.register(_make_callback(ext), filter=getattr(ext, "event_filter", None))
     if extensions:
         logger.info("Wired %d extension(s) to EventBus", len(extensions))
     return extensions

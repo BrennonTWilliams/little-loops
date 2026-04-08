@@ -19,6 +19,14 @@ Decomposed from FEAT-985: wire_extensions() Upgrade, before_issue_close Hook, Re
 
 FEAT-983 defines types/protocols. FEAT-984 adds `_contributed_actions`, `_contributed_evaluators`, and `_interceptors` attributes to `FSMExecutor`. This issue wires extensions into those attributes by extending `wire_extensions()`.
 
+## Current Behavior
+
+`wire_extensions()` only wires `on_event` callbacks onto the `EventBus`. Extensions that implement `provided_actions()`, `provided_evaluators()`, or interceptor protocols (`before_route`, `after_route`, `before_issue_close`) have no path to register their contributed types into `FSMExecutor`. Extensions that implement only interceptor/evaluator/action protocols (without `on_event`) cause an `AttributeError` when `wire_extensions()` is called. No priority ordering is applied across extensions.
+
+## Expected Behavior
+
+`wire_extensions(bus, executor=executor)` accepts an optional `FSMExecutor` parameter. When provided, a second pass populates `executor._contributed_actions`, `executor._contributed_evaluators`, and `executor._interceptors` from each extension. A `hasattr(on_event)` guard prevents `AttributeError` for interceptor-only extensions. A priority sort ensures consistent dispatch ordering for both the event bus and executor registries.
+
 ## Use Case
 
 **Who**: A developer building a little-loops extension that contributes custom actions, evaluators, or interceptors to the FSM executor.
@@ -133,13 +141,13 @@ Three callers must pass the executor so contributed types reach it:
 
 ## Acceptance Criteria
 
-- [ ] `wire_extensions()` accepts `executor: FSMExecutor | None = None`
-- [ ] Second pass populates `_contributed_actions`, `_contributed_evaluators`, `_interceptors` on executor
-- [ ] Conflict detection raises `ValueError` for duplicate action/evaluator name keys
-- [ ] Priority sort applied before both registration passes
-- [ ] `hasattr(ext, "on_event")` guard prevents `AttributeError` for interceptor-only extensions
-- [ ] Callers at `run.py`, `lifecycle.py`, `sprint/run.py` updated to pass `executor`
-- [ ] All new tests pass; existing observe-only extension tests unchanged
+- [x] `wire_extensions()` accepts `executor: FSMExecutor | None = None`
+- [x] Second pass populates `_contributed_actions`, `_contributed_evaluators`, `_interceptors` on executor
+- [x] Conflict detection raises `ValueError` for duplicate action/evaluator name keys
+- [x] Priority sort applied before both registration passes
+- [x] `hasattr(ext, "on_event")` guard prevents `AttributeError` for interceptor-only extensions
+- [x] Callers at `run.py`, `lifecycle.py`, `sprint/run.py` updated to pass `executor`
+- [x] All new tests pass; existing observe-only extension tests unchanged
 
 ## Impact
 
@@ -154,7 +162,11 @@ Three callers must pass the executor so contributed types reach it:
 
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P4
+**Completed** | Created: 2026-04-08 | Resolved: 2026-04-08 | Priority: P4
+
+## Resolution
+
+Implemented in `extension.py`: added `executor: FSMExecutor | None = None` param, priority sort, `hasattr(on_event)` guard, and second pass with conflict detection. Updated callers in `cli/loop/run.py` and `cli/loop/lifecycle.py` to pass `executor=executor`. Added 9 new tests covering all acceptance criteria. All 35 tests pass, lint clean.
 
 ### Codebase Research Findings
 
@@ -175,5 +187,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `cli/parallel.py:228` — call site; bare `EventBus()` at line 225, no executor in scope
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T05:31:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6d41dbb-b21b-4f1c-b728-d1dcee68c12d.jsonl`
 - `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
 - `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`

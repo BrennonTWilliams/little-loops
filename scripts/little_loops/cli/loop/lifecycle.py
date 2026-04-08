@@ -257,7 +257,7 @@ def cmd_resume(
     from little_loops.extension import wire_extensions
 
     config = BRConfig(Path.cwd())
-    wire_extensions(executor.event_bus, config.extensions)
+    wire_extensions(executor.event_bus, config.extensions, executor=executor)
 
     result = executor.resume()
 
