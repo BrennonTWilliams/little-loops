@@ -40,9 +40,8 @@ states:
     on_error: skip_issue
 
   implement_issue:
-    action: "Run /ll:manage-issue to implement issue ${captured.input.output}."
-    action_type: prompt
-    capture: implement_result
+    action: "ll-auto --only ${captured.input.output}"
+    action_type: shell
     next: get_next_issue
 
   skip_issue:
