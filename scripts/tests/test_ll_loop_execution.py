@@ -1602,7 +1602,7 @@ states:
 class TestContributedEvaluatorDispatch:
     """Tests for contributed evaluator dispatch in FSMExecutor._evaluate()."""
 
-    def _make_ctx(self) -> "InterpolationContext":
+    def _make_ctx(self):
         from little_loops.fsm.interpolation import InterpolationContext
 
         return InterpolationContext(
@@ -1643,7 +1643,7 @@ class TestContributedEvaluatorDispatch:
         contributed.assert_called_once_with(
             state.evaluate,
             "hello",  # eval_input
-            0,        # exit_code
+            0,  # exit_code
             ctx,
         )
         assert result is not None

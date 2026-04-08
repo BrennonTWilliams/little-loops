@@ -3742,7 +3742,7 @@ class TestRouteDecision:
     def test_redirect_is_truthy_check(self) -> None:
         """next_state=None (veto) differs from a non-None redirect."""
         redirect = RouteDecision(next_state="success")
-        veto = RouteDecision(next_state=None)
+        _veto = RouteDecision(next_state=None)
         assert redirect.next_state is not None
 
 
@@ -3912,9 +3912,7 @@ class TestInterceptorDispatch:
         )
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0)
-        interceptor = self._make_interceptor(
-            before_return=RouteDecision(next_state="redirected")
-        )
+        interceptor = self._make_interceptor(before_return=RouteDecision(next_state="redirected"))
 
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         executor._interceptors = [interceptor]

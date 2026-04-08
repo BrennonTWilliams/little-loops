@@ -23,6 +23,7 @@ from little_loops.issue_parser import IssueInfo
 
 if TYPE_CHECKING:
     from little_loops.fsm.executor import FSMExecutor, RouteContext, RouteDecision
+    from little_loops.fsm.persistence import PersistentExecutor
     from little_loops.fsm.runners import ActionRunner
     from little_loops.fsm.types import Evaluator
 
@@ -187,7 +188,7 @@ class ExtensionLoader:
 def wire_extensions(
     bus: EventBus,
     config_paths: list[str] | None = None,
-    executor: FSMExecutor | None = None,
+    executor: FSMExecutor | PersistentExecutor | None = None,
 ) -> list[LLExtension]:
     """Load extensions and register them on an EventBus and optional FSMExecutor.
 
@@ -221,24 +222,38 @@ def wire_extensions(
         if hasattr(ext, "on_event"):
             bus.register(_make_callback(ext), filter=getattr(ext, "event_filter", None))
 
-    if executor is not None:
+    from little_loops.fsm.persistence import PersistentExecutor as _PE
+
+    fsm_executor: FSMExecutor | None
+    if executor is None:
+        fsm_executor = None
+    elif isinstance(executor, _PE):
+        fsm_executor = executor._executor
+    else:
+        fsm_executor = executor
+
+    if fsm_executor is not None:
         for ext in extensions:
             if hasattr(ext, "provided_actions"):
                 for name in ext.provided_actions():
-                    if name in executor._contributed_actions:
+                    if name in fsm_executor._contributed_actions:
                         raise ValueError(
                             f"Extension conflict: action '{name}' already registered by another extension"
                         )
-                executor._contributed_actions.update(ext.provided_actions())
+                fsm_executor._contributed_actions.update(ext.provided_actions())
             if hasattr(ext, "provided_evaluators"):
                 for name in ext.provided_evaluators():
-                    if name in executor._contributed_evaluators:
+                    if name in fsm_executor._contributed_evaluators:
                         raise ValueError(
                             f"Extension conflict: evaluator '{name}' already registered by another extension"
                         )
-                executor._contributed_evaluators.update(ext.provided_evaluators())
-            if hasattr(ext, "before_route") or hasattr(ext, "after_route") or hasattr(ext, "before_issue_close"):
-                executor._interceptors.append(ext)
+                fsm_executor._contributed_evaluators.update(ext.provided_evaluators())
+            if (
+                hasattr(ext, "before_route")
+                or hasattr(ext, "after_route")
+                or hasattr(ext, "before_issue_close")
+            ):
+                fsm_executor._interceptors.append(ext)
 
     if extensions:
         logger.info("Wired %d extension(s) to EventBus", len(extensions))

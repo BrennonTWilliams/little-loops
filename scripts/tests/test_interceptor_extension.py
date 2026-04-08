@@ -164,8 +164,9 @@ class TestInterceptorVeto:
         ext = ReferenceInterceptorExtension()
 
         # Patch git operations to avoid real git calls
-        with upatch("little_loops.issue_lifecycle._move_issue_to_completed"), upatch(
-            "little_loops.issue_lifecycle._commit_issue_completion"
+        with (
+            upatch("little_loops.issue_lifecycle._move_issue_to_completed"),
+            upatch("little_loops.issue_lifecycle._commit_issue_completion"),
         ):
             result = close_issue(
                 info=info,

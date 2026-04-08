@@ -363,11 +363,15 @@ class TestWireExtensions:
             def before_route(self, context: object) -> object:
                 return None
 
-        executor_obj = type("Executor", (), {
-            "_contributed_actions": {},
-            "_contributed_evaluators": {},
-            "_interceptors": [],
-        })()
+        executor_obj = type(
+            "Executor",
+            (),
+            {
+                "_contributed_actions": {},
+                "_contributed_evaluators": {},
+                "_interceptors": [],
+            },
+        )()
 
         bus = EventBus()
         with patch.object(ExtensionLoader, "load_all", return_value=[InterceptorExt()]):
@@ -390,15 +394,20 @@ class TestWireExtensions:
             def provided_actions(self) -> dict:
                 return {"shared_action": action}
 
-        executor_obj = type("Executor", (), {
-            "_contributed_actions": {},
-            "_contributed_evaluators": {},
-            "_interceptors": [],
-        })()
+        executor_obj = type(
+            "Executor",
+            (),
+            {
+                "_contributed_actions": {},
+                "_contributed_evaluators": {},
+                "_interceptors": [],
+            },
+        )()
 
         bus = EventBus()
         with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
             import pytest
+
             with pytest.raises(ValueError, match="action 'shared_action' already registered"):
                 wire_extensions(bus, executor=executor_obj)
 
@@ -416,15 +425,20 @@ class TestWireExtensions:
             def provided_evaluators(self) -> dict:
                 return {"shared_eval": evaluator}
 
-        executor_obj = type("Executor", (), {
-            "_contributed_actions": {},
-            "_contributed_evaluators": {},
-            "_interceptors": [],
-        })()
+        executor_obj = type(
+            "Executor",
+            (),
+            {
+                "_contributed_actions": {},
+                "_contributed_evaluators": {},
+                "_interceptors": [],
+            },
+        )()
 
         bus = EventBus()
         with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
             import pytest
+
             with pytest.raises(ValueError, match="evaluator 'shared_eval' already registered"):
                 wire_extensions(bus, executor=executor_obj)
 

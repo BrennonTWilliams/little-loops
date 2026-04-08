@@ -490,7 +490,9 @@ class FSMExecutor:
                 on_output_line=_on_line,
             )
         elif action_mode == "contributed":
-            assert state.action_type is not None  # guaranteed by _action_mode returning "contributed"
+            assert (
+                state.action_type is not None
+            )  # guaranteed by _action_mode returning "contributed"
             runner = self._contributed_actions[state.action_type]
             result = runner.run(
                 action,
