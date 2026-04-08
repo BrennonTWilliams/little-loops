@@ -214,6 +214,10 @@ A developer wants to build a Grafana dashboard extension. They run `ll-create-ex
 
 ---
 
+## Blocks
+
+- FEAT-918
+
 ## Status
 
 **Open** | Created: 2026-04-02 | Priority: P4
