@@ -5,7 +5,7 @@ description: |
   as a sub-loop, then performing structured analysis to identify structural problems,
   logic gaps, flow inefficiencies, and component improvement opportunities.
   Produces an actionable improvement report with suggested YAML changes.
-initial: analyze_definition
+initial: validate_input
 max_iterations: 10
 timeout: 3600
 on_handoff: spawn
@@ -14,6 +14,13 @@ context:
   input: ""       # Optional: input value passed to the sub-loop
 
 states:
+
+  validate_input:
+    action_type: shell
+    action: |
+      test -n "${context.loop_name}" && echo "loop_name: ${context.loop_name}" || (echo "ERROR: loop_name is required. Pass it with --context loop_name=<name>" >&2; exit 1)
+    on_error: done
+    next: analyze_definition
 
   analyze_definition:
     action_type: prompt

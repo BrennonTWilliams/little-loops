@@ -141,6 +141,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `loops`, `outer-loop-eval`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T18:43:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b3c2f63-bd77-4f05-beff-62dfd0e3b7b5.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/099e75da-a1a5-40c7-a589-3871b7902a35.jsonl`
 - `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-04-08T18:35:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29500f71-5c9a-408d-a706-2f171a54f6dc.jsonl`
@@ -150,6 +151,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+Added `validate_input` shell state as the new `initial` state in `outer-loop-eval.yaml`. When `context.loop_name` is empty, the state exits immediately with a clear error message and routes `on_error: done` — preventing any analysis or hallucinated report generation.
+
+**Files changed**:
+- `scripts/little_loops/loops/outer-loop-eval.yaml` — added `validate_input` state, changed `initial` from `analyze_definition` to `validate_input`
+- `scripts/tests/test_outer_loop_eval.py` — updated `test_initial_state`, added `"validate_input"` to `REQUIRED_STATES`, added 3 new test methods
+- `docs/guides/LOOPS_GUIDE.md` — updated FSM flow diagram and execution failure paragraph
+
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P3
+**Completed** | Created: 2026-04-08 | Resolved: 2026-04-08 | Priority: P3

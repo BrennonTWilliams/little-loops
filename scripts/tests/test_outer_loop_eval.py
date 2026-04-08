@@ -40,7 +40,7 @@ class TestOuterLoopEvalFile:
         assert loop_data.get("name") == "outer-loop-eval"
 
     def test_initial_state(self, loop_data: dict) -> None:
-        assert loop_data.get("initial") == "analyze_definition"
+        assert loop_data.get("initial") == "validate_input"
 
     def test_terminal_state(self, loop_data: dict) -> None:
         states = loop_data.get("states", {})
@@ -62,6 +62,7 @@ class TestOuterLoopEvalStates:
     """Tests for required states and their structure."""
 
     REQUIRED_STATES = {
+        "validate_input",
         "analyze_definition",
         "run_sub_loop",
         "analyze_execution",
@@ -74,6 +75,19 @@ class TestOuterLoopEvalStates:
         actual = set(loop_data.get("states", {}).keys())
         missing = self.REQUIRED_STATES - actual
         assert not missing, f"Missing required states: {missing}"
+
+    def test_validate_input_checks_loop_name(self, loop_data: dict) -> None:
+        state = loop_data["states"]["validate_input"]
+        assert state.get("action_type") == "shell"
+        assert "context.loop_name" in state.get("action", "")
+
+    def test_validate_input_routes_error_to_done(self, loop_data: dict) -> None:
+        state = loop_data["states"]["validate_input"]
+        assert state.get("on_error") == "done"
+
+    def test_validate_input_routes_next_to_analyze_definition(self, loop_data: dict) -> None:
+        state = loop_data["states"]["validate_input"]
+        assert state.get("next") == "analyze_definition"
 
     def test_analyze_definition_is_prompt(self, loop_data: dict) -> None:
         state = loop_data["states"]["analyze_definition"]

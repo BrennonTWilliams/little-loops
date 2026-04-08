@@ -1153,12 +1153,15 @@ ll-loop install outer-loop-eval
 
 **FSM flow**:
 ```
+validate_input ──(on_error)──→ done
+     │
+     ↓
 analyze_definition → run_sub_loop → analyze_execution → generate_report
                                                              ├─ YES (has findings) → done
                                                              └─ NO (all "None identified.") → refine_analysis → generate_report
 ```
 
-**Execution failure handling**: If the target loop fails to start (not found, crashes on launch), `outer-loop-eval` captures the error output and feeds it to `analyze_execution` as-is. The final report will still include structural findings derived from the definition analysis — making the audit useful even when the sub-loop cannot run.
+**Execution failure handling**: If `loop_name` is empty, `validate_input` exits immediately with a clear error message before any analysis begins — preventing hallucinated reports. If the target loop is found but fails to start (not found after validation, crashes on launch), `outer-loop-eval` captures the error output and feeds it to `analyze_execution` as-is. The final report will still include structural findings derived from the definition analysis — making the audit useful even when the sub-loop cannot run.
 
 **Report sections**: The improvement report always includes these exact headings:
 - **Structural Issues** — unreachable states, undefined routes, orphaned states
