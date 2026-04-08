@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
-confidence_score: 88
-outcome_confidence: 82
+confidence_score: 100
+outcome_confidence: 78
 ---
 
 # FEAT-995: Reference Interceptor Extension and Docs Update
@@ -18,6 +18,37 @@ Decomposed from FEAT-985: wire_extensions() Upgrade, before_issue_close Hook, Re
 ## Context
 
 FEAT-993 and FEAT-994 add the wiring and lifecycle hook machinery. This issue provides the reference implementation that extension authors can model after, and updates documentation to accurately describe the extended `wire_extensions()` and `close_issue()` signatures.
+
+## Current Behavior
+
+- `scripts/little_loops/extensions/` package does not exist
+- `docs/reference/API.md` `wire_extensions()` shows the 2-param signature without the `executor` parameter added in FEAT-993
+- `docs/reference/API.md` `close_issue()` is missing both `event_bus` and `interceptors` params present in the actual implementation (`issue_lifecycle.py:551`)
+- `docs/ARCHITECTURE.md` Components table does not list an `extensions/` subpackage
+
+## Expected Behavior
+
+- `scripts/little_loops/extensions/` package exists with `ReferenceInterceptorExtension` implementing passthrough `before_route()` and `before_issue_close()`
+- `test_interceptor_extension.py` passes: passthrough, veto, and `wire_extensions()` wiring integration
+- `docs/reference/API.md` accurately reflects `wire_extensions()` with `executor` param, `close_issue()` with `event_bus` and `interceptors` params including the `False` veto return path and `ValueError` for duplicate keys
+- `docs/ARCHITECTURE.md` lists the `extensions/` subpackage in the Components table and reflects executor wiring
+
+## Use Case
+
+**Who**: Extension author implementing custom interceptor logic for `ll-loop`
+
+**Context**: After FEAT-993 and FEAT-994 land, developers want a concrete, copy-pasteable starting point for building veto or routing interceptors without reading FSM internals
+
+**Goal**: Copy `ReferenceInterceptorExtension`, rename the class, and implement real `before_issue_close()` or `before_route()` logic
+
+**Outcome**: A working custom interceptor wired via `wire_extensions()` with minimal boilerplate
+
+## Motivation
+
+This feature would:
+- Provide a copy-pasteable reference implementation reducing onboarding friction for the interceptor system introduced by FEAT-993/FEAT-994
+- Keep `API.md` and `ARCHITECTURE.md` accurate — `close_issue()` docs already omit the `event_bus` param present in production code today
+- Establish `scripts/little_loops/extensions/` as the canonical home for bundled reference implementations
 
 ## Proposed Solution
 
@@ -80,6 +111,31 @@ All patterns use `patch.object(ExtensionLoader, "load_all", return_value=[...])`
 - Lines 454–462 — Components table currently lists `LLExtension`, `EventBus`, `ExtensionLoader`, `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension` (all in `extension.py`); add new `extensions/` subpackage row for `ReferenceInterceptorExtension`
 - Lines 472–478 — Wiring table currently shows EventBus-only for `ll-loop`, `ll-parallel`, `ll-sprint`; update `ll-loop` rows (`run.py`, `lifecycle.py`) to note executor registry wiring (after FEAT-993); `ll-sprint` parallel branch and `ll-parallel` remain EventBus-only
 
+## API/Interface
+
+```python
+from little_loops import RouteContext, RouteDecision
+from little_loops.issue_parser import IssueInfo
+
+
+class ReferenceInterceptorExtension:
+    """Reference implementation demonstrating passthrough interceptor behavior.
+
+    before_route() and before_issue_close() return None (passthrough).
+    Copy and customize to implement real veto logic.
+    """
+
+    def before_route(self, context: RouteContext) -> RouteDecision | None:
+        """Return None to pass through without modifying routing."""
+        return None
+
+    def before_issue_close(self, info: IssueInfo) -> bool | None:
+        """Return None to pass through; return False to veto the close."""
+        return None
+```
+
+No changes to existing public API — new class only.
+
 ## Integration Map
 
 ### New Files
@@ -90,6 +146,7 @@ All patterns use `patch.object(ExtensionLoader, "load_all", return_value=[...])`
 ### Files to Modify
 - `docs/reference/API.md` — 4 locations (lines 5249, 5262, 5266, 1966)
 - `docs/ARCHITECTURE.md` — 2 locations (lines 454, 472)
+- `CONTRIBUTING.md` — lines 178–253 directory tree; add `extensions/` row alongside other subpackages [wiring pass]
 
 ### Similar Patterns
 - `NoopLoggerExtension` at `extension.py:100–115` — model class structure after this
@@ -103,6 +160,12 @@ All patterns use `patch.object(ExtensionLoader, "load_all", return_value=[...])`
 3. Create `scripts/tests/test_interceptor_extension.py` with passthrough and veto tests
 4. Update `docs/reference/API.md` at lines 5249, 5262, 5266, 1966
 5. Update `docs/ARCHITECTURE.md` at lines 454, 472
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `CONTRIBUTING.md:178–253` — add `extensions/` subpackage row to the `scripts/little_loops/` ASCII directory tree, alongside `dependency_mapper/`, `workflow_sequence/`, `fsm/`, `parallel/`, etc.
 
 ## Acceptance Criteria
 
@@ -144,5 +207,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/ARCHITECTURE.md:454–462` — Components table already includes `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`; add new row for `extensions/` subpackage
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40b51a9d-c96a-476d-8d72-459ce0a30b49.jsonl`
+- `/ll:format-issue` - 2026-04-08T12:52:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1ba72aa-ca56-4f5a-a469-7b8bd7aa2766.jsonl`
 - `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
 - `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
+- `/ll:wire-issue` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
