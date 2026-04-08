@@ -798,11 +798,10 @@ class TestCliYamlFragments:
 
 class TestBuiltinLoopMigration:
     def test_builtin_loops_load_after_migration(self) -> None:
-        """All 10 built-in loops that use fragment: shell_exit must still validate."""
+        """All built-in loops that use fragment: shell_exit must still validate."""
         from little_loops.fsm.validation import load_and_validate
 
         loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
-        # The 10 migration targets
         migration_targets = [
             "dead-code-cleanup.yaml",
             "docs-sync.yaml",
@@ -811,6 +810,7 @@ class TestBuiltinLoopMigration:
             "harness-single-shot.yaml",
             "issue-refinement.yaml",
             "prompt-across-issues.yaml",
+            "recursive-refine.yaml",
             "refine-to-ready-issue.yaml",
             "sprint-build-and-validate.yaml",
             "test-coverage-improvement.yaml",

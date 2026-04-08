@@ -82,6 +82,7 @@ class TestBuiltinLoopFiles:
             "greenfield-builder",
             "outer-loop-eval",
             "auto-refine-and-implement",
+            "recursive-refine",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -771,3 +772,113 @@ class TestPromptAcrossIssuesLoop:
         """execute state must define max_retries to prevent stuck items."""
         execute_state = data["states"].get("execute", {})
         assert execute_state.get("max_retries", 0) > 0
+
+
+class TestRecursiveRefineLoop:
+    """Structural tests for the recursive-refine FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "recursive-refine.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "recursive-refine"
+        assert data.get("initial") == "parse_input"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "parse_input",
+            "dequeue_next",
+            "capture_baseline",
+            "run_refine",
+            "check_passed",
+            "detect_children",
+            "enqueue_children",
+            "size_review_snap",
+            "run_size_review",
+            "enqueue_or_skip",
+            "done",
+            "failed",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        failed_state = data["states"].get("failed", {})
+        assert failed_state.get("terminal") is True
+
+    def test_dequeue_next_captures_input(self, data: dict) -> None:
+        """dequeue_next must capture as 'input' for context_passthrough to work."""
+        state = data["states"].get("dequeue_next", {})
+        assert state.get("capture") == "input"
+
+    def test_run_refine_delegates_to_sub_loop(self, data: dict) -> None:
+        """run_refine must delegate to refine-to-ready-issue with context_passthrough."""
+        state = data["states"].get("run_refine", {})
+        assert state.get("loop") == "refine-to-ready-issue"
+        assert state.get("context_passthrough") is True
+
+    def test_run_refine_has_success_and_failure_routes(self, data: dict) -> None:
+        """run_refine must define on_success and on_failure routes."""
+        state = data["states"].get("run_refine", {})
+        assert "on_success" in state
+        assert "on_failure" in state
+
+    def test_queue_file_uses_loops_tmp(self, data: dict) -> None:
+        """Queue file references must use .loops/tmp/ (not bare /tmp/)."""
+        states = data.get("states", {})
+        queue_ref = "recursive-refine-queue"
+        found = False
+        for state_data in states.values():
+            action = state_data.get("action", "")
+            if queue_ref in action:
+                found = True
+                assert ".loops/tmp/" in action, (
+                    f"Queue file reference must use .loops/tmp/, got: {action[:200]}"
+                )
+        assert found, f"No state references {queue_ref!r}"
+
+    def test_skipped_file_uses_loops_tmp(self, data: dict) -> None:
+        """Skipped tracking file must use .loops/tmp/ path."""
+        states = data.get("states", {})
+        skipped_ref = "recursive-refine-skipped"
+        found = False
+        for state_data in states.values():
+            action = state_data.get("action", "")
+            if skipped_ref in action:
+                found = True
+                assert ".loops/tmp/" in action
+        assert found, f"No state references {skipped_ref!r}"
+
+    def test_parse_input_validates_context_input(self, data: dict) -> None:
+        """parse_input must check that ${context.input} is non-empty."""
+        state = data["states"].get("parse_input", {})
+        action = state.get("action", "")
+        assert "${context.input}" in action
+
+    def test_run_size_review_uses_auto_flag(self, data: dict) -> None:
+        """run_size_review must invoke issue-size-review with --auto flag."""
+        state = data["states"].get("run_size_review", {})
+        action = state.get("action", "")
+        assert "issue-size-review" in action
+        assert "--auto" in action
+
+    def test_context_thresholds_defined(self, data: dict) -> None:
+        """context block must define the three threshold/limit variables."""
+        ctx = data.get("context", {})
+        assert "readiness_threshold" in ctx
+        assert "outcome_threshold" in ctx
+        assert "max_refine_count" in ctx

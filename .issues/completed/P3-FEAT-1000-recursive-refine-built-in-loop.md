@@ -2,7 +2,7 @@
 id: FEAT-1000
 type: FEAT
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-04-08
 discovered_by: capture-issue
 confidence_score: 100
@@ -120,7 +120,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `context.readiness_threshold` / `context.outcome_threshold` / `context.max_refine_count` — canonical in `ll-config.json`, same as `refine-to-ready-issue`
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `config-schema.json:332` — description string for `max_refine_count` reads "enforced by the `refine-to-ready-issue` loop"; update to mention `recursive-refine` shares the same limit via sub-loop delegation [update, low priority]
+- `config-schema.json:333` — description string for `max_refine_count` reads "enforced by the `refine-to-ready-issue` loop"; update to mention `recursive-refine` shares the same limit via sub-loop delegation [update, low priority]
 - `skills/configure/areas.md:392` — interactive configure question text describes `max_refine_count` as "enforced by the refine-to-ready-issue loop"; same update needed [update, low priority]
 
 ### Codebase Research Findings
@@ -252,11 +252,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P3
+**Completed** | Created: 2026-04-08 | Resolved: 2026-04-08 | Priority: P3
+
+## Resolution
+
+Implemented `scripts/little_loops/loops/recursive-refine.yaml` as a new built-in FSM loop. Key design choices:
+
+- **Baseline-before-subloop**: `capture_baseline` snapshots issue IDs before `run_refine`, so `detect_children` finds any children created inside the sub-loop's own `breakdown_issue` path — not just those from an explicit size-review call.
+- **Depth-first queue**: child issues are prepended to the front of `.loops/tmp/recursive-refine-queue.txt`, ensuring depth-first processing before siblings.
+- **Dual child-detection**: `detect_children` handles sub-loop breakdown; `enqueue_or_skip` handles explicit size-review decomposition after `size_review_snap` refreshes the baseline.
+- **Passed tracking**: `check_passed` writes issue IDs to `.loops/tmp/recursive-refine-passed.txt` for the final summary.
+- No CLI changes required — auto-discovered by `get_builtin_loops_dir()`.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T19:10:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d012fa2a-7ea6-482a-b4ef-e4db28d0394a.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aac519d4-dcc3-4649-920c-575683041b44.jsonl`
 - `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:refine-issue` - 2026-04-08T18:55:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/451177be-c4b4-4a6a-8b1e-a1c3c0bc05ec.jsonl`
 - `/ll:format-issue` - 2026-04-08T18:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02736c69-81a6-4e9d-b322-20da085cbdcf.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77c66dec-3548-4e36-88fe-129cc8627555.jsonl`
+- `/ll:manage-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

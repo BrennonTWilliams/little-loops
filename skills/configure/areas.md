@@ -389,7 +389,7 @@ questions:
     multiSelect: false
 
   - header: "Max refines"
-    question: "Maximum lifetime /ll:refine-issue calls per issue (enforced by the refine-to-ready-issue loop)?"
+    question: "Maximum lifetime /ll:refine-issue calls per issue (enforced by refine-to-ready-issue and recursive-refine)?"
     options:
       - label: "{{current max_refine_count}} (keep)"
         description: "Keep current setting"

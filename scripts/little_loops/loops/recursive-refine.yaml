@@ -1,0 +1,264 @@
+name: "recursive-refine"
+category: issue-management
+description: |
+  Refine one or more issues to readiness, recursively processing child issues
+  produced by issue-size-review decomposition. Accepts a single issue ID or a
+  comma-separated list. For each issue, delegates format → refine → wire →
+  confidence-check to the refine-to-ready-issue sub-loop. When thresholds are
+  not met and issue-size-review creates child issues, each child is prepended
+  to the queue (depth-first) and refined before the next sibling. Continues
+  until every issue in the full tree passes thresholds or is skipped.
+
+  Usage:
+    ll-loop run recursive-refine --input "ISSUE_ID"
+    ll-loop run recursive-refine --input "ID1,ID2,ID3"
+initial: parse_input
+max_iterations: 500
+timeout: 28800
+on_handoff: spawn
+context:
+  readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
+  outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+  max_refine_count: 5       # canonical: commands.max_refine_count in ll-config.json
+import:
+  - lib/common.yaml
+
+states:
+  parse_input:
+    # Validate that input is provided, split comma-separated IDs into a
+    # newline-delimited queue file, and initialise per-run tracking files.
+    action: |
+      if [ -z "${context.input}" ]; then
+        echo "ERROR: input is required. Usage: ll-loop run recursive-refine --input \"ID1,ID2\""
+        exit 1
+      fi
+      mkdir -p .loops/tmp
+      printf '' > .loops/tmp/recursive-refine-passed.txt
+      printf '' > .loops/tmp/recursive-refine-skipped.txt
+      echo "${context.input}" | tr ',' '\n' \
+        | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | grep -v '^[[:space:]]*$' \
+        > .loops/tmp/recursive-refine-queue.txt
+      cp .loops/tmp/recursive-refine-queue.txt \
+        .loops/tmp/recursive-refine-original-queue.txt
+      COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
+      echo "Queued ${COUNT} issue(s) for recursive refinement"
+    fragment: shell_exit
+    on_yes: dequeue_next
+    on_no: failed
+    on_error: failed
+
+  dequeue_next:
+    # Pop the head of the queue and advance the file.
+    # Captures the issue ID as 'input' so context_passthrough forwards it to
+    # the refine-to-ready-issue sub-loop as context.input.
+    # Exits 1 (→ done) when the queue is empty.
+    action: |
+      if [ ! -s .loops/tmp/recursive-refine-queue.txt ]; then
+        exit 1
+      fi
+      CURRENT=$(head -1 .loops/tmp/recursive-refine-queue.txt)
+      tail -n +2 .loops/tmp/recursive-refine-queue.txt \
+        > .loops/tmp/recursive-refine-queue.tmp
+      mv .loops/tmp/recursive-refine-queue.tmp \
+        .loops/tmp/recursive-refine-queue.txt
+      echo "$CURRENT"
+    fragment: shell_exit
+    capture: input
+    on_yes: capture_baseline
+    on_no: done
+    on_error: done
+
+  capture_baseline:
+    # Snapshot all active issue IDs before running the refine sub-loop so we
+    # can detect newly-created child issues afterward (via detect_children and
+    # enqueue_or_skip). The snapshot is refreshed in size_review_snap before
+    # an explicit size-review run.
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " > .loops/tmp/recursive-refine-pre-ids.txt
+    action_type: shell
+    next: run_refine
+    on_error: run_refine
+
+  run_refine:
+    # Delegate format → refine → wire → confidence-check to refine-to-ready-issue.
+    # context_passthrough passes captured.input as context.input to the sub-loop.
+    # on_success = sub-loop reached 'done' (confidence pass OR breakdown_issue path).
+    # on_failure = sub-loop reached 'failed' (retries exhausted, no breakdown).
+    loop: refine-to-ready-issue
+    context_passthrough: true
+    on_success: check_passed
+    on_failure: detect_children
+    on_error: detect_children
+
+  check_passed:
+    # Verify confidence and outcome scores meet project thresholds.
+    # Even on sub-loop success the issue may not have met thresholds —
+    # refine-to-ready-issue can exit via breakdown_issue → done rather than a
+    # genuine confidence pass. Records the issue in passed.txt when thresholds met.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      issue_id = '${captured.input.output}'
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
+      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      passed = (int(d.get('confidence') or 0) >= readiness
+                and int(d.get('outcome') or 0) >= outcome)
+      if passed:
+          with open('.loops/tmp/recursive-refine-passed.txt', 'a') as f:
+              f.write(issue_id + '\n')
+      sys.exit(0 if passed else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: dequeue_next
+    on_no: detect_children
+    on_error: detect_children
+
+  detect_children:
+    # Diff current issue IDs against the pre-refinement baseline to find any
+    # child issues created during the sub-loop (e.g., via its breakdown_issue state).
+    # Writes discovered child IDs to a temp file for use by enqueue_children.
+    # Exits 0 (on_yes → enqueue_children) if children found;
+    # exits 1 (on_no → size_review_snap) if none were found.
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > .loops/tmp/recursive-refine-post-ids.txt
+
+      comm -13 .loops/tmp/recursive-refine-pre-ids.txt \
+               .loops/tmp/recursive-refine-post-ids.txt \
+               > .loops/tmp/recursive-refine-new-children.txt
+
+      if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
+        cat .loops/tmp/recursive-refine-new-children.txt
+        exit 0
+      else
+        exit 1
+      fi
+    fragment: shell_exit
+    on_yes: enqueue_children
+    on_no: size_review_snap
+    on_error: size_review_snap
+
+  enqueue_children:
+    # Prepend newly-detected child issues to the front of the queue (depth-first),
+    # so children are refined before the next sibling in the original list.
+    # Records the parent as skipped since it was decomposed, not refined to ready.
+    action: |
+      CHILDREN=$(cat .loops/tmp/recursive-refine-new-children.txt)
+      EXISTING=$(cat .loops/tmp/recursive-refine-queue.txt 2>/dev/null || true)
+      { echo "$CHILDREN"; echo "$EXISTING"; } \
+        | grep -v '^[[:space:]]*$' \
+        > .loops/tmp/recursive-refine-queue.txt
+      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+      CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
+      echo "Parent ${captured.input.output} decomposed; enqueued ${CHILD_COUNT} child issue(s)"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
+
+  size_review_snap:
+    # Update pre-ids to the current state (captured in detect_children's post-ids)
+    # so the enqueue_or_skip diff reflects only what the explicit size-review creates,
+    # not children already created by the sub-loop.
+    action: |
+      if [ -f .loops/tmp/recursive-refine-post-ids.txt ]; then
+        cp .loops/tmp/recursive-refine-post-ids.txt \
+           .loops/tmp/recursive-refine-pre-ids.txt
+      fi
+    action_type: shell
+    next: run_size_review
+    on_error: run_size_review
+
+  run_size_review:
+    # Explicitly run issue-size-review when the sub-loop did not decompose the issue.
+    # If this creates child issues, enqueue_or_skip will detect and enqueue them.
+    action: "/ll:issue-size-review ${captured.input.output} --auto"
+    action_type: slash_command
+    next: enqueue_or_skip
+    on_error: enqueue_or_skip
+
+  enqueue_or_skip:
+    # After explicit size-review: diff IDs against the pre-size-review baseline.
+    # If children found: prepend to queue depth-first; mark parent as skipped.
+    # If none: mark parent as skipped (no further decomposition is possible).
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > .loops/tmp/recursive-refine-post-ids.txt
+
+      comm -13 .loops/tmp/recursive-refine-pre-ids.txt \
+               .loops/tmp/recursive-refine-post-ids.txt \
+               > .loops/tmp/recursive-refine-new-children.txt
+
+      if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
+        CHILDREN=$(cat .loops/tmp/recursive-refine-new-children.txt)
+        EXISTING=$(cat .loops/tmp/recursive-refine-queue.txt 2>/dev/null || true)
+        { echo "$CHILDREN"; echo "$EXISTING"; } \
+          | grep -v '^[[:space:]]*$' \
+          > .loops/tmp/recursive-refine-queue.txt
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
+        echo "Parent ${captured.input.output} decomposed by size-review; enqueued ${CHILD_COUNT} child issue(s)"
+      else
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        echo "Skipped: ${captured.input.output} (no further decomposition possible)"
+      fi
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
+
+  done:
+    # Emit a structured summary of passed and skipped issues for this run.
+    action: |
+      PASSED_IDS=$(cat .loops/tmp/recursive-refine-passed.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+      SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+
+      PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+
+      PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
+      SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+
+      printf '\n=== Recursive Refine Summary ===\n\n'
+      printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "${PASSED_LIST:-none}"
+      printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "${SKIPPED_LIST:-none}"
+      printf '\n'
+    action_type: shell
+    terminal: true
+
+  failed:
+    terminal: true

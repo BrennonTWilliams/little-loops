@@ -271,6 +271,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
 | `auto-refine-and-implement` | For each backlog issue in priority order: refine to ready via `refine-to-ready-issue`, then implement via `/ll:manage-issue`; skips issues that fail refinement and tracks them to avoid retrying; loops until backlog is exhausted |
 | `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
+| `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling; accepts a single ID or comma-separated list |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
