@@ -460,6 +460,7 @@ little-loops includes an extension architecture built on a structured event bus.
 | `InterceptorExtension` | `extension.py` | Protocol for plugins providing `before_route`/`after_route` hooks; stored in `FSMExecutor._interceptors` |
 | `ActionProviderExtension` | `extension.py` | Protocol for plugins providing custom `ActionRunner` instances; populated into `FSMExecutor._contributed_actions` |
 | `EvaluatorProviderExtension` | `extension.py` | Protocol for plugins providing custom evaluator callables; populated into `FSMExecutor._contributed_evaluators` |
+| `ReferenceInterceptorExtension` | `extensions/reference_interceptor.py` | Passthrough reference implementation of `InterceptorExtension`; copy-paste starting point for custom interceptors |
 
 ### Event Emitters
 
@@ -476,9 +477,9 @@ Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`
 
 | CLI Entry Point | File | Extensions Wired |
 |-----------------|------|-----------------|
-| `ll-loop` | `cli/loop/run.py`, `cli/loop/lifecycle.py` | Yes — extensions registered before loop execution |
-| `ll-parallel` | `cli/parallel.py` | Yes — extensions registered before orchestrator starts |
-| `ll-sprint` | `cli/sprint/run.py` | Yes — extensions registered before sprint run |
+| `ll-loop` | `cli/loop/run.py`, `cli/loop/lifecycle.py` | Yes — EventBus + FSMExecutor registry wired (interceptors, contributed actions/evaluators populated) |
+| `ll-parallel` | `cli/parallel.py` | Yes — EventBus only (no FSMExecutor wiring) |
+| `ll-sprint` | `cli/sprint/run.py` | Yes — EventBus only (no FSMExecutor wiring for parallel branch) |
 
 ### Extension Loading
 

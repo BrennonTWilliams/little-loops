@@ -23,7 +23,7 @@ FEAT-993 and FEAT-994 add the wiring and lifecycle hook machinery. This issue pr
 
 - `scripts/little_loops/extensions/` package does not exist
 - `docs/reference/API.md` `wire_extensions()` shows the 2-param signature without the `executor` parameter added in FEAT-993
-- `docs/reference/API.md` `close_issue()` is missing both `event_bus` and `interceptors` params present in the actual implementation (`issue_lifecycle.py:551`)
+- `docs/reference/API.md` `close_issue()` is missing both `event_bus` and `interceptors` params present in the actual implementation (`issue_lifecycle.py:545`)
 - `docs/ARCHITECTURE.md` Components table does not list an `extensions/` subpackage
 
 ## Expected Behavior
@@ -95,7 +95,7 @@ Model after the inline recording-class pattern in `test_extension.py`. Confirmed
 - Basic recorder with `on_event` closure at `test_extension.py:38–49`
 - Multiple independent recorders at `test_extension.py:207–226`
 - Recorder with `event_filter` at `test_extension.py:232–246`
-- Interceptor protocol stub at `test_extension.py:303–316` — this is the closest model; it defines inline `before_route`, `after_route`, and `before_issue_close` with `return None`
+- Interceptor protocol stub at `test_extension.py:483–499` — this is the closest model; it defines inline `before_route`, `after_route`, and `before_issue_close` with `return None`
 
 All patterns use `patch.object(ExtensionLoader, "load_all", return_value=[...])` to inject test extensions.
 
@@ -109,7 +109,7 @@ All patterns use `patch.object(ExtensionLoader, "load_all", return_value=[...])`
 ### 4. Update `docs/ARCHITECTURE.md`
 
 - Lines 454–462 — Components table currently lists `LLExtension`, `EventBus`, `ExtensionLoader`, `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension` (all in `extension.py`); add new `extensions/` subpackage row for `ReferenceInterceptorExtension`
-- Lines 472–478 — Wiring table currently shows EventBus-only for `ll-loop`, `ll-parallel`, `ll-sprint`; update `ll-loop` rows (`run.py`, `lifecycle.py`) to note executor registry wiring (after FEAT-993); `ll-sprint` parallel branch and `ll-parallel` remain EventBus-only
+- Lines 477–481 — Wiring table currently shows EventBus-only for `ll-loop`, `ll-parallel`, `ll-sprint`; update `ll-loop` rows (`run.py`, `lifecycle.py`) to note executor registry wiring (after FEAT-993); `ll-sprint` parallel branch and `ll-parallel` remain EventBus-only
 
 ## API/Interface
 
@@ -151,7 +151,7 @@ No changes to existing public API — new class only.
 ### Similar Patterns
 - `NoopLoggerExtension` at `extension.py:100–115` — model class structure after this
 - `InterceptorExtension` protocol at `extension.py:58–75` — the reference class implements these methods
-- Inline recording-class pattern in `test_extension.py:38–49, 207–226, 303–316` — model tests after these; closest is line 303 which stubs all three interceptor methods
+- Inline recording-class pattern in `test_extension.py:38–49, 207–226, 483–499` — model tests after these; closest is line 483 which stubs all three interceptor methods
 
 ## Implementation Steps
 
@@ -169,11 +169,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `scripts/little_loops/extensions/` package created with `__init__.py`
-- [ ] `reference_interceptor.py` demonstrates `before_route()` and `before_issue_close()` passthrough
-- [ ] `test_interceptor_extension.py` covers passthrough, veto, and wiring integration
-- [ ] `API.md` updated: `wire_extensions()` executor param, `close_issue()` interceptors param and False return, ValueError documented
-- [ ] `ARCHITECTURE.md` updated: extensions/ subpackage in Components table, executor wiring in wiring table
+- [x] `scripts/little_loops/extensions/` package created with `__init__.py`
+- [x] `reference_interceptor.py` demonstrates `before_route()` and `before_issue_close()` passthrough
+- [x] `test_interceptor_extension.py` covers passthrough, veto, and wiring integration
+- [x] `API.md` updated: `wire_extensions()` executor param, `close_issue()` interceptors param and False return, ValueError documented
+- [x] `ARCHITECTURE.md` updated: extensions/ subpackage in Components table, executor wiring in wiring table
 
 ## Impact
 
@@ -188,7 +188,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P4
+**Closed** | Created: 2026-04-08 | Resolved: 2026-04-08 | Priority: P4
+
+## Resolution
+
+**Status**: Closed - Implemented
+**Reason**: implemented
+
+### Changes Made
+- Created `scripts/little_loops/extensions/__init__.py` — new sub-package with `ReferenceInterceptorExtension` export
+- Created `scripts/little_loops/extensions/reference_interceptor.py` — passthrough `before_route()` and `before_issue_close()` with copy-paste docstrings
+- Created `scripts/tests/test_interceptor_extension.py` — 8 tests covering passthrough, veto, and `wire_extensions()` wiring integration
+- Updated `docs/reference/API.md` — `close_issue()` now shows `event_bus` and `interceptors` params with veto path; `wire_extensions()` now shows `executor` param, second-pass behavior, and `ValueError` for duplicate keys
+- Updated `docs/ARCHITECTURE.md` — `extensions/` subpackage row added to Components table; wiring table updated to reflect EventBus + FSMExecutor wiring for `ll-loop`
+- Updated `CONTRIBUTING.md` — `extensions/` directory tree entry added alongside other sub-packages
 
 ### Codebase Research Findings
 
@@ -197,18 +210,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `extension.py:58–75` — `InterceptorExtension` protocol (defines `before_route`, `after_route`, `before_issue_close`)
 - `extension.py:100–115` — `NoopLoggerExtension` (model for class structure; has `__init__` with `log_path` and `on_event` method)
 - `extension.py:22` — `from little_loops.issue_parser import IssueInfo` already imported
-- `fsm/executor.py:53–63` — `RouteContext` dataclass (fields: `state_name`, `state`, `verdict`, `action_result`, `eval_result`, `ctx`, `iteration`)
-- `fsm/executor.py:66–76` — `RouteDecision` dataclass (`next_state: str | None`; `None`=passthrough, string=redirect, `RouteDecision(None)`=veto)
+- `fsm/executor.py:54–63` — `RouteContext` dataclass (fields: `state_name`, `state`, `verdict`, `action_result`, `eval_result`, `ctx`, `iteration`)
+- `fsm/executor.py:67–76` — `RouteDecision` dataclass (`next_state: str | None`; `None`=passthrough, string=redirect, `RouteDecision(None)`=veto)
 - `little_loops/__init__.py:18, 52–53` — `RouteContext` and `RouteDecision` confirmed in public `__all__`
-- `test_extension.py:288–298` — smoke tests confirm `from little_loops import RouteContext, RouteDecision` works
-- `test_extension.py:303–316` — inline interceptor stub (closest model for test_interceptor_extension.py)
+- `test_extension.py:471–481` — smoke tests confirm `from little_loops import RouteContext, RouteDecision` works
+- `test_extension.py:483–499` — inline interceptor stub (closest model for test_interceptor_extension.py)
 - `scripts/little_loops/extensions/` — directory does NOT exist yet (must be created with `__init__.py`)
 - `docs/reference/API.md:1966–1988` — `close_issue()` docs already missing `event_bus` param; add both `event_bus` and `interceptors` in the same pass
 - `docs/ARCHITECTURE.md:454–462` — Components table already includes `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`; add new row for `extensions/` subpackage
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T13:29:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13e4142a-68c9-4fa7-90d6-df1a6786f47d.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40b51a9d-c96a-476d-8d72-459ce0a30b49.jsonl`
 - `/ll:format-issue` - 2026-04-08T12:52:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1ba72aa-ca56-4f5a-a469-7b8bd7aa2766.jsonl`
 - `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
 - `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
 - `/ll:wire-issue` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
+- `/ll:manage-issue` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`

@@ -1971,6 +1971,8 @@ def close_issue(
     close_status: str | None,
     fix_commit: str | None = None,
     files_changed: list[str] | None = None,
+    event_bus: EventBus | None = None,
+    interceptors: list[Any] | None = None,
 ) -> bool
 ```
 
@@ -1984,8 +1986,10 @@ Close an issue by moving to completed with closure status.
 - `close_status` - Status text (e.g., `"Closed - Already Fixed"`)
 - `fix_commit` - SHA of the commit that fixed the issue (for regression tracking)
 - `files_changed` - List of files modified by the fix (for regression tracking)
+- `event_bus` - Optional `EventBus` for emitting lifecycle events during closure
+- `interceptors` - Optional list of interceptor objects; each may implement `before_issue_close(info) -> bool | None`. Returning `False` vetoes the close and causes this function to return `False` immediately without moving the issue file.
 
-**Returns:** `True` if successful
+**Returns:** `True` if successful, `False` if vetoed by an interceptor or if an error occurs
 
 #### complete_issue_lifecycle
 
@@ -5249,12 +5253,14 @@ extensions = wire_extensions(bus, config.extensions)
 def wire_extensions(
     bus: EventBus,
     config_paths: list[str] | None = None,
+    executor: FSMExecutor | None = None,
 ) -> list[LLExtension]
 ```
 
 **Parameters:**
 - `bus` - The `EventBus` instance to register extensions on.
 - `config_paths` - Optional list of `"module.path:ClassName"` strings (from `BRConfig.extensions`). Pass `None` or omit to skip config-path loading (entry-point discovery still runs).
+- `executor` - Optional `FSMExecutor` to populate with contributed actions, evaluators, and interceptors from loaded extensions.
 
 **Returns:** List of all successfully loaded extension instances (from both config paths and entry points).
 
@@ -5262,10 +5268,12 @@ def wire_extensions(
 - Calls `ExtensionLoader.load_all(config_paths)` to discover extensions from both config paths and Python entry points.
 - For each loaded extension, wraps `ext.on_event` to convert the raw event dict into an `LLEvent` (using `LLEvent.from_raw_event()`, which copies the dict to prevent mutation), then calls `bus.register(callback, filter=getattr(ext, "event_filter", None))` — forwarding any `event_filter` declared on the extension class.
 - The forwarded `event_filter` is matched against the event's `type` field using `fnmatch` glob patterns. `None` (the default) means the extension receives every event.
+- When `executor` is provided, a second pass populates `executor._contributed_actions`, `executor._contributed_evaluators`, and `executor._interceptors` from each extension that implements the corresponding protocols (`ActionProviderExtension`, `EvaluatorProviderExtension`, `InterceptorExtension`).
 
 **Error handling:**
 - **Load failures** — both `ExtensionLoader.from_config()` and `from_entry_points()` catch all exceptions per extension, log a `WARNING` with the full traceback, and continue. A single bad extension never prevents others from loading; `wire_extensions` returns a partial list of the extensions that did succeed.
 - **Runtime failures** — if an extension's `on_event` raises during `EventBus.emit()`, the exception is caught and logged at `WARNING` level. Other registered observers still receive the event.
+- **Duplicate key conflicts** — if two extensions provide the same action or evaluator key, `wire_extensions` raises `ValueError: "Extension conflict: action/evaluator '<key>' already registered by another extension"`.
 
 ### Configuration
 

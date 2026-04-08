@@ -239,6 +239,9 @@ little-loops/
         │   ├── persistence.py
         │   ├── signal_detector.py
         │   └── handoff_handler.py
+        ├── extensions/          # Bundled reference extensions (sub-package)
+        │   ├── __init__.py      #   Re-exports ReferenceInterceptorExtension
+        │   └── reference_interceptor.py  #   Passthrough interceptor template
         ├── output_parsing.py  # Shared output parsing
         └── parallel/     # Parallel processing module
             ├── __init__.py
