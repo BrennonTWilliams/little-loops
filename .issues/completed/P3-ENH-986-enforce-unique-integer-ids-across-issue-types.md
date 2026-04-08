@@ -150,11 +150,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Completed** | 2026-04-07
+
+### Changes Made
+
+- `hooks/scripts/check-duplicate-issue-id.sh`: Added `ISSUE_NUM` extraction (bare integer from `ISSUE_ID`) and updated the search loop pattern from same-type `${ISSUE_ID}` to cross-type `(BUG|FEAT|ENH)-${ISSUE_NUM}`, catching collisions like `FEAT-007` when `BUG-007` exists. Updated deny message to reference integer uniqueness.
+- `scripts/tests/test_hooks_integration.py`: Added `test_cross_type_integer_collision` to `TestDuplicateIssueId`; verifies both `FEAT-007` and `ENH-007` are denied when `BUG-007` exists.
+- `docs/development/TROUBLESHOOTING.md`: Expanded "Duplicate issue ID not detected" section to describe cross-type integer scope and added a cross-type manual test example.
+
 ## Status
 
-**Open** | Created: 2026-04-07 | Priority: P3
+**Completed** | Created: 2026-04-07 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T02:02:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b282eee-85e0-41da-ba62-091b4f252cb2.jsonl`
 - `/ll:confidence-check` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e44fb90d-b4e4-4ad9-9419-1afaa1fdfa63.jsonl`
 - `/ll:wire-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-04-08T01:51:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35ae828f-0aec-4a66-9fb1-4a01389cf7d4.jsonl`

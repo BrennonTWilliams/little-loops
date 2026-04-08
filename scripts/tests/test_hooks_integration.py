@@ -1135,6 +1135,59 @@ class TestDuplicateIssueId:
         finally:
             os.chdir(original_dir)
 
+    def test_cross_type_integer_collision(self, hook_script: Path, tmp_path: Path):
+        """Test that write is denied when same integer is used with a different type prefix."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            # Create .issues directory with bugs and features subdirs
+            bugs_dir = tmp_path / ".issues" / "bugs"
+            bugs_dir.mkdir(parents=True)
+            features_dir = tmp_path / ".issues" / "features"
+            features_dir.mkdir(parents=True)
+
+            # Create existing BUG-007
+            (bugs_dir / "P2-BUG-007-existing.md").write_text("# Existing bug")
+
+            # Try to create FEAT-007 — should be denied (cross-type integer collision)
+            input_data = {
+                "tool_name": "Write",
+                "tool_input": {"file_path": str(features_dir / "P2-FEAT-007-new-feature.md")},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            assert "deny" in result.stdout.lower(), (
+                f"Expected deny for FEAT-007 when BUG-007 exists (cross-type collision). "
+                f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            )
+
+            # ENH-007 should also be denied
+            input_data["tool_input"]["file_path"] = str(
+                tmp_path / ".issues" / "enhancements" / "P3-ENH-007-enhancement.md"
+            )
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            assert "deny" in result.stdout.lower(), (
+                f"Expected deny for ENH-007 when BUG-007 exists (cross-type collision). "
+                f"stdout={result.stdout!r} stderr={result.stderr!r}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
 
 class TestSharedConfigFunctions:
     """Test ll_resolve_config, ll_feature_enabled, ll_config_value from common.sh."""

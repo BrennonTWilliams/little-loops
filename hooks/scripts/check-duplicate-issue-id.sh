@@ -68,6 +68,9 @@ if [[ -z "$ISSUE_ID" ]]; then
     allow_response
 fi
 
+# Extract bare integer for cross-type collision detection (e.g., "007" from "FEAT-007")
+ISSUE_NUM=$(echo "$ISSUE_ID" | grep -oE '[0-9]{3,}' | head -1 || true)
+
 # Find the issues directory (search up from current dir or use path from file)
 ISSUES_DIR=""
 if [[ "$FILE_PATH" == /* ]]; then
@@ -103,8 +106,8 @@ fi
 EXISTING=$(find "$ISSUES_DIR" -name "*.md" -type f -print0 2>/dev/null | \
     while IFS= read -r -d '' f; do
         BASENAME=$(basename "$f")
-        # Use word boundary matching to avoid BUG-001 matching BUG-0010
-        if echo "$BASENAME" | grep -qE "(^|[-_])${ISSUE_ID}([-_.]|$)"; then
+        # Match any type prefix with same integer to catch cross-type collisions (e.g., BUG-007 vs FEAT-007)
+        if echo "$BASENAME" | grep -qE "(^|[-_])(BUG|FEAT|ENH)-${ISSUE_NUM}([-_.]|$)"; then
             printf '%s' "$f"
             break
         fi
@@ -117,7 +120,7 @@ if [[ -n "$EXISTING" ]]; then
     # Duplicate found - deny the operation
     EXISTING_BASENAME=$(basename "$EXISTING")
     cat <<EOF
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[little-loops] Duplicate issue ID detected: ${ISSUE_ID} already exists in ${EXISTING_BASENAME}. Use the next available ID."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[little-loops] Duplicate issue ID detected: ${ISSUE_ID} conflicts with ${EXISTING_BASENAME} — integer ${ISSUE_NUM} must be unique across all types (BUG/FEAT/ENH). Use the next available ID."}}
 EOF
     exit 0
 fi

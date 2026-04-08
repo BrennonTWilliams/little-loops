@@ -818,21 +818,30 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
 
 ### Duplicate issue ID not detected
 
-**Symptom**: Multiple issues created with same ID despite hook
+**Symptom**: Multiple issues created with same ID despite hook, or two issues with different type prefixes share the same integer (e.g., `BUG-007` and `FEAT-007`)
 
-**Cause**: Race condition or hook not running on Write tool
+**Cause**: Race condition, hook not running on Write tool, or (before ENH-986) same-type-only collision detection
+
+**Scope**: The hook enforces integer uniqueness **across all types** (BUG, FEAT, ENH) in all subdirectories (bugs, features, enhancements, completed, deferred). Writing `FEAT-007` when `BUG-007` already exists is denied.
 
 **Solution**:
 1. Verify hook is registered for PreToolUse:
    ```bash
    grep -A5 "check-duplicate-issue-id" hooks/hooks.json
    ```
-2. Test hook manually:
+2. Test hook manually — same-type collision:
    ```bash
    echo '{"tool_name":"Write","tool_input":{"file_path":".issues/bugs/P2-BUG-001-test.md"}}' | \
      bash hooks/scripts/check-duplicate-issue-id.sh
    ```
-3. Check if lock acquisition is timing out (reduce concurrent writes)
+3. Test cross-type collision (integer 007 used by both BUG and FEAT):
+   ```bash
+   # With P2-BUG-007-existing.md already present in .issues/bugs/:
+   echo '{"tool_name":"Write","tool_input":{"file_path":".issues/features/P2-FEAT-007-new.md"}}' | \
+     bash hooks/scripts/check-duplicate-issue-id.sh
+   # Expected: "deny" with message about cross-type integer collision
+   ```
+4. Check if lock acquisition is timing out (reduce concurrent writes)
 
 ### Context monitor not updating
 
