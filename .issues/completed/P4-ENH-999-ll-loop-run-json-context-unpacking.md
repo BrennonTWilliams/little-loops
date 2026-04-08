@@ -141,16 +141,34 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `ll-loop`, `dx`, `captured`
 
+## Resolution
+
+**Resolved**: 2026-04-08
+**Implemented by**: `/ll:manage-issue`
+
+### Changes Made
+- `scripts/little_loops/cli/loop/run.py`: Added `import json`; replaced 2-line input injection with JSON-detection + unpacking block (~14 lines)
+- `scripts/little_loops/cli/loop/__init__.py:102`: Updated `input` positional help string to describe auto-unpack behavior
+- `scripts/little_loops/fsm/fsm-loop-schema.json:63`: Revised `input_key` description to reflect fallback-only role
+- `scripts/tests/test_ll_loop_commands.py`: Added `multi_context_loop` fixture + 5 test methods to `TestCmdRunContextInjection`
+- `docs/guides/LOOPS_GUIDE.md`: Added JSON shorthand examples at lines 240 and 1147
+- `docs/reference/CLI.md:243`: Updated `input` positional row description
+
+### Verification
+- 4486 tests passed, 0 failures
+- `ruff check scripts/` — all checks passed
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T19:50:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11459c4f-b7c0-41f0-814e-56de3ec06758.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4f9c0d7-0ba1-4b11-a7e6-c52eac77de25.jsonl`
 - `/ll:wire-issue` - 2026-04-08T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-04-08T19:39:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7a7df3b-a5eb-417d-9326-336e8ae6c68c.jsonl`
 - `/ll:format-issue` - 2026-04-08T19:35:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52b984e9-5e44-4f2c-b572-5705d6456c10.jsonl`
-
 - `/ll:capture-issue` - 2026-04-08T18:24:52Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8163e06d-ba51-4c89-ad08-3b2526018e0f.jsonl`
+- `/ll:manage-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P4
+**Completed** | Created: 2026-04-08 | Resolved: 2026-04-08 | Priority: P4

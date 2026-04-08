@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import json
 import os
 import re
 from pathlib import Path
@@ -57,7 +58,19 @@ def cmd_run(
         fsm.llm.model = args.llm_model
     # Inject positional input arg before --context so --context can override
     if getattr(args, "input", None) is not None:
-        fsm.context[fsm.input_key] = args.input
+        raw = args.input
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                matched = {k: v for k, v in parsed.items() if k in fsm.context}
+                if matched:
+                    fsm.context.update(matched)
+                else:
+                    fsm.context[fsm.input_key] = raw
+            else:
+                fsm.context[fsm.input_key] = raw
+        except (json.JSONDecodeError, ValueError):
+            fsm.context[fsm.input_key] = raw
     for kv in getattr(args, "context", None) or []:
         if "=" not in kv:
             raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")

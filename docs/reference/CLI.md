@@ -240,7 +240,7 @@ Run a loop.
 | Argument/Flag | Short | Description |
 |---------------|-------|-------------|
 | `loop` | | Loop name or path |
-| `input` | | (Optional positional) Input string injected as `context['input']` (or the key declared in `input_key`) |
+| `input` | | (Optional positional) If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in `context[input_key]` |
 | `--max-iterations` | `-n` | Override iteration limit |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--no-llm` | | Disable LLM evaluation |

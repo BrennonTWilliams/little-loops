@@ -60,7 +60,7 @@
     },
     "input_key": {
       "type": "string",
-      "description": "Context key populated by the positional input arg at runtime (default: 'input')",
+      "description": "Context key used as fallback when the positional input arg is not valid JSON or has no keys matching the loop's defined context variables. When JSON unpacking succeeds, multiple context keys are populated directly and input_key is not used (default: 'input')",
       "default": "input"
     },
     "on_handoff": {

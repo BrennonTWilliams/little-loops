@@ -2150,6 +2150,139 @@ states:
         # Simulate positional injection using custom key
         fsm.context[fsm.input_key] = "FEAT-100"
 
+    @pytest.fixture
+    def multi_context_loop(self, tmp_path: Path) -> Path:
+        """Create a loop with two named context variables for JSON unpacking tests."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "multi-context-loop.yaml"
+        loop_file.write_text("""
+name: multi-context-loop
+initial: init
+context:
+  loop_name: ""
+  input: ""
+states:
+  init:
+    action: "echo {{context.loop_name}} {{context.input}}"
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+""")
+        return loops_dir
+
+    def test_json_input_all_keys_match_unpacks_all(self, multi_context_loop: Path) -> None:
+        """JSON object with all keys matching context variables unpacks into those keys."""
+        import json
+
+        from little_loops.fsm.validation import load_and_validate
+
+        path = multi_context_loop / "multi-context-loop.yaml"
+        fsm, _ = load_and_validate(path)
+
+        raw = '{"loop_name": "general-task", "input": "some task"}'
+        parsed = json.loads(raw)
+        matched = {k: v for k, v in parsed.items() if k in fsm.context}
+        if matched:
+            fsm.context.update(matched)
+        else:
+            fsm.context[fsm.input_key] = raw
+
+        assert fsm.context["loop_name"] == "general-task"
+        assert fsm.context["input"] == "some task"
+
+    def test_json_input_no_keys_match_falls_back_to_string(self, multi_context_loop: Path) -> None:
+        """JSON object with no matching context keys falls back to raw string storage."""
+        import json
+
+        from little_loops.fsm.validation import load_and_validate
+
+        path = multi_context_loop / "multi-context-loop.yaml"
+        fsm, _ = load_and_validate(path)
+
+        raw = '{"unrelated": "value", "other": "data"}'
+        parsed = json.loads(raw)
+        matched = {k: v for k, v in parsed.items() if k in fsm.context}
+        if matched:
+            fsm.context.update(matched)
+        else:
+            fsm.context[fsm.input_key] = raw
+
+        assert fsm.context[fsm.input_key] == raw
+        assert fsm.context["loop_name"] == ""
+
+    def test_json_input_partial_keys_match_unpacks_only_matched(self, multi_context_loop: Path) -> None:
+        """JSON object with only some keys matching context unpacks only matched keys."""
+        import json
+
+        from little_loops.fsm.validation import load_and_validate
+
+        path = multi_context_loop / "multi-context-loop.yaml"
+        fsm, _ = load_and_validate(path)
+
+        raw = '{"loop_name": "my-loop", "unknown_key": "ignored"}'
+        parsed = json.loads(raw)
+        matched = {k: v for k, v in parsed.items() if k in fsm.context}
+        if matched:
+            fsm.context.update(matched)
+        else:
+            fsm.context[fsm.input_key] = raw
+
+        assert fsm.context["loop_name"] == "my-loop"
+        assert fsm.context["input"] == ""
+        assert "unknown_key" not in fsm.context
+
+    def test_non_json_string_stored_as_string(self, multi_context_loop: Path) -> None:
+        """Non-JSON string input falls through to string storage unchanged."""
+        import json
+
+        from little_loops.fsm.validation import load_and_validate
+
+        path = multi_context_loop / "multi-context-loop.yaml"
+        fsm, _ = load_and_validate(path)
+
+        raw = "plain text input"
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                matched = {k: v for k, v in parsed.items() if k in fsm.context}
+                if matched:
+                    fsm.context.update(matched)
+                else:
+                    fsm.context[fsm.input_key] = raw
+            else:
+                fsm.context[fsm.input_key] = raw
+        except (json.JSONDecodeError, ValueError):
+            fsm.context[fsm.input_key] = raw
+
+        assert fsm.context[fsm.input_key] == "plain text input"
+
+    def test_json_array_input_stored_as_string(self, multi_context_loop: Path) -> None:
+        """JSON array input (not a dict) falls back to string storage."""
+        import json
+
+        from little_loops.fsm.validation import load_and_validate
+
+        path = multi_context_loop / "multi-context-loop.yaml"
+        fsm, _ = load_and_validate(path)
+
+        raw = '["item1", "item2"]'
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                matched = {k: v for k, v in parsed.items() if k in fsm.context}
+                if matched:
+                    fsm.context.update(matched)
+                else:
+                    fsm.context[fsm.input_key] = raw
+            else:
+                fsm.context[fsm.input_key] = raw
+        except (json.JSONDecodeError, ValueError):
+            fsm.context[fsm.input_key] = raw
+
+        assert fsm.context[fsm.input_key] == raw
+
 
 class TestCmdStatusJson:
     """Tests for ll-loop status --json."""

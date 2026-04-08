@@ -99,7 +99,7 @@ Examples:
         "input",
         nargs="?",
         default=None,
-        help="Optional input string injected as context['input'] (or the key declared in input_key)",
+        help="If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in context[input_key]",
     )
     run_parser.add_argument("--max-iterations", "-n", type=int, help="Override iteration limit")
     run_parser.add_argument(

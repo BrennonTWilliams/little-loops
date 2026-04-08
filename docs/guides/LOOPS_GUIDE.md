@@ -238,6 +238,8 @@ The `general-task` loop requires the `input` context variable — a natural-lang
 
 ```bash
 ll-loop run general-task --context input="Refactor the auth module to use dependency injection"
+# Shorthand: plain string positional is equivalent (non-JSON fallback)
+ll-loop run general-task "Refactor the auth module to use dependency injection"
 ```
 
 The loop follows a structured cycle:
@@ -1147,6 +1149,9 @@ ll-loop run outer-loop-eval --context loop_name=issue-refinement
 ll-loop run outer-loop-eval \
   --context loop_name=my-custom-loop \
   --context input="some context value"
+
+# JSON shorthand: pass both context variables as a single JSON object (auto-unpacked into context)
+ll-loop run outer-loop-eval '{"loop_name": "my-custom-loop", "input": "some context value"}'
 
 # Install to project for customization
 ll-loop install outer-loop-eval
