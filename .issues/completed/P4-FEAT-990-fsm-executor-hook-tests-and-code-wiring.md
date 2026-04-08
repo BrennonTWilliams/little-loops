@@ -32,6 +32,15 @@ After FEAT-987 adds runtime dispatch for contributed action types, three gaps re
 - All test classes pass: `TestContributedActionDispatch`, `TestContributedEvaluatorDispatch`, `TestRouteInterceptors` (= `TestInterceptorDispatch`), `TestRouteContextDataclass`, `TestRouteDecisionDataclass`
 - Smoke import tests in `test_extension.py` pass
 
+## Use Case
+
+An extension author building a contributed action handler (e.g., a `webhook` action type) needs:
+- Their custom `action_type` string to pass JSON Schema validation at load time
+- `RouteContext` and `RouteDecision` to be importable from the public `little_loops` package
+- Confidence that dispatch tests cover their hook integration point
+
+Without these, contributing a new action type fails silently or requires reaching into internal submodules.
+
 ## Proposed Solution
 
 ### 1. Verify Existing Test Classes
@@ -87,7 +96,7 @@ Note: `fsm/__init__.py` already re-exports these at lines 86–94 — no changes
 
 ### 4. Add Smoke Import Tests
 
-**`scripts/tests/test_extension.py`** — add smoke import tests following `TestNewProtocols` pattern at line 270:
+**`scripts/tests/test_extension.py`** — add smoke import tests following `TestNewProtocols` pattern at line 266:
 
 ```python
 from little_loops import RouteContext
@@ -124,7 +133,7 @@ from little_loops import RouteDecision
 
 ### Dependent Files (Read-Only Context)
 
-- `scripts/little_loops/fsm/executor.py` — defines `RouteContext` (line 54), `RouteDecision` (line 66)
+- `scripts/little_loops/fsm/executor.py` — defines `RouteContext` (line 54), `RouteDecision` (line 67)
 - `scripts/little_loops/fsm/validation.py:197–200` — `state.action_type != "mcp_tool"` check; compatible with widening
 - `scripts/little_loops/cli/loop/layout.py:127–128` — already handles unknown types via dict `.get()` fallback
 - `scripts/little_loops/cli/loop/info.py:558–559,755–756,767` — renders `action_type` as direct string; no enum dependency
@@ -151,14 +160,14 @@ from little_loops import RouteDecision
 
 ## Acceptance Criteria
 
-- [ ] Loop YAML with `action_type: webhook` passes `load_and_validate()` without schema error
-- [ ] `from little_loops import RouteContext, RouteDecision` works
-- [ ] mypy passes on `executor.py` and `schema.py` after annotation widening
-- [ ] `TestContributedActionDispatch`, `TestContributedEvaluatorDispatch`, `TestInterceptorDispatch` pass in `test_fsm_executor.py`/`test_ll_loop_execution.py`
-- [ ] `TestRouteContext`, `TestRouteDecision` pass in `test_fsm_executor.py`
-- [ ] Smoke import tests pass in `test_extension.py`
-- [ ] Dead `# type: ignore` suppressions removed from `test_ll_loop_display.py`
-- [ ] All pre-existing tests pass unmodified
+- [x] Loop YAML with `action_type: webhook` passes `load_and_validate()` without schema error
+- [x] `from little_loops import RouteContext, RouteDecision` works
+- [x] mypy passes on `executor.py` and `schema.py` after annotation widening
+- [x] `TestContributedActionDispatch`, `TestContributedEvaluatorDispatch`, `TestInterceptorDispatch` pass in `test_fsm_executor.py`/`test_ll_loop_execution.py`
+- [x] `TestRouteContext`, `TestRouteDecision` pass in `test_fsm_executor.py`
+- [x] Smoke import tests pass in `test_extension.py`
+- [x] Dead `# type: ignore` suppressions removed from `test_ll_loop_display.py`
+- [x] All pre-existing tests pass unmodified
 
 ## Impact
 
@@ -172,9 +181,23 @@ from little_loops import RouteDecision
 
 `feature`, `fsm`, `executor`, `extension-hooks`, `testing`, `wiring`, `decomposed`
 
+## Resolution
+
+Implemented 2026-04-07. All changes were mechanical type/schema relaxations with no runtime behavior changes:
+
+1. `schema.py:214` — widened `StateConfig.action_type` from `Literal[...]` to `str | None`
+2. `fsm-loop-schema.json:174–178` — removed `enum` constraint from `action_type`, kept `type: string`
+3. `little_loops/__init__.py` — added `RouteContext`/`RouteDecision` to imports and `__all__`
+4. `test_extension.py` — added two smoke import tests in `TestNewProtocols`
+5. `test_ll_loop_display.py:2109,2124` — removed dead `# type: ignore[arg-type]` suppressions
+6. `executor.py:493` — added `assert state.action_type is not None` to satisfy mypy narrowing after annotation widening
+
+All 4440 tests pass; mypy clean on `executor.py` and `schema.py`.
+
 ## Status
 
-**Open** | Created: 2026-04-07 | Priority: P4
+**Completed** | Created: 2026-04-07 | Completed: 2026-04-07 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T04:25:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5e8ff3f-6ff1-4255-b8b3-8511d145a869.jsonl`
 - `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b5b8fb2-d663-482d-be59-6aa37de8e735.jsonl`

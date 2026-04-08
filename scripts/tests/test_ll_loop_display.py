@@ -2106,7 +2106,7 @@ class TestStateBadges:
     def test_get_state_badge_action_types(self) -> None:
         """Known action_types map to their unicode badges."""
         for action_type, expected in _ACTION_TYPE_BADGES.items():
-            state = StateConfig(action="x", action_type=action_type)  # type: ignore[arg-type]
+            state = StateConfig(action="x", action_type=action_type)
             assert _get_state_badge(state) == expected, f"action_type={action_type!r}"
 
     def test_get_state_badge_shell_fallback(self) -> None:
@@ -2121,7 +2121,7 @@ class TestStateBadges:
 
     def test_sub_loop_badge_takes_precedence_over_action_type(self) -> None:
         """loop field checked before action_type for badge selection."""
-        state = StateConfig(action_type="prompt", loop="child.yaml")  # type: ignore[arg-type]
+        state = StateConfig(action_type="prompt", loop="child.yaml")
         assert _get_state_badge(state) == _SUB_LOOP_BADGE
 
     def test_diagram_contains_prompt_badge(self) -> None:

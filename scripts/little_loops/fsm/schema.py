@@ -211,7 +211,7 @@ class StateConfig:
     """
 
     action: str | None = None
-    action_type: Literal["prompt", "slash_command", "shell", "mcp_tool"] | None = None
+    action_type: str | None = None
     params: dict[str, Any] = field(default_factory=dict)
     evaluate: EvaluateConfig | None = None
     route: RouteConfig | None = None

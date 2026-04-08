@@ -15,6 +15,7 @@ from little_loops.extension import (
     NoopLoggerExtension,
     wire_extensions,
 )
+from little_loops.fsm import RouteContext, RouteDecision
 from little_loops.git_operations import check_git_status
 from little_loops.issue_lifecycle import (
     FailureType,
@@ -47,6 +48,9 @@ __all__ = [
     "LLExtension",
     "NoopLoggerExtension",
     "wire_extensions",
+    # fsm
+    "RouteContext",
+    "RouteDecision",
     # git_operations
     "check_git_status",
     # work_verification

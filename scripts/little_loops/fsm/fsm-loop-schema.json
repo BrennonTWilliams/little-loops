@@ -173,8 +173,7 @@
         },
         "action_type": {
           "type": "string",
-          "description": "How to execute the action: prompt (Claude CLI), slash_command (Claude CLI), shell (bash), or mcp_tool (direct MCP tool call). If omitted, uses heuristic: / prefix = slash_command, else = shell.",
-          "enum": ["prompt", "slash_command", "shell", "mcp_tool"]
+          "description": "How to execute the action: prompt (Claude CLI), slash_command (Claude CLI), shell (bash), or mcp_tool (direct MCP tool call), or any contributed extension action type. If omitted, uses heuristic: / prefix = slash_command, else = shell."
         },
         "params": {
           "type": "object",

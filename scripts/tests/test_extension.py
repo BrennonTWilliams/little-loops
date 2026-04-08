@@ -285,6 +285,18 @@ class TestNewProtocols:
 
         assert EvaluatorProviderExtension is not None
 
+    def test_smoke_import_route_context(self) -> None:
+        """Importing RouteContext from public API succeeds (no circular import)."""
+        from little_loops import RouteContext  # noqa: F401
+
+        assert RouteContext is not None
+
+    def test_smoke_import_route_decision(self) -> None:
+        """Importing RouteDecision from public API succeeds (no circular import)."""
+        from little_loops import RouteDecision  # noqa: F401
+
+        assert RouteDecision is not None
+
     def test_interceptor_extension_protocol_satisfied(self) -> None:
         """A class with before_route, after_route, before_issue_close satisfies the protocol."""
         from little_loops.extension import InterceptorExtension
