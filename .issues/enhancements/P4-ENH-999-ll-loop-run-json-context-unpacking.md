@@ -1,6 +1,8 @@
 ---
 discovered_date: "2026-04-08"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-999: ll-loop run should auto-unpack JSON input into named context variables
@@ -73,9 +75,10 @@ if getattr(args, "input", None) is not None:
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/run.py:59-60` — input injection block (the two lines being replaced)
+- `scripts/little_loops/fsm/fsm-loop-schema.json:63` — `input_key` description says "Context key populated by the positional input arg at runtime"; incomplete after JSON unpacking — keys are distributed across matching context fields in the non-fallback case [Wiring pass added by `/ll:wire-issue`]
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/__init__.py:98-103` — argparse positional `input` arg (no change needed; `nargs="?"` already passes raw string)
+- `scripts/little_loops/cli/loop/__init__.py:98-103` — argparse positional `input` arg; `nargs="?"` still passes raw string (no structural change needed), BUT line 102 help string `"Optional input string injected as context['input'] (or the key declared in input_key)"` must be updated to reflect JSON auto-unpack behavior [Wiring pass added by `/ll:wire-issue`]
 - `scripts/little_loops/cli/loop/lifecycle.py:220-224` — `cmd_resume` has an identical `--context KEY=VALUE` parsing block; if similar JSON unpacking is ever added there, follow the same pattern
 - Any loop YAML that defines a `context:` block — behavior improves automatically
 
@@ -87,10 +90,12 @@ if getattr(args, "input", None) is not None:
 ### Tests
 - `scripts/tests/test_ll_loop_commands.py:2038-2152` — `TestCmdRunContextInjection` is the exact class for new JSON unpacking tests; add a `multi_context_loop` fixture and 5 test methods following the existing fixture pattern (write loop YAML to `tmp_path / ".loops"`, use `dry_run=True` args namespace or simulate injection directly via `load_and_validate`)
 - `scripts/tests/test_cli_loop_lifecycle.py:683-798` — `_make_args()` helper pattern for building `argparse.Namespace`; reuse or copy for new tests
+- `scripts/tests/test_ll_loop_parsing.py:219-243` — existing argparse tests for the `input` positional (`test_positional_input_parsed`, `test_positional_input_default_is_none`, `test_positional_input_quoted_string`, `test_positional_input_with_context_flag`); verify they still pass — non-JSON strings fall through to fallback, no changes to these tests needed [Wiring pass added by `/ll:wire-issue`]
 
 ### Documentation
-- `docs/guides/LOOPS_GUIDE.md` — covers `ll-loop run`, context variables, and `input_key`; add a note on JSON auto-unpacking behavior
-- `docs/reference/CLI.md` — CLI reference for `ll-loop run` and `--context` flags; update the `input` arg description
+- `docs/guides/LOOPS_GUIDE.md:240` — uses `--context input="..."` pattern; add note that a plain string positional works identically as shorthand (non-JSON fallback) [Wiring pass added by `/ll:wire-issue`]
+- `docs/guides/LOOPS_GUIDE.md:1140-1153` — outer-loop-eval invocation example uses two `--context` flags; add JSON shorthand invocation example (`ll-loop run outer-loop-eval '{"loop_name": "...", "input": "..."}'`) enabled by ENH-999 — this is the canonical use case [Wiring pass added by `/ll:wire-issue`]
+- `docs/reference/CLI.md:243` — `input` positional row reads "Input string injected as `context['input']` (or the key declared in `input_key`)" — update to reflect JSON auto-unpack and fallback semantics
 
 ### Configuration
 - N/A
@@ -113,6 +118,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 4. Add tests to `TestCmdRunContextInjection` in `scripts/tests/test_ll_loop_commands.py:2038`: add a `multi_context_loop` fixture (loop YAML with `context: {loop_name: "", input: ""}`) and 5 methods: all-keys match, no-keys match, partial match, non-JSON string, JSON array (not a dict)
 5. Update `docs/guides/LOOPS_GUIDE.md` and `docs/reference/CLI.md` to document the auto-unpack behavior
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/little_loops/cli/loop/__init__.py:102` — change help string from `"Optional input string injected as context['input'] (or the key declared in input_key)"` to describe JSON auto-unpack behavior (e.g., "If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in context[input_key]")
+7. Update `scripts/little_loops/fsm/fsm-loop-schema.json:63` — revise `input_key` description to reflect that in the JSON-unpack path the positional input populates multiple context keys, and `input_key` only receives the raw string in the fallback case
+8. Verify `scripts/tests/test_ll_loop_parsing.py:219-243` — run these existing argparse tests to confirm they still pass unchanged (non-JSON strings, quoted strings, and `--context` coexistence all take the fallback path)
+
 ## Impact
 
 - **Priority**: P4 - Quality-of-life improvement; `--context` workaround exists
@@ -129,6 +142,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `ll-loop`, `dx`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4f9c0d7-0ba1-4b11-a7e6-c52eac77de25.jsonl`
+- `/ll:wire-issue` - 2026-04-08T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-04-08T19:39:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7a7df3b-a5eb-417d-9326-336e8ae6c68c.jsonl`
 - `/ll:format-issue` - 2026-04-08T19:35:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52b984e9-5e44-4f2c-b572-5705d6456c10.jsonl`
 
