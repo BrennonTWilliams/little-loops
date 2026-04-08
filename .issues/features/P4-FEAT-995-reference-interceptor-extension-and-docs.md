@@ -27,9 +27,13 @@ Create new directory `scripts/little_loops/extensions/` with:
 - `__init__.py` (empty or minimal exports)
 - `reference_interceptor.py` — reference interceptor extension
 
-Model `reference_interceptor.py` structure after `NoopLoggerExtension` at `extension.py:52–67`:
+Model `reference_interceptor.py` structure after `NoopLoggerExtension` at `extension.py:100–115`. The `InterceptorExtension` protocol (which defines `before_route`, `after_route`, `before_issue_close`) is at `extension.py:58–75` — the reference class should implement this interface.
 
 ```python
+from little_loops import RouteContext, RouteDecision  # public API, confirmed exported
+from little_loops.issue_parser import IssueInfo       # already imported in extension.py:22
+
+
 class ReferenceInterceptorExtension:
     """Reference implementation demonstrating passthrough interceptor behavior.
 
@@ -46,6 +50,8 @@ class ReferenceInterceptorExtension:
         return None
 ```
 
+`RouteContext` and `RouteDecision` are `@dataclass` types defined in `fsm/executor.py:53–76` and re-exported via `fsm/__init__.py:86–94` and `little_loops/__init__.py:18`. `from little_loops import RouteContext, RouteDecision` is the canonical import (confirmed by smoke tests at `test_extension.py:288–298`).
+
 ### 2. Tests
 
 Create `scripts/tests/test_interceptor_extension.py` — dedicated tests for interceptor dispatch:
@@ -54,19 +60,25 @@ Create `scripts/tests/test_interceptor_extension.py` — dedicated tests for int
 - Veto behavior when `before_issue_close()` returns `False`
 - Integration with `wire_extensions()` (interceptor appended to `executor._interceptors`)
 
-Model after the inline recording-class pattern in `test_extension.py`.
+Model after the inline recording-class pattern in `test_extension.py`. Confirmed patterns:
+- Basic recorder with `on_event` closure at `test_extension.py:38–49`
+- Multiple independent recorders at `test_extension.py:207–226`
+- Recorder with `event_filter` at `test_extension.py:232–246`
+- Interceptor protocol stub at `test_extension.py:303–316` — this is the closest model; it defines inline `before_route`, `after_route`, and `before_issue_close` with `return None`
+
+All patterns use `patch.object(ExtensionLoader, "load_all", return_value=[...])` to inject test extensions.
 
 ### 3. Update `docs/reference/API.md`
 
-- Line 5249–5257 — add `executor` param to `wire_extensions()` signature and Parameters table
-- Line 5262–5263 — update Behavior section to describe executor pass (second registration pass for actions/evaluators/interceptors)
-- Line 5266–5268 — add `ValueError` to Error handling section (duplicate action/evaluator key conflict)
-- Line 1966–1988 — add `interceptors: list[Any] | None = None` to `close_issue()` signature; update Returns to document `False` veto path
+- Lines 5249–5257 — `wire_extensions()` signature block (currently shows 2-param version); add `executor: FSMExecutor | None = None` param and update Parameters table
+- Lines 5262–5263 — Behavior section (currently EventBus-only description); add second executor pass description
+- Lines 5266–5268 — Error handling section; add `ValueError` for duplicate action/evaluator key conflict
+- Lines 1966–1988 — `close_issue()` signature block; **note**: docs already show stale signature missing `event_bus` param (which is present in actual code at `issue_lifecycle.py:551`); add both `event_bus` and `interceptors` params; update Returns to document `False` veto path
 
 ### 4. Update `docs/ARCHITECTURE.md`
 
-- Line 454–458 — add `extensions/` subpackage row to Components table (`ReferenceInterceptorExtension`)
-- Line 472–478 — update wiring table rows for 3 CLI entry points to note executor registry wiring (after FEAT-993)
+- Lines 454–462 — Components table currently lists `LLExtension`, `EventBus`, `ExtensionLoader`, `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension` (all in `extension.py`); add new `extensions/` subpackage row for `ReferenceInterceptorExtension`
+- Lines 472–478 — Wiring table currently shows EventBus-only for `ll-loop`, `ll-parallel`, `ll-sprint`; update `ll-loop` rows (`run.py`, `lifecycle.py`) to note executor registry wiring (after FEAT-993); `ll-sprint` parallel branch and `ll-parallel` remain EventBus-only
 
 ## Integration Map
 
@@ -80,8 +92,9 @@ Model after the inline recording-class pattern in `test_extension.py`.
 - `docs/ARCHITECTURE.md` — 2 locations (lines 454, 472)
 
 ### Similar Patterns
-- `NoopLoggerExtension` at `extension.py:52–67` — model structure after this
-- Inline recording-class pattern in `test_extension.py`
+- `NoopLoggerExtension` at `extension.py:100–115` — model class structure after this
+- `InterceptorExtension` protocol at `extension.py:58–75` — the reference class implements these methods
+- Inline recording-class pattern in `test_extension.py:38–49, 207–226, 303–316` — model tests after these; closest is line 303 which stubs all three interceptor methods
 
 ## Implementation Steps
 
@@ -114,5 +127,22 @@ Model after the inline recording-class pattern in `test_extension.py`.
 
 **Open** | Created: 2026-04-08 | Priority: P4
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `extension.py:58–75` — `InterceptorExtension` protocol (defines `before_route`, `after_route`, `before_issue_close`)
+- `extension.py:100–115` — `NoopLoggerExtension` (model for class structure; has `__init__` with `log_path` and `on_event` method)
+- `extension.py:22` — `from little_loops.issue_parser import IssueInfo` already imported
+- `fsm/executor.py:53–63` — `RouteContext` dataclass (fields: `state_name`, `state`, `verdict`, `action_result`, `eval_result`, `ctx`, `iteration`)
+- `fsm/executor.py:66–76` — `RouteDecision` dataclass (`next_state: str | None`; `None`=passthrough, string=redirect, `RouteDecision(None)`=veto)
+- `little_loops/__init__.py:18, 52–53` — `RouteContext` and `RouteDecision` confirmed in public `__all__`
+- `test_extension.py:288–298` — smoke tests confirm `from little_loops import RouteContext, RouteDecision` works
+- `test_extension.py:303–316` — inline interceptor stub (closest model for test_interceptor_extension.py)
+- `scripts/little_loops/extensions/` — directory does NOT exist yet (must be created with `__init__.py`)
+- `docs/reference/API.md:1966–1988` — `close_issue()` docs already missing `event_bus` param; add both `event_bus` and `interceptors` in the same pass
+- `docs/ARCHITECTURE.md:454–462` — Components table already includes `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`; add new row for `extensions/` subpackage
+
 ## Session Log
+- `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
 - `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`

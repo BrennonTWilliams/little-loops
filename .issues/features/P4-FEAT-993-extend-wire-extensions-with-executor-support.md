@@ -33,7 +33,7 @@ FEAT-983 defines types/protocols. FEAT-984 adds `_contributed_actions`, `_contri
 
 ### 1. Extend `wire_extensions()` Signature
 
-Current signature at `extension.py:139`: `wire_extensions(bus: EventBus, config_paths: list[str] | None = None) -> list[LLExtension]`
+Current signature at `extension.py:187`: `wire_extensions(bus: EventBus, config_paths: list[str] | None = None) -> list[LLExtension]`
 
 Add optional `executor: FSMExecutor | None = None` parameter. After the existing `bus.register()` loop, add:
 
@@ -60,7 +60,7 @@ if executor is not None:
 
 ### 2. `hasattr(on_event)` Guard
 
-Add guard to the existing `bus.register()` loop (lines 157–165) to prevent `AttributeError` for extensions that implement only interceptor/action/evaluator protocols:
+Add guard to the existing `bus.register()` loop (lines 204–216) to prevent `AttributeError` for extensions that implement only interceptor/action/evaluator protocols:
 
 ```python
 for ext in extensions:
@@ -70,7 +70,7 @@ for ext in extensions:
 
 ### 3. Priority Sort
 
-Add sort **before** both passes (lines 156–157), so event dispatch and interceptor dispatch order are consistent:
+Add sort **before** both passes (before the loop at line 204), so event dispatch and interceptor dispatch order are consistent:
 
 ```python
 extensions = sorted(extensions, key=lambda e: getattr(e, "priority", 0))
@@ -80,34 +80,37 @@ Ascending sort: lower priority value = fires first. Same convention as `dependen
 
 ### 4. `FSMExecutor` Import Guard
 
-Add to `extension.py` imports:
+`extension.py` already has `from __future__ import annotations` (line 12), `TYPE_CHECKING` in the `typing` import (line 19), and a `TYPE_CHECKING` block at lines 24–27 importing `RouteContext`, `RouteDecision`, `ActionRunner`, and `Evaluator`. Add `FSMExecutor` to that existing block:
 
 ```python
-from __future__ import annotations
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from little_loops.fsm.executor import FSMExecutor
+    from little_loops.fsm.executor import FSMExecutor  # add this line
+    from little_loops.fsm.executor import RouteContext, RouteDecision
+    from little_loops.fsm.runners import ActionRunner
+    from little_loops.fsm.types import Evaluator
 ```
 
-Use `TYPE_CHECKING` guard to avoid potential circular import since `fsm/executor.py` may transitively import from `extension.py`.
+No new import machinery is needed — only the `FSMExecutor` name must be added to the existing block.
 
 ### 5. Update Callers
 
 Three callers must pass the executor so contributed types reach it:
 
-- `scripts/little_loops/cli/loop/run.py:203` — `wire_extensions(executor.event_bus, ...)` → add `executor=executor`
-- `scripts/little_loops/cli/loop/lifecycle.py:257` — same
-- `scripts/little_loops/cli/sprint/run.py:388` — same
+- `scripts/little_loops/cli/loop/run.py:206` — `wire_extensions(executor.event_bus, ...)` → add `executor=executor`
+- `scripts/little_loops/cli/loop/lifecycle.py:260` — same (in `cmd_resume()`)
+- `scripts/little_loops/cli/sprint/run.py:391` — same (in the parallel branch; note this caller has no executor — see note below)
 
-`parallel.py:225-228` creates a standalone `EventBus` but no `FSMExecutor` — no change needed.
+`parallel.py:228` creates a standalone `EventBus` but no `FSMExecutor` — no change needed.
+
+**Note on `sprint/run.py`**: The sprint parallel branch constructs a bare `EventBus()` (line 390) and passes it to `ParallelOrchestrator`. There is no `FSMExecutor` in scope at this call site. The `executor` kwarg should be omitted here — contributed types are not wired for sprint parallel runs (consistent with the sprint architecture where each worker has its own executor).
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/extension.py` — `wire_extensions()` at line 139: add `executor` param, `hasattr(on_event)` guard, priority sort, second pass with conflict detection, TYPE_CHECKING import
-- `scripts/little_loops/cli/loop/run.py:203` — pass `executor=executor` to `wire_extensions()`
-- `scripts/little_loops/cli/loop/lifecycle.py:257` — same
-- `scripts/little_loops/cli/sprint/run.py:388` — same
+- `scripts/little_loops/extension.py` — `wire_extensions()` at line 187: add `executor` param, `hasattr(on_event)` guard, priority sort, second pass with conflict detection; add `FSMExecutor` to existing `TYPE_CHECKING` block (lines 24–27)
+- `scripts/little_loops/cli/loop/run.py:206` — pass `executor=executor` to `wire_extensions()`
+- `scripts/little_loops/cli/loop/lifecycle.py:260` — same
+- `scripts/little_loops/cli/sprint/run.py:391` — no executor available at this call site; omit `executor` kwarg
 
 ### Similar Patterns
 - Priority sort convention: `dependency_graph.py` (ascending sort — lower value fires first)
@@ -120,12 +123,12 @@ Three callers must pass the executor so contributed types reach it:
 
 ## Implementation Steps
 
-1. **Prerequisite**: Confirm FEAT-984 is merged — `FSMExecutor._contributed_actions`, `._contributed_evaluators`, `._interceptors` must exist
-2. Add `TYPE_CHECKING` import guard for `FSMExecutor` to `extension.py`
-3. Add priority sort before registration passes
-4. Add `hasattr(ext, "on_event")` guard to existing `bus.register()` loop
-5. Add `executor` param and second pass with conflict detection
-6. Update three `wire_extensions()` callers to pass `executor=executor`
+1. **Prerequisite**: FEAT-984 is already merged — `FSMExecutor._contributed_actions`, `._contributed_evaluators`, `._interceptors` confirmed at `executor.py:154–157`
+2. Add `FSMExecutor` to the existing `TYPE_CHECKING` block in `extension.py` (lines 24–27); no new import machinery needed
+3. Add priority sort before the loop at line 204
+4. Add `hasattr(ext, "on_event")` guard to the existing `bus.register()` loop (lines 204–216)
+5. Add `executor: FSMExecutor | None = None` param to `wire_extensions()` (line 187) and second pass with conflict detection
+6. Update callers: `loop/run.py:206` and `loop/lifecycle.py:260` — pass `executor=executor`; `sprint/run.py:391` — no executor available, omit kwarg
 7. Add tests across `test_extension.py`, `test_fsm_executor.py`, `test_events.py`
 
 ## Acceptance Criteria
@@ -153,5 +156,24 @@ Three callers must pass the executor so contributed types reach it:
 
 **Open** | Created: 2026-04-08 | Priority: P4
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `extension.py:187–190` — confirmed current `wire_extensions()` signature (2 params: `bus`, `config_paths`)
+- `extension.py:204–216` — the `bus.register()` loop body; no priority sort or `hasattr` guard exists yet
+- `extension.py:12` — `from __future__ import annotations` already present
+- `extension.py:19` — `TYPE_CHECKING` already imported from `typing`
+- `extension.py:24–27` — existing `TYPE_CHECKING` block imports `RouteContext`, `RouteDecision`, `ActionRunner`, `Evaluator`; add `FSMExecutor` here
+- `executor.py:154–157` — `_contributed_actions`, `_contributed_evaluators`, `_interceptors` all confirmed present (FEAT-984 merged)
+- `executor.py:769, 494–500` — `_contributed_actions` consumed in `_action_mode()` and `_run_action()`
+- `executor.py:669` — `_contributed_evaluators` consumed in `_evaluate()`
+- `executor.py:446–456` — `_interceptors` iterated with `hasattr` guards for `before_route`/`after_route`
+- `cli/loop/run.py:206` — actual call site (import is at line 203)
+- `cli/loop/lifecycle.py:260` — actual call site in `cmd_resume()` (import at lines 256–257)
+- `cli/sprint/run.py:391` — call site in parallel branch; bare `EventBus()` at line 390, no executor in scope
+- `cli/parallel.py:228` — call site; bare `EventBus()` at line 225, no executor in scope
+
 ## Session Log
+- `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
 - `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
