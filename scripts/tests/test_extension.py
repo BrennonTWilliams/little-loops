@@ -323,10 +323,11 @@ class TestWireExtensions:
             def provided_actions(self) -> dict:
                 return {"my_action": MagicMock()}
 
-        executor = MagicMock()
-        executor._contributed_actions = {}
-        executor._contributed_evaluators = {}
-        executor._interceptors = []
+        executor = type(
+            "Executor",
+            (),
+            {"_contributed_actions": {}, "_contributed_evaluators": {}, "_interceptors": []},
+        )()
 
         bus = EventBus()
         with patch.object(ExtensionLoader, "load_all", return_value=[ActionExt()]):
@@ -345,10 +346,11 @@ class TestWireExtensions:
             def provided_evaluators(self) -> dict:
                 return {"my_eval": MagicMock()}
 
-        executor = MagicMock()
-        executor._contributed_actions = {}
-        executor._contributed_evaluators = {}
-        executor._interceptors = []
+        executor = type(
+            "Executor",
+            (),
+            {"_contributed_actions": {}, "_contributed_evaluators": {}, "_interceptors": []},
+        )()
 
         bus = EventBus()
         with patch.object(ExtensionLoader, "load_all", return_value=[EvalExt()]):
