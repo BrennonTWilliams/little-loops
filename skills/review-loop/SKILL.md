@@ -135,6 +135,11 @@ For each state with an `action` field:
 **Looks like shell command** (starts with a known binary or contains `&&`, `|`, `$`):
 - If `action_type: prompt`: add Warning finding
 
+**Unknown/contributed `action_type`** (value not in `["prompt", "slash_command", "shell", "mcp_tool"]`):
+- If `action_type` is explicitly set to a value outside the built-in list: add Warning finding at path `states.<name>`
+- Warning text: `action_type '<value>' is not a built-in type; if this is a contributed type, ensure it is registered in the extension registry (_contributed_actions) before the loop runs.`
+- Do NOT emit an Error; contributed types are valid after schema widening (FEAT-990)
+
 ### QC-4: Convergence State Missing `on_maintain`
 
 For each state where `evaluate.type == "convergence"`:

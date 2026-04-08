@@ -310,6 +310,19 @@ class TestReviewLoopQualityChecks:
         assert state_spec.get("action_type") == "shell"
         # → no QC-3 flag
 
+    def test_qc3_unknown_action_type_warns_not_errors(self) -> None:
+        """QC-3: Unknown action_type (e.g. contributed type 'webhook') → Warning, not Error."""
+        state_spec = {
+            "action": "POST https://example.com/hook",
+            "action_type": "webhook",
+        }
+        built_in_types = {"prompt", "slash_command", "shell", "mcp_tool"}
+        action_type = state_spec.get("action_type", "")
+
+        assert action_type not in built_in_types
+        # → skill should emit Warning (not Error); contributed action types are
+        #   dispatched via the extension registry (_contributed_actions)
+
     # ---- QC-4: Convergence without on_maintain ----
 
     def test_qc4_convergence_missing_on_maintain(self) -> None:

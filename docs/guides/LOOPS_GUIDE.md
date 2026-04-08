@@ -492,7 +492,7 @@ states:
 
 ### Action Types
 
-Each state's action is executed in one of four modes:
+Each state's action is executed in one of four built-in modes, with an optional fifth mode for contributed types registered via the extension system:
 
 | Type | Syntax hint | Default evaluator | Behavior |
 |------|-------------|-------------------|----------|
@@ -500,6 +500,7 @@ Each state's action is executed in one of four modes:
 | `slash_command` | Starts with `/` | `llm_structured` | Execute a Claude Code slash command |
 | `prompt` | Natural language | `llm_structured` | Send text to Claude as a prompt |
 | `mcp_tool` | Must be set explicitly | `mcp_result` | Call an MCP server tool with structured params |
+| *(contributed)* | Any custom string | Depends on runner | Dispatched via `FSMExecutor._contributed_actions` registry; registered by `ActionProviderExtension` plugins |
 
 The engine auto-detects type: `/` prefix → `slash_command`, otherwise → `shell`. Set `action_type: prompt` explicitly for natural-language fix instructions.
 

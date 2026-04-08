@@ -4050,7 +4050,7 @@ class ActionRunner(Protocol):
     ) -> ActionResult: ...
 ```
 
-Implement this protocol to customize action execution (useful for testing).
+Implement this protocol to customize action execution (useful for testing). In the extension system, `ActionRunner` is also the contributed-actions runtime dispatch interface — extension plugins register runners against custom `action_type` strings via `ActionProviderExtension.provided_actions()`, and `FSMExecutor` dispatches to them through the `_contributed_actions` registry at runtime.
 
 ---
 

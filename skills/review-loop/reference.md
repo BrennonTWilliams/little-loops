@@ -102,7 +102,7 @@ states:
 
 ### QC-3: `action_type` Mismatch
 
-**Severity**: Warning (shell-looks-like-prompt), Suggestion (prompt-looks-like-shell)
+**Severity**: Warning (shell-looks-like-prompt, unknown/contributed type), Suggestion (prompt-looks-like-shell)
 **Breaking**: false
 **When to auto-apply**: Never (behavior change)
 
@@ -116,6 +116,11 @@ Heuristics for detecting mismatches:
 **Action looks like a shell command but `action_type` is `prompt` or absent:**
 - Action text is short and starts with a shell command keyword (`ruff`, `mypy`, `pytest`, `python`, `npm`, `cargo`, `make`, `git`, etc.) or contains `&&`, `|`, `$`
 - Suggestion: `action_type: shell` may be more appropriate
+
+**`action_type` is set to an unknown value (not in built-in list):**
+- If `action_type` is set to a value not in `["prompt", "slash_command", "shell", "mcp_tool"]`, treat it as a potential contributed type and emit a Warning (not an error)
+- Warning: `states.<name>: action_type '<value>' is not a built-in type; if this is a contributed type, ensure it is registered in the extension registry (_contributed_actions) before the loop runs.`
+- Contributed action types are dispatched via the extension registry when a matching key is found in `FSMExecutor._contributed_actions`
 
 **Fix template** (natural language → prompt):
 ```yaml
