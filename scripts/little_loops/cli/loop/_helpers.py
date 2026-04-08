@@ -30,6 +30,7 @@ EXIT_CODES: dict[str, int] = {
 _loop_shutdown_requested: bool = False
 _loop_executor: Any = None
 _loop_pid_file: Path | None = None
+_using_alt_screen: bool = False
 
 
 def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
@@ -38,11 +39,13 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
     First signal: Set shutdown flag for graceful exit after current state.
     Second signal: Force immediate exit.
     """
-    global _loop_shutdown_requested
+    global _loop_shutdown_requested, _using_alt_screen
     if _loop_shutdown_requested:
         # Second signal - force exit
         if _loop_pid_file is not None:
             _loop_pid_file.unlink(missing_ok=True)
+        if _using_alt_screen:
+            print("\033[?1049l", end="", file=sys.stderr, flush=True)
         print("\nForce shutdown requested", file=sys.stderr)
         sys.exit(1)
     _loop_shutdown_requested = True
@@ -494,7 +497,19 @@ def run_foreground(
         else:
             executor._on_event = display_progress
 
-    result = executor.run()
+    # Enter alternate screen buffer when showing diagrams with clear to prevent
+    # scrollback contamination from diagrams taller than the terminal height.
+    global _using_alt_screen
+    if show_diagrams and clear_screen and sys.stdout.isatty():
+        _using_alt_screen = True
+        print("\033[?1049h\033[H", end="", flush=True)
+
+    try:
+        result = executor.run()
+    finally:
+        if _using_alt_screen:
+            print("\033[?1049l", end="", flush=True)
+            _using_alt_screen = False
 
     if not quiet:
         print()

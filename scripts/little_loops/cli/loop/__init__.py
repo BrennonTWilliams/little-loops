@@ -134,7 +134,7 @@ Examples:
     run_parser.add_argument(
         "--clear",
         action="store_true",
-        help="Clear terminal before each iteration (useful with --show-diagrams)",
+        help="Clear terminal before each iteration (useful with --show-diagrams); uses the alternate screen buffer when combined with --show-diagrams to avoid scrollback contamination",
     )
     run_parser.add_argument(
         "--queue", action="store_true", help="Wait for conflicting loops to finish"
@@ -234,7 +234,7 @@ Examples:
     resume_parser.add_argument(
         "--clear",
         action="store_true",
-        help="Clear terminal before each iteration (useful with --show-diagrams)",
+        help="Clear terminal before each iteration (useful with --show-diagrams); uses the alternate screen buffer when combined with --show-diagrams to avoid scrollback contamination",
     )
     resume_parser.add_argument(
         "--delay",

@@ -66,7 +66,7 @@ Alternative (no alt-screen): track the line count printed in the previous render
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/run.py:211` — only caller of `run_foreground()`; wraps it in a `try/finally` for lock release (lines 149–220)
-- `scripts/little_loops/cli/loop/lifecycle.py:262` — `cmd_resume` calls `executor.resume()` directly, NOT `run_foreground()` — the `--show-diagrams`/`--clear` flags on the `resume` subcommand are declared but never wired to `display_progress`
+- `scripts/little_loops/cli/loop/lifecycle.py:261` — `cmd_resume` calls `executor.resume()` directly, NOT `run_foreground()` — the `--show-diagrams`/`--clear` flags on the `resume` subcommand are declared but never wired to `display_progress`
 
 ### Similar Patterns
 - No existing alt-screen usage in the codebase — this would be the first
@@ -76,7 +76,7 @@ Alternative (no alt-screen): track the line count printed in the previous render
   - Signal handler at `_helpers.py:35–82` (`_loop_signal_handler`) handles SIGINT/SIGTERM — first SIGINT sets `_loop_shutdown_requested`, second calls `sys.exit(1)`; no terminal restore currently
 
 ### Tests
-- `scripts/tests/test_ll_loop_display.py` — primary test file; `TestDisplayProgress` class
+- `scripts/tests/test_ll_loop_display.py` — primary test file; `TestDisplayProgressEvents` class
   - `test_clear_flag_emits_ansi_clear_when_tty` (line ~1691) — asserts `\033[2J\033[H` is emitted; will need updating to also assert `\033[?1049h` appears before `\033[2J` in output
   - `test_clear_flag_suppressed_when_not_tty` (line ~1703) — asserts no ANSI when `isatty()` is False; needs to also assert `\033[?1049h` not in out
   - `test_clear_flag_suppressed_for_sub_loop_state_enter` (line ~1716) — asserts depth>0 suppresses clear; unaffected
@@ -136,13 +136,24 @@ _New tests to write (add to `test_ll_loop_display.py`, follow `_make_args` + `Mo
 
 `bug`, `ll-loop`, `tui`, `captured`
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/cli/loop/_helpers.py`.
+
+- Added `_using_alt_screen: bool = False` module-level flag
+- `run_foreground()` emits `\033[?1049h\033[H` (enter alternate screen) when `show_diagrams and clear_screen and isatty()`, wrapped `executor.run()` in `try/finally` to always emit `\033[?1049l` (exit alternate screen) on completion or exception
+- `_loop_signal_handler()` emits `\033[?1049l` to stderr before `sys.exit(1)` on second SIGINT when alt screen is active
+- Updated `--clear` help text in both `run_parser` and `resume_parser` in `__init__.py`
+- Updated 2 existing tests and added 6 new tests across 3 test files
+
 ## Status
 
-**Open** | Created: 2026-04-07 | Priority: P3
+**Closed** | Created: 2026-04-07 | Resolved: 2026-04-08 | Priority: P3
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-08T18:00:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90fdf28d-56ff-429a-8d93-3f335dd8c8fb.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef7b723c-c390-4334-9fd7-55a84a05e0a7.jsonl`
 - `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/`
 - `/ll:refine-issue` - 2026-04-08T17:49:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee0b01ff-f8a6-41e9-8b8b-e90bc50cd8f2.jsonl`

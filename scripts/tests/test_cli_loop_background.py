@@ -25,12 +25,14 @@ class TestLoopSignalHandler:
         self.helpers._loop_shutdown_requested = False
         self.helpers._loop_executor = None
         self.helpers._loop_pid_file = None
+        self.helpers._using_alt_screen = False
 
     def teardown_method(self) -> None:
         """Reset global state after each test."""
         self.helpers._loop_shutdown_requested = False
         self.helpers._loop_executor = None
         self.helpers._loop_pid_file = None
+        self.helpers._using_alt_screen = False
 
     def test_first_signal_sets_flag(self) -> None:
         """First signal sets shutdown flag without exiting."""
@@ -109,6 +111,19 @@ class TestLoopSignalHandler:
             self.helpers._loop_signal_handler(signal.SIGINT, None)
 
         assert not pid_file.exists()
+
+    def test_signal_handler_second_signal_emits_alt_screen_exit(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Second signal emits alt-screen exit sequence to stderr when alt screen is active."""
+        self.helpers._using_alt_screen = True
+
+        self.helpers._loop_signal_handler(signal.SIGINT, None)
+
+        with pytest.raises(SystemExit):
+            self.helpers._loop_signal_handler(signal.SIGINT, None)
+
+        assert "\033[?1049l" in capsys.readouterr().err
 
 
 class TestRunBackground:

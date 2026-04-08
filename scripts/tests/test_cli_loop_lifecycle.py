@@ -468,6 +468,7 @@ class TestCmdResume:
         _h._loop_shutdown_requested = False
         _h._loop_executor = mock_executor
         _h._loop_pid_file = None
+        _h._using_alt_screen = False
 
         # Simulate first Ctrl-C (SIGINT)
         _loop_signal_handler(signal.SIGINT, None)

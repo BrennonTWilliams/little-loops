@@ -1689,15 +1689,18 @@ class TestDisplayProgressEvents:
         assert "verbose output line" in out
 
     def test_clear_flag_emits_ansi_clear_when_tty(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """--clear flag emits ANSI clear-screen escape when stdout is a tty."""
+        """--clear flag with --show-diagrams emits alt-screen entry then ANSI clear when stdout is a tty."""
         events = [
             {"event": "state_enter", "state": "start", "iteration": 1},
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=True):
-            run_foreground(executor, self._make_fsm(), self._make_args(clear=True))
+            run_foreground(executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=True))
         out = capsys.readouterr().out
         assert "\033[2J\033[H" in out
+        assert "\033[?1049h" in out
+        # Alt-screen entry must precede the per-render clear
+        assert out.index("\033[?1049h") < out.index("\033[2J\033[H")
 
     def test_clear_flag_suppressed_when_not_tty(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--clear flag does not emit ANSI sequences when stdout is not a tty."""
@@ -1706,9 +1709,78 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch("sys.stdout.isatty", return_value=False):
-            run_foreground(executor, self._make_fsm(), self._make_args(clear=True))
+            run_foreground(executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=True))
         out = capsys.readouterr().out
         assert "\033[2J" not in out
+        assert "\033[?1049h" not in out
+
+    def test_show_diagrams_and_clear_enters_alt_screen(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams + --clear on a tty enters the alternate screen buffer."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True))
+        out = capsys.readouterr().out
+        assert "\033[?1049h" in out
+        assert out.index("\033[?1049h") < out.index("\033[2J\033[H")
+
+    def test_clear_only_no_alt_screen(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--clear without --show-diagrams does NOT enter the alternate screen buffer."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args(clear=True, show_diagrams=False))
+        out = capsys.readouterr().out
+        assert "\033[?1049h" not in out
+        assert "\033[2J\033[H" in out
+
+    def test_show_diagrams_only_no_alt_screen(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--show-diagrams without --clear does NOT enter the alternate screen buffer."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=False))
+        out = capsys.readouterr().out
+        assert "\033[?1049h" not in out
+
+    def test_alt_screen_exited_on_normal_completion(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Alt screen is exited (\\033[?1049l) after executor returns normally."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True))
+        out = capsys.readouterr().out
+        assert "\033[?1049l" in out
+
+    def test_alt_screen_exited_on_executor_exception(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Alt screen is exited even when executor raises an exception."""
+
+        class RaisingExecutor(MockExecutor):
+            def run(self) -> ExecutionResult:
+                raise RuntimeError("executor boom")
+
+        executor = RaisingExecutor(events=[])
+        with patch("sys.stdout.isatty", return_value=True):
+            with pytest.raises(RuntimeError):
+                run_foreground(
+                    executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+                )
+        out = capsys.readouterr().out
+        assert "\033[?1049l" in out
 
     def test_clear_flag_suppressed_for_sub_loop_state_enter(
         self, capsys: pytest.CaptureFixture[str]
