@@ -12,7 +12,7 @@ outcome_confidence: 93
 
 ## Summary
 
-When a user's loop file imports `lib/common.yaml` (e.g. via `fragments: [lib/common.yaml]`),
+When a user's loop file imports `lib/common.yaml` (e.g. via `import: [lib/common.yaml]`),
 `resolve_fragments()` resolves the path relative to the loop file's directory — producing
 `.loops/lib/common.yaml`. Because `lib/` only exists inside the little-loops package
 (`scripts/little_loops/loops/lib/`), not the user's project, a `FileNotFoundError` fires
@@ -162,6 +162,7 @@ FileNotFoundError: Fragment library not found: lib/common.yaml (checked '.loops/
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-09T05:40:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3529d4db-7925-457d-8e73-a8f8d3c8dffc.jsonl`
 - `/ll:confidence-check` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1fba563-25de-457a-8a36-60a62fb88a99.jsonl`
 - `/ll:wire-issue` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/loop-viz-recursive-refine.jsonl`
 - `/ll:refine-issue` - 2026-04-09T05:31:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa2f7fcc-7a9a-4554-8835-7b3ae6bbabe4.jsonl`
