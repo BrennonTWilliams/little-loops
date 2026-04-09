@@ -155,9 +155,18 @@ FileNotFoundError: Fragment library not found: lib/common.yaml (checked '.loops/
 
 `bug`, `fsm`, `fragments`, `path-resolution`, `captured`
 
+## Resolution
+
+- Added `_BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "loops"` constant in `fragments.py`
+- Updated `resolve_fragments()` to fall back to `_BUILTIN_LOOPS_DIR / import_path` before raising `FileNotFoundError`
+- Updated error message to include both checked paths
+- Added `test_builtin_lib_resolves_when_local_absent` in `TestResolveFragmentsImport`
+- Broadened `match=` in `test_missing_import_file_raises_filenotfounderror` to match new two-path error format
+- Updated `docs/guides/LOOPS_GUIDE.md:1675` to remove "copy or symlink" workaround instruction
+
 ## Status
 
-**Open** | Created: 2026-04-09 | Priority: P2
+**Completed** | Created: 2026-04-09 | Resolved: 2026-04-09 | Priority: P2
 
 ---
 

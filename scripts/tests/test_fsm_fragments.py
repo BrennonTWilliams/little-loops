@@ -344,8 +344,31 @@ class TestResolveFragmentsImport:
             "import": ["lib/missing.yaml"],
             "states": {"run": {"action": "echo hi", "terminal": True}},
         }
-        with pytest.raises(FileNotFoundError, match="missing.yaml"):
+        with pytest.raises(FileNotFoundError, match=r"missing\.yaml"):
             resolve_fragments(raw, tmp_path)
+
+    def test_builtin_lib_resolves_when_local_absent(self, tmp_path: Path) -> None:
+        """When lib/ doesn't exist locally, resolve_fragments falls back to built-in loops dir."""
+        raw = {
+            "name": "test",
+            "initial": "run",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "run": {
+                    "fragment": "shell_exit",
+                    "action": "ruff check .",
+                    "on_yes": "done",
+                    "on_no": "fail",
+                },
+                "done": {"terminal": True},
+                "fail": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["run"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "exit_code"
+        assert "fragment" not in state
 
     def test_local_fragments_override_imported(self, tmp_path: Path) -> None:
         """Local fragments: block takes precedence over same-name imported fragment."""

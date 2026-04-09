@@ -35,6 +35,8 @@ from typing import Any
 
 import yaml
 
+_BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "loops"
+
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep-merge two dicts; override keys win at every nesting level.
@@ -91,10 +93,14 @@ def resolve_fragments(raw_loop_dict: dict[str, Any], loop_dir: Path) -> dict[str
     for import_path in raw_loop_dict.get("import", []):
         lib_path = loop_dir / import_path
         if not lib_path.exists():
-            raise FileNotFoundError(
-                f"Fragment library not found: {lib_path} "
-                f"(imported as '{import_path}' relative to {loop_dir})"
-            )
+            builtin_path = _BUILTIN_LOOPS_DIR / import_path
+            if builtin_path.exists():
+                lib_path = builtin_path
+            else:
+                raise FileNotFoundError(
+                    f"Fragment library not found: {import_path} "
+                    f"(checked '{loop_dir / import_path}' and '{builtin_path}')"
+                )
         with open(lib_path) as f:
             lib_data = yaml.safe_load(f)
         if isinstance(lib_data, dict):

@@ -1672,7 +1672,7 @@ states:
 
 All `lib/cli.yaml` fragments use `action_type: shell` + `evaluate.type: exit_code`.
 
-Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same if they copy or symlink the library, or define their own.
+Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same — built-in fragment libraries resolve automatically, so no copying or symlinking is required. You can also define your own local fragments in your loop file or a local library.
 
 ### When to Use Fragments vs. Sub-Loops
 
