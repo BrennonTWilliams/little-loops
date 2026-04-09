@@ -26,6 +26,10 @@ Decomposed from FEAT-1010: "Add `agent:` and `tools:` state-level fields to ll-l
 
 FSM YAML state configs support optional `agent:` and `tools:` fields. When set on a prompt-mode state, the subprocess invocation includes `--agent <name>` and/or `--tools <csv>`, enabling MCP tools to load and resolve correctly in that state's subprocess.
 
+## Use Case
+
+A developer writes an FSM loop YAML with a prompt state that requires an MCP tool (e.g., `ToolSearch`). They add `agent: my-agent` and/or `tools: ["ToolSearch"]` to that state. When `ll-loop` executes the FSM, the subprocess invocation includes `--agent my-agent --tools ToolSearch`, the MCP tool resolves correctly in the subprocess context, and the loop proceeds without stalling.
+
 ## Implementation Steps
 
 ### 1. `scripts/little_loops/fsm/schema.py` — Add fields to `StateConfig`
@@ -314,6 +318,7 @@ if tools:
 Active
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-09T16:32:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15e78a6b-ed74-4ba8-b288-d99d5bfebd5f.jsonl`
 - `/ll:wire-issue` - 2026-04-09T16:29:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b46853f-0880-4875-afe9-7909cbb09d0d.jsonl`
 - `/ll:refine-issue` - 2026-04-09T16:19:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93b983eb-cf4b-4c20-b900-2e51d71a33c1.jsonl`
 - `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4b4a844-219d-40e6-8201-677dabfe574c.jsonl`
