@@ -267,6 +267,8 @@ states:                         # State definitions
     timeout: number             # Action-level timeout in seconds
     fragment: string            # Name of a fragment to inherit fields from (parse-time only;
                                 # state-level keys override fragment keys at every nesting level)
+    agent: string               # Subprocess agent name; passes --agent <name> to the Claude subprocess (prompt states only)
+    tools: list                 # Subprocess tool scope; passes --tools <csv> to the Claude subprocess (prompt states only)
 
 # Optional Loop-Level Settings
 context: object                 # Shared variables/config

@@ -7,8 +7,8 @@ title: "Document `agent:` and `tools:` fields in docs/reference/API.md"
 discovered_date: 2026-04-09
 discovered_by: issue-size-review
 parent_issue: ENH-1014
-confidence_score: 90
-outcome_confidence: 82
+confidence_score: 95
+outcome_confidence: 85
 testable: false
 ---
 
@@ -163,6 +163,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-04-09):_
 Active
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96c8bcc5-9d78-4121-b927-8e51c61d459e.jsonl`
 - `/ll:wire-issue` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4edfc0f0-2b56-4ae6-bba0-6d90d78541f2.jsonl`
 - `/ll:refine-issue` - 2026-04-09T15:54:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4edfc0f0-2b56-4ae6-bba0-6d90d78541f2.jsonl`
 - `/ll:format-issue` - 2026-04-09T15:52:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48bbf93f-f03a-4c80-b15a-00732f7212f5.jsonl`

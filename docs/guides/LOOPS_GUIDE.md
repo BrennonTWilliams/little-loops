@@ -700,6 +700,34 @@ execute:
   next: check_concrete
 ```
 
+### Subprocess Agent and Tool Scoping
+
+These optional fields apply to `action_type: prompt` states only. They are ignored for `action_type: shell` states.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `agent:` | string | Passes `--agent <name>` to the Claude subprocess. Loads `.claude/agents/<name>.md`, picking up its system prompt and tool set. |
+| `tools:` | list of strings | Passes `--tools <csv>` to the Claude subprocess. Explicitly scopes available tools without needing a full agent file (e.g. `["Read", "Bash"]`). |
+
+Example — run a state under a specialized agent, and another with restricted tools:
+
+```yaml
+explore:
+  action: |
+    Run the exploratory eval as defined in the agent file.
+  action_type: prompt
+  agent: exploratory-user-eval    # loads --agent flag → picks up Playwright tools
+  next: validate
+
+validate:
+  action: |
+    Check the output file for correctness.
+  action_type: prompt
+  tools: ["Read", "Bash"]          # scopes to Read + Bash only
+  on_yes: done
+  on_no: fix
+```
+
 ### Handoff Behavior
 
 When a loop detects that Claude's context window is approaching its limit, it triggers a **handoff**:

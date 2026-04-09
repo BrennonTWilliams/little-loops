@@ -258,6 +258,8 @@ Run a loop.
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 
+> **Note:** `agent:` and `tools:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent and tool scoping options.
+
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
 
 Validate a loop definition file.
