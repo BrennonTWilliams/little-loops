@@ -126,6 +126,14 @@ Add `agent` (type: string, optional) and `tools` (type: array of string items, o
 - `test_fsm_executor.py`: `DefaultActionRunner.run(agent=..., tools=...)` → `run_claude_command()` called with correct kwargs (extend `fake_run_claude_command` fixture at line 3011)
 - Verify `test_fsm_schema_fuzz.py` and `test_builtin_loops.py` still pass after schema update
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `docs/reference/API.md` — add `agent: str | None = None` and `tools: list[str] | None = None` to the `ActionRunner Protocol` code block (line ~4047), and add `agent`/`tools` to the `StateConfig` field table (line ~3770). (May be owned by sibling ENH-1012.)
+9. Update `docs/development/TESTING.md` — add `agent`/`tools` params to the `MockActionRunner.run()` example signature (line ~533).
+10. Verify `scripts/tests/test_create_eval_from_issues.py` passes after `fsm-loop-schema.json` update — run as part of `python -m pytest scripts/tests/`.
+
 ## API/Interface
 
 New optional fields in FSM YAML `StateConfig`:
@@ -172,6 +180,117 @@ Both fields are ignored for `action_type: shell` states.
 - `scripts/little_loops/fsm/schema.py:79,113–114,138` — `EvaluateConfig.scope: list[str] | None` for `tools`
 - `scripts/little_loops/fsm/schema.py:226,264–265,304` — `StateConfig.timeout: int | None` for `agent`
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/extension.py:79-87` — `ActionProviderExtension.provided_actions()` returns `dict[str, ActionRunner]`; external extensions implementing the old 4-param `run()` will break at runtime when the Protocol gains `agent`/`tools` [Agent 1 finding]
+- `scripts/little_loops/fsm/__init__.py` — re-exports `StateConfig` and `ActionRunner` in `__all__`; no code change needed, but is the public API surface downstream consumers rely on [Agent 1 finding]
+- `scripts/little_loops/issue_manager.py:41-42` — imports `run_claude_command` as `_run_claude_base` but wraps it with a fixed param set — **insulated, no update needed** [Agent 1 finding]
+- `scripts/little_loops/parallel/worker_pool.py:29-30` — same aliased import pattern as `issue_manager.py` — **insulated, no update needed** [Agent 1 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:4044-4055` — `ActionRunner Protocol` code block shows old 4-param signature (no `agent`/`tools`); must be updated to match new Protocol (sibling ENH-1012 may own this) [Agent 2 finding]
+- `docs/reference/API.md:3766-3786` — `StateConfig` code block missing `agent` and `tools` fields [Agent 2 finding]
+- `docs/development/TESTING.md:533-548` — `MockActionRunner` example shows 3-param signature (even more stale than current Protocol); needs `agent`/`tools` added [Agent 2 finding]
+- Note: `docs/guides/LOOPS_GUIDE.md` and `docs/generalized-fsm-loop.md` **already have** `agent:`/`tools:` documentation from the parent FEAT-1010 doc commit — no change needed [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_create_eval_from_issues.py` — validates generated harness YAMLs through the full `load_and_validate` + `validate_fsm` stack; verify still passes after `fsm-loop-schema.json` update [Agent 3 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+#### Verified Exact Line Numbers (corrected from estimates)
+
+| Touch Point | Actual Location |
+|---|---|
+| `StateConfig` dataclass fields | `schema.py:213–231` (`context_passthrough` at line 231) |
+| `StateConfig.to_dict()` | `schema.py:233–276` |
+| `StateConfig.from_dict()` return block | `schema.py:289` (method start; `timeout=data.get("timeout")` at line 303) |
+| `ActionRunner` Protocol `run()` | `runners.py:28–49` |
+| `DefaultActionRunner.run()` signature | `runners.py:58–64` |
+| `run_claude_command()` call in `DefaultActionRunner` | `runners.py:94–100` |
+| `SimulationActionRunner.run()` | `runners.py:181–187` |
+| `_run_action()` else branch | `executor.py:503–509` |
+| `stateConfig.properties` block | `fsm-loop-schema.json:169–265`, `additionalProperties: false` at line 266 |
+| `MockActionRunner.run()` (executor tests) | `test_fsm_executor.py:43–52` |
+| `FailingRunner.run()` | `test_fsm_executor.py:1833–1838` |
+| `ShutdownAfterFirstActionRunner.run()` | `test_fsm_executor.py:2105–2123` |
+| `CaptureAndShutdownRunner.run()` | `test_fsm_executor.py:2186–2208` |
+| `TimeoutCapturingRunner.run()` | `test_fsm_executor.py:3336–3350` |
+| `fake_run_claude_command` fixture | `test_fsm_executor.py:3011–3028` |
+| `MockActionRunner.run()` (persistence tests) | `test_fsm_persistence.py:528–549` |
+| `CaptureAndShutdownRunner.run()` | `test_fsm_persistence.py:1522–1544` |
+| `ShutdownAfterFirstRunner.run()` | `test_fsm_persistence.py:1579–1597` |
+| `ProgressTrackingRunner.run()` | `test_fsm_persistence.py:1666–1687` |
+
+#### `del` Statement Pattern in Mock Runners
+
+Most mock runners suppress "unused variable" warnings via a `del` statement. When adding `agent`/`tools` to their signatures, the `del` must be extended too. Example for `MockActionRunner` (`test_fsm_executor.py:52`):
+
+```python
+# Before
+del timeout, is_slash_command, on_output_line
+
+# After
+del timeout, is_slash_command, on_output_line, agent, tools
+```
+
+Not all runners use `del` — `TimeoutCapturingRunner` does not (it silently ignores `action` and `is_slash_command`). Check each runner individually.
+
+#### Confirmed: No Additional Protocol Implementors in Other Test Files
+
+`test_ll_loop_execution.py`, `test_ll_loop_state.py`, `test_ll_loop_integration.py`, `test_ll_loop_errors.py`, `test_ll_loop_display.py`, `test_ll_loop_commands.py`, `test_ll_loop_parsing.py`, and `test_review_loop.py` do **not** contain `ActionRunner` Protocol implementors. The `def run()` occurrences in `test_ll_loop_display.py` are for a `MockExecutor` (returns `ExecutionResult`), not `ActionRunner`.
+
+#### `testing.py` Call Sites — No Update Needed
+
+`scripts/little_loops/cli/loop/testing.py` calls `runner.run()` and `sim_runner.run()` at lines 72 and 85. Since `agent` and `tools` will be optional with `None` defaults, these call sites don't need to pass the new params.
+
+#### `contributed` Branch in `executor.py`
+
+The `elif action_mode == "contributed":` branch at `executor.py:492–502` calls `runner.run()` but should NOT pass `agent`/`tools` — contributed action runners are plugin-supplied and handle their own tool selection. Only the `else` branch (default prompt/shell mode) passes the new fields.
+
+#### `cmd_args` Construction Pattern in `subprocess_utils.py`
+
+The `cmd_args` list (lines 95–103) is built as a complete literal with no existing conditional appends. The new `--agent`/`--tools` appends should be added after the list literal and before the env setup block (line 105). Pattern to follow: `evaluators.py:565–577` where `--model` is conditionally appended to a `cmd` list.
+
+#### Testing `--agent`/`--tools` in `test_subprocess_utils.py`
+
+Use the `capture_popen` idiom from `test_subprocess_utils.py:216–245` — capture `args` positionally and assert the full list. For `--agent some-agent`, the expected list would append `["--agent", "some-agent"]` after `-p <command>`. For `--tools`, it would append `["--tools", "Bash,Edit"]`.
+
+#### Testing `DefaultActionRunner` Pass-Through via `fake_run_claude_command`
+
+The fixture at `test_fsm_executor.py:3011–3028` uses `**kwargs` to capture all keyword args to `run_claude_command()`. To test `agent`/`tools` pass-through, assert `kwargs["agent"] == "some-agent"` and `kwargs["tools"] == ["Bash"]` after calling `runner.run(..., agent="some-agent", tools=["Bash"])`. The patch target is `"little_loops.fsm.runners.run_claude_command"`.
+
+#### `cmd_args` Build — Current Structure (lines 95–103)
+
+```python
+cmd_args = [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--verbose",
+    "--output-format",
+    "stream-json",
+    "-p",
+    command,
+]
+# No existing conditional flag appends exist here
+# subprocess.Popen called at line 122 directly with cmd_args
+```
+
+Insert conditional appends after line 103 (before env setup at line 105):
+```python
+if agent:
+    cmd_args += ["--agent", agent]
+if tools:
+    cmd_args += ["--tools", ",".join(tools)]
+```
+
 ## Impact
 
 - **Priority**: P2 - Blocks eval harnesses that need MCP tools
@@ -195,4 +314,6 @@ Both fields are ignored for `action_type: shell` states.
 Active
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-09T16:29:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b46853f-0880-4875-afe9-7909cbb09d0d.jsonl`
+- `/ll:refine-issue` - 2026-04-09T16:19:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93b983eb-cf4b-4c20-b900-2e51d71a33c1.jsonl`
 - `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4b4a844-219d-40e6-8201-677dabfe574c.jsonl`
