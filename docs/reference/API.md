@@ -4053,6 +4053,8 @@ class ActionRunner(Protocol):
         timeout: int,
         is_slash_command: bool,
         on_output_line: Callable[[str], None] | None = None,
+        agent: str | None = None,
+        tools: list[str] | None = None,
     ) -> ActionResult: ...
 ```
 

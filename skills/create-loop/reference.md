@@ -468,6 +468,8 @@ execute:
 
 > **Note:** `agent:` is ignored for `action_type: shell` states.
 
+**See also:** [Subprocess Agent and Tool Scoping](../../docs/guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping)
+
 #### tools (Optional)
 
 The `tools:` field passes `--tools <csv>` to the Claude subprocess for `action_type: prompt` states. It explicitly scopes the available tools without requiring a full agent file.
@@ -488,6 +490,8 @@ validate:
 ```
 
 > **Note:** `tools:` is ignored for `action_type: shell` states. For full agent file loading, prefer `agent:` instead.
+
+**See also:** [Subprocess Agent and Tool Scoping](../../docs/guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping)
 
 #### on_handoff (Optional)
 

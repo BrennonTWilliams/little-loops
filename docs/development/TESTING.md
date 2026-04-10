@@ -535,7 +535,15 @@ class MockActionRunner:
     results: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     calls: list[str] = field(default_factory=list)
 
-    def run(self, action: str, timeout: int, is_slash_command: bool) -> ActionResult:
+    def run(
+        self,
+        action: str,
+        timeout: int,
+        is_slash_command: bool,
+        on_output_line: Callable[[str], None] | None = None,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+    ) -> ActionResult:
         """Return configured result for action."""
         self.calls.append(action)
         for pattern, result_data in self.results:
