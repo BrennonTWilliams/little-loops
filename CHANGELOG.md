@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.77.0] - 2026-04-10
+
+### Added
+
+- **`ll-issues path` Sub-command** — New `path` (alias `p`) sub-command resolves issue IDs in any format (`1009`, `TYPE-NNN`, or `P-TYPE-NNN`) to relative file paths in `.issues/`; supports `--json` flag for programmatic use (FEAT-1009)
+- **`agent:` and `tools:` State-Level Fields** — FSM loop states now accept `agent:` and `tools:` config fields for per-state model and tool overrides; documented in create-loop wizard and API reference (FEAT-1010, ENH-1012, ENH-1014)
+
+### Changed
+
+- **Skip `size-review` When Scores Already Pass** — `recursive-refine` loop adds a `recheck_scores` gate to bypass redundant size-review execution on issues that already meet readiness thresholds (ENH-1018)
+
+### Fixed
+
+- **`confidence_check` Invalid Evaluator Type** — Split `confidence_check` state into two steps and added load-time validator to catch unknown evaluator types; fixes crash in `refine-to-ready-issue` sub-loop (BUG-1019)
+- **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
+- **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
+
+[1.77.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.76.0...v1.77.0
+
 ## [1.76.0] - 2026-04-08
 
 ### Added
@@ -38,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ll-loop --show-diagrams --clear` Ghost Fragments** — Used alternate screen buffer to prevent ghost diagram fragments in scrollback (BUG-989)
 
 [1.76.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.75.0...v1.76.0
+
 
 ## [1.75.0] - 2026-04-07
 
