@@ -13,6 +13,24 @@ The `confidence_check` state in `refine-to-ready-issue.yaml` uses `evaluate.type
 
 **Direct mode**: User description: "Fix: `confidence_check` state uses invalid evaluator type `shell_exit`"
 
+## Current Behavior
+
+The `confidence_check` state in `refine-to-ready-issue.yaml` declares `evaluate.type: shell_exit` — a fragment name, not a valid evaluator type. At runtime, the `evaluate()` dispatcher raises `ValueError("Unknown evaluator type: shell_exit")`, bypassing the `on_error: check_scores_from_file` routing (which only catches `EvaluationResult(verdict="error")`, not Python exceptions). The exception propagates to `run()`'s broad `except Exception` handler at `executor.py`, terminating the sub-loop with error. The outer loop receives this error and routes to `skip_issue`/`detect_children`, never implementing the issue.
+
+## Expected Behavior
+
+The `confidence_check` state should successfully evaluate readiness scores and route accordingly: `on_yes: done` when both readiness and outcome thresholds are met, `on_no: check_refine_limit` when they are not. The validator (`_validate_evaluator()`) should catch unknown evaluator types at YAML load time, raising a `ValidationError` with a clear message instead of silently allowing them through.
+
+## Steps to Reproduce
+
+1. Start the `auto-refine-and-implement` or `recursive-refine` FSM loop with any issue
+2. The sub-loop `refine-to-ready-issue` runs: `format_issue` → `refine_issue` → `wire_issue` states complete successfully
+3. The FSM reaches the `confidence_check` state and runs `/ll:confidence-check`
+4. `_evaluate()` calls `evaluate()` dispatcher with `type="shell_exit"`
+5. `evaluators.py:836` raises `ValueError("Unknown evaluator type: shell_exit")`
+6. `run()` catches via `except Exception` → `_finish("error")` → outer loop routes to `skip_issue`
+7. Observe: issue is skipped despite passing format/refine/wire stages successfully
+
 ## Root Cause
 
 **File**: `scripts/little_loops/loops/refine-to-ready-issue.yaml`
@@ -162,15 +180,38 @@ if evaluate.type not in VALID_EVAL_TYPES:
 - `docs/guides/LOOPS_GUIDE.md` — User-facing loops guide (confidence_check, evaluator configuration)
 - `docs/reference/API.md` — API reference (EvaluateConfig, evaluator dispatch)
 
+## Impact
+
+- **Priority**: P1 - Silently terminates every issue's refinement pipeline after 90+ minutes of processing; routes all issues to `skip_issue`. The entire auto-refine-and-implement pipeline is non-functional.
+- **Effort**: Small - Two targeted file changes: split `confidence_check` state in YAML + add type validation in `_validate_evaluator()`
+- **Risk**: Low - Fixes a broken state; existing tests (`TestBuiltinLoopMigration`, `test_dispatch_unknown_type_raises`) verify the fix
+- **Breaking Change**: No
+
 ## Labels
 
-`bug`, `captured`
+`bug`, `fixed`
+
+## Resolution
+
+**Fixed** | 2026-04-10
+
+### Changes Made
+
+1. **`scripts/little_loops/loops/refine-to-ready-issue.yaml`**: Split `confidence_check` into two states:
+   - `confidence_check`: runs `/ll:confidence-check` skill, unconditional `next: check_scores`
+   - `check_scores`: runs Python script to read scores from issue frontmatter, uses `evaluate.type: exit_code` (valid), routes `on_yes: done`, `on_no: check_refine_limit`, `on_error: check_scores_from_file`
+
+2. **`scripts/little_loops/fsm/validation.py`**: Added unknown evaluator type validation in `_validate_evaluator()` — unknown types now raise a `ValidationError` at YAML load time instead of `ValueError` at runtime.
+
+3. **`scripts/tests/test_builtin_loops.py`**: Updated `TestRefineToReadyIssueSubLoop` tests to reflect new two-state structure (`confidence_check` → `check_scores`).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-10T19:12:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cc3e29c-a60b-4144-a54e-33e4dd71cd9f.jsonl`
 - `/ll:refine-issue` - 2026-04-10T18:57:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ade57844-f3d8-473c-8de6-84e77f05a160.jsonl`
+- `/ll:manage-issue` - 2026-04-10T19:30:00 - bug fix BUG-1019
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-04-10 | Priority: P1
+**Fixed** | Created: 2026-04-10 | Priority: P1

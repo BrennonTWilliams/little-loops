@@ -105,36 +105,40 @@ states:
   confidence_check:
     action: "/ll:confidence-check ${captured.issue_id.output}"
     action_type: slash_command
-    # Evaluate by reading scores written to issue frontmatter by the skill,
-    # avoiding llm_structured which consistently times out in long loop sessions.
+    next: check_scores
+
+  check_scores:
+    # Read scores written to issue frontmatter by the confidence_check skill.
+    # Uses exit_code evaluator (not shell_exit fragment) to allow non-default routing fields.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
+      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
+          capture_output=True, text=True
+      )
+      d = json.loads(r.stdout)
+      sys.exit(0 if int(d.get('confidence') or 0) >= readiness
+                 and int(d.get('outcome') or 0) >= outcome else 1)
+      PYEOF
+    action_type: shell
     evaluate:
-      type: shell_exit
-      action: |
-        python3 << 'PYEOF'
-        import json, sys, subprocess
-        from pathlib import Path
-
-        p = Path('.ll/ll-config.json')
-        cg = {}
-        if p.exists():
-            try:
-                cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-            except Exception:
-                pass
-        readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
-        outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
-
-        r = subprocess.run(
-            ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
-            capture_output=True, text=True
-        )
-        d = json.loads(r.stdout)
-        sys.exit(0 if int(d.get('confidence') or 0) >= readiness
-                   and int(d.get('outcome') or 0) >= outcome else 1)
-        PYEOF
+      type: exit_code
     on_yes: done
     on_no: check_refine_limit
-    on_error: check_scores_from_file  # safety net for unexpected Python errors
+    on_error: check_scores_from_file
 
   check_refine_limit:
     action: |

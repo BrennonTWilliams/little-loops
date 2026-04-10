@@ -496,18 +496,25 @@ class TestRefineToReadyIssueSubLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_confidence_check_routes_to_done(self, data: dict) -> None:
-        """confidence_check.on_yes must route directly to done (verify_issue was removed)."""
+    def test_confidence_check_routes_to_check_scores(self, data: dict) -> None:
+        """confidence_check must transition unconditionally to check_scores (split from BUG-1019 fix)."""
         confidence_check = data["states"].get("confidence_check", {})
-        assert confidence_check.get("on_yes") == "done", (
-            f"confidence_check.on_yes should be 'done', got {confidence_check.get('on_yes')!r}"
+        assert confidence_check.get("next") == "check_scores", (
+            f"confidence_check.next should be 'check_scores', got {confidence_check.get('next')!r}"
         )
 
-    def test_confidence_check_on_error_is_check_scores_from_file(self, data: dict) -> None:
-        """confidence_check.on_error must route to check_scores_from_file, not failed."""
-        state = data["states"].get("confidence_check", {})
+    def test_check_scores_routes_to_done(self, data: dict) -> None:
+        """check_scores.on_yes must route to done."""
+        state = data["states"].get("check_scores", {})
+        assert state.get("on_yes") == "done", (
+            f"check_scores.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_scores_on_error_is_check_scores_from_file(self, data: dict) -> None:
+        """check_scores.on_error must route to check_scores_from_file, not failed."""
+        state = data["states"].get("check_scores", {})
         assert state.get("on_error") == "check_scores_from_file", (
-            f"confidence_check.on_error should be 'check_scores_from_file', got {state.get('on_error')!r}"
+            f"check_scores.on_error should be 'check_scores_from_file', got {state.get('on_error')!r}"
         )
 
     def test_check_scores_from_file_state_exists(self, data: dict) -> None:

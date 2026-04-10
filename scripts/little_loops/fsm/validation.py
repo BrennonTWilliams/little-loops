@@ -112,6 +112,18 @@ def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[Valid
     errors: list[ValidationError] = []
     path = f"states.{state_name}.evaluate"
 
+    # Check that evaluator type is recognized
+    valid_types = set(EVALUATOR_REQUIRED_FIELDS.keys())
+    if evaluate.type not in valid_types:
+        errors.append(
+            ValidationError(
+                message=f"Unknown evaluator type '{evaluate.type}'. "
+                f"Must be one of: {', '.join(sorted(valid_types))}",
+                path=path,
+            )
+        )
+        return errors  # Can't check required fields for unknown type
+
     # Check required fields for evaluator type
     required = EVALUATOR_REQUIRED_FIELDS.get(evaluate.type, [])
     for field_name in required:
