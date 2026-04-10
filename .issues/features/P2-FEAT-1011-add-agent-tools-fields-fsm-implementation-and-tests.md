@@ -220,7 +220,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `DefaultActionRunner.run()` signature | `runners.py:58–64` |
 | `run_claude_command()` call in `DefaultActionRunner` | `runners.py:94–100` |
 | `SimulationActionRunner.run()` | `runners.py:181–187` |
-| `_run_action()` else branch | `executor.py:503–509` |
+| `_run_action()` else branch | `executor.py:512–518` |
 | `stateConfig.properties` block | `fsm-loop-schema.json:169–265`, `additionalProperties: false` at line 266 |
 | `MockActionRunner.run()` (executor tests) | `test_fsm_executor.py:43–52` |
 | `FailingRunner.run()` | `test_fsm_executor.py:1833–1838` |
@@ -318,6 +318,7 @@ if tools:
 Active
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-10T22:59:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afd0bcd6-194a-4a67-9623-1c31aebd634d.jsonl`
 - `/ll:ready-issue` - 2026-04-09T16:32:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15e78a6b-ed74-4ba8-b288-d99d5bfebd5f.jsonl`
 - `/ll:wire-issue` - 2026-04-09T16:29:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b46853f-0880-4875-afe9-7909cbb09d0d.jsonl`
 - `/ll:refine-issue` - 2026-04-09T16:19:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93b983eb-cf4b-4c20-b900-2e51d71a33c1.jsonl`
