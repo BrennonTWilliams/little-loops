@@ -5,6 +5,8 @@ priority: P3
 status: open
 discovered_date: 2026-04-09
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # FEAT-1009: ll-issues path sub-command to resolve issue ID to file path
@@ -58,15 +60,18 @@ Without it, the skill must use `ll-issues show --json FEAT-1009 | python3 -c "im
 ## Proposed Solution
 
 1. Add `scripts/little_loops/cli/issues/path_cmd.py` with `cmd_path(config, args)` that calls `_resolve_issue_id` (already in `show.py`) and prints the relative path.
-2. Extract `_resolve_issue_id` into a shared helper (e.g., `scripts/little_loops/cli/issues/_resolve.py`) so both `show.py` and `path_cmd.py` import it without circular deps, OR import it directly from `show.py`.
+2. Import `_resolve_issue_id` directly from `show.py` — no extraction needed. `skip.py:29` already uses `from little_loops.cli.issues.show import _resolve_issue_id`, confirming this is the established pattern.
 3. Register the `path` sub-command in `__init__.py` with alias `p`.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/cli/issues/__init__.py` — register `path` sub-command + alias `p`; add dispatch branch; import `cmd_path`
-- `scripts/little_loops/cli/issues/show.py` — extract `_resolve_issue_id` to shared module OR leave in place and import from here
+- `scripts/little_loops/cli/issues/__init__.py` — three changes:
+  1. Add `from little_loops.cli.issues.path_cmd import cmd_path` to the imports block (`__init__.py:17-29`)
+  2. Register `path` sub-parser with alias `p` after the `show` block (`__init__.py:257-261`)
+  3. Add dispatch branch `if args.command == "path":` in the `if/elif` chain (`__init__.py:417-432`)
+- `scripts/little_loops/cli/issues/show.py` — no changes required; `_resolve_issue_id` (line 17) is imported directly from here
 
 ### New Files
 
@@ -74,19 +79,25 @@ Without it, the skill must use `ll-issues show --json FEAT-1009 | python3 -c "im
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/cli/issues/show.py` — shares `_resolve_issue_id` logic; may become importer if helper is extracted
+- `scripts/little_loops/cli/issues/skip.py:29` — already imports `_resolve_issue_id` from `show.py` using `from little_loops.cli.issues.show import _resolve_issue_id`; `path_cmd.py` uses the identical import
 
 ### Similar Patterns
 
-- `scripts/little_loops/cli/issues/show.py` — same ID resolution, same `--json` flag pattern
-- `scripts/little_loops/cli/issues/next_issue.py` — `--path` flag pattern for path-only output
+- `scripts/little_loops/cli/issues/show.py:17` — `_resolve_issue_id(config, args)` signature; `show.py:186-189` — `path.relative_to(config.project_root)` with `ValueError` fallback
+- `scripts/little_loops/cli/issues/next_issue.py:43-57` — `--json` output (`{"id": ..., "path": ...}`) then `--path` plain output pattern; closest analogue for `path_cmd.py`
+- `scripts/little_loops/cli/output.py:97-99` — `print_json(data)` utility used for all `--json` output
 
 ### Tests
 
-- `scripts/tests/test_cli_ll_issues.py` or a new `test_cli_ll_issues_path.py`
-- Test all three input formats (numeric, TYPE-NNN, P-TYPE-NNN) resolve correctly
-- Test not-found case returns exit code 1
-- Test `--json` flag output
+- New file: `scripts/tests/test_issues_path.py` (matches naming convention of `test_next_issue.py`, `test_refine_status.py`)
+- Patterns to follow from `scripts/tests/test_next_issue.py`:
+  - `--path` output: lines 281-290 (`patch.object(sys, "argv", [...])`, `capsys.readouterr().out.strip()`, `.endswith("filename.md")`)
+  - `--json` output: lines 255-262 (`json.loads(out)`, `assert data["path"] ...`)
+  - Alias invocation: lines 475-482 (`"p"` instead of `"path"` in argv)
+  - Not-found exit code: `assert result == 1`
+- Test all three input formats (numeric `1009`, `FEAT-1009`, `P3-FEAT-1009`)
+- Test not-found returns exit code 1 with message to stderr
+- Test `--json` emits `{"path": "..."}` with relative path
 
 ## API/Interface
 
@@ -116,11 +127,29 @@ options:
 
 ## Implementation Steps
 
-1. **Extract or reuse `_resolve_issue_id`** — check if importing from `show.py` is clean; if not, move to `scripts/little_loops/cli/issues/_resolve.py`
-2. **Create `path_cmd.py`** — implement `cmd_path`; use `config.project_root` for relative path computation (same as `show.py`)
-3. **Register in `__init__.py`** — add `path` parser with alias `p`, `--json` flag, dispatch branch, and update epilog
-4. **Write tests** — cover all three ID formats, not-found, and `--json` output
-5. **Verify** — run `ll-issues path 1009` against a real issue; check exit codes
+1. **Create `path_cmd.py`** — implement `cmd_path` using `from little_loops.cli.issues.show import _resolve_issue_id` (pattern established at `skip.py:29`). Relativize using `path.relative_to(config.project_root)` with `ValueError` fallback (`show.py:186-189`). For `--json`, emit `{"path": rel_path}` via `print_json` from `little_loops.cli.output`. For not-found, print to `sys.stderr` and return `1`.
+2. **Register in `__init__.py:17-29`** — add `from little_loops.cli.issues.path_cmd import cmd_path` to the lazy-imports block inside `main_issues()`.
+3. **Add sub-parser in `__init__.py`** — after the `show` block (`__init__.py:257-261`), add:
+   ```python
+   path_p = subs.add_parser("path", aliases=["p"], help="Print file path for an issue ID")
+   path_p.set_defaults(command="path")
+   path_p.add_argument("issue_id", help="Issue ID (e.g., 1009, FEAT-1009, P3-FEAT-1009)")
+   path_p.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
+   add_config_arg(path_p)
+   ```
+4. **Add dispatch branch in `__init__.py:417-432`** — insert `if args.command == "path": return cmd_path(config, args)` before the final `return 1`.
+5. **Write tests in `scripts/tests/test_issues_path.py`** — follow `test_next_issue.py` fixture setup (`_write_config`, `_make_issue`, `_setup_dirs`). Cover: all three ID formats resolve correctly, not-found returns exit code 1, `--json` emits `{"path": "..."}`, alias `p` works.
+6. **Verify** — run `ll-issues path 1009` against a real issue; check exit codes with `echo $?`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `docs/reference/CLI.md` — add `#### ll-issues path` sub-section (with `p` alias) and example to the consolidated examples block (near line 382–606)
+8. Update `README.md` — add `ll-issues path <ID>` example line in the `ll-issues` usage block (near line 391–419)
+9. Update `.claude/CLAUDE.md:115` — append `path` to the parenthetical sub-command list
+10. Update `commands/help.md:219` — append `path` to the parenthetical sub-command list
+11. Update `skills/init/SKILL.md` — append `path` at both template text locations (lines 521 and 545)
 
 ## Impact
 
@@ -136,6 +165,15 @@ options:
 | Architecture | `docs/reference/API.md` | CLI module conventions |
 | Guidelines | `CONTRIBUTING.md` | Code style and test patterns |
 
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:382–606` — primary CLI reference; contains `### ll-issues` with `**Subcommands:**` header and individual `####` sections per sub-command plus consolidated examples block; add `path`/`p` entry in both the sub-commands list and examples block
+- `README.md:391–419` — `ll-issues` usage block listing sub-commands with inline comments; add `ll-issues path <ID>` example line
+- `.claude/CLAUDE.md:115` — parenthetical `(next-id, list, show, sequence, impact-effort, refine-status)` enumeration; add `path` to the list
+- `commands/help.md:219` — identical parenthetical enumeration; add `path` to the list
+- `skills/init/SKILL.md:521,545` — two locations in template text that the init skill writes into target projects; both contain the same `(next-id, list, show, sequence, impact-effort, refine-status)` string; add `path` at both locations
+
 ## Labels
 
 `feat`, `cli`, `ll-issues`, `scripting`, `captured`
@@ -145,4 +183,7 @@ options:
 **Open** | Created: 2026-04-09 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0229f88b-b9ac-496f-9859-b598848e3e06.jsonl`
+- `/ll:wire-issue` - 2026-04-10T20:52:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3dd38e6d-dc64-4ee8-9c1d-97ee8b581541.jsonl`
+- `/ll:refine-issue` - 2026-04-10T20:37:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd0b0fa9-7a50-4db0-881c-16e641733287.jsonl`
 - `/ll:capture-issue` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
