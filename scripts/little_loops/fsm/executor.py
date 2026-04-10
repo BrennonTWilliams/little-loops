@@ -364,11 +364,20 @@ class FSMExecutor:
         if state.context_passthrough and child_executor.captured:
             self.captured[self.current_state] = child_executor.captured
 
-        # Route based on child termination reason
+        # Route based on child termination reason and terminal state name
         if child_result.terminated_by == "terminal":
-            return interpolate(state.on_yes, ctx) if state.on_yes else None
+            if child_result.final_state == "done":
+                return interpolate(state.on_yes, ctx) if state.on_yes else None
+            else:
+                # Reached a non-done terminal (e.g. "failed") → failure
+                return interpolate(state.on_no, ctx) if state.on_no else None
+        elif child_result.terminated_by == "error":
+            # Runtime child failure (not a YAML load error)
+            if state.on_error:
+                return interpolate(state.on_error, ctx)
+            return interpolate(state.on_no, ctx) if state.on_no else None
         else:
-            # error, max_iterations, timeout, signal — all are failure
+            # max_iterations, timeout, signal — all are failure
             return interpolate(state.on_no, ctx) if state.on_no else None
 
     def _execute_state(self, state: StateConfig) -> str | None:

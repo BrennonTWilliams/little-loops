@@ -672,9 +672,9 @@ states:
 ```
 
 **Routing:**
-- `on_success` (alias for `on_yes`): child reached a terminal state with `terminated_by: "terminal"`
-- `on_failure` (alias for `on_no`): child terminated by max_iterations, timeout, signal, or error
-- `on_error`: child loop YAML not found or invalid
+- `on_success` (alias for `on_yes`): child reached a terminal state **named `done`** (`terminated_by: "terminal"` and `final_state: "done"`)
+- `on_failure` (alias for `on_no`): child reached a non-`done` terminal (e.g. `final_state: "failed"`), or terminated by max_iterations, timeout, or signal; also fires for `terminated_by: "error"` when `on_error` is not set
+- `on_error`: child loop YAML not found or invalid, **or** child terminated with `terminated_by: "error"` (runtime failure) when `on_error` is defined
 
 **Context passthrough details:**
 - Parent `context` + `captured` are merged into child's `context` before execution

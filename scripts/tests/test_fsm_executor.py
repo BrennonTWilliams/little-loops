@@ -3439,6 +3439,81 @@ class TestSubLoopExecution:
         result = executor.run()
         assert result.final_state == "failed"
 
+    def test_sub_loop_terminal_done_routes_to_on_yes(self, tmp_path: Path) -> None:
+        """Sub-loop that reaches 'done' terminal routes parent to on_yes (BUG-1017)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: start\nstates:\n"
+            "  start:\n    action: 'true'\n    on_yes: done\n    on_no: failed\n"
+            "  done:\n    terminal: true\n"
+            "  failed:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="ok", on_no="fail", on_error="err"),
+                "ok": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "err": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "ok"
+        assert result.terminated_by == "terminal"
+
+    def test_sub_loop_terminal_failed_routes_to_on_no(self, tmp_path: Path) -> None:
+        """Sub-loop that reaches 'failed' terminal routes parent to on_no, not on_yes (BUG-1017)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child whose initial state is already a 'failed' terminal — reaches it immediately
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: failed\nstates:\n"
+            "  failed:\n    terminal: true\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="ok", on_no="fail", on_error="err"),
+                "ok": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "err": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        # Before BUG-1017 fix, this wrongly returned "ok" (terminated_by=="terminal" was enough)
+        assert result.final_state == "fail"
+        assert result.terminated_by == "terminal"
+
+    def test_sub_loop_error_routes_to_on_error_when_set(self, tmp_path: Path) -> None:
+        """Sub-loop that errors at runtime routes parent to on_error when set (BUG-1017)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child with an action state but no routing — causes "No valid transition" error termination
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: start\nstates:\n"
+            "  start:\n    action: 'true'\n"  # no on_yes/on_no/next → terminated_by=="error"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="ok", on_no="fail", on_error="err"),
+                "ok": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "err": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "err"
+
     def test_sub_loop_context_passthrough(self, tmp_path: Path) -> None:
         """Parent context is passed to child when context_passthrough is True."""
         loops_dir = tmp_path / ".loops"

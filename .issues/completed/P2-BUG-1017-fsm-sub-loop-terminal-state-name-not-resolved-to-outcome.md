@@ -201,13 +201,24 @@ The issue describes routing to `on_error` when `terminated_by == "error"`. This 
 
 ---
 
+## Resolution
+
+**Fixed** | Resolved: 2026-04-10 | Priority: P2
+
+### Changes Made
+
+- `scripts/little_loops/fsm/executor.py:367–381` — Updated `_execute_sub_loop()` to check `child_result.final_state == "done"` alongside `terminated_by == "terminal"`. Added `on_error` routing for `terminated_by == "error"` runtime child failures.
+- `scripts/tests/test_fsm_executor.py` — Added 3 tests to `TestSubLoopExecution`: `test_sub_loop_terminal_done_routes_to_on_yes`, `test_sub_loop_terminal_failed_routes_to_on_no` (the exact bug path), `test_sub_loop_error_routes_to_on_error_when_set`.
+- `skills/create-loop/reference.md:674–677` — Updated routing semantics docs for `on_success`/`on_failure`/`on_error` to reflect `final_state`-aware logic.
+
 ## Status
 
-**Open** | Created: 2026-04-09 | Priority: P2
+**Completed** | Created: 2026-04-09 | Resolved: 2026-04-10 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-10T20:16:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca31b15a-6ef7-4f39-aa93-068dc752e472.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19597425-49e5-447f-bb3f-9ca833b862ee.jsonl`
-- `/ll:wire-issue` - 2026-04-10T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/{{session}}.jsonl`
+- `/ll:wire-issue` - 2026-04-10T20:00:00 - `(session path not recorded)`
 - `/ll:refine-issue` - 2026-04-10T19:35:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56c62f8e-8b66-415a-92b3-b2823d040481.jsonl`
 - `/ll:format-issue` - 2026-04-10T19:31:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9108ce5-78c3-402d-a7e5-6b95c72aaaa4.jsonl`
 - `/ll:capture-issue` - 2026-04-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1a28894-156c-4356-8250-5c68db5a469d.jsonl`
