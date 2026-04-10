@@ -396,6 +396,8 @@ ll-issues list --json                         # JSON output for scripting
 ll-issues count                               # Total active issue count
 ll-issues count --type BUG                    # Count bugs only
 ll-issues count --json                        # JSON with breakdowns
+ll-issues count --status completed            # Count completed issues
+ll-issues count --status all                  # Total across all statuses
 ll-issues search "caching"                    # Search by keyword
 ll-issues search --type BUG --priority P0-P2  # Filter bugs by priority range
 ll-issues show FEAT-001                       # Show summary card for an issue
@@ -419,6 +421,8 @@ ll-issues next-issues                         # All active issues in ranked orde
 ll-issues next-issues 5                       # Top 5 ranked issues
 ll-issues nxs --json                          # Ranked list as JSON array
 ll-issues nxs --path                          # Ranked list as file paths
+ll-issues skip FEAT-001                       # Deprioritize issue to P5 (move out of active queue)
+ll-issues skip FEAT-001 --priority P4         # Deprioritize to specific priority
 ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
 ```
 
@@ -440,7 +444,7 @@ Documentation verification utilities:
 ```bash
 ll-verify-docs                   # Check documented counts match actual
 ll-check-links                   # Check markdown for broken links
-ll-check-links docs/             # Check specific directory
+ll-check-links -C docs/          # Check specific directory
 ```
 
 ## Configuration
