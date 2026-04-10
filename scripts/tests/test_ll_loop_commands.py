@@ -1387,7 +1387,7 @@ class TestCmdShow:
             "  check:\n"
             '    action: "echo hello"\n'
             "    evaluate:\n"
-            "      type: llm\n"
+            "      type: llm_structured\n"
             "      prompt: Did the command succeed? Answer yes or no.\n"
             "    on_yes: done\n"
             "  done:\n"
