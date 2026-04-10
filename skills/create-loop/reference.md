@@ -448,6 +448,47 @@ states:
 
 **Most users can omit this field** - the default heuristic covers the common case where slash commands start with `/` and shell commands don't.
 
+#### agent (Optional)
+
+The `agent:` field passes `--agent <name>` to the Claude subprocess for `action_type: prompt` states. It loads `.claude/agents/<name>.md`, picking up that agent's system prompt and tool set (including any MCP tools listed in its `allowed-tools` frontmatter).
+
+**Type:** string
+
+**When to use:** When a state needs to run under a specialized agent file — e.g., an eval state that requires Playwright via an `exploratory-user-eval` agent, or a research state scoped to read-only tools via a dedicated agent definition.
+
+**Example:**
+```yaml
+execute:
+  action: |
+    Run the exploratory evaluation as defined in the agent file.
+  action_type: prompt
+  agent: exploratory-user-eval    # loads --agent flag → picks up Playwright tools
+  next: validate
+```
+
+> **Note:** `agent:` is ignored for `action_type: shell` states.
+
+#### tools (Optional)
+
+The `tools:` field passes `--tools <csv>` to the Claude subprocess for `action_type: prompt` states. It explicitly scopes the available tools without requiring a full agent file.
+
+**Type:** list of strings
+
+**When to use:** When you want to restrict a state to a minimal tool set (e.g., `["Read", "Bash"]`) without creating a dedicated agent file. Also useful for granting specific MCP tool patterns (e.g., `["Read", "mcp__playwright__*"]`).
+
+**Example:**
+```yaml
+validate:
+  action: |
+    Check the output file for correctness.
+  action_type: prompt
+  tools: ["Read", "Bash"]          # scopes to Read + Bash only
+  on_yes: done
+  on_no: fix
+```
+
+> **Note:** `tools:` is ignored for `action_type: shell` states. For full agent file loading, prefer `agent:` instead.
+
 #### on_handoff (Optional)
 
 The `on_handoff` field configures loop behavior when context handoff signals are detected during execution. Context handoff occurs when a slash command needs more context than available in the current session.

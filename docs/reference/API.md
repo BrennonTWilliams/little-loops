@@ -3783,6 +3783,8 @@ class StateConfig:
     on_maintain: str | None = None     # State for maintain mode restart
     loop: str | None = None            # Sub-loop to invoke (name from .loops/<name>.yaml)
     context_passthrough: bool = False  # Pass parent context vars to child; merge child captures back
+    agent: str | None = None           # Subprocess agent name; passes --agent <name> to Claude CLI (prompt states only)
+    tools: list[str] | None = None     # Subprocess tool scope; passes --tools <csv> to Claude CLI (prompt states only)
 ```
 
 > **Alias note:** `on_success` and `on_failure` are accepted as aliases for `on_yes` and `on_no` in all states (including sub-loop states).
