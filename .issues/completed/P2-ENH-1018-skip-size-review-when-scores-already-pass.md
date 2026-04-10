@@ -36,6 +36,10 @@ run_refine
 
 When the sub-loop fails/errors, `check_passed` is never reached, so scores are never evaluated before `size_review_snap`.
 
+## Expected Behavior
+
+When the sub-loop fails or errors and no children are detected, a new `recheck_scores` state checks whether the issue's current `confidence` and `outcome` scores already pass the project thresholds. If both thresholds are met, the issue is recorded as passed and `run_size_review` is bypassed entirely. If either threshold is not met (or the scores can't be read), the loop proceeds to `run_size_review` as before.
+
 ## Proposed Solution
 
 Add a new state (e.g., `recheck_scores`) between `size_review_snap` and `run_size_review` (or as a gate before `size_review_snap`) that:
@@ -147,6 +151,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 No public API changes. Internal FSM state additions only.
 
+## Impact
+
+- **Priority**: P2 - Moderate efficiency improvement; eliminates unnecessary LLM cycles on already-ready issues without changing correctness
+- **Effort**: Small - One new FSM state in one YAML file; mirrors the existing `check_passed` pattern exactly
+- **Risk**: Low - Internal routing change; no public API impact; `run_size_review` is still reached on failure
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+- Does not modify the `refine-to-ready-issue` sub-loop or its exit conditions
+- Does not change scoring thresholds or threshold configuration keys
+- Does not alter the `on_success` path (`check_passed` is unchanged)
+- Does not affect `issue-size-review` behavior itself — only gates when it is invoked
+- Does not change behavior when the sub-loop succeeds (the `check_passed` state handles that path)
+
 ## Files
 
 - `scripts/little_loops/loops/recursive-refine.yaml` — add `recheck_scores` state, update `size_review_snap` transitions (lines 198-199)
@@ -163,12 +182,26 @@ No public API changes. Internal FSM state additions only.
 `enhancement`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-10T22:08:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee233aa2-5d61-4fc3-be98-8715611dfcf6.jsonl`
 - `/ll:refine-issue` - 2026-04-10T20:31:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/900e505a-d87a-4ad9-aa90-d4b0345226d2.jsonl`
 - `/ll:wire-issue` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/900e505a-d87a-4ad9-aa90-d4b0345226d2.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f66535a9-97f7-4f0b-9fee-c1fe9f2acdf1.jsonl`
 
+- `/ll:manage-issue` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+
 ---
+
+## Resolution
+
+**Status**: Completed  
+**Resolved**: 2026-04-10  
+**Implementation**:
+- Added `recheck_scores` state to `recursive-refine.yaml` between `size_review_snap` and `run_size_review`
+- Updated `size_review_snap` transitions (`next` and `on_error`) to route through `recheck_scores`
+- Added `recheck_scores` to the required states set in `test_builtin_loops.py`
+- Added 4 routing assertion tests for `recheck_scores` and updated `size_review_snap` transition test
+- Updated `docs/guides/LOOPS_GUIDE.md` FSM flow diagram and added score gate prose
 
 ## Status
 
-**Open** | Created: 2026-04-09 | Priority: P2
+**Completed** | Created: 2026-04-09 | Resolved: 2026-04-10 | Priority: P2

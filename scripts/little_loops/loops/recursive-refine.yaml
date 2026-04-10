@@ -195,7 +195,49 @@ states:
            .loops/tmp/recursive-refine-pre-ids.txt
       fi
     action_type: shell
-    next: run_size_review
+    next: recheck_scores
+    on_error: recheck_scores
+
+  recheck_scores:
+    # Gate before size-review: if the issue already meets thresholds, skip size-review.
+    # Scores can pass even when the sub-loop failed/errored (e.g., max-iterations hit
+    # while the issue was already ready). Mirrors check_passed logic exactly.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      issue_id = '${captured.input.output}'
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
+      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      passed = (int(d.get('confidence') or 0) >= readiness
+                and int(d.get('outcome') or 0) >= outcome)
+      if passed:
+          with open('.loops/tmp/recursive-refine-passed.txt', 'a') as f:
+              f.write(issue_id + '\n')
+      sys.exit(0 if passed else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: dequeue_next
+    on_no: run_size_review
     on_error: run_size_review
 
   run_size_review:

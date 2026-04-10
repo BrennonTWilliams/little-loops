@@ -808,6 +808,7 @@ class TestRecursiveRefineLoop:
             "detect_children",
             "enqueue_children",
             "size_review_snap",
+            "recheck_scores",
             "run_size_review",
             "enqueue_or_skip",
             "done",
@@ -889,3 +890,31 @@ class TestRecursiveRefineLoop:
         assert "readiness_threshold" in ctx
         assert "outcome_threshold" in ctx
         assert "max_refine_count" in ctx
+
+    def test_size_review_snap_routes_to_recheck_scores(self, data: dict) -> None:
+        """size_review_snap.next must route to recheck_scores (not directly to run_size_review)."""
+        state = data["states"].get("size_review_snap", {})
+        assert state.get("next") == "recheck_scores", (
+            f"size_review_snap.next should be 'recheck_scores', got {state.get('next')!r}"
+        )
+
+    def test_recheck_scores_routes_to_dequeue_next(self, data: dict) -> None:
+        """recheck_scores.on_yes must route to dequeue_next when scores already pass."""
+        state = data["states"].get("recheck_scores", {})
+        assert state.get("on_yes") == "dequeue_next", (
+            f"recheck_scores.on_yes should be 'dequeue_next', got {state.get('on_yes')!r}"
+        )
+
+    def test_recheck_scores_on_no_routes_to_run_size_review(self, data: dict) -> None:
+        """recheck_scores.on_no must route to run_size_review when scores do not pass."""
+        state = data["states"].get("recheck_scores", {})
+        assert state.get("on_no") == "run_size_review", (
+            f"recheck_scores.on_no should be 'run_size_review', got {state.get('on_no')!r}"
+        )
+
+    def test_recheck_scores_on_error_routes_to_run_size_review(self, data: dict) -> None:
+        """recheck_scores.on_error must route to run_size_review on evaluation error."""
+        state = data["states"].get("recheck_scores", {})
+        assert state.get("on_error") == "run_size_review", (
+            f"recheck_scores.on_error should be 'run_size_review', got {state.get('on_error')!r}"
+        )

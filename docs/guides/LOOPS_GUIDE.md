@@ -327,6 +327,8 @@ get_next_issue → [issue found?]
 
 **When to use**: When you have one or more issues you want refined to ready status, including any children that get split off along the way. Prefer `issue-refinement` for full-backlog refinement; use `recursive-refine` when you want targeted, tree-aware refinement of a specific set of issues.
 
+**Score gate**: Before running `/ll:issue-size-review`, a `recheck_scores` state checks whether the issue's current `confidence` and `outcome` scores already meet project thresholds. If both pass, the issue is recorded as passed and size-review is skipped entirely — avoiding unnecessary LLM cycles on already-ready issues.
+
 **Required context variables**:
 
 | Variable | Default | Description |
@@ -360,7 +362,9 @@ parse_input → dequeue_next → [queue empty?]
               │                └─ NO  → detect_children
               └─ on_failure/on_error → detect_children → [children found from sub-loop?]
                                         ├─ YES → enqueue_children → dequeue_next (depth-first)
-                                        └─ NO  → size_review_snap → run_size_review → enqueue_or_skip → dequeue_next
+                                        └─ NO  → size_review_snap → recheck_scores → [scores pass?]
+                                                                                      ├─ YES → dequeue_next
+                                                                                      └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
 **Summary output**: When the queue is exhausted, `done` emits a structured summary:
