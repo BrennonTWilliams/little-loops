@@ -22,6 +22,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.next_id import cmd_next_id
     from little_loops.cli.issues.next_issue import cmd_next_issue
     from little_loops.cli.issues.next_issues import cmd_next_issues
+    from little_loops.cli.issues.path_cmd import cmd_path
     from little_loops.cli.issues.refine_status import cmd_refine_status
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
@@ -41,6 +42,7 @@ Sub-commands:
   search         Search issues with filters and sorting
   count          Count active issues (total or filtered)
   show           Show summary card for a single issue
+  path           Print file path for an issue ID
   sequence       Suggest dependency-ordered implementation sequence
   impact-effort  Display impact vs effort matrix for active issues
   refine-status  Show refinement depth table sorted by commands touched
@@ -60,6 +62,9 @@ Examples:
   %(prog)s count --json
   %(prog)s count --type BUG
   %(prog)s show FEAT-518
+  %(prog)s path 1009
+  %(prog)s path FEAT-1009
+  %(prog)s p P3-FEAT-1009
   %(prog)s sequence --limit 10
   %(prog)s impact-effort
   %(prog)s impact-effort --type BUG
@@ -260,6 +265,12 @@ Examples:
     show.add_argument("--json", "-j", action="store_true", help="Output as JSON")
     add_config_arg(show)
 
+    path_p = subs.add_parser("path", aliases=["p"], help="Print file path for an issue ID")
+    path_p.set_defaults(command="path")
+    path_p.add_argument("issue_id", help="Issue ID (e.g., 1009, FEAT-1009, P3-FEAT-1009)")
+    path_p.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
+    add_config_arg(path_p)
+
     ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")
     ie.set_defaults(command="impact-effort")
     ie.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
@@ -416,6 +427,8 @@ Examples:
         return cmd_sequence(config, args)
     if args.command == "show":
         return cmd_show(config, args)
+    if args.command == "path":
+        return cmd_path(config, args)
     if args.command == "impact-effort":
         return cmd_impact_effort(config, args)
     if args.command == "refine-status":

@@ -2,7 +2,7 @@
 id: FEAT-1009
 type: FEAT
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-04-09
 discovered_by: capture-issue
 confidence_score: 100
@@ -182,9 +182,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 **Open** | Created: 2026-04-09 | Priority: P3
 
+## Resolution
+
+Implemented `ll-issues path` sub-command with alias `p` that resolves issue IDs (numeric, `TYPE-NNN`, `P-TYPE-NNN`) to relative file paths. Searches active, completed, and deferred directories. Supports `--json` flag for programmatic use. Exits 0 on match, 1 if not found.
+
+**Changes:**
+- New: `scripts/little_loops/cli/issues/path_cmd.py` — `cmd_path()` implementation
+- Modified: `scripts/little_loops/cli/issues/__init__.py` — import, sub-parser, dispatch
+- New: `scripts/tests/test_issues_path.py` — 11 tests covering all formats, not-found, --json, alias, completed/deferred search
+- Updated: `docs/reference/CLI.md`, `README.md`, `commands/help.md`, `skills/init/SKILL.md`
+
 ## Session Log
 - `/ll:ready-issue` - 2026-04-10T21:58:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f73f697-01a3-4f97-9a2f-75a37b51d4b5.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0229f88b-b9ac-496f-9859-b598848e3e06.jsonl`
 - `/ll:wire-issue` - 2026-04-10T20:52:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3dd38e6d-dc64-4ee8-9c1d-97ee8b581541.jsonl`
 - `/ll:refine-issue` - 2026-04-10T20:37:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd0b0fa9-7a50-4db0-881c-16e641733287.jsonl`
 - `/ll:capture-issue` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

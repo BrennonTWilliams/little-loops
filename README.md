@@ -400,6 +400,9 @@ ll-issues search "caching"                    # Search by keyword
 ll-issues search --type BUG --priority P0-P2  # Filter bugs by priority range
 ll-issues show FEAT-001                       # Show summary card for an issue
 ll-issues show FEAT-001 --json                # Show issue as JSON
+ll-issues path 1001                           # Resolve numeric ID to file path
+ll-issues path FEAT-1001                      # Resolve TYPE-NNN to file path
+ll-issues path FEAT-1001 --json               # Output as {"path": "..."}
 ll-issues sequence                            # Dependency-ordered implementation sequence
 ll-issues sequence --limit 5                  # Show top 5 issues to work on
 ll-issues sequence --json                     # JSON output for scripting

@@ -518,7 +518,7 @@ If user opted in:
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts
    - `ll-check-links` - Check markdown documentation for broken links
-   - `ll-issues` - Issue management and visualization (next-id, list, show, sequence, impact-effort, refine-status)
+   - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
 
    Install: `pip install -e "./scripts[dev]"`
@@ -542,7 +542,7 @@ If user opted in:
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts
    - `ll-check-links` - Check markdown documentation for broken links
-   - `ll-issues` - Issue management and visualization (next-id, list, show, sequence, impact-effort, refine-status)
+   - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
 
    Install: `pip install -e "./scripts[dev]"`

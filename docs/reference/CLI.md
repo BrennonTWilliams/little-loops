@@ -419,6 +419,14 @@ Show summary card for a single issue. Accepts short form (`518`), type-prefixed 
 |------|-------------|
 | `--json` / `-j` | Output issue fields as JSON |
 
+#### `ll-issues path <issue_id>` / `ll-issues p <issue_id>`
+
+Print the relative file path for an issue ID. Accepts short form (`1009`), type-prefixed (`FEAT-1009`), or full (`P3-FEAT-1009`). Searches all active category directories, the completed directory, and the deferred directory. Exits 0 on match, 1 if not found.
+
+| Flag | Description |
+|------|-------------|
+| `--json` / `-j` | Output as JSON object `{"path": "..."}` |
+
 #### `ll-issues search [query]` / `ll-issues sr [query]`
 
 Search issues with filters and sorting.
@@ -577,6 +585,10 @@ ll-issues count --status all                 # Total across all statuses
 ll-issues show FEAT-518
 ll-issues show 518
 ll-issues show FEAT-518 --json        # Issue fields as JSON
+ll-issues path 1009                   # Resolve numeric ID to file path
+ll-issues path FEAT-1009              # Resolve TYPE-NNN to file path
+ll-issues path P3-FEAT-1009           # Resolve full ID to file path
+ll-issues path FEAT-1009 --json       # Output as {"path": "..."}
 ll-issues search "caching"                   # Search by keyword
 ll-issues search --type BUG --priority P0-P2  # Filter bugs by priority range
 ll-issues search --since 2026-01-01 --json   # Issues since date as JSON
