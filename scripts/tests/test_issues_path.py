@@ -18,7 +18,9 @@ def _write_config(temp_project_dir: Path, sample_config: dict[str, Any]) -> None
 
 def _make_issue(directory: Path, filename: str, title: str) -> None:
     """Write a minimal issue file."""
-    content = f"---\nid: {title.split(':')[0].strip()}\n---\n\n# {title}\n\n## Summary\nTest issue.\n"
+    content = (
+        f"---\nid: {title.split(':')[0].strip()}\n---\n\n# {title}\n\n## Summary\nTest issue.\n"
+    )
     (directory / filename).write_text(content)
 
 
