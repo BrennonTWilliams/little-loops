@@ -511,6 +511,54 @@ run_eval → score_results → analyze_failures
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 
+For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+
+<!-- TODO: update-docs stub — FEAT-1023 — drafted 2026-04-11 -->
+### `html-website-generator`
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium` or `pip install playwright && playwright install chromium`).
+
+Implements the GAN-style generator-evaluator architecture described in Anthropic's [harness design article](../claude-code/harness-design-long-running-apps.md). The loop accepts a one-line website description, expands it into an opinionated design brief, generates a self-contained HTML/CSS/JS file, screenshots it with Playwright, and iteratively refines until all four quality criteria clear a configurable threshold.
+
+**Usage:**
+
+```bash
+ll-loop run html-website-generator "a landing page for a Dutch art museum"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language website description passed as the positional argument |
+| `output_dir` | `/tmp/ll-html-generator` | Output directory for `index.html`, `brief.md`, `critique.md`, and `screenshot.png` |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); all four criteria must meet this value to pass |
+
+Override per-run:
+
+```bash
+ll-loop run html-website-generator "museum landing page" \
+  --context output_dir=/tmp/my-site \
+  --context pass_threshold=7
+```
+
+**Evaluation criteria** (all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `design_quality` | 2× | Does the design feel like a coherent whole with a distinct mood and identity? |
+| `originality` | 2× | Evidence of custom creative decisions? Penalizes purple gradients on white, unmodified stock components, AI-slop patterns. |
+| `craft` | 1× | Typography hierarchy, spacing consistency, color harmony, contrast ratios |
+| `functionality` | 1× | Can a user understand the site's purpose and complete the primary task within 5 seconds? |
+
+**Notes:**
+- The HTML file is fully self-contained (all CSS/JS inline) so it renders correctly under a `file://` URL — no HTTP server needed.
+- If Playwright is unavailable, the `evaluate` state routes directly to `generate`, falling back to LLM-only scoring via the `score` state.
+- The loop runs up to 30 iterations with a 4-hour timeout. Use `--context pass_threshold=5` to accept a lower quality bar on first runs.
+<!-- END TODO stub -->
+
 ## Beyond the Basics
 
 The sections below cover features you'll encounter as you move past simple loops: evaluators, variable interpolation, capture, routing, action types, retry and timing fields, handoff behavior, and scope-based concurrency. For full technical details — schema definitions, compiler internals, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md).
