@@ -447,9 +447,7 @@ Examples:
         filtered = [p for p in report.proposals if p.confidence >= args.min_confidence]
 
         if not filtered:
-            print(
-                f"No proposals at or above confidence threshold ({args.min_confidence})."
-            )
+            print(f"No proposals at or above confidence threshold ({args.min_confidence}).")
             return 0
 
         print(f"# {prefix}Dependency Apply Report")

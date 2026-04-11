@@ -1559,9 +1559,7 @@ class TestMainCLIApply:
         (issues_dir / "completed").mkdir()
 
         feat001 = features_dir / "P1-FEAT-001-blocker.md"
-        feat001.write_text(
-            "# FEAT-001: Blocker\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
-        )
+        feat001.write_text("# FEAT-001: Blocker\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n")
         feat002 = features_dir / "P2-FEAT-002-blocked.md"
         feat002.write_text(
             "# FEAT-002: To Block\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
@@ -1820,9 +1818,7 @@ class TestMainCLIApply:
         """Only source provided (missing relation and target) returns exit code 1."""
         issues_dir, _ = self._setup_apply_project(tmp_path)
 
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply", "FEAT-001"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply", "FEAT-001"]):
             result = main()
         assert result == 1
 
