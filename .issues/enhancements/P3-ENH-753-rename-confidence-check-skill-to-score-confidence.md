@@ -170,6 +170,11 @@ _Verified 2026-03-15 against codebase:_
 
 `enhancement`, `ux`, `rename`, `skill`
 
+## Blocks
+
+- ENH-494: Enforce 500-Line SKILL.md Limit (uses `skills/confidence-check/` paths — must rename first)
+- FEAT-1003: Write test suite for ll-logs (fixtures must use new skill name after rename)
+
 ---
 
 ## Status
@@ -177,6 +182,7 @@ _Verified 2026-03-15 against codebase:_
 **Current**: backlog
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T23:04:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:02:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`

@@ -133,6 +133,10 @@ Port existing shell script logic to TypeScript:
 
 **SDK versions**: `@opencode-ai/plugin` v1.2.27, `@opencode-ai/sdk` + `zod` as dependencies (confirmed on npm).
 
+## Blocks
+
+- FEAT-962: OpenCode ll:init Support, Tests, and Docs (init skill should reference implemented plugin)
+
 ## Verification Notes
 
 **Verdict**: VALID — No `opencode-plugin/` directory exists. Blocker FEAT-960 still open (shell hooks path abstraction unimplemented). The `@opencode-ai/plugin` v1.2.27 version reference should be confirmed against npm before implementation.
@@ -140,6 +144,7 @@ Port existing shell script logic to TypeScript:
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:issue-size-review` - 2026-04-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
 

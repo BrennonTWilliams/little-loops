@@ -117,7 +117,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `performance`, `captured`
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-11
+
+- `issue_history/quality.py:307` — `re.findall(pattern, content, re.IGNORECASE)` with raw string patterns confirmed ✓
+- `_MANUAL_PATTERNS` at line 224 stores raw strings, not compiled `re.Pattern` objects ✓
+- Feature not yet implemented
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 

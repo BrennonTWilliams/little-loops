@@ -58,6 +58,18 @@ The README pattern to match would be `\d+\s+FSM loops?`. The `extract_count_from
 
 ---
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-11
+
+- `doc_counts.py:19-23` — `COUNT_TARGETS` confirmed: only `commands`, `agents`, `skills` keys; no `loops` key ✓
+- `scripts/little_loops/loops/` contains 38 YAML files; FSM loop count not tracked by `ll-verify-docs` ✓
+- Feature not yet implemented
+
 ## Status
 
 **Open** | Created: 2026-04-11 | Priority: P4
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
