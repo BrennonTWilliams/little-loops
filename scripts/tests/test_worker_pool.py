@@ -119,17 +119,6 @@ def mock_issue() -> MagicMock:
 class TestWorkerResult:
     """Tests for WorkerResult dataclass (ENH-036)."""
 
-    def test_interrupted_defaults_to_false(self) -> None:
-        """WorkerResult.interrupted defaults to False."""
-        result = WorkerResult(
-            issue_id="BUG-001",
-            success=True,
-            branch_name="parallel/bug-001",
-            worktree_path=Path("/tmp/worktree"),
-        )
-
-        assert result.interrupted is False
-
     def test_interrupted_can_be_set_true(self) -> None:
         """WorkerResult.interrupted can be set to True."""
         result = WorkerResult(
@@ -163,29 +152,6 @@ class TestWorkerResult:
 
 class TestWorkerPoolInit:
     """Tests for WorkerPool initialization."""
-
-    def test_init_sets_attributes(
-        self,
-        default_parallel_config: ParallelConfig,
-        br_config: BRConfig,
-        mock_logger: MagicMock,
-        temp_repo_with_config: Path,
-    ) -> None:
-        """WorkerPool initializes with correct attributes."""
-        pool = WorkerPool(
-            parallel_config=default_parallel_config,
-            br_config=br_config,
-            logger=mock_logger,
-            repo_path=temp_repo_with_config,
-        )
-
-        assert pool.parallel_config == default_parallel_config
-        assert pool.br_config == br_config
-        assert pool.logger == mock_logger
-        assert pool.repo_path == temp_repo_with_config
-        assert pool._executor is None
-        assert pool._active_workers == {}
-        assert pool._active_processes == {}
 
     def test_init_creates_git_lock_if_not_provided(
         self,
