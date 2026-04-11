@@ -7,23 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.78.0] - 2026-04-11
+
 ### Added
 
+- **`agent:` and `tools:` FSM State Fields — Tests and Subprocess Pass-Through** — Full implementation of per-state `agent:` and `tools:` config fields with subprocess argument pass-through; test coverage for state-level overrides (FEAT-1011)
+- **HTML Website Generator Built-In Loop** — New `html-website-generator` built-in FSM loop with generator-evaluator harness for iterative website generation and quality assessment (FEAT-1023)
+- **`/ll:audit-issue-conflicts` Skill with Auto-Apply** — New skill scans issues for ID conflicts, duplicate summaries, and inconsistent states; detects and optionally auto-resolves conflicts across backlog and completed directories (FEAT-1027)
+- **`audit-issue-conflicts` Wiring, Docs, and Tests** — Integration wiring, documentation, and test suite for the `audit-issue-conflicts` skill (FEAT-1029)
 - **`/ll:publish` Maintainer Command** — New command bumps version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commits; guards against running outside the little-loops source repo (ENH-1020)
 
 ### Changed
 
+- **`agent:` and `tools:` API Reference** — Added `agent:` and `tools:` parameters to `run_claude_command()` documentation in `docs/reference/API.md` (ENH-1015)
+- **`agent:` and `tools:` Create-Loop Reference** — Updated `skills/create-loop/reference.md` with `agent:` and `tools:` field descriptions, valid values, and examples (ENH-1016)
 - **`/ll:update` Consumer-First** — Rewrote `/ll:update` to always update both pip package and Claude Code plugin regardless of repo type; removed source-repo guards and marketplace steps from the consumer update flow (ENH-1020)
 - **Issue-by-ID Lookups Use `ll-issues path`** — 8 skills and commands (`manage-issue`, `format-issue`, `go-no-go`, `confidence-check`, `issue-size-review`, `wire-issue`, `refine-issue`, `ready-issue`) now resolve issue IDs via `ll-issues path <ID>` instead of ad-hoc `find | grep` loops; completed and deferred issues are now found correctly (ENH-1022)
 
 ### Fixed
 
+- **`refine-to-ready-issue` Retry Routing** — Fixed incorrect FSM transition from `retry` state that caused infinite loops instead of properly routing back to the refine pipeline (BUG-1026)
+- **`refine-to-ready-issue` Score-Failure to Breakdown Path** — Added direct transition from `check_refine_limit` budget exhaustion to `breakdown_issue`; prevents dead-end state when issue cannot be refined further (BUG-1032)
 - **`ll-gitignore` Missing from Permissions and Help** — Added `ll-gitignore` to the canonical permissions block in `/ll:init`, the permissions authorization list in `/ll:configure`, and the CLI TOOLS section in `/ll:help`; tool count updated from 12 to 13 (ENH-1024)
-
-### Planned
-
-- Windows compatibility testing
-- Performance benchmarks for large repositories
 
 ## [1.77.0] - 2026-04-10
 
@@ -43,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.78.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.77.0...v1.78.0
 [1.77.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.76.0...v1.77.0
 
 ## [1.76.0] - 2026-04-08
