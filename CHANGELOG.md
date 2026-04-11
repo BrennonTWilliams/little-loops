@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.79.0] - 2026-04-11
+
+### Added
+
+- **Extension SDK with Scaffolding and Test Harness** — Full extension SDK with project scaffolding tooling and eval test harness (FEAT-916, #916)
+- **`description` Field for FSM Shared State Fragments** — Adds optional `description` field to fragment libraries and `ll-loop fragments` sub-command for documentation and discoverability (FEAT-1042, #1042)
+- **`ll-deps apply` Sub-Command** — New `apply` sub-command writes inferred dependency relationships back to issue files, enabling automated dep wiring from the CLI (FEAT-1007, #1007)
+- **`/ll:audit-issue-conflicts` Core Skill** — New skill detects ID conflicts, duplicate summaries, and inconsistent states across backlog and completed issue directories (FEAT-1028, #1028)
+- **`audit-issue-conflicts` Documentation Wiring** — Integrated into all documentation surfaces: help, README, ARCHITECTURE, API reference, and skills index (FEAT-1030, #1030)
+- **`audit-issue-conflicts` Structural Tests** — Test suite covering skill invocation, conflict detection, and auto-apply behavior (FEAT-1031, #1031)
+
+### Fixed
+
+- **FSM Validator False-Positive for `llm_structured` Custom `on_*` Routing** — Fixed false-positive validation error and broken routing for `llm_structured` evaluators using custom `on_<verdict>` keys (BUG-1039, #1039)
+
+### Changed
+
+- **`refine-to-ready-issue` Skips Retry on Outcome Confidence Failure** — Outcome confidence failure no longer triggers a retry loop; only structural/completeness failures trigger refinement retry (ENH-1033, #1033)
+- **`/ll:publish` Moved to Project-Level Command** — `publish` is now a project-local command rather than a built-in; prevents accidental invocation outside the little-loops source repo (ENH-1034, #1034)
+- **Consolidated Redundant Test Coverage** — Replaced duplicated parametrized test pairs with single parametrize calls across `test_cli.py`, `test_orchestrator.py`, and `test_worker_pool.py` (ENH-1035, ENH-1036, ENH-1037)
+
 ## [1.78.0] - 2026-04-11
 
 ### Added
@@ -53,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.79.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.78.0...v1.79.0
 [1.78.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.77.0...v1.78.0
 [1.77.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.76.0...v1.77.0
 
