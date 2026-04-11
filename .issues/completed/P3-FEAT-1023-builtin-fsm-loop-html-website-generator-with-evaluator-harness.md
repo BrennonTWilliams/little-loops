@@ -187,7 +187,7 @@ states:
 - `docs/guides/LOOPS_GUIDE.md` — Add row to built-in loops table (lines 219–235) and to harness examples sub-table (lines 506–511) [Wiring pass added by `/ll:wire-issue`]
 
 ### Dependent Files (Callers/Importers)
-- `ll-loop run` / `scripts/little_loops/cli/loop/runner.py` — resolves loop by name; `loop_input` populates `context.description` via `input_key`
+- `ll-loop run` / `scripts/little_loops/cli/loop/run.py` — resolves loop by name; `loop_input` populates `context.description` via `input_key`
 - `ll-loop validate` / `scripts/little_loops/fsm/validation.py` — validates YAML structure, terminal reachability, evaluator configs
 - `ll-loop test` / `scripts/little_loops/cli/loop/testing.py` — structural validation command
 
@@ -276,11 +276,29 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 
 ---
 
+## Resolution
+
+**Status**: Completed | **Date**: 2026-04-11
+
+### Changes Made
+
+- **Created** `scripts/little_loops/loops/html-website-generator.yaml` — 5-state FSM (`plan → generate → evaluate → score → done`) implementing the GAN-style generator-evaluator harness. Uses `input_key: description`, Playwright CLI via `file://` URL for screenshot capture, and `output_contains` evaluators for routing.
+- **Updated** `scripts/tests/test_builtin_loops.py` — Added `"html-website-generator"` to `test_expected_loops_exist()` expected set; added `TestHtmlWebsiteGeneratorLoop` class with 11 structural assertions covering required states, terminal state, shell action type, evaluator config, routing, and context variables.
+- **Updated** `scripts/little_loops/loops/README.md` — Added entry in Harness/Templates section.
+- **Updated** `docs/guides/LOOPS_GUIDE.md` — Added row to Harness Examples sub-table.
+
+### Verification
+
+- `ll-loop validate html-website-generator` → valid
+- `ll-loop test html-website-generator` → structural validation passes
+- `python -m pytest scripts/tests/test_builtin_loops.py` → 125 passed
+
 ## Status
 
-**Open** | Created: 2026-04-10 | Priority: P3
+**Completed** | Created: 2026-04-10 | Completed: 2026-04-11 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-11T05:04:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b458173b-e5fe-4cf5-b55c-ef414ac7c145.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/761f2624-ecc1-499c-ac48-e18b3e383406.jsonl`
 - `/ll:refine-issue` - 2026-04-11T04:58:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db48a35e-dc5e-4578-b3f1-212165c748a3.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ea2245e-b201-46b7-a15d-81c084e20c95.jsonl`

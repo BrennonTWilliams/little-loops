@@ -1,0 +1,134 @@
+name: html-website-generator
+category: harness
+input_key: description
+description: |
+  Generator-evaluator harness for single-page HTML website creation.
+  Accepts a natural language website description via loop_input and
+  iteratively generates and refines HTML/CSS/JS using Playwright CLI
+  screenshot evaluation. Implements the GAN-style architecture from
+  Anthropic's harness design article.
+initial: plan
+max_iterations: 30
+timeout: 14400
+
+# HARNESS: Context variables control output location and quality threshold.
+# Pass a custom output_dir to write files elsewhere.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  output_dir: "/tmp/ll-html-generator"
+  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+
+states:
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a design brief.
+    # This mirrors the "generator receives a spec" role from the harness design article.
+    # The brief captures visual identity, layout, and unique creative angle so the
+    # generator has strong direction on the first iteration.
+    action_type: prompt
+    action: |
+      Create directory ${context.output_dir} if it does not already exist.
+
+      Write a design brief to ${context.output_dir}/brief.md for the following website:
+      "${context.description}"
+
+      The brief must include:
+      - **Visual identity**: specific color palette (hex values), typeface choices, overall mood and tone
+      - **Layout structure**: major sections, key components, hierarchy
+      - **Unique creative angle**: what makes this design distinctive and memorable? Avoid clichés.
+      - **Anti-patterns to avoid**: purple gradients on white cards, unmodified stock components,
+        generic hero sections, AI-generated filler patterns
+
+      Be specific and opinionated. The generator will use this brief as its primary reference.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates or refines the HTML file.
+    # On the first pass it uses only the design brief. On subsequent iterations it also
+    # incorporates the evaluator's critique, directly addressing each flagged issue.
+    # All CSS and JS must be inline so the file renders correctly under a file:// URL
+    # without an HTTP server (no CORS, no external resource loading needed).
+    action_type: prompt
+    action: |
+      Read ${context.output_dir}/brief.md for the design brief.
+
+      If ${context.output_dir}/critique.md exists, read it and address all issues
+      listed in the "Issues to Address" section specifically and completely.
+
+      Write a single self-contained HTML file to ${context.output_dir}/index.html that:
+      - Implements the visual identity and layout from the brief
+      - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
+      - Produces a responsive layout that works at desktop and mobile widths
+      - Achieves a distinctive, museum-quality aesthetic — avoid AI-slop patterns
+        (generic gradients, unmodified Bootstrap components, stock imagery placeholders,
+        bland sans-serif on white backgrounds)
+      - If critique exists, resolves every specific issue before introducing new ideas
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
+    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
+    # an HTTP server, eliminating background process lifecycle issues entirely.
+    # Routes to score on success; routes back to generate on failure (e.g. Playwright
+    # not installed, or file missing) so the loop can still make progress via
+    # LLM-only scoring if the shell tool is unavailable.
+    action_type: shell
+    action: |
+      playwright screenshot "file://${context.output_dir}/index.html" "${context.output_dir}/screenshot.png" && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the screenshot against four design criteria
+    # and writes structured critique for the generator's next iteration.
+    # Uses output_contains: "PASS" for routing — simple and robust vs JSON parsing.
+    # The PNG produced by the evaluate state is read as a multimodal image input.
+    action_type: prompt
+    action: |
+      Read the screenshot at ${context.output_dir}/screenshot.png to view the generated website.
+      Also read ${context.output_dir}/brief.md to recall the design intent.
+
+      Score the website on each criterion from 1 to 10 and write the evaluation to
+      ${context.output_dir}/critique.md using this exact format:
+
+      ```
+      # Evaluation
+
+      design_quality: N/10 — [explanation: does the design feel like a coherent whole?
+        Strong color/typography/layout combination creates a distinct mood and identity.]
+      originality: N/10 — [explanation: evidence of custom creative decisions?
+        Best designs are museum-quality. Penalize: purple gradients on white cards,
+        unmodified stock components, AI-generated fill patterns.]
+      craft: N/10 — [explanation: technical execution — typography hierarchy, spacing
+        consistency, color harmony, contrast ratios, pixel-level attention.]
+      functionality: N/10 — [explanation: can users understand what the site does and
+        complete the primary task within 5 seconds?]
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator. List each problem concisely
+       so the generator can address it directly on the next pass. If all scores meet
+       threshold, write "No issues — all criteria pass."]
+      ```
+
+      After writing the file, evaluate the scores:
+      - design_quality weight: 2× (threshold ${context.pass_threshold})
+      - originality weight: 2× (threshold ${context.pass_threshold})
+      - craft weight: 1× (threshold ${context.pass_threshold})
+      - functionality weight: 1× (threshold ${context.pass_threshold})
+
+      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "PASS"
+    on_yes: done
+    on_no: generate
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # The final website is at ${context.output_dir}/index.html.
+    # The last critique (with final scores) is at ${context.output_dir}/critique.md.
+    terminal: true
