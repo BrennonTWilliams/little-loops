@@ -92,7 +92,8 @@ done  [terminal]
 3. Update the `description:` field in the loop header to reflect recursive-refine delegation
 4. Run `ll-loop validate auto-refine-and-implement` (if available) to check YAML schema
 5. Dry-run: inspect `.loops/tmp/` files after a single iteration with a known decomposable issue
-6. Confirm `ll-issues next-issue --skip <passed+skipped ids>` no longer returns those IDs
+6. Check that after `recursive-refine` runs: passed issues appear in `auto-refine-and-implement-impl-queue.txt`, skipped issues appear in `auto-refine-and-implement-skipped.txt`
+7. Confirm `ll-issues next-issue --skip <passed+skipped ids>` no longer returns those IDs
 
 ### Complete Replacement YAML
 
