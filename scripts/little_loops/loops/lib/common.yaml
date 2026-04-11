@@ -12,20 +12,21 @@
 #     on_no: fix
 
 fragments:
-  # shell_exit: Shell command evaluated by exit code.
-  # State must supply: action, on_yes, on_no (and optionally on_error, timeout)
   shell_exit:
+    description: |
+      Shell command evaluated by exit code.
+      State must supply: action, on_yes, on_no (and optionally on_error, timeout).
     action_type: shell
     evaluate:
       type: exit_code
 
-  # retry_counter: Shell state that increments a counter file and evaluates
-  # whether it is still below the retry limit.
-  # State must supply (via context interpolation):
-  #   context.counter_key  — filename under .loops/tmp/ for the counter
-  #   context.max_retries  — upper bound (lt comparison)
-  # State must supply routing: on_yes (continue), on_no (give up)
   retry_counter:
+    description: |
+      Shell state that increments a counter file and evaluates whether it is still below
+      the retry limit. State must supply (via context interpolation):
+        context.counter_key  — filename under .loops/tmp/ for the counter
+        context.max_retries  — upper bound (lt comparison)
+      State must supply routing: on_yes (continue), on_no (give up).
     action: |
       FILE=".loops/tmp/${context.counter_key}"
       N=$(cat "$FILE" 2>/dev/null || echo 0)
@@ -36,19 +37,21 @@ fragments:
       operator: lt
       target: "${context.max_retries}"
 
-  # llm_gate: LLM prompt state evaluated by structured yes/no output.
-  # State must supply: action (the prompt text), evaluate.prompt (the yes/no question),
-  # on_yes, on_no (and optionally on_error, timeout, capture)
   llm_gate:
+    description: |
+      LLM prompt state evaluated by structured yes/no output.
+      State must supply: action (the prompt text), evaluate.prompt (the yes/no question),
+      on_yes, on_no (and optionally on_error, timeout, capture).
     action_type: prompt
     evaluate:
       type: llm_structured
 
-  # numeric_gate: Shell command evaluated by numeric output comparison.
-  # State must supply: action (shell command that prints a number),
-  # evaluate.operator (eq|lt|gt|ge|le), evaluate.target (threshold),
-  # on_yes, on_no (and optionally on_error, timeout, capture)
   numeric_gate:
+    description: |
+      Shell command evaluated by numeric output comparison.
+      State must supply: action (shell command that prints a number),
+      evaluate.operator (eq|lt|gt|ge|le), evaluate.target (threshold),
+      on_yes, on_no (and optionally on_error, timeout, capture).
     action_type: shell
     evaluate:
       type: output_numeric

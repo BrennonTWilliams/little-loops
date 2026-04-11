@@ -2701,3 +2701,106 @@ class TestHistorySinceShortForm:
             result = main_loop()
 
         assert result == 0
+
+
+class TestCmdFragments:
+    """Tests for ll-loop fragments command handler."""
+
+    def test_fragments_lists_names_and_descriptions(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """cmd_fragments prints fragment names and first line of description."""
+        from little_loops.cli.loop.info import cmd_fragments
+        from little_loops.logger import Logger
+
+        lib = tmp_path / "mylib.yaml"
+        lib.write_text(
+            "fragments:\n"
+            "  shell_exit:\n"
+            "    description: |\n"
+            "      Shell command evaluated by exit code.\n"
+            "      State must supply: action, on_yes, on_no.\n"
+            "    action_type: shell\n"
+            "    evaluate:\n"
+            "      type: exit_code\n"
+            "  llm_gate:\n"
+            "    description: LLM prompt state with structured yes/no output.\n"
+            "    action_type: prompt\n"
+            "    evaluate:\n"
+            "      type: llm_structured\n"
+        )
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        logger = Logger(verbose=False)
+        result = cmd_fragments(str(lib), argparse.Namespace(), loops_dir, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "shell_exit" in out
+        assert "llm_gate" in out
+        assert "Shell command evaluated by exit code." in out
+        assert "LLM prompt state with structured yes/no output." in out
+
+    def test_fragments_resolves_builtin_lib_path(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """cmd_fragments resolves lib/common.yaml as a built-in library path."""
+        from little_loops.cli.loop.info import cmd_fragments
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        logger = Logger(verbose=False)
+        result = cmd_fragments("lib/common.yaml", argparse.Namespace(), loops_dir, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "shell_exit" in out
+        assert "common.yaml" in out
+
+    def test_fragments_missing_lib_returns_nonzero(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """cmd_fragments returns 1 when the library file does not exist."""
+        from little_loops.cli.loop.info import cmd_fragments
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        logger = Logger(verbose=False)
+        result = cmd_fragments("lib/nonexistent.yaml", argparse.Namespace(), loops_dir, logger)
+
+        assert result == 1
+
+    def test_fragments_no_description_shows_placeholder(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """cmd_fragments shows a placeholder when a fragment has no description."""
+        from little_loops.cli.loop.info import cmd_fragments
+        from little_loops.logger import Logger
+
+        lib = tmp_path / "plain.yaml"
+        lib.write_text(
+            "fragments:\n"
+            "  bare_fragment:\n"
+            "    action_type: shell\n"
+            "    evaluate:\n"
+            "      type: exit_code\n"
+        )
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        logger = Logger(verbose=False)
+        result = cmd_fragments(str(lib), argparse.Namespace(), loops_dir, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "bare_fragment" in out
+        assert "(no description)" in out

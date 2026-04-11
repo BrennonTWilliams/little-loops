@@ -123,6 +123,26 @@ import:
   - lib/cli.yaml
 ```
 
+Each fragment may include an optional `description` field documenting what it provides and what the calling state must supply:
+
+```yaml
+fragments:
+  shell_exit:
+    description: |
+      Shell command evaluated by exit code.
+      State must supply: action, on_yes, on_no (and optionally on_error, timeout).
+    action_type: shell
+    evaluate:
+      type: exit_code
+```
+
+The `description` field is stripped before merge — the FSM engine never sees it. To view fragment names and descriptions without opening the raw YAML, use:
+
+```bash
+ll-loop fragments lib/common.yaml
+ll-loop fragments lib/cli.yaml
+```
+
 See [`docs/guides/LOOPS_GUIDE.md`](../docs/guides/LOOPS_GUIDE.md) for fragment authoring and the full fragment table.
 
 ### Composing Loops

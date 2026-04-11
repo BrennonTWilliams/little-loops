@@ -661,6 +661,8 @@ name: "my-loop"
 initial: check
 fragments:
   my_gate:
+    description: |
+      Shell gate for npm test. Caller must supply routing (on_yes, on_no).
     action_type: shell
     evaluate:
       type: exit_code
@@ -676,6 +678,8 @@ states:
   done:
     terminal: true
 ```
+
+The optional `description` field is stripped at parse time — the FSM engine never sees it. Use it to document what the fragment provides and what the calling state must supply. Run `ll-loop fragments <lib>` to list a library's fragments with their descriptions.
 
 #### loop (Optional)
 

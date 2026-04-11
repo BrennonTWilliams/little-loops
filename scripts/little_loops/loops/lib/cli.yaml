@@ -19,100 +19,113 @@
 #     on_no: retry
 
 fragments:
-  # ll_auto: Run ll-auto to process the backlog sequentially.
-  # State must supply: on_yes, on_no (and optionally action override for extra flags)
   ll_auto:
+    description: |
+      Run ll-auto to process the backlog sequentially.
+      State must supply: on_yes, on_no (and optionally action override for extra flags).
     action_type: shell
     action: "ll-auto"
     evaluate:
       type: exit_code
 
-  # ll_issues_list: List all active issues as JSON.
-  # State must supply: on_yes, on_no
   ll_issues_list:
+    description: |
+      List all active issues as JSON.
+      State must supply: on_yes, on_no.
     action_type: shell
     action: "ll-issues list --json"
     evaluate:
       type: exit_code
 
-  # ll_issues_next: Get the next recommended action for the highest-priority issue.
-  # State must supply: on_yes, on_no
-  # Optional action override: add --skip "id1,id2" to skip specific issues
   ll_issues_next:
+    description: |
+      Get the next recommended action for the highest-priority issue.
+      State must supply: on_yes, on_no.
+      Optional action override: add --skip "id1,id2" to skip specific issues.
     action_type: shell
     action: "ll-issues next-action"
     evaluate:
       type: exit_code
 
-  # ll_issues_next_issue: Get the next-priority issue file path.
-  # State must supply: on_yes, on_no
   ll_issues_next_issue:
+    description: |
+      Get the next-priority issue file path.
+      State must supply: on_yes, on_no.
     action_type: shell
     action: "ll-issues next-issue"
     evaluate:
       type: exit_code
 
-  # ll_history_summary: Print a summary of completed issue history.
-  # State must supply: on_yes, on_no
-  # Note: redirect stderr yourself if you need silent fallback (e.g. action: "ll-history summary 2>/dev/null")
   ll_history_summary:
+    description: |
+      Print a summary of completed issue history.
+      State must supply: on_yes, on_no.
+      Note: redirect stderr yourself if you need silent fallback
+      (e.g. action: "ll-history summary 2>/dev/null").
     action_type: shell
     action: "ll-history summary"
     evaluate:
       type: exit_code
 
-  # ll_check_links: Check all markdown documentation for broken links.
-  # State must supply: on_yes, on_no (and optionally capture for storing output)
   ll_check_links:
+    description: |
+      Check all markdown documentation for broken links.
+      State must supply: on_yes, on_no (and optionally capture for storing output).
     action_type: shell
     action: "ll-check-links 2>&1"
     evaluate:
       type: exit_code
 
-  # ll_messages: Extract user messages from Claude Code session logs to stdout.
-  # State must supply: on_yes, on_no
-  # Optional action override: add --skill, --examples-format, --context-window, --since
   ll_messages:
+    description: |
+      Extract user messages from Claude Code session logs to stdout.
+      State must supply: on_yes, on_no.
+      Optional action override: add --skill, --examples-format, --context-window, --since.
     action_type: shell
     action: "ll-messages --stdout"
     evaluate:
       type: exit_code
 
-  # ll_deps: Validate cross-issue dependency references.
-  # State must supply: on_yes, on_no
   ll_deps:
+    description: |
+      Validate cross-issue dependency references.
+      State must supply: on_yes, on_no.
     action_type: shell
     action: "ll-deps check"
     evaluate:
       type: exit_code
 
-  # ll_sprint_list: List all defined sprint files.
-  # State must supply: on_yes, on_no
   ll_sprint_list:
+    description: |
+      List all defined sprint files.
+      State must supply: on_yes, on_no.
     action_type: shell
     action: "ll-sprint list"
     evaluate:
       type: exit_code
 
-  # ll_parallel: Process issues concurrently using isolated git worktrees.
-  # State must supply: on_yes, on_no (and optionally action override for extra flags)
   ll_parallel:
+    description: |
+      Process issues concurrently using isolated git worktrees.
+      State must supply: on_yes, on_no (and optionally action override for extra flags).
     action_type: shell
     action: "ll-parallel"
     evaluate:
       type: exit_code
 
-  # ll_workflows: Identify multi-step workflow patterns from user message history.
-  # State must supply: on_yes, on_no
   ll_workflows:
+    description: |
+      Identify multi-step workflow patterns from user message history.
+      State must supply: on_yes, on_no.
     action_type: shell
     action: "ll-workflows"
     evaluate:
       type: exit_code
 
-  # ll_loop_run: Run a named FSM loop as a sub-process.
-  # State must supply: context.loop_name (interpolated into action), on_yes, on_no
   ll_loop_run:
+    description: |
+      Run a named FSM loop as a sub-process.
+      State must supply: context.loop_name (interpolated into action), on_yes, on_no.
     action_type: shell
     action: "ll-loop run ${context.loop_name}"
     evaluate:

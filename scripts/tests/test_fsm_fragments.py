@@ -844,3 +844,128 @@ class TestBuiltinLoopMigration:
             # Should not raise
             fsm, warnings = load_and_validate(path)
             assert fsm is not None, f"Failed to load {loop_name}"
+
+
+# ---------------------------------------------------------------------------
+# FEAT-1042: description field in fragment libraries
+# ---------------------------------------------------------------------------
+
+
+class TestFragmentDescriptionStripping:
+    """Tests for description field stripping during fragment resolution."""
+
+    def test_description_stripped_from_inline_fragment(self, tmp_path: Path) -> None:
+        """description key is removed from merged state dict (inline fragment)."""
+        raw = {
+            "name": "test",
+            "initial": "run",
+            "fragments": {
+                "my_frag": {
+                    "description": "Does something useful.",
+                    "action_type": "shell",
+                    "evaluate": {"type": "exit_code"},
+                },
+            },
+            "states": {
+                "run": {
+                    "fragment": "my_frag",
+                    "action": "echo hi",
+                    "on_yes": "done",
+                    "on_no": "fail",
+                },
+                "done": {"terminal": True},
+                "fail": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["run"]
+        assert "description" not in state
+        assert state["action_type"] == "shell"
+        assert state["action"] == "echo hi"
+        assert "fragment" not in state
+
+    def test_description_stripped_from_imported_fragment(self, tmp_path: Path) -> None:
+        """description key is removed from merged state dict (imported fragment)."""
+        lib = tmp_path / "lib.yaml"
+        lib.write_text(
+            "fragments:\n"
+            "  shell_exit:\n"
+            "    description: |\n"
+            "      Shell command evaluated by exit code.\n"
+            "      State must supply: action, on_yes, on_no.\n"
+            "    action_type: shell\n"
+            "    evaluate:\n"
+            "      type: exit_code\n"
+        )
+        raw = {
+            "name": "test",
+            "initial": "run",
+            "import": ["lib.yaml"],
+            "states": {
+                "run": {
+                    "fragment": "shell_exit",
+                    "action": "ruff check .",
+                    "on_yes": "done",
+                    "on_no": "fail",
+                },
+                "done": {"terminal": True},
+                "fail": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["run"]
+        assert "description" not in state
+        assert state["action_type"] == "shell"
+        assert state["evaluate"] == {"type": "exit_code"}
+
+    def test_description_not_in_merged_state_from_real_common_yaml(self) -> None:
+        """description is stripped when resolving against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "run",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "run": {
+                    "fragment": "shell_exit",
+                    "action": "pytest .",
+                    "on_yes": "done",
+                    "on_no": "fail",
+                },
+                "done": {"terminal": True},
+                "fail": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["run"]
+        assert "description" not in state
+        assert state["action_type"] == "shell"
+        assert state["evaluate"] == {"type": "exit_code"}
+
+    def test_all_common_yaml_fragments_have_description(self) -> None:
+        """Every fragment in lib/common.yaml defines a description field."""
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            data = yaml.safe_load(f)
+        fragments = data.get("fragments", {})
+        assert fragments, "lib/common.yaml should define at least one fragment"
+        for name, frag in fragments.items():
+            assert isinstance(frag, dict), f"Fragment '{name}' should be a dict"
+            assert "description" in frag, f"Fragment '{name}' is missing a description field"
+            assert frag["description"].strip(), f"Fragment '{name}' has an empty description"
+
+    def test_all_cli_yaml_fragments_have_description(self) -> None:
+        """Every fragment in lib/cli.yaml defines a description field."""
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "cli.yaml"
+        with open(lib_path) as f:
+            data = yaml.safe_load(f)
+        fragments = data.get("fragments", {})
+        assert fragments, "lib/cli.yaml should define at least one fragment"
+        for name, frag in fragments.items():
+            assert isinstance(frag, dict), f"Fragment '{name}' should be a dict"
+            assert "description" in frag, f"Fragment '{name}' is missing a description field"
+            assert frag["description"].strip(), f"Fragment '{name}' has an empty description"

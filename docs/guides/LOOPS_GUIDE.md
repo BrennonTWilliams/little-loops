@@ -1654,15 +1654,25 @@ A **fragment** is a named partial state definition stored in a library file. Any
 
 ### Defining a Fragment Library
 
-Create a YAML file with a top-level `fragments:` dict. Each key is a fragment name; the value is a partial state dict:
+Create a YAML file with a top-level `fragments:` dict. Each key is a fragment name; the value is a partial state dict. An optional `description` field documents what the fragment provides and what the calling state must supply — it is stripped at parse time and never reaches the FSM engine:
 
 ```yaml
 # .loops/lib/common.yaml
 fragments:
   shell_exit:
+    description: |
+      Shell command evaluated by exit code.
+      State must supply: action, on_yes, on_no (and optionally on_error, timeout).
     action_type: shell
     evaluate:
       type: exit_code
+```
+
+To browse fragment names and descriptions without opening the raw YAML file:
+
+```bash
+ll-loop fragments lib/common.yaml
+ll-loop fragments lib/cli.yaml
 ```
 
 ### Importing and Using Fragments
@@ -1723,12 +1733,12 @@ Two libraries ship with little-loops, both in `scripts/little_loops/loops/lib/`:
 
 Generic structure fragments (action_type + evaluate combinator) used by all built-in loops:
 
-| Fragment | Provides | Caller must supply |
-|----------|----------|--------------------|
-| `shell_exit` | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
-| `retry_counter` | Shell counter script + `output_numeric` evaluator against `${context.max_retries}` | `context.counter_key`, `context.max_retries`, routing |
-| `llm_gate` | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
-| `numeric_gate` | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
+| Fragment | Description | Provides | Caller must supply |
+|----------|-------------|----------|--------------------|
+| `shell_exit` | Shell command evaluated by exit code. | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
+| `retry_counter` | Increments a counter file and checks if still below `context.max_retries`. | Shell counter script + `output_numeric` evaluator | `context.counter_key`, `context.max_retries`, routing |
+| `llm_gate` | LLM prompt state with structured yes/no output. | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
+| `numeric_gate` | Shell command evaluated by numeric output comparison. | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
 
 #### `lib/cli.yaml` — ll- CLI tool fragments
 
@@ -1754,18 +1764,18 @@ states:
 
 | Fragment | Default `action` | Notes |
 |----------|-----------------|-------|
-| `ll_auto` | `ll-auto` | Override `action` to add `--priority`, `--quiet`, etc. |
-| `ll_issues_list` | `ll-issues list --json` | |
-| `ll_issues_next` | `ll-issues next-action` | Override `action` to add `--skip "..."` |
-| `ll_issues_next_issue` | `ll-issues next-issue` | |
-| `ll_history_summary` | `ll-history summary` | Override `action` to add `2>/dev/null` fallback |
-| `ll_check_links` | `ll-check-links 2>&1` | |
-| `ll_messages` | `ll-messages --stdout` | Override `action` to add `--skill`, `--examples-format`, etc. |
-| `ll_deps` | `ll-deps check` | |
-| `ll_sprint_list` | `ll-sprint list` | |
-| `ll_parallel` | `ll-parallel` | |
-| `ll_workflows` | `ll-workflows` | |
-| `ll_loop_run` | `ll-loop run ${context.loop_name}` | Requires `context.loop_name` |
+| `ll_auto` | `ll-auto` | Run ll-auto sequentially. Override `action` to add `--priority`, `--quiet`, etc. |
+| `ll_issues_list` | `ll-issues list --json` | List all active issues as JSON. |
+| `ll_issues_next` | `ll-issues next-action` | Get next recommended action. Override `action` to add `--skip "..."`. |
+| `ll_issues_next_issue` | `ll-issues next-issue` | Get next-priority issue file path. |
+| `ll_history_summary` | `ll-history summary` | Print completed issue history summary. Override `action` to add `2>/dev/null` fallback. |
+| `ll_check_links` | `ll-check-links 2>&1` | Check markdown docs for broken links. |
+| `ll_messages` | `ll-messages --stdout` | Extract user messages from session logs. Override `action` to add `--skill`, `--examples-format`, etc. |
+| `ll_deps` | `ll-deps check` | Validate cross-issue dependency references. |
+| `ll_sprint_list` | `ll-sprint list` | List all defined sprint files. |
+| `ll_parallel` | `ll-parallel` | Process issues concurrently using isolated worktrees. |
+| `ll_workflows` | `ll-workflows` | Identify workflow patterns from user message history. |
+| `ll_loop_run` | `ll-loop run ${context.loop_name}` | Run a named FSM loop as a sub-process. Requires `context.loop_name`. |
 
 All `lib/cli.yaml` fragments use `action_type: shell` + `evaluate.type: exit_code`.
 

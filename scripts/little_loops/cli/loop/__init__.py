@@ -19,7 +19,7 @@ def main_loop() -> int:
         Exit code (0 = success)
     """
     from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
-    from little_loops.cli.loop.info import cmd_history, cmd_list, cmd_show
+    from little_loops.cli.loop.info import cmd_fragments, cmd_history, cmd_list, cmd_show
     from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
     from little_loops.cli.loop.run import cmd_run
     from little_loops.cli.loop.testing import cmd_simulate, cmd_test
@@ -47,6 +47,7 @@ def main_loop() -> int:
         "simulate",
         "install",
         "show",
+        "fragments",
         # aliases
         "r",
         "c",
@@ -344,6 +345,17 @@ Examples:
     )
     show_parser.add_argument("-j", "--json", action="store_true", help="Output FSM config as JSON")
 
+    # Fragments subcommand
+    fragments_parser = subparsers.add_parser(
+        "fragments",
+        help="List fragments in a library file with descriptions",
+    )
+    fragments_parser.set_defaults(command="fragments")
+    fragments_parser.add_argument(
+        "lib",
+        help="Fragment library file path (e.g. lib/common.yaml, lib/cli.yaml)",
+    )
+
     args = parser.parse_args(argv)
 
     logger = Logger(verbose=not getattr(args, "quiet", False))
@@ -371,6 +383,8 @@ Examples:
         return cmd_install(args.loop, loops_dir, logger)
     elif args.command == "show":
         return cmd_show(args.loop, args, loops_dir, logger)
+    elif args.command == "fragments":
+        return cmd_fragments(args.lib, args, loops_dir, logger)
     else:
         parser.print_help()
         return 1

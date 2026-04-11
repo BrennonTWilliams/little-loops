@@ -1351,6 +1351,19 @@ class TestCmdSimulate:
             except SystemExit as e:
                 assert e.code == 0
 
+    def test_fragments_subcommand_registered(self) -> None:
+        """Fragments subcommand is registered in known_subcommands."""
+        import sys as _sys
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch.object(_sys, "argv", ["ll-loop", "fragments", "--help"]):
+            from little_loops.cli import main_loop
+
+            try:
+                main_loop()
+            except SystemExit as e:
+                assert e.code == 0
+
     def test_simulate_nonexistent_loop(
         self,
         tmp_path: Path,

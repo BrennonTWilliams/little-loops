@@ -848,3 +848,67 @@ def cmd_show(
         print(f"  {cmd:<{col_width}}  # {comment}")
 
     return 0
+
+
+def cmd_fragments(
+    lib_path: str,
+    args: argparse.Namespace,
+    loops_dir: Path,
+    logger: Logger,
+) -> int:
+    """List fragments in a library file with their descriptions.
+
+    Resolves the library path relative to loops_dir or the built-in loops directory,
+    then prints a table of fragment names and their description fields.
+    """
+    import yaml
+
+    # Resolve path: absolute/direct → loops_dir-relative → builtin
+    p = Path(lib_path)
+    if not p.exists():
+        candidate = loops_dir / lib_path
+        if candidate.exists():
+            p = candidate
+        else:
+            builtin_candidate = get_builtin_loops_dir() / lib_path
+            if builtin_candidate.exists():
+                p = builtin_candidate
+            else:
+                logger.error(f"Fragment library not found: {lib_path}")
+                return 1
+
+    try:
+        with open(p) as f:
+            data = yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.error(f"Failed to load library: {e}")
+        return 1
+
+    fragments: dict[str, Any] = data.get("fragments", {})
+    if not fragments:
+        print(f"No fragments defined in: {p}")
+        return 0
+
+    tw = terminal_width()
+    print(colorize(f"Fragments in {p.name} ({len(fragments)}):", "1"))
+    print()
+
+    max_name_len = max(len(name) for name in fragments)
+    name_col_w = max(max_name_len, 8)
+    desc_col_w = max(20, tw - name_col_w - 6)
+
+    header_name = "Fragment".ljust(name_col_w)
+    print(f"  {colorize(header_name, '1')}  Description")
+    print(f"  {'─' * name_col_w}  {'─' * desc_col_w}")
+
+    for name, frag in fragments.items():
+        raw_desc = frag.get("description", "") if isinstance(frag, dict) else ""
+        raw_desc = raw_desc.strip()
+        first_line = raw_desc.splitlines()[0] if raw_desc else ""
+        if first_line and len(first_line) > desc_col_w:
+            first_line = first_line[: desc_col_w - 1] + "\u2026"
+        desc_str = first_line if first_line else colorize("(no description)", "2")
+        padded_name = name.ljust(name_col_w)
+        print(f"  {colorize(padded_name, '36;1')}  {desc_str}")
+
+    return 0

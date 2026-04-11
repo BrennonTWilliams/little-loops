@@ -158,7 +158,16 @@
     "fragments": {
       "type": "object",
       "description": "Named partial state definitions (local fragment library). Keys are fragment names; values are partial state dicts. Local fragments override same-name imported fragments.",
-      "additionalProperties": true
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what this fragment provides and what the calling state must supply. Stripped at parse time — the FSM engine never sees it."
+          }
+        },
+        "additionalProperties": true
+      }
     }
   },
   "additionalProperties": false,

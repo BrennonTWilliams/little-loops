@@ -133,7 +133,10 @@ def resolve_fragments(raw_loop_dict: dict[str, Any], loop_dir: Path) -> dict[str
                 f"Available fragments: {available or '(none)'}"
             )
         # Deep merge: fragment is the base, state fields override
-        merged = _deep_merge(all_fragments[fragment_name], state_dict)
+        # Strip description before merge — it is metadata, not a state field
+        frag_copy = dict(all_fragments[fragment_name])
+        frag_copy.pop("description", None)
+        merged = _deep_merge(frag_copy, state_dict)
         del merged["fragment"]  # consume the fragment: key
         states[state_name] = merged
 
