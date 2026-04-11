@@ -44,45 +44,29 @@ class TestAutoArgumentParsing:
         assert args.category is None
         assert args.config is None
 
-    def test_resume_flag_long(self) -> None:
-        """--resume flag sets resume=True."""
-        args = self._parse_auto_args(["--resume"])
+    @pytest.mark.parametrize("flag", ["--resume", "-r"])
+    def test_resume_flag(self, flag: str) -> None:
+        """--resume / -r sets resume=True."""
+        args = self._parse_auto_args([flag])
         assert args.resume is True
 
-    def test_resume_flag_short(self) -> None:
-        """-r flag sets resume=True."""
-        args = self._parse_auto_args(["-r"])
-        assert args.resume is True
-
-    def test_dry_run_flag_long(self) -> None:
-        """--dry-run flag sets dry_run=True."""
-        args = self._parse_auto_args(["--dry-run"])
+    @pytest.mark.parametrize("flag", ["--dry-run", "-n"])
+    def test_dry_run_flag(self, flag: str) -> None:
+        """--dry-run / -n sets dry_run=True."""
+        args = self._parse_auto_args([flag])
         assert args.dry_run is True
 
-    def test_dry_run_flag_short(self) -> None:
-        """-n flag sets dry_run=True."""
-        args = self._parse_auto_args(["-n"])
-        assert args.dry_run is True
+    @pytest.mark.parametrize("flag,value,expected", [("--max-issues", "5", 5), ("-m", "10", 10)])
+    def test_max_issues(self, flag: str, value: str, expected: int) -> None:
+        """--max-issues / -m sets the issue limit."""
+        args = self._parse_auto_args([flag, value])
+        assert args.max_issues == expected
 
-    def test_max_issues_long(self) -> None:
-        """--max-issues sets the issue limit."""
-        args = self._parse_auto_args(["--max-issues", "5"])
-        assert args.max_issues == 5
-
-    def test_max_issues_short(self) -> None:
-        """-m sets the issue limit."""
-        args = self._parse_auto_args(["-m", "10"])
-        assert args.max_issues == 10
-
-    def test_category_filter_long(self) -> None:
-        """--category sets the category filter."""
-        args = self._parse_auto_args(["--category", "bugs"])
-        assert args.category == "bugs"
-
-    def test_category_filter_short(self) -> None:
-        """-c sets the category filter."""
-        args = self._parse_auto_args(["-c", "features"])
-        assert args.category == "features"
+    @pytest.mark.parametrize("flag,value,expected", [("--category", "bugs", "bugs"), ("-c", "features", "features")])
+    def test_category_filter(self, flag: str, value: str, expected: str) -> None:
+        """--category / -c sets the category filter."""
+        args = self._parse_auto_args([flag, value])
+        assert args.category == expected
 
     def test_config_path(self) -> None:
         """--config sets the project root path."""
@@ -154,89 +138,57 @@ class TestParallelArgumentParsing:
         assert args.show_model is False
         assert args.config is None
 
-    def test_workers_long(self) -> None:
-        """--workers sets the number of parallel workers."""
-        args = self._parse_parallel_args(["--workers", "3"])
-        assert args.workers == 3
+    @pytest.mark.parametrize("flag,value,expected", [("--workers", "3", 3), ("-w", "4", 4)])
+    def test_workers(self, flag: str, value: str, expected: int) -> None:
+        """--workers / -w sets the number of parallel workers."""
+        args = self._parse_parallel_args([flag, value])
+        assert args.workers == expected
 
-    def test_workers_short(self) -> None:
-        """-w sets the number of parallel workers."""
-        args = self._parse_parallel_args(["-w", "4"])
-        assert args.workers == 4
+    @pytest.mark.parametrize("flag,value,expected", [("--priority", "P1,P2", "P1,P2"), ("-p", "P0,P1,P2", "P0,P1,P2")])
+    def test_priority_filter(self, flag: str, value: str, expected: str) -> None:
+        """--priority / -p sets the priority filter string."""
+        args = self._parse_parallel_args([flag, value])
+        assert args.priority == expected
 
-    def test_priority_filter_long(self) -> None:
-        """--priority sets the priority filter string."""
-        args = self._parse_parallel_args(["--priority", "P1,P2"])
-        assert args.priority == "P1,P2"
-
-    def test_priority_filter_short(self) -> None:
-        """-p sets the priority filter string."""
-        args = self._parse_parallel_args(["-p", "P0,P1,P2"])
-        assert args.priority == "P0,P1,P2"
-
-    def test_max_issues_long(self) -> None:
-        """--max-issues sets the issue limit."""
-        args = self._parse_parallel_args(["--max-issues", "10"])
-        assert args.max_issues == 10
-
-    def test_max_issues_short(self) -> None:
-        """-m sets the issue limit."""
-        args = self._parse_parallel_args(["-m", "5"])
-        assert args.max_issues == 5
+    @pytest.mark.parametrize("flag,value,expected", [("--max-issues", "10", 10), ("-m", "5", 5)])
+    def test_max_issues(self, flag: str, value: str, expected: int) -> None:
+        """--max-issues / -m sets the issue limit."""
+        args = self._parse_parallel_args([flag, value])
+        assert args.max_issues == expected
 
     def test_worktree_base(self) -> None:
         """--worktree-base sets the worktree directory."""
         args = self._parse_parallel_args(["--worktree-base", "/tmp/worktrees"])
         assert args.worktree_base == Path("/tmp/worktrees")
 
-    def test_dry_run_flag_long(self) -> None:
-        """--dry-run enables dry run mode."""
-        args = self._parse_parallel_args(["--dry-run"])
+    @pytest.mark.parametrize("flag", ["--dry-run", "-n"])
+    def test_dry_run_flag(self, flag: str) -> None:
+        """--dry-run / -n enables dry run mode."""
+        args = self._parse_parallel_args([flag])
         assert args.dry_run is True
 
-    def test_dry_run_flag_short(self) -> None:
-        """-n enables dry run mode."""
-        args = self._parse_parallel_args(["-n"])
-        assert args.dry_run is True
-
-    def test_resume_flag_long(self) -> None:
-        """--resume enables resume mode."""
-        args = self._parse_parallel_args(["--resume"])
+    @pytest.mark.parametrize("flag", ["--resume", "-r"])
+    def test_resume_flag(self, flag: str) -> None:
+        """--resume / -r enables resume mode."""
+        args = self._parse_parallel_args([flag])
         assert args.resume is True
 
-    def test_resume_flag_short(self) -> None:
-        """-r enables resume mode."""
-        args = self._parse_parallel_args(["-r"])
-        assert args.resume is True
+    @pytest.mark.parametrize("flag,value,expected", [("--timeout", "1800", 1800), ("-t", "3600", 3600)])
+    def test_timeout(self, flag: str, value: str, expected: int) -> None:
+        """--timeout / -t sets the per-issue timeout."""
+        args = self._parse_parallel_args([flag, value])
+        assert args.timeout == expected
 
-    def test_timeout_long(self) -> None:
-        """--timeout sets the per-issue timeout."""
-        args = self._parse_parallel_args(["--timeout", "1800"])
-        assert args.timeout == 1800
-
-    def test_timeout_short(self) -> None:
-        """-t sets the per-issue timeout."""
-        args = self._parse_parallel_args(["-t", "3600"])
-        assert args.timeout == 3600
-
-    def test_quiet_flag_long(self) -> None:
-        """--quiet suppresses output."""
-        args = self._parse_parallel_args(["--quiet"])
+    @pytest.mark.parametrize("flag", ["--quiet", "-q"])
+    def test_quiet_flag(self, flag: str) -> None:
+        """--quiet / -q suppresses output."""
+        args = self._parse_parallel_args([flag])
         assert args.quiet is True
 
-    def test_quiet_flag_short(self) -> None:
-        """-q suppresses output."""
-        args = self._parse_parallel_args(["-q"])
-        assert args.quiet is True
-
-    def test_cleanup_flag_long(self) -> None:
-        """--cleanup enables cleanup mode."""
-        args = self._parse_parallel_args(["--cleanup"])
-        assert args.cleanup is True
-
-    def test_cleanup_flag_short(self) -> None:
-        """-c enables cleanup mode."""
-        args = self._parse_parallel_args(["-c"])
+    @pytest.mark.parametrize("flag", ["--cleanup", "-c"])
+    def test_cleanup_flag(self, flag: str) -> None:
+        """--cleanup / -c enables cleanup mode."""
+        args = self._parse_parallel_args([flag])
         assert args.cleanup is True
 
     def test_stream_output_flag(self) -> None:

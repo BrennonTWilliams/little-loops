@@ -141,11 +141,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Completed** | Created: 2026-04-11 | Resolved: 2026-04-11 | Priority: P4
+
+## Resolution
+
+Implemented Option A: converted all 12 long/short test pairs to `@pytest.mark.parametrize` tests.
+
+**Changes made:**
+- `scripts/tests/test_cli.py`: Replaced 24 individual test functions (12 _long + 12 _short pairs) with 12 parametrized test functions across `TestAutoArgumentParsing` (4 pairs) and `TestParallelArgumentParsing` (8 pairs). All 141 tests pass.
+- `docs/test-quality-audit.md`: Updated total test count from ~4,061 to ~4,049.
 
 ---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-11T21:27:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e53d35d-c871-40cd-ac98-7e8039141186.jsonl`
 - `/ll:wire-issue` - 2026-04-11T20:12:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a526cc2e-06c1-44e3-add0-5ba3cb7b1190.jsonl`
 - `/ll:refine-issue` - 2026-04-11T20:08:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2f0bc40-5233-4c1b-a17d-6bd5566483a9.jsonl`
 - `/ll:format-issue` - 2026-04-11T20:03:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da64ad23-684f-4724-8a57-4063931ce01c.jsonl`
