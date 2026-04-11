@@ -105,6 +105,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `performance`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Status
