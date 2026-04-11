@@ -316,9 +316,39 @@ Recommendation object structure:
 
 ## Status
 
-**Open** | Created: 2026-04-10 | Priority: P3
+**Completed** | Created: 2026-04-10 | Priority: P3
+
+---
+
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-04-11
+- **Implemented by**: `/ll:manage-issue feature implement FEAT-1028`
+
+### Changes Made
+
+- Created `skills/audit-issue-conflicts/SKILL.md` — full skill implementation including:
+  - Frontmatter with `model: sonnet`, `AskUserQuestion` in `allowed-tools`
+  - `## Configuration` section with `{{config.issues.base_dir}}`
+  - Flag parsing (`--dangerously-skip-permissions` → `AUTO_MODE`, `--auto`, `--dry-run`)
+  - Issue loading bash pattern (glob all three active issue dirs)
+  - Conflict detection in parallel Task batches of 3–5 issues; four conflict types
+  - Recommendation synthesis grouped by severity (high → medium → low)
+  - Interactive approval loop with per-type `AskUserQuestion` shapes
+  - `--auto` and `--dry-run` mode handling
+  - "No conflicts found" fast path
+  - Session log via `ll-issues append-log` per modified file + single `git add`
+
+### Verification
+
+- `ll-verify-docs` reports expected mismatch (actual=26, documented=25) — resolved by FEAT-1029
+- All tests pass (2 pre-existing failures in `test_update_skill.py` are unrelated)
+- `ruff check scripts/` — all checks passed
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-11T17:23:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6924360-2928-4276-a427-14535d49fa15.jsonl`
+- `/ll:ready-issue` - 2026-04-11T17:19:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/967ed597-3fe6-4b5b-84c8-122ea426963a.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db48a35e-dc5e-4578-b3f1-212165c748a3.jsonl`
 - `/ll:wire-issue` - 2026-04-11T04:54:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc02110f-791b-4d28-8939-9cbe80285b23.jsonl`
 - `/ll:refine-issue` - 2026-04-11T04:48:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c055bc82-6b32-4f45-9a62-42ac720066fa.jsonl`
