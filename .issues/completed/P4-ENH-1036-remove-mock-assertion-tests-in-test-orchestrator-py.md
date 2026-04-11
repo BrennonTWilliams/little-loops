@@ -120,13 +120,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Completed** | Created: 2026-04-11 | Resolved: 2026-04-11 | Priority: P4
+
+## Resolution
+
+- Removed tautological `mock_wp.assert_called_once()` and `mock_mc.assert_called_once()` lines from `test_init_creates_shared_git_lock`; cleaned up the now-unused `as mock_wp` / `as mock_mc` captures
+- Merged `test_init_creates_empty_issue_info_dict` and `test_init_creates_orchestrator_state` into `test_init_sets_attributes` (added `_issue_info_by_id` and `state` assertions there)
+- Test count in `test_orchestrator.py` reduced from 113 to 111 (2 tests removed)
+- Updated `docs/test-quality-audit.md` total test count from ~4,049 to ~4,047
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-11T21:31:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f62d47de-2998-4963-b4d3-558b8afcddd8.jsonl`
 - `/ll:wire-issue` - 2026-04-11T20:12:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a526cc2e-06c1-44e3-add0-5ba3cb7b1190.jsonl`
 - `/ll:refine-issue` - 2026-04-11T20:08:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2f0bc40-5233-4c1b-a17d-6bd5566483a9.jsonl`
 - `/ll:format-issue` - 2026-04-11T20:03:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da64ad23-684f-4724-8a57-4063931ce01c.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9439fb7-57cc-417c-9114-6eea87ed8705.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c5c369e-95b9-4fe0-a53f-b4bd65093912.jsonl`
+- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

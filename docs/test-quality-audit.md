@@ -7,7 +7,7 @@
 | Metric | Value |
 |--------|-------|
 | Test files | 87 |
-| Total tests | ~4,049 |
+| Total tests | ~4,047 |
 | Test code (lines) | ~81,000 |
 | Source modules covered | 32 of 33 |
 

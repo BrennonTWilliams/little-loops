@@ -51,6 +51,11 @@ Extension ecosystems live or die on developer experience. Scaffolding eliminates
 - `scripts/little_loops/cli/__init__.py` — re-exports all `main_*` functions; new `main_create_extension` must be added here and registered in `pyproject.toml`
 - `scripts/little_loops/events.py:67-150` — `EventBus` class; `EventBus.read_events(path)` at `events.py:132-150` already reads JSONL into `list[LLEvent]` — `LLTestBus` can reuse this directly
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/sprint/run.py` — calls `wire_extensions(event_bus, config.extensions)`; informational, no changes needed for FEAT-916 [Agent 1]
+- `scripts/little_loops/cli/parallel.py` — calls `wire_extensions(event_bus, config.extensions)`; informational, no changes needed for FEAT-916 [Agent 1]
+- `scripts/little_loops/cli/loop/lifecycle.py` — calls `wire_extensions(executor.event_bus, config.extensions, executor=executor)`; informational — note: the issue text stated only `run.py` wires extensions, but `lifecycle.py` does too [Agent 1]
+
 ### Similar Patterns
 - `scripts/little_loops/cli/auto.py:21-103` — `main_auto()` single-command entry point pattern; closest model for `main_create_extension` (simple argparse, no subcommands, `BRConfig(project_root)` + `configure_output(config.cli)`)
 - `scripts/little_loops/cli_args.py` — shared argparse helpers (`add_dry_run_arg`, `add_config_arg`, etc.); compose from these rather than inline `add_argument` calls
@@ -62,9 +67,19 @@ Extension ecosystems live or die on developer experience. Scaffolding eliminates
 - `scripts/tests/test_testing.py` — new test file for `LLTestBus`
 - `scripts/tests/test_create_extension.py` — new test file for scaffolding command
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_extension.py:465-537` — `TestNewProtocols` class has smoke import tests for each public symbol exported from `little_loops`; add `test_smoke_import_ll_test_bus` following the existing pattern (`from little_loops import LLTestBus; assert LLTestBus is not None`) [Agent 3 — new test to write]
+
 ### Documentation
 - `docs/reference/API.md` — add `LLTestBus` API docs and extension SDK section
 - `CONTRIBUTING.md` — add extension development workflow
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.claude/CLAUDE.md` — "CLI Tools" list (lines 104-116) does not include `ll-create-extension`; add entry [Agent 2]
+- `README.md` — "13 CLI tools" count at line 90 becomes 14; add `### ll-create-extension` section to `## CLI Tools` [Agent 2]
+- `docs/reference/CLI.md` — canonical CLI reference has no `### ll-create-extension` section; add before `### mcp-call` at line 1003 [Agent 2]
+- `docs/ARCHITECTURE.md` — missing `create_extension.py` in `scripts/little_loops/cli/` tree (lines 177-213); missing `testing.py` in module list; missing `templates/extension/` in templates tree (lines 160-173) [Agent 2]
+- `docs/reference/CONFIGURATION.md` — "Authoring an extension" block (lines 631-659) has no reference to `ll-create-extension` or `LLTestBus`; add cross-reference [Agent 2]
 
 ### Design Constraint: Event Schema Alignment with FEAT-918
 
@@ -158,13 +173,33 @@ _Added by `/ll:refine-issue` — verified current codebase state (2026-04-03):_
 - **No JSON Schema tooling exists in codebase**: `jsonschema` only appears in `fsm/evaluators.py` as Claude CLI's `--json-schema` flag (structured output), not schema generation. Schema generation in Step 4 must be written from scratch using `json.dumps()` of hand-constructed dicts — one per event type, keyed off the 19 types from `docs/reference/EVENT-SCHEMA.md`.
 - **`conftest.py:284` `events_file` fixture format re-confirmed**: Uses `{"timestamp": ..., "state": ..., "action": ...}` — incompatible with `LLEvent` wire format. `test_testing.py` must define its own fixture: `{"event": "loop_start", "ts": "2025-01-01T00:00:00", "loop_name": "test-loop"}` etc.
 
+### Refinement Pass 7 — Line Number Corrections After ll-generate-schemas (2026-04-11)
+
+_Added by `/ll:refine-issue` — verified against current codebase state:_
+
+- **`scripts/little_loops/cli/__init__.py` line numbers updated**: `main_auto` import is at line 20; `main_deps` import is at line 21 — insert `from little_loops.cli.create_extension import main_create_extension` **after line 20** (between `auto` and `deps`). In `__all__`, `"main_check_links"` is at line 40 and `"main_deps"` is at line 41 — insert `"main_create_extension"` **after line 40** (alphabetical: `check_links` < `create_extension` < `deps`). Previous passes (Pass 3/5) stated "after line 34" / "after line 48" which are no longer accurate after `main_generate_schemas` was added.
+- **`scripts/pyproject.toml` updated**: `mcp-call` is at line **63** (not 62 as in Pass 6) — `ll-generate-schemas` was added at line 62, pushing `mcp-call` to line 63. Insert `ll-create-extension = "little_loops.cli:main_create_extension"` after line 63.
+- **`scripts/little_loops/__init__.py` insertion point updated**: The `work_verification` closing `)` is now at line **35** (not 31 from Pass 3/6) — new imports (`ActionProviderExtension`, `EvaluatorProviderExtension`, `InterceptorExtension` in the extension block; `RouteContext`, `RouteDecision` from `fsm`; `parse_manage_issue_output`/`parse_ready_issue_output` from `output_parsing`) have shifted lines. Insert `from little_loops.testing import LLTestBus` **after line 35**. `"wire_extensions"` in `__all__` is now at line **50** (not 43 from Pass 3/6); add `"LLTestBus"` after line 50.
+
 ## Implementation Steps
 
-1. Create `scripts/little_loops/cli/create_extension.py` with `main_create_extension()` (each CLI command has its own file — do not add to `auto.py`); re-export from `scripts/little_loops/cli/__init__.py` (add `from little_loops.cli.create_extension import main_create_extension` after line 34; add `"main_create_extension"` to `__all__` after `"main_verify_docs"` at line 48); register `ll-create-extension = "little_loops.cli:main_create_extension"` in `scripts/pyproject.toml` after the existing last entry `mcp-call` at line 62; use **only** `add_config_arg` + `add_dry_run_arg` from `scripts/little_loops/cli_args.py` (NOT `add_common_auto_args` — interface is: one positional `name` arg plus `--config` and `--dry-run`)
+1. Create `scripts/little_loops/cli/create_extension.py` with `main_create_extension()` (each CLI command has its own file — do not add to `auto.py`); re-export from `scripts/little_loops/cli/__init__.py` (add `from little_loops.cli.create_extension import main_create_extension` **after line 20** (`main_auto`), before line 21 (`main_deps`); add `"main_create_extension"` to `__all__` **after `"main_check_links"` at line 40**, before `"main_deps"` at line 41); register `ll-create-extension = "little_loops.cli:main_create_extension"` in `scripts/pyproject.toml` after the existing last entry `mcp-call` at line 63; use **only** `add_config_arg` + `add_dry_run_arg` from `scripts/little_loops/cli_args.py` (NOT `add_common_auto_args` — interface is: one positional `name` arg plus `--config` and `--dry-run`)
 2. Create `templates/extension/` scaffolding using `parts: list[str]` + `"\n".join()` pattern (see `scripts/little_loops/issue_template.py:40-114`); **do not add Jinja2** — use string `.replace()` for `{{name}}` substitution (see `scripts/little_loops/parallel/types.py:357-385`); skeleton `extension.py` must include a comment: `# See docs/reference/EVENT-SCHEMA.md for all available event types and payload fields`
 3. Implement `LLTestBus` in `scripts/little_loops/testing.py` as a standalone class (not an `EventBus` subclass): `from_jsonl(path: str | Path)` classmethod calls `Path(path)` then `EventBus.read_events(path)` (`events.py:132-150`, requires `Path` not str); store extensions in `_extensions: list[LLExtension]` via `register(ext: LLExtension)`; `replay()` filters events using `event_filter` normalization **matching `EventBus.register()` at `events.py:90-93`**: `ef = getattr(ext, "event_filter", None); patterns = ([ef] if isinstance(ef, str) else list(ef)) if ef is not None else None` — then skip event if `patterns is not None and not any(fnmatch.fnmatch(event.type, p) for p in patterns)`; call `ext.on_event(event)` directly for each passing `LLEvent`; expose `delivered_events: list[LLEvent]`. **Do NOT use the `_make_callback` closure pattern** — that is only needed when wrapping for `EventBus.register()` (raw dict layer); `LLTestBus` already has typed `LLEvent` objects
-4. Export `LLTestBus` from `scripts/little_loops/__init__.py`: add `from little_loops.testing import LLTestBus` **after line 31** (end of import block, after the `work_verification` closing `)`); add `"LLTestBus"` to `__all__` **after line 43** (`"wire_extensions",`, within the `# extensions` comment block at lines 39-43). **Do NOT add to `[dev]` optional-dependencies** — `LLTestBus` is a regular module, not an external tool; the `[dev]` group (`pyproject.toml:68-76`) is for external dev tools only
+4. Export `LLTestBus` from `scripts/little_loops/__init__.py`: add `from little_loops.testing import LLTestBus` **after line 35** (end of import block, after the `work_verification` closing `)`); add `"LLTestBus"` to `__all__` **after line 50** (`"wire_extensions",`, within the `# extensions` comment block at lines 43-50). **Do NOT add to `[dev]` optional-dependencies** — `LLTestBus` is a regular module, not an external tool; the `[dev]` group (`pyproject.toml:68-76`) is for external dev tools only
 5. Add `LLTestBus` API docs to the **existing** extension section in `docs/reference/API.md` at lines 5037-5209 (added by ENH-922, now completed); also document the create → develop → test → publish workflow; update `CONTRIBUTING.md` with extension development workflow
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/little_loops/cli/__init__.py` module docstring (lines 3-18) — add `- ll-create-extension: Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example` to the prose CLI tool list [Agent 2]
+7. Update `.claude/CLAUDE.md` CLI Tools list (lines 104-116) — add `- \`ll-create-extension\`` entry (alphabetical order after `ll-check-links`) [Agent 2]
+8. Update `README.md` — increment "13 CLI tools" to "14 CLI tools" at line 90; add `### ll-create-extension` section to the `## CLI Tools` section [Agent 2]
+9. Update `docs/reference/CLI.md` — add `### ll-create-extension` section with usage/flags (`<name>`, `--dry-run`, `--config`) before `### mcp-call` at line 1003 [Agent 2]
+10. Update `docs/ARCHITECTURE.md` — add `create_extension.py` to `scripts/little_loops/cli/` tree (lines 177-213); add `testing.py` to module list; add `templates/extension/` to templates tree (lines 160-173) [Agent 2]
+11. Update `docs/reference/CONFIGURATION.md` — add cross-reference in "Authoring an extension" block (lines 631-659) pointing to `ll-create-extension` for scaffolding and `LLTestBus` for offline testing [Agent 2]
+12. Add `test_smoke_import_ll_test_bus` to `scripts/tests/test_extension.py` `TestNewProtocols` class (lines 465-537) — `from little_loops import LLTestBus; assert LLTestBus is not None` — follows existing pattern [Agent 3]
 
 ## API/Interface
 
@@ -222,16 +257,15 @@ A developer wants to build a Grafana dashboard extension. They run `ll-create-ex
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — Core claims remain valid, but `ll-generate-schemas` was added since the last refinement pass, shifting pyproject.toml line numbers:
+**Verdict**: VERIFIED — Core claims confirmed valid; stale line numbers corrected in Refinement Pass 7 (2026-04-11):
 
 - FEAT-911 is COMPLETED — extension Protocol exists; no scaffolding tooling exists yet ✓
 - No `ll-create-extension` entry point in `scripts/pyproject.toml` ✓
 - No `templates/extension/` directory ✓
 - No `LLTestBus` in `scripts/little_loops/testing.py` (or anywhere in `scripts/`) ✓
-- `scripts/pyproject.toml`: `ll-generate-schemas` now at line 62; `mcp-call` shifted to line **63** (not 62). "Refinement Pass 6" instruction to insert `ll-create-extension` after `mcp-call` at line 62 is stale — insert after line 63.
-- `scripts/little_loops/cli/__init__.py`: now has `from little_loops.cli.schemas import main_generate_schemas` at line 29 and `"main_generate_schemas"` in `__all__`. Alphabetical insertion for `main_create_extension`: after `main_auto` at line 20, before `main_deps` at line 21 (confirmed — `create_extension` sorts between `auto` and `deps`).
+- All Implementation Step line numbers corrected to reflect current codebase state (see Refinement Pass 7)
 
-— Verified 2026-04-11
+— Verified 2026-04-11 | Updated 2026-04-11
 
 ---
 
@@ -244,6 +278,8 @@ A developer wants to build a Grafana dashboard extension. They run `ll-create-ex
 **Open** | Created: 2026-04-02 | Priority: P4
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-11T21:31:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0800be1c-f6b4-497c-b5ac-2b3352749526.jsonl`
+- `/ll:refine-issue` - 2026-04-11T21:21:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9d3c2d4-5cf6-495c-8cd4-7181ace6fb24.jsonl`
 - `/ll:confidence-check` - 2026-04-04T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be4f3256-56a9-4589-bcf6-68479ffab453.jsonl`
 - `/ll:refine-issue` - 2026-04-04T20:51:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1a6b5c3-1492-44f3-bd9c-617b8c558a7d.jsonl`
 - `/ll:verify-issues` - 2026-04-03T07:40:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`

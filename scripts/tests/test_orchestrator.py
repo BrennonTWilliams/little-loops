@@ -181,6 +181,8 @@ class TestOrchestratorInit:
             assert orch.br_config == br_config
             assert orch.repo_path == temp_repo_with_config
             assert orch._shutdown_requested is False
+            assert orch._issue_info_by_id == {}
+            assert isinstance(orch.state, OrchestratorState)
 
     def test_init_uses_cwd_when_no_repo_path(
         self,
@@ -209,8 +211,8 @@ class TestOrchestratorInit:
     ) -> None:
         """Orchestrator creates a shared GitLock for components."""
         with (
-            patch("little_loops.parallel.orchestrator.WorkerPool") as mock_wp,
-            patch("little_loops.parallel.orchestrator.MergeCoordinator") as mock_mc,
+            patch("little_loops.parallel.orchestrator.WorkerPool"),
+            patch("little_loops.parallel.orchestrator.MergeCoordinator"),
             patch("little_loops.parallel.orchestrator.IssuePriorityQueue"),
         ):
             orch = ParallelOrchestrator(
@@ -219,24 +221,7 @@ class TestOrchestratorInit:
                 repo_path=temp_repo_with_config,
             )
 
-            # GitLock should be passed to both WorkerPool and MergeCoordinator
             assert orch._git_lock is not None
-            mock_wp.assert_called_once()
-            mock_mc.assert_called_once()
-
-    def test_init_creates_empty_issue_info_dict(
-        self,
-        orchestrator: ParallelOrchestrator,
-    ) -> None:
-        """Orchestrator initializes with empty issue info dictionary."""
-        assert orchestrator._issue_info_by_id == {}
-
-    def test_init_creates_orchestrator_state(
-        self,
-        orchestrator: ParallelOrchestrator,
-    ) -> None:
-        """Orchestrator initializes with fresh OrchestratorState."""
-        assert isinstance(orchestrator.state, OrchestratorState)
 
 
 class TestSignalHandlers:
