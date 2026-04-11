@@ -273,11 +273,26 @@ A developer wants to build a Grafana dashboard extension. They run `ll-create-ex
 
 - FEAT-918
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-11
+- **Reason**: Issue too large for single session (score: 11/11)
+
+### Decomposed Into
+- FEAT-1043: LLTestBus Test Harness
+- FEAT-1044: ll-create-extension CLI and Scaffolding Templates
+- FEAT-1045: Extension SDK Documentation Updates
+
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P4
+**Decomposed** | Created: 2026-04-02 | Priority: P4
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-11T22:14:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`
 - `/ll:confidence-check` - 2026-04-11T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/699d3376-760c-4896-9e5a-043be16c3126.jsonl`
 - `/ll:wire-issue` - 2026-04-11T21:31:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0800be1c-f6b4-497c-b5ac-2b3352749526.jsonl`
 - `/ll:refine-issue` - 2026-04-11T21:21:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9d3c2d4-5cf6-495c-8cd4-7181ace6fb24.jsonl`
