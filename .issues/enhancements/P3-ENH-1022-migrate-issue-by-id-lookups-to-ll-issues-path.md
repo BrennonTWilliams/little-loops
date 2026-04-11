@@ -85,7 +85,34 @@ For `confidence-check` line 157 (sprint mode), use the loop variable: `FILE=$(ll
 - N/A — these are skill/command files invoked by users, not imported
 
 ### Similar Patterns
-- `skills/create-eval-from-issues/SKILL.md` — already uses `ll-issues path`; reference implementation
+- `skills/create-eval-from-issues/SKILL.md` — uses `ll-issues show "$ID" --json` and extracts the `path` field from JSON output; the underlying resolution (`_resolve_issue_id`) is the same function `ll-issues path` calls, so behavior is equivalent
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`ll-issues path` confirmed behavior** (`scripts/little_loops/cli/issues/path_cmd.py:14-42`):
+- Returns exit code `0` + prints relative path to stdout on success
+- Returns exit code `1` + prints `Error: Issue '<id>' not found.` to stderr on miss
+- Searches `.issues/bugs/`, `.issues/features/`, `.issues/enhancements/`, `.issues/completed/`, `.issues/deferred/` (in that order) via `_resolve_issue_id` (`show.py:62-67`)
+- Accepts all three formats: `1022`, `ENH-1022`, `P3-ENH-1022` (case-insensitive)
+
+**manage-issue requires partial replacement only** (`skills/manage-issue/SKILL.md:62-87`):
+- The `$SEARCH_DIR` case statement (lines 68-72) and the `else` branch (highest-priority-in-dir, lines 80-86) must be **preserved** — they serve the no-`ISSUE_ID` default mode
+- **Only** the `if [ -n "$ISSUE_ID" ]; then` branch (line 78) is in scope
+- The variable is `ISSUE_FILE` (not `FILE`) — must be preserved for downstream references
+
+**go-no-go uses `$ID` not `$ISSUE_ID`** (`skills/go-no-go/SKILL.md:81-85`):
+- The replacement variable is `$ID`: `FILE=$(ll-issues path "${ID}" 2>/dev/null)`
+- The outer `for dir` loop at line 82 is removed along with the inner find at line 83
+
+**confidence-check sprint mode uses `$id` (lowercase)** (`skills/confidence-check/SKILL.md:153-165`):
+- Line 157 replacement: `FILE=$(ll-issues path "${id}" 2>/dev/null)`
+- Remove the surrounding `for dir` loop (lines 155-160)
+
+**issue-size-review sprint mode uses `$id` (lowercase)** (`skills/issue-size-review/SKILL.md:92-103`):
+- Line 96 replacement: `FILE=$(ll-issues path "${id}" 2>/dev/null)`
+- Remove the surrounding `for dir` loop (lines 94-99)
 
 ### Tests
 - N/A — shell script changes in markdown skill files; no unit tests to update
@@ -98,10 +125,29 @@ For `confidence-check` line 157 (sprint mode), use the loop variable: `FILE=$(ll
 
 ## Implementation Steps
 
-1. Update 5 skill files: replace `for dir` + `find | grep` blocks with `FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)`
-2. Update `wire-issue` skill (same pattern, 2 sites)
-3. Update 2 command files: `refine-issue.md` and `ready-issue.md`
-4. Verify: `grep -r "find.*maxdepth.*grep.*-E" skills/ commands/` returns zero matches
+1. **`skills/manage-issue/SKILL.md` line 78** — partial replacement only:
+   - Replace the inner find line: `ISSUE_FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)`
+   - **Preserve** the `$SEARCH_DIR` case statement (lines 68-72) and `else` branch (lines 80-86)
+   - Variable name stays `ISSUE_FILE` (not `FILE`)
+
+2. **`skills/format-issue/SKILL.md` line 111**, **`skills/go-no-go/SKILL.md` lines 82-85**, **`commands/refine-issue.md` lines ~82-90**, **`commands/ready-issue.md` lines ~83-91** — full loop replacement:
+   - Remove the `FILE=""` + `for dir` loop + inner find block
+   - Replace with `FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)`
+
+3. **`skills/go-no-go/SKILL.md` lines 82-85** — uses `$ID` (not `$ISSUE_ID`):
+   - Replace with `FILE=$(ll-issues path "${ID}" 2>/dev/null)`
+
+4. **`skills/confidence-check/SKILL.md` lines 97-108** (single-issue mode) and **lines 153-165** (sprint mode):
+   - Single-issue: replace for loop + find with `FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)`
+   - Sprint mode (line 157): replace with `FILE=$(ll-issues path "${id}" 2>/dev/null)` (lowercase `$id`)
+
+5. **`skills/issue-size-review/SKILL.md` lines 92-103** — sprint loop uses `$id` (lowercase):
+   - Replace with `FILE=$(ll-issues path "${id}" 2>/dev/null)`
+
+6. **`skills/wire-issue/SKILL.md` lines 83-97** (2-line find block):
+   - Replace `FILE=$(find ... \` + `| grep ...) with `FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)`
+
+7. Verify: `grep -r "find.*maxdepth.*grep.*-E" skills/ commands/` returns zero matches
 
 ## Impact
 
@@ -131,6 +177,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `refactor`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-11T03:19:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b0e24d9-9939-46ca-8a19-b2fd49f87d61.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a587f97e-afd1-46fe-a9ac-dfcf57d1753f.jsonl`
 
 ---
