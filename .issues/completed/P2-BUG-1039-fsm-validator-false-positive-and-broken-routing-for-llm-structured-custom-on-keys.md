@@ -228,6 +228,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `bug`, `fsm`, `schema`, `validation`, `executor`, `llm_structured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-11T22:05:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/506c300c-d5d9-40a6-8c70-92e1144ff16e.jsonl`
 - `/ll:refine-issue` - 2026-04-11T21:29:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0800be1c-f6b4-497c-b5ac-2b3352749526.jsonl`
 - `/ll:confidence-check` - 2026-04-11T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9d3c2d4-5cf6-495c-8cd4-7181ace6fb24.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7e9754d-cf7a-45bf-b3bd-c6451115fbb0.jsonl`
@@ -238,6 +239,29 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ---
 
+## Resolution
+
+**Fixed** | Resolved: 2026-04-11 | Priority: P2
+
+### Changes Made
+
+- `scripts/little_loops/fsm/schema.py`: Added `extra_routes: dict[str, str]` field to `StateConfig`; updated `from_dict()` to collect unknown `on_*` keys, `get_referenced_states()` to include their targets, and `to_dict()` for round-trip serialization.
+- `scripts/little_loops/fsm/executor.py`: Added `extra_routes` lookup in `_route()` after the hardcoded shorthand block.
+- `scripts/little_loops/fsm/validation.py`: Added `or state.on_blocked is not None` and `or bool(state.extra_routes)` to `has_shorthand` expression.
+- `scripts/little_loops/fsm/fsm-loop-schema.json`: Added `patternProperties: {"^on_": {"type": "string"}}` to allow custom `on_*` keys alongside `"additionalProperties": false`.
+- `scripts/little_loops/cli/loop/testing.py`: Added `extra_routes` fallback in `cmd_test` inline routing.
+- `scripts/little_loops/cli/loop/layout.py`: Added `extra_routes` iteration in `_collect_edges()`.
+- `docs/generalized-fsm-loop.md`: Documented `on_<verdict>` custom shorthand pattern; updated Resolution Order section.
+- `docs/guides/LOOPS_GUIDE.md`: Added custom `on_<verdict>` to shorthand enumeration.
+- `skills/review-loop/SKILL.md`: Updated QC-13 dead-end check to include `extra_routes`.
+- New fixture: `scripts/tests/fixtures/fsm/custom-on-routing.yaml`
+- New tests: 6 `extra_routes` tests in `test_fsm_schema.py`; new file `test_fsm_validation.py` with 3 reachability tests; 2 executor routing tests in `test_fsm_executor.py`; 1 no-false-positive validation test in `test_ll_loop_commands.py`.
+
+### Verification
+
+- All 4604 tests pass, 0 failures.
+- `ruff check scripts/` — clean.
+
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P2
+**Resolved** | Created: 2026-04-11 | Priority: P2

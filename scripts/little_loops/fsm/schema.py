@@ -231,6 +231,7 @@ class StateConfig:
     context_passthrough: bool = False
     agent: str | None = None
     tools: list[str] | None = None
+    extra_routes: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -278,6 +279,8 @@ class StateConfig:
             result["agent"] = self.agent
         if self.tools is not None:
             result["tools"] = self.tools
+        for verdict, target in self.extra_routes.items():
+            result[f"on_{verdict}"] = target
 
         return result
 
@@ -291,6 +294,17 @@ class StateConfig:
         route = None
         if "route" in data:
             route = RouteConfig.from_dict(data["route"])
+
+        _known_on_keys = {
+            "on_yes", "on_success", "on_no", "on_failure",
+            "on_error", "on_partial", "on_blocked",
+            "on_maintain", "on_retry_exhausted",
+        }
+        extra_routes = {
+            key[3:]: val
+            for key, val in data.items()
+            if key.startswith("on_") and key not in _known_on_keys and isinstance(val, str)
+        }
 
         return cls(
             action=data.get("action"),
@@ -314,6 +328,7 @@ class StateConfig:
             context_passthrough=data.get("context_passthrough", False),
             agent=data.get("agent"),
             tools=data.get("tools"),
+            extra_routes=extra_routes,
         )
 
     def get_referenced_states(self) -> set[str]:
@@ -346,6 +361,7 @@ class StateConfig:
                 refs.add(self.route.default)
             if self.route.error is not None:
                 refs.add(self.route.error)
+        refs.update(self.extra_routes.values())
 
         return refs
 

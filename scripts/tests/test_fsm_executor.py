@@ -1180,6 +1180,69 @@ class TestRouting:
         assert result.terminated_by == "error"
         assert result.error == "No valid transition"
 
+    def test_extra_routes_custom_verdict_routes_to_target(self) -> None:
+        """Custom on_done routes to final state when verdict is 'done'."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    extra_routes={"done": "final", "retry": "evaluate"},
+                ),
+                "final": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="done result", exit_code=0)
+
+        done_eval = MagicMock()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        done_eval.return_value = EvaluationResult(
+            verdict="done", details={"confidence": 0.95, "confident": True}
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", done_eval):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "final"
+        assert result.terminated_by == "terminal"
+
+    def test_extra_routes_missing_falls_through_to_error(self) -> None:
+        """When a custom verdict has no matching extra_routes entry, execution errors."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    extra_routes={"retry": "evaluate"},
+                    # No 'done' route — 'done' verdict should find no route
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="done result", exit_code=0)
+
+        done_eval = MagicMock()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        done_eval.return_value = EvaluationResult(
+            verdict="done", details={"confidence": 0.95, "confident": True}
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", done_eval):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert result.error == "No valid transition"
+
 
 class TestEvents:
     """Tests for event emission."""

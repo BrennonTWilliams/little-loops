@@ -253,6 +253,8 @@ states:                         # State definitions
     on_yes: string          # Next state on success verdict
     on_no: string          # Next state on failure verdict
     on_error: string            # Next state on error verdict
+    on_<verdict>: string        # Custom shorthand for any verdict (e.g., on_done, on_retry)
+                                # Used with llm_structured evaluators that return non-standard verdicts
     
     # Option 2: Full routing table (overrides shorthand)
     route:                      # Map verdict strings to next states
@@ -442,7 +444,7 @@ states:
 
 1. If `next` is present → unconditional transition (no evaluation)
 2. If `route` is present → use full routing table
-3. If `on_yes`/`on_no`/`on_error`/`on_blocked` → use shorthand routing
+3. If `on_yes`/`on_no`/`on_error`/`on_blocked` or any custom `on_<verdict>` shorthand → use shorthand routing
 4. If `terminal: true` → end loop
 5. Otherwise → error (no valid transition)
 

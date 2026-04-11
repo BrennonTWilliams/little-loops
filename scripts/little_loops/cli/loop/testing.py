@@ -151,6 +151,8 @@ def cmd_test(
             next_state = state_config.on_no
         elif verdict == "error" and state_config.on_error:
             next_state = state_config.on_error
+        elif verdict in state_config.extra_routes:
+            next_state = state_config.extra_routes[verdict]
 
     print()
     if next_state:

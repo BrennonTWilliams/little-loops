@@ -247,6 +247,8 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
         or state.on_no is not None
         or state.on_error is not None
         or state.on_partial is not None
+        or state.on_blocked is not None
+        or bool(state.extra_routes)
     )
     has_route = state.route is not None
 

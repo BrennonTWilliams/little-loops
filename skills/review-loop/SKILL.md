@@ -195,7 +195,7 @@ For each state not reachable via BFS from `initial` using all outbound transitio
 
 ### QC-13: Dead-End Non-Terminal States
 
-For each non-terminal state that has no outbound transitions (`on_yes`, `on_no`, `on_partial`, `on_error`, `next`, or any `route.*`):
+For each non-terminal state that has no outbound transitions (`on_yes`, `on_no`, `on_partial`, `on_blocked`, `on_error`, `next`, any `route.*`, or any custom `on_<verdict>` in `extra_routes`):
 - Add Error finding at path `states.<name>` (check_id: FA-6)
 
 ### QC-14: Replaceable Prompt State Detection

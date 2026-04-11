@@ -755,6 +755,10 @@ class FSMExecutor:
         if verdict == "blocked" and state.on_blocked:
             return self._resolve_route(state.on_blocked, ctx)
 
+        # Dynamic on_<verdict> shorthands from extra_routes
+        if verdict in state.extra_routes:
+            return self._resolve_route(state.extra_routes[verdict], ctx)
+
         return None
 
     def _resolve_route(self, route: str, ctx: InterpolationContext) -> str:

@@ -1,0 +1,15 @@
+name: custom-on-routing
+initial: check
+states:
+  check:
+    evaluate:
+      type: llm_structured
+      schema:
+        properties:
+          verdict:
+            type: string
+            enum: [done, retry]
+    on_done: final
+    on_retry: check
+  final:
+    terminal: true

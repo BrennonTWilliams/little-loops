@@ -397,6 +397,53 @@ class TestStateConfig:
         restored = StateConfig.from_dict(original.to_dict())
         assert restored.on_blocked == "recover"
 
+    def test_extra_routes_field(self) -> None:
+        """StateConfig accepts extra_routes for custom on_* verdicts."""
+        state = StateConfig(
+            evaluate=EvaluateConfig(type="llm_structured"),
+            extra_routes={"done": "final", "retry": "check"},
+        )
+        assert state.extra_routes == {"done": "final", "retry": "check"}
+
+    def test_extra_routes_in_from_dict(self) -> None:
+        """from_dict populates extra_routes from unknown on_* keys."""
+        data = {
+            "on_done": "final",
+            "on_retry": "check",
+        }
+        state = StateConfig.from_dict(data)
+        assert state.extra_routes == {"done": "final", "retry": "check"}
+
+    def test_extra_routes_in_to_dict(self) -> None:
+        """to_dict serializes extra_routes as on_<verdict> keys."""
+        state = StateConfig(extra_routes={"done": "final", "retry": "check"})
+        d = state.to_dict()
+        assert d["on_done"] == "final"
+        assert d["on_retry"] == "check"
+
+    def test_extra_routes_absent_from_to_dict_when_empty(self) -> None:
+        """to_dict omits extra on_* keys when extra_routes is empty."""
+        state = StateConfig(action="check.sh", on_yes="done")
+        d = state.to_dict()
+        assert "on_done" not in d
+        assert "on_retry" not in d
+
+    def test_extra_routes_in_get_referenced_states(self) -> None:
+        """get_referenced_states includes extra_routes target states."""
+        state = StateConfig(extra_routes={"done": "final", "retry": "check"})
+        refs = state.get_referenced_states()
+        assert "final" in refs
+        assert "check" in refs
+
+    def test_extra_routes_roundtrip(self) -> None:
+        """extra_routes survive to_dict/from_dict roundtrip."""
+        original = StateConfig(
+            evaluate=EvaluateConfig(type="llm_structured"),
+            extra_routes={"done": "final", "retry": "check"},
+        )
+        restored = StateConfig.from_dict(original.to_dict())
+        assert restored.extra_routes == {"done": "final", "retry": "check"}
+
     def test_roundtrip_serialization(self) -> None:
         """Roundtrip through to_dict and from_dict."""
         original = StateConfig(

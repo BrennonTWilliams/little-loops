@@ -106,6 +106,36 @@ states:
         captured = capsys.readouterr()
         assert "⚠" in captured.out
 
+    def test_validate_with_custom_on_routing_no_false_positive(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop with custom on_done routing does not produce an unreachable-state warning."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "custom-routing.yaml"
+        loop_file.write_text(
+            "name: custom-routing\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    on_done: final\n"
+            "    on_retry: check\n"
+            "  final:\n"
+            "    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+        result = cmd_validate("custom-routing", loops_dir, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "not reachable" not in captured.out
+
 
 class TestCmdList:
     """Tests for list command logic."""

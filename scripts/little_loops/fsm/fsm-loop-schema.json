@@ -283,6 +283,12 @@
           "description": "List of tool names to pass as --tools CSV to the Claude CLI subprocess. Only used for prompt-mode states. Ignored for shell-mode states."
         }
       },
+      "patternProperties": {
+        "^on_": {
+          "type": "string",
+          "description": "Custom on_<verdict> shorthand routing for llm_structured evaluators with non-standard verdict strings"
+        }
+      },
       "additionalProperties": false
     },
     "evaluateConfig": {

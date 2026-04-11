@@ -207,6 +207,8 @@ def _collect_edges(fsm: FSMLoop) -> list[tuple[str, str, str]]:
                 edges.append((name, target, verdict))
             if state.route.default:
                 edges.append((name, state.route.default, "_"))
+        for verdict, target in state.extra_routes.items():
+            edges.append((name, target, verdict))
     return edges
 
 

@@ -632,7 +632,7 @@ The captured value is accessible as `${captured.lint_count.output}`, `${captured
 
 ### Routing
 
-States use **shorthand** (`on_yes`, `on_no`, `on_partial`, `on_blocked`) or a **route table** for verdict-to-state mapping:
+States use **shorthand** (`on_yes`, `on_no`, `on_partial`, `on_blocked`, or any custom `on_<verdict>`) or a **route table** for verdict-to-state mapping:
 
 ```yaml
 route:
