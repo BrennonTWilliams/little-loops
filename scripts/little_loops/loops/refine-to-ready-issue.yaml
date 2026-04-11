@@ -1,5 +1,10 @@
 name: "refine-to-ready-issue"
 category: issue-management
+# Routing summary:
+#   confidence_check → check_readiness → (on_yes) check_outcome → (on_yes) done
+#                                      → (on_no)  check_refine_limit → refine_issue
+#                      check_outcome   → (on_no)  breakdown_issue
+#   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
 initial: resolve_issue
 max_iterations: 20
 on_handoff: spawn
@@ -105,11 +110,12 @@ states:
   confidence_check:
     action: "/ll:confidence-check ${captured.issue_id.output}"
     action_type: slash_command
-    next: check_scores
+    next: check_readiness
 
-  check_scores:
-    # Read scores written to issue frontmatter by the confidence_check skill.
-    # Uses exit_code evaluator (not shell_exit fragment) to allow non-default routing fields.
+  check_readiness:
+    # Step 1 of 2: check only technical readiness (confidence_score vs readiness_threshold).
+    # Readiness below threshold → retry refinement (refine-issue can fix technical gaps).
+    # Readiness passes → proceed to check_outcome.
     action: |
       python3 << 'PYEOF'
       import json, sys, subprocess
@@ -123,6 +129,37 @@ states:
           except Exception:
               pass
       readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
+          capture_output=True, text=True
+      )
+      d = json.loads(r.stdout)
+      sys.exit(0 if int(d.get('confidence') or 0) >= readiness else 1)
+      PYEOF
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: check_outcome
+    on_no: check_refine_limit
+    on_error: check_scores_from_file
+
+  check_outcome:
+    # Step 2 of 2: check outcome confidence (outcome_confidence vs outcome_threshold).
+    # Outcome below threshold → route to breakdown_issue (scope reduction, not more refinement).
+    # Outcome passes → done.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
       outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
 
       r = subprocess.run(
@@ -130,15 +167,14 @@ states:
           capture_output=True, text=True
       )
       d = json.loads(r.stdout)
-      sys.exit(0 if int(d.get('confidence') or 0) >= readiness
-                 and int(d.get('outcome') or 0) >= outcome else 1)
+      sys.exit(0 if int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
     action_type: shell
     evaluate:
       type: exit_code
     on_yes: done
-    on_no: check_refine_limit
-    on_error: check_scores_from_file
+    on_no: breakdown_issue
+    on_error: failed
 
   check_refine_limit:
     action: |
@@ -160,6 +196,10 @@ states:
     on_error: failed
 
   check_scores_from_file:
+    # Error-recovery fallback: reached when check_readiness subprocess fails.
+    # Reads both scores directly from frontmatter without Python eval.
+    # on_no routes to breakdown_issue (not failed) — outcome-only failures here
+    # should not stall the loop; scope reduction is the appropriate intervention.
     action: |
       python3 << 'PYEOF'
       import json, sys, subprocess
@@ -185,7 +225,7 @@ states:
       PYEOF
     fragment: shell_exit
     on_yes: done
-    on_no: failed
+    on_no: breakdown_issue
     on_error: failed
 
   breakdown_issue:

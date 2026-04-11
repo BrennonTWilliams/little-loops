@@ -497,25 +497,46 @@ class TestRefineToReadyIssueSubLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_confidence_check_routes_to_check_scores(self, data: dict) -> None:
-        """confidence_check must transition unconditionally to check_scores (split from BUG-1019 fix)."""
+    def test_confidence_check_routes_to_check_readiness(self, data: dict) -> None:
+        """confidence_check must transition unconditionally to check_readiness (ENH-1033 split)."""
         confidence_check = data["states"].get("confidence_check", {})
-        assert confidence_check.get("next") == "check_scores", (
-            f"confidence_check.next should be 'check_scores', got {confidence_check.get('next')!r}"
+        assert confidence_check.get("next") == "check_readiness", (
+            f"confidence_check.next should be 'check_readiness', got {confidence_check.get('next')!r}"
         )
 
-    def test_check_scores_routes_to_done(self, data: dict) -> None:
-        """check_scores.on_yes must route to done."""
-        state = data["states"].get("check_scores", {})
-        assert state.get("on_yes") == "done", (
-            f"check_scores.on_yes should be 'done', got {state.get('on_yes')!r}"
+    def test_check_readiness_on_yes_routes_to_check_outcome(self, data: dict) -> None:
+        """check_readiness.on_yes must route to check_outcome (readiness passed → check outcome next)."""
+        state = data["states"].get("check_readiness", {})
+        assert state.get("on_yes") == "check_outcome", (
+            f"check_readiness.on_yes should be 'check_outcome', got {state.get('on_yes')!r}"
         )
 
-    def test_check_scores_on_error_is_check_scores_from_file(self, data: dict) -> None:
-        """check_scores.on_error must route to check_scores_from_file, not failed."""
-        state = data["states"].get("check_scores", {})
+    def test_check_readiness_on_no_routes_to_check_refine_limit(self, data: dict) -> None:
+        """check_readiness.on_no must route to check_refine_limit (technical gap → retry refinement)."""
+        state = data["states"].get("check_readiness", {})
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_readiness.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        )
+
+    def test_check_readiness_on_error_is_check_scores_from_file(self, data: dict) -> None:
+        """check_readiness.on_error must route to check_scores_from_file (preserves error fallback)."""
+        state = data["states"].get("check_readiness", {})
         assert state.get("on_error") == "check_scores_from_file", (
-            f"check_scores.on_error should be 'check_scores_from_file', got {state.get('on_error')!r}"
+            f"check_readiness.on_error should be 'check_scores_from_file', got {state.get('on_error')!r}"
+        )
+
+    def test_check_outcome_on_yes_routes_to_done(self, data: dict) -> None:
+        """check_outcome.on_yes must route to done (both scores pass)."""
+        state = data["states"].get("check_outcome", {})
+        assert state.get("on_yes") == "done", (
+            f"check_outcome.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_outcome_on_no_routes_to_breakdown_issue(self, data: dict) -> None:
+        """check_outcome.on_no must route to breakdown_issue (outcome-only fail → scope reduction, not retry)."""
+        state = data["states"].get("check_outcome", {})
+        assert state.get("on_no") == "breakdown_issue", (
+            f"check_outcome.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
         )
 
     def test_check_scores_from_file_state_exists(self, data: dict) -> None:
@@ -532,11 +553,11 @@ class TestRefineToReadyIssueSubLoop:
             f"check_scores_from_file.on_yes should be 'done', got {state.get('on_yes')!r}"
         )
 
-    def test_check_scores_from_file_routes_to_failed_on_no(self, data: dict) -> None:
-        """check_scores_from_file.on_no must route to failed when scores are absent or below threshold."""
+    def test_check_scores_from_file_routes_to_breakdown_issue_on_no(self, data: dict) -> None:
+        """check_scores_from_file.on_no must route to breakdown_issue (ENH-1033: outcome-only fails avoid retry)."""
         state = data["states"].get("check_scores_from_file", {})
-        assert state.get("on_no") == "failed", (
-            f"check_scores_from_file.on_no should be 'failed', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "breakdown_issue", (
+            f"check_scores_from_file.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
         )
 
     def test_verify_issue_state_absent(self, data: dict) -> None:
