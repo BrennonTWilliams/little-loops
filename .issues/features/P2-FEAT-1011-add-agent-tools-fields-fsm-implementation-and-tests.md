@@ -257,7 +257,7 @@ Not all runners use `del` — `TimeoutCapturingRunner` does not (it silently ign
 
 #### `contributed` Branch in `executor.py`
 
-The `elif action_mode == "contributed":` branch at `executor.py:492–502` calls `runner.run()` but should NOT pass `agent`/`tools` — contributed action runners are plugin-supplied and handle their own tool selection. Only the `else` branch (default prompt/shell mode) passes the new fields.
+The `elif action_mode == "contributed":` branch at `executor.py:501–511` calls `runner.run()` but should NOT pass `agent`/`tools` — contributed action runners are plugin-supplied and handle their own tool selection. The `mcp_tool` block occupies lines 492–500 immediately before it. Only the `else` branch (lines 512–518, default prompt/shell mode) passes the new fields.
 
 #### `cmd_args` Construction Pattern in `subprocess_utils.py`
 
@@ -318,6 +318,7 @@ if tools:
 Active
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-11T00:17:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c01c2108-459d-458f-9edc-1d84355a5477.jsonl`
 - `/ll:ready-issue` - 2026-04-10T22:59:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afd0bcd6-194a-4a67-9623-1c31aebd634d.jsonl`
 - `/ll:ready-issue` - 2026-04-09T16:32:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15e78a6b-ed74-4ba8-b288-d99d5bfebd5f.jsonl`
 - `/ll:wire-issue` - 2026-04-09T16:29:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b46853f-0880-4875-afe9-7909cbb09d0d.jsonl`
