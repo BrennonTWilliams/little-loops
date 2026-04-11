@@ -481,14 +481,15 @@ When you want to queue up a week of work:
    /ll:scan-product                ← find feature gaps against goals
 2. /ll:normalize-issues            ← fix any naming problems
 3. /ll:prioritize-issues           ← assign P0-P5 to all issues
-4. /ll:tradeoff-review-issues      ← prune low-value issues
-5. /ll:format-issue --auto         ← promote survivors to v2.0 template
-6. /ll:refine-issue [issue-id]     ← enrich with codebase research (run per issue)
-7. /ll:verify-issues               ← test claims against code
-8. /ll:ready-issue                 ← validate quality gate
-9. /ll:map-dependencies            ← identify ordering constraints
-10. /ll:issue-size-review          ← decompose anything too large
-11. /ll:create-sprint              ← curate and sequence the sprint
+4. /ll:audit-issue-conflicts       ← detect conflicting requirements across issues
+5. /ll:tradeoff-review-issues      ← prune low-value issues
+6. /ll:format-issue --auto         ← promote survivors to v2.0 template
+7. /ll:refine-issue [issue-id]     ← enrich with codebase research (run per issue)
+8. /ll:verify-issues               ← test claims against code
+9. /ll:ready-issue                 ← validate quality gate
+10. /ll:map-dependencies           ← identify ordering constraints
+11. /ll:issue-size-review          ← decompose anything too large
+12. /ll:create-sprint              ← curate and sequence the sprint
     ll-sprint run sprint-name      ← execute
 ```
 

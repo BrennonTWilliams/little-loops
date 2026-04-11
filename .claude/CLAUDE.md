@@ -35,7 +35,7 @@ Personal development preferences.
 ```
 commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
-skills/         # Skill definitions (25 skills)
+skills/         # Skill definitions (26 skills)
 hooks/          # Lifecycle hooks and prompts
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
@@ -49,7 +49,7 @@ docs/           # Architecture, API, troubleshooting
 Run `/ll:help` for full list. Both commands (`commands/*.md`) and skills (`skills/*/SKILL.md`) are invoked via `/ll:<name>`. Skills are marked with ^.
 
 - **Issue Discovery**: `capture-issue`^, `scan-codebase`, `scan-product`, `audit-architecture`, `product-analyzer`^
-- **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`^ (template structure), `refine-issue` (codebase research), `wire-issue`^ (integration wiring), `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `issue-workflow`^, `issue-size-review`^, `map-dependencies`^
+- **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`^ (template structure), `refine-issue` (codebase research), `wire-issue`^ (integration wiring), `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `issue-workflow`^, `issue-size-review`^, `map-dependencies`^, `audit-issue-conflicts`^
 - **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`^, `iterate-plan`, `confidence-check`^, `go-no-go`^
 - **Code Quality**: `check-code`, `run-tests`, `audit-docs`^, `update-docs`^, `find-dead-code`
 - **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`

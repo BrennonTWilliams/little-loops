@@ -11,8 +11,8 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--quick` | Reduce analysis depth for faster results | `scan-codebase`, `manage-issue`, `capture-issue` |
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
-| `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release` |
-| `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review` |
+| `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
+| `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
 | `--sprint <name>` | Scope to issues in a named sprint definition | `map-dependencies`, `confidence-check`, `issue-size-review` |
@@ -205,6 +205,13 @@ Post-refinement wiring pass that completes an issue's **Integration Map** — th
 Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.
 
 **Trigger keywords:** "tradeoff review", "review issues", "prune backlog", "sense check issues"
+
+### `/ll:audit-issue-conflicts`
+Scan all open issues for conflicting requirements, objectives, or architectural decisions — outputs a ranked conflict report (high/medium/low severity) with recommended resolutions. Conflict types: requirement contradictions, conflicting objectives, architectural disagreements, scope overlaps.
+
+**Flags:** `--auto` (apply all recommendations without prompting), `--dry-run` (report only, no changes written)
+
+**Trigger keywords:** "audit conflicts", "conflicting issues", "requirement conflicts", "check for contradictions"
 
 ### `/ll:product-analyzer`
 Analyze codebase against product goals to identify feature gaps, user experience improvements, and business value opportunities.

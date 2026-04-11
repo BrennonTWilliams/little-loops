@@ -133,7 +133,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Alphabetical ordering correction**: The Acceptance Criteria and Proposed Solution state adding `audit-issue-conflicts/` "between `audit-claude-config/` and `audit-docs/`" in `docs/ARCHITECTURE.md`. This is incorrect — alphabetically `audit-issue-conflicts` sorts AFTER `audit-docs` (`audit-d` < `audit-i`). The correct insertion point is **after `audit-docs/`** in both `CONTRIBUTING.md` and `docs/ARCHITECTURE.md`.
 
-**Line number correction for `docs/reference/COMMANDS.md`**: Acceptance Criteria and Proposed Solution state `--dry-run` is at line 14 and `--auto` at line 15. **This is wrong.** Verified live: `--dry-run` is at **line 13**, `--auto` is at **line 14**.
+**Line number correction for `docs/reference/COMMANDS.md`**: Acceptance Criteria and Proposed Solution state `--dry-run` is at line 14 and `--auto` at line 15. A prior refine-issue pass incorrectly corrected this to lines 13 and 14. **Re-verified 2026-04-11**: `--dry-run` is at **line 14**, `--auto` is at **line 15** — the original Acceptance Criteria are correct.
 
 **`ll-verify-docs` scope** (`scripts/little_loops/doc_counts.py:12-16`): Only checks `README.md`, `CONTRIBUTING.md`, and `docs/ARCHITECTURE.md` for numeric skill counts. It does NOT scan `commands/help.md`, `docs/reference/COMMANDS.md`, or `.claude/CLAUDE.md` — those must be updated and verified manually.
 
@@ -153,10 +153,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `docs/ARCHITECTURE.md:26` | `25 composable skills` (in diagram) | Increment `25` → `26` |
 | `docs/ARCHITECTURE.md:99` | `# 25 skill definitions` | Increment `25` → `26` |
 | `docs/ARCHITECTURE.md:109-110` | `audit-docs/` block ends line 109; `capture-issue/` at line 110 | Insert 2-line entry between 109 and 110 |
-| `docs/reference/COMMANDS.md:13` | `--dry-run` consumer list (NOT line 14) | Append `, \`audit-issue-conflicts\`` |
-| `docs/reference/COMMANDS.md:14` | `--auto` consumer list (NOT line 15) | Append `, \`audit-issue-conflicts\`` |
+| `docs/reference/COMMANDS.md:14` | `--dry-run` consumer list | Append `, \`audit-issue-conflicts\`` |
+| `docs/reference/COMMANDS.md:15` | `--auto` consumer list | Append `, \`audit-issue-conflicts\`` |
 | `docs/reference/COMMANDS.md:207-209` | `tradeoff-review-issues` content ends line 207; `### /ll:product-analyzer` at line 209 | Insert new subsection between 207 and 209 |
-| `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:482-483` | step 3=`prioritize-issues` at line 482; step 4=`tradeoff-review-issues` at line 483 | Insert new step 4 at line 483, renumber old 4–11 to 5–12 |
+| `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:483-484` | step 3=`prioritize-issues` at line 483; step 4=`tradeoff-review-issues` at line 484 | Insert new step 4 at line 484, renumber old 4–11 to 5–12 |
 | `.claude/CLAUDE.md:38` | `# Skill definitions (25 skills)` | Increment `25` → `26` |
 | `.claude/CLAUDE.md:52` | Issue Refinement line ends with `` `map-dependencies`^ `` | Append `, \`audit-issue-conflicts\`^` |
 
@@ -255,9 +255,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P3
+**Completed** | Created: 2026-04-11 | Completed: 2026-04-11 | Priority: P3
+
+## Resolution
+
+All 7 documentation surfaces updated. Skill count bumped 25→26 (skills) and 28→29 (commands) across README.md, CONTRIBUTING.md, and docs/ARCHITECTURE.md. `audit-issue-conflicts` added to commands/help.md ISSUE REFINEMENT block and Quick Reference Table, README.md command/skills tables, CONTRIBUTING.md directory tree, docs/ARCHITECTURE.md directory tree, docs/reference/COMMANDS.md flag tables and new subsection, docs/guides/ISSUE_MANAGEMENT_GUIDE.md sprint recipe (step 4, renumbered 4–11 → 5–12), and .claude/CLAUDE.md Issue Refinement section. `ll-verify-docs` passes (9/9 counts match).
+
+## Verification Notes
+
+**Verified 2026-04-11** (`/ll:verify-issues 1030`):
+
+- `skills/audit-issue-conflicts/SKILL.md` confirmed to exist — FEAT-1028 blocker is cleared; this issue is now unblocked.
+- All 7 documentation surfaces confirmed NOT yet updated (skill counts still 25 everywhere; `audit-issue-conflicts` absent from all listed files).
+- **Line number fix**: The prior refine-issue correction claimed `--dry-run`/`--auto` were at COMMANDS.md lines 13/14. Re-verified: they are at lines 14/15 (matching the original Acceptance Criteria). The "Codebase Research Findings" section and "Verified Exact Insertion Points" table have been corrected above.
+- All other insertion points and line references verified accurate.
+
+**Verdict: NEEDS_UPDATE** — Issue is valid and ready to implement; line reference corrected.
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-11T17:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ff2c2a3-5115-419d-8315-a5a391f92917.jsonl`
+- `/ll:ready-issue` - 2026-04-11T17:35:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3acdb61-aaca-4e66-97ee-0aedd9f20528.jsonl`
+- `/ll:verify-issues` - 2026-04-11T17:28:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32fb8723-9b14-4815-8d38-257b8797e711.jsonl`
 - `/ll:refine-issue` - 2026-04-11T05:33:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/662113a3-6b97-409a-b517-fd8a66d0944f.jsonl`
 - `/ll:format-issue` - 2026-04-11T05:28:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b982ec8-95f6-4b13-b508-3b8cbabc3437.jsonl`
 - `/ll:refine-issue` - 2026-04-11T05:26:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4511a1b9-2134-43ca-95d4-393029988442.jsonl`

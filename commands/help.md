@@ -74,6 +74,11 @@ ISSUE REFINEMENT
     Evaluate issues for utility vs complexity trade-offs
     Recommends implement, update, or close/defer for each issue
 
+/ll:audit-issue-conflicts [flags]
+    Scan all open issues for conflicting requirements, objectives, or
+    architectural decisions — outputs a ranked conflict report
+    Flags: --auto (non-interactive), --dry-run (report only)
+
 /ll:ready-issue [issue_id]
     Validate issue file for accuracy and auto-correct problems
 
@@ -251,7 +256,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 ## Quick Reference Table
 
 **Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`
-**Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`
+**Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `audit-issue-conflicts`
 **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`, `iterate-plan`
 **Scanning & Analysis**: `find-dead-code`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
