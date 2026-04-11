@@ -3,6 +3,7 @@ discovered_date: "2026-03-12"
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 74
+blocked_by: [ENH-470]
 ---
 
 # FEAT-707: Scope-Based Concurrency as Worktree Alternative in ll-parallel/ll-sprint
@@ -63,6 +64,13 @@ if run_config.scope_mode:
 - `scripts/little_loops/cli/loop/run.py` — reference integration pattern
 
 ## Integration Map
+
+> **Ordering note (conflict with ENH-470)**: This feature extends `OrchestratorV2` and
+> `WorkerPool` — the same god classes that ENH-470 refactors into focused sub-modules.
+> Implementing before ENH-470 means FEAT-707's `LockManager` integration would be
+> absorbed into ENH-470's refactor, requiring duplicate work. Complete ENH-470 first
+> so `LockManager` can be wired into the already-extracted modules (`worker_pool.py`,
+> `orchestrator.py` as defined post-refactor). See `blocked_by: [ENH-470]` in frontmatter.
 
 ### Files to Modify
 - `scripts/little_loops/parallel/orchestrator.py` — add scope-lock execution mode

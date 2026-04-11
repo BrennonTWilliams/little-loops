@@ -8,6 +8,7 @@ discovered_date: 2026-04-08
 discovered_by: issue-size-review
 confidence_score: 78
 outcome_confidence: 97
+blocked_by: [ENH-753, FEAT-1002]
 ---
 
 # FEAT-1003: Write test suite for ll-logs CLI tool
@@ -22,6 +23,12 @@ Decomposed from FEAT-1001: Add log discovery and extraction for ll-loop and ll-c
 ## Prerequisites
 
 FEAT-1002 must be implemented first (logs.py must exist before tests can import it).
+
+ENH-753 must be completed before this test suite is written. FEAT-1003's session log
+fixtures reference skill invocation strings; after ENH-753 renames `/ll:confidence-check`
+→ `/ll:score-confidence`, any fixture containing that string must use the new name.
+Writing tests before ENH-753 lands guarantees stale fixture data. See `blocked_by:
+[ENH-753, FEAT-1002]` in frontmatter.
 
 ## Current Behavior
 

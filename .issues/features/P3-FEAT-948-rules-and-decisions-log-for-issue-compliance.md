@@ -53,6 +53,12 @@ As the issue count grows and workflows become more automated (ll-auto, ll-parall
 
 **Integration points**: `capture-issue`, `ready-issue`, `verify-issues`, `format-issue` should read the log. `ready-issue` must suppress violations where a matching `exception` entry with `rule_ref` exists.
 
+> **Graceful degradation constraint**: All integrations with `commands/ready-issue.md`,
+> `commands/verify-issues.md`, and `skills/format-issue/SKILL.md` MUST gracefully skip
+> decisions checks when `.ll/decisions.yaml` does not exist. The governance feature is
+> opt-in — absence of the file is not an error condition. Projects that have not called
+> `ll-issues decisions init` must not experience broken validation commands.
+
 **CLI surface**: `ll-issues decisions` subcommand for CRUD.
 
 **Auto-generation triggers**: post-`manage-issue` completion hook and pre-implementation confidence check.

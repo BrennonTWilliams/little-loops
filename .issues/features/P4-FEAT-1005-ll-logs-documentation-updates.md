@@ -9,6 +9,7 @@ discovered_by: issue-size-review
 confidence_score: 84
 outcome_confidence: 86
 testable: false
+blocked_by: [FEAT-1002]
 ---
 
 # FEAT-1005: Documentation file updates for ll-logs

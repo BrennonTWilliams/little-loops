@@ -6,6 +6,7 @@ status: open
 discovered_date: 2026-04-05
 discovered_by: issue-size-review
 parent_issue: FEAT-769
+blocked_by: [FEAT-961]
 ---
 
 # FEAT-962: OpenCode ll:init Support, Tests, and Docs

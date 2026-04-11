@@ -66,6 +66,24 @@ Extension ecosystems live or die on developer experience. Scaffolding eliminates
 - `docs/reference/API.md` — add `LLTestBus` API docs and extension SDK section
 - `CONTRIBUTING.md` — add extension development workflow
 
+### Design Constraint: Event Schema Alignment with FEAT-918
+
+`LLTestBus` records and replays events via `.events.jsonl` and must define schemas for
+all 19 event types. FEAT-918 (cross-process event streaming) independently defines the
+production event format for Unix sockets, HTTP webhooks, and OpenTelemetry.
+
+**Risk**: If FEAT-916 finalizes its recorded event format before FEAT-918 is implemented,
+the schemas may diverge — making `LLTestBus` replay events in a shape that differs from
+what production extensions receive, rendering the test harness misleading.
+
+**Mitigation**:
+- If FEAT-918 has already landed: import its event schema definitions instead of
+  defining independently. The recorded `.events.jsonl` format must be a serialization
+  of the same event types used in production streaming.
+- If FEAT-918 has not landed: mark the event schema in `LLTestBus` as provisional and
+  add a TODO referencing FEAT-918 for reconciliation. Avoid publishing the schema as
+  stable until FEAT-918 finalizes the production format.
+
 ### Configuration
 - `scripts/pyproject.toml` — `[dev]` optional dependency group including test harness
 

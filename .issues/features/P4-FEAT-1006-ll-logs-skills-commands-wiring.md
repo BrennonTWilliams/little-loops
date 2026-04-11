@@ -9,6 +9,7 @@ discovered_by: issue-size-review
 confidence_score: 95
 outcome_confidence: 78
 testable: false
+blocked_by: [FEAT-1002]
 ---
 
 # FEAT-1006: Skills and commands wiring for ll-logs

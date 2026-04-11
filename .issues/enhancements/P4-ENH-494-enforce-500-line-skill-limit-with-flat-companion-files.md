@@ -4,6 +4,7 @@ discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 98
 outcome_confidence: 71
+blocked_by: [ENH-753]
 ---
 
 # ENH-494: Enforce 500-Line SKILL.md Limit with Flat Companion Files
@@ -59,6 +60,12 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 6. Add companion file existence tests (follow `test_improve_claude_md_skill.py:29–34` pattern) asserting that all 3 new companion files exist on disk after implementation
 
 _The `ll-verify-skills` CLI lint command is tracked separately in ENH-977 (blocked by this issue)._
+
+> **Ordering note (conflict with ENH-753)**: All implementation paths in steps 2–4 reference
+> `skills/confidence-check/`. ENH-753 renames that directory to `skills/score-confidence/`
+> and must be completed first (`blocked_by: [ENH-753]` in frontmatter). Before implementing
+> this issue, verify ENH-753 is complete and update all `confidence-check` path references
+> above to `score-confidence`.
 
 ### Codebase Research Findings
 

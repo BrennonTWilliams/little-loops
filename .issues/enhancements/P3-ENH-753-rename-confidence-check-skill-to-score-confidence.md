@@ -95,6 +95,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_refine_status.py:267,816` — references `"/ll:confidence-check"` as session command strings in test data; must be updated to `"/ll:score-confidence"`
 - `scripts/little_loops/issue_parser.py:216–217` — docstring references only; update to reflect new skill name
+- `scripts/tests/test_ll_logs.py` (FEAT-1003, not yet created) — session log fixture strings that contain skill invocation names must reference `score-confidence` after this rename. ENH-753 must be completed before FEAT-1003 is written to avoid stale fixture data.
+
+### Conflict Notes
+
+**ENH-494 (companion files)**: ENH-494 splits `skills/confidence-check/SKILL.md` (660L) into companion files. Its implementation paths hard-code `skills/confidence-check/`. ENH-494 declares `blocked_by: [ENH-753]`, meaning this rename must land first. Before starting ENH-494, verify the implementer has updated its path references to `skills/score-confidence/`.
+
+**Ordering**: implement this issue (ENH-753) → then ENH-494 (companion file extraction) → then ENH-977 (verify-skills lint command).
 
 ### Documentation
 - `docs/` references to `confidence-check`
