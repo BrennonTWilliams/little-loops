@@ -34,6 +34,8 @@ class ActionRunner(Protocol):
         timeout: int,
         is_slash_command: bool,
         on_output_line: Callable[[str], None] | None = None,
+        agent: str | None = None,
+        tools: list[str] | None = None,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -42,6 +44,8 @@ class ActionRunner(Protocol):
             timeout: Timeout in seconds
             is_slash_command: True if this is a slash command (starts with /)
             on_output_line: Optional callback invoked for each output line
+            agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
+            tools: Optional list of tool names to pass as --tools CSV to Claude CLI (prompt-mode only)
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -61,6 +65,8 @@ class DefaultActionRunner:
         timeout: int,
         is_slash_command: bool,
         on_output_line: Callable[[str], None] | None = None,
+        agent: str | None = None,
+        tools: list[str] | None = None,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -69,6 +75,8 @@ class DefaultActionRunner:
             timeout: Timeout in seconds
             is_slash_command: True if action starts with /
             on_output_line: Optional callback invoked for each stdout line
+            agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
+            tools: Optional list of tool names to pass as --tools CSV (prompt-mode only)
 
         Returns:
             ActionResult with execution details
@@ -97,6 +105,8 @@ class DefaultActionRunner:
                     stream_callback=_stream_cb,
                     on_process_start=_on_proc_start,
                     on_process_end=_on_proc_end,
+                    agent=agent,
+                    tools=tools,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -184,6 +194,8 @@ class SimulationActionRunner:
         timeout: int,
         is_slash_command: bool,
         on_output_line: Callable[[str], None] | None = None,
+        agent: str | None = None,
+        tools: list[str] | None = None,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -192,11 +204,13 @@ class SimulationActionRunner:
             timeout: Timeout (ignored in simulation)
             is_slash_command: Whether this is a slash command
             on_output_line: Ignored in simulation
+            agent: Ignored in simulation
+            tools: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
         """
-        del timeout, on_output_line  # unused in simulation
+        del timeout, on_output_line, agent, tools  # unused in simulation
         self.calls.append(action)
         self.call_count += 1
 

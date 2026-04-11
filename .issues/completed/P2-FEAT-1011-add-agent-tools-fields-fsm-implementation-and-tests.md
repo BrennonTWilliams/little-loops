@@ -155,16 +155,16 @@ Both fields are ignored for `action_type: shell` states.
 
 ## Acceptance Criteria
 
-- [ ] `StateConfig` dataclass has `agent: str | None` and `tools: list[str] | None` fields (with `to_dict`/`from_dict` following `scope`/`timeout` patterns in `schema.py`)
-- [ ] `ActionRunner` Protocol signature updated to include `agent`/`tools` params (runners.py:31–37)
-- [ ] `SimulationActionRunner.run()` updated to match Protocol signature
-- [ ] `run_claude_command()` accepts and appends `--agent` / `--tools` flags to the invocation
-- [ ] `DefaultActionRunner.run()` accepts and passes through both params
-- [ ] `executor.py` extracts `state.agent` / `state.tools` and passes them only for prompt-mode states
-- [ ] `fsm-loop-schema.json` updated with `agent` and `tools` in `stateConfig.properties`
-- [ ] All Protocol implementors in `test_fsm_executor.py` and `test_fsm_persistence.py` updated
-- [ ] New tests in `test_fsm_schema.py`, `test_subprocess_utils.py`, `test_fsm_executor.py`
-- [ ] Existing tests pass: `python -m pytest scripts/tests/ -v`
+- [x] `StateConfig` dataclass has `agent: str | None` and `tools: list[str] | None` fields (with `to_dict`/`from_dict` following `scope`/`timeout` patterns in `schema.py`)
+- [x] `ActionRunner` Protocol signature updated to include `agent`/`tools` params (runners.py:31–37)
+- [x] `SimulationActionRunner.run()` updated to match Protocol signature
+- [x] `run_claude_command()` accepts and appends `--agent` / `--tools` flags to the invocation
+- [x] `DefaultActionRunner.run()` accepts and passes through both params
+- [x] `executor.py` extracts `state.agent` / `state.tools` and passes them only for prompt-mode states
+- [x] `fsm-loop-schema.json` updated with `agent` and `tools` in `stateConfig.properties`
+- [x] All Protocol implementors in `test_fsm_executor.py` and `test_fsm_persistence.py` updated
+- [x] New tests in `test_fsm_schema.py`, `test_subprocess_utils.py`, `test_fsm_executor.py`
+- [x] Existing tests pass: `python -m pytest scripts/tests/ -v`
 - [ ] Manual smoke test: minimal loop YAML with `agent: some-agent` on a prompt state confirms `--agent some-agent` in logged claude invocation
 
 ## Integration Map
@@ -313,11 +313,27 @@ if tools:
 
 ---
 
+## Resolution
+
+Implemented 2026-04-10. All acceptance criteria met (except manual smoke test which requires a running Claude subprocess):
+
+- Added `agent: str | None = None` and `tools: list[str] | None = None` to `StateConfig` dataclass in `schema.py` with `to_dict`/`from_dict` support
+- Added `agent`/`tools` params to `run_claude_command()` in `subprocess_utils.py`; appends `--agent <name>` and `--tools <csv>` to `cmd_args`
+- Updated `ActionRunner` Protocol, `DefaultActionRunner.run()`, and `SimulationActionRunner.run()` in `runners.py`
+- Updated `_run_action()` in `executor.py` to pass `state.agent`/`state.tools` only for prompt-mode states (shell states get `None`)
+- Added `agent` and `tools` to `stateConfig.properties` in `fsm-loop-schema.json`
+- Updated 9 mock runner implementations across `test_fsm_executor.py` and `test_fsm_persistence.py`
+- Added 19 new tests across `test_fsm_schema.py`, `test_subprocess_utils.py`, `test_fsm_executor.py`
+- Docs (`API.md`, `TESTING.md`) were already up to date from FEAT-1010 doc commit
+- Full test suite: 4526 passed, 2 pre-existing failures in `test_update_skill.py` (unrelated)
+
 ## Status
 
-Active
+Completed
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-11T00:28:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1778fa65-9548-4fde-9e1c-7b600192ddc2.jsonl`
 - `/ll:refine-issue` - 2026-04-11T00:17:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c01c2108-459d-458f-9edc-1d84355a5477.jsonl`
 - `/ll:ready-issue` - 2026-04-10T22:59:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afd0bcd6-194a-4a67-9623-1c31aebd634d.jsonl`
 - `/ll:ready-issue` - 2026-04-09T16:32:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15e78a6b-ed74-4ba8-b288-d99d5bfebd5f.jsonl`

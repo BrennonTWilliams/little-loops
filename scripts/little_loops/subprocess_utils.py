@@ -68,6 +68,8 @@ def run_claude_command(
     on_process_end: ProcessCallback | None = None,
     idle_timeout: int = 0,
     on_model_detected: ModelCallback | None = None,
+    agent: str | None = None,
+    tools: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -101,6 +103,10 @@ def run_claude_command(
         "-p",
         command,
     ]
+    if agent:
+        cmd_args += ["--agent", agent]
+    if tools:
+        cmd_args += ["--tools", ",".join(tools)]
 
     # Set environment to keep Claude in the project working directory (BUG-007)
     # This helps prevent file writes from leaking to the main repo in worktrees

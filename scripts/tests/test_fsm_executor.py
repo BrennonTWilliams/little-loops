@@ -46,10 +46,12 @@ class MockActionRunner:
         timeout: int,
         is_slash_command: bool,
         on_output_line: Any = None,
+        agent: str | None = None,
+        tools: list[str] | None = None,
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
-        del timeout, is_slash_command, on_output_line
+        del timeout, is_slash_command, on_output_line, agent, tools
         self.calls.append(action)
 
         # Use indexed results in order (when results were set as a list)
@@ -1832,9 +1834,15 @@ class TestErrorHandling:
 
         class FailingRunner:
             def run(
-                self, action: str, timeout: int, is_slash_command: bool, on_output_line: Any = None
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
             ) -> ActionResult:
-                del action, timeout, is_slash_command, on_output_line
+                del action, timeout, is_slash_command, on_output_line, agent, tools
                 raise RuntimeError("Connection failed")
 
         executor = FSMExecutor(fsm, action_runner=FailingRunner())  # type: ignore[arg-type]
@@ -2111,8 +2119,10 @@ class TestSignalHandling:
                 timeout: int,
                 is_slash_command: bool,
                 on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line
+                del timeout, is_slash_command, on_output_line, agent, tools
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2192,8 +2202,10 @@ class TestSignalHandling:
                 timeout: int,
                 is_slash_command: bool,
                 on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line
+                del timeout, is_slash_command, on_output_line, agent, tools
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -3345,6 +3357,8 @@ class TestDefaultTimeout:
             timeout: int,
             is_slash_command: bool,
             on_output_line: Any = None,
+            agent: str | None = None,
+            tools: list[str] | None = None,
         ) -> ActionResult:
             self.captured_timeouts.append(timeout)
             return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
@@ -4082,3 +4096,143 @@ class TestInterceptorDispatch:
 
         interceptor.before_route.assert_not_called()
         interceptor.after_route.assert_not_called()
+
+
+class TestAgentToolsPassThrough:
+    """Tests for agent/tools pass-through from state config to action runner (FEAT-1011)."""
+
+    def test_prompt_state_passes_agent_and_tools_to_runner(self) -> None:
+        """Prompt-mode state passes agent and tools to action runner."""
+        captured: list[dict[str, Any]] = []
+
+        class CapturingRunner:
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
+            ) -> ActionResult:
+                captured.append({"agent": agent, "tools": tools})
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="/ll:test",
+                    action_type="prompt",
+                    agent="my-agent",
+                    tools=["Bash", "Edit"],
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm, action_runner=CapturingRunner())
+        executor.run()
+
+        assert len(captured) == 1
+        assert captured[0]["agent"] == "my-agent"
+        assert captured[0]["tools"] == ["Bash", "Edit"]
+
+    def test_shell_state_passes_none_for_agent_and_tools(self) -> None:
+        """Shell-mode state passes None for agent and tools even if set on state."""
+        captured: list[dict[str, Any]] = []
+
+        class CapturingRunner:
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
+            ) -> ActionResult:
+                captured.append({"agent": agent, "tools": tools})
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo hello",
+                    action_type="shell",
+                    agent="my-agent",
+                    tools=["Bash"],
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm, action_runner=CapturingRunner())
+        executor.run()
+
+        assert len(captured) == 1
+        assert captured[0]["agent"] is None
+        assert captured[0]["tools"] is None
+
+    def test_default_action_runner_passes_agent_tools_to_run_claude_command(self) -> None:
+        """DefaultActionRunner.run(agent=..., tools=...) passes them to run_claude_command."""
+        import subprocess as sp
+
+        runner = DefaultActionRunner()
+        captured_kwargs: list[dict[str, Any]] = []
+        mock_completed = MagicMock(spec=sp.CompletedProcess)
+        mock_completed.stdout = ""
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+
+        def fake_run_claude_command(**kwargs: Any) -> sp.CompletedProcess[str]:
+            captured_kwargs.append(dict(kwargs))
+            mock_proc = MagicMock(spec=sp.Popen)
+            kwargs["on_process_start"](mock_proc)
+            kwargs["on_process_end"](mock_proc)
+            return mock_completed
+
+        with patch(
+            "little_loops.fsm.runners.run_claude_command", side_effect=fake_run_claude_command
+        ):
+            runner.run(
+                "/ll:test",
+                timeout=30,
+                is_slash_command=True,
+                agent="some-agent",
+                tools=["Bash", "Edit"],
+            )
+
+        assert len(captured_kwargs) == 1
+        assert captured_kwargs[0]["agent"] == "some-agent"
+        assert captured_kwargs[0]["tools"] == ["Bash", "Edit"]
+
+    def test_default_action_runner_omits_agent_tools_when_none(self) -> None:
+        """DefaultActionRunner.run() passes None for agent/tools when not set."""
+        import subprocess as sp
+
+        runner = DefaultActionRunner()
+        captured_kwargs: list[dict[str, Any]] = []
+        mock_completed = MagicMock(spec=sp.CompletedProcess)
+        mock_completed.stdout = ""
+        mock_completed.stderr = ""
+        mock_completed.returncode = 0
+
+        def fake_run_claude_command(**kwargs: Any) -> sp.CompletedProcess[str]:
+            captured_kwargs.append(dict(kwargs))
+            mock_proc = MagicMock(spec=sp.Popen)
+            kwargs["on_process_start"](mock_proc)
+            kwargs["on_process_end"](mock_proc)
+            return mock_completed
+
+        with patch(
+            "little_loops.fsm.runners.run_claude_command", side_effect=fake_run_claude_command
+        ):
+            runner.run("/ll:test", timeout=30, is_slash_command=True)
+
+        assert len(captured_kwargs) == 1
+        assert captured_kwargs[0]["agent"] is None
+        assert captured_kwargs[0]["tools"] is None

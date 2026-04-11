@@ -1823,3 +1823,91 @@ class TestLoopConfigOverrides:
         result = fsm.to_dict()
 
         assert "config" not in result
+
+
+class TestAgentToolsStateConfig:
+    """Tests for agent: and tools: FSM state fields (FEAT-1011)."""
+
+    def test_state_config_agent_defaults_to_none(self) -> None:
+        """StateConfig.agent defaults to None."""
+        state = StateConfig(action="echo hi", next="done")
+        assert state.agent is None
+
+    def test_state_config_tools_defaults_to_none(self) -> None:
+        """StateConfig.tools defaults to None."""
+        state = StateConfig(action="echo hi", next="done")
+        assert state.tools is None
+
+    def test_state_config_accepts_agent(self) -> None:
+        """StateConfig accepts agent field."""
+        state = StateConfig(action="/ll:test", action_type="prompt", agent="my-agent", next="done")
+        assert state.agent == "my-agent"
+
+    def test_state_config_accepts_tools(self) -> None:
+        """StateConfig accepts tools field."""
+        state = StateConfig(
+            action="/ll:test", action_type="prompt", tools=["Bash", "Edit"], next="done"
+        )
+        assert state.tools == ["Bash", "Edit"]
+
+    def test_to_dict_includes_agent_when_set(self) -> None:
+        """to_dict includes agent when set."""
+        state = StateConfig(action="/ll:test", agent="my-agent", next="done")
+        d = state.to_dict()
+        assert d["agent"] == "my-agent"
+
+    def test_to_dict_includes_tools_when_set(self) -> None:
+        """to_dict includes tools when set."""
+        state = StateConfig(action="/ll:test", tools=["Bash", "Edit"], next="done")
+        d = state.to_dict()
+        assert d["tools"] == ["Bash", "Edit"]
+
+    def test_to_dict_excludes_agent_when_none(self) -> None:
+        """to_dict omits agent when not set."""
+        state = StateConfig(action="echo hi", next="done")
+        d = state.to_dict()
+        assert "agent" not in d
+
+    def test_to_dict_excludes_tools_when_none(self) -> None:
+        """to_dict omits tools when not set."""
+        state = StateConfig(action="echo hi", next="done")
+        d = state.to_dict()
+        assert "tools" not in d
+
+    def test_from_dict_with_agent(self) -> None:
+        """from_dict deserializes agent field."""
+        data = {"action": "/ll:test", "agent": "some-agent", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.agent == "some-agent"
+
+    def test_from_dict_with_tools(self) -> None:
+        """from_dict deserializes tools field."""
+        data = {"action": "/ll:test", "tools": ["Bash", "Edit"], "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.tools == ["Bash", "Edit"]
+
+    def test_from_dict_without_agent_defaults_none(self) -> None:
+        """from_dict defaults agent to None when absent."""
+        data = {"action": "echo hi", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.agent is None
+
+    def test_from_dict_without_tools_defaults_none(self) -> None:
+        """from_dict defaults tools to None when absent."""
+        data = {"action": "echo hi", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.tools is None
+
+    def test_round_trip_agent_and_tools(self) -> None:
+        """StateConfig with agent and tools round-trips through to_dict/from_dict."""
+        original = StateConfig(
+            action="/ll:test",
+            action_type="prompt",
+            agent="my-agent",
+            tools=["Bash", "Edit"],
+            next="done",
+        )
+        d = original.to_dict()
+        restored = StateConfig.from_dict(d)
+        assert restored.agent == "my-agent"
+        assert restored.tools == ["Bash", "Edit"]

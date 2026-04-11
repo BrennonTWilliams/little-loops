@@ -229,6 +229,8 @@ class StateConfig:
     on_retry_exhausted: str | None = None
     loop: str | None = None
     context_passthrough: bool = False
+    agent: str | None = None
+    tools: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -272,6 +274,10 @@ class StateConfig:
             result["loop"] = self.loop
         if self.context_passthrough:
             result["context_passthrough"] = self.context_passthrough
+        if self.agent is not None:
+            result["agent"] = self.agent
+        if self.tools is not None:
+            result["tools"] = self.tools
 
         return result
 
@@ -306,6 +312,8 @@ class StateConfig:
             on_retry_exhausted=data.get("on_retry_exhausted"),
             loop=data.get("loop"),
             context_passthrough=data.get("context_passthrough", False),
+            agent=data.get("agent"),
+            tools=data.get("tools"),
         )
 
     def get_referenced_states(self) -> set[str]:

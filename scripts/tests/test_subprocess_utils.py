@@ -1483,3 +1483,118 @@ class TestRunClaudeCommandModelDetection:
                 result = run_claude_command("test")  # no on_model_detected
 
         assert result is not None  # no exception
+
+
+# =============================================================================
+# TestRunClaudeCommandAgentToolsFlags
+# =============================================================================
+
+
+class TestRunClaudeCommandAgentToolsFlags:
+    """Tests for --agent and --tools flag support in run_claude_command() (FEAT-1011)."""
+
+    def _make_mock_process(self) -> Mock:
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+        return mock_process
+
+    def test_agent_flag_appended_to_cmd_args(self) -> None:
+        """--agent <name> is appended to cmd_args when agent is set."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("/ll:test", agent="my-agent")
+
+        assert len(captured_args) == 1
+        assert "--agent" in captured_args[0]
+        assert captured_args[0][captured_args[0].index("--agent") + 1] == "my-agent"
+
+    def test_tools_flag_appended_as_csv(self) -> None:
+        """--tools Bash,Edit is appended to cmd_args when tools is set."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("/ll:test", tools=["Bash", "Edit"])
+
+        assert len(captured_args) == 1
+        assert "--tools" in captured_args[0]
+        assert captured_args[0][captured_args[0].index("--tools") + 1] == "Bash,Edit"
+
+    def test_agent_and_tools_both_appended(self) -> None:
+        """Both --agent and --tools are appended when both are set."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("/ll:test", agent="my-agent", tools=["ToolSearch"])
+
+        assert len(captured_args) == 1
+        args = captured_args[0]
+        assert "--agent" in args
+        assert args[args.index("--agent") + 1] == "my-agent"
+        assert "--tools" in args
+        assert args[args.index("--tools") + 1] == "ToolSearch"
+
+    def test_no_agent_or_tools_flags_when_none(self) -> None:
+        """No --agent or --tools flags when both are None (default)."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("/ll:test")
+
+        assert len(captured_args) == 1
+        assert "--agent" not in captured_args[0]
+        assert "--tools" not in captured_args[0]
+
+    def test_tools_single_item_no_trailing_comma(self) -> None:
+        """Single tool is passed without trailing comma."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("/ll:test", tools=["ToolSearch"])
+
+        assert len(captured_args) == 1
+        idx = captured_args[0].index("--tools")
+        assert captured_args[0][idx + 1] == "ToolSearch"

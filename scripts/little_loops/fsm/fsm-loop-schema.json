@@ -261,6 +261,17 @@
         "fragment": {
           "type": "string",
           "description": "Name of a fragment to inherit fields from. Fragment fields are deep-merged into the state; state-level keys override fragment keys at every nesting level. Consumed at parse time — the engine never sees this key."
+        },
+        "agent": {
+          "type": "string",
+          "description": "Agent name to pass as --agent to the Claude CLI subprocess. Only used for prompt-mode states (action_type: prompt or slash_command). Ignored for shell-mode states."
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tool names to pass as --tools CSV to the Claude CLI subprocess. Only used for prompt-mode states. Ignored for shell-mode states."
         }
       },
       "additionalProperties": false

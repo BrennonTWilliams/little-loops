@@ -515,6 +515,8 @@ class FSMExecutor:
                 timeout=state.timeout or self.fsm.default_timeout or 3600,
                 is_slash_command=action_mode == "prompt",
                 on_output_line=_on_line,
+                agent=state.agent if action_mode == "prompt" else None,
+                tools=state.tools if action_mode == "prompt" else None,
             )
 
         preview = result.output[-2000:].strip() if result.output else None
