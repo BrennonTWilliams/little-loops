@@ -203,6 +203,8 @@ states:
 ### Files to Modify
 - `scripts/little_loops/loops/html-website-generator.yaml` — New file (built-in loop)
 - `scripts/little_loops/loops/README.md` — Add entry for new loop
+- `scripts/tests/test_builtin_loops.py` — Add `"html-website-generator"` to `test_expected_loops_exist()` expected set (~line 47); add `TestHtmlWebsiteGeneratorLoop` structural test class [Wiring pass added by `/ll:wire-issue`]
+- `docs/guides/LOOPS_GUIDE.md` — Add row to built-in loops table (lines 219–235) and to harness examples sub-table (lines 506–511) [Wiring pass added by `/ll:wire-issue`]
 
 ### Dependent Files (Callers/Importers)
 - `ll-loop run` / `scripts/little_loops/cli/loop/runner.py` — resolves loop by name; `loop_input` populates `context.description` via `input_key`
@@ -272,4 +274,5 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 **Open** | Created: 2026-04-10 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-04-11T04:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3be8bdda-d42f-491e-8a93-0f32e4fd87aa.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe9849b2-c9ca-4d60-92fc-cfd769be2923.jsonl`
