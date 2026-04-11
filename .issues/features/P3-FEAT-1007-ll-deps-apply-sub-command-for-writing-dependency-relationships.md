@@ -1,6 +1,8 @@
 ---
 discovered_date: "2026-04-08"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 79
 ---
 
 # FEAT-1007: Add `apply` Sub-Command to `ll-deps` for Writing Dependency Relationships
@@ -41,28 +43,49 @@ Add an `apply` subparser to `main_deps()` in `scripts/little_loops/cli/deps.py`:
 3. Backlinks are NOT added by `apply` — user should run `ll-deps fix` afterward (consistent with existing tool separation).
 4. `--dry-run` prints what would be written, with no file mutations.
 
-Key reuse: `little_loops.frontmatter` for frontmatter read/write, `little_loops.dependency_mapper.analyze_dependencies` for proposals.
+Key reuse: `little_loops.dependency_mapper.analyze_dependencies` for proposals (`analysis.py:474`), `little_loops.dependency_mapper.apply_proposals` for writing relationships (`operations.py:21` — **already implemented**, this subcommand is primarily CLI wiring). Note: `frontmatter.py` is read-only and is NOT involved in dependency writes.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/cli/deps.py` — add `apply` subparser and handler
+- `scripts/little_loops/dependency_mapper/operations.py` — extend `apply_proposals()` with `--dry-run` support, or handle dry-run entirely in the CLI layer before calling it (current `apply_proposals` at `operations.py:21` always writes)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/dependency_mapper.py` — `analyze_dependencies`, `fix_dependencies` (reuse pattern)
 - `scripts/little_loops/frontmatter.py` — frontmatter read/write utilities
 - `scripts/little_loops/issue_parser.py` — `IssueInfo`, `find_issues`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — corrections and additions based on codebase analysis:_
+
+- **`dependency_mapper` is a package, not a single file**: `scripts/little_loops/dependency_mapper/__init__.py` re-exports from `analysis.py`, `operations.py`, `models.py`, `formatting.py`. Import path `little_loops.dependency_mapper` is correct; sub-module paths matter for direct calls.
+- **`apply_proposals()` already exists at `operations.py:21`** and is already exported from `__init__.py`. It takes `(proposals: list[DependencyProposal], issue_files: dict[str, Path]) -> list[str]`. This is the primary write primitive — the `apply` subcommand is mainly CLI wiring around this existing function.
+- **`frontmatter.py` has no write function** (`frontmatter.py:16`, `frontmatter.py:81` — only `parse_frontmatter` and `strip_frontmatter`). Dependency relationships are stored as markdown body sections (`## Blocked By`, `## Blocks`), not YAML frontmatter fields. The write primitive is `_add_to_section()` in `operations.py:55`. Phrase "write to issue frontmatter" in the issue description is a misnomer.
+- **`blocked_by` / `blocks` fields in `IssueInfo`** are parsed from markdown section bodies at `issue_parser.py:365-366` via `_parse_section_items()` — not from YAML frontmatter.
+
 ### Similar Patterns
 - `fix` subcommand in `deps.py` — same `--dry-run`, `--sprint`, and file-mutation pattern to follow
 - `fix_dependencies()` in `dependency_mapper.py` — shows how to write issue changes with change log
 
 ### Tests
-- `scripts/tests/test_deps.py` (or equivalent) — add tests for `apply` with both implicit and explicit-pair modes, dry-run, and `--min-confidence` filtering
+- `scripts/tests/test_dependency_mapper.py` — add tests for `apply` with both implicit and explicit-pair modes, dry-run, and `--min-confidence` filtering; follow existing `TestApplyProposals` class (`test_dependency_mapper.py:921`) and `TestMainCLIFix` dry-run pattern (`test_dependency_mapper.py:1500`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **No `TestMainCLIApply` class exists** — must be created fresh (confirmed by search); no existing test covers any `apply` subcommand path [Agent 3 finding]
+- **`_setup_sprint_project` reuse**: This helper is a private instance method of `TestMainCLI` (line 1128). `TestMainCLIApply` cannot inherit it — either extract to a module-level helper function or copy the setup locally into the new class [Agent 3 finding]
+- **Tests to write in `TestMainCLIApply`**: implicit-apply mode (proposals above/below threshold), `--min-confidence` filtering (at/below/above threshold), `--dry-run` (`[DRY RUN]` in output + files unchanged), `--sprint` scoping (non-sprint issue absent from output), explicit-pair mode (single relationship written), invalid ID in explicit-pair (non-zero exit), idempotency (no duplication on re-run) [Agent 3 finding]
+- **`TestApplyProposals` existing tests** (line 921–1048): unaffected unless `apply_proposals()` signature gains a required parameter for dry-run; the issue recommends handling dry-run at the CLI layer to keep the signature stable [Agent 2 finding]
 
 ### Documentation
 - `docs/reference/API.md` — update `ll-deps` CLI reference if present
 - Command epilog in `deps.py` — add `apply` examples to the `argparse` epilog
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:622-671` — documents `analyze`, `validate`, `fix` subcommands; needs a new `#### ll-deps apply` section and `apply` examples in the examples block [Agent 2 finding]
+- `README.md:378-387` — `ll-deps` example code block lists `analyze`, `analyze --graph`, `validate`, `fix`; needs an `ll-deps apply` example added [Agent 2 finding]
+- `skills/map-dependencies/SKILL.md:142-165` — "Applying Proposals" section describes applying proposals via Python (`apply_proposals()`) or manual editing, but does not reference `ll-deps apply`; update to reference the new CLI subcommand [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -75,6 +98,33 @@ Key reuse: `little_loops.frontmatter` for frontmatter read/write, `little_loops.
 4. Add `--dry-run` output (list changes without writing)
 5. Write tests covering both modes, dry-run, confidence filtering, and invalid IDs
 6. Update `ll-deps` argparse epilog with examples
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete file:line references:_
+
+1. **Add `apply` subparser** (`deps.py` after the `fix_parser` block at `deps.py:139-154`): mirror `fix_parser`'s `--dry-run`/`-n` (`action="store_true"`) and `--sprint` (`type=str, default=None`) patterns exactly; add `--min-confidence` (`type=float, default=0.7`); add `source`, `relation`, `target` as `nargs="?"` positionals.
+
+2. **Sprint scoping** (`deps.py:167-188`): `getattr(args, "sprint", None)` pattern already handles any subcommand with `--sprint` — `apply` needs no special sprint handling if it registers `--sprint` with the same argument name.
+
+3. **Implicit-apply mode**: call `analyze_dependencies(issues, issue_contents, completed_ids, all_known_ids, config=dep_config)` (`analysis.py:474`), filter `report.proposals` where `proposal.confidence >= args.min_confidence`, build `issue_files = {i.issue_id: i.path for i in issues}`. If `--dry-run`, print proposals without calling `apply_proposals()`; otherwise call `apply_proposals(filtered, issue_files)` (`operations.py:21`).
+
+4. **Explicit-pair mode**: check `args.source`, `args.relation`, `args.target` are all set; validate both IDs exist in `{i.issue_id for i in issues} | all_known_ids`; create a single `DependencyProposal` and call `apply_proposals([proposal], issue_files)`, or directly call `_add_to_section()` from `operations.py:55` if backlinks should be skipped (i.e., `apply_proposals` writes BOTH directions — if explicit-pair should also skip backlinks per the design, call `_add_to_section(source_path, "Blocked By", target_id)` directly without calling the target side).
+
+5. **`--dry-run`**: `apply_proposals()` has no dry-run parameter — handle entirely at CLI layer (collect proposals, print what would be written, return without calling `apply_proposals`). Use `prefix = "[DRY RUN] " if args.dry_run else ""` pattern from `deps.py:317`.
+
+6. **Tests** in `scripts/tests/test_dependency_mapper.py`: follow `TestApplyProposals` fixture pattern (`test_dependency_mapper.py:921`, uses `tmp_path`, real files, `issue_files` dict), dry-run assertion pattern from `TestMainCLIFix.test_fix_dry_run` (`test_dependency_mapper.py:1500`, saves original content, asserts files unchanged), sprint filtering from `_setup_sprint_project` helper (`test_dependency_mapper.py:1128`).
+
+7. **Update epilog** in `deps.py` argparse setup.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `docs/reference/CLI.md:622-671` — add `#### ll-deps apply` section alongside existing `analyze`, `validate`, `fix` sections; add `apply` examples to the examples block at lines 663-670
+9. Update `README.md:378-387` — add `ll-deps apply [--dry-run]` example to the `ll-deps` example code block
+10. Update `skills/map-dependencies/SKILL.md:142-165` — revise "Applying Proposals" section to reference `ll-deps apply` CLI subcommand instead of only the Python `apply_proposals()` call path
+11. When writing `TestMainCLIApply` tests — extract `_setup_sprint_project` from `TestMainCLI` into a module-level helper (or copy it locally) so the sprint-scoped apply test can use it without class inheritance
 
 ## Use Case
 
@@ -124,6 +174,9 @@ apply_parser.add_argument("--sprint", type=str, default=None, help="Restrict to 
 `feature`, `cli`, `ll-deps`, `dependency-management`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/204c8cca-30f9-4698-9f69-27be46759232.jsonl`
+- `/ll:wire-issue` - 2026-04-11T18:23:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69beaf64-aa99-4990-9777-1aa920715d22.jsonl`
+- `/ll:refine-issue` - 2026-04-11T18:13:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6c2d304-183d-431b-a87a-b864eb8ac352.jsonl`
 - `/ll:format-issue` - 2026-04-11T18:08:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/357454b3-7b86-4dcc-8764-fe83bcd065e4.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edb17e35-0cf2-4ace-9fc3-69a8f503394e.jsonl`
 
