@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-11
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-1035: Consolidate Redundant CLI Flag Tests in test_cli.py
@@ -148,3 +150,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:refine-issue` - 2026-04-11T20:08:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2f0bc40-5233-4c1b-a17d-6bd5566483a9.jsonl`
 - `/ll:format-issue` - 2026-04-11T20:03:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da64ad23-684f-4724-8a57-4063931ce01c.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9439fb7-57cc-417c-9114-6eea87ed8705.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c5c369e-95b9-4fe0-a53f-b4bd65093912.jsonl`
