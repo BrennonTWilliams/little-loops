@@ -184,7 +184,14 @@ _No documents linked._
 
 `feature`, `codex`, `compatibility`, `hooks`
 
+## Verification Notes
+
+**Verdict**: VALID — No `codex-plugin/` directory exists. FEAT-769 (OpenCode compatibility) remains unimplemented, blocking this. All referenced file paths (`config/core.py`, `lib/common.sh`, `skills/init/SKILL.md`) accurately reflect the current state. The Codex CLI plugin API research step remains unresolved.
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:refine-issue` - 2026-04-06T02:33:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c273f16-a946-4cde-a3ce-1eb1a83742ae.jsonl`
 - `/ll:format-issue` - 2026-04-05T23:24:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80483a00-b614-43e6-8ba2-461cc77fadae.jsonl`
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d4087be-1201-4786-a118-8eb18c18f952.jsonl`

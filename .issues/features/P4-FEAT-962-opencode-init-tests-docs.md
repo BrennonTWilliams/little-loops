@@ -123,7 +123,26 @@ This issue depends on FEAT-959, FEAT-960, and FEAT-961 being substantially compl
 
 The missing `.gitignore` entries (`.claude/ll-precompact-state.json`, `.claude/ll-continue-prompt.md`) are a bug in the current Claude Code init path — fix them here regardless of OpenCode status.
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — The "Fix missing gitignore entries" section references `.claude/` paths, but the actual hook scripts write to `.ll/`:
+
+- `precompact-state.sh:29` writes `PRECOMPACT_STATE_FILE="${STATE_DIR}/ll-precompact-state.json"` where `STATE_DIR=".ll"` → `.ll/ll-precompact-state.json`
+- `precompact-state.sh:66` writes `CONTINUE_PROMPT=".ll/ll-continue-prompt.md"` → `.ll/ll-continue-prompt.md`
+- `context-monitor.sh:334` uses `HANDOFF_FILE=".ll/ll-continue-prompt.md"`
+
+The "Currently absent" entries in the Notes section should be:
+- `.ll/ll-precompact-state.json` (not `.claude/ll-precompact-state.json`)
+- `.ll/ll-continue-prompt.md` (not `.claude/ll-continue-prompt.md`)
+
+The existing gitignore block already uses `.ll/` paths (`.ll/ll-context-state.json`, `.ll/ll-sync-state.json`), consistent with this correction.
+
+The `skills/init/SKILL.md` detection logic and OpenCode wiring claims remain valid.
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:issue-size-review` - 2026-04-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
 
 ---

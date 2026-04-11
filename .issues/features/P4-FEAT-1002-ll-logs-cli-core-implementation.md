@@ -192,7 +192,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `feature`, `cli`, `logging`, `analysis`
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — `ll-generate-schemas` was added to the codebase after this issue was refined, shifting key line references:
+
+- `scripts/pyproject.toml`: `ll-generate-schemas` now at line 62; `mcp-call` shifted to line **63** (not 62 as stated). Add `ll-logs` entry after `ll-generate-schemas` at line 62.
+- `scripts/little_loops/cli/__init__.py`: now imports `main_generate_schemas` from `cli.schemas` (line 29) and includes it in `__all__`. The import block ends at line 36 and `__all__` at 56 (confirmed). Alphabetical insertion point for `main_logs`: after `from little_loops.cli.issues import main_issues` (between `issues` and `loop`).
+- Core feature not yet implemented — `logs.py` does not exist ✓
+- All other claims about reusable helpers accurate (user_messages.py:374, session_log.py:62, cli_args.py functions)
+
+— Verified 2026-04-11
+
+## Blocks
+
+- FEAT-1003
+- FEAT-1005
+- FEAT-1006
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5bfe55d-50b8-488b-a0ce-e714fb6c9ff8.jsonl`
 - `/ll:wire-issue` - 2026-04-08T21:33:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cc6f86f-01df-44f7-81d6-a9508a1aad5a.jsonl`
 - `/ll:refine-issue` - 2026-04-08T21:29:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91b646f5-8dba-4b71-a137-52289ce2376f.jsonl`

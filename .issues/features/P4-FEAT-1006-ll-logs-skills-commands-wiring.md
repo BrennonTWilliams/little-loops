@@ -142,7 +142,22 @@ N/A - No public API changes. Configuration-only updates to command and skill mar
 
 `feature`, `wiring`, `cli`
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — `ll-gitignore` was added to the codebase after this issue was written. Multiple counts and line references are now stale:
+
+- `skills/configure/areas.md:793` now reads "Authorize all **13** ll- CLI tools" (includes `ll-gitignore`); count must go **13→14** (not 12→13)
+- `commands/help.md` now has 13 CLI entries ending at `ll-gitignore` (line 230) — the "pre-existing gap" was fixed; insert `ll-logs` after line 230
+- `skills/init/SKILL.md`: `"Bash(ll-gitignore:*)"` already present at line 442; insert `"Bash(ll-logs:*)"` after that (not after `ll-check-links` at 441)
+- `skills/init/SKILL.md` boilerplate blocks: `ll-gitignore` is at line 523 (file-exists) and 547 (create-new) — one line later than stated; insert `ll-logs` after those
+- `skills/configure/areas.md:793` enumerated list now ends with `ll-gitignore`; append `ll-logs` after it, and update "Authorize all 13" → "Authorize all 14"
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:37:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:37:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3db3cb3-ebe4-456e-9528-2cdf0057d9ef.jsonl`
 - `/ll:wire-issue` - 2026-04-08T22:40:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c7abbb6-2a5d-4619-b357-ee4dba5547bf.jsonl`
 - `/ll:refine-issue` - 2026-04-08T22:22:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c7abbb6-2a5d-4619-b357-ee4dba5547bf.jsonl`

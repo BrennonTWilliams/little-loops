@@ -250,7 +250,20 @@ ll-issues decisions sync                        # write active required rules to
 
 **Open** | Created: 2026-04-04 | Priority: P3
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — One stale line reference found:
+
+- `scripts/little_loops/cli/issues/__init__.py`: `add_subparsers(dest="command")` is at line **89** (not 84 as stated). The "add `decisions` subparser after `subs = parser.add_subparsers(...)` at line 84" instruction should reference line 89.
+- `decisions.py` module does not exist — feature not implemented ✓
+- No `DecisionsConfig` in `config/features.py` ✓
+- `config/core.py:95` (`_parse_config`) confirmed at line 95 ✓
+- `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:refine-issue` - 2026-04-07T18:30:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a30dea-bcb8-4472-8595-836364d4ab19.jsonl`
 - `/ll:refine-issue` - 2026-04-04T21:54:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2617058-86bb-4762-8daf-c963cd330fc4.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d50b6641-c597-41dc-894f-47b323d241b9.jsonl`

@@ -205,7 +205,19 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 
 `feature`, `documentation`, `cli`
 
+## Verification Notes
+
+**Verdict**: VALID — Blocked by FEAT-1002 (not yet implemented). All prerequisite conditions confirmed:
+
+- `scripts/little_loops/cli/logs.py` does not exist ✓
+- `README.md:90` still reads "13 CLI tools" ✓ (note: `ll-generate-schemas` was added to pyproject.toml but not yet to README or help.md, so count remains 13 from a docs perspective)
+- `docs/reference/CLI.md` still has no `### ll-logs` section ✓
+- Insertion point reference (`### ll-gitignore` ending at line 879) may have shifted slightly — verify before implementing
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:wire-issue` - 2026-04-08T22:15:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7442f9bc-9ee0-4418-bdc5-0a1d97abfe36.jsonl`
 - `/ll:refine-issue` - 2026-04-08T22:11:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af0c751e-6fe7-46aa-9bdf-a9083eb40d63.jsonl`
 - `/ll:format-issue` - 2026-04-08T22:07:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d2deea6-cb0f-420c-b650-c96b5bb4036d.jsonl`

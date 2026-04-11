@@ -254,7 +254,20 @@ Write `test_config.py` tests BEFORE modifying `core.py:74-75` — `config/core.p
 
 `feature`, `opencode`, `python`, `captured`
 
+## Verification Notes
+
+**Verdict**: VALID — Active hardcodes confirmed:
+
+- `user_messages.py:374` — `claude_projects = Path.home() / ".claude" / "projects"` still hardcoded ✓
+- `cli/messages.py:257` — `output_dir = Path.cwd() / ".claude"` still hardcoded (note: actual line is **257**, not 256 as stated — off by 1)
+- `config/core.py:75` — `CONFIG_DIR = ".ll"` (already `.ll`, not `.claude`) ✓ (confirmed)
+- `user_messages.py:736` — save_messages output dir already `.ll` ✓ (confirmed)
+- Feature not yet implemented (no `find_config()` helper, no `opencode_project_dir` fixture)
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29d9c69a-ea81-4ffe-8c79-77785ac2b32a.jsonl`
 - `/ll:refine-issue` - 2026-04-06T04:44:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/924b0e9e-ff3c-45b6-b028-4d38a2ebbe23.jsonl`
 - `/ll:format-issue` - 2026-04-06T04:39:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd7d1fbc-ba93-4a22-9dbc-fa00f11894d9.jsonl`

@@ -222,13 +222,16 @@ A developer wants to build a Grafana dashboard extension. They run `ll-create-ex
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-02
+**Verdict**: NEEDS_UPDATE — Core claims remain valid, but `ll-generate-schemas` was added since the last refinement pass, shifting pyproject.toml line numbers:
 
 - FEAT-911 is COMPLETED — extension Protocol exists; no scaffolding tooling exists yet ✓
-- No `ll create-extension` entry point in `scripts/pyproject.toml` ✓
+- No `ll-create-extension` entry point in `scripts/pyproject.toml` ✓
 - No `templates/extension/` directory ✓
 - No `LLTestBus` in `scripts/little_loops/testing.py` (or anywhere in `scripts/`) ✓
-- Issue accurately describes the missing developer experience tooling
+- `scripts/pyproject.toml`: `ll-generate-schemas` now at line 62; `mcp-call` shifted to line **63** (not 62). "Refinement Pass 6" instruction to insert `ll-create-extension` after `mcp-call` at line 62 is stale — insert after line 63.
+- `scripts/little_loops/cli/__init__.py`: now has `from little_loops.cli.schemas import main_generate_schemas` at line 29 and `"main_generate_schemas"` in `__all__`. Alphabetical insertion for `main_create_extension`: after `main_auto` at line 20, before `main_deps` at line 21 (confirmed — `create_extension` sorts between `auto` and `deps`).
+
+— Verified 2026-04-11
 
 ---
 

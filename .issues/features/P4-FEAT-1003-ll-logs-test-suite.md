@@ -170,7 +170,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `feature`, `cli`, `testing`, `logging`
 
+## Verification Notes
+
+**Verdict**: VALID — Both blockers confirmed active:
+
+- ENH-753 (rename confidence-check skill) is still open in `.issues/enhancements/` ✓
+- FEAT-1002 (`logs.py`) is not implemented — `scripts/little_loops/cli/logs.py` does not exist ✓
+- `scripts/tests/test_ll_logs.py` does not exist ✓
+- Patch targets (`get_project_folder`, `Path.home`) and fixture patterns remain accurate
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:wire-issue` - 2026-04-08T21:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36ed4d98-082d-4fb8-b061-42af2b5aa85b.jsonl`
 - `/ll:refine-issue` - 2026-04-08T21:42:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22e0ba7a-4320-4721-8390-e8c136127c39.jsonl`
 - `/ll:format-issue` - 2026-04-08T21:39:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d03855f-5cb9-451c-afa5-26788c7cded0.jsonl`

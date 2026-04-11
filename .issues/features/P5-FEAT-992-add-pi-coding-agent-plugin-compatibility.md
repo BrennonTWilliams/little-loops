@@ -99,5 +99,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-04-08 | Priority: P5
 
+## Verification Notes
+
+**Verdict**: VALID — Speculative issue; no Pi Coding Agent plugin work has started. No `pi-plugin/` directory exists. Referenced FEAT-769/959/960/961 patterns remain in open state.
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba99d353-3f2a-47f1-ac66-f55be7e50744.jsonl`

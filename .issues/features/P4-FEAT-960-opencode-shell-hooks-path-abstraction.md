@@ -122,7 +122,23 @@ Also update `subprocess_utils.py:28` to probe `.opencode/ll-continue-prompt.md` 
 
 **OpenCode detection heuristic**: Check for `opencode.json` in project root OR `OPENCODE_SESSION` env var. Design decision should be consistent across all 4 CLI entry points.
 
+## Verification Notes
+
+**Verdict**: OUTDATED — The "Current Behavior" section is incorrect throughout. All `.claude/` path references in shell scripts have already been migrated to `.ll/`:
+
+- `precompact-state.sh:28` — `STATE_DIR=".ll"` (not `.claude` as stated); `PRECOMPACT_STATE_FILE="${STATE_DIR}/ll-precompact-state.json"` at line 29; `CONTINUE_PROMPT=".ll/ll-continue-prompt.md"` at line 66
+- `session-start.sh:13,16` — already uses `.ll/ll-context-state.json` and `.ll/ll-config.json` (not `.claude/`)
+- `session-cleanup.sh:14,20` — already uses `.ll/.ll-lock`, `.ll/ll-context-state.json`, `.ll/ll-config.json`
+- `context-monitor.sh` — no `.claude/ll` paths found; already uses `.ll/` paths
+- `lib/common.sh:ll_resolve_config()` — already probes `.ll/ll-config.json` first (not `.claude/`)
+- `cli/auto.py`: `LL_HANDOFF_THRESHOLD` injection is at line **77** (not 71 as stated)
+
+The core feature requirement (adding `${LL_STATE_DIR:-.ll}` parameterization so OpenCode can redirect paths) still stands. The "Expected Behavior" and acceptance criteria remain valid. Only the "Current Behavior" description and line references are wrong.
+
+— Verified 2026-04-11
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:issue-size-review` - 2026-04-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
 
 ---
