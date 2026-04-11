@@ -124,6 +124,7 @@ apply_parser.add_argument("--sprint", type=str, default=None, help="Restrict to 
 `feature`, `cli`, `ll-deps`, `dependency-management`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-04-11T18:08:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/357454b3-7b86-4dcc-8764-fe83bcd065e4.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edb17e35-0cf2-4ace-9fc3-69a8f503394e.jsonl`
 
 ---
