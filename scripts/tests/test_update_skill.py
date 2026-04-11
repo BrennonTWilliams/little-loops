@@ -13,7 +13,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 SKILL_FILE = PROJECT_ROOT / "skills" / "update" / "SKILL.md"
-PUBLISH_CMD_FILE = PROJECT_ROOT / "commands" / "publish.md"
+PUBLISH_CMD_FILE = PROJECT_ROOT / ".claude" / "commands" / "publish.md"
 CONFIGURE_SKILL_FILE = PROJECT_ROOT / "skills" / "configure" / "SKILL.md"
 PLUGIN_JSON = PROJECT_ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE_JSON = PROJECT_ROOT / ".claude-plugin" / "marketplace.json"

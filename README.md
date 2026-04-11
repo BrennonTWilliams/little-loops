@@ -184,7 +184,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
 | `/ll:configure [area]` | Interactive configuration editor |
 | `/ll:update [--plugin\|--package\|--all] [--dry-run]` | Update little-loops plugin and pip package |
-| `/ll:publish <version\|patch\|minor\|major> [--dry-run]` | Bump version in source files (maintainers only) |
+| `/ll:publish <version\|patch\|minor\|major> [--dry-run]` | Bump version in source files (maintainers only — project-local, not shipped in plugin) |
 | `/ll:help` | Show available commands and usage |
 | `/ll:handoff [context]` | Generate continuation prompt for session handoff |
 | `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |

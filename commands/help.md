@@ -211,7 +211,7 @@ SESSION & CONFIG
     Flags: --plugin, --package, --all, --dry-run
 
 /ll:publish <version|patch|minor|major> [--dry-run]
-    Bump version in all source files (maintainers only — requires little-loops source repo)
+    Bump version in all source files (maintainers only — project-local .claude/commands/, not shipped)
 
 CLI TOOLS (pip install little-loops)
 ------------------------------------
@@ -263,7 +263,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
 **Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
-**Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`
+**Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`, `publish` *(maintainers only — project-local)*
 
 ---
 

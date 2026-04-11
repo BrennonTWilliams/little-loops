@@ -11,6 +11,14 @@ outcome_confidence: 86
 
 The `/ll:publish` command handles version bumping and syncing across `plugin.json`, `marketplace.json`, `pyproject.toml`, and `__init__.py` — files that only exist in the little-loops source repo. It ships as part of the plugin itself (`commands/publish.md`), making it visible to all consumer projects where it is meaningless (and where the guard in Step 1 would immediately error). The command should be removed from the distributed plugin and maintained only as a project-level command within this repo.
 
+## Current Behavior
+
+The `/ll:publish` command ships as part of the plugin distribution via `commands/publish.md`, appearing in the command palette and `/ll:help` output for all consumer projects. While a guard clause prevents it from doing harm in non-source-repo contexts, the command still shows up for every ll user despite having no meaningful function outside the little-loops source repo.
+
+## Expected Behavior
+
+The `/ll:publish` command is maintained only as a project-local command (`.claude/commands/publish.md`) within the little-loops source repo and is excluded from the distributed plugin. Consumer projects no longer see this maintainer-only command in their palette or `/ll:help` output.
+
 ## Context
 
 **Direct mode**: User description: "Move publish to a project-level command not included in our ll@little-loops plugin"
@@ -29,6 +37,11 @@ Surfaced after `/ll:run-tests` revealed `marketplace.json` was out of sync with 
 2. Create a project-level command (e.g., `.claude/commands/publish.md` or a local `.ll/commands/publish.md`) that lives only in this repo and is not packaged/shipped.
 3. Update `commands/` references in documentation and `CLAUDE.md` to reflect its removal.
 4. Ensure the version-sync tests (`test_update_skill.py::TestMarketplaceVersionSync`) still pass and continue to guard against version drift.
+
+## Scope Boundaries
+
+- **In scope**: Moving `commands/publish.md` → `.claude/commands/publish.md` via `git mv`; updating the `PUBLISH_CMD_FILE` path constant in `test_update_skill.py`; updating doc references in `docs/reference/COMMANDS.md`, `README.md`, and `commands/help.md`
+- **Out of scope**: Changing the publish command's functionality or argument interface; modifying `ll:manage-release`; editing `plugin.json` (automatic exclusion via directory glob); creating new tests beyond the path-constant fix
 
 ## Implementation Steps
 
@@ -65,7 +78,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `manage-release.md` does not invoke `/ll:publish` at runtime. Its `bump` action at `commands/manage-release.md:258-271` independently edits `pyproject.toml`, `plugin.json`, and `__init__.py` — it does not call `publish`. The only cross-reference is the hint in `publish.md:146` pointing users toward `manage-release` as a next step. That hint is unaffected by the move.
 
 **Critical unlisted step — update test path constant:**
-- `scripts/tests/test_update_skill.py:17` declares `PUBLISH_CMD_FILE = PROJECT_ROOT / "commands" / "publish.md"`. After the move this path will not exist, causing `TestPublishCommandExists` (6 structural tests at lines 132–181) to fail immediately.
+- `scripts/tests/test_update_skill.py:16` declares `PUBLISH_CMD_FILE = PROJECT_ROOT / "commands" / "publish.md"`. After the move this path will not exist, causing `TestPublishCommandExists` (6 structural tests at lines 132–181) to fail immediately.
 - **Fix**: Change line 17 to `PUBLISH_CMD_FILE = PROJECT_ROOT / ".claude" / "commands" / "publish.md"`.
 - `TestMarketplaceVersionSync` (lines 204–248) does not reference the file path and is unaffected.
 
@@ -73,7 +86,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Files to Modify
 - `commands/publish.md` — move to `.claude/commands/publish.md` via `git mv`; no content changes required
-- `scripts/tests/test_update_skill.py:17` — update `PUBLISH_CMD_FILE` path from `PROJECT_ROOT / "commands" / "publish.md"` to `PROJECT_ROOT / ".claude" / "commands" / "publish.md"`
+- `scripts/tests/test_update_skill.py:16` — update `PUBLISH_CMD_FILE` path from `PROJECT_ROOT / "commands" / "publish.md"` to `PROJECT_ROOT / ".claude" / "commands" / "publish.md"`
 - `docs/reference/COMMANDS.md:65-66` — update `### /ll:publish *(maintainers only)*` section to note project-local location
 - `docs/reference/COMMANDS.md:636` — update table row in "Git & Release" group
 - `README.md` — update `/ll:publish` entry in command table
@@ -111,6 +124,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | guidelines | .claude/CLAUDE.md | Lists publish under Commands & Skills |
 | architecture | docs/ARCHITECTURE.md | Command packaging and distribution model |
 
+## Impact
+
+- **Priority**: P3 - Low urgency; command is harmless but creates palette clutter for all consumers
+- **Effort**: Small - Primarily `git mv` plus targeted updates across 5–6 files; no logic changes
+- **Risk**: Low - No runtime behavior changes for consumers; only the publish workflow location changes for maintainers
+- **Breaking Change**: No - Consumer projects lose access to a command that would have immediately errored anyway
+
 ## Labels
 
 `enhancement`, `captured`, `dx`, `plugin-packaging`
@@ -118,12 +138,26 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-11T18:15:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10444532-ceab-45d1-a111-8caae8b29ff9.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd951d64-2d65-443e-982a-ea4205e199e4.jsonl`
 - `/ll:refine-issue` - 2026-04-11T18:08:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/357454b3-7b86-4dcc-8764-fe83bcd065e4.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91dfec95-ddc4-425f-ab2e-4702ccaf176d.jsonl`
 
 ---
 
+---
+
+## Resolution
+
+**Completed**: 2026-04-11
+
+- `commands/publish.md` moved to `.claude/commands/publish.md` via `git mv` (history preserved)
+- `scripts/tests/test_update_skill.py:16` — `PUBLISH_CMD_FILE` path updated to `.claude/commands/publish.md`; all 26 `TestPublishCommandExists` and `TestMarketplaceVersionSync` tests pass
+- `docs/reference/COMMANDS.md` — section heading and table row updated to note project-local location
+- `README.md` — command table entry updated to note project-local, not shipped
+- `commands/help.md` — help output annotation updated; Quick Reference Table entry clarified as maintainers only
+- `plugin.json` not modified — `"commands": ["./commands"]` directory glob automatically excludes the moved file
+
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P3
+**Completed** | Created: 2026-04-11 | Resolved: 2026-04-11 | Priority: P3

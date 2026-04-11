@@ -62,8 +62,8 @@ Update the little-loops Claude Code plugin and pip package to the latest version
 
 **Trigger keywords:** "update little-loops", "update plugin", "update package", "ll update"
 
-### `/ll:publish` *(maintainers only)*
-Bump version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commit. Source-repo-only — exits with an error if `.claude-plugin/plugin.json` is not found.
+### `/ll:publish` *(maintainers only — project-local, not shipped in plugin)*
+Bump version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commit. Available only in the little-loops source repo via `.claude/commands/publish.md` — not distributed to consumer projects.
 
 **Arguments:**
 - `version` — New version string (e.g., `1.67.0`) or bump level (`patch`, `minor`, `major`)
@@ -633,7 +633,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `cleanup-worktrees` | Clean up stale worktrees and branches |
 | `manage-release` | Manage releases, tags, and changelogs |
 | `update`^ | Update little-loops plugin and package (consumer-first) |
-| `publish` | Bump version in all source files (maintainers only) |
+| `publish` *(project-local)* | Bump version in all source files (maintainers only — `.claude/commands/publish.md`, not shipped) |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
 | `create-loop`^ | Interactive FSM loop creation |
