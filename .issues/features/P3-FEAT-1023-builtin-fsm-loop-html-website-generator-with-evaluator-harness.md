@@ -221,9 +221,18 @@ states:
 - `ll-loop validate scripts/little_loops/loops/html-website-generator.yaml` — Structural validation (terminal reachability, evaluator configs, required fields)
 - `ll-loop test html-website-generator` — Same via name resolution
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py:47-86` — `test_expected_loops_exist()` has a hard-coded expected set; **will fail immediately** without adding `"html-website-generator"` to the set [hard break — must update]
+- `scripts/tests/test_builtin_loops.py:29,36` — `test_all_parse_as_yaml` and `test_all_validate_as_valid_fsm` use `glob("*.yaml")` and auto-cover the new file — no changes needed
+- `scripts/tests/test_builtin_loops.py` (new) — Add `TestHtmlWebsiteGeneratorLoop` class: verify required states exist (`plan`, `generate`, `serve`, `evaluate`, `score`, `cleanup`, `done`), `done` is terminal, `input_key` equals `"description"`, mcp_tool `evaluate` state has `route:` with `success`/`tool_error`/`not_found`/`timeout` keys — follow pattern of `TestEvaluationQualityLoop` at line 281
+
 ### Documentation
 - `scripts/little_loops/loops/README.md` — Add loop to index
 - `docs/claude-code/harness-design-long-running-apps.md` — Source article; could add back-reference
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md:219-235` — Built-in loops table lists every named loop; new row needed for `html-website-generator` with description [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md:506-511` — Harness examples sub-table currently lists only `harness-single-shot` and `harness-multi-item`; add row if `category: harness` [Agent 2 finding]
 
 ### Configuration
 - Requires Playwright MCP configured in user's `.mcp.json`; loop should degrade gracefully when absent (route `not_found: generate` already handles this)
@@ -236,6 +245,13 @@ states:
 4. Run `ll-loop validate html-website-generator` and fix any schema errors
 5. Run `ll-loop test html-website-generator` to confirm structural validation passes
 6. Update `scripts/little_loops/loops/README.md` to reference the new loop
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `scripts/tests/test_builtin_loops.py` — add `"html-website-generator"` to the `expected` set in `test_expected_loops_exist()` (~line 47) and add a `TestHtmlWebsiteGeneratorLoop` class verifying required states, terminal state, `input_key: "description"`, and `mcp_tool` `route:` keys (follow pattern of `TestEvaluationQualityLoop` at line 281)
+8. Update `docs/guides/LOOPS_GUIDE.md` — add row to the built-in loops table (lines 219–235) and to the harness examples sub-table (lines 506–511)
 
 ## API/Interface
 
@@ -274,5 +290,6 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 **Open** | Created: 2026-04-10 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-11T04:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32154347-e8f6-4756-b187-425c7a06970e.jsonl`
 - `/ll:format-issue` - 2026-04-11T04:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3be8bdda-d42f-491e-8a93-0f32e4fd87aa.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe9849b2-c9ca-4d60-92fc-cfd769be2923.jsonl`

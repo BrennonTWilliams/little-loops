@@ -645,6 +645,13 @@ class TestRefineToReadyIssueSubLoop:
             "resolve_issue action must initialize '.loops/tmp/refine-to-ready-wire-done' flag"
         )
 
+    def test_check_refine_limit_routes_to_refine_issue(self, data: dict) -> None:
+        """check_refine_limit.on_yes must route directly to refine_issue (not check_lifetime_limit)."""
+        state = data["states"].get("check_refine_limit", {})
+        assert state.get("on_yes") == "refine_issue", (
+            f"check_refine_limit.on_yes should be 'refine_issue', got {state.get('on_yes')!r}"
+        )
+
 
 class TestHarnessCapture:
     """Tests that harness YAML files wire execute output to check_semantic via capture/source."""

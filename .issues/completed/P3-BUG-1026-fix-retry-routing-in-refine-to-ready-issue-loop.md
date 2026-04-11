@@ -151,6 +151,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `bug`, `fsm`, `loops`, `refine-to-ready-issue`, `captured`
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-11T04:32:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c43e8eb7-9e31-455b-9136-4124b0625aed.jsonl`
+- `/ll:ready-issue` - 2026-04-11T04:30:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5010f904-34a3-42c3-a2bb-3d4d17fda453.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd761c4f-1d5d-4463-b0ee-835538892eea.jsonl`
 - `/ll:wire-issue` - 2026-04-11T04:26:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3be8bdda-d42f-491e-8a93-0f32e4fd87aa.jsonl`
 - `/ll:refine-issue` - 2026-04-11T04:21:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c66e6a84-cf7b-484b-806d-2eb53f8dbabb.jsonl`
@@ -160,6 +162,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
+## Resolution
+
+**Status**: Resolved
+**Resolved**: 2026-04-10
+
+### Changes Made
+
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:158` — changed `check_refine_limit.on_yes` from `check_lifetime_limit` to `refine_issue`
+- `scripts/tests/test_builtin_loops.py` — added `test_check_refine_limit_routes_to_refine_issue` to `TestRefineToReadyIssueSubLoop`
+- `docs/guides/LOOPS_GUIDE.md:273` — updated "Before each refinement" to "At the start of each run" to reflect correct lifetime cap timing
+
+### Verification
+
+- `python -m pytest scripts/tests/test_builtin_loops.py -v -k "refine_to_ready"` — 5 passed
+
+---
+
 ## Status
 
-**Open** | Created: 2026-04-10 | Priority: P3
+**Completed** | Created: 2026-04-10 | Priority: P3

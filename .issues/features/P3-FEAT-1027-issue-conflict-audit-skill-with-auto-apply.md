@@ -80,6 +80,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `skills/audit-issue-conflicts/SKILL.md` — primary deliverable; new skill file to create (does not yet exist)
 - `.claude/CLAUDE.md` — add `audit-issue-conflicts`^ to Issue Refinement or Meta-Analysis section
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `commands/help.md` — hardcoded skill listing; add `/ll:audit-issue-conflicts` to ISSUE REFINEMENT block (lines 44–81) and Quick Reference Table (`Issue Refinement` entry, ~line 254); not auto-discovered
+- `README.md` — bump skill count `25 → 26` (line 89) and add `/ll:audit-issue-conflicts` row to Issue Refinement command table (lines 108–123)
+- `CONTRIBUTING.md` — bump skill count `25 → 26` (line 125) and add `audit-issue-conflicts/` entry to skill directory tree (after `audit-docs/`, lines 125–148)
+
 ### Dependent Files (Callers/Importers)
 - `.claude-plugin/plugin.json` — **no change needed**; `"skills": ["./skills"]` at line 20 auto-discovers all `skills/*/SKILL.md` files
 - `commands/audit-issue-conflicts.md` — **not needed**; skills in `skills/*/SKILL.md` are auto-registered as `/ll:audit-issue-conflicts` without a separate command file
@@ -95,9 +100,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - TBD - unit tests for conflict detection logic if implemented in Python
 - Integration tests covering: no conflicts, single conflict, multiple conflicts, `--auto` mode
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_audit_issue_conflicts_skill.py` — **new test file to write**; follow exact pattern from `scripts/tests/test_improve_claude_md_skill.py`; assert: (1) `skills/audit-issue-conflicts/SKILL.md` exists, (2) `--dry-run` token present, (3) `--auto` token present, (4) severity labels (`high`, `medium`, `low`) present, (5) conflict type tokens (`requirement`, `objective`, `architecture`, `scope`) present, (6) `"No conflicts found"` path documented, (7) `{{config.issues.base_dir}}` glob pattern referenced
+- Note: adding the skill file raises the actual skills count from 25 → 26; `ll-verify-docs` will fail until `README.md`, `CONTRIBUTING.md`, and `docs/ARCHITECTURE.md` are updated; no pytest tests are counting against the real project, so CI will not break — but running `ll-verify-docs` manually will
+
 ### Documentation
-- `docs/ARCHITECTURE.md` - mention new skill
-- `CLAUDE.md` - add to command list under Issue Refinement or Meta-Analysis
+- `docs/ARCHITECTURE.md` — bump skill count `25 → 26` (lines 26, 99); add `audit-issue-conflicts/` directory entry in skill listing between `audit-claude-config/` and `audit-docs/` (lines 104–107)
+- `CLAUDE.md` — add to command list under Issue Refinement or Meta-Analysis
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` — append `audit-issue-conflicts` to the `--auto` consumer list (line 14) and `--dry-run` consumer list (line 15); add `### /ll:audit-issue-conflicts` subsection to Issue Management section (after `/ll:tradeoff-review-issues`, ~line 204)
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — add `audit-issue-conflicts` to the "Plan a Feature Sprint" recipe (~line 484) alongside `tradeoff-review-issues` as a pre-sprint backlog hygiene step
+- `skills/issue-workflow/SKILL.md` — optional: add `audit-issue-conflicts` to Related Skills table (lines 155–164); thematically adjacent as a pre-sprint backlog audit tool
 
 ### Configuration
 - N/A (no new config keys required; reads existing `issues.base_dir`)
@@ -113,6 +127,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 7. **Implement `--auto` and `--dry-run` flags** — parse from `$FLAGS` using substring match; check `$DANGEROUSLY_SKIP_PERMISSIONS` env var (pattern: `skills/wire-issue/SKILL.md:55-65`); `--dry-run` outputs report without modifying any issue files
 8. **Update `.claude/CLAUDE.md`** — add `audit-issue-conflicts`^ to Issue Refinement or Meta-Analysis section; no `plugin.json` changes needed (auto-discovered via `"skills": ["./skills"]`)
 9. **Write tests** — integration tests covering: no conflicts, single conflict pair, multiple conflicts across types, `--auto` mode, `--dry-run` mode; follow test patterns in `scripts/tests/`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. Update `commands/help.md` — add `/ll:audit-issue-conflicts` entry to ISSUE REFINEMENT block (lines 44–81) and Quick Reference Table (`Issue Refinement:` entry, ~line 254)
+11. Update `README.md` — bump skill count `25 → 26` (line 89); add `/ll:audit-issue-conflicts` row to Issue Refinement command table (lines 108–123)
+12. Update `CONTRIBUTING.md` — bump skill count `25 → 26` (line 125); add `audit-issue-conflicts/` entry to skill directory tree after `audit-docs/` (lines 125–148)
+13. Update `docs/ARCHITECTURE.md` — bump skill count `25 → 26` at lines 26 and 99; add `├── audit-issue-conflicts/` directory entry between `audit-claude-config/` and `audit-docs/` (lines 104–107)
+14. Update `docs/reference/COMMANDS.md` — append `audit-issue-conflicts` to `--auto` consumer list (line 14) and `--dry-run` consumer list (line 15); add `### /ll:audit-issue-conflicts` subsection after `/ll:tradeoff-review-issues` (~line 204)
+15. Write `scripts/tests/test_audit_issue_conflicts_skill.py` — new structural test file following `scripts/tests/test_improve_claude_md_skill.py` pattern (7 assertions: file exists, --dry-run, --auto, severity labels, conflict types, "No conflicts found" path, `{{config.issues.base_dir}}` glob)
 
 ## API/Interface
 
@@ -153,6 +178,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-04-10 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-11T04:31:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0479a8c9-3760-43ef-9882-a6ccd39a5e03.jsonl`
 - `/ll:refine-issue` - 2026-04-11T04:26:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c85b9aa1-79ab-48d3-84d4-705da5aae834.jsonl`
 - `/ll:format-issue` - 2026-04-11T04:21:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/747b5bd8-c7d1-4db4-9f6c-74f553aeef25.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f3d0cb5-182d-4d87-9949-f092df0ed97f.jsonl`

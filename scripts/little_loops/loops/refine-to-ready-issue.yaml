@@ -155,7 +155,7 @@ states:
       type: output_numeric
       operator: lt
       target: 2
-    on_yes: check_lifetime_limit
+    on_yes: refine_issue
     on_no: failed
     on_error: failed
 
