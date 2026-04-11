@@ -439,6 +439,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-sync:*)",
      "Bash(ll-verify-docs:*)",
      "Bash(ll-check-links:*)",
+     "Bash(ll-gitignore:*)",
      "Write(.ll/ll-continue-prompt.md)"
      ```
    - Create `.claude/` directory first if needed

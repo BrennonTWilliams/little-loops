@@ -790,7 +790,7 @@ questions:
     question: "Which ll- CLI commands should be allowed?"
     options:
       - label: "All ll- commands (Recommended)"
-        description: "Authorize all 12 ll- CLI tools and handoff write: ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links, Write(.ll/ll-continue-prompt.md)"
+        description: "Authorize all 13 ll- CLI tools and handoff write: ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links, ll-gitignore, Write(.ll/ll-continue-prompt.md)"
       - label: "Keep current"
         description: "Keep existing entries without changes"
     multiSelect: false
