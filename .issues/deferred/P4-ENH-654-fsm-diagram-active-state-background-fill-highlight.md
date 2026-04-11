@@ -131,6 +131,7 @@ _Codebase Research: full call chain with line refs:_
 - `_render_fsm_diagram` now at `layout.py:1434`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-11T19:02:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
@@ -143,9 +144,15 @@ _Codebase Research: full call chain with line refs:_
 - `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12d9282f-0d38-4934-975d-426a4e8789d4.jsonl`
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — OUTDATED: `_render_2d_diagram()` refactored to `layout.py`; all line refs invalid; ENH-638 dep missing
 
+## Deferral Note
+
+**Deferred**: 2026-04-11
+
+Implementation steps are entirely invalid after the `layout.py` refactor (`_render_2d_diagram()` no longer exists; rendering logic now in `layout.py:1434`). Prerequisite ENH-638 (off-path border fix) does not exist. P4 visual polish with LOW utility per tradeoff review — not worth a full step rewrite now. Revisit if ENH-839 (split layout.py) is implemented; that work touches the same code and would be a natural time to pull this back.
+
 ## Status
 
-**Open** | Created: 2026-03-08 | Priority: P4
+**Deferred** | Created: 2026-03-08 | Priority: P4
 
 ## Blocked By
 
