@@ -1928,6 +1928,8 @@ def run_claude_command(
     logger: Logger,
     timeout: int = 3600,
     stream_output: bool = True,
+    agent: str | None = None,
+    tools: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]
 ```
 
@@ -1938,6 +1940,8 @@ Invoke Claude CLI command with output streaming.
 - `logger` - Logger for output
 - `timeout` - Timeout in seconds
 - `stream_output` - Whether to stream output to console
+- `agent` - Claude agent model override; appended as `--agent <value>` to CLI invocation
+- `tools` - Restrict available tools; appended as `--tools <value>` to CLI invocation
 
 **Returns:** `CompletedProcess` with stdout/stderr captured
 

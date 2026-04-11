@@ -24,7 +24,7 @@ Decomposed from ENH-1014: "Document `agent:` and `tools:` in API.md and create-l
 
 ## Current Behavior
 
-The `agent:` and `tools:` state-level fields (added by FEAT-1011 to `StateConfig`) are not documented in `docs/reference/API.md`. Programmatic users reading the API reference have no documentation for these fields.
+Two of three planned `docs/reference/API.md` locations now document `agent:` and `tools:` (`StateConfig` dataclass block and `ActionRunner` Protocol `run()` signature — both implemented). The third location — `run_claude_command` function signature at line 1923 — still lacks `agent`/`tools` parameters and parameter bullet entries.
 
 ## Expected Behavior
 
@@ -42,25 +42,13 @@ This documentation enhancement would:
 
 ## Implementation Steps
 
-### Location 1: `StateConfig` dataclass block (lines 3766–3786)
+### ~~Location 1: `StateConfig` dataclass block~~ ✅ DONE
 
-Insert these two lines **before the closing ` ``` ` on line 3786**:
-```python
-    agent: str | None = None           # Claude agent model override for this state (prompt action_type only)
-    tools: list[str] | None = None     # Restrict available tools for this state (prompt action_type only)
-```
+`agent: str | None = None` and `tools: list[str] | None = None` already present at lines 3786–3787 in current API.md.
 
-Current last field for reference: `context_passthrough: bool = False  # Pass parent context vars to child; merge child captures back`
+### ~~Location 2: `ActionRunner` Protocol `run()` signature~~ ✅ DONE
 
-### Location 2: `ActionRunner` Protocol `run()` signature (lines 4044–4057)
-
-Insert these two lines **before `    ) -> ActionResult: ...`** (approximately line 4054):
-```python
-        agent: str | None = None,
-        tools: list[str] | None = None,
-```
-
-Current last parameter for reference ends with `on_output_line: Callable[[str], None] | None = None,`
+`agent: str | None = None,` and `tools: list[str] | None = None,` already present at lines 4056–4057 in current API.md (ActionRunner Protocol section starts at line 4046).
 
 ### Location 3: `run_claude_command` function signature (lines 1923–1942)
 
@@ -134,9 +122,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-04-09):_
 
 ## Acceptance Criteria
 
-- [ ] `docs/reference/API.md` `StateConfig` block includes `agent: str | None` and `tools: list[str] | None` fields
-- [ ] `docs/reference/API.md` `ActionRunner` Protocol `run()` signature includes `agent` and `tools` parameters
-- [ ] `docs/reference/API.md` `run_claude_command` block includes `agent`/`tools` params and two new `**Parameters:**` bullets
+- [x] `docs/reference/API.md` `StateConfig` block includes `agent: str | None` and `tools: list[str] | None` fields (lines 3786–3787 — DONE)
+- [x] `docs/reference/API.md` `ActionRunner` Protocol `run()` signature includes `agent` and `tools` parameters (lines 4056–4057 — DONE)
+- [ ] `docs/reference/API.md` `run_claude_command` block includes `agent`/`tools` params and two new `**Parameters:**` bullets (lines 1923–1942 — REMAINING)
 
 ## Impact
 
@@ -158,11 +146,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-04-09):_
 
 ---
 
+## Resolution
+
+- Added `agent: str | None = None` and `tools: list[str] | None = None` parameters to the `run_claude_command` function signature in `docs/reference/API.md` (lines ~1931–1932)
+- Added two `**Parameters:**` bullet entries: `agent` and `tools` with descriptions
+- All three acceptance criteria are now satisfied
+- `ll-verify-docs` passes; `ll-check-links` shows 4 pre-existing broken links unrelated to this change
+
 ## Status
 
-Active
+Completed
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-11T00:52:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/199d5de2-bdf5-4a75-a47a-f7d262a19cf4.jsonl`
 - `/ll:confidence-check` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96c8bcc5-9d78-4121-b927-8e51c61d459e.jsonl`
 - `/ll:wire-issue` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4edfc0f0-2b56-4ae6-bba0-6d90d78541f2.jsonl`
 - `/ll:refine-issue` - 2026-04-09T15:54:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4edfc0f0-2b56-4ae6-bba0-6d90d78541f2.jsonl`
