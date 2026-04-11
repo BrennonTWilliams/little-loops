@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/ll:publish` Maintainer Command** — New command bumps version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commits; guards against running outside the little-loops source repo (ENH-1020)
+
+### Changed
+
+- **`/ll:update` Consumer-First** — Rewrote `/ll:update` to always update both pip package and Claude Code plugin regardless of repo type; removed source-repo guards and marketplace steps from the consumer update flow (ENH-1020)
+- **Issue-by-ID Lookups Use `ll-issues path`** — 8 skills and commands (`manage-issue`, `format-issue`, `go-no-go`, `confidence-check`, `issue-size-review`, `wire-issue`, `refine-issue`, `ready-issue`) now resolve issue IDs via `ll-issues path <ID>` instead of ad-hoc `find | grep` loops; completed and deferred issues are now found correctly (ENH-1022)
+
+### Fixed
+
+- **`ll-gitignore` Missing from Permissions and Help** — Added `ll-gitignore` to the canonical permissions block in `/ll:init`, the permissions authorization list in `/ll:configure`, and the CLI TOOLS section in `/ll:help`; tool count updated from 12 to 13 (ENH-1024)
+
 ### Planned
 
 - Windows compatibility testing
