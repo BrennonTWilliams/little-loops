@@ -90,15 +90,9 @@ fi
 # Resolve each ID to a file path using find:
 declare -a ISSUE_FILES
 for id in <sprint-issue-ids>; do
-    FILE=""
-    for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
-        if [ -d "$dir" ]; then
-            FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${id}[-_.]" | head -1)
-            if [ -n "$FILE" ]; then break; fi
-        fi
-    done
+    FILE=$(ll-issues path "${id}" 2>/dev/null)
     if [ -n "$FILE" ]; then ISSUE_FILES+=("$FILE")
-    else echo "Warning: Sprint issue $id not found in active issues (skipping)"; fi
+    else echo "Warning: Sprint issue $id not found (skipping)"; fi
 done
 
 echo "Sprint: $SPRINT_NAME (${#ISSUE_FILES[@]} issues)"

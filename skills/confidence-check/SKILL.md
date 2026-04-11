@@ -91,19 +91,13 @@ if [[ -n "$SPRINT_NAME" ]]; then AUTO_MODE=true; fi
 
 ### Single Issue Mode (default)
 
-If `ISSUE_ID` is provided, locate the issue file across active categories:
+If `ISSUE_ID` is provided, locate the issue file by ID:
 
 ```bash
-FILE=""
-for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
-    if [ -d "$dir" ]; then
-        FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
-        if [ -n "$FILE" ]; then break; fi
-    fi
-done
+FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)
 
 if [ -z "$FILE" ]; then
-    echo "Error: Issue $ISSUE_ID not found in active issues"
+    echo "Error: Issue $ISSUE_ID not found"
     exit 1
 fi
 ```
@@ -151,17 +145,11 @@ fi
 declare -a ISSUE_FILES
 # For each ID in the sprint's issues: list:
 for id in <sprint-issue-ids>; do
-    FILE=""
-    for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
-        if [ -d "$dir" ]; then
-            FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${id}[-_.]" | head -1)
-            if [ -n "$FILE" ]; then break; fi
-        fi
-    done
+    FILE=$(ll-issues path "${id}" 2>/dev/null)
     if [ -n "$FILE" ]; then
         ISSUE_FILES+=("$FILE")
     else
-        echo "Warning: Sprint issue $id not found in active issues (skipping)"
+        echo "Warning: Sprint issue $id not found (skipping)"
     fi
 done
 

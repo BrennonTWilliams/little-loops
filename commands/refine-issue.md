@@ -77,24 +77,13 @@ if [[ "$ISSUE_ID" == *"/"* ]] || [[ "$ISSUE_ID" == *.md ]]; then
     fi
 fi
 
-# Search for issue file across active categories (not completed/ or deferred/)
+# Search for issue file by ID
 if [ -z "$FILE" ]; then
-    for dir in {{config.issues.base_dir}}/*/; do
-        if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ] || [ "$(basename "$dir")" = "{{config.issues.deferred_dir}}" ]; then
-            continue
-        fi
-        if [ -d "$dir" ]; then
-            FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
-            if [ -n "$FILE" ]; then
-                echo "Found: $FILE"
-                break
-            fi
-        fi
-    done
+    FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)
 fi
 
 if [ -z "$FILE" ]; then
-    echo "Error: Issue $ISSUE_ID not found in active issues"
+    echo "Error: Issue $ISSUE_ID not found"
     exit 1
 fi
 ```

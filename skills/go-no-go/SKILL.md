@@ -78,14 +78,10 @@ Determine the final list of issue files to evaluate.
 For each issue ID in `ISSUE_TOKENS` that matches `[A-Z]+-\d+`:
 
 ```bash
-FILE=""
-for dir in .issues/{bugs,features,enhancements}/; do
-    FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ID}[-_.]" | head -1)
-    if [ -n "$FILE" ]; then break; fi
-done
+FILE=$(ll-issues path "${ID}" 2>/dev/null)
 
 if [ -z "$FILE" ]:
-    print "Error: Issue $ID not found in active issues"
+    print "Error: Issue $ID not found"
     exit 1
 ```
 
@@ -102,7 +98,7 @@ if [ ! -f "$SPRINT_FILE" ]:
 # Read the sprint YAML and parse the `issues:` list
 cat "$SPRINT_FILE"
 # The issues: key contains a list of issue IDs (e.g., ENH-175, FEAT-808)
-# Resolve each ID to a file path using the same find pattern as Case 1
+# Resolve each ID to its file path
 ```
 
 ### Case 3: No argument (default)
