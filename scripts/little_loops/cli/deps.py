@@ -85,6 +85,12 @@ Examples:
   %(prog)s validate --sprint my-sprint # Validate only sprint issue deps
   %(prog)s fix                        # Auto-fix broken refs, stale refs, backlinks
   %(prog)s fix --dry-run              # Preview fixes without modifying files
+  %(prog)s apply                      # Apply proposals >= 0.7 confidence
+  %(prog)s apply --min-confidence 0.5 # Lower threshold
+  %(prog)s apply --dry-run            # Preview only (no writes)
+  %(prog)s apply --sprint my-sprint   # Sprint-scoped apply
+  %(prog)s apply FEAT-001 blocks FEAT-002     # Manual explicit pair
+  %(prog)s apply FEAT-001 blocked-by FEAT-002 # Manual explicit pair (inverse)
 """,
     )
 
@@ -151,6 +157,49 @@ Examples:
         type=str,
         default=None,
         help="Restrict fixes to issues in the named sprint",
+    )
+
+    # apply subcommand
+    apply_parser = subparsers.add_parser(
+        "apply",
+        help="Write dependency relationships to issue files",
+    )
+    apply_parser.add_argument(
+        "source",
+        nargs="?",
+        default=None,
+        help="Source issue ID for explicit pair (e.g. FEAT-001)",
+    )
+    apply_parser.add_argument(
+        "relation",
+        nargs="?",
+        default=None,
+        choices=["blocks", "blocked-by"],
+        help="Relationship direction: 'blocks' or 'blocked-by'",
+    )
+    apply_parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Target issue ID for explicit pair (e.g. FEAT-002)",
+    )
+    apply_parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.7,
+        help="Minimum confidence threshold for implicit apply (default: 0.7)",
+    )
+    apply_parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Preview without writing",
+    )
+    apply_parser.add_argument(
+        "--sprint",
+        type=str,
+        default=None,
+        help="Restrict to issues in named sprint",
     )
 
     args = parser.parse_args()
@@ -331,6 +380,109 @@ Examples:
         if fix_result.skipped_cycles:
             print()
             print(f"({fix_result.skipped_cycles} cycle(s) detected — resolve manually)")
+
+        return 0
+
+    if args.command == "apply":
+        from little_loops.dependency_mapper.operations import _add_to_section
+
+        prefix = "[DRY RUN] " if args.dry_run else ""
+        issue_files = {i.issue_id: i.path for i in issues}
+
+        # Explicit-pair mode: all three positional args must be provided together
+        if args.source or args.relation or args.target:
+            if not (args.source and args.relation and args.target):
+                print(
+                    "Error: explicit pair requires all three arguments: "
+                    "<source> <relation> <target>",
+                    file=sys.stderr,
+                )
+                return 1
+
+            all_ids = {i.issue_id for i in issues} | all_known_ids
+            for id_to_check, label in [(args.source, "source"), (args.target, "target")]:
+                if id_to_check not in all_ids:
+                    print(
+                        f"Error: {label} issue {id_to_check!r} not found",
+                        file=sys.stderr,
+                    )
+                    return 1
+
+            # Determine which issue receives the "Blocked By" entry
+            if args.relation == "blocks":
+                # source blocks target → target is blocked by source
+                blocked_id, blocker_id = args.target, args.source
+            else:  # blocked-by
+                # source blocked-by target → source is blocked by target
+                blocked_id, blocker_id = args.source, args.target
+
+            blocked_path = issue_files.get(blocked_id)
+            if blocked_path is None:
+                print(
+                    f"Error: issue {blocked_id!r} is not in active issues (cannot write to it)",
+                    file=sys.stderr,
+                )
+                return 1
+
+            print(f"# {prefix}Dependency Apply Report")
+            print()
+            print(f"  {prefix}{blocked_id} blocked by {blocker_id}")
+            print()
+
+            if not args.dry_run:
+                _add_to_section(blocked_path, "Blocked By", blocker_id)
+                print("1 relationship(s) applied.")
+                print()
+                print("Modified files:")
+                print(f"  {blocked_path}")
+            else:
+                print("[DRY RUN] 1 relationship(s) would be applied.")
+
+            return 0
+
+        # Implicit mode: run analysis and apply proposals above confidence threshold
+        report = analyze_dependencies(
+            issues, issue_contents, completed_ids, all_known_ids, config=dep_config
+        )
+        filtered = [p for p in report.proposals if p.confidence >= args.min_confidence]
+
+        if not filtered:
+            print(
+                f"No proposals at or above confidence threshold ({args.min_confidence})."
+            )
+            return 0
+
+        print(f"# {prefix}Dependency Apply Report")
+        print()
+
+        modified: set[str] = set()
+        applied = 0
+
+        for proposal in filtered:
+            source_path = issue_files.get(proposal.source_id)
+            if source_path is None or not source_path.exists():
+                continue
+            desc = (
+                f"{proposal.source_id} blocked by {proposal.target_id}"
+                f" (confidence: {proposal.confidence:.2f})"
+            )
+            print(f"  {prefix}{desc}")
+            applied += 1
+
+            if not args.dry_run:
+                _add_to_section(source_path, "Blocked By", proposal.target_id)
+                modified.add(str(source_path))
+
+        print()
+        if args.dry_run:
+            print(f"[DRY RUN] {applied} relationship(s) would be applied.")
+        else:
+            print(f"{applied} relationship(s) applied.")
+            if modified:
+                print()
+                print("Modified files:")
+                for fpath in sorted(modified):
+                    print(f"  {fpath}")
 
         return 0
 

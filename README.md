@@ -384,6 +384,9 @@ ll-deps analyze                  # Full analysis with markdown output
 ll-deps analyze --graph          # Include ASCII dependency graph
 ll-deps validate                 # Validate existing dependency references
 ll-deps fix                      # Auto-fix broken refs, stale refs, backlinks
+ll-deps apply                    # Apply proposed deps >= 0.7 confidence
+ll-deps apply --dry-run          # Preview without writing
+ll-deps apply FEAT-001 blocks FEAT-002  # Manual explicit pair
 ```
 
 ### ll-issues

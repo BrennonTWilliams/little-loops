@@ -658,6 +658,17 @@ Auto-fix broken refs, stale refs, and missing backlinks.
 | `--dry-run` | `-n` | Preview fixes without modifying files |
 | `--sprint` | | Restrict fixes to named sprint |
 
+#### `ll-deps apply`
+
+Write proposed dependency relationships to issue files. Re-runs analysis internally and writes accepted proposals (above a confidence threshold) to `## Blocked By` sections. Backlinks are intentionally not written — run `ll-deps fix` afterward to add missing `## Blocks` entries.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--min-confidence` | | Minimum confidence to apply (default: `0.7`) |
+| `--dry-run` | `-n` | Preview without writing |
+| `--sprint` | | Restrict to issues in named sprint |
+| `<source> <relation> <target>` | | Explicit pair: `FEAT-001 blocks FEAT-002` or `FEAT-001 blocked-by FEAT-002` |
+
 **Examples:**
 ```bash
 ll-deps analyze                       # Full analysis with markdown output
@@ -668,6 +679,12 @@ ll-deps validate                      # Validation only
 ll-deps validate --sprint my-sprint   # Validate sprint issue deps
 ll-deps fix                           # Auto-fix broken refs and backlinks
 ll-deps fix --dry-run                 # Preview fixes
+ll-deps apply                         # Apply proposals >= 0.7 confidence
+ll-deps apply --min-confidence 0.5    # Lower threshold
+ll-deps apply --dry-run               # Preview only (no writes)
+ll-deps apply --sprint my-sprint      # Sprint-scoped apply
+ll-deps apply FEAT-001 blocks FEAT-002       # Manual explicit pair
+ll-deps apply FEAT-001 blocked-by FEAT-002   # Manual explicit pair (inverse)
 ```
 
 ---

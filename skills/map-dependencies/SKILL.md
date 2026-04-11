@@ -139,11 +139,21 @@ Pairs with conflict score < 0.4 are reported as safe to run in parallel. These t
 
 ## Applying Proposals
 
-After reviewing the analysis output, if you want to apply proposed dependencies:
+After reviewing the analysis output, apply proposed dependencies using `ll-deps apply`:
+
+```bash
+ll-deps apply                           # Apply all proposals >= 0.7 confidence
+ll-deps apply --min-confidence 0.5      # Lower threshold
+ll-deps apply --dry-run                 # Preview without writing
+ll-deps apply --sprint my-sprint        # Sprint-scoped apply
+ll-deps apply FEAT-001 blocks FEAT-002  # Manual explicit pair
+```
+
+`ll-deps apply` writes only the `## Blocked By` direction. Run `ll-deps fix` afterward to add missing `## Blocks` backlinks, then `ll-deps validate` to confirm a clean state.
 
 ### Auto Mode Behavior
 
-**When `AUTO_MODE` is true**: Skip the AskUserQuestion prompt below. Apply all HIGH-confidence proposals (conflict score ≥ 0.7) automatically. Skip MEDIUM-confidence proposals (conservative default). Emit one status line per applied proposal: `[SOURCE-ID] → [TARGET-ID]: dependency added (confidence: HIGH)`
+**When `AUTO_MODE` is true**: Skip the AskUserQuestion prompt below. Run `ll-deps apply` automatically (default threshold 0.7). Emit one status line per applied proposal: `[SOURCE-ID] → [TARGET-ID]: dependency added (confidence: HIGH)`
 
 ### Check Mode Behavior (--check)
 
@@ -152,13 +162,15 @@ After reviewing the analysis output, if you want to apply proposed dependencies:
 ### Interactive Mode (default)
 
 1. Use AskUserQuestion to confirm which proposals to apply:
-   - "Apply all" — write all proposed dependencies
-   - "Select individually" — choose per proposal
+   - "Apply all" — run `ll-deps apply`
+   - "Select individually" — run `ll-deps apply <source> blocks <target>` per pair
    - "Skip all" — don't write changes
 
-2. For each approved proposal, use the `apply_proposals()` function from `little_loops.dependency_mapper` via Python, or manually:
-   - Add target ID to source issue's `## Blocked By` section
-   - Add source ID to target issue's `## Blocks` section
+2. After applying, fix backlinks and validate:
+```bash
+ll-deps fix
+ll-deps validate
+```
 
 3. Stage changes:
 ```bash

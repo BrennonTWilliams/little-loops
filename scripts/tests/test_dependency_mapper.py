@@ -1541,6 +1541,318 @@ class TestMainCLIFix:
 
 
 # =============================================================================
+# CLI apply subcommand tests
+# =============================================================================
+
+
+class TestMainCLIApply:
+    """Tests for the ll-deps apply CLI subcommand."""
+
+    def _setup_apply_project(self, tmp_path: Path) -> tuple[Path, dict[str, Path]]:
+        """Set up a minimal test project for apply testing."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        features_dir = issues_dir / "features"
+        features_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        feat001 = features_dir / "P1-FEAT-001-blocker.md"
+        feat001.write_text(
+            "# FEAT-001: Blocker\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
+        )
+        feat002 = features_dir / "P2-FEAT-002-blocked.md"
+        feat002.write_text(
+            "# FEAT-002: To Block\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
+        )
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        return issues_dir, {"FEAT-001": feat001, "FEAT-002": feat002}
+
+    def _setup_apply_sprint_project(self, tmp_path: Path) -> Path:
+        """Set up a test project with sprint for apply sprint-scoping tests."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir()
+        enh_dir = issues_dir / "enhancements"
+        enh_dir.mkdir()
+        (issues_dir / "features").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
+        )
+        (bugs_dir / "P2-BUG-002-other-bug.md").write_text(
+            "# BUG-002: Other Bug\n\n## Summary\n\nFix `scripts/other.py`\n"
+        )
+        (enh_dir / "P3-ENH-010-enhancement.md").write_text(
+            "# ENH-010: Enhancement\n\n## Summary\n\nImprove `scripts/config.py`\n"
+        )
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
+            '{"issues": {"base_dir": ".issues"}, "sprints": {"sprints_dir": ".sprints"}}'
+        )
+
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir()
+        (sprints_dir / "my-sprint.yaml").write_text(
+            "name: my-sprint\ndescription: Test sprint\nissues:\n  - BUG-001\n  - ENH-010\n"
+        )
+
+        return issues_dir
+
+    def _make_proposal(
+        self,
+        source_id: str = "FEAT-002",
+        target_id: str = "FEAT-001",
+        confidence: float = 0.8,
+    ) -> DependencyProposal:
+        return DependencyProposal(
+            source_id=source_id,
+            target_id=target_id,
+            reason="file_overlap",
+            confidence=confidence,
+            rationale="test",
+        )
+
+    def test_apply_no_proposals(self, tmp_path: Path, capsys: object) -> None:
+        """When no proposals meet the threshold, apply exits cleanly."""
+        issues_dir, _ = self._setup_apply_project(tmp_path)
+        mock_report = DependencyReport(proposals=[], issue_count=2)
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply"]):
+                result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "No proposals" in captured.out
+
+    def test_apply_implicit_writes_blocked_by(self, tmp_path: Path) -> None:
+        """Implicit apply writes Blocked By to source issues above the threshold."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+        proposal = self._make_proposal("FEAT-002", "FEAT-001", confidence=0.8)
+        mock_report = DependencyReport(proposals=[proposal], issue_count=2)
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply"]):
+                result = main()
+        assert result == 0
+        content = files["FEAT-002"].read_text()
+        assert "## Blocked By" in content
+        assert "- FEAT-001" in content
+
+    def test_apply_does_not_write_blocks_backlink(self, tmp_path: Path) -> None:
+        """apply intentionally does NOT write Blocks backlinks (user runs ll-deps fix for that)."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+        proposal = self._make_proposal("FEAT-002", "FEAT-001", confidence=0.8)
+        mock_report = DependencyReport(proposals=[proposal], issue_count=2)
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply"]):
+                main()
+        assert "## Blocks" not in files["FEAT-001"].read_text()
+
+    def test_apply_dry_run(self, tmp_path: Path, capsys: object) -> None:
+        """--dry-run shows [DRY RUN] in output and does not modify files."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+        proposal = self._make_proposal("FEAT-002", "FEAT-001", confidence=0.8)
+        mock_report = DependencyReport(proposals=[proposal], issue_count=2)
+        original = files["FEAT-002"].read_text()
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(
+                sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply", "--dry-run"]
+            ):
+                result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "[DRY RUN]" in captured.out
+        assert files["FEAT-002"].read_text() == original
+
+    def test_apply_min_confidence_filters_below_default(self, tmp_path: Path) -> None:
+        """Default threshold 0.7 filters out proposals with confidence < 0.7."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+        proposal = self._make_proposal("FEAT-002", "FEAT-001", confidence=0.6)
+        mock_report = DependencyReport(proposals=[proposal], issue_count=2)
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply"]):
+                result = main()
+        assert result == 0
+        assert "## Blocked By" not in files["FEAT-002"].read_text()
+
+    def test_apply_min_confidence_override_allows_lower(self, tmp_path: Path) -> None:
+        """--min-confidence 0.5 allows proposals with confidence >= 0.5."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+        proposal = self._make_proposal("FEAT-002", "FEAT-001", confidence=0.6)
+        mock_report = DependencyReport(proposals=[proposal], issue_count=2)
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-deps", "-d", str(issues_dir), "apply", "--min-confidence", "0.5"],
+            ):
+                result = main()
+        assert result == 0
+        content = files["FEAT-002"].read_text()
+        assert "## Blocked By" in content
+        assert "- FEAT-001" in content
+
+    def test_apply_idempotent(self, tmp_path: Path) -> None:
+        """Running apply twice does not duplicate Blocked By entries."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+        proposal = self._make_proposal("FEAT-002", "FEAT-001", confidence=0.8)
+        mock_report = DependencyReport(proposals=[proposal], issue_count=2)
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply"]):
+                main()
+            with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply"]):
+                main()
+        assert files["FEAT-002"].read_text().count("FEAT-001") == 1
+
+    def test_apply_sprint_scoped(self, tmp_path: Path, capsys: object) -> None:
+        """--sprint restricts apply to issues in the named sprint."""
+        issues_dir = self._setup_apply_sprint_project(tmp_path)
+        # BUG-002 is not in the sprint (my-sprint has BUG-001 and ENH-010)
+        proposal = DependencyProposal(
+            source_id="ENH-010",
+            target_id="BUG-001",
+            reason="file_overlap",
+            confidence=0.8,
+            rationale="test",
+        )
+        mock_report = DependencyReport(proposals=[proposal], issue_count=2)
+
+        with patch("little_loops.dependency_mapper.analyze_dependencies", return_value=mock_report):
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-deps", "-d", str(issues_dir), "apply", "--sprint", "my-sprint"],
+            ):
+                result = main()
+        assert result == 0
+        # ENH-010 gets Blocked By entry
+        enh010 = (issues_dir / "enhancements" / "P3-ENH-010-enhancement.md").read_text()
+        assert "## Blocked By" in enh010
+        assert "- BUG-001" in enh010
+        # BUG-002 not in sprint, not touched
+        bug002 = (issues_dir / "bugs" / "P2-BUG-002-other-bug.md").read_text()
+        assert "## Blocked By" not in bug002
+
+    def test_apply_sprint_not_found(self, tmp_path: Path) -> None:
+        """--sprint with nonexistent sprint returns exit code 1."""
+        issues_dir = self._setup_apply_sprint_project(tmp_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-deps", "-d", str(issues_dir), "apply", "--sprint", "nonexistent"],
+        ):
+            result = main()
+        assert result == 1
+
+    def test_apply_explicit_pair_blocks(self, tmp_path: Path) -> None:
+        """'source blocks target' writes to target's Blocked By section."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-deps", "-d", str(issues_dir), "apply", "FEAT-001", "blocks", "FEAT-002"],
+        ):
+            result = main()
+        assert result == 0
+        content = files["FEAT-002"].read_text()
+        assert "## Blocked By" in content
+        assert "- FEAT-001" in content
+        # No backlink written
+        assert "## Blocks" not in files["FEAT-001"].read_text()
+
+    def test_apply_explicit_pair_blocked_by(self, tmp_path: Path) -> None:
+        """'source blocked-by target' writes to source's Blocked By section."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-deps", "-d", str(issues_dir), "apply", "FEAT-002", "blocked-by", "FEAT-001"],
+        ):
+            result = main()
+        assert result == 0
+        content = files["FEAT-002"].read_text()
+        assert "## Blocked By" in content
+        assert "- FEAT-001" in content
+
+    def test_apply_explicit_pair_invalid_source(self, tmp_path: Path) -> None:
+        """Invalid source ID in explicit pair returns exit code 1."""
+        issues_dir, _ = self._setup_apply_project(tmp_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-deps", "-d", str(issues_dir), "apply", "FEAT-999", "blocks", "FEAT-002"],
+        ):
+            result = main()
+        assert result == 1
+
+    def test_apply_explicit_pair_invalid_target(self, tmp_path: Path) -> None:
+        """Invalid target ID in explicit pair returns exit code 1."""
+        issues_dir, _ = self._setup_apply_project(tmp_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-deps", "-d", str(issues_dir), "apply", "FEAT-001", "blocks", "FEAT-999"],
+        ):
+            result = main()
+        assert result == 1
+
+    def test_apply_explicit_pair_incomplete_args(self, tmp_path: Path) -> None:
+        """Only source provided (missing relation and target) returns exit code 1."""
+        issues_dir, _ = self._setup_apply_project(tmp_path)
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "apply", "FEAT-001"]
+        ):
+            result = main()
+        assert result == 1
+
+    def test_apply_explicit_pair_dry_run(self, tmp_path: Path, capsys: object) -> None:
+        """Explicit pair with --dry-run shows [DRY RUN] and does not write files."""
+        issues_dir, files = self._setup_apply_project(tmp_path)
+        original = files["FEAT-002"].read_text()
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-deps",
+                "-d",
+                str(issues_dir),
+                "apply",
+                "--dry-run",
+                "FEAT-001",
+                "blocks",
+                "FEAT-002",
+            ],
+        ):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "[DRY RUN]" in captured.out
+        assert files["FEAT-002"].read_text() == original
+
+
+# =============================================================================
 # Configurable thresholds tests (ENH-514)
 # =============================================================================
 
