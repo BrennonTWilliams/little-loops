@@ -13,6 +13,14 @@ blocked_by: FEAT-1028
 
 Write the structural test file for `audit-issue-conflicts` that verifies the skill file's contract. Depends on FEAT-1028 (skill file must exist first).
 
+## Current Behavior
+
+No structural test file exists for `audit-issue-conflicts`. After FEAT-1028 creates `skills/audit-issue-conflicts/SKILL.md`, there is no automated verification that the skill file is present, well-formed, or contains the expected content tokens.
+
+## Expected Behavior
+
+`scripts/tests/test_audit_issue_conflicts_skill.py` exists and all 7 assertions pass: skill file presence, `--dry-run`, `--auto`, severity labels (`high`, `medium`, `low`), conflict type tokens (`requirement`, `objective`, `architecture`, `scope`), `"No conflicts found"` path, and `{{config.issues.base_dir}}` glob pattern.
+
 ## Motivation
 
 After FEAT-1028 creates `skills/audit-issue-conflicts/SKILL.md`, no tests verify the skill file's contract. Structural tests catch regressions if the skill file is removed or malformed.
@@ -42,6 +50,10 @@ Decomposed from FEAT-1029: audit-issue-conflicts — Wiring, Docs, and Tests
   6. `"No conflicts found"` path documented
   7. `{{config.issues.base_dir}}` glob pattern referenced
 - [ ] All 7 assertions pass after FEAT-1028 is complete
+
+## API/Interface
+
+N/A - No public API changes (new test file only)
 
 ## Proposed Solution
 
@@ -113,4 +125,5 @@ def test_config_issues_base_dir_glob():
 **Open** | Created: 2026-04-11 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-04-11T05:35:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09f5ad48-02b2-4a2b-98cf-6d1da7ce2e95.jsonl`
 - `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`

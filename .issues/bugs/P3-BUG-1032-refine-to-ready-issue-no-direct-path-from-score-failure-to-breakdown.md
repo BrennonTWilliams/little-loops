@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-11
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 93
 ---
 
 # BUG-1032: `refine-to-ready-issue`: no direct path from score-failure to breakdown
@@ -22,6 +24,13 @@ When `recursive-refine` invokes the sub-loop via `run_refine` (`recursive-refine
 ## Expected Behavior
 
 When the per-run retry budget is exhausted and scores still fail, `refine-to-ready-issue` should directly invoke `breakdown_issue` (i.e., route `check_refine_limit on_no: breakdown_issue` instead of `failed`). This makes the sub-loop self-contained and ensures breakdown happens regardless of which parent loop called it.
+
+## Motivation
+
+Running `refine-to-ready-issue` standalone silently exits `failed` when the retry budget is exhausted — no child issues are ever created. The fix makes the sub-loop self-contained:
+- Breakdown happens regardless of which parent loop (or no parent) invoked the sub-loop
+- Removes fragile coupling where correct behavior depended on `recursive-refine`'s `on_failure: detect_children` route
+- `recursive-refine`'s `on_failure` path becomes a true error condition rather than a normal budget-exhaustion route
 
 ## Root Cause
 
@@ -47,16 +56,55 @@ Change `check_refine_limit.on_no` from `failed` to `breakdown_issue` in `scripts
 ## Implementation Steps
 
 1. Edit `scripts/little_loops/loops/refine-to-ready-issue.yaml:159` — change `on_no: failed` to `on_no: breakdown_issue`
-2. Update the comment block on `check_refine_limit` (lines 151–154) to reflect that budget exhaustion now triggers decomposition
-3. Verify `recursive-refine`'s `run_refine` state still handles both paths:
+2. Update the comment block on `check_refine_limit` (lines 151–153) to reflect that budget exhaustion now triggers decomposition rather than failing
+3. Update the comment block on `run_refine` at `recursive-refine.yaml:89-92` — change the `on_failure` description from "retries exhausted, no breakdown" to "unexpected error condition; breakdown now occurs in sub-loop before reaching `failed`"
+4. Verify `recursive-refine`'s `run_refine` state still handles both paths:
    - `on_success`: sub-loop reached `done` (confidence pass or breakdown → done)
-   - `on_failure`: sub-loop reached `failed` (error condition, not expected on budget exhaustion)
-4. Run `scripts/tests/test_builtin_loops.py` to confirm no regressions
+   - `on_failure`: sub-loop reached `failed` (true error condition, no longer the normal budget-exhaustion path)
+5. Add test `test_check_refine_limit_on_no_routes_to_breakdown_issue` to `TestRefineToReadyIssueSubLoop` in `scripts/tests/test_builtin_loops.py:654`
+6. Run `scripts/tests/test_builtin_loops.py` to confirm no regressions
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml:159` — `on_no: failed` → `on_no: breakdown_issue`
+- `scripts/little_loops/loops/recursive-refine.yaml:89-92` — comment block on `run_refine` explicitly states "on_failure = sub-loop reached 'failed' (retries exhausted, no breakdown)"; after the fix this comment is misleading and should be updated to reflect that `failed` is now a true error condition, not normal budget exhaustion
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/recursive-refine.yaml` — invokes sub-loop via `run_refine`; after this fix, `on_failure` becomes a true error condition rather than normal budget exhaustion
+
+### Similar Patterns
+- `scripts/little_loops/loops/recursive-refine.yaml` — `check_lifetime_limit.on_no: breakdown_issue` is the existing pattern this fix mirrors on `check_refine_limit`
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — add test asserting `check_refine_limit.on_no == breakdown_issue`; verify `recursive-refine` integration paths remain unaffected
+
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+Insert after `test_check_refine_limit_routes_to_refine_issue` at `test_builtin_loops.py:654` in class `TestRefineToReadyIssueSubLoop`. Mirror the structural twin at line 548:
+
+```python
+def test_check_refine_limit_on_no_routes_to_breakdown_issue(self, data: dict) -> None:
+    """check_refine_limit.on_no must route to breakdown_issue (not failed)."""
+    state = data["states"].get("check_refine_limit", {})
+    assert state.get("on_no") == "breakdown_issue", (
+        f"check_refine_limit.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
+    )
+```
+
+The structural twin is `test_check_lifetime_limit_routes_to_breakdown_issue` at `test_builtin_loops.py:548-553`, which uses identical assertion style. No external fixtures needed — class-local `data` fixture loads YAML directly via `yaml.safe_load`.
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Downstream Impact
+
+- **ENH-1033** (`refine-to-ready-issue`: skip retry when only outcome confidence fails) is blocked by this fix. ENH-1033 adds a direct `breakdown_issue` route when outcome confidence fails but readiness passes; that routing is only meaningful once `breakdown_issue` is correctly reachable from the score-failure path.
 
 ## Labels
 
@@ -67,4 +115,7 @@ Change `check_refine_limit.on_no` from `failed` to `breakdown_issue` in `scripts
 **Open** | Created: 2026-04-11 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4d2ee8a-2f4f-412d-b789-1c3f3d4748e3.jsonl`
+- `/ll:refine-issue` - 2026-04-11T05:38:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/beb925f3-1081-49e6-920c-e728c119f859.jsonl`
+- `/ll:format-issue` - 2026-04-11T05:22:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ede2e27-e614-4fb9-a6db-bba4198effb0.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`

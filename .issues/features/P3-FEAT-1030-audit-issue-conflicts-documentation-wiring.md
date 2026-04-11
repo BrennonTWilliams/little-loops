@@ -5,6 +5,7 @@ confidence_score: 85
 outcome_confidence: 80
 parent_issue: FEAT-1029
 blocked_by: FEAT-1028
+testable: false
 ---
 
 # FEAT-1030: audit-issue-conflicts — Documentation Wiring
@@ -12,6 +13,14 @@ blocked_by: FEAT-1028
 ## Summary
 
 Update all registry files and documentation to expose the new `audit-issue-conflicts` skill after FEAT-1028 creates it. Depends on FEAT-1028 (skill file must exist first).
+
+## Current Behavior
+
+After FEAT-1028 creates `skills/audit-issue-conflicts/SKILL.md`, the skill exists on disk but is absent from every documentation and discovery surface: not listed in `commands/help.md`, `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/reference/COMMANDS.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, or `.claude/CLAUDE.md`. The skill count reads 25 everywhere. Running `ll-verify-docs` fails with a count mismatch.
+
+## Expected Behavior
+
+The skill appears in all documentation surfaces under the "Issue Refinement" capability group. Skill count reads 26 in `README.md`, `CONTRIBUTING.md`, and `docs/ARCHITECTURE.md`. Running `ll-verify-docs` passes. Users can discover the skill via `/ll:help` and all relevant command tables.
 
 ## Motivation
 
@@ -98,14 +107,122 @@ Work through each file in order. All changes are mechanical and well-specified:
 - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — "Plan a Feature Sprint" recipe (insert at step 4, renumber 4–11 to 5–12)
 - `.claude/CLAUDE.md` — command list (Issue Refinement section) + skill count bump
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/docs-sync.yaml` — FSM `verify_docs` state calls `ll-verify-docs 2>&1`; `fix_docs` state prompts on skill-count mismatches. Will surface a count mismatch while FEAT-1030 is in progress (after FEAT-1028 lands). Not a file to modify — informational only. [Agent 1 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — describes `ll-verify-docs` behavior and skill count verification. Check for any hardcoded `25` count reference; if present, bump to `26`. Not in `DOC_FILES` so `ll-verify-docs` will not auto-fix it — must be verified manually. [Agent 1 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_doc_counts.py` — existing coverage for `doc_counts.py`; all tests use `tmp_path` isolation with synthetic counts. **No changes needed** — will not break regardless of real skill count. [Agent 3 finding]
+- `scripts/tests/test_cli_docs.py` — existing coverage for `cli/docs.py` (the `ll-verify-docs` CLI entry); mocks `verify_documentation`. **No changes needed.** [Agent 3 finding]
+- **No test in the suite runs against the real project root** — the acceptance criterion `ll-verify-docs passes` (step 9) is the effective integration gate and must be run manually after all edits are complete. [Agent 3 finding]
+- **New skill structural test** (`scripts/tests/test_audit_issue_conflicts_skill.py`) — scoped to FEAT-1031, not this issue. [Agent 3 finding]
+
 ### Codebase Research Findings
 
-- All line numbers verified accurate as of 2026-04-11
-- `docs/reference/COMMANDS.md` line 14 = `--dry-run` consumer list, line 15 = `--auto` consumer list
-  - Line 14: `| \`--dry-run\` | Show what would happen without making changes | \`manage-issue\`, \`align-issues\`, \`refine-issue\`, \`format-issue\`, \`manage-release\` |`
-  - Line 15: `| \`--auto\` | Non-interactive mode (no prompts) | \`commit\`, \`refine-issue\`, \`prioritize-issues\`, \`format-issue\`, \`confidence-check\`, \`verify-issues\`, \`map-dependencies\`, \`issue-size-review\` |`
-  - Append `, \`audit-issue-conflicts\`` to the pipe-delimited consumer cell in each row
-- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` "Plan a Feature Sprint" heading is at line 475; recipe block runs lines 479–492 with steps 1–11
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Blocker status**: `skills/audit-issue-conflicts/SKILL.md` does NOT exist — FEAT-1028 is an unmet prerequisite. Do not begin FEAT-1030 implementation until FEAT-1028 is complete and the skill file is on disk.
+
+**Alphabetical ordering correction**: The Acceptance Criteria and Proposed Solution state adding `audit-issue-conflicts/` "between `audit-claude-config/` and `audit-docs/`" in `docs/ARCHITECTURE.md`. This is incorrect — alphabetically `audit-issue-conflicts` sorts AFTER `audit-docs` (`audit-d` < `audit-i`). The correct insertion point is **after `audit-docs/`** in both `CONTRIBUTING.md` and `docs/ARCHITECTURE.md`.
+
+**Line number correction for `docs/reference/COMMANDS.md`**: Acceptance Criteria and Proposed Solution state `--dry-run` is at line 14 and `--auto` at line 15. **This is wrong.** Verified live: `--dry-run` is at **line 13**, `--auto` is at **line 14**.
+
+**`ll-verify-docs` scope** (`scripts/little_loops/doc_counts.py:12-16`): Only checks `README.md`, `CONTRIBUTING.md`, and `docs/ARCHITECTURE.md` for numeric skill counts. It does NOT scan `commands/help.md`, `docs/reference/COMMANDS.md`, or `.claude/CLAUDE.md` — those must be updated and verified manually.
+
+**Existing tree inconsistency**: Both `CONTRIBUTING.md:126-148` and `docs/ARCHITECTURE.md:100-157` currently list only 23 skill directories (missing `wire-issue` and `rename-loop` from their trees). After FEAT-1028 and FEAT-1030, the skill count will be 26 on disk but only 24 will be listed in those trees. This is pre-existing drift — document it in the PR but do not fix it as part of this issue.
+
+**Verified exact insertion points** (verified against live files 2026-04-11):
+
+| File | Exact anchor | Insertion |
+|------|-------------|-----------|
+| `commands/help.md:80` | `ready-issue` block ends line 80; `PLANNING & IMPLEMENTATION` begins line 82 | Insert new entry before line 81 |
+| `commands/help.md:254` | Line ends with `` `ready-issue` `` | Append `, \`audit-issue-conflicts\`` |
+| `README.md:89` | `25 skills` | Increment `25` → `26` |
+| `README.md:123-124` | `wire-issue` row at line 123; blank line 124 | Insert new row between 123 and 124 |
+| `README.md:235-236` | `wire-issue`^ at line 235; blank line 236 | Insert new row between 235 and 236 |
+| `CONTRIBUTING.md:125` | `25 skill definitions` | Increment `25` → `26` |
+| `CONTRIBUTING.md:129-130` | `audit-docs/` at line 129; `capture-issue/` at line 130 | Insert between 129 and 130 |
+| `docs/ARCHITECTURE.md:26` | `25 composable skills` (in diagram) | Increment `25` → `26` |
+| `docs/ARCHITECTURE.md:99` | `# 25 skill definitions` | Increment `25` → `26` |
+| `docs/ARCHITECTURE.md:109-110` | `audit-docs/` block ends line 109; `capture-issue/` at line 110 | Insert 2-line entry between 109 and 110 |
+| `docs/reference/COMMANDS.md:13` | `--dry-run` consumer list (NOT line 14) | Append `, \`audit-issue-conflicts\`` |
+| `docs/reference/COMMANDS.md:14` | `--auto` consumer list (NOT line 15) | Append `, \`audit-issue-conflicts\`` |
+| `docs/reference/COMMANDS.md:207-209` | `tradeoff-review-issues` content ends line 207; `### /ll:product-analyzer` at line 209 | Insert new subsection between 207 and 209 |
+| `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:482-483` | step 3=`prioritize-issues` at line 482; step 4=`tradeoff-review-issues` at line 483 | Insert new step 4 at line 483, renumber old 4–11 to 5–12 |
+| `.claude/CLAUDE.md:38` | `# Skill definitions (25 skills)` | Increment `25` → `26` |
+| `.claude/CLAUDE.md:52` | Issue Refinement line ends with `` `map-dependencies`^ `` | Append `, \`audit-issue-conflicts\`^` |
+
+**Exact current content of `docs/reference/COMMANDS.md:13-14`**:
+```
+| `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release` |
+| `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review` |
+```
+
+**Exact current content of `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` recipe steps (lines 479–492)**:
+```
+1. /ll:scan-codebase               ← find issues you didn't know existed
+   /ll:scan-product                ← find feature gaps against goals
+2. /ll:normalize-issues            ← fix any naming problems
+3. /ll:prioritize-issues           ← assign P0-P5 to all issues
+4. /ll:tradeoff-review-issues      ← prune low-value issues
+5. /ll:format-issue --auto         ← promote survivors to v2.0 template
+6. /ll:refine-issue [issue-id]     ← enrich with codebase research (run per issue)
+7. /ll:verify-issues               ← test claims against code
+8. /ll:ready-issue                 ← validate quality gate
+9. /ll:map-dependencies            ← identify ordering constraints
+10. /ll:issue-size-review          ← decompose anything too large
+11. /ll:create-sprint              ← curate and sequence the sprint
+    ll-sprint run sprint-name      ← execute
+```
+
+**Pattern templates for new entries** (verified against live file content):
+
+`commands/help.md` entry (modeled on `wire-issue` at lines 66-69):
+```
+/ll:audit-issue-conflicts [flags]
+    Scan all open issues for conflicting requirements, objectives, or
+    architectural decisions — outputs a ranked conflict report
+    Flags: --auto (non-interactive), --dry-run (report only)
+```
+
+`README.md` command table row (modeled on `wire-issue` at line 123):
+```
+| `/ll:audit-issue-conflicts` | Scan open issues for conflicting requirements, objectives, or architectural decisions |
+```
+
+`README.md` Skills table row (modeled on `wire-issue`^ at line 235):
+```
+| `audit-issue-conflicts`^     | Issue Refinement           | Scan open issues for conflicting requirements and architectural decisions |
+```
+
+`docs/ARCHITECTURE.md` tree entry (2-line block, no templates.md — modeled on `analyze-loop` at lines 102-103):
+```
+│   ├── audit-issue-conflicts/ # User-invoked
+│   │   └── SKILL.md
+```
+
+`CONTRIBUTING.md` tree entry (modeled on `audit-docs/` at line 129):
+```
+│   ├── audit-issue-conflicts/            # Detect conflicts across open issues
+```
+
+`docs/reference/COMMANDS.md` subsection (modeled on `tradeoff-review-issues` at lines 204-207):
+```markdown
+### `/ll:audit-issue-conflicts`
+Scan all open issues for conflicting requirements, objectives, or architectural decisions — outputs a ranked conflict report (high/medium/low severity) with recommended resolutions. Conflict types: requirement contradictions, conflicting objectives, architectural disagreements, scope overlaps.
+
+**Flags:** `--auto` (apply all recommendations without prompting), `--dry-run` (report only, no changes written)
+
+**Trigger keywords:** "audit conflicts", "conflicting issues", "requirement conflicts", "check for contradictions"
+```
 
 ## Implementation Steps
 
@@ -118,6 +235,12 @@ Work through each file in order. All changes are mechanical and well-specified:
 7. **Update `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`** — insert step 4, renumber 4–11 to 5–12
 8. **Update `.claude/CLAUDE.md`** — `audit-issue-conflicts`^ to Issue Refinement section; skill count bump
 9. **Run `ll-verify-docs`** — confirm passes
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. **Check `docs/reference/CLI.md`** — scan for any hardcoded `25` skill count; bump to `26` if present. Not auto-fixed by `ll-verify-docs`.
 
 ## Impact
 
@@ -135,4 +258,8 @@ Work through each file in order. All changes are mechanical and well-specified:
 **Open** | Created: 2026-04-11 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-11T05:33:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/662113a3-6b97-409a-b517-fd8a66d0944f.jsonl`
+- `/ll:format-issue` - 2026-04-11T05:28:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b982ec8-95f6-4b13-b508-3b8cbabc3437.jsonl`
+- `/ll:refine-issue` - 2026-04-11T05:26:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4511a1b9-2134-43ca-95d4-393029988442.jsonl`
 - `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
+- `/ll:wire-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4511a1b9-2134-43ca-95d4-393029988442.jsonl`
