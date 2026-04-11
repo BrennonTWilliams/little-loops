@@ -62,7 +62,9 @@ class TestAutoArgumentParsing:
         args = self._parse_auto_args([flag, value])
         assert args.max_issues == expected
 
-    @pytest.mark.parametrize("flag,value,expected", [("--category", "bugs", "bugs"), ("-c", "features", "features")])
+    @pytest.mark.parametrize(
+        "flag,value,expected", [("--category", "bugs", "bugs"), ("-c", "features", "features")]
+    )
     def test_category_filter(self, flag: str, value: str, expected: str) -> None:
         """--category / -c sets the category filter."""
         args = self._parse_auto_args([flag, value])
@@ -144,7 +146,9 @@ class TestParallelArgumentParsing:
         args = self._parse_parallel_args([flag, value])
         assert args.workers == expected
 
-    @pytest.mark.parametrize("flag,value,expected", [("--priority", "P1,P2", "P1,P2"), ("-p", "P0,P1,P2", "P0,P1,P2")])
+    @pytest.mark.parametrize(
+        "flag,value,expected", [("--priority", "P1,P2", "P1,P2"), ("-p", "P0,P1,P2", "P0,P1,P2")]
+    )
     def test_priority_filter(self, flag: str, value: str, expected: str) -> None:
         """--priority / -p sets the priority filter string."""
         args = self._parse_parallel_args([flag, value])
@@ -173,7 +177,9 @@ class TestParallelArgumentParsing:
         args = self._parse_parallel_args([flag])
         assert args.resume is True
 
-    @pytest.mark.parametrize("flag,value,expected", [("--timeout", "1800", 1800), ("-t", "3600", 3600)])
+    @pytest.mark.parametrize(
+        "flag,value,expected", [("--timeout", "1800", 1800), ("-t", "3600", 3600)]
+    )
     def test_timeout(self, flag: str, value: str, expected: int) -> None:
         """--timeout / -t sets the per-issue timeout."""
         args = self._parse_parallel_args([flag, value])

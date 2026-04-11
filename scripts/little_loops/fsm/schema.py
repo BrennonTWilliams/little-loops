@@ -296,9 +296,15 @@ class StateConfig:
             route = RouteConfig.from_dict(data["route"])
 
         _known_on_keys = {
-            "on_yes", "on_success", "on_no", "on_failure",
-            "on_error", "on_partial", "on_blocked",
-            "on_maintain", "on_retry_exhausted",
+            "on_yes",
+            "on_success",
+            "on_no",
+            "on_failure",
+            "on_error",
+            "on_partial",
+            "on_blocked",
+            "on_maintain",
+            "on_retry_exhausted",
         }
         extra_routes = {
             key[3:]: val

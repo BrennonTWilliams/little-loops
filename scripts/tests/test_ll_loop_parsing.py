@@ -477,7 +477,6 @@ class TestLoopJsonShortForm:
         show_args = mock_show.call_args[0][1]
         assert getattr(show_args, "json", False) is True
 
-
     def test_fragments_subcommand_routes_to_cmd_fragments(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -488,9 +487,7 @@ class TestLoopJsonShortForm:
         monkeypatch.chdir(tmp_path)
         with (
             patch.object(sys, "argv", ["ll-loop", "fragments", "lib/common.yaml"]),
-            patch(
-                "little_loops.cli.loop.info.cmd_fragments", return_value=0
-            ) as mock_fragments,
+            patch("little_loops.cli.loop.info.cmd_fragments", return_value=0) as mock_fragments,
         ):
             from little_loops.cli import main_loop
 

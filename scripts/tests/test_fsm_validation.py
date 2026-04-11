@@ -44,7 +44,8 @@ class TestExtraRoutesReachability:
         )
         errors = validate_fsm(fsm)
         unreachable_warnings = [
-            e for e in errors
+            e
+            for e in errors
             if e.severity == ValidationSeverity.WARNING and "not reachable" in e.message
         ]
         assert len(unreachable_warnings) == 0
