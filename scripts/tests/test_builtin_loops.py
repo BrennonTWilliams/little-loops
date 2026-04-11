@@ -781,6 +781,118 @@ class TestPromptAcrossIssuesLoop:
         assert execute_state.get("max_retries", 0) > 0
 
 
+class TestAutoRefineAndImplementLoop:
+    """Structural tests for the auto-refine-and-implement FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "auto-refine-and-implement"
+        assert data.get("initial") == "get_next_issue"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "get_next_issue",
+            "refine_issue",
+            "get_passed_issues",
+            "implement_next",
+            "implement_issue",
+            "skip_and_continue",
+            "done",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_get_next_issue_captures_input(self, data: dict) -> None:
+        """get_next_issue must capture as 'input' for context_passthrough to work."""
+        state = data["states"].get("get_next_issue", {})
+        assert state.get("capture") == "input"
+
+    def test_refine_issue_delegates_to_recursive_refine(self, data: dict) -> None:
+        """refine_issue must delegate to recursive-refine with context_passthrough."""
+        state = data["states"].get("refine_issue", {})
+        assert state.get("loop") == "recursive-refine"
+        assert state.get("context_passthrough") is True
+
+    def test_refine_issue_has_success_and_failure_routes(self, data: dict) -> None:
+        """refine_issue must define on_success and on_failure routes."""
+        state = data["states"].get("refine_issue", {})
+        assert state.get("on_success") == "get_passed_issues"
+        assert state.get("on_failure") == "skip_and_continue"
+
+    def test_implement_next_captures_impl_id(self, data: dict) -> None:
+        """implement_next must capture as 'impl_id' for implement_issue to reference."""
+        state = data["states"].get("implement_next", {})
+        assert state.get("capture") == "impl_id"
+
+    def test_implement_issue_uses_impl_id(self, data: dict) -> None:
+        """implement_issue action must reference captured.impl_id.output."""
+        state = data["states"].get("implement_issue", {})
+        action = state.get("action", "")
+        assert "${captured.impl_id.output}" in action
+
+    def test_implement_issue_routes_to_implement_next(self, data: dict) -> None:
+        """implement_issue must loop back to implement_next to drain the queue."""
+        state = data["states"].get("implement_issue", {})
+        assert state.get("next") == "implement_next"
+
+    def test_skip_and_continue_uses_input_capture(self, data: dict) -> None:
+        """skip_and_continue must reference captured.input.output (not impl_id)."""
+        state = data["states"].get("skip_and_continue", {})
+        action = state.get("action", "")
+        assert "${captured.input.output}" in action
+
+    def test_skip_and_continue_routes_to_get_next_issue(self, data: dict) -> None:
+        """skip_and_continue must route back to get_next_issue."""
+        state = data["states"].get("skip_and_continue", {})
+        assert state.get("next") == "get_next_issue"
+
+    def test_skipped_file_uses_loops_tmp(self, data: dict) -> None:
+        """Skipped tracking file must use .loops/tmp/ path."""
+        states = data.get("states", {})
+        skipped_ref = "auto-refine-and-implement-skipped"
+        found = False
+        for state_data in states.values():
+            action = state_data.get("action", "")
+            if skipped_ref in action:
+                found = True
+                assert ".loops/tmp/" in action
+        assert found, f"No state references {skipped_ref!r}"
+
+    def test_impl_queue_file_uses_loops_tmp(self, data: dict) -> None:
+        """Impl queue file must use .loops/tmp/ path."""
+        states = data.get("states", {})
+        queue_ref = "auto-refine-and-implement-impl-queue"
+        found = False
+        for state_data in states.values():
+            action = state_data.get("action", "")
+            if queue_ref in action:
+                found = True
+                assert ".loops/tmp/" in action
+        assert found, f"No state references {queue_ref!r}"
+
+    def test_get_passed_issues_reads_recursive_refine_outputs(self, data: dict) -> None:
+        """get_passed_issues must read both recursive-refine output files."""
+        state = data["states"].get("get_passed_issues", {})
+        action = state.get("action", "")
+        assert "recursive-refine-passed.txt" in action
+        assert "recursive-refine-skipped.txt" in action
+
+
 class TestRecursiveRefineLoop:
     """Structural tests for the recursive-refine FSM loop."""
 

@@ -260,14 +260,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `loops`, `automation`, `captured`
 
+## Resolution
+
+**Status**: Completed | Resolved: 2026-04-10
+
+### Changes Made
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — replaced `refine-to-ready-issue` sub-loop with `recursive-refine` delegation; added `get_passed_issues`, `implement_next`, and `implement_issue` states for queue-based implementation of passed issues; renamed `skip_issue` → `skip_and_continue` to match new design; updated description
+- `scripts/tests/test_builtin_loops.py` — added `TestAutoRefineAndImplementLoop` class with 12 structural tests covering state presence, routing, capture names, file paths, and recursive-refine output file references
+
+### Verification
+- `python -m pytest scripts/tests/test_builtin_loops.py -v` — 113 passed (includes `test_all_validate_as_valid_fsm`, `test_all_parse_as_yaml`, and all new `TestAutoRefineAndImplementLoop` tests)
+
 ## Status
 
-**Open** | Created: 2026-04-10 | Priority: P2
+**Completed** | Created: 2026-04-10 | Priority: P2
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-11T01:38:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d21145c2-9202-4f18-b67c-e656a4a4c0f7.jsonl`
 - `/ll:refine-issue` - 2026-04-11T01:25:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a8cafa8-27b4-42c4-bb1a-96ff79bd0cf7.jsonl`
 - `/ll:format-issue` - 2026-04-11T01:18:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ded44bb-5172-425c-a697-6c2aede69b6a.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc79d8ec-4917-4061-a148-c6ad39ee404c.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b72b78fc-5cf9-40eb-a054-5c72aa47ca1a.jsonl`
+- `/ll:manage-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

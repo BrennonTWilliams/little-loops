@@ -1,9 +1,10 @@
 name: "auto-refine-and-implement"
 category: issue-management
 description: |
-  For each backlog issue (priority order): refine to ready via refine-to-ready-issue,
-  then implement. Skips issues that fail refinement and tracks them to avoid retrying.
-  Loops until backlog is exhausted.
+  For each backlog issue (priority order): recursively refine via recursive-refine
+  (which handles decomposition into child issues), then implement all issues that
+  passed refinement. Skips issues that fail refinement or are decomposed, tracking
+  them to avoid retrying. Loops until backlog is exhausted.
 initial: get_next_issue
 max_iterations: 100
 timeout: 28800
@@ -33,18 +34,61 @@ states:
     on_error: done
 
   refine_issue:
-    loop: refine-to-ready-issue
+    loop: recursive-refine
     context_passthrough: true
-    on_success: implement_issue
-    on_failure: skip_issue
-    on_error: skip_issue
+    on_success: get_passed_issues
+    on_failure: skip_and_continue
+    on_error: skip_and_continue
+
+  get_passed_issues:
+    action: |
+      SKIP_FILE=".loops/tmp/auto-refine-and-implement-skipped.txt"
+      IMPL_QUEUE=".loops/tmp/auto-refine-and-implement-impl-queue.txt"
+
+      if [ -s .loops/tmp/recursive-refine-skipped.txt ]; then
+        grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-skipped.txt >> "$SKIP_FILE"
+      fi
+
+      PASSED=""
+      if [ -s .loops/tmp/recursive-refine-passed.txt ]; then
+        PASSED=$(grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-passed.txt)
+      fi
+
+      if [ -n "$PASSED" ]; then
+        echo "$PASSED" >> "$SKIP_FILE"
+        echo "$PASSED" > "$IMPL_QUEUE"
+        exit 0
+      else
+        printf '' > "$IMPL_QUEUE"
+        exit 1
+      fi
+    fragment: shell_exit
+    on_yes: implement_next
+    on_no: get_next_issue
+    on_error: get_next_issue
+
+  implement_next:
+    action: |
+      IMPL_QUEUE=".loops/tmp/auto-refine-and-implement-impl-queue.txt"
+      if [ ! -s "$IMPL_QUEUE" ]; then
+        exit 1
+      fi
+      CURRENT=$(head -1 "$IMPL_QUEUE")
+      tail -n +2 "$IMPL_QUEUE" > "$IMPL_QUEUE.tmp"
+      mv "$IMPL_QUEUE.tmp" "$IMPL_QUEUE"
+      echo "$CURRENT"
+    fragment: shell_exit
+    capture: impl_id
+    on_yes: implement_issue
+    on_no: get_next_issue
+    on_error: get_next_issue
 
   implement_issue:
-    action: "ll-auto --only ${captured.input.output}"
+    action: "ll-auto --only ${captured.impl_id.output}"
     action_type: shell
-    next: get_next_issue
+    next: implement_next
 
-  skip_issue:
+  skip_and_continue:
     action: |
       echo "Skipping ${captured.input.output} after refinement failure"
       echo "${captured.input.output}" >> .loops/tmp/auto-refine-and-implement-skipped.txt
