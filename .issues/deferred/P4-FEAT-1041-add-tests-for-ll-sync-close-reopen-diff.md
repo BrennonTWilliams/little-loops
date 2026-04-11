@@ -5,7 +5,7 @@ discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
 ---
 
-# FEAT-978: Add tests for `ll-sync` close/reopen/diff subcommands
+# FEAT-1041: Add tests for `ll-sync` close/reopen/diff subcommands
 
 ## Summary
 

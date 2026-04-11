@@ -1,5 +1,5 @@
 ---
-id: ENH-1039
+id: ENH-1040
 type: ENH
 priority: P4
 status: backlog
@@ -7,7 +7,7 @@ discovered_date: 2026-04-11
 discovered_by: capture-issue
 ---
 
-# ENH-1039: Add post-update config health check to ll:update
+# ENH-1040: Add post-update config health check to ll:update
 
 ## Summary
 
