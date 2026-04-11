@@ -189,11 +189,23 @@ EDITABLE_INSTALL=$(pip show little-loops 2>/dev/null | grep -E "^Editable projec
 
 `skill`, `update`, `consumer-ux`, `refactor`
 
+## Resolution
+
+**Status**: Completed
+
+**Implementation**:
+- Rewrote `skills/update/SKILL.md` to consumer-first flow: two steps only (plugin + package), no marketplace or source-repo logic
+- Created `commands/publish.md` (`/ll:publish`) for source-repo-only version bumping with source-repo guard
+- Fixed `./scripts/` dev-install detection bug in both `skills/update/SKILL.md` and `skills/configure/SKILL.md` — replaced `[ -d "./scripts" ]` with `pip show little-loops | grep -E "^Editable project location:"`
+- Rewrote `scripts/tests/test_update_skill.py`: removed 8 breaking assertions (marketplace, DO_MARKETPLACE, SRC_VERSION, PLUGIN_RESULT SKIP), added 2 new test classes (TestUpdateSkillConsumerPath, TestPublishCommandExists, TestConfigureSkillDevInstallFix)
+- Updated docs: `docs/reference/COMMANDS.md`, `commands/help.md`, `README.md` — removed `--marketplace` references, added `/ll:publish` entry
+
 ## Status
 
-> backlog
+> completed
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-11T03:25:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed0d6ce0-f2a6-4a4e-9550-0e1ad496b538.jsonl`
 - `/ll:ready-issue` - 2026-04-11T03:19:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b0e24d9-9939-46ca-8a19-b2fd49f87d61.jsonl`
 - `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0673fb54-56ba-4f5c-9ba2-1f9df0dac925.jsonl`
 - `/ll:refine-issue` - 2026-04-11T03:11:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9ac569b-08b5-476c-b76f-c1cdafe537ad.jsonl`

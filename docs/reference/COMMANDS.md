@@ -50,18 +50,24 @@ Interactively configure specific areas in ll-config.json.
 **Auto-update:** Like `/ll:init`, `configure` checks the installed package version and auto-upgrades if a mismatch is detected.
 
 ### `/ll:update`
-Update one or more little-loops components: the plugin marketplace listing, the Claude Code plugin, and the pip package. Consolidates three separate update procedures into a single command.
+Update the little-loops Claude Code plugin and pip package to the latest version. Consumer-first: works in any project.
 
 **Flags:**
-- `--marketplace` — Update only the plugin marketplace listing (`.claude-plugin/marketplace.json`)
 - `--plugin` — Update only the Claude Code plugin (`claude plugin update ll@little-loops`)
 - `--package` — Update only the pip package (`pip install --upgrade little-loops`)
-- `--all` — Update all three components (same as no flag)
+- `--all` — Update both components (same as no flag)
 - `--dry-run` — Show what would be updated without making changes
 
-**Default behavior:** If no component flag is given, all three components are updated.
+**Default behavior:** If no component flag is given, both components are updated.
 
-**Trigger keywords:** "update little-loops", "update plugin", "update marketplace", "update package", "ll update"
+**Trigger keywords:** "update little-loops", "update plugin", "update package", "ll update"
+
+### `/ll:publish` *(maintainers only)*
+Bump version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commit. Source-repo-only — exits with an error if `.claude-plugin/plugin.json` is not found.
+
+**Arguments:**
+- `version` — New version string (e.g., `1.67.0`) or bump level (`patch`, `minor`, `major`)
+- `--dry-run` — Preview changes without applying
 
 ---
 
@@ -619,7 +625,8 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `open-pr` | Open a pull request for current branch |
 | `cleanup-worktrees` | Clean up stale worktrees and branches |
 | `manage-release` | Manage releases, tags, and changelogs |
-| `update`^ | Update little-loops components (marketplace, plugin, package) |
+| `update`^ | Update little-loops plugin and package (consumer-first) |
+| `publish` | Bump version in all source files (maintainers only) |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
 | `create-loop`^ | Interactive FSM loop creation |

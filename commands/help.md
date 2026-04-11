@@ -202,8 +202,11 @@ SESSION & CONFIG
     Settings: enabled, mode, confirm, status
 
 /ll:update [flags]
-    Update little-loops components (marketplace listing, plugin, pip package)
-    Flags: --marketplace, --plugin, --package, --all, --dry-run
+    Update little-loops plugin and pip package to the latest version
+    Flags: --plugin, --package, --all, --dry-run
+
+/ll:publish <version|patch|minor|major> [--dry-run]
+    Bump version in all source files (maintainers only — requires little-loops source repo)
 
 CLI TOOLS (pip install little-loops)
 ------------------------------------

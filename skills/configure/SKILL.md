@@ -71,7 +71,8 @@ Check whether the installed `little-loops` pip package is aligned with this plug
    - If installed and versions differ:
      - Determine install command:
        ```bash
-       [ -d "./scripts" ] && INSTALL_CMD="pip install -e './scripts'" || INSTALL_CMD="pip install --upgrade little-loops"
+       EDITABLE_INSTALL=$(pip show little-loops 2>/dev/null | grep -E "^Editable project location:")
+       [ -n "$EDITABLE_INSTALL" ] && INSTALL_CMD="pip install -e './scripts'" || INSTALL_CMD="pip install --upgrade little-loops"
        ```
      - Use `AskUserQuestion`:
        ```
