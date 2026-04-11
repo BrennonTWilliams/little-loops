@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-04-11T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 76
+outcome_confidence: 71
 ---
 
 # BUG-1039: FSM validator false-positive and broken routing for `llm_structured` custom `on_*` keys
@@ -139,8 +139,8 @@ has_shorthand = (
 7. In `scripts/little_loops/fsm/fsm-loop-schema.json`, update the state object definition (lines 202–286) to allow custom `on_*` keys — add `"patternProperties": {"^on_": {"type": "string"}}` alongside the existing explicit `on_*` property declarations. Confirm `"additionalProperties": false` is either removed or that the pattern covers the custom keys.
 8. Add a fixture loop YAML `scripts/tests/fixtures/fsm/custom-on-routing.yaml` with `llm_structured` + custom schema + `on_done: final` / `on_retry: check`, modeled on `scripts/tests/fixtures/fsm/valid-loop.yaml`.
 9. Add tests to `scripts/tests/test_fsm_schema.py` verifying `extra_routes` targets appear in `get_referenced_states()` and round-trip through `to_dict()`, modeled on the `on_blocked` six-test battery at lines 342–398.
-10. Create `scripts/tests/test_fsm_validation.py` (new file) and add a reachability test for `extra_routes` targets, modeled on `test_unreachable_state_warning` in `test_fsm_schema.py:674–703`.
-11. Add a test to `scripts/tests/test_fsm_executor.py` verifying `_route()` dispatches custom `on_*` verdicts via `extra_routes`, modeled on `on_blocked` routing tests at lines 1048–1181.
+10. Create `scripts/tests/test_fsm_validation.py` (new file) and add a reachability test for `extra_routes` targets, modeled on `test_unreachable_state_warning` in `test_fsm_schema.py:674–688`.
+11. Add a test to `scripts/tests/test_fsm_executor.py` verifying `_route()` dispatches custom `on_*` verdicts via `extra_routes`, modeled on `on_partial` shorthand routing tests at lines 1048–1113 (3-test pattern: shorthand routes correctly, shorthand routes to fix state, missing shorthand falls through to error).
 12. Run `python -m pytest scripts/tests/ -k "fsm_schema or fsm_executor or fsm_validation" -v`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -182,8 +182,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 - `scripts/tests/test_fsm_schema.py` — add `extra_routes` six-test battery modeled on the `on_blocked` battery at lines 342–398
-- `scripts/tests/test_fsm_validation.py` — **DOES NOT EXIST; must be created as a new file**; add reachability test for `extra_routes` targets modeled on `test_unreachable_state_warning` in `test_fsm_schema.py:674–703`
-- `scripts/tests/test_fsm_executor.py` — add `_route()` test for custom `on_*` verdict dispatch, modeled on `on_blocked` routing tests at lines 1048–1181
+- `scripts/tests/test_fsm_validation.py` — **DOES NOT EXIST; must be created as a new file**; add reachability test for `extra_routes` targets modeled on `test_unreachable_state_warning` in `test_fsm_schema.py:674–688`
+- `scripts/tests/test_fsm_executor.py` — add `_route()` test for custom `on_*` verdict dispatch, modeled on `on_partial` shorthand routing tests at lines 1048–1113 (`on_blocked` mirror is at 1116–1181)
 - New fixture YAML `scripts/tests/fixtures/fsm/custom-on-routing.yaml` with `llm_structured` + custom schema + `on_done: final` / `on_retry: check` (model on `valid-loop.yaml`)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -197,6 +197,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `test_fsm_validation.py` does not exist — it must be created as a new test file, not added to an existing file.
 - The `on_blocked` shorthand **is** handled in `executor.py:_route()` (line 755–756) but **is not** included in `validation.py:has_shorthand` (lines 244–250). The issue mentions this as a separate minor omission; including `or state.on_blocked is not None` in the `has_shorthand` fix is low-risk and removes a pre-existing false negative.
 - `_resolve_route()` signature (lines 760–772): `_resolve_route(self, route: str, ctx: InterpolationContext) -> str`. The `extra_routes` fallback calls it exactly as the existing shorthand branches do: `return self._resolve_route(state.extra_routes[verdict], ctx)`.
+
+_Second-pass refinement (verified against current code):_
+
+- **Line number corrections**: `validation.py:has_shorthand` is at lines 245–250 (not 244–250); `_find_reachable_states()` BFS is at lines 430–444 (not 419–446); `executor.py:_route()` method is defined at line 713, shorthand block at lines 747–758.
+- **`test_unreachable_state_warning` is 14 lines (674–688)**, not 674–703 as originally documented. The test structure is simple: construct an FSM with an orphan state, call `validate_fsm()`, assert a WARNING-severity result containing "not reachable".
+- **`testing.py` broader shorthand gap**: The inline routing block at `testing.py:148–153` only handles 3 verdicts (`yes`, `no`, `error`). `on_partial` and `on_blocked` are also absent from this block — pre-existing gaps that exist independent of this fix. Step 13 adds the `extra_routes` branch; implementers should be aware the block was already incomplete for `on_partial`/`on_blocked`, but fixing those is out-of-scope for this issue.
+- **Executor test ranges**: `on_partial` shorthand battery starts at `test_fsm_executor.py:1048`; `on_blocked` shorthand battery starts at line 1116. Both follow the same 3-test structure (shorthand routes correctly, shorthand routes to fix state, missing shorthand falls to error). The new `extra_routes` test should mirror either battery.
 
 ### Documentation
 
@@ -221,7 +228,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 `bug`, `fsm`, `schema`, `validation`, `executor`, `llm_structured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-11T21:29:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0800be1c-f6b4-497c-b5ac-2b3352749526.jsonl`
 - `/ll:confidence-check` - 2026-04-11T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9d3c2d4-5cf6-495c-8cd4-7181ace6fb24.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7e9754d-cf7a-45bf-b3bd-c6451115fbb0.jsonl`
 - `/ll:wire-issue` - 2026-04-11T21:17:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef748997-a896-4299-a4ad-3b2fcbbc6bc1.jsonl`
 - `/ll:refine-issue` - 2026-04-11T21:09:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2dff0ee-2abf-45bc-ad9a-01799e669ef8.jsonl`
 - `/ll:format-issue` - 2026-04-11T21:05:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bd1ba80-531f-439b-9cb9-52cd75a653ee.jsonl`
