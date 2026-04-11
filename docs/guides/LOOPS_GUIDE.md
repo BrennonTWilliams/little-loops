@@ -513,14 +513,13 @@ run_eval → score_results → analyze_failures
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
-<!-- TODO: update-docs stub — FEAT-1023 — drafted 2026-04-11 -->
-### `html-website-generator`
+### `html-website-generator` — GAN-Style Website Design Loop
 
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`).
 
-> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium` or `pip install playwright && playwright install chromium`).
+**Technique**: Implements the generator-evaluator architecture described in Anthropic's [harness design article](../claude-code/harness-design-long-running-apps.md). The loop runs four states in sequence: a **planner** expands the one-line description into an opinionated design brief (color palette, layout, unique angle, anti-patterns to avoid); a **generator** writes a self-contained HTML/CSS/JS file; an **evaluator** uses Playwright CLI to screenshot the rendered page via `file://` URL (no HTTP server required); and a **scorer** judges the screenshot against four weighted criteria, routing back to the generator with structured critique until all scores clear `pass_threshold`.
 
-Implements the GAN-style generator-evaluator architecture described in Anthropic's [harness design article](../claude-code/harness-design-long-running-apps.md). The loop accepts a one-line website description, expands it into an opinionated design brief, generates a self-contained HTML/CSS/JS file, screenshots it with Playwright, and iteratively refines until all four quality criteria clear a configurable threshold.
+**When to use**: When you want rapid, fully-automated iterations on a single-page design without setting up a build pipeline. The `file://` approach means the loop works offline with no server lifecycle to manage. For multi-page apps or server-side rendering, adapt the `evaluate` state to use a local HTTP server instead.
 
 **Usage:**
 
@@ -532,9 +531,9 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `description` | (from `loop_input`) | Natural language website description passed as the positional argument |
+| `description` | (from `loop_input`) | Natural language website description — passed as the positional argument |
 | `output_dir` | `/tmp/ll-html-generator` | Output directory for `index.html`, `brief.md`, `critique.md`, and `screenshot.png` |
-| `pass_threshold` | `6` | Minimum score per criterion (1–10); all four criteria must meet this value to pass |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
 Override per-run:
 
@@ -544,20 +543,30 @@ ll-loop run html-website-generator "museum landing page" \
   --context pass_threshold=7
 ```
 
+**FSM flow:**
+
+```
+plan → generate → evaluate
+                     ├─ CAPTURED → score
+                     │              ├─ PASS    → done
+                     │              └─ ITERATE → generate (with critique)
+                     └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+```
+
 **Evaluation criteria** (all four must meet `pass_threshold`):
 
 | Criterion | Weight | What it checks |
 |-----------|--------|----------------|
 | `design_quality` | 2× | Does the design feel like a coherent whole with a distinct mood and identity? |
-| `originality` | 2× | Evidence of custom creative decisions? Penalizes purple gradients on white, unmodified stock components, AI-slop patterns. |
+| `originality` | 2× | Evidence of custom creative decisions? Penalizes purple gradients on white, unmodified stock components, AI-slop fill patterns. |
 | `craft` | 1× | Typography hierarchy, spacing consistency, color harmony, contrast ratios |
 | `functionality` | 1× | Can a user understand the site's purpose and complete the primary task within 5 seconds? |
 
 **Notes:**
-- The HTML file is fully self-contained (all CSS/JS inline) so it renders correctly under a `file://` URL — no HTTP server needed.
-- If Playwright is unavailable, the `evaluate` state routes directly to `generate`, falling back to LLM-only scoring via the `score` state.
-- The loop runs up to 30 iterations with a 4-hour timeout. Use `--context pass_threshold=5` to accept a lower quality bar on first runs.
-<!-- END TODO stub -->
+- The HTML file embeds all CSS and JavaScript inline so it renders correctly under a `file://` URL without a web server.
+- If Playwright is unavailable (missing binary, permission error), the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source rather than a screenshot.
+- The loop runs up to 30 iterations with a 4-hour timeout (`max_iterations: 30`, `timeout: 14400`).
+- To customize the design criteria or scoring weights, install the loop locally (`ll-loop install html-website-generator`) and edit the `score` state's prompt.
 
 ## Beyond the Basics
 
