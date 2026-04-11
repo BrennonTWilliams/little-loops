@@ -21,7 +21,7 @@ The system consists of three main layers:
 ```mermaid
 flowchart TB
     subgraph "Claude Code Plugin"
-        CMD[Commands<br/>29 slash commands]
+        CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>8 specialized agents]
         SKL[Skills<br/>26 composable skills]
     end
