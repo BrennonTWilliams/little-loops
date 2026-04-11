@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`auto-refine-and-implement` Wired to `recursive-refine`** — Replaced the flat `refine-to-ready-issue` sub-loop call with `recursive-refine`, enabling automatic decomposition of oversized issues into child issues before implementation; the outer loop now batches all passed issues from `recursive-refine-passed.txt` into an implementation queue and processes them sequentially before moving to the next backlog issue (ENH-1021)
 - **Skip `size-review` When Scores Already Pass** — `recursive-refine` loop adds a `recheck_scores` gate to bypass redundant size-review execution on issues that already meet readiness thresholds (ENH-1018)
 
 ### Fixed
