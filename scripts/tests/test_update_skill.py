@@ -116,7 +116,7 @@ class TestUpdateSkillConsumerPath:
         assert "Editable project location" in content, (
             "Package step must detect editable installs via "
             "'pip show little-loops | grep -E \"^Editable project location:\"' — "
-            "not via [ -d \"./scripts\" ] which incorrectly triggers in consumer repos"
+            'not via [ -d "./scripts" ] which incorrectly triggers in consumer repos'
         )
 
     def test_package_step_does_not_use_scripts_dir_check(self) -> None:
@@ -144,7 +144,7 @@ class TestPublishCommandExists:
         content = PUBLISH_CMD_FILE.read_text()
         assert '! -f ".claude-plugin/plugin.json"' in content, (
             "Publish command must include source-repo guard: "
-            "if [ ! -f \".claude-plugin/plugin.json\" ]; then exit 1; fi"
+            'if [ ! -f ".claude-plugin/plugin.json" ]; then exit 1; fi'
         )
 
     def test_publish_references_plugin_json(self) -> None:
