@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-10
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # ENH-1021: Refactor auto-refine-and-implement to use recursive-refine
@@ -20,6 +22,18 @@ Replace the `refine-to-ready-issue` sub-loop call in `auto-refine-and-implement`
 ## Motivation
 
 `recursive-refine` already exists and handles large-issue decomposition. Wiring it into `auto-refine-and-implement` removes the need for manual decomposition before automation can process an issue, making the end-to-end pipeline fully autonomous for oversized issues.
+
+## Success Metrics
+
+- `recursive-refine` sub-loop invoked for each backlog issue (replaces flat `refine-to-ready-issue` call)
+- Issues in `recursive-refine-passed.txt` are queued for implementation and added to the outer skip list
+- Decomposed parent issues (in `recursive-refine-skipped.txt`) are added to the outer skip list and not re-queued
+- `ll-loop validate auto-refine-and-implement` passes with no schema errors after the change
+
+## Scope Boundaries
+
+- **In scope**: Replacing the `refine_issue` state and all downstream states in `auto-refine-and-implement.yaml` with the new recursive-refine delegation state machine
+- **Out of scope**: Changes to `recursive-refine.yaml` (read-only reference); changes to the Python executor or loop runner; changes to other loop YAML files; modifications to `ll-issues next-issue` behavior
 
 ## Proposed Solution
 
@@ -85,15 +99,39 @@ done  [terminal]
 - `scripts/little_loops/loops/recursive-refine.yaml` — pattern for reading passed/skipped output files
 - `scripts/little_loops/loops/issue-refinement-loop.yaml` — existing use of sub-loop delegation pattern
 
+### Tests
+- `scripts/tests/test_builtin_loops.py:test_all_validate_as_valid_fsm` — validates all built-in loops including `auto-refine-and-implement`; will catch schema errors in the updated YAML automatically
+- `scripts/tests/test_builtin_loops.py:TestRecursiveRefine` (lines 785–921) — model for adding a `TestAutoRefineAndImplement` class with structural assertions for the new state machine (see Implementation Steps)
+
+### New Output Files
+- `.loops/tmp/auto-refine-and-implement-impl-queue.txt` — written by `get_passed_issues`, consumed by `implement_next`; new file created by this change (does not exist today)
+
+### Documentation
+- N/A - No documentation specifically covers `auto-refine-and-implement` internals
+
+### Configuration
+- N/A - No configuration changes required
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/fsm/executor.py:336-343` — `context_passthrough` mechanism: when `true`, parent's `self.captured` entries are flattened to their `.output` strings and merged into the child's `context`. So `captured.input.output` (issue ID from `get_next_issue`) becomes `context.input` in `recursive-refine`, which is exactly what `parse_input` reads via `${context.input}`.
+- `scripts/little_loops/fsm/executor.py:367-381` — sub-loop routing: child `done` terminal → `on_yes` (= `on_success`); child `failed` terminal → `on_no` (= `on_failure`); runtime error → `on_error`. Confirmed: `recursive-refine`'s two terminals (`done`, `failed`) correctly map to `on_success: get_passed_issues` and `on_failure: skip_and_continue`.
+- `scripts/little_loops/fsm/schema.py:301-302` — `on_success`/`on_failure` are aliases for `on_yes`/`on_no`; resolved at parse time (no runtime overhead).
+- `scripts/little_loops/loops/recursive-refine.yaml:36-37` — both output files are reset at `parse_input` on every invocation, so `get_passed_issues` always reads a fresh snapshot for the current input issue.
+- `scripts/tests/test_builtin_loops.py:785-921` — `TestRecursiveRefine` is the test class pattern to follow if adding `TestAutoRefineAndImplement`; covers state presence, terminal correctness, routing, and file path conventions.
+
 ## Implementation Steps
 
 1. Read current `auto-refine-and-implement.yaml` and `recursive-refine.yaml` to confirm interfaces
 2. Replace the full `states:` block in `auto-refine-and-implement.yaml` with the new state machine (see Proposed Solution)
 3. Update the `description:` field in the loop header to reflect recursive-refine delegation
-4. Run `ll-loop validate auto-refine-and-implement` (if available) to check YAML schema
-5. Dry-run: inspect `.loops/tmp/` files after a single iteration with a known decomposable issue
-6. Check that after `recursive-refine` runs: passed issues appear in `auto-refine-and-implement-impl-queue.txt`, skipped issues appear in `auto-refine-and-implement-skipped.txt`
-7. Confirm `ll-issues next-issue --skip <passed+skipped ids>` no longer returns those IDs
+4. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` — `test_all_validate_as_valid_fsm` and `test_all_parse_as_yaml` will catch any schema errors in the updated YAML
+5. Optionally add a `TestAutoRefineAndImplement` class in `test_builtin_loops.py` (model after `TestRecursiveRefine` at line 785) to assert the new state names, routing, and file paths
+6. Dry-run: inspect `.loops/tmp/` files after a single iteration with a known decomposable issue
+7. Check that after `recursive-refine` runs: passed issues appear in `.loops/tmp/auto-refine-and-implement-impl-queue.txt`, skipped issues appear in `.loops/tmp/auto-refine-and-implement-skipped.txt`
+8. Confirm `ll-issues next-issue --skip <passed+skipped ids>` no longer returns those IDs
 
 ### Complete Replacement YAML
 
@@ -229,4 +267,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-11T01:25:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a8cafa8-27b4-42c4-bb1a-96ff79bd0cf7.jsonl`
+- `/ll:format-issue` - 2026-04-11T01:18:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ded44bb-5172-425c-a697-6c2aede69b6a.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc79d8ec-4917-4061-a148-c6ad39ee404c.jsonl`
+- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b72b78fc-5cf9-40eb-a054-5c72aa47ca1a.jsonl`
