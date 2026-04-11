@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-10
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 71
 ---
 
 # FEAT-1027: Issue Conflict Audit Skill with Auto-Apply
@@ -73,6 +75,46 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Reusable Python** (if Python component added): `find_issues(config)` at `scripts/little_loops/issue_parser.py:612`; `IssueInfo.path.read_text()` for full content; existing `parallel/overlap_detector.py` detects file-level conflicts (out of scope for semantic conflicts)
 - **Interactive approval loop**: per-recommendation `AskUserQuestion` from `commands/tradeoff-review-issues.md:183-213`; options: accept/reject/update for each conflict pair
 - **Session log**: `ll-issues append-log <path> /ll:audit-issue-conflicts` after each modified issue file
+- **git add cleanup**: after all approvals applied, `git add {{config.issues.base_dir}}/` in one shot — see `commands/tradeoff-review-issues.md:300-303`; do not scatter individual `git add` calls per file
+
+### Codebase Research Findings (Second Pass)
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Concrete frontmatter for `skills/audit-issue-conflicts/SKILL.md`** — model directly from `skills/audit-claude-config/SKILL.md:1-19`:
+```yaml
+---
+description: |
+  Use when the user asks to audit issues for conflicts, detect conflicting requirements or objectives across open issues, find incompatible architecture decisions, or says "check my backlog for conflicts." Supports auto-apply and dry-run modes.
+
+  Trigger keywords: "audit issue conflicts", "detect conflicts", "conflicting issues", "backlog conflicts", "incompatible issues", "conflict audit", "check for conflicts"
+argument-hint: "[--auto] [--dry-run]"
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*)
+  - Bash(ll-issues:*)
+arguments:
+  - name: flags
+    description: "Optional flags: --auto (apply all recommendations without prompting), --dry-run (report only, no changes)"
+    required: false
+---
+```
+Note: add `model: sonnet` (like `wire-issue`) if batch Task spawning proves slow under default model.
+
+**Approval loop interaction design by recommendation type** — `commands/tradeoff-review-issues.md:183-213` uses two distinct `AskUserQuestion` shapes; map the 5 recommendation types onto similar shapes:
+- **merge** (high/medium severity): heavy prompt — options: "Yes, consolidate" (close lower-priority, add scope note to survivor), "No, keep separate", "Add dependency instead"
+- **deprecate** (any severity): heavy prompt — options: "Yes, close this issue", "No, keep active", "Demote priority instead"
+- **split** (medium severity): lighter prompt — options: "Yes, note the split needed", "No, keep as-is"
+- **add_dependency** (low/medium severity): lighter prompt — options: "Yes, add blocked_by frontmatter", "No, skip"
+- **update_scope** (low/medium severity): lighter prompt — options: "Yes, append scope note", "No, skip"
+- **No action** (informational, no severity): no `AskUserQuestion` call (mirrors Implement-tier in tradeoff-review)
+
+**`report-template.md` sidecar**: `audit-claude-config` uses a companion `skills/audit-claude-config/report-template.md` for final report rendering. For `audit-issue-conflicts`, a sidecar is optional but recommended if the conflict report format is complex; skip for initial implementation and add later if the skill body grows unwieldy.
+
+**`docs/guides/ISSUE_MANAGEMENT_GUIDE.md:484` confirmed**: line 484 is in the "Plan a Feature Sprint" recipe (header at line 475); `/ll:tradeoff-review-issues` is step 4 at that line. Add `/ll:audit-issue-conflicts` as step 3.5 (new step before tradeoff-review) with label "← detect conflicting requirements".
 
 ## Integration Map
 
@@ -177,7 +219,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-04-10 | Priority: P3
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-10
+- **Reason**: Issue too large for single session (score: 9/11)
+
+### Decomposed Into
+- FEAT-1028: audit-issue-conflicts — Core Skill Implementation
+- FEAT-1029: audit-issue-conflicts — Wiring, Docs, and Tests
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-11T04:42:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1583f95-f6e7-426b-b174-369fd745725e.jsonl`
+- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5343d85e-56e6-4111-996a-b7d1443c12e2.jsonl`
+- `/ll:issue-size-review` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1583f95-f6e7-426b-b174-369fd745725e.jsonl`
+- `/ll:refine-issue` - 2026-04-11T04:37:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe3dd14d-8803-4c74-9695-d4a8932e669b.jsonl`
+- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/061c2263-f209-4533-949a-359e59b364bb.jsonl`
 - `/ll:wire-issue` - 2026-04-11T04:31:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0479a8c9-3760-43ef-9882-a6ccd39a5e03.jsonl`
 - `/ll:refine-issue` - 2026-04-11T04:26:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c85b9aa1-79ab-48d3-84d4-705da5aae834.jsonl`
 - `/ll:format-issue` - 2026-04-11T04:21:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/747b5bd8-c7d1-4db4-9f6c-74f553aeef25.jsonl`
