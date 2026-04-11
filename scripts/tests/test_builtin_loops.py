@@ -653,6 +653,13 @@ class TestRefineToReadyIssueSubLoop:
             f"check_refine_limit.on_yes should be 'refine_issue', got {state.get('on_yes')!r}"
         )
 
+    def test_check_refine_limit_on_no_routes_to_breakdown_issue(self, data: dict) -> None:
+        """check_refine_limit.on_no must route to breakdown_issue (not failed)."""
+        state = data["states"].get("check_refine_limit", {})
+        assert state.get("on_no") == "breakdown_issue", (
+            f"check_refine_limit.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
+        )
+
 
 class TestHarnessCapture:
     """Tests that harness YAML files wire execute output to check_semantic via capture/source."""

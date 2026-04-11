@@ -150,13 +150,13 @@ states:
     action_type: shell
     # target: 2 → allows 1 loopback per run (2 total refines: 1 initial + 1 retry)
     # Increase target to allow more retries (e.g. target: 3 = 3 total refines per run)
-    # Lifetime refine cap is enforced separately by check_lifetime_limit
+    # Budget exhaustion routes to breakdown_issue; lifetime cap enforced by check_lifetime_limit
     evaluate:
       type: output_numeric
       operator: lt
       target: 2
     on_yes: refine_issue
-    on_no: failed
+    on_no: breakdown_issue
     on_error: failed
 
   check_scores_from_file:

@@ -17,7 +17,7 @@ In `refine-to-ready-issue.yaml`, when `check_scores` fails and the per-run retry
 - `on_yes: refine_issue` (retry when under budget)
 - `on_no: failed` (exit sub-loop when budget exhausted)
 
-`breakdown_issue` at `refine-to-ready-issue.yaml:191` is only reachable from `check_lifetime_limit:71` (`on_no: breakdown_issue`). There is no edge from `check_refine_limit` → `breakdown_issue`.
+`breakdown_issue` at `refine-to-ready-issue.yaml:191` is only reachable from `check_lifetime_limit:72` (`on_no: breakdown_issue`). There is no edge from `check_refine_limit` → `breakdown_issue`.
 
 When `recursive-refine` invokes the sub-loop via `run_refine` (`recursive-refine.yaml:88`), it routes `on_failure: detect_children`. If no children were auto-created by the sub-loop, `detect_children` exits 1 → `size_review_snap` → `recheck_scores` → `run_size_review`. This indirect path works only when the parent is `recursive-refine`; running `refine-to-ready-issue` standalone never triggers breakdown regardless of scores.
 
@@ -110,12 +110,22 @@ The structural twin is `test_check_lifetime_limit_routes_to_breakdown_issue` at 
 
 `bug`, `loops`, `fsm`, `refine-to-ready-issue`, `recursive-refine`
 
+## Resolution
+
+- Changed `check_refine_limit.on_no` from `failed` to `breakdown_issue` in `refine-to-ready-issue.yaml:159`
+- Updated comment on `check_refine_limit` to reflect budget exhaustion now triggers decomposition
+- Updated comment on `run_refine` in `recursive-refine.yaml` to reflect `on_failure` is now a true error condition
+- Added test `test_check_refine_limit_on_no_routes_to_breakdown_issue` to `TestRefineToReadyIssueSubLoop`
+- All 126 tests pass
+
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P3
+**Completed** | Created: 2026-04-11 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-11T05:46:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba7708c8-b719-402a-9ee7-a5f089cf84b8.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4d2ee8a-2f4f-412d-b789-1c3f3d4748e3.jsonl`
 - `/ll:refine-issue` - 2026-04-11T05:38:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/beb925f3-1081-49e6-920c-e728c119f859.jsonl`
 - `/ll:format-issue` - 2026-04-11T05:22:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ede2e27-e614-4fb9-a6db-bba4198effb0.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
+- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
