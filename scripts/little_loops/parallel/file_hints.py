@@ -310,6 +310,32 @@ def _extract_write_target_files(content: str) -> set[str]:
     return files
 
 
+def _extract_write_target_directories(content: str) -> set[str]:
+    """Extract directory paths only from write-target sections of issue content.
+
+    Mirrors the section-scoping logic of ``_extract_write_target_files`` so that
+    prose mentions of directories (e.g. in Summary or Motivation) do not generate
+    spurious conflict signals in sprint scheduling.
+
+    Args:
+        content: Issue markdown content
+
+    Returns:
+        Set of directory paths that are actual write targets
+    """
+    directories: set[str] = set()
+    section_pattern = re.compile(
+        r"###\s*(?:Files to Modify|Files Changed)\s*\n(.*?)(?=\n###|\n##|\Z)",
+        re.DOTALL,
+    )
+    for section_match in section_pattern.finditer(content):
+        section = section_match.group(1)
+        for match in DIR_PATH_PATTERN.findall(section):
+            if _is_valid_path(match):
+                directories.add(match)
+    return directories
+
+
 def extract_file_hints(content: str, issue_id: str = "") -> FileHints:
     """Extract file hints from issue content.
 
@@ -327,11 +353,10 @@ def extract_file_hints(content: str, issue_id: str = "") -> FileHints:
     # (e.g., "Related Key Documentation") causing false sprint serialization.
     hints.files = _extract_write_target_files(content)
 
-    # Extract directory paths
-    for match in DIR_PATH_PATTERN.findall(content):
-        if not _is_valid_path(match):
-            continue
-        hints.directories.add(match)
+    # Extract directory paths from write-target sections only.
+    # Full-body extraction causes false conflicts when prose mentions a directory
+    # (e.g., "this feature lives in src/viewer/") that is not an actual write target.
+    hints.directories = _extract_write_target_directories(content)
 
     # Extract scopes
     for match in SCOPE_PATTERN.findall(content):

@@ -52,10 +52,19 @@ class TestFileHintExtraction:
         assert "tests/test_cli.py" in hints.files
 
     def test_extracts_directories(self) -> None:
-        """Should extract directory paths."""
-        content = "Changes to scripts/little_loops/ directory"
+        """Should extract directory paths from write-target sections."""
+        content = """
+### Files to Modify
+- `scripts/little_loops/` — update module
+"""
         hints = extract_file_hints(content)
         assert "scripts/little_loops/" in hints.directories
+
+    def test_directories_outside_write_sections_not_extracted(self) -> None:
+        """Directory paths mentioned only in prose must not produce directory hints."""
+        content = "Changes to scripts/little_loops/ directory"
+        hints = extract_file_hints(content)
+        assert "scripts/little_loops/" not in hints.directories
 
     def test_extracts_scopes(self) -> None:
         """Should extract scope identifiers."""

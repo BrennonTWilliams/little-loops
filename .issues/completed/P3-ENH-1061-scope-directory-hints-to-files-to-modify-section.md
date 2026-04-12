@@ -128,7 +128,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `enhancement`, `sprint`, `parallelism`, `file-hints`, `captured`
 
+## Resolution
+
+**Completed**: 2026-04-12
+
+Added `_extract_write_target_directories()` in `file_hints.py` (mirroring `_extract_write_target_files()`) that scopes `DIR_PATH_PATTERN` to `### Files to Modify` / `### Files Changed` sections only. Replaced full-body `DIR_PATH_PATTERN.finditer(content)` loop in `extract_file_hints()` with a call to the new helper. Updated `test_extracts_directories` to use a write-target section and added `test_directories_outside_write_sections_not_extracted` to assert prose directories are excluded.
+
+- 294 unit tests pass (test_file_hints, test_overlap_detector, test_sprint, test_orchestrator)
+- 25 sprint integration tests pass
+- Ruff lint: clean
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T17:18:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e985-3411-48b4-b43d-78c885aa2292.jsonl`
 - `/ll:wire-issue` - 2026-04-12T16:36:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7b427a4-828a-4b73-a1c0-44765d29b11f.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:30:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d9b1de7-b67d-4ec1-ab1a-2d2d2d583651.jsonl`
 - `/ll:capture-issue` - 2026-04-12T17:20:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d397308b-e908-423f-9d30-383270c713d4.jsonl`
@@ -136,4 +148,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-04-12 | Priority: P3
+**Completed** | Created: 2026-04-12 | Priority: P3
