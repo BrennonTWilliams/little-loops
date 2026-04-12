@@ -1,0 +1,17 @@
+"""Tests for {{class_name}}."""
+
+from __future__ import annotations
+
+from little_loops import LLTestBus
+
+from {{pkg_name}}.extension import {{class_name}}
+
+
+class Test{{class_name}}:
+    def test_receives_events(self) -> None:
+        """Extension receives events via LLTestBus replay."""
+        bus = LLTestBus([])
+        ext = {{class_name}}()
+        bus.register(ext)
+        bus.replay()
+        assert bus.delivered_events == []

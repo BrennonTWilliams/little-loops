@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{name}}"
+version = "0.1.0"
+description = "A little-loops extension"
+requires-python = ">=3.11"
+dependencies = ["little-loops"]
+
+[project.entry-points."little_loops.extensions"]
+{{name}} = "{{pkg_name}}.extension:{{class_name}}"

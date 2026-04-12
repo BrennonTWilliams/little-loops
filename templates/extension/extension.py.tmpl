@@ -1,0 +1,19 @@
+"""{{name}} — a little-loops extension."""
+
+from __future__ import annotations
+
+from little_loops import LLEvent
+
+
+class {{class_name}}:
+    """{{class_name}} extension.
+
+    Implement on_event to handle little-loops lifecycle events.
+    Optional mixin Protocols (InterceptorExtension, ActionProviderExtension,
+    EvaluatorProviderExtension) are opt-in — implement their methods to activate.
+    """
+
+    def on_event(self, event: LLEvent) -> None:
+        """Handle an incoming event."""
+        # See docs/reference/EVENT-SCHEMA.md for all available event types and payload fields
+        pass

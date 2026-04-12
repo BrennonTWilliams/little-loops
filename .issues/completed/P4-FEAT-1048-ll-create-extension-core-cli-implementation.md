@@ -152,7 +152,7 @@ This issue only requires updating the `cli/__init__.py` module docstring (step 3
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- **Direct CLI model**: `scripts/little_loops/cli/gitignore.py` is the closest analogue (no BRConfig, no configure_output — a pure file-operation command). The `auto.py` reference in Key References is for orientation only; `gitignore.py` is the file to model `create_extension.py` after. Both use `add_config_arg` + `add_dry_run_arg` from `cli_args.py`.
+- **Direct CLI model**: `scripts/little_loops/cli/gitignore.py` is the closest analogue (no BRConfig, no configure_output — a pure file-operation command). The `auto.py` reference in Key References is for orientation only; `gitignore.py` is the file to model `create_extension.py` after. Note: `gitignore.py` uses both `add_config_arg` + `add_dry_run_arg`, but `create_extension.py` should use `add_dry_run_arg` only — the Critical Implementation Notes explicitly drop `--config` because this command operates on `cwd` with no project root concept.
 - **`.tmpl` extension is new**: No `.tmpl` files exist anywhere in `templates/` currently (all are `.json` or `.md`). The `templates/extension/` directory and `.tmpl` extension establish a new convention — this is fine, but implementers should know it has no prior art to reference within the project.
 - **`ENTRY_POINT_GROUP` constant**: `scripts/little_loops/extension.py:32` defines `ENTRY_POINT_GROUP = "little_loops.extensions"` — the `pyproject.toml.tmpl` must use `[project.entry-points."little_loops.extensions"]` exactly (confirmed to match).
 - **`LLExtension` Protocol**: Defined at `scripts/little_loops/extension.py:35-56`. The `on_event(self, event: LLEvent) -> None` method is the only required Protocol method. Three optional mixin Protocols exist (`InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`) detected via `hasattr()` at runtime — mention in the extension.py.tmpl skeleton comment that these are opt-in.
@@ -164,7 +164,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 1. Create `scripts/little_loops/cli/create_extension.py`:
    - `main_create_extension()` entry point
-   - Argparse: positional `name`, `add_config_arg`, `add_dry_run_arg`
+   - Argparse: positional `name`, `add_dry_run_arg` only (no `add_config_arg` — command operates on `cwd`, has no project root concept)
    - Calls template rendering functions; creates output directory
 
 2. Create `templates/extension/` scaffolding files:
@@ -196,12 +196,12 @@ ll-create-extension = "little_loops.cli:main_create_extension"
 
 ## Acceptance Criteria
 
-- [ ] `ll-create-extension <name>` creates a working directory scaffold
-- [ ] Generated `pyproject.toml` has correct `[project.entry-points."little_loops.extensions"]`
-- [ ] Skeleton `extension.py` includes comment linking to `docs/reference/EVENT-SCHEMA.md`
-- [ ] Generated test file uses `LLTestBus` example
-- [ ] `--dry-run` flag shows what would be created without writing files
-- [ ] All new tests pass with `python -m pytest scripts/tests/test_create_extension.py`
+- [x] `ll-create-extension <name>` creates a working directory scaffold
+- [x] Generated `pyproject.toml` has correct `[project.entry-points."little_loops.extensions"]`
+- [x] Skeleton `extension.py` includes comment linking to `docs/reference/EVENT-SCHEMA.md`
+- [x] Generated test file uses `LLTestBus` example
+- [x] `--dry-run` flag shows what would be created without writing files
+- [x] All new tests pass with `python -m pytest scripts/tests/test_create_extension.py`
 
 ## Impact
 
@@ -220,9 +220,20 @@ ll-create-extension = "little_loops.cli:main_create_extension"
 
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Completed** | Created: 2026-04-11 | Resolved: 2026-04-11 | Priority: P4
+
+## Resolution
+
+Implemented `ll-create-extension <name> [--dry-run]` CLI command:
+- `scripts/little_loops/cli/create_extension.py` — new module with `main_create_extension()`, template render functions, and `_write_scaffold()` / `_target_exists()` helpers
+- `templates/extension/` — three `.tmpl` reference files (`pyproject.toml.tmpl`, `extension.py.tmpl`, `test_extension.py.tmpl`)
+- `scripts/little_loops/cli/__init__.py` — added import, `__all__` entry, and docstring line (atomic with module creation)
+- `scripts/pyproject.toml` — registered `ll-create-extension` entry point
+- `scripts/tests/test_create_extension.py` — 10 tests, all passing
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-12T04:20:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ed6a07b-21b2-4dd2-b642-a8f8ee28dcfa.jsonl`
+- `/ll:ready-issue` - 2026-04-12T04:12:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/944df040-d306-46c9-91a4-e21802bb110a.jsonl`
 - `/ll:confidence-check` - 2026-04-11T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32c003c1-efad-4d24-b9eb-63cacaec1777.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/552f9ae8-b018-49c2-96eb-16e112223147.jsonl`
 - `/ll:confidence-check` - 2026-04-12T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/717e28ae-eb80-4486-985b-4a93bb32c71f.jsonl`
