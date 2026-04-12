@@ -1,7 +1,7 @@
 ---
 id: BUG-863
 priority: P2
-status: open
+status: completed
 discovered_date: 2026-03-23
 discovered_by: capture-issue
 confidence_score: 95
@@ -124,10 +124,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Edit `skills/init/SKILL.md:469-475` — replace the 5-bullet merge block in Step 10.5 point 3 with the 6-bullet version that adds `${CLAUDE_PLUGIN_ROOT}` resolution (run `pwd`, replace in all command strings) before the merge
-2. Edit `skills/configure/areas.md:901-906` — replace the 5-step merge block in `hooks install` Step 3 with the 6-step version applying the same resolution
-3. Verify both: run `/ll:init --force` and `/ll:configure hooks install`, then inspect `.claude/settings.local.json` — all hook commands should contain absolute paths like `/Users/brennon/AIProjects/.../hooks/scripts/session-cleanup.sh`
-4. Test the resolved path is correct: confirm a new Claude Code session runs Stop hook without error
+1. Edit `skills/init/SKILL.md:451-480` — replace the entire Step 10.5 "Install Hooks" block with the no-op informational note from Proposed Solution (hooks are automatic via plugin; direct user to `/ll:configure hooks show`)
+2. Edit `skills/configure/areas.md:877-941` — replace the entire `hooks install` sub-command section (including dry-run preview at lines 881-894 and Step 3 merge block at lines 915-924) with the no-op note from Proposed Solution
+3. Edit `skills/configure/areas.md:943-955` — remove or redirect the "install" option from the interactive hooks menu (replace description with: "hooks are automatic via plugin; use `show` to verify")
+4. Verify: run `/ll:init --force` and confirm no hooks are written to `.claude/settings.local.json`; run `/ll:configure hooks show` to confirm hooks are still active via plugin
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -165,17 +165,25 @@ This will fail at execution. The fix should wrap the resolved path in quotes whe
 
 ## Resolution
 
-**Fixed** in `skills/init/SKILL.md:469-479` and `skills/configure/areas.md:901-910`.
+**Fixed** in `skills/init/SKILL.md` and `skills/configure/areas.md`.
 
-Added a `${CLAUDE_PLUGIN_ROOT}` resolution step in both merge blocks. Before writing hooks to the settings file, the skill now runs `bash -c 'pwd'` to obtain the absolute plugin root and replaces every occurrence of `${CLAUDE_PLUGIN_ROOT}` in all hook command strings with that value. Paths containing spaces are wrapped in single quotes.
+Removed the hooks installation step entirely from both skill files. The root cause was that `${CLAUDE_PLUGIN_ROOT}` is only resolved when hooks load from a registered plugin's own `hooks.json` — not from project-level settings files. Writing hooks to `settings.local.json` was both unnecessary (the plugin already handles hooks automatically) and broken (`${CLAUDE_PLUGIN_ROOT}` expands to empty string in project context, causing path errors).
+
+**Changes made**:
+- `skills/init/SKILL.md` — Step 10.5 replaced with a no-op note: hooks fire automatically via plugin
+- `skills/configure/areas.md` — `hooks install` sub-command replaced with a no-op note; "install" option removed from interactive menu
+- `docs/reference/COMMANDS.md` — hooks description updated to "shows/validates" (install no longer offered)
+- `scripts/tests/test_create_extension_wiring.py` — Added `TestBug863HooksInstallRemoved` regression tests (6 assertions)
 
 ## Status
 
-**Completed** | Created: 2026-03-23 | Resolved: 2026-03-23 | Priority: P2
+**Completed** | Created: 2026-03-23 | Reopened: 2026-04-12 | Resolved: 2026-04-12 | Priority: P2
 
 ---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T21:55:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e49c0347-17ff-4e30-950a-dc1672a9464b.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70494509-dcbf-4a7d-9c33-38b2acf1602c.jsonl`
 - `/ll:wire-issue` - 2026-04-12T21:41:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afe704b8-ebc5-45d8-8fb7-81c53b3abe43.jsonl`
 - `/ll:refine-issue` - 2026-04-12T21:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34932e3c-e378-4fd7-9886-68460b918395.jsonl`
