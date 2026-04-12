@@ -4,8 +4,8 @@ priority: P2
 status: open
 discovered_date: 2026-03-23
 discovered_by: capture-issue
-confidence_score: 100
-outcome_confidence: 75
+confidence_score: 95
+outcome_confidence: 79
 ---
 
 # BUG-863: `${CLAUDE_PLUGIN_ROOT}` Not Resolved in Hooks Installed to Settings Files
@@ -176,6 +176,7 @@ Added a `${CLAUDE_PLUGIN_ROOT}` resolution step in both merge blocks. Before wri
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70494509-dcbf-4a7d-9c33-38b2acf1602c.jsonl`
 - `/ll:wire-issue` - 2026-04-12T21:41:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afe704b8-ebc5-45d8-8fb7-81c53b3abe43.jsonl`
 - `/ll:refine-issue` - 2026-04-12T21:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34932e3c-e378-4fd7-9886-68460b918395.jsonl`
 - `hook:posttooluse-git-mv` - 2026-04-12T21:19:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4eedc92-7d36-48db-b6c4-024d421aeb96.jsonl`

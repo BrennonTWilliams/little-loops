@@ -154,11 +154,12 @@ child_result = child_executor.run()     # returns ExecutionResult
 ```
 `child_result.terminated_by` (`"terminal"`, `"error"`, `"max_iterations"`) and `child_result.final_state` (`"done"` or other terminal) drive succeeded/failed classification.
 
-**Sub-loop loading** — need `resolve_loop_path` + `load_and_validate` from `scripts/little_loops/fsm/` (same imports used at `executor.py:328-333`):
+**Sub-loop loading** — `resolve_loop_path` and `load_and_validate` are lazy-imported inside `_execute_sub_loop` at `executor.py:328-329`. **Correct imports** (both differ from what was originally noted):
 ```python
-from little_loops.fsm.schema import load_and_validate
-from little_loops.fsm.runners import resolve_loop_path  # verify exact import
+from little_loops.cli.loop._helpers import resolve_loop_path  # NOT from fsm.runners
+from little_loops.fsm.validation import load_and_validate     # NOT from fsm.schema
 ```
+`resolve_loop_path` (`_helpers.py:93-114`) resolution chain: raw path → `<loops_dir>/<name>.fsm.yaml` → `<loops_dir>/<name>.yaml` → bundled plugin loops dir → `FileNotFoundError`. Called as `resolve_loop_path(state.loop, self.loops_dir or Path(".loops"))` (`executor.py:332`).
 
 **`worktree_utils.setup_worktree`** (`worktree_utils.py:20-99`):
 ```python
@@ -255,13 +256,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- **Worker verdict logic**: `child_result.terminated_by == "terminal"` and `child_result.final_state == "done"` → succeeded; all other `terminated_by` values (`"error"`, `"max_iterations"`, `"timeout"`, `"signal"`) or non-`"done"` terminal states → failed
+- **Worker verdict logic**: `child_result.terminated_by == "terminal"` and `child_result.final_state == "done"` → succeeded; all other `terminated_by` values (`"error"`, `"max_iterations"`, `"timeout"`, `"signal"`, `"handoff"`) or non-`"done"` terminal states → failed. Note: `"handoff"` is a valid `terminated_by` value in `ExecutionResult` (`types.py:16-54`) — treat as failure since the sub-loop did not complete normally
 - **Thread-name prefix convention**: `worker_pool.py` uses `"issue-worker"`; use `"fsm-parallel"` for this module (already in proposed solution)
 - **Context passthrough**: `_execute_sub_loop` at `executor.py:336-343` merges context as `{**self.fsm.context, **captured_as_context, **child_fsm.context}` — implement parallel context injection following the same merge order
 - **Depth tracking**: child executor `_depth` is set post-construction via `child_executor._depth = depth`; parallel workers should propagate depth+1
 - **MergeCoordinator is NOT directly usable** for worktree mode: it expects `ParallelConfig` (ll-parallel) and `WorkerResult` (IssueInfo-coupled). Implement worktree merge directly using `git_lock.run(["merge", "--no-ff", branch_name], cwd=repo_path)` instead, or investigate if a thin bridge suffices
 - **Dataclass conventions** (`fsm/types.py`, `parallel/types.py`): required fields first, optional fields with `None` default at end, mutable defaults use `field(default_factory=...)` — follow same pattern for `ParallelResult`
 - **Test pattern** (`test_fsm_executor.py:3480-3492`): sub-loop tests write child YAML to `tmp_path / ".loops"` and pass `loops_dir=loops_dir` to `FSMExecutor`; parallel runner tests should mock `FSMExecutor.run()` directly to avoid full execution overhead
+- **`worktree_utils.py` correct path**: the module lives at `scripts/little_loops/worktree_utils.py`, NOT `scripts/little_loops/parallel/worktree_utils.py`. Import as `from little_loops.worktree_utils import setup_worktree, cleanup_worktree`. The `parallel/` directory contains `git_lock.py`, `merge_coordinator.py`, `worker_pool.py` — but NOT `worktree_utils.py`
+- **Standalone worktree pattern** (`cli/loop/run.py:171-215`): the simplest per-item worktree lifecycle in the codebase; uses `GitLock(logger)` directly, calls `setup_worktree(repo_path, worktree_path, branch_name, copy_files, logger, git_lock)`, registers cleanup via `atexit.register`. Branch name pattern: `f"{timestamp}-{safe_loop_name}"` where `safe_loop_name = re.sub(r"[^a-zA-Z0-9-]", "-", loop_name)`. For `ParallelRunner` worktree mode, adapt this pattern per-item with `try/finally` (not `atexit`) for proper cleanup under concurrent execution
 
 ## Impact
 
@@ -286,9 +289,10 @@ _Added by `/ll:confidence-check` on 2026-04-12_
 ### Concerns
 - **FEAT-1074 not complete**: `ParallelStateConfig` does not exist in `schema.py`. The `ParallelRunner.run()` signature requires it. Do not begin implementation until FEAT-1074 is merged.
 - **Test gap**: Tests are deferred to FEAT-1077. This module will be untested until that issue ships — plan to implement FEAT-1077 immediately after.
-- **`resolve_loop_path` import**: Issue flags "verify exact import" — confirm the exact symbol name and module path in `little_loops.fsm.runners` before coding.
+- **`resolve_loop_path` import**: ~~verify exact import~~ RESOLVED — `from little_loops.cli.loop._helpers import resolve_loop_path` (`_helpers.py:93`); `load_and_validate` is at `from little_loops.fsm.validation import load_and_validate` (`validation.py:451`). Neither is in `fsm.runners` or `fsm.schema`.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-12T21:44:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba00a202-7579-41c1-8d16-ccc842c9ed69.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76789ff6-088d-4a98-b81f-58898ce4522f.jsonl`
 - `/ll:wire-issue` - 2026-04-12T21:38:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7762782-0f79-4152-a3a2-b2f202799611.jsonl`
 - `/ll:refine-issue` - 2026-04-12T21:32:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34932e3c-e378-4fd7-9886-68460b918395.jsonl`
