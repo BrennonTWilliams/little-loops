@@ -30,6 +30,8 @@ def _render_execution_plan(
     waves: list[list[Any]],
     dep_graph: DependencyGraph,
     contention_notes: list[WaveContentionNote | None] | None = None,
+    *,
+    config: DependencyMappingConfig | None = None,
 ) -> str:
     """Render execution plan with wave groupings.
 
@@ -38,6 +40,7 @@ def _render_execution_plan(
         dep_graph: DependencyGraph for looking up blockers
         contention_notes: Optional per-wave contention annotations from
             refine_waves_for_contention(). Same length as waves.
+        config: Optional dependency mapping config for surfacing effective thresholds.
 
     Returns:
         Formatted string showing wave structure
@@ -85,8 +88,13 @@ def _render_execution_plan(
 
         if is_contention:
             # Multiple sub-waves from overlap splitting
+            threshold_suffix = (
+                f" [min_files={config.overlap_min_files}, ratio={config.overlap_min_ratio}]"
+                if config
+                else ""
+            )
             lines.append(
-                f"Wave {logical_num} ({group_count} issues, serialized \u2014 file overlap):"
+                f"Wave {logical_num} ({group_count} issues, serialized \u2014 file overlap{threshold_suffix}):"
             )
             step = 0
             for widx in group:
@@ -125,6 +133,10 @@ def _render_execution_plan(
                 if extra > 0:
                     paths_str += f" +{extra} more"
                 lines.append(f"  Contended files: {paths_str}")
+                if config is not None:
+                    lines.append(
+                        "  Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json"
+                    )
         else:
             # Single wave (no overlap splitting)
             widx = group[0]

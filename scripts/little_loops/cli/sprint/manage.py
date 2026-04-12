@@ -203,7 +203,7 @@ def _cmd_sprint_analyze(args: argparse.Namespace, manager: SprintManager) -> int
 
         # Execution plan
         print()
-        print(_render_execution_plan(waves, dep_graph, contention_notes))
+        print(_render_execution_plan(waves, dep_graph, contention_notes, config=dep_config))
 
         # Parallel-safe groups
         if parallel_safe:

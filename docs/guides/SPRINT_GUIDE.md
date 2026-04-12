@@ -54,15 +54,16 @@ You don't configure waves — you configure dependencies (via the `blocked_by` f
 When two issues in the same wave touch the same files, running them in parallel would cause merge conflicts. The system detects this automatically using the Integration Map sections of each issue file, and splits the wave into sequential sub-waves:
 
 ```
-Wave 2 (2 issues, serialized — file overlap):
+Wave 2 (2 issues, serialized — file overlap [min_files=2, ratio=0.25]):
   Step 1/2:
     └── FEAT-002: Add middleware layer (P2)
   Step 2/2:
     └── FEAT-003: Update middleware config (P2)
   Contended files: src/middleware.py, src/config.py
+  Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json
 ```
 
-Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently.
+Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently. The effective threshold values are shown in the wave header so users can tune `dependency_mapping` in `ll-config.json` if the sprint over-serializes.
 
 ---
 

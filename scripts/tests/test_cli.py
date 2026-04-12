@@ -1158,6 +1158,68 @@ class TestSprintShowDependencyVisualization:
         # Should be 1 logical wave, not 2
         assert "1 wave" in output
 
+    def test_render_execution_plan_contention_with_config_thresholds(self) -> None:
+        """When config is passed, bracket suffix and tuning hint appear in output."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.config import DependencyMappingConfig
+        from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
+
+        issue1 = self._make_issue("FEAT-001", priority="P0", title="First feature")
+        issue2 = self._make_issue("FEAT-002", priority="P1", title="Second feature")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = [[issue1], [issue2]]
+        notes: list[WaveContentionNote | None] = [
+            WaveContentionNote(
+                contended_paths=["src/cli.py"],
+                sub_wave_index=0,
+                total_sub_waves=2,
+                parent_wave_index=0,
+            ),
+            WaveContentionNote(
+                contended_paths=["src/cli.py"],
+                sub_wave_index=1,
+                total_sub_waves=2,
+                parent_wave_index=0,
+            ),
+        ]
+        config = DependencyMappingConfig(overlap_min_files=3, overlap_min_ratio=0.3)
+
+        output = _render_execution_plan(waves, graph, notes, config=config)
+
+        assert "[min_files=3, ratio=0.3]" in output
+        assert "Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json" in output
+
+    def test_render_execution_plan_contention_without_config_no_threshold_hint(self) -> None:
+        """When config=None, no bracket suffix or tuning hint appears."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
+
+        issue1 = self._make_issue("FEAT-001", priority="P0", title="First feature")
+        issue2 = self._make_issue("FEAT-002", priority="P1", title="Second feature")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = [[issue1], [issue2]]
+        notes: list[WaveContentionNote | None] = [
+            WaveContentionNote(
+                contended_paths=["src/cli.py"],
+                sub_wave_index=0,
+                total_sub_waves=2,
+                parent_wave_index=0,
+            ),
+            WaveContentionNote(
+                contended_paths=["src/cli.py"],
+                sub_wave_index=1,
+                total_sub_waves=2,
+                parent_wave_index=0,
+            ),
+        ]
+
+        output = _render_execution_plan(waves, graph, notes)
+
+        assert "min_files=" not in output
+        assert "Tune:" not in output
+
     def test_render_execution_plan_no_contention_notes(self) -> None:
         """No contention notes means no warnings displayed."""
         from little_loops.cli import _render_execution_plan

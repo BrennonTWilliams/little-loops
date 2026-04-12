@@ -1313,6 +1313,100 @@ class TestSprintDependencyAnalysis:
         assert "Last run:" in captured.out
         assert "1 completed" in captured.out or "BUG-001" in captured.out
 
+    def test_show_surfaces_contention_thresholds(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show includes bracket suffix and tuning hint when config has dependency_mapping."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.output as output_mod
+        from little_loops.cli import sprint as cli
+        from little_loops.config import BRConfig
+        from little_loops.sprint import SprintManager
+
+        # Create directory structure
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        for category in ["bugs", "features", "enhancements", "completed"]:
+            (issues_dir / category).mkdir()
+
+        # Create config with custom dependency_mapping thresholds
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir()
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {
+                "name": "test-project",
+                "src_dir": "src/",
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check",
+            },
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                    "enhancements": {
+                        "prefix": "ENH",
+                        "dir": "enhancements",
+                        "action": "improve",
+                    },
+                },
+                "completed_dir": "completed",
+            },
+            "dependency_mapping": {
+                "overlap_min_files": 3,
+                "overlap_min_ratio": 0.5,
+            },
+        }
+        import json as json_mod
+
+        with open(config_file, "w") as f:
+            json_mod.dump(config_data, f)
+
+        # Create two issues sharing the same file (triggers contention)
+        (issues_dir / "bugs" / "P1-BUG-001-fix-config.md").write_text(
+            "# BUG-001: Fix config parsing\n\n"
+            "## Summary\nFix bug in config module.\n\n"
+            "### Files to Modify\n- `scripts/config.py`\n- `scripts/helpers.py`\n- `scripts/utils.py`\n\n"
+            "## Blocked By\n\nNone\n\n"
+            "## Blocks\n\nNone\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-001-add-config-validation.md").write_text(
+            "# FEAT-001: Add config validation\n\n"
+            "## Summary\nAdd validation to config module.\n\n"
+            "### Files to Modify\n- `scripts/config.py`\n- `scripts/helpers.py`\n- `scripts/utils.py`\n\n"
+            "## Blocked By\n\nNone\n\n"
+            "## Blocks\n\nNone\n"
+        )
+
+        sprints_dir = tmp_path / "sprints"
+        sprints_dir.mkdir()
+        (sprints_dir / "threshold-test.yaml").write_text(
+            "name: threshold-test\nissues:\n  - BUG-001\n  - FEAT-001\n"
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="threshold-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            result = cli._cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Bracket suffix with effective threshold values should appear in wave header
+        assert "[min_files=3, ratio=0.5]" in captured.out
+        # Tuning hint should appear beneath Contended files line
+        assert "Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json" in captured.out
+
 
 class TestSprintEdit:
     """Tests for _cmd_sprint_edit (ENH-393)."""

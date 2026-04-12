@@ -238,7 +238,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
 
     # Show execution plan if we have dependency info and no cycles
     if waves and dep_graph:
-        print(_render_execution_plan(waves, dep_graph, contention_notes))
+        print(_render_execution_plan(waves, dep_graph, contention_notes, config=dep_config))
         print(_render_dependency_graph(waves, dep_graph))
     else:
         # Fallback to simple list if no valid issues or cycles
