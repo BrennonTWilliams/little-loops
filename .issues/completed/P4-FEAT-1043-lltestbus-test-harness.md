@@ -19,6 +19,10 @@ Decomposed from FEAT-916: Extension SDK with Scaffolding Command and Test Harnes
 
 Extension authors need a way to test their `on_event` handlers without running a full loop. `LLTestBus` replays real recorded event files through extensions, making the test loop identical to production behavior — including `event_filter` support.
 
+## Use Case
+
+An extension author has written an `on_event` handler and wants to verify it receives the correct events offline. They call `LLTestBus.from_jsonl("path/to/recorded.events.jsonl")`, register their extension, and call `replay()`. They then assert on `bus.delivered_events` to confirm the handler logic is correct — without starting a live loop or requiring a running Claude Code session.
+
 ## Current Behavior
 
 No `LLTestBus` class exists anywhere in `scripts/`. Extension authors must run real loops to test their extensions.
@@ -53,10 +57,10 @@ Implement `LLTestBus` as a standalone class (not an `EventBus` subclass):
 - `scripts/tests/test_extension.py` — add `test_smoke_import_ll_test_bus` to `TestNewProtocols` class (lines 465-537)
 
 ### Key References
-- `scripts/little_loops/extension.py:29-49` — `LLExtension` Protocol
+- `scripts/little_loops/extension.py:35-56` — `LLExtension` Protocol
 - `scripts/little_loops/events.py:90-93` — `event_filter` normalization pattern: `ef = getattr(ext, "event_filter", None); patterns = ([ef] if isinstance(ef, str) else list(ef)) if ef is not None else None`
 - `scripts/little_loops/events.py:132-150` — `EventBus.read_events(path: Path)` returns `list[LLEvent]` (requires `Path`, not `str`)
-- `scripts/little_loops/extension.py:52-67` — `NoopLoggerExtension` as reference implementation
+- `scripts/little_loops/extension.py:101-116` — `NoopLoggerExtension` as reference implementation
 
 ### Critical Implementation Notes
 - `LLTestBus` must be a **standalone class** — NOT an `EventBus` subclass. `EventBus.register()` takes `EventCallback = Callable[[dict[str, Any]], None]`, not `LLExtension`.
@@ -105,11 +109,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `LLTestBus.from_jsonl()` loads events from a `.events.jsonl` file
-- [ ] `LLTestBus.replay()` calls `ext.on_event()` for events matching `event_filter`
-- [ ] `LLTestBus.delivered_events` contains only events that passed the filter
-- [ ] `LLTestBus` exported from `little_loops` top-level
-- [ ] Smoke import test passes
+- [x] `LLTestBus.from_jsonl()` loads events from a `.events.jsonl` file
+- [x] `LLTestBus.replay()` calls `ext.on_event()` for events matching `event_filter`
+- [x] `LLTestBus.delivered_events` contains only events that passed the filter
+- [x] `LLTestBus` exported from `little_loops` top-level
+- [x] Smoke import test passes
 
 ## Impact
 
@@ -133,11 +137,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `LLTestBus` not in `scripts/little_loops/__init__.py` exports ✓
 - Feature not yet implemented
 
+## Resolution
+
+Implemented `LLTestBus` as a standalone class in `scripts/little_loops/testing.py`. Exported from `little_loops.__init__`. Tests in `scripts/tests/test_testing.py` (14 tests covering all branches: from_jsonl missing file, replay with no extensions, unfiltered, string filter, list filter, multiple extensions). Smoke import added to `TestNewProtocols`. All 24 tests pass; lint clean.
+
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Completed** | Created: 2026-04-11 | Completed: 2026-04-11 | Priority: P4
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T02:40:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e760b44-f4b0-4713-8c67-eee2ba125404.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e4f0ded-d1f5-453e-84a5-52a048e214e3.jsonl`
 - `/ll:wire-issue` - 2026-04-12T02:32:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76ef449f-bfef-4e93-a88b-7745bf0d095d.jsonl`
 - `/ll:refine-issue` - 2026-04-12T02:23:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5703b25f-485b-4dde-b132-7d7c67442741.jsonl`

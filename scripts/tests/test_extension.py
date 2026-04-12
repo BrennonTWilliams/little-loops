@@ -535,3 +535,8 @@ class TestNewProtocols:
 
         provider = MyEvaluatorProvider()
         _: EvaluatorProviderExtension = provider  # type: ignore[assignment]
+
+    def test_smoke_import_ll_test_bus(self) -> None:
+        """Importing LLTestBus from public API succeeds (no circular import)."""
+        from little_loops import LLTestBus  # noqa: F401 — import is the test
+        assert LLTestBus is not None
