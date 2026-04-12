@@ -186,11 +186,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Completed** | Created: 2026-04-11 | Priority: P4
+
+## Resolution
+
+- Added `### Step 6: Config Health Check` to `skills/update/SKILL.md` after the Step 5 summary section, conditioned on `PLUGIN_RESULT` or `PACKAGE_RESULT` starting with `"PASS"`
+- Added `WARN` row to the Step 5 status key table in `skills/update/SKILL.md`
+- Added `assert "WARN" in content` to `test_skill_has_summary_report` in `scripts/tests/test_update_skill.py`
+- Added `TestUpdateSkillHealthCheck` class to `scripts/tests/test_update_skill.py`
+- All 27 tests pass
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T19:22:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d48d22dd-900b-4b83-a089-44872324d0a7.jsonl`
 - `/ll:wire-issue` - 2026-04-12T00:23:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22a916dd-1ac5-463a-a702-32213f1fb106.jsonl`
 - `/ll:refine-issue` - 2026-04-12T00:17:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b327ba3-7c3e-4006-abb7-60e05970f5fd.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8100eaa2-e0c8-468c-9fe0-101f7a401771.jsonl`

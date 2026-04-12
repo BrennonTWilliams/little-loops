@@ -77,6 +77,7 @@ class TestUpdateSkillExists:
         assert "FAIL" in content, "Skill must include [FAIL] status in summary"
         assert "SKIP" in content, "Skill must include [SKIP] status in summary"
         assert "DRY-RUN" in content, "Skill must include [DRY-RUN] status in summary"
+        assert "WARN" in content, "Skill must include [WARN] status in summary"
 
     def test_skill_does_not_reference_marketplace(self) -> None:
         """Consumer update skill must NOT reference marketplace.json (moved to /ll:publish)."""
@@ -179,6 +180,15 @@ class TestPublishCommandExists:
         """Publish command must support --dry-run flag."""
         content = PUBLISH_CMD_FILE.read_text()
         assert "--dry-run" in content, "Publish command must support --dry-run flag"
+
+
+class TestUpdateSkillHealthCheck:
+    def test_has_health_check_step(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "Step 6" in content
+        assert "Config Health Check" in content
+        assert "[PASS] ll-config.json is valid" in content
+        assert "WARN" in content
 
 
 class TestConfigureSkillDevInstallFix:

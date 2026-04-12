@@ -167,9 +167,51 @@ Status key:
   SKIP      — Step not selected
   FAIL      — Update failed (see errors above for manual steps)
   DRY-RUN   — Would have updated (re-run without --dry-run to apply)
+  WARN      — Config has unknown keys (check ll-config.json)
 
 ================================================================================
 ```
+
+---
+
+### Step 6: Config Health Check
+
+If either `$PLUGIN_RESULT` or `$PACKAGE_RESULT` starts with `"PASS"`:
+
+```bash
+if [[ "$PLUGIN_RESULT" == PASS* ]] || [[ "$PACKAGE_RESULT" == PASS* ]]; then
+python3 -c "
+import json, pathlib, sys
+
+config_path = pathlib.Path('.ll/ll-config.json')
+if not config_path.exists():
+    sys.exit(0)
+
+# Locate config-schema.json via plugin installation registry
+plugins_file = pathlib.Path.home() / '.claude' / 'plugins' / 'installed_plugins.json'
+if not plugins_file.exists():
+    sys.exit(0)
+plugins = json.loads(plugins_file.read_text()).get('plugins', {})
+entry = plugins.get('ll@little-loops', [])
+if not entry:
+    sys.exit(0)
+schema_path = pathlib.Path(entry[0]['installPath']) / 'config-schema.json'
+if not schema_path.exists():
+    sys.exit(0)
+
+config = json.loads(config_path.read_text())
+schema = json.loads(schema_path.read_text())
+known = set(schema.get('properties', {}).keys())
+unknown = sorted(set(config.keys()) - known)
+if unknown:
+    print('[WARN] Config issues detected: unknown keys: ' + ', '.join(unknown))
+else:
+    print('[PASS] ll-config.json is valid')
+" 2>/dev/null || true
+fi
+```
+
+Non-blocking — does not fail the update. Silent skip if `.ll/ll-config.json` or the schema is absent.
 
 ---
 
