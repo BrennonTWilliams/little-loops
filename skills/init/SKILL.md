@@ -448,36 +448,13 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
 
 **Always proceed to Step 10.5 regardless of results.**
 
-### 10.5. Install Hooks
+### 10.5. Hooks Note
 
-Merge ll plugin hooks into Claude Code's settings file so the context monitor and other lifecycle hooks fire automatically.
+ll plugin hooks fire automatically when `ll@little-loops` is globally enabled in `~/.claude/settings.json`. The plugin's own `hooks/hooks.json` handles all hook events with correct `${CLAUDE_PLUGIN_ROOT}` resolution — no manual installation into project settings files is needed or correct.
 
-**If `--dry-run` is set, skip this step** (already shown in dry-run preview).
+To verify hooks are active after init: `/ll:configure hooks show`
 
-1. Determine target file:
-   - **`--yes` mode**: use `.claude/settings.local.json` (create if absent) without prompting
-   - **`--interactive` mode**: use the choice recorded in Round 11 of the wizard (same file chosen for allowed tools in Step 10)
-   - **Otherwise**, use `AskUserQuestion` inline:
-     - Ask: "Install ll plugin hooks? Choose target: `.claude/settings.local.json` (Recommended), `.claude/settings.json`, or Skip?"
-
-2. If user chose "Skip", proceed to Step 11 without changes.
-
-3. Perform merge into the chosen target file:
-   - Read target file, or start with `{}` if absent
-   - Read `hooks/hooks.json` and extract the `hooks` key
-   - Resolve `${CLAUDE_PLUGIN_ROOT}` by substituting the absolute path of the current working directory (wrap in single quotes if path contains spaces)
-   - Merge the `hooks` key additively — append per-event hook groups; do not overwrite any non-ll entries
-   - Create `.claude/` directory first if needed
-   - Write result back with 2-space indent, preserving all top-level keys
-
-4. Report:
-   ```
-   ✓ Hooks installed in <target file>
-     Scripts registered: <list of hook script names added>
-   Existing non-ll hooks preserved. To review: /ll:configure hooks show
-   ```
-
-**Always proceed to Step 11 regardless of results.**
+**Always proceed to Step 11.**
 
 ### 11. Update CLAUDE.md
 

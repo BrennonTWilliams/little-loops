@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 HELP_MD = PROJECT_ROOT / "commands" / "help.md"
 INIT_SKILL = PROJECT_ROOT / "skills" / "init" / "SKILL.md"
 CONFIGURE_AREAS = PROJECT_ROOT / "skills" / "configure" / "areas.md"
+COMMANDS_MD = PROJECT_ROOT / "docs" / "reference" / "COMMANDS.md"
 README = PROJECT_ROOT / "README.md"
 CLAUDE_MD = PROJECT_ROOT / ".claude" / "CLAUDE.md"
 CLI_REFERENCE = PROJECT_ROOT / "docs" / "reference" / "CLI.md"
@@ -95,4 +96,58 @@ class TestFeat1045DocUpdates:
         content = API_REFERENCE.read_text()
         assert "little_loops.testing" in content, (
             "docs/reference/API.md Module Overview table must include a little_loops.testing row"
+        )
+
+
+class TestBug863HooksInstallRemoved:
+    """BUG-863: hooks install must be removed; hooks are automatic via plugin.
+
+    Writing hooks to project settings files produces broken paths because
+    ${CLAUDE_PLUGIN_ROOT} is only set when hooks load from a registered plugin's
+    own hooks.json — not from project-level settings files.
+    """
+
+    def test_init_skill_does_not_have_pwd_substitution(self) -> None:
+        """skills/init/SKILL.md must NOT contain the old pwd-substitution step."""
+        content = INIT_SKILL.read_text()
+        assert "Resolve `${CLAUDE_PLUGIN_ROOT}` by substituting" not in content, (
+            "skills/init/SKILL.md must not contain the pwd-substitution step — "
+            "hooks are automatic via plugin (BUG-863)"
+        )
+
+    def test_init_skill_has_hooks_note(self) -> None:
+        """skills/init/SKILL.md Step 10.5 must be the no-op hooks note."""
+        content = INIT_SKILL.read_text()
+        assert "hooks fire automatically" in content, (
+            "skills/init/SKILL.md Step 10.5 must say hooks fire automatically via plugin (BUG-863)"
+        )
+
+    def test_configure_areas_does_not_have_pwd_substitution(self) -> None:
+        """skills/configure/areas.md must NOT contain the old pwd-substitution step."""
+        content = CONFIGURE_AREAS.read_text()
+        assert "Run `bash -c 'pwd'` to get the absolute plugin root path" not in content, (
+            "skills/configure/areas.md must not contain the pwd-substitution step — "
+            "hooks are automatic via plugin (BUG-863)"
+        )
+
+    def test_configure_areas_install_is_noop(self) -> None:
+        """skills/configure/areas.md hooks install must be a no-op note, not a merge procedure."""
+        content = CONFIGURE_AREAS.read_text()
+        assert "Manual hook installation is not needed" in content, (
+            "skills/configure/areas.md hooks install must say 'Manual hook installation is not needed' (BUG-863)"
+        )
+
+    def test_configure_areas_interactive_menu_has_no_install_option(self) -> None:
+        """The interactive hooks menu must not offer 'install' as an action."""
+        content = CONFIGURE_AREAS.read_text()
+        assert "install — add ll- hooks to a settings file" not in content, (
+            "skills/configure/areas.md interactive hooks menu must not offer 'install' (BUG-863)"
+        )
+
+    def test_commands_md_does_not_say_installs(self) -> None:
+        """docs/reference/COMMANDS.md hooks description must not say 'installs'."""
+        content = COMMANDS_MD.read_text()
+        assert "installs/shows/validates" not in content, (
+            "docs/reference/COMMANDS.md must not describe hooks as 'installs/shows/validates' — "
+            "install was removed (BUG-863)"
         )

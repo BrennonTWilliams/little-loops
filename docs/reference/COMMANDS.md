@@ -45,7 +45,7 @@ Interactively configure specific areas in ll-config.json.
 
 **Area notes:**
 - `allowed-tools` — writes to `.claude/settings.json` or `.claude/settings.local.json`, not `ll-config.json`
-- `hooks` — installs/shows/validates ll- lifecycle hooks in Claude Code settings files (not `ll-config.json`)
+- `hooks` — shows/validates ll- lifecycle hooks (not `ll-config.json`; hooks are automatic via plugin)
 
 **Auto-update:** Like `/ll:init`, `configure` checks the installed package version and auto-upgrades if a mismatch is detected.
 

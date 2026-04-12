@@ -88,6 +88,15 @@ if state.parallel is not None:
 4. Adopt Option A for scope lock (leave at CLI level) and add a comment in `_execute_parallel_state()` documenting why executor-level locking is unnecessary
 5. Verify existing `loop:` sequential dispatch is unaffected (run existing FSM tests)
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Verify `persistence.py:418` — confirm `captured` dict mutation flows into `PersistentExecutor._save_state()` automatically; no changes to `persistence.py` expected, but run `test_fsm_persistence.py` after implementation
+7. Verify interceptor behavior — check where the `_interceptors` loop runs inside `_execute_state()` relative to the `if state.loop:` early-return; if interceptors are skipped for sub-loop states (expected), parallel dispatch is consistent — document this behavior in `_execute_parallel_state()` comments
+8. Add comment in `_execute_parallel_state()` noting that `SimulationActionRunner` is bypassed when `ParallelRunner` is invoked (see `cli/loop/testing.py:185`) — simulation mode does not support parallel states
+9. Confirm `fsm/__init__.py` — lazy import of `ParallelRunner` inside method body means no `__init__.py` update is required; verify after FEAT-1075 is merged
+
 ## Integration Map
 
 ### Files to Modify
@@ -97,16 +106,38 @@ if state.parallel is not None:
 - `scripts/little_loops/cli/loop/run.py` — Uses `FSMExecutor` transparently; no changes expected but verify scope lock architecture holds
 - `scripts/little_loops/fsm/schema.py` — Must expose `StateConfig.parallel` (FEAT-1074 prerequisite)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/persistence.py:343` — `PersistentExecutor` wraps `FSMExecutor` directly; `self.captured[self.current_state] = {"results": ...}` mutation from `_execute_parallel_state()` flows into `_save_state()` at line 418 automatically — verify no changes to `persistence.py` are needed
+- `scripts/little_loops/extension.py:188–254` — `wire_extensions()` attaches interceptors to `FSMExecutor._interceptors`; the interceptor loop in `_execute_state()` does not fire for early-return dispatch paths (same behavior as `state.loop` — interceptors are skipped for both sub-loop and parallel dispatch); document this in `_execute_parallel_state()` comments
+- `scripts/little_loops/cli/loop/testing.py:185` — `run_simulated_loop()` constructs `FSMExecutor` directly with `SimulationActionRunner`; parallel states will invoke `ParallelRunner`, bypassing the simulation runner — known gap, document in code comments
+- `scripts/little_loops/cli/loop/_helpers.py:56–66` — signal handler reaches `FSMExecutor._current_process` to kill subprocesses; `ParallelRunner` worker threads are not reachable via this mechanism — out of scope for this issue, document as a known limitation
+- `scripts/little_loops/fsm/__init__.py:86–94` — re-exports `FSMExecutor` and related symbols as the public `fsm` API; `ParallelRunner` is lazy-imported inside `_execute_parallel_state()` to avoid circular imports, so no `__init__.py` update is needed — verify
+
 ### Similar Patterns
 - `_execute_sub_loop()` in `executor.py` — Parallel dispatch follows same structure; use as implementation template
 - `if state.loop is not None:` block — Dispatch pattern to mirror for `if state.parallel is not None:`
 
 ### Tests
-- New test file per FEAT-1077: `scripts/tests/fsm/test_parallel_executor.py`
-- Existing: `scripts/tests/fsm/test_executor.py` — Verify no regressions in `loop:` dispatch
+- New tests in `scripts/tests/test_fsm_executor.py` — add class `TestParallelExecution` following the `TestSubLoopExecution` pattern at line 3473; write child YAML to `tmp_path / ".loops"`, pass `loops_dir=loops_dir` to `FSMExecutor` (no `fsm/` subdirectory exists)
+- Existing: `scripts/tests/test_fsm_executor.py` — Verify no regressions in `loop:` dispatch
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_persistence.py` — verify `PersistentExecutor._save_state()` correctly serializes `captured[state_name] = {"results": [...]}` produced by `_execute_parallel_state()` (parallel results must round-trip through persistence without loss)
+- `scripts/tests/test_ll_loop_execution.py:95` — `TestEndToEndExecution` exercises `_execute_state()` through `PersistentExecutor.run()`; run as a regression gate after implementing the dispatch insertion
+- **`TestParallelExecution` must cover** (mirrors `TestSubLoopExecution` method set at `test_fsm_executor.py:3475–3792`): all-workers-succeed → `on_yes`; mixed results → `on_partial`; all-workers-fail → `on_no`; missing child loop with `on_error` set; missing child loop without `on_error`; `context_passthrough=True` stores results in `self.captured[state_name]`; `max_workers` limiting; `fail_mode: collect` vs `fail_mode: fail_fast`
 
 ### Documentation
 - N/A — internal implementation; no public-facing docs changes
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/create-loop/loop-types.md:978–1014` — documents `loop:` sub-loop state type; no `parallel:` entry exists; users cannot discover the new state type from this skill (FEAT-1078 scope)
+- `skills/create-loop/reference.md:686–713` — documents `loop` field mutual exclusions; `parallel` field and `on_yes`/`on_partial`/`on_no` routing semantics are absent (FEAT-1078 scope)
+
+### Display Files (Out of Scope — Known Gaps)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/layout.py:118–133` — `_get_state_badge()` checks `state.loop is not None` but has no branch for `state.parallel`; parallel states render with no badge in the TUI diagram — track as a separate display issue
+- `scripts/little_loops/cli/loop/info.py:548–576` — `_print_state_overview_table()` Type column falls through to `—` for states with no `action`, `action_type`, `next`, or `loop`; parallel states show no type — track as a separate display issue
 
 ### Configuration
 - N/A
@@ -129,9 +160,20 @@ if state.parallel is not None:
 
 ## Implementation Notes
 
-- **`_execute_state()` dispatch insertion point**: `executor.py:396–402`. Insert `if state.parallel is not None:` immediately after the `if state.loop is not None:` block (line 403) and before the `if state.next:` block.
-- **Scope locking architecture**: `LockManager` is instantiated in `cli/loop/run.py:145` and scope lock acquisition happens at `run.py:148` — before `FSMExecutor` is ever constructed. `FSMExecutor` has zero awareness of `LockManager`. The statement "parent `parallel:` state acquires the scope lock" is impossible at the executor level as currently architected. Option A (leave at CLI) is simplest and sufficient.
-- `cli/loop/run.py` — No changes expected; uses `FSMExecutor` transparently.
+- **`_execute_state()` dispatch insertion point**: `executor.py:396–402`. Insert `if state.parallel is not None:` immediately after the `if state.loop is not None:` block (line 402, before the blank comment line `# Handle unconditional transition`) and before `if state.next:` at line 405.
+- **Scope locking architecture**: `LockManager` is instantiated in `cli/loop/run.py:145` and scope lock acquisition happens at `run.py:148` — before `FSMExecutor` is ever constructed (via `PersistentExecutor` at `run.py:217`). `FSMExecutor` has zero awareness of `LockManager`. Option A (leave at CLI) is simplest and sufficient.
+- `cli/loop/run.py` — No changes expected; uses `FSMExecutor` via `PersistentExecutor` transparently.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Verdict values**: Issue body says `done/partial/failed` but FEAT-1075 spec defines `ParallelResult.verdict: str` with values `"yes"` / `"partial"` / `"no"`. Implementation must use FEAT-1075's values. The `_route_parallel()` method maps `"yes"` → `on_yes`, `"partial"` → `on_partial`, `"no"` → `on_no`.
+- **`_route_parallel()` simplification**: The existing `_route()` method at `executor.py:713` already handles `on_yes`/`on_partial`/`on_no` for these exact verdict strings. Consider calling `self._route(state, verdict, ctx)` directly instead of adding a separate `_route_parallel()`. If a dedicated method is added for clarity, it can simply delegate to `_route()` or inline the same three-case check.
+- **`_execute_parallel_state()` signature**: `_execute_sub_loop()` at `executor.py:318` takes `(self, state: StateConfig, ctx: InterpolationContext) -> str | None`. Mirror this signature for `_execute_parallel_state()` so routing can call `interpolate()` with `ctx`.
+- **Lazy import pattern**: `_execute_sub_loop()` imports `resolve_loop_path` and `load_and_validate` inside the method body to avoid circular imports. Apply the same pattern for `ParallelRunner` — import lazily from `little_loops.fsm.concurrency` (where `LockManager` lives; `ParallelRunner` will be added there by FEAT-1075).
+- **Test location confirmed**: `scripts/tests/` (flat, no `fsm/` subdirectory). Model tests after `TestSubLoopExecution` at `scripts/tests/test_fsm_executor.py:3473`. FEAT-1077 may target the same file with a `TestParallelExecution` class.
+- **Prerequisite status**: Both FEAT-1074 (schema — `StateConfig.parallel` field absent from `schema.py`) and FEAT-1075 (`ParallelRunner` class absent from codebase) are confirmed **Open**. Do not begin implementation until both are merged.
 
 ## Impact
 
@@ -147,6 +189,9 @@ if state.parallel is not None:
 ---
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-12T22:00:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbab3ea7-aba1-4f99-878c-4df082545c74.jsonl`
+- `/ll:refine-issue` - 2026-04-12T21:53:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6227012-241e-4253-adf1-d540b03b8c94.jsonl`
+- `/ll:format-issue` - 2026-04-12T21:50:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e24121c8-614a-47dc-b39d-f7ef139d0a8c.jsonl`
 - `/ll:issue-size-review` - 2026-04-12T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
 
 ---

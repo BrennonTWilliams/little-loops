@@ -876,69 +876,9 @@ If no issues: `All hooks validated successfully.`
 
 ### Sub-command: install
 
-When `/ll:configure hooks install` (or `--yes` mode) is invoked:
-
-**Step 1 — Check `--dry-run`**: If `--dry-run` is set, show what would be installed without making changes:
-
-```
-Dry run — no changes made. The following hooks would be installed:
-
-  SessionStart      *              bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start.sh
-  UserPromptSubmit  (no matcher)   bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-check.sh
-  PreToolUse        Write|Edit     bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-duplicate-issue-id.sh
-  PostToolUse       *              bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-monitor.sh
-  PostToolUse       Bash           bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/issue-completion-log.sh
-  Stop              (no matcher)   bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-cleanup.sh
-  PreCompact        *              bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/precompact-state.sh
-
-To install: /ll:configure hooks install
-```
-
-**Step 2 — Select target file** using a SINGLE AskUserQuestion call:
-
-### Round 1 (2 questions)
-
-```yaml
-questions:
-  - header: "Target File"
-    question: "Which settings file should receive the ll- hook entries?"
-    options:
-      - label: "settings.local.json (Recommended)"
-        description: "Gitignored by default — keeps ll- hooks out of version control"
-      - label: "settings.json"
-        description: "Tracked in version control — shared with all project contributors"
-      - label: "Skip"
-        description: "Skip hook installation (configure later with /ll:configure hooks install)"
-    multiSelect: false
-```
-
-**Step 3 — Perform merge into chosen target file**:
-1. Read target file, or start with `{}` if absent
-2. Read `hooks/hooks.json` — use the `hooks` key (the top-level object, not the `description` field)
-3. Resolve `${CLAUDE_PLUGIN_ROOT}` in hook commands:
-   - Run `bash -c 'pwd'` to get the absolute plugin root path
-   - Replace every occurrence of `${CLAUDE_PLUGIN_ROOT}` in all hook command strings with this absolute path
-   - If the path contains spaces, wrap it in single quotes when substituting (e.g., `bash '/path with spaces/hooks/scripts/session-cleanup.sh'`)
-4. Merge the `hooks` key additively: for each event in the plugin hooks, append its hook groups to the existing list for that event (do not overwrite or remove existing non-ll entries)
-5. Create `.claude/` directory first if needed
-6. Write result back with 2-space indent, preserving all top-level keys
-
-**Configuration result**: Report what was written:
-
-```
-Updated: .claude/settings.local.json
-
-Added ll- hooks:
-  SessionStart      *              session-start.sh
-  UserPromptSubmit  (no matcher)   user-prompt-check.sh
-  PreToolUse        Write|Edit     check-duplicate-issue-id.sh
-  PostToolUse       *              context-monitor.sh
-  PostToolUse       Bash           issue-completion-log.sh
-  Stop              (no matcher)   session-cleanup.sh
-  PreCompact        *              precompact-state.sh
-
-Existing non-ll hooks preserved. To review: /ll:configure hooks show
-```
+> **Note**: Manual hook installation is not needed. When `ll@little-loops` is globally enabled as a Claude Code plugin, all hooks in `hooks/hooks.json` fire automatically with correct `${CLAUDE_PLUGIN_ROOT}` resolution. Writing hooks to project settings files produces broken paths because `${CLAUDE_PLUGIN_ROOT}` is only set when hooks load from a registered plugin's own `hooks.json`.
+>
+> To verify hooks are active: `/ll:configure hooks show`
 
 ### Interactive Mode
 
@@ -951,8 +891,6 @@ questions:
     options:
       - label: "show — display current hook configuration"
         description: "Show all hooks from plugin, settings.json, and settings.local.json"
-      - label: "install — add ll- hooks to a settings file"
-        description: "Merge plugin hooks into .claude/settings.local.json or .claude/settings.json"
       - label: "validate — check hooks for issues"
         description: "Verify script paths exist, are executable, and timeouts are reasonable"
     multiSelect: false
