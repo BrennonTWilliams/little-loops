@@ -223,11 +223,14 @@ Concrete steps (no "if" needed — bug confirmed):
 
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Closed - Already Fixed** | Created: 2026-04-11 | Closed: 2026-04-12 | Priority: P4
+- Fix Commit: ace62160
+- Files Changed: config-schema.json, scripts/tests/test_config_schema.py
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T19:14:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a604919-d7d8-4122-9f84-76f8d65429e7.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22a916dd-1ac5-463a-a702-32213f1fb106.jsonl`
 - `/ll:wire-issue` - 2026-04-12T00:22:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b327ba3-7c3e-4006-abb7-60e05970f5fd.jsonl`
 - `/ll:refine-issue` - 2026-04-12T00:17:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f87a1d1a-2de3-4399-b636-a019a11df0d3.jsonl`
