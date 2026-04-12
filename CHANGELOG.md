@@ -7,25 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.81.0] - 2026-04-12
+
 ### Added
 
 - **`sprint-refine-and-implement` FSM Loop** — New built-in loop that runs the same refine → implement pipeline as `auto-refine-and-implement` but scoped to a named sprint's issue list, processing issues in sprint YAML order rather than confidence ranking; accepts sprint name as a positional argument (`ll-loop run sprint-refine-and-implement <sprint-name>`) (FEAT-1063)
+- **`sprint-build-and-validate` Size Review and Recovery** — Added a `size_review` gate before sprint runs: Very Large issues (score ≥ 8) are decomposed first via `recursive-refine`; non-zero sprint exits now route to `extract_unresolved` → `refine_unresolved` recovery path to prevent silent failure of oversized or blocked issues (ENH-1052)
+- **Extension SDK Documentation** — Updated `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md`, and `README.md` to reflect the complete extension SDK including `LLTestBus` and `ll-create-extension` (FEAT-1045, #916)
 
 ### Changed
 
 - **`ll-sprint show` Contention Threshold Display** — Serialized wave headers now include the active `overlap_min_files` and `overlap_min_ratio` threshold values (e.g., `serialized — file overlap [min_files=2, ratio=0.25]`) and a tuning hint pointing to `dependency_mapping` in `ll-config.json` (ENH-1059)
 - **File Overlap Detection AND Logic** — Overlap is now triggered only when both `overlap_min_files` AND `overlap_min_ratio` thresholds are met (previously OR); reduces false serialization for issue pairs that share a large number of small files or a high ratio across few files (ENH-1060)
 - **Directory Hints Scoped to "Files to Modify"** — In parallel runs, directory-level hints extracted from issue files are now inserted only within the "Files to Modify" section rather than throughout the prompt body, preventing spurious directory context from inflating unrelated sections (ENH-1061)
+- **Post-Update Config Health Check** — `/ll:update` now validates `.ll/ll-config.json` against the current schema after updating and reports unknown or invalid keys (ENH-1047)
 
 ### Fixed
 
 - **Logger ANSI Leak to Piped Output** — `Logger` color state is now correctly wired through `configure_output`; ANSI escape codes no longer bleed into piped or redirected output when color is disabled (BUG-1054)
 - **`recursive-refine` Spurious Child Enqueuing** — Child detection now uses a two-step parent-reference filter: only issues whose file contains `Decomposed from <PARENT_ID>` are accepted as children, preventing unrelated issues created concurrently from being incorrectly enqueued (BUG-1058)
-
-### Planned
-
-- Windows compatibility testing
-- Performance benchmarks for large repositories
+- **`extensions` Key Placement in `config-schema.json`** — Fixed invalid JSON schema where `extensions` was placed outside the `properties` block; added regression test asserting correct placement (ENH-1046)
 
 ## [1.80.0] - 2026-04-12
 
@@ -111,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.81.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.80.0...v1.81.0
 [1.80.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.79.0...v1.80.0
 [1.79.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.78.0...v1.79.0
 [1.78.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.77.0...v1.78.0
