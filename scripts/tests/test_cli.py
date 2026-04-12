@@ -1188,7 +1188,10 @@ class TestSprintShowDependencyVisualization:
         output = _render_execution_plan(waves, graph, notes, config=config)
 
         assert "[min_files=3, ratio=0.3]" in output
-        assert "Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json" in output
+        assert (
+            "Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json"
+            in output
+        )
 
     def test_render_execution_plan_contention_without_config_no_threshold_hint(self) -> None:
         """When config=None, no bracket suffix or tuning hint appears."""

@@ -760,15 +760,9 @@ class TestRefineWavesForContention:
 
     def test_all_three_overlap_pairwise_multi_file(self) -> None:
         """3 issues all overlapping each other (2 shared files each) → 3 sub-waves."""
-        a = _make_issue_with_content(
-            "FEAT-001", "modifies src/shared.py\nmodifies src/common.py"
-        )
-        b = _make_issue_with_content(
-            "FEAT-002", "modifies src/shared.py\nmodifies src/common.py"
-        )
-        c = _make_issue_with_content(
-            "FEAT-003", "modifies src/shared.py\nmodifies src/common.py"
-        )
+        a = _make_issue_with_content("FEAT-001", "modifies src/shared.py\nmodifies src/common.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/shared.py\nmodifies src/common.py")
+        c = _make_issue_with_content("FEAT-003", "modifies src/shared.py\nmodifies src/common.py")
         waves: list[list[IssueInfo]] = [[a, b, c]]
 
         result, notes = refine_waves_for_contention(waves)

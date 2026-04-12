@@ -635,9 +635,7 @@ class TestSprintSignalHandler:
         mock_logger.warning.assert_called_once()
         assert sprint_run._sprint_shutdown_requested is True
 
-    def test_signal_handler_falls_back_to_print_when_no_logger(
-        self, capsys: Any
-    ) -> None:
+    def test_signal_handler_falls_back_to_print_when_no_logger(self, capsys: Any) -> None:
         """Signal handler falls back to print() when _sprint_logger is None."""
         import signal
 
@@ -1440,7 +1438,10 @@ class TestSprintDependencyAnalysis:
         # Bracket suffix with effective threshold values should appear in wave header
         assert "[min_files=3, ratio=0.5]" in captured.out
         # Tuning hint should appear beneath Contended files line
-        assert "Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json" in captured.out
+        assert (
+            "Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json"
+            in captured.out
+        )
 
 
 class TestSprintEdit:
