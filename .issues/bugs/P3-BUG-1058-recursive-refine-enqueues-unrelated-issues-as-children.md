@@ -2,6 +2,8 @@
 id: BUG-1058
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 85
 ---
 
 # BUG-1058: recursive-refine enqueues unrelated issues as children via naive list diff
@@ -131,6 +133,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ccb22598-046e-48ad-9add-17bd62cd4973.jsonl`
 - `/ll:wire-issue` - 2026-04-12T16:22:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d7cdb6a-cc0a-4306-8db0-90ee101b7fa4.jsonl`
 - `/ll:format-issue` - 2026-04-12T16:20:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0c96e34-4bac-495e-850d-271272713698.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:17:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20856766-1501-45e9-b569-cb90b08cb44e.jsonl`
