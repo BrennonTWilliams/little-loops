@@ -87,6 +87,11 @@ def configure_output(config: CliConfig | None = None) -> None:
     )
 
 
+def use_color_enabled() -> bool:
+    """Return the current module-level color state set by configure_output()."""
+    return _USE_COLOR
+
+
 def colorize(text: str, code: str) -> str:
     """Wrap *text* in the given ANSI escape *code*, or return it unchanged."""
     if not _USE_COLOR:

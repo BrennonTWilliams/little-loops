@@ -10,6 +10,7 @@ from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING
 
+from little_loops.cli.output import use_color_enabled
 from little_loops.cli.sprint._helpers import _build_issue_contents, _render_dependency_analysis
 from little_loops.cli_args import _id_matches, parse_issue_ids, parse_issue_types
 from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
 # Module-level shutdown flag for ll-sprint signal handling (ENH-183)
 _sprint_shutdown_requested: bool = False
+_sprint_logger: Logger | None = None
 
 
 def _sprint_signal_handler(signum: int, frame: FrameType | None) -> None:
@@ -35,10 +37,18 @@ def _sprint_signal_handler(signum: int, frame: FrameType | None) -> None:
     global _sprint_shutdown_requested
     if _sprint_shutdown_requested:
         # Second signal - force exit
-        print("\nForce shutdown requested", file=sys.stderr)
+        msg = "\nForce shutdown requested"
+        if _sprint_logger is not None:
+            _sprint_logger.warning(msg)
+        else:
+            print(msg, file=sys.stderr)
         sys.exit(1)
     _sprint_shutdown_requested = True
-    print("\nShutdown requested, will exit after current wave...", file=sys.stderr)
+    msg = "\nShutdown requested, will exit after current wave..."
+    if _sprint_logger is not None:
+        _sprint_logger.warning(msg)
+    else:
+        print(msg, file=sys.stderr)
 
 
 def _get_sprint_state_file() -> Path:
@@ -90,7 +100,9 @@ def _cmd_sprint_run(
     """Execute a sprint with dependency-aware scheduling."""
     from datetime import datetime
 
-    logger = Logger(verbose=not args.quiet)
+    global _sprint_logger
+    logger = Logger(verbose=not args.quiet, use_color=use_color_enabled())
+    _sprint_logger = logger
 
     # Setup signal handlers for graceful shutdown (ENH-183)
     global _sprint_shutdown_requested
@@ -511,4 +523,5 @@ def _cmd_sprint_run(
             _save_sprint_state(state, logger)
             logger.info("State saved before exit")
 
+    _sprint_logger = None  # Clear for test isolation
     return exit_code

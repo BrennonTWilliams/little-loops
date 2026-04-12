@@ -2204,7 +2204,7 @@ Logger(verbose: bool = True, use_color: bool | None = None, colors: CliColorsCon
 
 **Parameters:**
 - `verbose` - Whether to output messages (False silences all output)
-- `use_color` - Whether to use ANSI color codes. Defaults to `True` unless the `NO_COLOR` environment variable is set.
+- `use_color` - Whether to use ANSI color codes. Defaults to `True` unless the `NO_COLOR` environment variable is set or stdout is not a TTY.
 - `colors` - Optional `CliColorsConfig` to override default ANSI color codes per log level.
 
 #### Methods

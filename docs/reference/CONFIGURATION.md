@@ -524,7 +524,7 @@ CLI output settings.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `color` | `true` | Enable ANSI color output. Set to `false` for CI or plain-text terminals. Also suppressed by the `NO_COLOR` environment variable. |
+| `color` | `true` | Enable ANSI color output. Set to `false` for CI or plain-text terminals. Also suppressed by the `NO_COLOR` environment variable. Logger instances also respect this setting via `use_color_enabled()` after `configure_output()` is called. |
 
 ### `cli.colors.logger`
 

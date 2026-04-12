@@ -23,8 +23,8 @@ from little_loops.logger import Logger, format_duration
 
 @pytest.fixture
 def logger() -> Logger:
-    """Fresh Logger with default settings."""
-    return Logger()
+    """Fresh Logger with color enabled (explicit use_color=True for TTY-independence)."""
+    return Logger(use_color=True)
 
 
 @pytest.fixture
@@ -59,11 +59,20 @@ class TestLoggerInit:
         assert log.verbose is True
 
     def test_default_use_color_true(self) -> None:
-        """Default use_color=True when NO_COLOR is not set."""
+        """Default use_color=True when stdout is a TTY and NO_COLOR is not set."""
         with patch.dict("os.environ", {}, clear=False) as env:
             env.pop("NO_COLOR", None)
-            log = Logger()
+            with patch("little_loops.logger.sys.stdout") as mock_stdout:
+                mock_stdout.isatty.return_value = True
+                log = Logger()
         assert log.use_color is True
+
+    def test_default_use_color_false_when_not_a_tty(self) -> None:
+        """Default use_color=False when stdout is not a TTY."""
+        with patch("little_loops.logger.sys.stdout") as mock_stdout:
+            mock_stdout.isatty.return_value = False
+            log = Logger()
+        assert log.use_color is False
 
     def test_accepts_verbose_false(self) -> None:
         """Can set verbose=False."""
@@ -673,22 +682,28 @@ class TestLoggerNoColorEnv:
 
     def test_no_color_env_disables_color(self) -> None:
         """Logger sets use_color=False when NO_COLOR env var is set."""
-        with patch.dict("os.environ", {"NO_COLOR": "1"}):
-            log = Logger()
+        with patch("little_loops.logger.sys.stdout") as mock_stdout:
+            mock_stdout.isatty.return_value = True
+            with patch.dict("os.environ", {"NO_COLOR": "1"}):
+                log = Logger()
         assert log.use_color is False
 
     def test_no_color_env_any_value_disables_color(self) -> None:
         """NO_COLOR set to any non-empty value disables color."""
-        with patch.dict("os.environ", {"NO_COLOR": "true"}):
-            log = Logger()
+        with patch("little_loops.logger.sys.stdout") as mock_stdout:
+            mock_stdout.isatty.return_value = True
+            with patch.dict("os.environ", {"NO_COLOR": "true"}):
+                log = Logger()
         assert log.use_color is False
 
     def test_no_color_env_suppresses_ansi_in_output(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Output has no ANSI codes when NO_COLOR is set."""
-        with patch.dict("os.environ", {"NO_COLOR": "1"}):
-            log = Logger()
+        with patch("little_loops.logger.sys.stdout") as mock_stdout:
+            mock_stdout.isatty.return_value = True
+            with patch.dict("os.environ", {"NO_COLOR": "1"}):
+                log = Logger()
         log.info("test message")
         captured = capsys.readouterr()
         assert "\033[" not in captured.out

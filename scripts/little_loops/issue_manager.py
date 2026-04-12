@@ -779,7 +779,9 @@ class AutoManager:
         self.priority_filter = priority_filter
         self._preview_full = preview_full
 
-        self.logger = Logger(verbose=verbose)
+        from little_loops.cli.output import use_color_enabled
+
+        self.logger = Logger(verbose=verbose, use_color=use_color_enabled())
         self.event_bus = EventBus()
         self.state_manager = StateManager(
             config.get_state_file(), self.logger, event_bus=self.event_bus

@@ -7,7 +7,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from little_loops.cli.output import configure_output
+from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.cli_args import (
     add_context_limit_arg,
     add_dry_run_arg,
@@ -152,7 +152,7 @@ Examples:
     config = BRConfig(project_root)
     configure_output(config.cli)
 
-    logger = Logger(verbose=args.verbose or not args.quiet)
+    logger = Logger(verbose=args.verbose or not args.quiet, use_color=use_color_enabled())
 
     # Handle cleanup mode
     if args.cleanup:

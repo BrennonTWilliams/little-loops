@@ -616,6 +616,41 @@ class TestSprintSignalHandler:
 
         assert exc_info.value.code == 1
 
+    def test_signal_handler_uses_logger_when_set(self) -> None:
+        """Signal handler routes output through _sprint_logger when available."""
+        import signal
+        from unittest.mock import MagicMock
+
+        import little_loops.cli.sprint.run as sprint_run
+
+        mock_logger = MagicMock()
+        sprint_run._sprint_shutdown_requested = False
+        sprint_run._sprint_logger = mock_logger
+
+        try:
+            sprint_run._sprint_signal_handler(signal.SIGINT, None)
+        finally:
+            sprint_run._sprint_logger = None
+
+        mock_logger.warning.assert_called_once()
+        assert sprint_run._sprint_shutdown_requested is True
+
+    def test_signal_handler_falls_back_to_print_when_no_logger(
+        self, capsys: Any
+    ) -> None:
+        """Signal handler falls back to print() when _sprint_logger is None."""
+        import signal
+
+        import little_loops.cli.sprint.run as sprint_run
+
+        sprint_run._sprint_shutdown_requested = False
+        sprint_run._sprint_logger = None
+
+        sprint_run._sprint_signal_handler(signal.SIGINT, None)
+
+        captured = capsys.readouterr()
+        assert "Shutdown requested" in captured.err
+
 
 class TestSprintErrorHandling:
     """Tests for _cmd_sprint_run error handling wrapper (ENH-185)."""

@@ -46,12 +46,12 @@ class Logger:
         Args:
             verbose: Whether to output messages
             use_color: Whether to use ANSI color codes. Defaults to True unless
-                the NO_COLOR environment variable is set.
+                the NO_COLOR environment variable is set or stdout is not a TTY.
             colors: Optional CliColorsConfig to override default color codes.
         """
         self.verbose = verbose
         if use_color is None:
-            use_color = os.environ.get("NO_COLOR", "") == ""
+            use_color = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
         self.use_color = use_color
 
         # Apply color overrides from config

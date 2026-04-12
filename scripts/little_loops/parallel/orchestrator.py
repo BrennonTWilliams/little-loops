@@ -80,7 +80,9 @@ class ParallelOrchestrator:
         self.parallel_config = parallel_config
         self.br_config = br_config
         self.repo_path = repo_path or Path.cwd()
-        self.logger = Logger(verbose=verbose)
+        from little_loops.cli.output import use_color_enabled
+
+        self.logger = Logger(verbose=verbose, use_color=use_color_enabled())
         self.wave_label = wave_label
         self._event_bus = event_bus
         self._execution_duration: float = 0.0
@@ -668,12 +670,7 @@ class ParallelOrchestrator:
         self._last_status_line = status
 
         # Log with gray color to distinguish from normal logs
-        if self.logger.use_color:
-            color = self.logger.GRAY
-            ts = self.logger._timestamp()
-            print(f"{color}[{ts}]{self.logger.RESET} {status}", flush=True)
-        else:
-            self.logger.info(status)
+        self.logger.debug(status)
 
     def _execute(self) -> int:
         """Execute parallel issue processing.

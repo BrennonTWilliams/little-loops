@@ -247,6 +247,16 @@ class TestConfigureOutput:
         assert result == "hello"
         assert "\033[" not in result
 
+    def test_use_color_enabled_reflects_configure_output_state(self) -> None:
+        """use_color_enabled() returns the current _USE_COLOR module state."""
+        import little_loops.cli.output as output_module
+        from little_loops.cli.output import use_color_enabled
+
+        with patch.object(output_module, "_USE_COLOR", False):
+            assert use_color_enabled() is False
+        with patch.object(output_module, "_USE_COLOR", True):
+            assert use_color_enabled() is True
+
 
 class TestIssueListNoColor:
     """Tests for cmd_list color suppression."""

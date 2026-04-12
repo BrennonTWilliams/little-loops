@@ -245,6 +245,38 @@ def test_default_use_color_false_when_not_a_tty():
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T17:21:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67b04cb6-511c-4978-bece-b16986e95e5c.jsonl`
+- `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ce35a85-17be-4d5a-963c-e2170d684583.jsonl`
+- `/ll:wire-issue` - 2026-04-12T16:15:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388c35ae-4c5c-4460-87fb-eccb1507565e.jsonl`
+- `/ll:refine-issue` - 2026-04-12T16:09:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc0ab9f5-bd9c-4c21-a2d2-8a159bb1ea23.jsonl`
+- `/ll:refine-issue` - 2026-04-12T16:07:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b4c3cfa-ad15-4d14-8823-28150e20d575.jsonl`
+- `/ll:format-issue` - 2026-04-12T16:05:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f356deba-9948-4a09-8c17-cbf0b9c64582.jsonl`
+- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96afaf36-7dd4-49ed-8232-94d176c382a2.jsonl`
+
+---
+
+## Resolution
+
+**Fixed** | Resolved: 2026-04-12 | Priority: P3
+
+### Changes Made
+
+1. **`scripts/little_loops/cli/output.py`** — added `use_color_enabled()` accessor after `configure_output()` to expose `_USE_COLOR` state
+2. **`scripts/little_loops/logger.py:54`** — fixed default `use_color` to check `sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""`; updated docstring
+3. **`scripts/little_loops/issue_manager.py`** — lazy import of `use_color_enabled`; wired Logger construction
+4. **`scripts/little_loops/parallel/orchestrator.py`** — lazy import of `use_color_enabled`; wired Logger construction; replaced 6-line manual `print()` block with `self.logger.debug(status)`
+5. **`scripts/little_loops/cli/sprint/run.py`** — added `use_color_enabled` import; wired Logger construction; added module-level `_sprint_logger`; updated signal handler to route through Logger when set; clear at end for test isolation
+6. **`scripts/little_loops/cli/parallel.py`** — extended `output` import; wired Logger construction
+7. **Tests** — fixed 2 breaking tests in `test_logger.py` (isatty mock); fixed 4 NO_COLOR tests for isolation; added `test_default_use_color_false_when_not_a_tty`; added `test_use_color_enabled_reflects_configure_output_state` in `test_cli_output.py`; added 2 sprint signal handler tests in `test_sprint.py`
+8. **Docs** — updated `docs/reference/API.md` Logger `use_color` description; updated `docs/reference/CONFIGURATION.md` `cli.color` description
+
+### Lazy Imports Note
+
+`issue_manager.py` and `orchestrator.py` use lazy imports (`from little_loops.cli.output import use_color_enabled` inside `__init__`) to avoid a circular import cycle: `config.core` → `parallel.__init__` → `orchestrator` → `cli.__init__` → `cli.auto` → `config`. The import is safe at call time since all modules are fully initialized by then.
+
+## Session Log
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T17:21:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67b04cb6-511c-4978-bece-b16986e95e5c.jsonl`
 - `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ce35a85-17be-4d5a-963c-e2170d684583.jsonl`
 - `/ll:wire-issue` - 2026-04-12T16:15:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388c35ae-4c5c-4460-87fb-eccb1507565e.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:09:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc0ab9f5-bd9c-4c21-a2d2-8a159bb1ea23.jsonl`
@@ -256,4 +288,4 @@ def test_default_use_color_false_when_not_a_tty():
 
 ## Status
 
-**Open** | Created: 2026-04-12 | Priority: P3
+**Completed** | Created: 2026-04-12 | Resolved: 2026-04-12 | Priority: P3
