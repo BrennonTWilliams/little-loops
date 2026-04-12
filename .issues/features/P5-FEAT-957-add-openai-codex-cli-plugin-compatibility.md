@@ -180,6 +180,11 @@ _Added by `/ll:refine-issue` — concrete file references per step:_
 
 _No documents linked._
 
+
+## Blocked By
+
+- FEAT-960
+
 ## Labels
 
 `feature`, `codex`, `compatibility`, `hooks`

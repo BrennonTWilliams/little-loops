@@ -125,6 +125,7 @@ Also update `subprocess_utils.py:28` to probe `.opencode/ll-continue-prompt.md` 
 ## Blocks
 
 - FEAT-961: OpenCode JS/TS Plugin Implementation (shell hooks must be parameterized first)
+- FEAT-957
 
 ## Verification Notes
 

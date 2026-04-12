@@ -1059,10 +1059,6 @@ _Added by `/ll:refine-issue` — all positions from runs 1–35 verified via par
 - **`lifecycle.py` import block confirmed** — `from little_loops.config import BRConfig` at line 256; `from little_loops.extension import wire_extensions` at line 257; blank at line 258 (insert `from little_loops.transport import wire_transports` here); `config = BRConfig(Path.cwd())` at line 259; `wire_extensions(executor.event_bus, config.extensions)` at line 260; blank at line 261 (insert `wire_transports(executor.event_bus, config.events)` here); `result = executor.resume()` at line 262. Consistent with run 24 Step 8.
 - **The run 24 Consolidated Implementation Checklist remains the authoritative reference** — Run 32 `try/finally` approach supersedes run 24 Step 8's `atexit` suggestion for `lifecycle.py` teardown. Run 35 `TestCmdRunTransportWiring` skeleton and mock target corrections are the final test reference.
 
-## Blocked By
-
-- FEAT-916
-
 ## Status
 
 **Open** | Created: 2026-04-02 | Priority: P5
