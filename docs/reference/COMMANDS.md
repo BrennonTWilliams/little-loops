@@ -60,6 +60,8 @@ Update the little-loops Claude Code plugin and pip package to the latest version
 
 **Default behavior:** If no component flag is given, both components are updated.
 
+**Post-update config health check:** After a successful update, the skill validates `.ll/ll-config.json` against the current `config-schema.json` and reports any unknown or invalid top-level keys. Prints `[PASS] ll-config.json is valid` or `[WARN] Config issues detected` with the offending keys. Non-blocking — a check failure does not fail the overall update. Silently skips when `.ll/ll-config.json` is not present.
+
 **Trigger keywords:** "update little-loops", "update plugin", "update package", "ll update"
 
 ### `/ll:publish` *(maintainers only — project-local, not shipped in plugin)*

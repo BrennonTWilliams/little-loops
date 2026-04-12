@@ -65,6 +65,8 @@ Wave 2 (2 issues, serialized — file overlap [min_files=2, ratio=0.25]):
 
 Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently. The effective threshold values are shown in the wave header so users can tune `dependency_mapping` in `ll-config.json` if the sprint over-serializes.
 
+**Overlap detection AND semantics**: Serialization is triggered only when **both** `overlap_min_files` and `overlap_min_ratio` are met simultaneously — not either one alone. This means an issue pair sharing 3 files out of 100 total (high count, low ratio) will not serialize unless both thresholds are crossed. Raise `overlap_min_files` or `overlap_min_ratio` in `ll-config.json` to reduce serialization for large issue sets.
+
 ---
 
 ## Sprint File Anatomy

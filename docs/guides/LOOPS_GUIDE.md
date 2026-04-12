@@ -291,6 +291,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
+| `sprint-refine-and-implement` | Like `auto-refine-and-implement` but scoped to a named sprint; processes issues in sprint YAML order, refining each recursively before implementing |
 
 ### `sprint-build-and-validate` — Automated Sprint Creation and Validation
 
@@ -343,6 +344,48 @@ create_sprint → route_create → [sprint exists?]
 **Notes**: Each quality-check step runs once as a grouped call against all sprint issues — not per-issue. The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_iterations: 16`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`; non-zero exits trigger the `extract_unresolved` → `refine_unresolved` recovery path.
 
 Prior to the ENH-1051 refactor, this loop ran `/ll:confidence-check` per issue and could loop through a `fix_issues` remediation cycle many times before committing — and never actually executed the sprint. The current design runs each check once, then executes the sprint with automatic recovery for blocked or failed issues.
+
+### `sprint-refine-and-implement` — Sprint-Scoped Refine-and-Implement Loop
+
+**Technique**: Like `auto-refine-and-implement` but bounded to a named sprint. Reads `.sprints/<sprint_name>.yaml` and processes each issue in sprint YAML order: delegates `format → refine → wire → confidence-check` to the `recursive-refine` sub-loop (with automatic decomposition of oversized issues), then implements each issue that passed via `ll-auto --only`. Issues that fail refinement or are decomposed are recorded in a skip file and excluded from re-processing on resume.
+
+**When to use**: When you have a defined sprint and want to run the full refine-and-implement pipeline over exactly those issues, in sprint order, rather than the confidence-ranking order that `auto-refine-and-implement` uses. Prefer `auto-refine-and-implement` for open-ended backlog processing.
+
+**Invocation:**
+```bash
+ll-loop run sprint-refine-and-implement <sprint-name>
+
+# Example
+ll-loop run sprint-refine-and-implement sprint-1
+```
+
+Sprint file must exist at `.sprints/<sprint-name>.yaml` (standard sprint location). The sprint name is passed as a positional argument and stored as `context.sprint_name`.
+
+**Required context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `sprint_name` | *(positional)* | Name of the sprint to process; set automatically from the positional argument |
+| `max_issues` | `100` | Maximum number of issues to process per run; guards against runaway iteration |
+
+**Error behavior:**
+- Missing sprint name → prints `Usage: ll-loop run sprint-refine-and-implement <sprint-name>` and exits to `done`
+- Sprint file not found → prints `Sprint '<name>' not found at .sprints/<name>.yaml` and exits to `done`
+
+**FSM flow:**
+```
+get_next_issue → [issue found?]
+  ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
+  │           ├─ YES → get_passed_issues → [passed issues?]
+  │           │           ├─ YES → implement_next → implement_issue → implement_next (loop)
+  │           │           └─ NO  → get_next_issue
+  │           └─ NO  → skip_and_continue → get_next_issue
+  └─ NO  → done
+```
+
+**Notes**: All tmp files are prefixed `sprint-refine-and-implement-*` to avoid state collision with `auto-refine-and-implement` when both loops are used in the same project. The loop uses `on_handoff: spawn` and `max_iterations: 500` with an 8-hour global timeout, so it can survive session boundaries for long sprints.
+
+**Skip tracking**: When `recursive-refine` marks an issue as skipped (refinement failure or decomposition), it is written to `.loops/tmp/sprint-refine-and-implement-skipped.txt` — both for the current run and for any future resume of the same sprint. On resume, `get_next_issue` reads the skip file and advances past any previously processed issues.
 
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 

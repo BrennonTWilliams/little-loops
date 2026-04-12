@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`sprint-refine-and-implement` FSM Loop** — New built-in loop that runs the same refine → implement pipeline as `auto-refine-and-implement` but scoped to a named sprint's issue list, processing issues in sprint YAML order rather than confidence ranking; accepts sprint name as a positional argument (`ll-loop run sprint-refine-and-implement <sprint-name>`) (FEAT-1063)
+
+### Changed
+
+- **`ll-sprint show` Contention Threshold Display** — Serialized wave headers now include the active `overlap_min_files` and `overlap_min_ratio` threshold values (e.g., `serialized — file overlap [min_files=2, ratio=0.25]`) and a tuning hint pointing to `dependency_mapping` in `ll-config.json` (ENH-1059)
+- **File Overlap Detection AND Logic** — Overlap is now triggered only when both `overlap_min_files` AND `overlap_min_ratio` thresholds are met (previously OR); reduces false serialization for issue pairs that share a large number of small files or a high ratio across few files (ENH-1060)
+- **Directory Hints Scoped to "Files to Modify"** — In parallel runs, directory-level hints extracted from issue files are now inserted only within the "Files to Modify" section rather than throughout the prompt body, preventing spurious directory context from inflating unrelated sections (ENH-1061)
+
+### Fixed
+
+- **Logger ANSI Leak to Piped Output** — `Logger` color state is now correctly wired through `configure_output`; ANSI escape codes no longer bleed into piped or redirected output when color is disabled (BUG-1054)
+- **`recursive-refine` Spurious Child Enqueuing** — Child detection now uses a two-step parent-reference filter: only issues whose file contains `Decomposed from <PARENT_ID>` are accepted as children, preventing unrelated issues created concurrently from being incorrectly enqueued (BUG-1058)
+
 ### Planned
 
 - Windows compatibility testing

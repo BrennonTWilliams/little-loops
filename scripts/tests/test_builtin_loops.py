@@ -84,6 +84,7 @@ class TestBuiltinLoopFiles:
             "auto-refine-and-implement",
             "recursive-refine",
             "html-website-generator",
+            "sprint-refine-and-implement",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

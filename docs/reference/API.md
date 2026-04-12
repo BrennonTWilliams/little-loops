@@ -496,6 +496,8 @@ class DependencyMappingConfig:
     exclude_common_files: list[str]            # Infrastructure files excluded from overlap detection
 ```
 
+**Overlap detection AND semantics**: An issue pair is considered overlapping only when **both** `overlap_min_files` and `overlap_min_ratio` thresholds are met simultaneously. This prevents false serialization for pairs that share many small files (high file count, low ratio) or few files from a large set (low file count, high ratio). Lower either threshold to serialize more aggressively; raise both to parallelize more.
+
 ### RefineStatusConfig
 
 Configuration for the `ll-issues refine-status` display.
