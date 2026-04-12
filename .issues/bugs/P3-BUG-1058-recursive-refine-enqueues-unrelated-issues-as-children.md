@@ -71,26 +71,43 @@ This replaces the direct `comm` output being written to `new-children.txt` in bo
 - `scripts/little_loops/loops/recursive-refine.yaml` — only file changed; two state actions updated
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/recursive-refine.yaml` is self-contained; no external callers
+- `scripts/little_loops/loops/sprint-build-and-validate.yaml:117` — `refine_unresolved` state calls `loop: recursive-refine`; this bug surfaces during sprint execution as well (fixing `recursive-refine.yaml` is sufficient — no change needed here)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `refine_issue` state delegates via `loop: recursive-refine` (with `context_passthrough: true`); `get_passed_issues` state reads `recursive-refine-passed.txt` and `recursive-refine-skipped.txt`. No code change needed — these output file names are unchanged by the fix; only their content becomes more accurate (fewer false children in skipped list)
 
 ### Similar Patterns
-- `issue-size-review` loop: writes `Decomposed from <PARENT_ID>:` in child issue `## Parent Issue` section — this is the authoritative signal to use as filter key
+- `skills/issue-size-review/SKILL.md:149–150` — authoritative child issue template: `## Parent Issue` section with `Decomposed from [PARENT-ID]: [Parent Title]`; confirmed present at line 16 in ENH-1055, ENH-1056, ENH-1057
 
 ### Tests
-- `scripts/tests/` — no test changes needed; this is a loop YAML fix, not a Python change
+- `scripts/tests/test_builtin_loops.py:931–1068` — `TestRecursiveRefineLoop` covers `detect_children` and `enqueue_or_skip` by structural assertion (state presence, file-path prefix, routing keys); **none of these will break** from the fix
+- `scripts/tests/test_fsm_fragments.py:836` — `TestBuiltinLoopMigration.test_builtin_loops_load_after_migration` includes `recursive-refine.yaml`; passes as long as YAML remains structurally valid after edits
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **Test gap**: No test in `TestRecursiveRefineLoop` asserts on the action-body content of `detect_children` or `enqueue_or_skip`. The fix's core correctness — the `Decomposed from` grep filter and the `diff-ids.txt` intermediate — is completely uncovered. The pattern for action-content assertions exists at `test_builtin_loops.py:589–668` (e.g., `assert "--auto" in state.get("action", "")`). Consider adding:
+  - `test_detect_children_filters_by_parent_reference` — assert `"Decomposed from"` and `"recursive-refine-diff-ids.txt"` appear in `detect_children` action
+  - `test_enqueue_or_skip_filters_by_parent_reference` — same assertions for `enqueue_or_skip` action
 
 ### Documentation
-- None required
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md:~385` — describes child detection behavior ("when child issues are detected from sub-loop or size-review") without mentioning the parent-verification filter; description will be inaccurate after fix. Update the `Technique` paragraph and FSM flow notes to describe the two-step approach: `comm` → `diff-ids.txt` → parent-reference grep → `new-children.txt`
 
 ### Configuration
 - None
 
 ## Implementation Steps
 
-1. In `detect_children` action (lines 148–165): after writing `recursive-refine-diff-ids.txt` via `comm`, add the parent verification `while` loop to filter candidates and write verified results to `recursive-refine-new-children.txt`.
-2. In `enqueue_or_skip` action (lines 255–265): apply the identical parent verification filter after the `comm` diff.
+1. In `detect_children` (lines 156–158): change `comm -13` target from `recursive-refine-new-children.txt` to `recursive-refine-diff-ids.txt` (new intermediate file), then add the parent verification `while` loop that reads `diff-ids.txt` and writes only verified children to `recursive-refine-new-children.txt`.
+2. In `enqueue_or_skip` (lines 263–265): apply the identical two-step pattern (write `comm` output to `diff-ids.txt`, then filter → `new-children.txt`).
 3. Verify: run `recursive-refine` on ENH-1053; confirm queue contains only ENH-1055/1056/1057, not BUG-1054.
 4. Manually create an unrelated issue mid-run and confirm it is excluded from the child queue.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Update `docs/guides/LOOPS_GUIDE.md:~385` — update the child-detection description to reflect the parent-verification filter; add mention of the `recursive-refine-diff-ids.txt` intermediate file in the flow description
+6. (Optional but recommended) Add `test_detect_children_filters_by_parent_reference` and `test_enqueue_or_skip_filters_by_parent_reference` to `TestRecursiveRefineLoop` in `scripts/tests/test_builtin_loops.py` — assert that `"Decomposed from"` and `"recursive-refine-diff-ids.txt"` appear in each state's action body (follow the pattern at lines 589–668)
 
 ## Impact
 
@@ -114,4 +131,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-12T16:22:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d7cdb6a-cc0a-4306-8db0-90ee101b7fa4.jsonl`
+- `/ll:format-issue` - 2026-04-12T16:20:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0c96e34-4bac-495e-850d-271272713698.jsonl`
+- `/ll:refine-issue` - 2026-04-12T16:17:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20856766-1501-45e9-b569-cb90b08cb44e.jsonl`
 - `/ll:capture-issue` - 2026-04-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f1a02e-5a5e-4da3-8f6c-49300c6094a5.jsonl`
