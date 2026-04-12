@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.80.0] - 2026-04-12
+
+### Added
+
+- **`LLTestBus` Test Harness** — Standalone class in `little_loops/testing.py` that loads a recorded `.events.jsonl` file and replays events through registered extensions offline for assertion-based testing without running a live loop (FEAT-1043)
+- **`ll-create-extension` Core CLI** — New `ll-create-extension <name>` command scaffolds an extension repo with `pyproject.toml` entry points, a skeleton `on_event` handler implementing `LLExtension`, and an example test using `LLTestBus` (FEAT-1048)
+- **`ll-create-extension` Documentation Wiring** — Registered in `commands/help.md`, `skills/init/SKILL.md`, and `skills/configure/areas.md` (FEAT-1049)
+
+### Changed
+
+- **`ll-loop run` LLM Response Preview** — Non-verbose mode now shows up to 5 lines of LLM response output for prompt/AI-agent states, matching the existing shell state output preview (ENH-1051)
+- **`sprint-build-and-validate` Linear Flow Refactor** — Replaced the confidence-check/fix-issues retry cycle with a streamlined linear flow: create sprint → map dependencies → audit conflicts → verify issues → commit → run sprint (ENH-1051)
+- **`ll-loop run` Config-Driven Colors** — `display_progress()` and `print_execution_plan()` now read verdict symbol and terminal marker colors from the config-driven `edge_label_colors` dict instead of hardcoded ANSI codes (ENH-1050)
+- **Post-Update Config Health Check** — `/ll:update` now validates `.ll/ll-config.json` against the current schema after updating and reports unknown or invalid keys (ENH-1040)
+- **`auto-refine-and-implement` Max Iterations** — Raised `max_iterations` to 500 to support longer autonomous refinement runs (90d03ac)
+
+### Fixed
+
+- Remove redundant f-string prefixes and reformat argument parser (f4e67a1)
+- Move `extensions` key inside `properties` block in config-schema (ace6216)
+
 ## [1.79.0] - 2026-04-11
 
 ### Added
@@ -74,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.80.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.79.0...v1.80.0
 [1.79.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.78.0...v1.79.0
 [1.78.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.77.0...v1.78.0
 [1.77.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.76.0...v1.77.0
