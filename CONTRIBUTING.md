@@ -183,6 +183,7 @@ little-loops/
         ├── cli/                 # CLI entry points
         │   ├── __init__.py
         │   ├── auto.py
+        │   ├── create_extension.py  # ll-create-extension scaffold CLI
         │   ├── docs.py
         │   ├── deps.py
         │   ├── history.py
@@ -240,6 +241,8 @@ little-loops/
         │   ├── persistence.py
         │   ├── signal_detector.py
         │   └── handoff_handler.py
+        ├── extension.py         # Extension protocol, loader, and reference implementation
+        ├── testing.py           # Offline LLTestBus test harness for extension development
         ├── extensions/          # Bundled reference extensions (sub-package)
         │   ├── __init__.py      #   Re-exports ReferenceInterceptorExtension
         │   └── reference_interceptor.py  #   Passthrough interceptor template
@@ -464,6 +467,67 @@ description: |
 **Description convention**: The `description` field is a **trigger document** — Claude uses it to decide when to auto-activate the skill. Lead with trigger conditions ("Use when..."), not a capability summary. Include 5-10 quoted trigger keywords matching natural user phrasing. This reduces missed activations and false positives.
 
 Skills are user-invocable workflows that activate based on trigger keywords or explicit invocation. Prefer creating skills over agents for new functionality (see development preferences in CLAUDE.md).
+
+## Authoring Extensions
+
+little-loops supports custom extensions that receive structured events from core subsystems. Extensions implement the `LLExtension` protocol and are wired to the `EventBus` at CLI startup.
+
+### Create → Develop → Test → Publish workflow
+
+**1. Scaffold**
+
+Use `ll-create-extension` to generate a new extension repo with boilerplate entry point and test:
+
+```bash
+ll-create-extension my-ext           # Scaffold into ./my-ext/
+ll-create-extension my-ext --dry-run # Preview without writing files
+```
+
+This produces a `pyproject.toml` with the `little_loops.extensions` entry-point group registered, a skeleton `on_event` handler in `my_ext/extension.py`, and an example test in `tests/test_my_ext.py` using `LLTestBus`.
+
+**2. Develop**
+
+Implement the `on_event` method in your extension class. Optionally set `event_filter` to a glob string (e.g. `"issue.*"`) to receive only matching event types:
+
+```python
+from little_loops.events import LLEvent
+
+class MyExtension:
+    event_filter = "issue.*"
+
+    def on_event(self, event: LLEvent) -> None:
+        print(f"{event.type} — {event.payload}")
+```
+
+**3. Test offline with LLTestBus**
+
+`LLTestBus` lets you replay recorded events against your extension without running a live loop:
+
+```python
+from little_loops.testing import LLTestBus
+from my_ext.extension import MyExtension
+
+def test_my_ext():
+    bus = LLTestBus.from_jsonl("fixtures/events.jsonl")
+    ext = MyExtension()
+    bus.register(ext)
+    bus.replay()
+    assert any(e.type == "issue.completed" for e in bus.delivered_events)
+```
+
+See [API Reference → LLTestBus](docs/reference/API.md#lltestbus) for full class documentation.
+
+**4. Publish**
+
+Install your extension package into the same Python environment as little-loops. The `little_loops.extensions` entry-point group is discovered automatically on every `ll` run — no changes to `ll-config.json` required.
+
+To load extensions not published as packages, list them in `ll-config.json`:
+
+```json
+{ "extensions": ["my_ext.extension:MyExtension"] }
+```
+
+See [Configuration Reference → Extensions](docs/reference/CONFIGURATION.md#extensions) for full wiring details.
 
 ## Code Style
 

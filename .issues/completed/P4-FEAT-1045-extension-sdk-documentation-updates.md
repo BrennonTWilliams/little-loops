@@ -3,6 +3,7 @@ discovered_date: 2026-04-11
 discovered_by: issue-size-review
 confidence_score: 98
 outcome_confidence: 70
+testable: false
 ---
 
 # FEAT-1045: Extension SDK Documentation Updates
@@ -171,13 +172,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `docs/reference/API.md` documents `LLTestBus` class and full extension SDK workflow
-- [ ] `CONTRIBUTING.md` covers extension development (create → develop → test → publish)
-- [ ] `.claude/CLAUDE.md` lists `ll-create-extension` in CLI Tools
-- [ ] README.md tool count and CLI section are accurate
-- [ ] `docs/reference/CLI.md` has `ll-create-extension` command reference
-- [ ] `docs/ARCHITECTURE.md` directory trees include new files
-- [ ] `docs/reference/CONFIGURATION.md` references both new tools in the extension authoring block
+- [x] `docs/reference/API.md` documents `LLTestBus` class and full extension SDK workflow
+- [x] `CONTRIBUTING.md` covers extension development (create → develop → test → publish)
+- [x] `.claude/CLAUDE.md` lists `ll-create-extension` in CLI Tools
+- [x] README.md tool count and CLI section are accurate
+- [x] `docs/reference/CLI.md` has `ll-create-extension` command reference
+- [x] `docs/ARCHITECTURE.md` directory trees include new files
+- [x] `docs/reference/CONFIGURATION.md` references both new tools in the extension authoring block
 
 ## Impact
 
@@ -201,11 +202,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - No `LLTestBus` API docs added to `docs/reference/API.md` yet ✓
 - Feature not yet implemented (awaiting FEAT-1043, FEAT-1044)
 
+## Resolution
+
+**Completed** — 2026-04-12
+
+All 7 documentation files updated in a single pass:
+- `docs/reference/API.md` — added `little_loops.testing` row to Module Overview table
+- `docs/ARCHITECTURE.md` — added `extension/` to templates tree, `create_extension.py` to cli/ tree, fixed `cli/loop/testing.py` comment misattribution, added `extension.py` and `testing.py` to package root listing
+- `.claude/CLAUDE.md` — added `ll-create-extension` entry to CLI Tools list
+- `README.md` — incremented count to 14, added `### ll-create-extension` section
+- `CONTRIBUTING.md` — added `create_extension.py` to cli/ tree, added `extension.py`/`testing.py` to package root, added `## Authoring Extensions` workflow section
+- `docs/reference/CONFIGURATION.md` — added tip cross-referencing `ll-create-extension` and `LLTestBus`
+- `CHANGELOG.md` — added FEAT-1045 release note to v1.80.0 block
+- `scripts/tests/test_create_extension_wiring.py` — extended with 5 live-content guards for FEAT-1045 targets (all pass)
+
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Completed** | Created: 2026-04-11 | Closed: 2026-04-12 | Priority: P4
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-12T16:18:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d082d17-d895-4266-a5dd-6916d61eeda0.jsonl`
+- `/ll:ready-issue` - 2026-04-12T16:11:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388c35ae-4c5c-4460-87fb-eccb1507565e.jsonl`
 - `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc0ab9f5-bd9c-4c21-a2d2-8a159bb1ea23.jsonl`
 - `/ll:wire-issue` - 2026-04-12T16:06:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5e1862d-1ce2-4fd0-b6cf-ed246f5c9bff.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:01:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c65d2b05-89e3-4873-bc5a-57a30f09d366.jsonl`

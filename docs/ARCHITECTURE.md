@@ -170,6 +170,7 @@ little-loops/
 │   ├── feat-sections.json
 │   ├── enh-sections.json
 │   ├── ll-goals-template.md
+│   ├── extension/           # Extension scaffold templates (.tmpl)
 │   └── generic.json
 └── scripts/                 # Python package
     └── little_loops/
@@ -177,6 +178,7 @@ little-loops/
         ├── cli/                 # CLI entrypoints (package)
         │   ├── __init__.py
         │   ├── auto.py
+        │   ├── create_extension.py  # ll-create-extension scaffold CLI
         │   ├── parallel.py
         │   ├── messages.py
         │   ├── sync.py
@@ -210,7 +212,7 @@ little-loops/
         │       ├── config_cmds.py   # compile, validate, install
         │       ├── lifecycle.py     # status, stop, resume
         │       ├── info.py          # list, history, show
-        │       └── testing.py       # LLTestBus offline extension test harness
+        │       └── testing.py       # ll-loop test/simulate subcommand utilities
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration loading
         ├── state.py             # State persistence
@@ -262,6 +264,8 @@ little-loops/
         │   ├── persistence.py       # State persistence
         │   ├── signal_detector.py   # Output signal detection
         │   └── handoff_handler.py   # Session handoff handling
+        ├── extension.py             # Extension protocol, loader, and reference implementation
+        ├── testing.py               # Offline LLTestBus test harness for extension development
         ├── output_parsing.py        # Shared output parsing (ll-auto, ll-parallel)
         └── parallel/
             ├── __init__.py

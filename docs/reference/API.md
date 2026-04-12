@@ -35,6 +35,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.state` | State persistence |
 | `little_loops.events` | Structured events and EventBus dispatcher |
 | `little_loops.extension` | Extension protocol, loader, and reference implementation |
+| `little_loops.testing` | Offline test harness (LLTestBus) for extension development |
 | `little_loops.logger` | Logging utilities |
 | `little_loops.logo` | CLI logo display |
 | `little_loops.frontmatter` | YAML frontmatter parsing |

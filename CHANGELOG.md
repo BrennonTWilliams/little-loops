@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`LLTestBus` Test Harness** — Standalone class in `little_loops/testing.py` that loads a recorded `.events.jsonl` file and replays events through registered extensions offline for assertion-based testing without running a live loop (FEAT-1043)
 - **`ll-create-extension` Core CLI** — New `ll-create-extension <name>` command scaffolds an extension repo with `pyproject.toml` entry points, a skeleton `on_event` handler implementing `LLExtension`, and an example test using `LLTestBus` (FEAT-1048)
 - **`ll-create-extension` Documentation Wiring** — Registered in `commands/help.md`, `skills/init/SKILL.md`, and `skills/configure/areas.md` (FEAT-1049)
+- **Extension SDK Documentation** — Updated `docs/reference/API.md` (Module Overview table), `docs/ARCHITECTURE.md` (directory trees, bug-fix on `cli/loop/testing.py` comment), `docs/reference/CONFIGURATION.md` (extension authoring cross-references), `CONTRIBUTING.md` (Authoring Extensions workflow section), `.claude/CLAUDE.md` (CLI Tools list), and `README.md` (tool count and CLI section) to reflect the complete extension SDK (FEAT-1045)
 
 ### Changed
 

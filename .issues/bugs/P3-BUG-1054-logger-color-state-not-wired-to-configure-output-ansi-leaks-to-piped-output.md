@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 70
 ---
 
 # BUG-1054: Logger color state not wired to configure_output — ANSI leaks to piped output
@@ -81,6 +83,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/sprint/create.py:14`, `show.py:156`, `manage.py:57,72`, `edit.py:18` — bare `Logger()` calls in sprint subcommands — `configure_output()` fires in `sprint/__init__.py:218` before these, but these are interactive commands not automation tools
 - `scripts/little_loops/parallel/orchestrator.py:671` — external code reads `self.logger.use_color` directly (the manual print block at lines 670-676)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/_helpers.py:349` — `Logger()` construction with no `use_color`; auto-fixed when Step 2 adds `isatty()` to default (informational, no explicit wiring needed)
+- `scripts/little_loops/cli/gitignore.py:44` — `Logger(verbose=not args.quiet)` with no `use_color`; auto-fixed by Step 2 (informational)
+- `scripts/little_loops/cli/messages.py:133` — `Logger(verbose=...)` with no `use_color`; auto-fixed by Step 2 (informational)
+- `scripts/little_loops/cli/sync.py:116` — `Logger(verbose=...)` with no `use_color`; auto-fixed by Step 2 (informational)
+- `scripts/little_loops/cli/sprint/__init__.py:18,38` — re-exports `_sprint_signal_handler` from `sprint/run.py`; no wiring change needed, but confirms the signal handler is surface-visible outside the module
+- `scripts/little_loops/cli/auto.py:69` — calls `configure_output(config.cli)` but constructs no Logger of its own; no wiring needed
+
 ### Similar Patterns
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -94,9 +104,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_cli_output.py` — has full `configure_output()` coverage; new test for `use_color_enabled()` accessor needed after Step 1
 - `scripts/tests/test_orchestrator.py` — should verify debug() is used instead of manual print block
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_logger.py:61-66` — **WILL BREAK** after Step 2: `test_default_use_color_true` creates `Logger()` without mocking `sys.stdout.isatty()` — after the fix adds `isatty()` to the default, this test will assert `use_color is True` but get `False` in non-TTY pytest environments. Fix: add `patch("sys.stdout.isatty", return_value=True)` inside the test's `with` block
+- `scripts/tests/test_logger.py:25-27,144-151` — **WILL BREAK** after Step 2: module-level fixture `logger = Logger()` is used by `test_format_with_color_includes_ansi` which asserts `"\033[" in captured.out`. After fix, `Logger()` in non-TTY context will have `use_color=False`, emitting no ANSI codes. Fix: add `isatty=True` mock to the fixture or the specific test
+- `scripts/tests/test_logger.py:674-703` — **MAY BREAK** after Step 2: all 4 `TestLoggerNoColorEnv` tests create `Logger()` within `patch.dict(os.environ, {"NO_COLOR": "1"})` but do not mock `isatty()`. The `use_color=False` assertion will continue to pass (since `NO_COLOR` forces it False), but `isatty()` behavior is now mixed in. Best practice: add `patch("sys.stdout.isatty", return_value=True)` to isolate the `NO_COLOR` check as the deciding factor
+- `scripts/tests/test_sprint.py:585-617` — tests `_sprint_signal_handler` directly (lines 588–617). After Step 5 adds the `_sprint_logger` module-level pattern, add a test that sets a mock on `sprint_run._sprint_logger` and asserts the signal handler routes output through it instead of bare `print()`
+- `scripts/tests/test_issue_manager.py:727-801` — tests `AutoManager` Logger construction (`test_auto_manager_verbose_false_creates_quiet_logger` at line 727, `test_auto_manager_verbose_true_creates_verbose_logger` at line 765). These test `.verbose` only — they survive Step 3's wiring change. No update required, but consider adding `test_auto_manager_logger_use_color_wired_to_use_color_enabled` to verify the wiring
+
 ### Documentation
 - `docs/reference/OUTPUT_STYLING.md` — references `Logger`, `configure_output`, `_USE_COLOR`, `use_color`; may need a note about `use_color_enabled()` accessor
 - `docs/reference/API.md` — Logger and output module API contracts; update if `use_color_enabled()` is considered public API
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:2206` — currently documents `Logger.use_color` default as "Defaults to `True` unless the `NO_COLOR` environment variable is set." After Step 2, the correct wording is: "Defaults to `True` unless the `NO_COLOR` environment variable is set **or stdout is not a TTY**." Update this line when implementing Step 2
+- `docs/reference/CONFIGURATION.md:527` — describes `config.cli.color` and `configure_output` behavior but does not mention that Logger construction sites also respect this flag via `use_color_enabled()`. No text is wrong today, but after Step 3 the claim is complete — add a note that Logger instances consult `use_color_enabled()` which reads the finalized color state
 
 ### Configuration
 - N/A — `config.cli.color` is the affected config key (already in `config-schema.json`)
@@ -159,6 +180,17 @@ self.logger.debug(status)
 
 Add module-level `_sprint_logger: Logger | None = None` after line 26. Update `_sprint_signal_handler` (lines 38, 41) to use `_sprint_logger` when set, `print()` otherwise. After Logger construction at line 93: `global _sprint_logger; _sprint_logger = logger`. Clear at end of `_cmd_sprint_run` for test isolation: `_sprint_logger = None`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Fix `test_logger.py:61-66` (`test_default_use_color_true`) — add `patch("sys.stdout.isatty", return_value=True)` inside the test's `with` block so Step 2's `isatty()` check doesn't flip the assertion in non-TTY environments
+7. Fix `test_logger.py:25-27,144-151` — the default `Logger()` fixture gets `use_color=False` in non-TTY pytest; either add `isatty=True` mock to the fixture or restrict the ANSI-presence assertion to a separate test with explicit `use_color=True`
+8. Fix `test_logger.py:674-703` (`TestLoggerNoColorEnv`) — add `patch("sys.stdout.isatty", return_value=True)` to all 4 tests so the `NO_COLOR` env var remains the deciding factor, not `isatty()` leaking from the test environment
+9. Update `test_sprint.py` — after adding `_sprint_logger` in Step 5, add a test that sets a mock on `sprint_run._sprint_logger` and asserts the first-signal handler routes output through it
+10. Update `docs/reference/API.md:2206` — change `use_color` default description to mention `sys.stdout.isatty()` check alongside `NO_COLOR`
+11. Update `docs/reference/CONFIGURATION.md:527` — add note that Logger instances also respect `config.cli.color` via `use_color_enabled()` after the fix
+
 ## Verification
 
 ```bash
@@ -213,6 +245,8 @@ def test_default_use_color_false_when_not_a_tty():
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ce35a85-17be-4d5a-963c-e2170d684583.jsonl`
+- `/ll:wire-issue` - 2026-04-12T16:15:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388c35ae-4c5c-4460-87fb-eccb1507565e.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:09:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc0ab9f5-bd9c-4c21-a2d2-8a159bb1ea23.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:07:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b4c3cfa-ad15-4d14-8823-28150e20d575.jsonl`
 - `/ll:format-issue` - 2026-04-12T16:05:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f356deba-9948-4a09-8c17-cbf0b9c64582.jsonl`

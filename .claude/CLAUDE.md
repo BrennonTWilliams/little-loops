@@ -114,6 +114,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-check-links` - Check markdown documentation for broken links
 - `ll-issues` - Issue management and visualization (next-id, list, show, sequence, impact-effort, refine-status)
 - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
+- `ll-create-extension` - Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example
 
 Install: `pip install -e "./scripts[dev]"`
 

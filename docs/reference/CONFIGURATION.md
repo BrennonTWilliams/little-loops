@@ -658,6 +658,8 @@ After installing the package, `ll` will discover and load it on every run alongs
 
 Extensions can also be auto-discovered via Python entry points — see [API Reference → Extension API](API.md#extension-api).
 
+> **Tip**: Use [`ll-create-extension`](CLI.md#ll-create-extension) to scaffold a new extension repo with a ready-to-run entry point, skeleton handler, and example test. Use [`LLTestBus`](API.md#lltestbus) to replay recorded events against your extension offline without starting a live loop.
+
 ---
 
 ## Manual Configuration

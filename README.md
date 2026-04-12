@@ -87,7 +87,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **26 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **13 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
+- **14 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
 - **38 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
 
@@ -431,6 +431,17 @@ ll-issues skip FEAT-001                       # Deprioritize issue to P5 (move o
 ll-issues skip FEAT-001 --priority P4         # Deprioritize to specific priority
 ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
 ```
+
+### ll-create-extension
+
+Scaffold a new extension repo with a `pyproject.toml` entry point, a skeleton `on_event` handler implementing `LLExtension`, and an example test using `LLTestBus`:
+
+```bash
+ll-create-extension my-ext            # Scaffold extension named "my-ext"
+ll-create-extension my-ext --dry-run  # Preview scaffold output without writing files
+```
+
+Run `ll-create-extension --help` for all options.
 
 ### ll-gitignore
 
