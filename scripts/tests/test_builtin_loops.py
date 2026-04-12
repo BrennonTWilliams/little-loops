@@ -1156,8 +1156,7 @@ class TestSprintBuildAndValidateLoop:
         """extract_unresolved.on_yes must route to refine_unresolved."""
         state = data["states"].get("extract_unresolved", {})
         assert state.get("on_yes") == "refine_unresolved", (
-            f"extract_unresolved.on_yes should be 'refine_unresolved', "
-            f"got {state.get('on_yes')!r}"
+            f"extract_unresolved.on_yes should be 'refine_unresolved', got {state.get('on_yes')!r}"
         )
 
     def test_extract_unresolved_on_no_routes_to_done(self, data: dict) -> None:
