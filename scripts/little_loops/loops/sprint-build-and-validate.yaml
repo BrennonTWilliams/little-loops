@@ -54,7 +54,21 @@ states:
       Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
       Run `/ll:verify-issues --auto` once for all sprint issues as a single grouped call.
     capture: verify_result
-    next: commit
+    next: route_validation
+
+  route_validation:
+    evaluate:
+      type: llm_structured
+      source: "${captured.verify_result.output}"
+      prompt: |
+        Review the issue verification results. Did all issues pass verification
+        without critical errors that would block the sprint?
+        Return "yes" if all issues are verified and ready to proceed.
+        Return "no" if any issues have critical problems that need to be fixed first.
+    on_yes: commit
+    on_no: fix_issues
+    on_error: commit
+    on_blocked: fix_issues
 
   commit:
     action_type: prompt
@@ -68,11 +82,36 @@ states:
     action_type: shell
     timeout: 21600
     action: "ll-sprint run ${captured.sprint_name.output}"
+    capture: sprint_result
+    next: route_review
+
+  route_review:
+    evaluate:
+      type: llm_structured
+      source: "${captured.sprint_result.output}"
+      prompt: |
+        Review the sprint execution output. Did the sprint complete successfully
+        with all issues resolved?
+        Return "yes" if the sprint completed without unresolved failures.
+        Return "no" if there are failed or blocked issues that need attention.
+    on_yes: done
+    on_no: fix_issues
+    on_error: done
+    on_blocked: fix_issues
+
+  fix_issues:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Review any unresolved or failed issues from the sprint.
+      Run `/ll:refine-issue --auto` for each issue that failed verification or was blocked during the sprint run.
+      Focus on the highest-priority unresolved issues.
+    capture: fix_result
     next: done
 
   done:
     terminal: true
 
-max_iterations: 12
+max_iterations: 16
 timeout: 25200
 on_handoff: spawn
