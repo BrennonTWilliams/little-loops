@@ -89,9 +89,16 @@ def cmd_run(
     if getattr(args, "context_limit", None) is not None:
         os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
 
+    from little_loops.config import BRConfig
+
+    _config = BRConfig(Path.cwd())
+    _edge_label_colors = _config.cli.colors.fsm_edge_labels.to_dict()
+    _highlight_color = _config.cli.colors.fsm_active_state
+    _badges = _config.loops.glyphs.to_dict()
+
     # Dry run
     if args.dry_run:
-        print_execution_plan(fsm)
+        print_execution_plan(fsm, edge_label_colors=_edge_label_colors)
         return 0
 
     # Pre-run validation: check required context variables are present
@@ -212,22 +219,16 @@ def cmd_run(
         # Register signal handlers for graceful shutdown
         register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
-        from little_loops.config import BRConfig
         from little_loops.extension import wire_extensions
 
-        config = BRConfig(Path.cwd())
-        wire_extensions(executor.event_bus, config.extensions, executor=executor)
-        cli_colors = config.cli.colors
-        highlight_color = cli_colors.fsm_active_state
-        edge_label_colors = cli_colors.fsm_edge_labels.to_dict()
-        badges = config.loops.glyphs.to_dict()
+        wire_extensions(executor.event_bus, _config.extensions, executor=executor)
         return run_foreground(
             executor,
             fsm,
             args,
-            highlight_color=highlight_color,
-            edge_label_colors=edge_label_colors,
-            badges=badges,
+            highlight_color=_highlight_color,
+            edge_label_colors=_edge_label_colors,
+            badges=_badges,
         )
     finally:
         lock_manager.release(fsm.name)

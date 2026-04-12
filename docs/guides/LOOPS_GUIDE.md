@@ -292,6 +292,35 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
 
+### `sprint-build-and-validate` — Automated Sprint Creation and Validation
+
+**Technique**: Selects up to `max_issues` open/active issues (P0–P1 first, then issues with no blocking dependencies), creates a sprint definition via `/ll:create-sprint --auto`, runs a linear quality-check pipeline (dependency mapping → conflict auditing → issue verification), commits the validated sprint, then executes it via `ll-sprint run`.
+
+**When to use**: When you want to go from a backlog to a running sprint in one automated pass, with dependency and conflict checks baked in. Prefer `ll-sprint run` directly if you already have a sprint defined and validated.
+
+**Required context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `max_issues` | `8` | Maximum number of issues to include in the sprint |
+
+**Invocation:**
+```bash
+ll-loop run sprint-build-and-validate
+
+# Limit sprint to 5 issues
+ll-loop run sprint-build-and-validate --context max_issues=5
+```
+
+**FSM flow:**
+```
+create_sprint → route_create → [sprint exists?]
+  ├─ YES → map_dependencies → audit_conflicts → verify_issues → commit → run_sprint → done
+  └─ NO  → create_sprint (retry)
+```
+
+**Notes**: The pipeline runs each quality-check step once against all sprint issues as a grouped call (not per-issue). The sprint is committed before `ll-sprint run` begins, so the YAML is durable even if the run is interrupted. Uses `on_handoff: spawn` so it can continue across session boundaries during the sprint execution phase.
+
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 
 **Technique**: For each backlog issue in priority order, run `recursive-refine` as a sub-loop to bring it to ready status (with automatic decomposition of oversized issues into child issues). After refinement, all issues that passed are queued for implementation via `ll-auto --only`; decomposed parents and failed issues are recorded in a skip list and excluded from subsequent `ll-issues next-issue` calls so the loop never retries a persistently failing issue.

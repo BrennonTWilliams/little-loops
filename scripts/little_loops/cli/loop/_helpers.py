@@ -46,10 +46,10 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
             _loop_pid_file.unlink(missing_ok=True)
         if _using_alt_screen:
             print("\033[?1049l", end="", file=sys.stderr, flush=True)
-        print("\nForce shutdown requested", file=sys.stderr)
+        print(colorize("\nForce shutdown requested", "38;5;208"), file=sys.stderr)
         sys.exit(1)
     _loop_shutdown_requested = True
-    print("\nShutdown requested, will exit after current state...", file=sys.stderr)
+    print(colorize("\nShutdown requested, will exit after current state...", "33"), file=sys.stderr)
     if _loop_executor is not None:
         _loop_executor.request_shutdown()
         # Kill any child subprocess currently blocking in the action runner
@@ -152,14 +152,16 @@ def load_loop_with_spec(
     return fsm, spec
 
 
-def print_execution_plan(fsm: FSMLoop) -> None:
+def print_execution_plan(fsm: FSMLoop, edge_label_colors: dict[str, str] | None = None) -> None:
     """Print dry-run execution plan."""
+    _elc = edge_label_colors or {}
+    _yes_color = _elc.get("yes", "32")
     tw = terminal_width()
     print(colorize(f"Execution plan for: {fsm.name}", "1"))
     print()
     print("States:")
     for name, state in fsm.states.items():
-        terminal_marker = colorize(" [TERMINAL]", "32") if state.terminal else ""
+        terminal_marker = colorize(" [TERMINAL]", _yes_color) if state.terminal else ""
         print(f"  {colorize(f'[{name}]', '1')}{terminal_marker}")
         if state.action:
             if state.action_type == "prompt":
@@ -456,16 +458,22 @@ def run_foreground(
                 confidence = event.get("confidence")
                 reason = event.get("reason", "")
                 error = event.get("error", "")
+                _elc = edge_label_colors or {}
                 if verdict in ("yes", "target", "progress"):
-                    symbol = colorize("\u2713", "32")  # green checkmark
-                    verdict_colored = colorize(verdict, "32")
+                    _vc = _elc.get("yes", "32")
+                    symbol = colorize("\u2713", _vc)
+                    verdict_colored = colorize(verdict, _vc)
+                elif verdict == "no":
+                    _vc = _elc.get("no", "38;5;208")
+                    symbol = colorize("\u2717", _vc)
+                    verdict_colored = colorize(verdict, _vc)
+                elif verdict == "error":
+                    _vc = _elc.get("error", "38;5;208")
+                    symbol = colorize("\u2717", _vc)
+                    verdict_colored = colorize(verdict, _vc)
                 else:
-                    symbol = colorize("\u2717", "38;5;208")  # orange x mark
-                    verdict_colored = (
-                        colorize(verdict, "38;5;208")
-                        if verdict in ("no", "error")
-                        else colorize(verdict, "2")
-                    )
+                    symbol = colorize("\u2717", "38;5;208")
+                    verdict_colored = colorize(verdict, "2")
                 # Build verdict line
                 if error and verdict == "error":
                     verdict_line = f"{symbol} {verdict_colored}: {error}"

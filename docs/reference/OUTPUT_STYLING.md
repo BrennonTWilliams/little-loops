@@ -204,6 +204,10 @@ Default edge color mapping (see `Output Color Reference > Edge colors` above for
 
 Edge label colors are **user-configurable** via `cli.colors.fsm_edge_labels` in `ll-config.json`. See [`CONFIGURATION.md → cli.colors.fsm_edge_labels`](CONFIGURATION.md#clicolorsfsm_edge_labels).
 
+> **Note:** `cli.colors.fsm_edge_labels` governs more than diagram arrows. As of ENH-1050, the same config key also controls:
+> - The `✓`/`✗` verdict symbol colors in `display_progress()` (the `yes`, `no`, and `error` keys map to checkmark and x-mark colors during evaluate events)
+> - The `[TERMINAL]` marker color in `print_execution_plan()` (uses the `yes` key, defaulting to green)
+
 The active state highlight color is configurable via `cli.colors.fsm_active_state` (default: green `32`). See [`CONFIGURATION.md → cli.colors.fsm_active_state`](CONFIGURATION.md#clicolorsfsm_active_state).
 
 ### State overview table

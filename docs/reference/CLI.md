@@ -978,6 +978,50 @@ ll-check-links --timeout 30 --workers 5   # Custom timeout and concurrency
 
 ---
 
+### ll-create-extension
+
+Scaffold a new little-loops extension project directory. Generates a ready-to-install Python package with an `LLExtension` implementation, a `pyproject.toml` registered under the `little_loops.extensions` entry point, and a starter test using `LLTestBus`.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Extension name in kebab-case (e.g. `my-dashboard-ext`) |
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-n` | Preview files that would be created without writing them |
+
+**Generated layout:**
+```
+<name>/
+├── pyproject.toml          # Package metadata + little_loops.extensions entry point
+├── <pkg_name>/
+│   ├── __init__.py
+│   └── extension.py        # LLExtension implementation stub
+└── tests/
+    └── test_extension.py   # Starter test using LLTestBus
+```
+
+**Exit codes:** `0` = scaffold created successfully, `1` = directory already exists or error
+
+**Examples:**
+```bash
+ll-create-extension my-dashboard-ext              # Scaffold extension
+ll-create-extension my-dashboard-ext --dry-run    # Preview without writing files
+```
+
+After scaffolding:
+```bash
+cd my-dashboard-ext
+pip install -e .          # Install with entry point registration
+python -m pytest tests/   # Run starter tests
+```
+
+---
+
 ### ll-generate-schemas
 
 Generate JSON Schema (draft-07) files for all 19 `LLEvent` types and write them to `docs/reference/schemas/`.

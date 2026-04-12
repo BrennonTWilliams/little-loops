@@ -97,6 +97,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 3. Update `docs/reference/OUTPUT_STYLING.md` — in the `fsm_edge_labels` section (around line 205), add a note that this config key now also controls verdict symbol colors in `display_progress()` and the `[TERMINAL]` marker color in `print_execution_plan()`; not just the FSM diagram renderer arrows
 
+## Scope Boundaries
+
+- Arrow/transition colors in `print_execution_plan()` (`_helpers.py:182–194`): `colorize('->', '2')` and transition targets remain hardcoded dim (`"2"`); only the `[TERMINAL]` marker is targeted by this issue
+- `display_progress()` state-change and action events are out of scope; only the evaluate event verdict symbols (`yes`/`target`/`progress` checkmarks, `no`/`error` x-marks) are addressed
+- Color behavior under `NO_COLOR=1` or non-TTY output is not changed — governed by `_USE_COLOR` (set via `configure_output()`), which is already respected by `colorize()`
+
 ## Verification
 
 1. `ll-loop run <loop> --dry-run` → `[TERMINAL]` marker uses config `yes` color
@@ -146,8 +152,8 @@ _Added by `/ll:refine-issue` — test file and patterns to follow:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli_loop_background.py` — `TestLoopSignalHandler` directly tests `_loop_signal_handler`; signal handler messages at `_helpers.py:49,52` are being wrapped with `colorize()`. Existing tests assert only on flag state and `SystemExit` (no SGR assertions), so no updates needed — but verify after implementation
-- `scripts/tests/test_cli_loop_lifecycle.py` — imports both `cmd_run` from `run.py` and `_loop_signal_handler` from `_helpers.py`; `TestCmdRunYAMLConfigOverrides` (lines 803–856) tests the `BRConfig` YAML config path, which is affected by the `BRConfig` consolidation in `cmd_run()`; safe as-is (no SGR assertions), but run to confirm after the `BRConfig` load move
-- `scripts/tests/test_ll_loop_commands.py` — `TestCmdRunContextInjection` (line 2116) calls `cmd_run` directly with `dry_run=True`; exercises `print_execution_plan` code path; no color assertions, safe
+- `scripts/tests/test_cli_loop_lifecycle.py` — imports both `cmd_run` from `run.py` and `_loop_signal_handler` from `_helpers.py`; `TestCmdRunYAMLConfigOverrides` (line 767) tests the `BRConfig` YAML config path, which is affected by the `BRConfig` consolidation in `cmd_run()`; safe as-is (no SGR assertions), but run to confirm after the `BRConfig` load move
+- `scripts/tests/test_ll_loop_commands.py` — `TestCmdRunContextInjection` (line 2068) calls `cmd_run` directly with `dry_run=True` (line 2127); exercises `print_execution_plan` code path; no color assertions, safe
 - **May break** — `scripts/tests/test_ll_loop_display.py:1620–1625, 1680–1685, 1917–1936` — these mock `_render_fsm_diagram` and assert `edge_label_colors=None` in the call args. They call `run_foreground()` directly (not via `cmd_run`), so they will receive `edge_label_colors=None` (the default). They are safe as long as `run_foreground`'s default param stays `None` — which it does per the implementation plan. Verify these still pass after implementation.
 
 ### Documentation
@@ -157,11 +163,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Supporting Files (Read-Only)
 - `scripts/little_loops/config/cli.py:102–116` — `CliColorsEdgeLabelsConfig.to_dict()` maps config fields to the `dict[str, str]` passed as `edge_label_colors`; keys include `"yes"`, `"no"`, `"error"`, `"partial"`, `"next"`, `"default"` (→ `"_"`)
-- `scripts/little_loops/cli/output.py:14` — `colorize` is imported here by `_helpers.py`; despite the Motivation note, ENH-595 added it to `output.py` (not `_helpers.py` directly)
+- `scripts/little_loops/cli/output.py:90` — `colorize` is defined here; `_helpers.py` imports it at `_helpers.py:14` via `from little_loops.cli.output import colorize, terminal_width`
 - `scripts/little_loops/cli/loop/layout.py:27–36` — `_EDGE_LABEL_COLORS` fallback dict; keys `"yes"`, `"no"`, `"error"` are the same keys used by the `edge_label_colors` dict
 
 ### Out of Scope (Known Hardcoded Colors Left Unchanged)
 - `print_execution_plan()` arrow/transition colors at `_helpers.py:182–194`: `colorize('->', '2')` and transition targets use hardcoded `"2"` (dim). Issue only targets the `[TERMINAL]` marker.
+
+## Impact
+
+- **Priority**: P4 - Minor cosmetic fix; users with custom `ll-config.json` colors see no effect on verdict symbols or `[TERMINAL]` marker until this is wired
+- **Effort**: Small - 3 targeted edits in `_helpers.py` and 1 consolidation in `run.py`; all infrastructure already in place
+- **Risk**: Low - Additive change; all SGR codes have hardcoded fallbacks so behavior is unchanged when no config is set
+- **Breaking Change**: No - `print_execution_plan()` gains an optional `edge_label_colors` parameter defaulting to `None`; all existing callers are unaffected
+
+## Labels
+
+`enhancement`, `colorization`, `cli`, `config-integration`
 
 ## Related Issues
 
@@ -170,12 +187,26 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ---
 
+## Resolution
+
+Implemented in `_helpers.py` and `run.py`:
+
+1. **Signal handler messages**: Wrapped `"\nForce shutdown requested"` with `colorize(..., "38;5;208")` and `"\nShutdown requested..."` with `colorize(..., "33")` so they respect `_USE_COLOR`.
+2. **`print_execution_plan()`**: Added `edge_label_colors: dict[str, str] | None = None` parameter; `[TERMINAL]` marker now uses `_elc.get("yes", "32")` instead of hardcoded `"32"`.
+3. **`display_progress()` evaluate block**: Replaced hardcoded `"32"` and `"38;5;208"` with `_elc.get("yes", "32")`, `_elc.get("no", "38;5;208")`, `_elc.get("error", "38;5;208")` drawn from the `edge_label_colors` closure variable.
+4. **`run.py` BRConfig consolidation**: Moved `BRConfig` load before the dry-run check; passed `edge_label_colors=_edge_label_colors` to both dry-run `print_execution_plan()` and `run_foreground()`; removed the second `BRConfig` load in the foreground path.
+5. **`docs/reference/OUTPUT_STYLING.md`**: Added a note clarifying that `cli.colors.fsm_edge_labels` now also controls verdict symbol colors and the `[TERMINAL]` marker.
+
+All 176 related tests pass.
+
 ## Status
 
-Open
+Completed
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T05:17:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab5e84d9-0a67-4165-9bed-c48fd6c94f98.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f54f3a-dbcf-4014-96af-26801a901446.jsonl`
 - `/ll:wire-issue` - 2026-04-12T05:08:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4df6d63-0f49-4dd7-9784-803b617b2e26.jsonl`
 - `/ll:refine-issue` - 2026-04-12T04:58:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a85d1e55-862d-4918-9fa4-361cea909a58.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1437654-cf08-44ef-b694-93b1f1d22897.jsonl`
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
