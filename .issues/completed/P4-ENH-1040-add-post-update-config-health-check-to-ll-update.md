@@ -157,7 +157,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - No "Step 5: Config Health Check" section in the update skill ✓
 - Feature not yet implemented
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-11
+- **Reason**: Issue too large for single session (score: 11/11)
+
+### Decomposed Into
+- ENH-1046: Fix `extensions` key placement in `config-schema.json`
+- ENH-1047: Add Config Health Check step to `ll:update` skill
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1c66be5-a6d5-41db-b207-85921b3e11c7.jsonl`
 - `/ll:confidence-check` - 2026-04-11T23:50:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8aa6ceaf-d9fb-4c1a-81d0-c2dba07ea652.jsonl`
 - `/ll:wire-issue` - 2026-04-11T23:36:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c38386d1-6762-4fa8-bae4-7e6c7d87a79c.jsonl`
 - `/ll:refine-issue` - 2026-04-11T23:30:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aae91033-bf21-4128-9943-0b0de35d7ab1.jsonl`
