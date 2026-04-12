@@ -210,7 +210,7 @@ little-loops/
         │       ├── config_cmds.py   # compile, validate, install
         │       ├── lifecycle.py     # status, stop, resume
         │       ├── info.py          # list, history, show
-        │       └── testing.py       # test, simulate
+        │       └── testing.py       # LLTestBus offline extension test harness
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration loading
         ├── state.py             # State persistence

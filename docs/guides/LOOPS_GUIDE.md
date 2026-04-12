@@ -319,7 +319,21 @@ create_sprint → route_create → [sprint exists?]
   └─ NO  → create_sprint (retry)
 ```
 
-**Notes**: The pipeline runs each quality-check step once against all sprint issues as a grouped call (not per-issue). The sprint is committed before `ll-sprint run` begins, so the YAML is durable even if the run is interrupted. Uses `on_handoff: spawn` so it can continue across session boundaries during the sprint execution phase.
+**State timeouts:**
+
+| State | Timeout | Notes |
+|-------|---------|-------|
+| `create_sprint` | 300s | Headless `/ll:create-sprint --auto`; captures sprint name |
+| `route_create` | — | Shell check: `ll-sprint list \| grep -q .`; retries if no sprint found |
+| `map_dependencies` | 300s | `/ll:map-dependencies --auto` grouped across all sprint issues |
+| `audit_conflicts` | 300s | `/ll:audit-issue-conflicts --auto` grouped across all sprint issues |
+| `verify_issues` | 600s | `/ll:verify-issues --auto` grouped across all sprint issues |
+| `commit` | 120s | `/ll:commit --auto` with standard sprint commit message |
+| `run_sprint` | 21600s (6h) | `ll-sprint run <name>` — parallelized wave execution |
+
+**Notes**: Each quality-check step runs once as a grouped call against all sprint issues — not per-issue. The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_iterations: 12`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase.
+
+Prior to the ENH-1051 refactor, this loop ran `/ll:confidence-check` per issue and could loop through a `fix_issues` remediation cycle many times before committing — and never actually executed the sprint. The current linear design runs each check once and ends with `run_sprint`.
 
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 
@@ -1488,7 +1502,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `-n <N>` | Override `max_iterations` |
 | `--queue` | Wait for conflicting scoped loops instead of erroring |
 | `-q` / `--quiet` | Suppress progress output |
-| `-v` / `--verbose` | Show full prompt text and more output lines |
+| `-v` / `--verbose` | Stream all action output live; default shows a short response head preview |
 | `-b` / `--background` | Run as a background daemon |
 | `--show-diagrams` | Display FSM box diagram with active state highlighted after each step |
 | `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard |

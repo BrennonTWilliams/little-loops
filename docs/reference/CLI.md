@@ -248,7 +248,7 @@ Run a loop.
 | `--dry-run` | | Show execution plan without running |
 | `--background` | `-b` | Run as background daemon |
 | `--quiet` | `-q` | Suppress progress output |
-| `--verbose` | `-v` | Show full prompt text and more output lines |
+| `--verbose` | `-v` | Stream all action output live; default shows a short response head preview |
 | `--queue` | | Wait for conflicting loops to finish |
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; the top-level loop is preceded by `== loop: <name> ====...` and, when sub-loops are active, each nesting level is rendered below its parent separated by `── sub-loop: <name> ──` (supports arbitrary depth) |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
@@ -988,6 +988,8 @@ Scaffold a new little-loops extension project directory. Generates a ready-to-in
 |----------|-------------|
 | `name` | Extension name in kebab-case (e.g. `my-dashboard-ext`) |
 
+The name is automatically converted: hyphens become underscores for the package directory (`my_dashboard_ext`) and each word is capitalized for the class name (`MyDashboardExt`).
+
 **Flags:**
 
 | Flag | Short | Description |
@@ -1003,6 +1005,51 @@ Scaffold a new little-loops extension project directory. Generates a ready-to-in
 │   └── extension.py        # LLExtension implementation stub
 └── tests/
     └── test_extension.py   # Starter test using LLTestBus
+```
+
+**Generated file contents:**
+
+`pyproject.toml` — wires automatic extension discovery via the `little_loops.extensions` entry point group:
+```toml
+[project.entry-points."little_loops.extensions"]
+my-dashboard-ext = "my_dashboard_ext.extension:MyDashboardExt"
+```
+
+`<pkg_name>/extension.py` — skeleton implementing the `LLExtension` protocol:
+```python
+class MyDashboardExt:
+    """MyDashboardExt extension.
+
+    Implement on_event to handle little-loops lifecycle events.
+    Optional mixin Protocols (InterceptorExtension, ActionProviderExtension,
+    EvaluatorProviderExtension) are opt-in — implement their methods to activate.
+    """
+
+    def on_event(self, event: LLEvent) -> None:
+        """Handle an incoming event."""
+        # See docs/reference/EVENT-SCHEMA.md for all available event types and payload fields
+        pass
+```
+
+`tests/test_extension.py` — starter test using `LLTestBus`:
+```python
+class TestMyDashboardExt:
+    def test_receives_events(self) -> None:
+        """Extension receives events via LLTestBus replay."""
+        bus = LLTestBus([])
+        ext = MyDashboardExt()
+        bus.register(ext)
+        bus.replay()
+        assert bus.delivered_events == []
+```
+
+**Dry-run output:**
+```
+[DRY RUN] Would create: my-dashboard-ext/
+  pyproject.toml
+  my_dashboard_ext/__init__.py
+  my_dashboard_ext/extension.py
+  tests/test_extension.py
 ```
 
 **Exit codes:** `0` = scaffold created successfully, `1` = directory already exists or error

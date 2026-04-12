@@ -62,7 +62,7 @@ Show a configurable head preview of the LLM response after `action_complete`, sy
 
 ## Implementation Steps
 
-### `scripts/little_loops/cli/loop/_helpers.py` — `action_complete` block (lines 443–451)
+### `scripts/little_loops/cli/loop/_helpers.py` — `action_complete` block (lines 445–453)
 
 **Current logic:**
 
@@ -115,17 +115,17 @@ if output_preview and not verbose:
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-2. Update `scripts/little_loops/cli/loop/__init__.py:129` — revise `--verbose` argparse help string so it accurately describes the new distinction between default (head-preview) and verbose (full streaming) modes; e.g. `"Stream all action output live; default shows a short response preview"`
+2. Update `scripts/little_loops/cli/loop/__init__.py:128` — revise `--verbose` argparse help string so it accurately describes the new distinction between default (head-preview) and verbose (full streaming) modes; e.g. `"Stream all action output live; default shows a short response preview"`
 3. Update `docs/reference/CLI.md:251` — revise the `--verbose` table row to reflect that non-verbose now shows a response head preview (not zero output)
-4. Update `docs/guides/LOOPS_GUIDE.md:1462` — same description repeated verbatim; update in tandem
+4. Update `docs/guides/LOOPS_GUIDE.md:1491` — same description repeated verbatim; update in tandem
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/_helpers.py` — change the `action_complete` gate at line 446 from `not is_prompt and not verbose` → `not verbose`; add head-preview branch with `← response` label and trailing `... (N more lines)` footer
-- `scripts/little_loops/cli/loop/__init__.py:129` — update `--verbose` help string (`"Show full prompt text and more output lines"`) to distinguish streaming-all vs. head-preview default [Wiring pass added by `/ll:wire-issue`]
+- `scripts/little_loops/cli/loop/_helpers.py` — change the `action_complete` gate at line 448 from `not is_prompt and not verbose` → `not verbose`; add head-preview branch with `← response` label and trailing `... (N more lines)` footer
+- `scripts/little_loops/cli/loop/__init__.py:128` — update `--verbose` help string (`"Show full prompt text and more output lines"`) to distinguish streaming-all vs. head-preview default [Wiring pass added by `/ll:wire-issue`]
 - `docs/reference/CLI.md:251` — `--verbose` table row description becomes misleading after non-verbose mode shows response head preview [Wiring pass added by `/ll:wire-issue`]
-- `docs/guides/LOOPS_GUIDE.md:1462` — same `--verbose` description repeated verbatim; update in tandem with CLI.md [Wiring pass added by `/ll:wire-issue`]
+- `docs/guides/LOOPS_GUIDE.md:1491` — same `--verbose` description repeated verbatim; update in tandem with CLI.md [Wiring pass added by `/ll:wire-issue`]
 
 ### Dependent Files (Read-Only, No Changes Needed)
 - `scripts/little_loops/fsm/executor.py:522` — computes `preview = result.output[-2000:].strip()`; populates `output_preview` for all action modes unconditionally; `is_prompt` set via `action_mode == "prompt"` at line 527
@@ -134,7 +134,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/loop/run.py:224` — the sole caller of `run_foreground()`; passes `args` with `verbose`/`quiet` flags; no signature change needed
+- `scripts/little_loops/cli/loop/run.py:225` — the sole caller of `run_foreground()`; passes `args` with `verbose`/`quiet` flags; no signature change needed
 
 ### Test File
 - `scripts/tests/test_ll_loop_display.py` — add tests to the `TestDisplayProgressEvents` class following the existing `MockExecutor` + `capsys` + `_make_args()` pattern (see lines 1494–1602)
@@ -209,6 +209,24 @@ def test_quiet_prompt_output_not_shown(self, capsys: pytest.CaptureFixture[str])
 4. `ll-loop run <loop-with-prompt-state> --quiet` → nothing shown (quiet suppresses all)
 5. Existing tests: `python -m pytest scripts/tests/ -k loop -v`
 
+## Impact
+
+- **Priority**: P3 - Display-only improvement; useful but not blocking core functionality
+- **Effort**: Small - Single-function change in `_helpers.py` plus 3 doc/arg string updates and 3 new tests
+- **Risk**: Low - Additive change to display layer only; no logic or data path changes
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `cli`, `loop`, `display`
+
+## Scope Boundaries
+
+- Out of scope: making response preview line count configurable via `cli.output.response_preview_lines` (flagged as follow-up in Proposed Solution)
+- Out of scope: changing verbose mode behavior (streaming remains unchanged)
+- Out of scope: adding response preview in quiet mode (quiet suppresses all output by design)
+- Out of scope: changing the 8-line default for existing shell tail previews
+
 ## Related Issues
 
 - ENH-1050: Wire display_progress and print_execution_plan to config-driven color system (same file)
@@ -216,11 +234,16 @@ def test_quiet_prompt_output_not_shown(self, capsys: pytest.CaptureFixture[str])
 
 ---
 
+## Resolution
+
+Implemented as specified. Changed `action_complete` gate in `_helpers.py` from `not is_prompt and not verbose` to `not verbose`, adding a head-preview branch for prompt states with `← response (N lines):` label and a `... (N more lines)` footer. Shell tail-preview behavior is unchanged. Updated `--verbose` help strings in `__init__.py`, `CLI.md`, and `LOOPS_GUIDE.md`. Added 3 new tests to `TestDisplayProgressEvents`.
+
 ## Status
 
-Open
+Completed
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T05:24:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef4c199f-aa79-4592-90b3-b66b18e185a4.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edc93ae2-94de-4f41-8e9d-da6398b38296.jsonl`
 - `/ll:wire-issue` - 2026-04-12T05:04:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a85d1e55-862d-4918-9fa4-361cea909a58.jsonl`
 - `/ll:refine-issue` - 2026-04-12T04:57:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0152ccce-218b-4988-9c5c-e983140da495.jsonl`

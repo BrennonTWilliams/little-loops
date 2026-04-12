@@ -1601,6 +1601,60 @@ class TestDisplayProgressEvents:
         assert "preview line" in out
         assert "streamed line" not in out
 
+    def test_nonverbose_prompt_output_shows_head_preview(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In non-verbose mode, prompt action_complete shows a head preview of the response."""
+        events = [
+            {
+                "event": "action_complete",
+                "exit_code": 0,
+                "duration_ms": 5000,
+                "output_preview": "Line 1\nLine 2\nLine 3",
+                "is_prompt": True,
+            }
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+        out = capsys.readouterr().out
+        assert "Line 1" in out
+        assert "← response" in out
+
+    def test_verbose_prompt_output_not_shown_at_action_complete(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In verbose mode, prompt output streams via action_output; action_complete must not duplicate it."""
+        events = [
+            {"event": "action_output", "line": "streamed line"},
+            {
+                "event": "action_complete",
+                "exit_code": 0,
+                "duration_ms": 5000,
+                "output_preview": "streamed line",
+                "is_prompt": True,
+            },
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert out.count("streamed line") == 1
+
+    def test_quiet_prompt_output_not_shown(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """In quiet mode, no output preview is shown for prompt states."""
+        events = [
+            {
+                "event": "action_complete",
+                "exit_code": 0,
+                "duration_ms": 1000,
+                "output_preview": "should not appear",
+                "is_prompt": True,
+            }
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(quiet=True))
+        out = capsys.readouterr().out
+        assert "should not appear" not in out
+
     def test_show_diagrams_state_enter_prints_diagram(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

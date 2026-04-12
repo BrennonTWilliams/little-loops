@@ -442,15 +442,30 @@ def run_foreground(
                 elif exit_code != 0:
                     parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
                 print("  ".join(parts), flush=True)
-                # Skip output preview for prompt states (already streamed) and in verbose mode
-                # (lines already shown via action_output events). In non-verbose mode, show
-                # a tail summary for shell states.
-                if output_preview and not is_prompt and not verbose:
+                # In verbose mode, output was already shown via action_output events — skip preview.
+                # In non-verbose mode, show a head preview for prompt states and a tail preview
+                # for shell states so users get signal on what the action produced.
+                if output_preview and not verbose:
                     lines = [ln for ln in output_preview.splitlines() if ln.strip()]
-                    show_lines = lines[-8:] if lines else []
+                    if is_prompt:
+                        # Head preview for LLM responses — the meaningful content is usually upfront
+                        show_lines = lines[:8] if lines else []
+                        if lines:
+                            print(
+                                f"{indent}       {colorize(f'← response ({len(lines)} lines):', '2')}",
+                                flush=True,
+                            )
+                    else:
+                        # Tail preview for shell commands — the summary is usually at the end
+                        show_lines = lines[-8:] if lines else []
                     for line in show_lines:
                         display = line[:max_line] + "..." if len(line) > max_line else line
                         print(f"{indent}       {display}", flush=True)
+                    if is_prompt and len(lines) > 8:
+                        print(
+                            f"{indent}       {colorize(f'... ({len(lines) - 8} more lines)', '2')}",
+                            flush=True,
+                        )
 
         elif event_type == "evaluate":
             if not quiet:
