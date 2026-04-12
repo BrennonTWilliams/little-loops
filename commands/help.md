@@ -228,6 +228,7 @@ ll-issues         Issue management and visualization (next-id, list, show, path,
 ll-verify-docs    Verify documented counts match actual file counts
 ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
+ll-create-extension Scaffold a new little-loops extension project
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]

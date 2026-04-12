@@ -440,6 +440,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-verify-docs:*)",
      "Bash(ll-check-links:*)",
      "Bash(ll-gitignore:*)",
+     "Bash(ll-create-extension:*)",
      "Write(.ll/ll-continue-prompt.md)"
      ```
    - Create `.claude/` directory first if needed
@@ -521,6 +522,7 @@ If user opted in:
    - `ll-check-links` - Check markdown documentation for broken links
    - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
+   - `ll-create-extension` - Scaffold a new little-loops extension project
 
    Install: `pip install -e "./scripts[dev]"`
    ```
@@ -545,6 +547,7 @@ If user opted in:
    - `ll-check-links` - Check markdown documentation for broken links
    - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
+   - `ll-create-extension` - Scaffold a new little-loops extension project
 
    Install: `pip install -e "./scripts[dev]"`
    ```

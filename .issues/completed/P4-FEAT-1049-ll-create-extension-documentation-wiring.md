@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-04-11
 discovered_by: issue-size-review
-confidence_score: 95
-outcome_confidence: 78
+confidence_score: 100
+outcome_confidence: 68
 testable: false
 ---
 
@@ -117,8 +117,15 @@ description: "Authorize all 14 ll- CLI tools and handoff write: ll-issues, ll-au
 ```
 
 **Suggested description text for `ll-create-extension`:**
-- In `commands/help.md` (fixed-width format): `ll-create-extension   Scaffold a new ll-* extension with templates and boilerplate`
-- In `skills/init/SKILL.md` boilerplate bullets: `` - `ll-create-extension` - Scaffold a new ll-* extension with templates and boilerplate ``
+
+The canonical description is sourced from the CLI's argparse definition at `scripts/little_loops/cli/create_extension.py:126`:
+```python
+description="Scaffold a new little-loops extension project"
+```
+
+- In `commands/help.md` (fixed-width format): `ll-create-extension Scaffold a new little-loops extension project`
+  - **Alignment note**: `ll-create-extension` is 19 chars; existing commands align at 18. Use a single space separator — the block is human-readable plain text, not parsed. Do NOT expand all existing lines to maintain alignment.
+- In `skills/init/SKILL.md` boilerplate bullets: `` - `ll-create-extension` - Scaffold a new little-loops extension project ``
 
 **Additional files that also enumerate ll-* tools (not in current issue scope):**
 - `.claude/CLAUDE.md:101-116` — "CLI Tools" section lists 13 tools; count will be stale after this issue lands
@@ -148,11 +155,11 @@ N/A - No public API changes. All edits are documentation and manifest wiring onl
 
 ## Acceptance Criteria
 
-- [ ] `commands/help.md` CLI TOOLS block includes `ll-create-extension`
-- [ ] `skills/init/SKILL.md` permissions block includes `"Bash(ll-create-extension:*)"`
-- [ ] Both CLAUDE.md boilerplate blocks in `skills/init/SKILL.md` include `ll-create-extension`
-- [ ] `skills/configure/areas.md` count shows `14` with `ll-create-extension` in the list
-- [ ] `scripts/tests/test_create_extension_wiring.py` exists and passes
+- [x] `commands/help.md` CLI TOOLS block includes `ll-create-extension`
+- [x] `skills/init/SKILL.md` permissions block includes `"Bash(ll-create-extension:*)"`
+- [x] Both CLAUDE.md boilerplate blocks in `skills/init/SKILL.md` include `ll-create-extension`
+- [x] `skills/configure/areas.md` count shows `14` with `ll-create-extension` in the list
+- [x] `scripts/tests/test_create_extension_wiring.py` exists and passes
 
 ## Impact
 
@@ -168,11 +175,23 @@ N/A - No public API changes. All edits are documentation and manifest wiring onl
 
 ---
 
+## Resolution
+
+Implemented 2026-04-11. Applied four targeted edits:
+1. `commands/help.md` — added `ll-create-extension` to CLI TOOLS block
+2. `skills/init/SKILL.md` — added `"Bash(ll-create-extension:*)"` to permissions block
+3. `skills/init/SKILL.md` — added `ll-create-extension` to both CLAUDE.md boilerplate blocks (file-exists and create-new)
+4. `skills/configure/areas.md` — incremented count 13→14, appended `ll-create-extension` to enumeration
+5. Created `scripts/tests/test_create_extension_wiring.py` (5 tests, all passing)
+
 ## Status
 
-**Open** | Created: 2026-04-11 | Priority: P4
+**Completed** | Created: 2026-04-11 | Priority: P4
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T04:40:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7faee20e-6c5a-4951-a56b-58251453df61.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58450691-c82a-4e9b-bd15-9e895c4cb4ae.jsonl`
+- `/ll:refine-issue` - 2026-04-12T04:35:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/367828aa-ee3b-49bd-8229-2185efdc807e.jsonl`
 - `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b31ab27-dd0b-4234-b84f-a3ce2c230248.jsonl`
 - `/ll:refine-issue` - 2026-04-12T03:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1492d40c-e557-4d15-9905-5486157b0414.jsonl`
 - `/ll:wire-issue` - 2026-04-12T03:26:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d67326fc-67ca-4141-a32a-78e3d068216f.jsonl`
