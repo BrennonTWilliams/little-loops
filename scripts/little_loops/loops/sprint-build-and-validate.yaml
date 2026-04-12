@@ -1,118 +1,78 @@
 name: sprint-build-and-validate
 category: meta
 description: |
-  Create a sprint from the backlog, validate all included issues are
-  implementation-ready, fix any that aren't, and review the final sprint
-  composition. Ensures sprint quality before execution begins.
-initial: assess_backlog
+  Create a sprint from open/active issues, run dependency mapping, conflict
+  auditing, and issue verification in headless mode, commit, then execute
+  the sprint via ll-sprint in parallelized waves.
+initial: create_sprint
 context:
   max_issues: 8
-  readiness_threshold: 85   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
-  outcome_threshold: 70     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
 import:
   - lib/common.yaml
 states:
-  assess_backlog:
-    action_type: prompt
-    timeout: 300
-    action: |
-      Run `ll-issues list` to see the current backlog.
-      Assess which issues are highest priority and ready for a sprint.
-      Consider dependencies, priority levels, and issue readiness.
-      Target ${context.max_issues} issues maximum for the sprint.
-    capture: backlog_assessment
-    next: create_sprint
   create_sprint:
     action_type: prompt
     timeout: 300
     action: |
-      Based on the backlog assessment:
-      ${captured.backlog_assessment.output}
-
-      Run `/ll:create-sprint` to create a new sprint definition.
+      Run `/ll:create-sprint --auto` to create a new sprint from open/active issues.
       Select up to ${context.max_issues} issues, prioritizing:
       1. P0-P1 issues first
       2. Issues with no blocking dependencies
-      3. Issues that have been refined (high confidence scores)
-    capture: sprint_def
+      Respond with ONLY the sprint name on a single line (e.g. "sprint-1").
+    capture: sprint_name
     next: route_create
+
   route_create:
     action: "ll-sprint list 2>/dev/null | grep -q ."
     fragment: shell_exit
-    on_yes: validate_issues
+    on_yes: map_dependencies
     on_no: create_sprint
     on_error: create_sprint
-  validate_issues:
-    action_type: prompt
-    timeout: 600
-    action: |
-      For each issue in the sprint, run `/ll:confidence-check [ISSUE_ID] --auto`
-      to verify implementation readiness.
 
-      Flag any issues with:
-      - Readiness score < ${context.readiness_threshold}
-      - Outcome confidence < ${context.outcome_threshold}
-      - Missing dependencies
-    capture: validation_result
-    next: route_validation
-  route_validation:
-    evaluate:
-      type: llm_structured
-      source: "${captured.validation_result.output}"
-      prompt: |
-        Do any sprint issues fail readiness checks (readiness < ${context.readiness_threshold}
-        or outcome confidence < ${context.outcome_threshold})?
-        Return "yes" if all issues pass and are implementation-ready.
-        Return "no" if any issues need fixing.
-    on_yes: review_sprint
-    on_no: fix_issues
-    on_error: review_sprint
-    on_blocked: fix_issues
-  fix_issues:
-    action_type: prompt
-    timeout: 600
-    action: |
-      Some sprint issues aren't ready:
-      ${captured.validation_result.output}
-
-      For each unready issue, run:
-      1. `/ll:refine-issue [ISSUE_ID] --auto` to fill knowledge gaps
-      2. `/ll:confidence-check [ISSUE_ID] --auto` to re-score
-
-      If an issue can't reach readiness >= ${context.readiness_threshold} after refinement, consider
-      replacing it with another backlog issue.
-    next: validate_issues
-  review_sprint:
+  map_dependencies:
     action_type: prompt
     timeout: 300
     action: |
-      Run `/ll:review-sprint` to perform a final health check on the
-      sprint composition. Check for:
-      - Dependency conflicts between sprint issues
-      - Scope contention (multiple issues touching same files)
-      - Overall sprint size and balance
-    capture: review_result
-    next: route_review
-  route_review:
-    evaluate:
-      type: llm_structured
-      source: "${captured.review_result.output}"
-      prompt: |
-        Did the sprint review find critical issues that block execution?
-        Return "yes" if the sprint is healthy and ready to go.
-        Return "no" if the review found critical issues.
-    on_yes: commit
-    on_no: fix_issues
-    on_error: commit
-    on_blocked: fix_issues
+      Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
+      Run `/ll:map-dependencies --auto` once for all sprint issues as a single grouped call.
+    capture: dep_result
+    next: audit_conflicts
+
+  audit_conflicts:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
+      Run `/ll:audit-issue-conflicts --auto` once for all sprint issues as a single grouped call.
+    capture: conflict_result
+    next: verify_issues
+
+  verify_issues:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
+      Run `/ll:verify-issues --auto` once for all sprint issues as a single grouped call.
+    capture: verify_result
+    next: commit
+
   commit:
     action_type: prompt
+    timeout: 120
     action: |
-      Run `/ll:commit` to commit the sprint definition.
-      Use message: "chore(sprint): create validated sprint definition"
+      Run `/ll:commit --auto` to commit the sprint definition and any issue file updates.
+      Use commit message: "chore(sprint): create and validate sprint ${captured.sprint_name.output}"
+    next: run_sprint
+
+  run_sprint:
+    action_type: shell
+    timeout: 21600
+    action: "ll-sprint run ${captured.sprint_name.output}"
     next: done
+
   done:
     terminal: true
-max_iterations: 15
-timeout: 5400
+
+max_iterations: 12
+timeout: 25200
 on_handoff: spawn
