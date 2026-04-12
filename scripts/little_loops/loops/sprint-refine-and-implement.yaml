@@ -1,0 +1,113 @@
+name: "sprint-refine-and-implement"
+category: issue-management
+description: |
+  Like auto-refine-and-implement but scoped to a named sprint's issue list.
+  Usage: ll-loop run sprint-refine-and-implement <sprint-name>
+  Reads .sprints/<sprint-name>.yaml and processes issues in sprint order:
+  recursively refine via recursive-refine (with decomposition), then implement
+  all issues that passed refinement. Skips issues that fail refinement or are
+  decomposed. Stops when the sprint is exhausted.
+input_key: sprint_name
+initial: get_next_issue
+max_iterations: 500
+timeout: 28800
+on_handoff: spawn
+import:
+  - lib/common.yaml
+context:
+  sprint_name: ""
+  max_issues: 100
+
+states:
+  get_next_issue:
+    action: |
+      mkdir -p .loops/tmp
+      SKIP_FILE=".loops/tmp/sprint-refine-and-implement-skipped.txt"
+      if [ -z "${context.sprint_name}" ]; then
+        echo "Usage: ll-loop run sprint-refine-and-implement <sprint-name>" >&2
+        exit 1
+      fi
+      SPRINT_FILE=".sprints/${context.sprint_name}.yaml"
+      if [ ! -f "$SPRINT_FILE" ]; then
+        echo "Sprint '${context.sprint_name}' not found at $SPRINT_FILE" >&2
+        exit 1
+      fi
+      while IFS= read -r ISSUE_ID; do
+        [ -z "$ISSUE_ID" ] && continue
+        if [ -f "$SKIP_FILE" ] && grep -qxF "$ISSUE_ID" "$SKIP_FILE"; then
+          continue
+        fi
+        echo "$ISSUE_ID"
+        exit 0
+      done < <(grep '^ *-' "$SPRINT_FILE" | sed 's/^ *- *//')
+      exit 1
+    action_type: shell
+    capture: input
+    on_yes: refine_issue
+    on_no: done
+    on_error: done
+
+  refine_issue:
+    loop: recursive-refine
+    context_passthrough: true
+    on_success: get_passed_issues
+    on_failure: skip_and_continue
+    on_error: skip_and_continue
+
+  get_passed_issues:
+    action: |
+      SKIP_FILE=".loops/tmp/sprint-refine-and-implement-skipped.txt"
+      IMPL_QUEUE=".loops/tmp/sprint-refine-and-implement-impl-queue.txt"
+
+      if [ -s .loops/tmp/recursive-refine-skipped.txt ]; then
+        grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-skipped.txt >> "$SKIP_FILE"
+      fi
+
+      PASSED=""
+      if [ -s .loops/tmp/recursive-refine-passed.txt ]; then
+        PASSED=$(grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-passed.txt)
+      fi
+
+      if [ -n "$PASSED" ]; then
+        echo "$PASSED" >> "$SKIP_FILE"
+        echo "$PASSED" > "$IMPL_QUEUE"
+        exit 0
+      else
+        printf '' > "$IMPL_QUEUE"
+        exit 1
+      fi
+    fragment: shell_exit
+    on_yes: implement_next
+    on_no: get_next_issue
+    on_error: get_next_issue
+
+  implement_next:
+    action: |
+      IMPL_QUEUE=".loops/tmp/sprint-refine-and-implement-impl-queue.txt"
+      if [ ! -s "$IMPL_QUEUE" ]; then
+        exit 1
+      fi
+      CURRENT=$(head -1 "$IMPL_QUEUE")
+      tail -n +2 "$IMPL_QUEUE" > "$IMPL_QUEUE.tmp"
+      mv "$IMPL_QUEUE.tmp" "$IMPL_QUEUE"
+      echo "$CURRENT"
+    fragment: shell_exit
+    capture: impl_id
+    on_yes: implement_issue
+    on_no: get_next_issue
+    on_error: get_next_issue
+
+  implement_issue:
+    action: "ll-auto --only ${captured.impl_id.output}"
+    action_type: shell
+    next: implement_next
+
+  skip_and_continue:
+    action: |
+      echo "Skipping ${captured.input.output} after refinement failure"
+      echo "${captured.input.output}" >> .loops/tmp/sprint-refine-and-implement-skipped.txt
+    action_type: shell
+    next: get_next_issue
+
+  done:
+    terminal: true
