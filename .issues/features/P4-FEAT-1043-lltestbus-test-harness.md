@@ -2,7 +2,7 @@
 discovered_date: 2026-04-11
 discovered_by: issue-size-review
 confidence_score: 100
-outcome_confidence: 85
+outcome_confidence: 93
 ---
 
 # FEAT-1043: LLTestBus Test Harness
@@ -61,12 +61,24 @@ Implement `LLTestBus` as a standalone class (not an `EventBus` subclass):
 ### Critical Implementation Notes
 - `LLTestBus` must be a **standalone class** — NOT an `EventBus` subclass. `EventBus.register()` takes `EventCallback = Callable[[dict[str, Any]], None]`, not `LLExtension`.
 - Do NOT use the `_make_callback` closure pattern from `wire_extensions()` — `LLTestBus` already has typed `LLEvent` objects; call `ext.on_event(event)` directly.
-- `event_filter` is `str | list[str] | None` — normalize using `events.py:90-93` pattern; use `fnmatch.fnmatch(event.type, p)` for matching.
+- `event_filter` is `str | list[str] | None` — normalize using `events.py:90-93` pattern; use `fnmatch.fnmatch(event.type, p)` for matching. Since `LLTestBus` dispatches directly (not through `EventBus.emit()`), use `event.type` (the `LLEvent` attribute) — not `event.get("event","")` — in the fnmatch check. Adapt `events.py:113-118` for this direct-dispatch variant.
 - `EventBus.read_events()` requires `Path`, not `str` — call `Path(path)` in `from_jsonl()`.
 
 ### Tests
-- `test_testing.py` must define its own JSONL fixture in proper `LLEvent` wire format: `{"event": "loop_start", "ts": "2025-01-01T00:00:00", "loop_name": "test-loop"}`. Do NOT reuse `conftest.py:284` `events_file` fixture — it uses history format incompatible with `LLEvent`.
+- `test_testing.py` must define its own JSONL fixture in proper `LLEvent` wire format: `{"event": "loop_start", "ts": "2025-01-01T00:00:00", "loop": "test-loop"}` — note `"loop"` (not `"loop_name"`) is the real payload key used in live events (see `test_ll_loop_commands.py:511-515`). Do NOT reuse `conftest.py:284` `events_file` fixture — it uses history format incompatible with `LLEvent`.
+- Use `json.dumps` + `open` loop for dict-based JSONL fixture writing (see `test_ll_loop_commands.py:511-520`), or `write_text("\n".join([json.dumps(e) for e in events]))` for inline string lists.
 - `test_smoke_import_ll_test_bus` pattern: `from little_loops import LLTestBus; assert LLTestBus is not None`
+- Model `delivered_events` assertions after the inline `RecordingExtension` class pattern at `test_extension.py:34-49` — use a local `received: list[LLEvent] = []` list to capture events, then assert against `bus.delivered_events`.
+- For filter-scoped tests, use the `FilteredExtension` pattern at `test_extension.py:228-246`: declare `event_filter = "issue.*"` as a class attribute.
+
+### Documentation
+- `docs/ARCHITECTURE.md` — already references `LLTestBus`; implementer must read to ensure implementation matches documented interface and update if needed
+- `docs/reference/API.md` — already describes `LLTestBus` public API; verify conformance after implementation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **CORRECTION**: `docs/ARCHITECTURE.md` does NOT currently mention `LLTestBus` (confirmed by search). The module tree at lines 174-269 will be missing `testing.py` after implementation. Doc updates are tracked in FEAT-1045; implementer should note the discrepancy rather than expecting the docs to already match.
+- **CORRECTION**: `docs/reference/API.md` does NOT currently describe `LLTestBus`. Neither the module table (lines 34-37) nor the extension section (~lines 5147-5325) contains a `LLTestBus` entry. Doc updates are tracked in FEAT-1045.
+- `docs/reference/CONFIGURATION.md:631-659` — extension authoring section documents `LLExtension` protocol and usage patterns; will need a cross-reference to `LLTestBus` for offline testing (tracked in FEAT-1045)
 
 ## Implementation Steps
 
@@ -84,6 +96,12 @@ Implement `LLTestBus` as a standalone class (not an `EventBus` subclass):
 3. Create `scripts/tests/test_testing.py` with fixture + tests
 
 4. Add `test_smoke_import_ll_test_bus` to `TestNewProtocols` class in `scripts/tests/test_extension.py` (lines 465-537)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Ensure `test_testing.py` achieves sufficient branch coverage of `testing.py` — `scripts/pyproject.toml:116-132` sets `fail_under = 80` with `source = ["little_loops"]`; `testing.py` is included in the measured set. Cover the main branches: `from_jsonl` with missing file (returns `[]`), `replay` with no extensions, `replay` with unfiltered extension, `replay` with filtered extension (matching and non-matching).
 
 ## Acceptance Criteria
 
@@ -120,5 +138,8 @@ Implement `LLTestBus` as a standalone class (not an `EventBus` subclass):
 **Open** | Created: 2026-04-11 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e4f0ded-d1f5-453e-84a5-52a048e214e3.jsonl`
+- `/ll:wire-issue` - 2026-04-12T02:32:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76ef449f-bfef-4e93-a88b-7745bf0d095d.jsonl`
+- `/ll:refine-issue` - 2026-04-12T02:23:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5703b25f-485b-4dde-b132-7d7c67442741.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`

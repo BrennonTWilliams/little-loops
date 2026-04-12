@@ -898,8 +898,7 @@
         }
       },
       "additionalProperties": false
-    }
-  },
+    },
     "extensions": {
       "type": "array",
       "items": { "type": "string" },
