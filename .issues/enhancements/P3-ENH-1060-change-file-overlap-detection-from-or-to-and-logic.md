@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-12T17:20:00Z
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 79
 ---
 
 # ENH-1060: Change sprint file-overlap detection from OR to AND logic
@@ -68,7 +70,8 @@ Update `get_overlapping_paths()` (line 201, same file) identically — it duplic
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/parallel/file_hints.py` — `overlaps_with()` line 126, `get_overlapping_paths()` line 201
+- `scripts/little_loops/parallel/file_hints.py` — `overlaps_with()` line 126, `get_overlapping_paths()` line 216
+- `scripts/little_loops/dependency_mapper/analysis.py` — line 316, `and` → `or` to align with AND-pass
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/dependency_graph.py` — `refine_waves_for_contention()` calls `get_overlapping_paths()` at line 383 with `dep_config`
@@ -81,7 +84,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — codebase research:_
 
-- `scripts/little_loops/dependency_mapper/analysis.py:316` has an inline guard `if len(overlap) < min_files and ratio < min_ratio: continue`. **Note**: this is AND-skip logic, which is logically equivalent to OR-pass (pass if count >= min_files OR ratio >= min_ratio). The comment at line 313 reads "matching FileHints.overlaps_with" — after ENH-1060 this comment becomes inaccurate because `file_hints.py` will use AND-pass while `analysis.py` retains OR-pass. During implementation, decide: align `analysis.py:316` to AND-pass as well, or update the comment to reflect intentional divergence. [Agent 2 finding]
+- `scripts/little_loops/dependency_mapper/analysis.py:316` has an inline guard `if len(overlap) < min_files and ratio < min_ratio: continue`. This is AND-skip logic, logically equivalent to OR-pass. The comment at line 313 reads "matching FileHints.overlaps_with" — after ENH-1060 this comment would become inaccurate if `analysis.py` retained OR-pass. **Decision**: align `analysis.py:316` to AND-pass (`if len(overlap) < min_files or ratio < min_ratio: continue`) to honor the alignment contract. A single shared hub file should not generate a dependency proposal any more than it should force serialization; real conflicts also pass the `conflict_score` gate below. [Agent 2 finding; decision made during confidence check]
 
 ### Tests
 - `scripts/tests/test_file_hints.py` — overlap detection unit tests; update threshold boundary cases
@@ -147,7 +150,7 @@ _Added by `/ll:refine-issue` — specific tests that flip under OR → AND (asse
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-5. Resolve `dependency_mapper/analysis.py:313` — the comment "matching FileHints.overlaps_with" will diverge after this change; decide whether to align `analysis.py:316` to AND-pass as well, or update the comment to reflect intentional OR/AND divergence between the two code paths
+5. In `dependency_mapper/analysis.py:316`, change `and` to `or` to align with AND-pass: `if len(overlap) < min_files or ratio < min_ratio: continue` — the comment at line 313 ("matching FileHints.overlaps_with") remains accurate
 6. Update `test_overlap_detector.py` — `test_detect_file_overlap` (line 44) and `test_multiple_active_issues` (line 108) exercise 1-shared-file pairs through `contends_with`; both `assert result.has_overlap` assertions flip to False under AND
 7. Update `test_sprint.py` — integration tests at lines 873, 946, 1797, 1817, 1847, 1872 exercise `overlaps_with`/`get_overlapping_paths` end-to-end via `manage.py:122`; conflict assertions flip for 1-file-per-issue fixture cases (especially `test_analyze_with_conflicts` and `test_analyze_json_format`)
 8. Update additional `test_dependency_graph.py` breaking tests (lines 703–717, 719–731, 822–837, 839–863): all use 1-file-per-issue setups; wave-count and contention-path assertions flip
@@ -169,6 +172,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `/ll:wire-issue` - 2026-04-12T16:38:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46202feb-d001-41be-a52b-687026007370.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:31:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99267590-1f6b-48a8-b5a5-7586dfb4d27d.jsonl`
 - `/ll:capture-issue` - 2026-04-12T17:20:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d397308b-e908-423f-9d30-383270c713d4.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6fd5b1cf-9282-4020-bbe7-2578be1e816e.jsonl`
 
 ## Status
 
