@@ -42,7 +42,21 @@ class TestOverlapDetector:
         assert "ENH-001" not in detector.get_active_issues()
 
     def test_detect_file_overlap(self) -> None:
-        """Should detect when issues modify same file."""
+        """Should detect when issues modify 2+ shared files (AND condition)."""
+        detector = OverlapDetector()
+
+        issue1 = make_issue("ENH-001", "Modify src/cli.py and src/config.py")
+        issue2 = make_issue("ENH-002", "Also modify src/cli.py and src/config.py")
+
+        detector.register_issue(issue1)
+        result = detector.check_overlap(issue2)
+
+        assert result.has_overlap
+        assert "ENH-001" in result.overlapping_issues
+        assert "src/cli.py" in result.overlapping_files
+
+    def test_single_shared_file_no_overlap(self) -> None:
+        """Single shared file no longer triggers overlap under AND logic."""
         detector = OverlapDetector()
 
         issue1 = make_issue("ENH-001", "Modify src/cli.py")
@@ -51,9 +65,7 @@ class TestOverlapDetector:
         detector.register_issue(issue1)
         result = detector.check_overlap(issue2)
 
-        assert result.has_overlap
-        assert "ENH-001" in result.overlapping_issues
-        assert "src/cli.py" in result.overlapping_files
+        assert not result.has_overlap
 
     def test_no_overlap_different_files(self) -> None:
         """Should return no overlap for different files."""
@@ -106,12 +118,12 @@ class TestOverlapDetector:
         # The scope pattern requires "scope:" or similar prefix
 
     def test_multiple_active_issues(self) -> None:
-        """Should check against all active issues."""
+        """Should check against all active issues; 2+ shared files required."""
         detector = OverlapDetector()
 
-        issue1 = make_issue("ENH-001", "Modify src/cli.py")
+        issue1 = make_issue("ENH-001", "Modify src/cli.py and src/utils.py")
         issue2 = make_issue("ENH-002", "Modify src/config.py")
-        issue3 = make_issue("ENH-003", "Modify src/cli.py and src/utils.py")
+        issue3 = make_issue("ENH-003", "Modify src/cli.py and src/utils.py and src/extra.py")
 
         detector.register_issue(issue1)
         detector.register_issue(issue2)

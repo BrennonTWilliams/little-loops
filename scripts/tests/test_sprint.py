@@ -1847,18 +1847,18 @@ class TestSprintAnalyze:
             json.dump(config_data, f)
 
         if overlapping:
-            # Two issues that reference the same file → conflict
+            # Two issues that reference 2 shared files → conflict under AND logic
             (issues_dir / "bugs" / "P1-BUG-001-fix-parser.md").write_text(
                 "# BUG-001: Fix parser bug\n\n"
                 "## Summary\nFix bug in parser module.\n\n"
-                "### Files to Modify\n- `scripts/parser.py`\n\n"
+                "### Files to Modify\n- `scripts/parser.py`\n- `scripts/tokenizer.py`\n\n"
                 "## Blocked By\n\nNone\n\n"
                 "## Blocks\n\nNone\n"
             )
             (issues_dir / "features" / "P2-FEAT-010-add-parser-validation.md").write_text(
                 "# FEAT-010: Add parser validation\n\n"
                 "## Summary\nAdd validation to parser module.\n\n"
-                "### Files to Modify\n- `scripts/parser.py`\n\n"
+                "### Files to Modify\n- `scripts/parser.py`\n- `scripts/tokenizer.py`\n\n"
                 "## Blocked By\n\nNone\n\n"
                 "## Blocks\n\nNone\n"
             )

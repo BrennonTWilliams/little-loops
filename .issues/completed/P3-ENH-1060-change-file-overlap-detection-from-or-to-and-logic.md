@@ -168,12 +168,36 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `enhancement`, `sprint`, `parallelism`, `file-hints`, `captured`
 
+## Resolution
+
+**Status**: Completed — 2026-04-12
+
+### Changes Made
+
+1. **`scripts/little_loops/parallel/file_hints.py:126`** — `overlaps_with()`: `or` → `and`
+2. **`scripts/little_loops/parallel/file_hints.py:216`** — `get_overlapping_paths()`: `or` → `and`
+3. **`scripts/little_loops/dependency_mapper/analysis.py:316`** — aligned guard to AND-pass: `and` → `or`
+
+### Tests Updated
+
+- `test_file_hints.py`: 4 tests renamed/flipped (single-file no longer triggers overlap)
+- `test_dependency_graph.py`: 6 tests updated; 1-file-per-issue fixtures replaced with 2-file fixtures
+- `test_overlap_detector.py`: 2 tests updated; fixtures updated to 2-file overlap
+- `test_sprint.py`: `_setup_analyze_project` overlapping fixture updated to share 2 files
+- `test_dependency_mapper.py`: 4 tests updated to reflect AND-pass semantics
+
+### Verification
+
+4526 tests pass (1 pre-existing failure in `test_builtin_loops.py` unrelated to this change).
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T17:04:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f45e1dff-afbc-4d86-8204-6bcacbd51ec3.jsonl`
 - `/ll:wire-issue` - 2026-04-12T16:38:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46202feb-d001-41be-a52b-687026007370.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:31:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99267590-1f6b-48a8-b5a5-7586dfb4d27d.jsonl`
 - `/ll:capture-issue` - 2026-04-12T17:20:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d397308b-e908-423f-9d30-383270c713d4.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6fd5b1cf-9282-4020-bbe7-2578be1e816e.jsonl`
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - (current session)
 
 ## Status
 
-**Open** | Created: 2026-04-12 | Priority: P3
+**Completed** | Created: 2026-04-12 | Priority: P3

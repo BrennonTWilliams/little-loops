@@ -313,7 +313,7 @@ def find_file_overlaps(
             # Apply minimum overlap guards (matching FileHints.overlaps_with)
             smaller_set = min(len(issue_paths[id_a]), len(issue_paths[id_b]))
             ratio = len(overlap) / smaller_set if smaller_set > 0 else 0.0
-            if len(overlap) < min_files and ratio < min_ratio:
+            if len(overlap) < min_files or ratio < min_ratio:
                 continue
 
             # Skip if dependency already exists (in either direction)

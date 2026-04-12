@@ -242,8 +242,12 @@ class TestSectionAwareOverlapDetection:
         hints_b = extract_file_hints(issue_b, "BUG-002")
         assert not hints_a.overlaps_with(hints_b)
 
-    def test_shared_write_target_still_causes_overlap(self) -> None:
-        """Two issues sharing a file in '### Files to Modify' should still overlap."""
+    def test_single_shared_write_target_no_longer_causes_overlap(self) -> None:
+        """Two issues sharing only 1 of 2 files no longer overlap under AND logic.
+
+        Under AND semantics both count >= min_files AND ratio >= threshold must hold.
+        count=1 < min_files=2, so the condition fails even though ratio=0.5 >= 0.25.
+        """
         issue_a = """
 ### Files to Modify
 - `scripts/little_loops/parallel/executor.py`
@@ -256,7 +260,7 @@ class TestSectionAwareOverlapDetection:
 """
         hints_a = extract_file_hints(issue_a, "ENH-001")
         hints_b = extract_file_hints(issue_b, "ENH-002")
-        assert hints_a.overlaps_with(hints_b)
+        assert not hints_a.overlaps_with(hints_b)
 
 
 class TestFileHintsOverlap:
@@ -268,12 +272,15 @@ class TestFileHintsOverlap:
         hints2 = FileHints(files={"src/cli.py", "src/config.py", "src/other.py"})
         assert hints1.overlaps_with(hints2)
 
-    def test_single_file_in_small_set_meets_ratio(self) -> None:
-        """Single file match meets ratio threshold when set is small enough."""
-        # 1 file in a set of 1 = 100% ratio >= 25% threshold
+    def test_single_file_in_small_set_no_overlap_under_and(self) -> None:
+        """Single shared file does not trigger overlap under AND logic.
+
+        count=1 < min_files=2, so AND condition fails even though ratio=100% >= 25%.
+        """
+        # 1 file in a set of 1 = 100% ratio >= 25% threshold, but count=1 < min_files=2
         hints1 = FileHints(files={"src/cli.py"})
         hints2 = FileHints(files={"src/cli.py", "src/other.py"})
-        assert hints1.overlaps_with(hints2)
+        assert not hints1.overlaps_with(hints2)
 
     def test_single_file_below_ratio_threshold(self) -> None:
         """Single file match below ratio threshold should not overlap."""
@@ -406,13 +413,16 @@ class TestFileHintsContendsWithScope:
         # __init__.py excluded, but cli.py + config.py = 2 files >= MIN_OVERLAP_FILES
         assert hints1.overlaps_with(hints2)
 
-    def test_ratio_threshold_edge(self) -> None:
-        """Edge case: exactly at the ratio threshold should overlap."""
+    def test_ratio_threshold_edge_no_overlap_under_and(self) -> None:
+        """Edge case: ratio alone is not enough under AND logic.
+
+        count=1 < min_files=2, so AND condition fails even though ratio=100% >= 25%.
+        """
         # 1 shared file out of 4 = 25% == OVERLAP_RATIO_THRESHOLD
         hints1 = FileHints(files={"src/a.py", "src/b.py", "src/c.py", "src/shared.py"})
         hints2 = FileHints(files={"src/shared.py"})
-        # 1/1 = 100% ratio (smaller set is 1) - meets threshold
-        assert hints1.overlaps_with(hints2)
+        # 1/1 = 100% ratio (smaller set is 1) - ratio passes but count=1 < 2 → AND fails
+        assert not hints1.overlaps_with(hints2)
 
     def test_deep_file_in_directory(self) -> None:
         """File in a deep directory should trigger overlap."""
@@ -650,18 +660,18 @@ class TestConfigurableThresholds:
         assert h1.overlaps_with(h2) is True
 
         # Raising min_files=3 and ratio=0.7 prevents overlap:
-        # count=2 < 3, ratio=2/3=0.667 < 0.7 → both branches of OR fail
+        # count=2 < 3, ratio=2/3=0.667 < 0.7 → both conditions of AND fail
         config = self._make_config(overlap_min_files=3, overlap_min_ratio=0.7)
         assert h1.overlaps_with(h2, config=config) is False
 
-    def test_overlaps_with_stricter_ratio(self) -> None:
-        """Raising ratio threshold should prevent overlap from ratio trigger."""
-        # 1 shared out of 4 each: count=1 < min_files=2, ratio=1/4=0.25 >= 0.25 → True
+    def test_overlaps_with_single_file_below_min_files(self) -> None:
+        """Under AND logic, 1 shared file never triggers overlap since count < min_files=2."""
+        # 1 shared out of 4 each: count=1 < min_files=2, ratio=1/4=0.25 → AND fails → False
         h1 = FileHints(files={"src/a.py", "src/b.py", "src/c.py", "src/d.py"}, issue_id="A")
         h2 = FileHints(files={"src/a.py", "src/e.py", "src/f.py", "src/g.py"}, issue_id="B")
-        assert h1.overlaps_with(h2) is True
+        assert h1.overlaps_with(h2) is False
 
-        # Raising ratio to 0.5: count=1 < 2, ratio=0.25 < 0.5 → both fail → False
+        # Raising ratio to 0.5: count=1 < 2, ratio=0.25 < 0.5 → AND fails → False
         config = self._make_config(overlap_min_ratio=0.5)
         assert h1.overlaps_with(h2, config=config) is False
 

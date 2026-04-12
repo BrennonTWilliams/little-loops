@@ -687,10 +687,24 @@ class TestRefineWavesForContention:
         assert [i.issue_id for i in result[0]] == ["FEAT-001", "FEAT-002"]
         assert notes[0] is None
 
-    def test_two_issues_same_file_split(self) -> None:
-        """Two issues sharing a file split into 2 sub-waves."""
+    def test_two_issues_same_single_file_no_split(self) -> None:
+        """Two issues sharing only 1 file no longer split under AND logic.
+
+        count=1 < min_files=2, so no overlap is detected and both stay in one wave.
+        """
         a = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
         b = _make_issue_with_content("FEAT-002", "modifies src/cli.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(result) == 1
+        assert {i.issue_id for i in result[0]} == {"FEAT-001", "FEAT-002"}
+
+    def test_two_issues_multi_file_split(self) -> None:
+        """Two issues sharing 2+ files still split into sub-waves under AND logic."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py\nmodifies src/config.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/cli.py\nmodifies src/config.py")
         waves: list[list[IssueInfo]] = [[a, b]]
 
         result, notes = refine_waves_for_contention(waves)
@@ -699,8 +713,8 @@ class TestRefineWavesForContention:
         assert result[0][0].issue_id == "FEAT-001"
         assert result[1][0].issue_id == "FEAT-002"
 
-    def test_three_issues_two_overlap_one_independent(self) -> None:
-        """3 issues where A overlaps B but C is independent -> 2 sub-waves."""
+    def test_three_issues_two_share_single_file_no_split(self) -> None:
+        """3 issues where A and B share 1 file -> no split under AND (count < min_files)."""
         a = _make_issue_with_content("FEAT-001", "modifies src/page.tsx", priority="P0")
         b = _make_issue_with_content("FEAT-002", "modifies src/page.tsx", priority="P1")
         c = _make_issue_with_content("FEAT-003", "modifies src/api.py", priority="P2")
@@ -708,19 +722,53 @@ class TestRefineWavesForContention:
 
         result, notes = refine_waves_for_contention(waves)
 
+        # No pair shares >= 2 files, so no overlap detected → all in one wave
+        assert len(result) == 1
+        assert {i.issue_id for i in result[0]} == {"FEAT-001", "FEAT-002", "FEAT-003"}
+
+    def test_three_issues_two_overlap_multi_file_one_independent(self) -> None:
+        """3 issues where A and B share 2 files → 2 sub-waves, C stays with A."""
+        a = _make_issue_with_content(
+            "FEAT-001", "modifies src/page.tsx\nmodifies src/utils.py", priority="P0"
+        )
+        b = _make_issue_with_content(
+            "FEAT-002", "modifies src/page.tsx\nmodifies src/utils.py", priority="P1"
+        )
+        c = _make_issue_with_content("FEAT-003", "modifies src/api.py", priority="P2")
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result, notes = refine_waves_for_contention(waves)
+
         assert len(result) == 2
-        # Sub-wave 1: A and C (no overlap), sub-wave 2: B
         sub1_ids = {i.issue_id for i in result[0]}
         sub2_ids = {i.issue_id for i in result[1]}
         assert "FEAT-001" in sub1_ids
         assert "FEAT-003" in sub1_ids
         assert "FEAT-002" in sub2_ids
 
-    def test_all_three_overlap_pairwise(self) -> None:
-        """3 issues all overlapping each other -> 3 sub-waves."""
+    def test_all_three_share_single_file_no_split(self) -> None:
+        """3 issues all sharing only 1 file → no split under AND (count < min_files=2)."""
         a = _make_issue_with_content("FEAT-001", "modifies src/shared.py")
         b = _make_issue_with_content("FEAT-002", "modifies src/shared.py")
         c = _make_issue_with_content("FEAT-003", "modifies src/shared.py")
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(result) == 1
+        assert {i.issue_id for i in result[0]} == {"FEAT-001", "FEAT-002", "FEAT-003"}
+
+    def test_all_three_overlap_pairwise_multi_file(self) -> None:
+        """3 issues all overlapping each other (2 shared files each) → 3 sub-waves."""
+        a = _make_issue_with_content(
+            "FEAT-001", "modifies src/shared.py\nmodifies src/common.py"
+        )
+        b = _make_issue_with_content(
+            "FEAT-002", "modifies src/shared.py\nmodifies src/common.py"
+        )
+        c = _make_issue_with_content(
+            "FEAT-003", "modifies src/shared.py\nmodifies src/common.py"
+        )
         waves: list[list[IssueInfo]] = [[a, b, c]]
 
         result, notes = refine_waves_for_contention(waves)
@@ -743,10 +791,15 @@ class TestRefineWavesForContention:
         assert notes[0] is None
 
     def test_mixed_waves_only_multi_refined(self) -> None:
-        """Multiple waves: only multi-issue waves with overlaps get refined."""
+        """Multiple waves: only multi-issue waves with real (2+ file) overlaps get refined."""
         single = _make_issue_with_content("FEAT-001", "modifies src/a.py")
-        multi_a = _make_issue_with_content("FEAT-002", "modifies src/b.py", priority="P0")
-        multi_b = _make_issue_with_content("FEAT-003", "modifies src/b.py", priority="P1")
+        # multi_a and multi_b share 2 files → split under AND
+        multi_a = _make_issue_with_content(
+            "FEAT-002", "modifies src/b.py\nmodifies src/shared.py", priority="P0"
+        )
+        multi_b = _make_issue_with_content(
+            "FEAT-003", "modifies src/b.py\nmodifies src/shared.py", priority="P1"
+        )
         no_overlap_a = _make_issue_with_content("FEAT-004", "modifies src/c.py", priority="P0")
         no_overlap_b = _make_issue_with_content("FEAT-005", "modifies src/d.py", priority="P1")
         waves: list[list[IssueInfo]] = [[single], [multi_a, multi_b], [no_overlap_a, no_overlap_b]]
@@ -756,7 +809,7 @@ class TestRefineWavesForContention:
         # Wave 1: single issue passthrough
         assert len(result[0]) == 1
         assert result[0][0].issue_id == "FEAT-001"
-        # Wave 2: split into 2 sub-waves
+        # Wave 2: split into 2 sub-waves (2 shared files → AND condition met)
         assert result[1][0].issue_id == "FEAT-002"
         assert result[2][0].issue_id == "FEAT-003"
         # Wave 3: no overlap, stays as one wave
@@ -801,9 +854,9 @@ class TestRefineWavesForContention:
         assert notes == []
 
     def test_contention_notes_for_split_wave(self) -> None:
-        """Split waves should have WaveContentionNote annotations."""
-        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
-        b = _make_issue_with_content("FEAT-002", "modifies src/cli.py")
+        """Split waves (2+ shared files) should have WaveContentionNote annotations."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py\nmodifies src/config.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/cli.py\nmodifies src/config.py")
         waves: list[list[IssueInfo]] = [[a, b]]
 
         result, notes = refine_waves_for_contention(waves)
@@ -819,11 +872,28 @@ class TestRefineWavesForContention:
         assert notes[1].total_sub_waves == 2
         assert notes[1].parent_wave_index == 0
 
+    def test_single_file_overlap_produces_no_contention_notes(self) -> None:
+        """Single shared file no longer splits wave → no contention notes under AND."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/cli.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(result) == 1
+        assert len(notes) == 1
+        assert notes[0] is None
+
     def test_contention_notes_mixed_waves(self) -> None:
         """Notes should be None for non-split waves and populated for split ones."""
         single = _make_issue_with_content("FEAT-001", "modifies src/a.py")
-        overlap_a = _make_issue_with_content("FEAT-002", "modifies src/b.py", priority="P0")
-        overlap_b = _make_issue_with_content("FEAT-003", "modifies src/b.py", priority="P1")
+        # overlap_a and overlap_b share 2 files → AND condition met → split
+        overlap_a = _make_issue_with_content(
+            "FEAT-002", "modifies src/b.py\nmodifies src/shared.py", priority="P0"
+        )
+        overlap_b = _make_issue_with_content(
+            "FEAT-003", "modifies src/b.py\nmodifies src/shared.py", priority="P1"
+        )
         waves: list[list[IssueInfo]] = [[single], [overlap_a, overlap_b]]
 
         result, notes = refine_waves_for_contention(waves)
@@ -841,11 +911,20 @@ class TestRefineWavesForContention:
 
         Validates semantic equivalence of the merged single-loop implementation:
         each pair's overlapping paths must appear in the WaveContentionNote,
-        regardless of which pair produces them.
+        regardless of which pair produces them. Uses 2 shared files per pair
+        to satisfy AND semantics (count >= min_files=2 AND ratio >= threshold).
         """
-        a = _make_issue_with_content("FEAT-001", "modifies src/alpha.py\nmodifies src/shared.py")
-        b = _make_issue_with_content("FEAT-002", "modifies src/alpha.py\nmodifies src/beta.py")
-        c = _make_issue_with_content("FEAT-003", "modifies src/shared.py\nmodifies src/beta.py")
+        # Each pair shares 2 files: A-B share {alpha, shared}, A-C share {shared, beta},
+        # B-C share {alpha, beta} — all pairs meet AND condition (count=2 >= 2)
+        a = _make_issue_with_content(
+            "FEAT-001", "modifies src/alpha.py\nmodifies src/shared.py\nmodifies src/beta.py"
+        )
+        b = _make_issue_with_content(
+            "FEAT-002", "modifies src/alpha.py\nmodifies src/shared.py\nmodifies src/gamma.py"
+        )
+        c = _make_issue_with_content(
+            "FEAT-003", "modifies src/shared.py\nmodifies src/beta.py\nmodifies src/gamma.py"
+        )
         waves: list[list[IssueInfo]] = [[a, b, c]]
 
         result, notes = refine_waves_for_contention(waves)
@@ -857,7 +936,5 @@ class TestRefineWavesForContention:
         for note in notes:
             if note is not None:
                 all_contended.update(note.contended_paths)
-        # Every overlapping file should appear in at least one note
-        assert "src/alpha.py" in all_contended
+        # Overlapping files should appear in at least one note
         assert "src/shared.py" in all_contended
-        assert "src/beta.py" in all_contended

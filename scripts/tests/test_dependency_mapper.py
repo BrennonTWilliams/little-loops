@@ -198,8 +198,12 @@ class TestFindFileOverlaps:
         assert len(proposals) == 0
         assert len(parallel_safe) == 0
 
-    def test_single_file_overlap_low_conflict_becomes_parallel_safe(self) -> None:
-        """Single shared file with no semantic signals produces parallel-safe, not proposal."""
+    def test_single_file_overlap_silently_ignored(self) -> None:
+        """Single shared file no longer triggers any result under AND logic.
+
+        count=1 < min_files=2 causes the pair to be skipped entirely — no proposal
+        and no parallel_safe entry. Single-file overlap is treated as no conflict.
+        """
         issues = [
             make_issue("FEAT-001", priority="P1"),
             make_issue("FEAT-002", priority="P2"),
@@ -207,6 +211,20 @@ class TestFindFileOverlaps:
         contents = {
             "FEAT-001": "Fix `scripts/config.py`",
             "FEAT-002": "Update `scripts/config.py`",
+        }
+        proposals, parallel_safe = find_file_overlaps(issues, contents)
+        assert len(proposals) == 0
+        assert len(parallel_safe) == 0
+
+    def test_two_file_overlap_low_conflict_becomes_parallel_safe(self) -> None:
+        """Two shared files with no semantic signals produces parallel-safe, not proposal."""
+        issues = [
+            make_issue("FEAT-001", priority="P1"),
+            make_issue("FEAT-002", priority="P2"),
+        ]
+        contents = {
+            "FEAT-001": "Fix `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, parallel_safe = find_file_overlaps(issues, contents)
         # No semantic targets → conflict score too low for dependency proposal
@@ -446,8 +464,8 @@ class TestOverlapGuardsAndDefaultScores:
         assert len(proposals) == 0
         assert len(parallel_safe) == 0
 
-    def test_overlap_min_ratio_allows_high_ratio_single_file(self) -> None:
-        """A single shared file can pass if ratio >= overlap_min_ratio (0.25)."""
+    def test_overlap_min_ratio_requires_min_files_under_and(self) -> None:
+        """Under AND logic, count < min_files skips the pair regardless of high ratio."""
         from little_loops.config import DependencyMappingConfig
 
         config = DependencyMappingConfig(overlap_min_files=2, overlap_min_ratio=0.25)
@@ -455,13 +473,30 @@ class TestOverlapGuardsAndDefaultScores:
             make_issue("FEAT-001", priority="P1"),
             make_issue("FEAT-002", priority="P2"),
         ]
-        # FEAT-002 has only 1 file, so ratio = 1/1 = 1.0 >= 0.25
+        # FEAT-002 has only 1 file, so ratio = 1/1 = 1.0 >= 0.25 but count=1 < min_files=2
         contents = {
             "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
             "FEAT-002": "Update ConfigParser in `scripts/config.py`",
         }
         proposals, parallel_safe = find_file_overlaps(issues, contents, config=config)
-        # 1 shared file < min_files=2, but ratio 1.0 >= 0.25, so it passes
+        # AND-pass: count=1 < min_files=2 → skip, even though ratio=1.0 >= 0.25
+        assert len(proposals) + len(parallel_safe) == 0
+
+    def test_overlap_min_files_met_with_sufficient_ratio(self) -> None:
+        """Both count >= min_files AND ratio >= min_ratio required for pass."""
+        from little_loops.config import DependencyMappingConfig
+
+        config = DependencyMappingConfig(overlap_min_files=2, overlap_min_ratio=0.25)
+        issues = [
+            make_issue("FEAT-001", priority="P1"),
+            make_issue("FEAT-002", priority="P2"),
+        ]
+        # 2 shared files out of 2: count=2 >= 2, ratio=1.0 >= 0.25 → AND passes
+        contents = {
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+        }
+        proposals, parallel_safe = find_file_overlaps(issues, contents, config=config)
         assert len(proposals) + len(parallel_safe) >= 1
 
     def test_missing_semantic_targets_score_zero(self) -> None:
@@ -1136,14 +1171,15 @@ class TestMainCLI:
         (issues_dir / "features").mkdir()
         (issues_dir / "completed").mkdir()
 
+        # BUG-001 and ENH-010 share 2 files → AND condition met → appears in analysis
         (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
-            "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
+            "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py` and `scripts/utils.py`\n"
         )
         (bugs_dir / "P2-BUG-002-other-bug.md").write_text(
             "# BUG-002: Other Bug\n\n## Summary\n\nFix `scripts/other.py`\n"
         )
         (enh_dir / "P3-ENH-010-enhancement.md").write_text(
-            "# ENH-010: Enhancement\n\n## Summary\n\nImprove `scripts/config.py`\n"
+            "# ENH-010: Enhancement\n\n## Summary\n\nImprove `scripts/config.py` and `scripts/utils.py`\n"
         )
 
         ll_dir = tmp_path / ".ll"
@@ -1883,9 +1919,10 @@ class TestConfigurableThresholds:
             make_issue("FEAT-001", priority="P1"),
             make_issue("FEAT-002", priority="P2"),
         ]
+        # 2 shared files so AND condition is met (count=2 >= min_files=2)
         contents = {
-            "FEAT-001": "Fix `scripts/config.py`",
-            "FEAT-002": "Update `scripts/config.py`",
+            "FEAT-001": "Fix `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update `scripts/config.py` and `scripts/utils.py`",
         }
 
         # Default threshold 0.4 — score might be above or below

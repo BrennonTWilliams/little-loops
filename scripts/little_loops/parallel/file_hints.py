@@ -123,7 +123,7 @@ class FileHints:
             smaller_set = min(len(self_files), len(other_files))
             if smaller_set > 0:
                 ratio = len(shared_files) / smaller_set
-                if len(shared_files) >= min_files or ratio >= ratio_threshold:
+                if len(shared_files) >= min_files and ratio >= ratio_threshold:
                     return True
 
         # Directory overlaps (depth check in _directories_overlap)
@@ -213,7 +213,7 @@ class FileHints:
             smaller_set = min(len(self_files), len(other_files))
             if smaller_set > 0:
                 ratio = len(shared_files) / smaller_set
-                if len(shared_files) >= min_files or ratio >= ratio_threshold:
+                if len(shared_files) >= min_files and ratio >= ratio_threshold:
                     overlapping.update(shared_files)
 
         # Directory overlaps (depth check in _directories_overlap)
