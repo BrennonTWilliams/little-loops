@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-04-11
 discovered_by: issue-size-review
-confidence_score: 100
-outcome_confidence: 90
+confidence_score: 98
+outcome_confidence: 70
 ---
 
 # FEAT-1045: Extension SDK Documentation Updates
@@ -70,6 +70,58 @@ Make all doc changes in a single pass after FEAT-1043 and FEAT-1044 land.
 8. **`scripts/little_loops/cli/__init__.py`** module docstring (lines 3-18):
    - Add `- ll-create-extension: Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-04-12):_
+
+**Blockers resolved**: FEAT-1043 and FEAT-1044 are in `.issues/completed/`. Implementation files confirmed on disk:
+- `scripts/little_loops/testing.py` — `LLTestBus` class (`from_jsonl`, `register`, `replay`, `delivered_events`); 104 lines
+- `scripts/little_loops/cli/create_extension.py` — `main_create_extension()` with positional `name` and `--dry-run`; **no `--config` flag** (contrary to earlier drafts)
+- `templates/extension/` — scaffold templates (`extension.py.tmpl`, `test_extension.py.tmpl`, `pyproject.toml.tmpl`)
+
+**Items 5 and 8 above are already done:**
+- `docs/reference/CLI.md:981-1070` — `ll-create-extension` section fully written
+- `scripts/little_loops/cli/__init__.py:17` — `ll-create-extension` in docstring, imported at line 22, exported in `__all__` at line 44
+
+**Item 1 is partially done:**
+- `docs/reference/API.md:5325-5423` — `LLTestBus` fully documented (constructor, `from_jsonl`, `delivered_events`, `register`, `replay`, event filtering, full example). Only remaining gap: `little_loops.testing` is absent from the Module Overview table (`API.md:24-57`); add one row after line 37.
+
+**Correction to Item 6 (`docs/ARCHITECTURE.md`):**
+- Line 213 reads `└── testing.py # LLTestBus offline extension test harness` but that entry is for `cli/loop/testing.py` — the `ll-loop test/simulate` subcommand — **not** LLTestBus. This is a misattribution bug; fix the comment. Then add the real `scripts/little_loops/testing.py` to the package root listing.
+- Also missing: `templates/extension/` directory from the templates tree (`ARCHITECTURE.md:160-173`).
+
+**Remaining gaps with exact insertion points:**
+
+| File | Anchor | What to add/fix |
+|------|--------|-----------------|
+| `docs/reference/API.md:37` | After `little_loops.extension` row | `` \| `little_loops.testing` \| Offline test harness (LLTestBus) for extension development \| `` |
+| `docs/ARCHITECTURE.md:173` | Before `└── generic.json` | `├── extension/           # Extension scaffold templates (.tmpl)` |
+| `docs/ARCHITECTURE.md:179` | After `├── auto.py` | `├── create_extension.py     # ll-create-extension scaffold CLI` |
+| `docs/ARCHITECTURE.md:213` | Fix existing comment | `LLTestBus offline extension test harness` → `ll-loop test/simulate subcommand utilities` |
+| `docs/ARCHITECTURE.md` | After `extension.py` in pkg root (~line 214) | `├── testing.py           # Offline LLTestBus test harness for extension development` |
+| `.claude/CLAUDE.md:116` | After `ll-check-links` entry | `- \`ll-create-extension\` - Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example` |
+| `README.md:90` | Inline | `13 CLI tools` → `14 CLI tools` |
+| `README.md` | After `### ll-gitignore` section (~line 444) | New `### ll-create-extension` section |
+| `CONTRIBUTING.md:185` | After `├── auto.py` in cli/ tree | `├── create_extension.py  # ll-create-extension scaffold CLI` |
+| `CONTRIBUTING.md` | Package root listing, before `├── extensions/` | Add `extension.py` and `testing.py` entries |
+| `CONTRIBUTING.md` | After `## Adding Skills` (~line 437) | New `## Authoring Extensions` workflow section |
+| `docs/reference/CONFIGURATION.md:659` | After existing cross-reference sentence | Tip pointing to `ll-create-extension` (CLI.md) and `LLTestBus` (API.md) |
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `CHANGELOG.md` — Add release note bullet documenting the FEAT-1045 doc updates in the current release block when this issue lands [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_create_extension_wiring.py` — No assertions currently guard the FEAT-1045 target doc files; extend this file with live-content checks following its established pattern:
+  - Assert `ll-create-extension` appears in `README.md` CLI Tools section
+  - Assert `LLTestBus` / `little_loops.testing` row appears in `docs/reference/API.md` Module Overview table
+  - Assert `ll-create-extension` appears in `.claude/CLAUDE.md` CLI Tools list
+  - Assert `ll-create-extension` section exists in `docs/reference/CLI.md` (already present, but unguarded)
+- `scripts/tests/test_testing.py` and `scripts/tests/test_create_extension.py` — existing test suites covering the implementation files; no update needed for this doc-only issue [Agent 3 finding]
+
 ## Implementation Steps
 
 Verify line numbers against current file state before editing each file — line numbers above reflect state as of FEAT-916 refinement passes and may shift as FEAT-1043/1044 land.
@@ -82,6 +134,40 @@ Verify line numbers against current file state before editing each file — line
 6. Update `docs/ARCHITECTURE.md` — add new files to directory trees
 7. Update `docs/reference/CONFIGURATION.md` — add cross-reference in extension block
 8. Update `scripts/little_loops/cli/__init__.py` module docstring
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — corrected, concrete steps (items 3 and 5 from original list are already done):_
+
+Effective remaining work in recommended order:
+
+1. **`docs/ARCHITECTURE.md`** (4 sub-edits):
+   - Templates tree (`ARCHITECTURE.md:173`): Add `├── extension/           # Extension scaffold templates (.tmpl)` before `└── generic.json`
+   - cli/ tree (`ARCHITECTURE.md:179`): Add `├── create_extension.py     # ll-create-extension scaffold CLI` after `├── auto.py`
+   - Bug fix (`ARCHITECTURE.md:213`): Change comment `LLTestBus offline extension test harness` → `ll-loop test/simulate subcommand utilities`
+   - Package root (~`ARCHITECTURE.md:214`): Add `├── testing.py           # Offline LLTestBus test harness for extension development` after the `extension.py` entry
+
+2. **`docs/reference/API.md:37`** — Insert `| \`little_loops.testing\` | Offline test harness (LLTestBus) for extension development |` after the `little_loops.extension` row in the Module Overview table
+
+3. **`.claude/CLAUDE.md:116`** — Add `- \`ll-create-extension\` - Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example` after the `ll-check-links` entry (alphabetical order)
+
+4. **`README.md`** — Change `13 CLI tools` → `14 CLI tools` at line 90; add `### ll-create-extension` section after `### ll-gitignore` (~line 444) before `### ll-verify-docs / ll-check-links`
+
+5. **`CONTRIBUTING.md`** (3 sub-edits):
+   - cli/ tree (after `├── auto.py` at line 185): Add `├── create_extension.py  # ll-create-extension scaffold CLI`
+   - Package root listing (before `├── extensions/` sub-package): Add `├── extension.py  # Extension protocol, loader, and reference implementation` and `├── testing.py   # Offline LLTestBus test harness for extension development`
+   - After `## Adding Skills` (~line 437): Add `## Authoring Extensions` section covering create → develop → test → publish workflow
+
+6. **`docs/reference/CONFIGURATION.md:659`** — After the existing `Extensions can also be auto-discovered...` sentence, add a tip cross-referencing `ll-create-extension` ([CLI.md#ll-create-extension](CLI.md#ll-create-extension)) and `LLTestBus` ([API.md#lltestbus](API.md#lltestbus))
+
+Pre-edit verification: `python -m pytest scripts/tests/test_create_extension.py scripts/tests/test_testing.py -v`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `CHANGELOG.md` — add release note entry documenting the FEAT-1045 documentation updates in the current release block
+8. Optionally extend `scripts/tests/test_create_extension_wiring.py` — add live-content guards for the updated doc files (`README.md`, `docs/reference/API.md`, `.claude/CLAUDE.md`, `docs/reference/CLI.md`) following the existing pattern in that test file
 
 ## Acceptance Criteria
 
@@ -99,7 +185,7 @@ Verify line numbers against current file state before editing each file — line
 - **Effort**: Small - Focused doc edits, no code changes
 - **Risk**: None - Docs only
 - **Breaking Change**: No
-- **Depends On**: FEAT-1043 (LLTestBus implementation), FEAT-1044 (ll-create-extension implementation)
+- **Depends On**: FEAT-1043 (LLTestBus implementation) ✅ completed, FEAT-1044 (ll-create-extension implementation) ✅ completed — this issue is now unblocked
 
 ## Labels
 
@@ -120,5 +206,8 @@ Verify line numbers against current file state before editing each file — line
 **Open** | Created: 2026-04-11 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc0ab9f5-bd9c-4c21-a2d2-8a159bb1ea23.jsonl`
+- `/ll:wire-issue` - 2026-04-12T16:06:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5e1862d-1ce2-4fd0-b6cf-ed246f5c9bff.jsonl`
+- `/ll:refine-issue` - 2026-04-12T16:01:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c65d2b05-89e3-4873-bc5a-57a30f09d366.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`
