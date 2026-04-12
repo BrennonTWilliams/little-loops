@@ -25,9 +25,19 @@ states:
   route_create:
     action: "ll-sprint list 2>/dev/null | grep -q ."
     fragment: shell_exit
-    on_yes: map_dependencies
+    on_yes: size_review
     on_no: create_sprint
     on_error: create_sprint
+
+  size_review:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
+      Run `/ll:issue-size-review --auto` once for all sprint issues as a single grouped call.
+      Any Very Large issues (score ≥ 8) will be automatically decomposed into focused child issues.
+    capture: size_review_result
+    next: map_dependencies
 
   map_dependencies:
     action_type: prompt
@@ -79,25 +89,36 @@ states:
     next: run_sprint
 
   run_sprint:
-    action_type: shell
-    timeout: 21600
     action: "ll-sprint run ${captured.sprint_name.output}"
-    capture: sprint_result
-    next: route_review
-
-  route_review:
-    evaluate:
-      type: llm_structured
-      source: "${captured.sprint_result.output}"
-      prompt: |
-        Review the sprint execution output. Did the sprint complete successfully
-        with all issues resolved?
-        Return "yes" if the sprint completed without unresolved failures.
-        Return "no" if there are failed or blocked issues that need attention.
+    fragment: shell_exit
+    timeout: 21600
     on_yes: done
-    on_no: fix_issues
+    on_no: extract_unresolved
+    on_error: extract_unresolved
+
+  extract_unresolved:
+    action: |
+      if [ ! -f .sprint-state.json ]; then
+        exit 1
+      fi
+      ISSUES=$(jq -r '[(.failed_issues // {} | keys), (.skipped_blocked_issues // {} | keys)] | flatten | unique | join(",")' .sprint-state.json 2>/dev/null)
+      if [ -z "$ISSUES" ]; then
+        exit 1
+      fi
+      echo "$ISSUES"
+    action_type: shell
+    timeout: 30
+    capture: input
+    on_yes: refine_unresolved
+    on_no: done
     on_error: done
-    on_blocked: fix_issues
+
+  refine_unresolved:
+    loop: recursive-refine
+    context_passthrough: true
+    on_yes: done
+    on_no: done
+    on_error: done
 
   fix_issues:
     action_type: prompt

@@ -254,9 +254,25 @@ N/A - No public API changes. This enhancement modifies only `sprint-build-and-va
 
 ## Status
 
-Open
+Completed
+
+## Resolution
+
+Implemented all changes described in the Implementation Steps:
+
+1. Added `size_review` state (after `route_create`, before `map_dependencies`) — runs `/ll:issue-size-review --auto` on all sprint issues; Very Large issues (score ≥ 8) are decomposed before the sprint executes.
+2. Updated `route_create` `on_yes` from `map_dependencies` to `size_review`.
+3. Replaced `run_sprint` `action_type: shell` + `next: route_review` with `fragment: shell_exit` routing — exit 0 → `done`, non-zero → `extract_unresolved`.
+4. Deleted dead `route_review` state (no longer reachable).
+5. Added `extract_unresolved` state — reads `.sprint-state.json`, merges `failed_issues` + `skipped_blocked_issues`, emits comma-separated IDs; captured as `input` for `context_passthrough`.
+6. Added `refine_unresolved` state — delegates to `recursive-refine` sub-loop via `context_passthrough: true`.
+7. Removed `("sprint-build-and-validate.yaml", "route_review", "fix_issues")` from `REQUIRED_ON_BLOCKED` in `test_builtin_loops.py`.
+8. Added `TestSprintBuildAndValidateLoop` test class with 13 structural assertions.
+9. Updated `docs/guides/LOOPS_GUIDE.md` — revised FSM flow diagram, expanded state table to 12 rows, corrected `max_iterations` (12→16), and updated notes paragraph.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T15:47:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b19cb46d-b61f-4d1a-bc1a-9728fc653a38.jsonl`
 - `/ll:refine-issue` - 2026-04-12T15:39:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcdf7dd3-3cb0-44f1-85d6-31c0e94a8b9b.jsonl`
 - `/ll:confidence-check` - 2026-04-12T07:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d64acb1-074d-4a9a-b53f-0dd501023ce8.jsonl`
 - `/ll:confidence-check` - 2026-04-12T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0f2188f-9d4a-4362-b3cf-0d63fc2a210b.jsonl`

@@ -294,7 +294,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 
 ### `sprint-build-and-validate` — Automated Sprint Creation and Validation
 
-**Technique**: Selects up to `max_issues` open/active issues (P0–P1 first, then issues with no blocking dependencies), creates a sprint definition via `/ll:create-sprint --auto`, runs a linear quality-check pipeline (dependency mapping → conflict auditing → issue verification), commits the validated sprint, then executes it via `ll-sprint run`.
+**Technique**: Selects up to `max_issues` open/active issues (P0–P1 first, then issues with no blocking dependencies), creates a sprint definition via `/ll:create-sprint --auto`, runs a size review to decompose oversized issues, then a linear quality-check pipeline (dependency mapping → conflict auditing → issue verification), commits the validated sprint, executes it via `ll-sprint run`, and — on non-zero exit — reads `.sprint-state.json` to feed blocked/failed issues into `recursive-refine` for recovery.
 
 **When to use**: When you want to go from a backlog to a running sprint in one automated pass, with dependency and conflict checks baked in. Prefer `ll-sprint run` directly if you already have a sprint defined and validated.
 
@@ -315,7 +315,11 @@ ll-loop run sprint-build-and-validate --context max_issues=5
 **FSM flow:**
 ```
 create_sprint → route_create → [sprint exists?]
-  ├─ YES → map_dependencies → audit_conflicts → verify_issues → commit → run_sprint → done
+  ├─ YES → size_review → map_dependencies → audit_conflicts → verify_issues → route_validation → [verified?]
+  │           ├─ YES → commit → run_sprint → [exit code?]
+  │           │                   ├─ 0 (clean) → done
+  │           │                   └─ non-zero  → extract_unresolved → refine_unresolved → done
+  │           └─ NO  → fix_issues → done
   └─ NO  → create_sprint (retry)
 ```
 
@@ -324,16 +328,21 @@ create_sprint → route_create → [sprint exists?]
 | State | Timeout | Notes |
 |-------|---------|-------|
 | `create_sprint` | 300s | Headless `/ll:create-sprint --auto`; captures sprint name |
-| `route_create` | — | Shell check: `ll-sprint list \| grep -q .`; retries if no sprint found |
+| `route_create` | — | Shell check: `ll-sprint list \| grep -q .`; retries if no sprint found; routes to `size_review` on success |
+| `size_review` | 300s | `/ll:issue-size-review --auto` grouped across all sprint issues; Very Large issues (score ≥ 8) are decomposed before the sprint runs |
 | `map_dependencies` | 300s | `/ll:map-dependencies --auto` grouped across all sprint issues |
 | `audit_conflicts` | 300s | `/ll:audit-issue-conflicts --auto` grouped across all sprint issues |
 | `verify_issues` | 600s | `/ll:verify-issues --auto` grouped across all sprint issues |
+| `route_validation` | — | LLM-structured evaluation of verification results; routes to `commit` or `fix_issues` |
 | `commit` | 120s | `/ll:commit --auto` with standard sprint commit message |
-| `run_sprint` | 21600s (6h) | `ll-sprint run <name>` — parallelized wave execution |
+| `run_sprint` | 21600s (6h) | `ll-sprint run <name>` — parallelized wave execution; routes on exit code |
+| `extract_unresolved` | 30s | Reads `.sprint-state.json`; merges `failed_issues` + `skipped_blocked_issues`; emits comma-separated IDs |
+| `refine_unresolved` | — | Delegates to `recursive-refine` sub-loop via `context_passthrough: true` |
+| `fix_issues` | 600s | `/ll:refine-issue --auto` for issues that failed verification; routes to `done` |
 
-**Notes**: Each quality-check step runs once as a grouped call against all sprint issues — not per-issue. The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_iterations: 12`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase.
+**Notes**: Each quality-check step runs once as a grouped call against all sprint issues — not per-issue. The sprint YAML is committed before `ll-sprint run` begins, so it's durable if the session is interrupted. Global FSM timeout is 25200s (7h); `max_iterations: 16`; `on_handoff: spawn` continues across session boundaries during the sprint execution phase. Clean sprint exits (exit 0) route directly to `done`; non-zero exits trigger the `extract_unresolved` → `refine_unresolved` recovery path.
 
-Prior to the ENH-1051 refactor, this loop ran `/ll:confidence-check` per issue and could loop through a `fix_issues` remediation cycle many times before committing — and never actually executed the sprint. The current linear design runs each check once and ends with `run_sprint`.
+Prior to the ENH-1051 refactor, this loop ran `/ll:confidence-check` per issue and could loop through a `fix_issues` remediation cycle many times before committing — and never actually executed the sprint. The current design runs each check once, then executes the sprint with automatic recovery for blocked or failed issues.
 
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 

@@ -723,7 +723,6 @@ class TestBuiltinLoopOnBlockedCoverage:
     # Each entry: (loop_file, state_name, expected_on_blocked_value)
     REQUIRED_ON_BLOCKED: list[tuple[str, str, str]] = [
         ("sprint-build-and-validate.yaml", "route_validation", "fix_issues"),
-        ("sprint-build-and-validate.yaml", "route_review", "fix_issues"),
         ("issue-staleness-review.yaml", "triage", "find_stale"),
         ("issue-size-split.yaml", "route_large", "done"),
     ]
@@ -1066,6 +1065,126 @@ class TestRecursiveRefineLoop:
         assert state.get("on_error") == "run_size_review", (
             f"recheck_scores.on_error should be 'run_size_review', got {state.get('on_error')!r}"
         )
+
+
+class TestSprintBuildAndValidateLoop:
+    """Structural tests for the sprint-build-and-validate FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "sprint-build-and-validate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "sprint-build-and-validate"
+        assert data.get("initial") == "create_sprint"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "create_sprint",
+            "route_create",
+            "size_review",
+            "map_dependencies",
+            "audit_conflicts",
+            "verify_issues",
+            "route_validation",
+            "commit",
+            "run_sprint",
+            "extract_unresolved",
+            "refine_unresolved",
+            "fix_issues",
+            "done",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_route_review_removed(self, data: dict) -> None:
+        """route_review state must not exist (replaced by shell_exit routing on run_sprint)."""
+        assert "route_review" not in data.get("states", {}), (
+            "route_review is a dead state and must be removed"
+        )
+
+    def test_route_create_on_yes_targets_size_review(self, data: dict) -> None:
+        """route_create.on_yes must target size_review (not map_dependencies)."""
+        state = data["states"].get("route_create", {})
+        assert state.get("on_yes") == "size_review", (
+            f"route_create.on_yes should be 'size_review', got {state.get('on_yes')!r}"
+        )
+
+    def test_size_review_next_targets_map_dependencies(self, data: dict) -> None:
+        """size_review.next must route to map_dependencies."""
+        state = data["states"].get("size_review", {})
+        assert state.get("next") == "map_dependencies", (
+            f"size_review.next should be 'map_dependencies', got {state.get('next')!r}"
+        )
+
+    def test_run_sprint_uses_shell_exit_fragment(self, data: dict) -> None:
+        """run_sprint must use fragment: shell_exit for exit-code-based routing."""
+        state = data["states"].get("run_sprint", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"run_sprint.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_run_sprint_on_yes_routes_to_done(self, data: dict) -> None:
+        """run_sprint.on_yes (exit 0) must route to done."""
+        state = data["states"].get("run_sprint", {})
+        assert state.get("on_yes") == "done", (
+            f"run_sprint.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
+
+    def test_run_sprint_on_no_routes_to_extract_unresolved(self, data: dict) -> None:
+        """run_sprint.on_no (non-zero exit) must route to extract_unresolved."""
+        state = data["states"].get("run_sprint", {})
+        assert state.get("on_no") == "extract_unresolved", (
+            f"run_sprint.on_no should be 'extract_unresolved', got {state.get('on_no')!r}"
+        )
+
+    def test_extract_unresolved_captures_as_input(self, data: dict) -> None:
+        """extract_unresolved must capture as 'input' for context_passthrough to work."""
+        state = data["states"].get("extract_unresolved", {})
+        assert state.get("capture") == "input", (
+            f"extract_unresolved.capture should be 'input', got {state.get('capture')!r}"
+        )
+
+    def test_extract_unresolved_on_yes_routes_to_refine_unresolved(self, data: dict) -> None:
+        """extract_unresolved.on_yes must route to refine_unresolved."""
+        state = data["states"].get("extract_unresolved", {})
+        assert state.get("on_yes") == "refine_unresolved", (
+            f"extract_unresolved.on_yes should be 'refine_unresolved', "
+            f"got {state.get('on_yes')!r}"
+        )
+
+    def test_extract_unresolved_on_no_routes_to_done(self, data: dict) -> None:
+        """extract_unresolved.on_no (no unresolved issues) must route to done."""
+        state = data["states"].get("extract_unresolved", {})
+        assert state.get("on_no") == "done", (
+            f"extract_unresolved.on_no should be 'done', got {state.get('on_no')!r}"
+        )
+
+    def test_refine_unresolved_delegates_to_recursive_refine(self, data: dict) -> None:
+        """refine_unresolved must delegate to recursive-refine sub-loop."""
+        state = data["states"].get("refine_unresolved", {})
+        assert state.get("loop") == "recursive-refine", (
+            f"refine_unresolved.loop should be 'recursive-refine', got {state.get('loop')!r}"
+        )
+
+    def test_refine_unresolved_uses_context_passthrough(self, data: dict) -> None:
+        """refine_unresolved must use context_passthrough to pass captured.input to child loop."""
+        state = data["states"].get("refine_unresolved", {})
+        assert state.get("context_passthrough") is True, (
+            "refine_unresolved must have context_passthrough: true"
+        )
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
 
 
 class TestHtmlWebsiteGeneratorLoop:
