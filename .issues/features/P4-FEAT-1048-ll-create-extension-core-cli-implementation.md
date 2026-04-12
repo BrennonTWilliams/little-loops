@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-04-11
 discovered_by: issue-size-review
-confidence_score: 98
-outcome_confidence: 61
+confidence_score: 100
+outcome_confidence: 71
 ---
 
 # FEAT-1048: ll-create-extension Core CLI Implementation
@@ -76,18 +76,23 @@ ll-create-extension my-dashboard-ext
 - `scripts/little_loops/cli/auto.py:21-103` — `main_auto()` as closest model (simple argparse, `BRConfig(project_root)` + `configure_output(config.cli)`)
 - `scripts/little_loops/issue_template.py:40-114` — `parts: list[str]` + `"\n".join()` scaffolding pattern; **no Jinja2 anywhere in codebase**
 - `scripts/little_loops/parallel/types.py:357-385` — string `.replace()` for `{{name}}` substitution
-- `scripts/little_loops/cli_args.py` — use only `add_config_arg` + `add_dry_run_arg` (NOT `add_common_auto_args`)
+- `scripts/little_loops/cli_args.py` — use only `add_dry_run_arg` (NOT `add_config_arg`, NOT `add_common_auto_args`)
 - `scripts/little_loops/extension.py:101-116` — `NoopLoggerExtension` as skeleton template model
 
 ### Critical Implementation Notes
 
-- Interface: one positional `name` arg plus `--config` and `--dry-run` only — NOT `add_common_auto_args`
+- Interface: one positional `name` arg plus `--dry-run` only — drop `--config` (command operates on `cwd`, has no project root concept) — NOT `add_common_auto_args`
 - Each CLI command has its own file under `scripts/little_loops/cli/` — do NOT add to `auto.py`
 - `cli/__init__.py` `__all__` is alphabetically sorted — insert `"main_create_extension"` after `"main_check_links"` at line 40
 - Do NOT add Jinja2; use string `.replace()` for template substitution
 - `ll-create-extension` entry goes after `ll-check-links` at line 58 in `pyproject.toml` (before `ll-issues` at line 59, within `[project.scripts]` block)
 - `configure_output` is for color config; a pure file-scaffolding command does not need it — omit unless adding colored output
 - Generated test file: import `LLTestBus` as `from little_loops import LLTestBus` (public re-export at `scripts/little_loops/__init__.py:31`)
+- Generated `extension.py`: import `LLEvent` as `from little_loops import LLEvent` (same public re-export pattern)
+- **Class name derivation**: kebab-case → PascalCase, no `Extension` suffix appended (e.g., `my-dashboard-ext` → `MyDashboardExt`). Authors may rename.
+- **`event_filter`**: omit from skeleton — the Protocol field defaults to `None` (receive all events), which is the right starting point
+- **Existing directory**: if `<name>/` already exists in `cwd`, abort with `exit 1` and print: `Error: directory '<name>' already exists. Remove it or choose a different name.`
+- **`pyproject.toml.tmpl` structure**: use `hatchling` build backend; `requires-python = ">=3.11"`; `dependencies = ["little-loops"]` unpinned (author tightens); entry point uses `{{pkg_name}}.extension:{{class_name}}`
 
 ### Ordering Constraint
 
@@ -178,11 +183,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## API/Interface
 
 ```bash
-ll-create-extension <name> [--config CONFIG] [--dry-run]
+ll-create-extension <name> [--dry-run]
 ```
 
-- `name` (positional): Extension name in kebab-case (e.g., `my-dashboard-ext`); used to derive package name (`my_dashboard_ext`)
-- `--config CONFIG`: Path to `ll-config.json` (optional, uses project default)
+- `name` (positional): Extension name in kebab-case (e.g., `my-dashboard-ext`); used to derive package name (`my_dashboard_ext`) and class name (`MyDashboardExt`)
 - `--dry-run`: Show what would be created without writing any files
 
 Entry point registered in `scripts/pyproject.toml`:
@@ -219,6 +223,8 @@ ll-create-extension = "little_loops.cli:main_create_extension"
 **Open** | Created: 2026-04-11 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-11T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32c003c1-efad-4d24-b9eb-63cacaec1777.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/552f9ae8-b018-49c2-96eb-16e112223147.jsonl`
 - `/ll:confidence-check` - 2026-04-12T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/717e28ae-eb80-4486-985b-4a93bb32c71f.jsonl`
 - `/ll:wire-issue` - 2026-04-12T03:10:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51a1aad7-49ce-434e-8ce5-a76e8376deb3.jsonl`
 - `/ll:refine-issue` - 2026-04-12T03:05:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f875fa22-3b06-4f03-882b-0bca893be6d5.jsonl`
