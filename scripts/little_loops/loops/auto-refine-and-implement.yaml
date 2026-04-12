@@ -6,7 +6,7 @@ description: |
   passed refinement. Skips issues that fail refinement or are decomposed, tracking
   them to avoid retrying. Loops until backlog is exhausted.
 initial: get_next_issue
-max_iterations: 100
+max_iterations: 500
 timeout: 28800
 on_handoff: spawn
 import:
