@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-11
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-1051: Show prompt state response output in ll-loop run non-verbose mode
@@ -105,9 +107,99 @@ if output_preview and not verbose:
 - **The `not is_prompt` condition is removed**: the "already streamed" comment only applies to verbose mode, which is already excluded by `not verbose`.
 - **Label the response section**: `← response (N lines):` header gives context that this is output, not more prompt content.
 
-### No other files need changes
+### No other files need changes for the core display logic
 
 `output_preview` is already populated for prompt states — `executor.py:522` computes `result.output[-2000:].strip()` unconditionally, regardless of action mode. The data is there; it is only suppressed in the display layer.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+2. Update `scripts/little_loops/cli/loop/__init__.py:129` — revise `--verbose` argparse help string so it accurately describes the new distinction between default (head-preview) and verbose (full streaming) modes; e.g. `"Stream all action output live; default shows a short response preview"`
+3. Update `docs/reference/CLI.md:251` — revise the `--verbose` table row to reflect that non-verbose now shows a response head preview (not zero output)
+4. Update `docs/guides/LOOPS_GUIDE.md:1462` — same description repeated verbatim; update in tandem
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/_helpers.py` — change the `action_complete` gate at line 446 from `not is_prompt and not verbose` → `not verbose`; add head-preview branch with `← response` label and trailing `... (N more lines)` footer
+- `scripts/little_loops/cli/loop/__init__.py:129` — update `--verbose` help string (`"Show full prompt text and more output lines"`) to distinguish streaming-all vs. head-preview default [Wiring pass added by `/ll:wire-issue`]
+- `docs/reference/CLI.md:251` — `--verbose` table row description becomes misleading after non-verbose mode shows response head preview [Wiring pass added by `/ll:wire-issue`]
+- `docs/guides/LOOPS_GUIDE.md:1462` — same `--verbose` description repeated verbatim; update in tandem with CLI.md [Wiring pass added by `/ll:wire-issue`]
+
+### Dependent Files (Read-Only, No Changes Needed)
+- `scripts/little_loops/fsm/executor.py:522` — computes `preview = result.output[-2000:].strip()`; populates `output_preview` for all action modes unconditionally; `is_prompt` set via `action_mode == "prompt"` at line 527
+- `scripts/little_loops/cli/output.py:90` — `colorize(text: str, code: str) -> str`; already imported in `_helpers.py:14`
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/run.py:224` — the sole caller of `run_foreground()`; passes `args` with `verbose`/`quiet` flags; no signature change needed
+
+### Test File
+- `scripts/tests/test_ll_loop_display.py` — add tests to the `TestDisplayProgressEvents` class following the existing `MockExecutor` + `capsys` + `_make_args()` pattern (see lines 1494–1602)
+
+### Similar Patterns to Follow
+- `_helpers.py:393-415` — `action_start` prompt head-preview: shows `min(5, line_count)` lines with `colorize('(N lines)', '2')` badge; same `{indent}       {display}` indentation used by the response preview
+- `test_ll_loop_display.py:1566-1602` — `test_verbose_shell_output_printed_once` / `test_nonverbose_shell_output_shows_preview`: exact template for new `test_nonverbose_prompt_output_shows_head_preview` and `test_verbose_prompt_output_not_duplicated` tests
+
+### Tests to Add (`TestDisplayProgressEvents`)
+
+```python
+def test_nonverbose_prompt_output_shows_head_preview(
+    self, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """In non-verbose mode, prompt action_complete shows a head preview of the response."""
+    events = [
+        {
+            "event": "action_complete",
+            "exit_code": 0,
+            "duration_ms": 5000,
+            "output_preview": "Line 1\nLine 2\nLine 3",
+            "is_prompt": True,
+        }
+    ]
+    executor = MockExecutor(events)
+    run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+    out = capsys.readouterr().out
+    assert "Line 1" in out
+    assert "← response" in out
+
+def test_verbose_prompt_output_not_shown_at_action_complete(
+    self, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """In verbose mode, prompt output streams via action_output; action_complete must not duplicate it."""
+    events = [
+        {"event": "action_output", "line": "streamed line"},
+        {
+            "event": "action_complete",
+            "exit_code": 0,
+            "duration_ms": 5000,
+            "output_preview": "streamed line",
+            "is_prompt": True,
+        },
+    ]
+    executor = MockExecutor(events)
+    run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+    out = capsys.readouterr().out
+    assert out.count("streamed line") == 1
+
+def test_quiet_prompt_output_not_shown(self, capsys: pytest.CaptureFixture[str]) -> None:
+    """In quiet mode, no output preview is shown for prompt states."""
+    events = [
+        {
+            "event": "action_complete",
+            "exit_code": 0,
+            "duration_ms": 1000,
+            "output_preview": "should not appear",
+            "is_prompt": True,
+        }
+    ]
+    executor = MockExecutor(events)
+    run_foreground(executor, self._make_fsm(), self._make_args(quiet=True))
+    out = capsys.readouterr().out
+    assert "should not appear" not in out
+```
 
 ## Verification
 
@@ -129,4 +221,7 @@ if output_preview and not verbose:
 Open
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edc93ae2-94de-4f41-8e9d-da6398b38296.jsonl`
+- `/ll:wire-issue` - 2026-04-12T05:04:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a85d1e55-862d-4918-9fa4-361cea909a58.jsonl`
+- `/ll:refine-issue` - 2026-04-12T04:57:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0152ccce-218b-4988-9c5c-e983140da495.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1437654-cf08-44ef-b694-93b1f1d22897.jsonl`
