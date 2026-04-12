@@ -1066,6 +1066,28 @@ class TestRecursiveRefineLoop:
             f"recheck_scores.on_error should be 'run_size_review', got {state.get('on_error')!r}"
         )
 
+    def test_detect_children_filters_by_parent_reference(self, data: dict) -> None:
+        """detect_children must use diff-ids.txt intermediate and filter by Decomposed from."""
+        state = data["states"].get("detect_children", {})
+        action = state.get("action", "")
+        assert "recursive-refine-diff-ids.txt" in action, (
+            "detect_children must write comm output to diff-ids.txt before filtering"
+        )
+        assert "Decomposed from" in action, (
+            "detect_children must filter candidates by 'Decomposed from' parent reference"
+        )
+
+    def test_enqueue_or_skip_filters_by_parent_reference(self, data: dict) -> None:
+        """enqueue_or_skip must use diff-ids.txt intermediate and filter by Decomposed from."""
+        state = data["states"].get("enqueue_or_skip", {})
+        action = state.get("action", "")
+        assert "recursive-refine-diff-ids.txt" in action, (
+            "enqueue_or_skip must write comm output to diff-ids.txt before filtering"
+        )
+        assert "Decomposed from" in action, (
+            "enqueue_or_skip must filter candidates by 'Decomposed from' parent reference"
+        )
+
 
 class TestSprintBuildAndValidateLoop:
     """Structural tests for the sprint-build-and-validate FSM loop."""

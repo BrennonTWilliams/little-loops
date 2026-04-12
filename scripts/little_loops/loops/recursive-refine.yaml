@@ -155,7 +155,17 @@ states:
 
       comm -13 .loops/tmp/recursive-refine-pre-ids.txt \
                .loops/tmp/recursive-refine-post-ids.txt \
-               > .loops/tmp/recursive-refine-new-children.txt
+               > .loops/tmp/recursive-refine-diff-ids.txt
+
+      PARENT_ID="${captured.input.output}"
+      while IFS= read -r child_id; do
+        child_file=$(find .issues -name "*-$child_id-*" \
+          ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+          echo "$child_id"
+        fi
+      done < .loops/tmp/recursive-refine-diff-ids.txt \
+        > .loops/tmp/recursive-refine-new-children.txt
 
       if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
         cat .loops/tmp/recursive-refine-new-children.txt
@@ -262,7 +272,17 @@ states:
 
       comm -13 .loops/tmp/recursive-refine-pre-ids.txt \
                .loops/tmp/recursive-refine-post-ids.txt \
-               > .loops/tmp/recursive-refine-new-children.txt
+               > .loops/tmp/recursive-refine-diff-ids.txt
+
+      PARENT_ID="${captured.input.output}"
+      while IFS= read -r child_id; do
+        child_file=$(find .issues -name "*-$child_id-*" \
+          ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+          echo "$child_id"
+        fi
+      done < .loops/tmp/recursive-refine-diff-ids.txt \
+        > .loops/tmp/recursive-refine-new-children.txt
 
       if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
         CHILDREN=$(cat .loops/tmp/recursive-refine-new-children.txt)

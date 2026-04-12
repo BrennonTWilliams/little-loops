@@ -126,15 +126,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `fsm-loop`, `recursive-refine`, `captured`
 
+## Resolution
+
+**Fixed** | Completed: 2026-04-12
+
+- `detect_children` (lines 156–158 → two-step): `comm -13` output now written to `recursive-refine-diff-ids.txt`; each candidate is checked for `Decomposed from <PARENT_ID>` before being accepted into `recursive-refine-new-children.txt`
+- `enqueue_or_skip` (lines 263–265 → two-step): identical parent-verification filter applied
+- `docs/guides/LOOPS_GUIDE.md`: **Child detection** paragraph added to `recursive-refine` section describing the two-step filter
+- `scripts/tests/test_builtin_loops.py`: added `test_detect_children_filters_by_parent_reference` and `test_enqueue_or_skip_filters_by_parent_reference` to `TestRecursiveRefineLoop`; all 19 tests pass
+
 ## Status
 
-**Open** | Created: 2026-04-12 | Priority: P3
+**Closed** | Created: 2026-04-12 | Priority: P3
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-12T16:27:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ecd44592-946d-4dee-9872-4ca45a36c433.jsonl`
 - `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ccb22598-046e-48ad-9add-17bd62cd4973.jsonl`
 - `/ll:wire-issue` - 2026-04-12T16:22:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d7cdb6a-cc0a-4306-8db0-90ee101b7fa4.jsonl`
 - `/ll:format-issue` - 2026-04-12T16:20:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0c96e34-4bac-495e-850d-271272713698.jsonl`
 - `/ll:refine-issue` - 2026-04-12T16:17:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20856766-1501-45e9-b569-cb90b08cb44e.jsonl`
 - `/ll:capture-issue` - 2026-04-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f1a02e-5a5e-4da3-8f6c-49300c6094a5.jsonl`
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
