@@ -167,9 +167,9 @@ Examples:
     print(f"Created: {name}/")
     for path in files:
         print(f"  {path.relative_to(target)}")
-    print(f"\nNext steps:")
+    print("\nNext steps:")
     print(f"  cd {name}")
-    print(f"  pip install -e .")
-    print(f"  python -m pytest tests/")
+    print("  pip install -e .")
+    print("  python -m pytest tests/")
 
     return 0

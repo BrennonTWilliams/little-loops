@@ -125,7 +125,10 @@ Examples:
     )
     run_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
     run_parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Stream all action output live; default shows a short response preview"
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Stream all action output live; default shows a short response preview",
     )
     run_parser.add_argument(
         "--show-diagrams",
