@@ -89,13 +89,13 @@ This is safe because:
 - Verify loop does not re-process implemented issues (they are in `completed/`)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_builtin_loops.py:861` — `test_required_top_level_fields` asserts `data.get("initial") == "get_next_issue"` — **WILL BREAK**; must update expected value to `"init"` [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:862` — `test_required_top_level_fields` asserts `data.get("initial") == "get_next_issue"` — **WILL BREAK**; must update expected value to `"init"` [Agent 3 finding]
 - `scripts/tests/test_builtin_loops.py:864-877` — `test_required_states_exist` `required` set should include `"init"` for completeness (does not break, but incomplete) [Agent 3 finding]
 - New test: `test_init_state_exists` — assert `"init" in data["states"]` [Agent 3 finding]
 - New test: `test_init_state_is_shell_type` — assert `data["states"]["init"]["action_type"] == "shell"` and `data["states"]["init"]["next"] == "get_next_issue"` [Agent 3 finding]
 - New test: `test_init_clears_skip_file` — assert `"auto-refine-and-implement-skipped.txt"` in `init.action` [Agent 3 finding]
 - New test: `test_init_clears_impl_queue_file` — assert `"auto-refine-and-implement-impl-queue.txt"` in `init.action` [Agent 3 finding]
-- Pattern to follow: `scripts/tests/test_builtin_loops.py:476-482` — `TestIssueRefinementSubLoop.test_init_action_clears_skip_list` is the canonical template [Agent 3 finding]
+- Pattern to follow: `scripts/tests/test_builtin_loops.py:477-483` — `TestIssueRefinementSubLoop.test_init_action_clears_skip_list` is the canonical template [Agent 3 finding]
 
 ### Documentation
 
@@ -117,7 +117,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-5. Update `scripts/tests/test_builtin_loops.py:861` — change `assert data.get("initial") == "get_next_issue"` to `== "init"` (breaking assertion)
+5. Update `scripts/tests/test_builtin_loops.py:862` — change `assert data.get("initial") == "get_next_issue"` to `== "init"` (breaking assertion)
 6. Update `scripts/tests/test_builtin_loops.py:864-877` — add `"init"` to `required` set in `test_required_states_exist` for completeness
 7. Add 4 new structural tests to `TestAutoRefineAndImplementLoop` in `test_builtin_loops.py`: `test_init_state_exists`, `test_init_state_is_shell_type`, `test_init_clears_skip_file`, `test_init_clears_impl_queue_file` — follow the `TestIssueRefinementSubLoop.test_init_action_clears_skip_list` pattern at line 476-482
 8. Update `docs/guides/LOOPS_GUIDE.md:411-419` — prepend `init →` to the FSM flow diagram entry
@@ -138,12 +138,25 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `loops`, `auto-refine-and-implement`, `captured`
 
+## Resolution
+
+**Fixed**: 2026-04-13
+
+Added `init` state to `auto-refine-and-implement.yaml` that truncates both temp files at the start of each run. Changed `initial: get_next_issue` → `initial: init`. Updated tests and docs to match.
+
+**Files changed**:
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — added `init` state, changed `initial`
+- `scripts/tests/test_builtin_loops.py` — fixed `initial` assertion, added `"init"` to required set, added 4 new structural tests
+- `docs/guides/LOOPS_GUIDE.md` — updated FSM diagram to prepend `init →`, updated skip-tracking paragraph
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T20:31:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
 - `/ll:confidence-check` - 2026-04-13T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:wire-issue` - 2026-04-13T20:18:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/380433f9-aa5c-461b-919e-c5a4226b42c9.jsonl`
 - `/ll:refine-issue` - 2026-04-13T20:12:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7573101-1e4a-4e97-80cd-2130b1c40d72.jsonl`
 - `/ll:capture-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6681d3d-2446-482f-83ae-c425d516d2ac.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ---
 
-**Open** | Created: 2026-04-13 | Priority: P2
+**Completed** | Created: 2026-04-13 | Priority: P2

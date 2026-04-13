@@ -5,7 +5,7 @@ description: |
   (which handles decomposition into child issues), then implement all issues that
   passed refinement. Skips issues that fail refinement or are decomposed, tracking
   them to avoid retrying. Loops until backlog is exhausted.
-initial: get_next_issue
+initial: init
 max_iterations: 500
 timeout: 28800
 on_handoff: spawn
@@ -15,6 +15,11 @@ context:
   max_issues: 100
 
 states:
+  init:
+    action: mkdir -p .loops/tmp && rm -f .loops/tmp/auto-refine-and-implement-skipped.txt && rm -f .loops/tmp/auto-refine-and-implement-impl-queue.txt
+    action_type: shell
+    next: get_next_issue
+
   get_next_issue:
     action: |
       mkdir -p .loops/tmp

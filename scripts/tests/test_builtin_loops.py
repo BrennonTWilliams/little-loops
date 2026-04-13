@@ -859,12 +859,13 @@ class TestAutoRefineAndImplementLoop:
     def test_required_top_level_fields(self, data: dict) -> None:
         """Loop must have name, initial, and states fields."""
         assert data.get("name") == "auto-refine-and-implement"
-        assert data.get("initial") == "get_next_issue"
+        assert data.get("initial") == "init"
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
         required = {
+            "init",
             "get_next_issue",
             "refine_issue",
             "get_passed_issues",
@@ -876,6 +877,32 @@ class TestAutoRefineAndImplementLoop:
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_init_state_exists(self, data: dict) -> None:
+        """init state must exist to clear temp files on each fresh run."""
+        assert "init" in data["states"], "init state missing from auto-refine-and-implement"
+
+    def test_init_state_is_shell_type(self, data: dict) -> None:
+        """init state must be a shell action with unconditional next: get_next_issue."""
+        init = data["states"].get("init", {})
+        assert init.get("action_type") == "shell"
+        assert init.get("next") == "get_next_issue"
+
+    def test_init_clears_skip_file(self, data: dict) -> None:
+        """init action must clear the skip file so each run starts fresh."""
+        init = data["states"].get("init", {})
+        action = init.get("action", "")
+        assert "auto-refine-and-implement-skipped.txt" in action, (
+            f"init.action should clear auto-refine-and-implement-skipped.txt, got: {action!r}"
+        )
+
+    def test_init_clears_impl_queue_file(self, data: dict) -> None:
+        """init action must clear the impl queue so each run starts fresh."""
+        init = data["states"].get("init", {})
+        action = init.get("action", "")
+        assert "auto-refine-and-implement-impl-queue.txt" in action, (
+            f"init.action should clear auto-refine-and-implement-impl-queue.txt, got: {action!r}"
+        )
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""

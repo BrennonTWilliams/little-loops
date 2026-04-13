@@ -410,16 +410,16 @@ ll-loop run auto-refine-and-implement --context max_issues=10
 
 **FSM flow**:
 ```
-get_next_issue → [issue found?]
-  ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
-  │         ├─ YES → get_passed_issues → [any passed?]
-  │         │         ├─ YES → implement_next → implement_issue (ll-auto --only) → implement_next (loop)
-  │         │         └─ NO  → get_next_issue (loop)
-  │         └─ NO  → skip_and_continue → get_next_issue (loop)
-  └─ NO → done
+init → get_next_issue → [issue found?]
+         ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
+         │         ├─ YES → get_passed_issues → [any passed?]
+         │         │         ├─ YES → implement_next → implement_issue (ll-auto --only) → implement_next (loop)
+         │         │         └─ NO  → get_next_issue (loop)
+         │         └─ NO  → skip_and_continue → get_next_issue (loop)
+         └─ NO → done
 ```
 
-**Skip tracking**: After `recursive-refine` completes, `get_passed_issues` merges its skipped output (`.loops/tmp/recursive-refine-skipped.txt`) into `.loops/tmp/auto-refine-and-implement-skipped.txt`, and queues passed issues in `.loops/tmp/auto-refine-and-implement-impl-queue.txt` for sequential implementation. Each `get_next_issue` reads the skip file and passes the IDs as `--skip` to `ll-issues next-issue`, preventing infinite retry loops for persistently-unrefineable or decomposed issues.
+**Skip tracking**: The `init` state runs at the start of each `ll-loop run auto-refine-and-implement` invocation and truncates both `.loops/tmp/auto-refine-and-implement-skipped.txt` and `.loops/tmp/auto-refine-and-implement-impl-queue.txt`, ensuring every run starts with a clean slate. After `recursive-refine` completes, `get_passed_issues` merges its skipped output (`.loops/tmp/recursive-refine-skipped.txt`) into `.loops/tmp/auto-refine-and-implement-skipped.txt`, and queues passed issues in `.loops/tmp/auto-refine-and-implement-impl-queue.txt` for sequential implementation. Each `get_next_issue` reads the skip file and passes the IDs as `--skip` to `ll-issues next-issue`, preventing infinite retry loops for persistently-unrefineable or decomposed issues within the current run.
 
 **Notes**: The loop runs up to 100 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize the refinement thresholds or post-implementation steps.
 
