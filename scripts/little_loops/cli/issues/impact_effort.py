@@ -211,6 +211,7 @@ def cmd_impact_effort(config: BRConfig, args: argparse.Namespace) -> int:
             q_low_high.append(issue)
 
     if getattr(args, "json", False):
+
         def _rec(issue: IssueInfo) -> dict:
             return {
                 "id": issue.issue_id,
@@ -219,12 +220,15 @@ def cmd_impact_effort(config: BRConfig, args: argparse.Namespace) -> int:
                 "effort": _infer_effort(issue),
                 "impact": _infer_impact(issue),
             }
-        print_json({
-            "quick_wins":      [_rec(i) for i in q_high_low],
-            "major_projects":  [_rec(i) for i in q_high_high],
-            "fill_ins":        [_rec(i) for i in q_low_low],
-            "thankless_tasks": [_rec(i) for i in q_low_high],
-        })
+
+        print_json(
+            {
+                "quick_wins": [_rec(i) for i in q_high_low],
+                "major_projects": [_rec(i) for i in q_high_high],
+                "fill_ins": [_rec(i) for i in q_low_low],
+                "thankless_tasks": [_rec(i) for i in q_low_high],
+            }
+        )
         return 0
 
     print(_render_grid(q_high_low, q_high_high, q_low_low, q_low_high))

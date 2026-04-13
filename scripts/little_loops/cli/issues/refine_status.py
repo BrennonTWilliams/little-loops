@@ -453,7 +453,9 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             return str(issue.score_complexity) if issue.score_complexity is not None else "\u2014"
         if col == "score_test_coverage":
             return (
-                str(issue.score_test_coverage) if issue.score_test_coverage is not None else "\u2014"
+                str(issue.score_test_coverage)
+                if issue.score_test_coverage is not None
+                else "\u2014"
             )
         if col == "score_ambiguity":
             return str(issue.score_ambiguity) if issue.score_ambiguity is not None else "\u2014"

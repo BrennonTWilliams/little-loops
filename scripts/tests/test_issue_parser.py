@@ -1756,9 +1756,7 @@ class TestIssueInfoScoreDimensions:
         enhancements_dir = tmp_path / ".issues" / "enhancements"
         enhancements_dir.mkdir(parents=True)
         issue_file = enhancements_dir / "P3-ENH-1100-no-dims.md"
-        issue_file.write_text(
-            "---\ndiscovered_by: scan-codebase\n---\n# ENH-1100: No Dimensions\n"
-        )
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1100: No Dimensions\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)

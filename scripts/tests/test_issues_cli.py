@@ -928,10 +928,7 @@ class TestIssuesCLIImpactEffort:
         assert "fill_ins" in data
         assert "thankless_tasks" in data
         all_issues = (
-            data["quick_wins"]
-            + data["major_projects"]
-            + data["fill_ins"]
-            + data["thankless_tasks"]
+            data["quick_wins"] + data["major_projects"] + data["fill_ins"] + data["thankless_tasks"]
         )
         assert len(all_issues) == 5
         for item in all_issues:
@@ -1000,11 +997,7 @@ class TestIssuesCLIImpactEffort:
         assert result == 0
         captured = capsys.readouterr()
         data = json.loads(captured.out)
-        all_ids = [
-            item["id"]
-            for q in data.values()
-            for item in q
-        ]
+        all_ids = [item["id"] for q in data.values() for item in q]
         assert all(not id_.startswith("FEAT") for id_ in all_ids)
         assert any(id_.startswith("BUG") for id_ in all_ids)
 

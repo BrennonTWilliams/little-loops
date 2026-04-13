@@ -1204,11 +1204,11 @@ class TestRecursiveRefineLoop:
         assert "completed" in action, (
             "enqueue_children must reference 'completed' directory for the move"
         )
-        assert "mv" in action, (
-            "enqueue_children must contain 'mv' to move the parent file"
-        )
+        assert "mv" in action, "enqueue_children must contain 'mv' to move the parent file"
 
-    def test_enqueue_or_skip_moves_parent_to_completed_when_children_found(self, data: dict) -> None:
+    def test_enqueue_or_skip_moves_parent_to_completed_when_children_found(
+        self, data: dict
+    ) -> None:
         """enqueue_or_skip children-found branch must find and move the parent file to .issues/completed/."""
         state = data["states"].get("enqueue_or_skip", {})
         action = state.get("action", "")
@@ -1528,8 +1528,15 @@ class TestSvgTextgradLoop:
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
         required = {
-            "init", "plan", "generate", "evaluate", "score",
-            "compute_gradient", "append_gradient", "apply_gradient", "done",
+            "init",
+            "plan",
+            "generate",
+            "evaluate",
+            "score",
+            "compute_gradient",
+            "append_gradient",
+            "apply_gradient",
+            "done",
         }
         actual = set(data["states"].keys())
         missing = required - actual
