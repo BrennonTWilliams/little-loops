@@ -1711,7 +1711,16 @@ class TestColumnElision:
         assert len(records) == 1
         record = records[0]
         # All standard fields must be present regardless of terminal width
-        for field in ("id", "priority", "title", "source", "commands", "confidence_score", "total", "size"):
+        for field in (
+            "id",
+            "priority",
+            "title",
+            "source",
+            "commands",
+            "confidence_score",
+            "total",
+            "size",
+        ):
             assert field in record, f"JSON field '{field}' missing in narrow-terminal output"
 
     def test_custom_elide_order_respected(
