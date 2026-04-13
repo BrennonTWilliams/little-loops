@@ -23,7 +23,8 @@
     ]
   },
   "context_monitor": {
-    "enabled": true
+    "enabled": true,
+    "auto_handoff_threshold": 40
   },
   "commands": {
     "confidence_gate": {
