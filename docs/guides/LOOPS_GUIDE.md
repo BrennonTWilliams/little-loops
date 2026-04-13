@@ -694,7 +694,7 @@ ll-loop run svg-image-generator "a minimalist coffee cup icon"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
-| `output_dir` | `/tmp/ll-svg-generator` | Output directory for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png` |
+| `output_dir` | `.loops/tmp/svg-image-generator` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/svg-image-generator/20260413-143022/`) for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png` |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
 Override per-run:
@@ -708,11 +708,11 @@ ll-loop run svg-image-generator "lightning bolt icon" \
 **FSM flow:**
 
 ```
-plan → generate → evaluate
-                     ├─ CAPTURED → score
-                     │              ├─ PASS    → done
-                     │              └─ ITERATE → generate (with critique)
-                     └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+init → plan → generate → evaluate
+                            ├─ CAPTURED → score
+                            │              ├─ PASS    → done
+                            │              └─ ITERATE → generate (with critique)
+                            └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
 ```
 
 **Evaluation criteria** (all four must meet `pass_threshold`):

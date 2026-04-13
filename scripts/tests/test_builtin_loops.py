@@ -1413,16 +1413,23 @@ class TestSvgImageGeneratorLoop:
     def test_required_top_level_fields(self, data: dict) -> None:
         """Loop must have name, initial, input_key, and states fields."""
         assert data.get("name") == "svg-image-generator"
-        assert data.get("initial") == "plan"
+        assert data.get("initial") == "init"
         assert data.get("input_key") == "description"
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"plan", "generate", "evaluate", "score", "done"}
+        required = {"init", "plan", "generate", "evaluate", "score", "done"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_init_state_is_shell_with_capture(self, data: dict) -> None:
+        """init state must be a shell action that captures the timestamped run directory."""
+        state = data["states"].get("init", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("capture") == "run_dir"
+        assert state.get("next") == "plan"
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
@@ -1462,10 +1469,10 @@ class TestSvgImageGeneratorLoop:
         assert state.get("on_no") == "generate"
 
     def test_context_has_description_and_output_dir(self, data: dict) -> None:
-        """context block must define description and output_dir variables."""
+        """context block must define description and output_dir variables with correct defaults."""
         ctx = data.get("context", {})
         assert "description" in ctx
-        assert "output_dir" in ctx
+        assert ctx.get("output_dir") == ".loops/tmp/svg-image-generator"
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""

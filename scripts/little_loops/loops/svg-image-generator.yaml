@@ -8,7 +8,7 @@ description: |
   evaluation. Implements the GAN-style architecture from Anthropic's harness
   design article, adapted for SVG's simpler self-contained structure —
   no HTTP server required, no external dependencies, direct file:// rendering.
-initial: plan
+initial: init
 max_iterations: 20
 timeout: 7200
 
@@ -16,10 +16,23 @@ timeout: 7200
 # Pass a custom output_dir to write files elsewhere.
 context:
   description: ""             # populated from loop_input via input_key: description
-  output_dir: "/tmp/ll-svg-generator"
+  output_dir: ".loops/tmp/svg-image-generator"
   pass_threshold: 6           # minimum score per criterion (1-10) to pass
 
 states:
+
+  init:
+    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
+    # captures the full path so all subsequent states write to an isolated directory.
+    # Using a shell state mirrors the canonical pattern from evaluation-quality.yaml.
+    action_type: shell
+    action: |
+      TS=$(date -u +%Y%m%d-%H%M%S)
+      DIR="${captured.run_dir.output}/$TS"
+      mkdir -p "$DIR"
+      echo "$DIR"
+    capture: run_dir
+    next: plan
 
   plan:
     # HARNESS: Planner phase — expands the one-line description into a visual brief.
@@ -28,9 +41,7 @@ states:
     # generator has strong direction on the first iteration.
     action_type: prompt
     action: |
-      Create directory ${context.output_dir} if it does not already exist.
-
-      Write a visual brief to ${context.output_dir}/brief.md for the following SVG:
+      Write a visual brief to ${captured.run_dir.output}/brief.md for the following SVG:
       "${context.description}"
 
       The brief must include:
@@ -54,20 +65,25 @@ states:
     # proper viewBox so they scale correctly at any size.
     action_type: prompt
     action: |
-      Read ${context.output_dir}/brief.md for the visual brief.
+      Read ${captured.run_dir.output}/brief.md for the visual brief.
 
-      If ${context.output_dir}/critique.md exists, read it and address all issues
+      If ${captured.run_dir.output}/critique.md exists, read it and address all issues
       listed in the "Issues to Address" section specifically and completely.
 
-      Write a single self-contained SVG file to ${context.output_dir}/image.svg that:
+      Write a single self-contained SVG file to ${captured.run_dir.output}/image.svg that:
       - Implements the shape language and color palette from the brief
-      - Has a proper viewBox attribute (e.g. viewBox="0 0 100 100") so it scales correctly
+      - Has a proper viewBox attribute (e.g. viewBox="0 0 800 800") so it scales correctly
       - Contains no external dependencies: no <image href="...">, no external fonts,
         no xlink:href pointing to remote resources — everything embedded or drawn with paths
       - Uses clean, intentional paths with consistent stroke weights and deliberate proportions
       - Achieves a distinctive aesthetic — avoid generic clip-art silhouettes and default
         geometric shapes with no creative angle
       - If critique exists, resolves every specific issue before introducing new ideas
+      - STRICT SIZE LIMIT: Keep the SVG under 250 lines. Prefer <circle>, <path>, and
+        <text> elements over verbose repeated markup. Use <g> with transform for repeated
+        elements. Abbreviate or omit individual tool labels if needed to stay under the limit —
+        ring labels ("Core Context", "Gateway", "Offloaded Ecosystem") are sufficient;
+        individual tool names are optional. Conciseness is a hard requirement.
     next: evaluate
 
   evaluate:
@@ -79,7 +95,7 @@ states:
     # unavailable.
     action_type: shell
     action: |
-      playwright screenshot "file://${context.output_dir}/image.svg" "${context.output_dir}/screenshot.png" && echo "CAPTURED"
+      playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" && echo "CAPTURED"
     evaluate:
       type: output_contains
       pattern: "CAPTURED"
@@ -93,11 +109,11 @@ states:
     # The PNG produced by the evaluate state is read as a multimodal image input.
     action_type: prompt
     action: |
-      Read the screenshot at ${context.output_dir}/screenshot.png to view the generated SVG.
-      Also read ${context.output_dir}/brief.md to recall the visual intent.
+      Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the generated SVG.
+      Also read ${captured.run_dir.output}/brief.md to recall the visual intent.
 
       Score the SVG on each criterion from 1 to 10 and write the evaluation to
-      ${context.output_dir}/critique.md using this exact format:
+      ${captured.run_dir.output}/critique.md using this exact format:
 
       ```
       # Evaluation
@@ -140,10 +156,10 @@ states:
       The SVG generation loop has completed successfully.
 
       Final output files:
-      - ${context.output_dir}/image.svg   — the generated SVG (primary output)
-      - ${context.output_dir}/brief.md    — the visual planning brief
-      - ${context.output_dir}/critique.md — the final evaluation scores and notes
-      - ${context.output_dir}/screenshot.png — the last Playwright-captured render
+      - ${captured.run_dir.output}/image.svg   — the generated SVG (primary output)
+      - ${captured.run_dir.output}/brief.md    — the visual planning brief
+      - ${captured.run_dir.output}/critique.md — the final evaluation scores and notes
+      - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
 
       Report these paths to the user and confirm the SVG is ready.
     terminal: true
