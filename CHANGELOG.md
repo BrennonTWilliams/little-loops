@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.81.1] - 2026-04-13
+
+### Added
+
+- **Parallel State Type for FSM Loops** — New `parallel:` state type enables concurrent sub-loop fan-out for processing multiple issues simultaneously within a single FSM loop (FEAT-1072)
+- **Parallel State Wiring, Display, and Docs** — Full wiring of parallel state execution with status display and updated documentation (ENH-1078)
+- **Parallel State Documentation** — Comprehensive reference documentation for the parallel FSM state type (FEAT-1082)
+
+### Changed
+
+- **Logger and `configure_output` Wiring** — Wired `Logger` and `configure_output` to all non-compliant CLI commands for consistent output handling across tools (ENH-1064)
+- **`confidence-check` Unconditional Write-Back** — `confidence-check` now always writes concern findings back to the issue file without prompting (ENH-1087)
+- **`ll-issues show` Additional Fields** — Added `source`, `norm`, and `fmt` fields to card and JSON output (ENH-1088)
+- **`issue-size-review` Size Frontmatter** — After assessment, `issue-size-review` writes the size rating directly to the issue file's frontmatter for downstream use (ENH-1090)
+- **`ll-issues refine-status` Size Column** — `refine-status` now shows a Size column sourced from `issue-size-review` frontmatter (ENH-1091)
+
+### Fixed
+
+- **`ll:update` Relative Path Fix** — Fixed the update skill to use an absolute path from `pip show` instead of `./scripts`, allowing it to work when invoked outside the little-loops repo (BUG-1071)
+- **`recursive-refine` Duplicate `issue-size-review`** — Guarded against `issue-size-review` running twice when `breakdown_issue` fires during recursive refinement (BUG-1079)
+- **Hooks Installation via Plugin** — Removed broken manual hooks install step; hooks are now managed automatically via the plugin mechanism (BUG-863)
+
 ## [1.81.0] - 2026-04-12
 
 ### Added
@@ -117,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.81.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.0...v1.81.1
 [1.81.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.80.0...v1.81.0
 [1.80.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.79.0...v1.80.0
 [1.79.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.78.0...v1.79.0
