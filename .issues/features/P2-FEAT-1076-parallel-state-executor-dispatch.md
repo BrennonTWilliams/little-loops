@@ -2,6 +2,8 @@
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
 parent_issue: FEAT-1072
+confidence_score: 75
+outcome_confidence: 86
 ---
 
 # FEAT-1076: Parallel State Executor Dispatch
@@ -163,6 +165,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **`_execute_state()` dispatch insertion point**: `executor.py:396–402`. Insert `if state.parallel is not None:` immediately after the `if state.loop is not None:` block (line 402, before the blank comment line `# Handle unconditional transition`) and before `if state.next:` at line 405.
 - **Scope locking architecture**: `LockManager` is instantiated in `cli/loop/run.py:145` and scope lock acquisition happens at `run.py:148` — before `FSMExecutor` is ever constructed (via `PersistentExecutor` at `run.py:217`). `FSMExecutor` has zero awareness of `LockManager`. Option A (leave at CLI) is simplest and sufficient.
 - `cli/loop/run.py` — No changes expected; uses `FSMExecutor` via `PersistentExecutor` transparently.
+- **Implementation Step 2 (`_route_parallel()`) is eliminated**: Use `self._route(state, result.verdict, ctx)` directly inside `_execute_parallel_state()`. `_route()` at `executor.py:713` already maps `"yes"` → `on_yes`, `"partial"` → `on_partial`, `"no"` → `on_no` via shorthand routing at lines 747–753. No separate routing method is needed.
+- **`interpolate()` import**: The standalone `interpolate` function is already imported at the top of `executor.py`. No new import needed inside `_execute_parallel_state()` — only the lazy `from little_loops.fsm.parallel_runner import ParallelRunner` line inside the method body.
+- **Effective implementation steps** (supersedes Step 2 in Implementation Steps above):
+  1. Add `_execute_parallel_state(self, state: StateConfig, ctx: InterpolationContext) -> str | None` alongside `_execute_sub_loop()` at line 318
+  2. Insert `if state.parallel is not None:` dispatch block in `_execute_state()` after line 402, before `if state.next:` at line 405 — pass `ctx` to `_execute_parallel_state(state, ctx)`
+  3. Verify `persistence.py:418` — no changes expected
+  4. Document known limitations in `_execute_parallel_state()` comments (interceptors skipped, simulation bypassed, signal handler gap)
 
 ### Codebase Research Findings
 
@@ -174,6 +183,41 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Lazy import pattern**: `_execute_sub_loop()` imports `resolve_loop_path` and `load_and_validate` inside the method body to avoid circular imports. Apply the same pattern for `ParallelRunner` — import lazily from `little_loops.fsm.concurrency` (where `LockManager` lives; `ParallelRunner` will be added there by FEAT-1075).
 - **Test location confirmed**: `scripts/tests/` (flat, no `fsm/` subdirectory). Model tests after `TestSubLoopExecution` at `scripts/tests/test_fsm_executor.py:3473`. FEAT-1077 may target the same file with a `TestParallelExecution` class.
 - **Prerequisite status**: Both FEAT-1074 (schema — `StateConfig.parallel` field absent from `schema.py`) and FEAT-1075 (`ParallelRunner` class absent from codebase) are confirmed **Open**. Do not begin implementation until both are merged.
+- **`self._interpolate()` does not exist — use `interpolate(string, ctx)` instead**: The `Proposed Solution` code block calls `self._interpolate(state.parallel.items)`, but `FSMExecutor` has no such method. The executor uses a standalone `interpolate()` function (imported at the top of `executor.py`) called as `interpolate(string, ctx)`. The correct items line is `items = interpolate(state.parallel.items, ctx).splitlines()`. This also means `_execute_parallel_state()` **must accept `ctx: InterpolationContext`** as a second parameter — exactly mirroring `_execute_sub_loop(self, state: StateConfig, ctx: InterpolationContext) -> str | None`.
+- **Routing decision resolved — drop `_route_parallel()`, call `_route()` directly**: `_route()` at `executor.py:713` already handles `"yes"` → `on_yes`, `"partial"` → `on_partial`, `"no"` → `on_no` via shorthand routing (lines 747–753). `ParallelResult.verdict` is already one of these three strings. Call `return self._route(state, result.verdict, ctx)` at the end of `_execute_parallel_state()`. This makes Implementation Step 2 ("Add `_route_parallel()`") unnecessary — skip it.
+- **Corrected `_execute_parallel_state()` code** (supersedes Proposed Solution code block):
+  ```python
+  def _execute_parallel_state(self, state: StateConfig, ctx: InterpolationContext) -> str | None:
+      """Fan out sub-loop execution over a list of items concurrently.
+      
+      Note: interceptors (_interceptors loop) are skipped for this early-return path,
+      consistent with _execute_sub_loop() behavior.
+      Note: SimulationActionRunner is bypassed — simulation mode does not support parallel states.
+      Note: isolation: worktree handles real conflict risk; FSMExecutor needs no scope lock awareness.
+      """
+      from little_loops.fsm.parallel_runner import ParallelRunner
+      assert state.parallel is not None
+      items = interpolate(state.parallel.items, ctx).splitlines()
+      runner = ParallelRunner()
+      result = runner.run(
+          items=items,
+          loop_name=state.parallel.loop,
+          config=state.parallel,
+          parent_context=self.captured if state.parallel.context_passthrough else None,
+      )
+      self.captured[self.current_state] = {"results": result.all_captures}
+      return self._route(state, result.verdict, ctx)
+  ```
+- **Corrected dispatch block** in `_execute_state()` (insertion point: after line 402, before `if state.next:` at line 405):
+  ```python
+  if state.parallel is not None:
+      try:
+          return self._execute_parallel_state(state, ctx)
+      except (FileNotFoundError, ValueError) as e:
+          if state.on_error:
+              return interpolate(state.on_error, ctx)
+          raise
+  ```
 
 ## Impact
 
@@ -188,11 +232,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-12_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Concerns
+- **Unresolved dependencies**: FEAT-1074 (`StateConfig.parallel` schema) and FEAT-1075 (`ParallelRunner`) are both still Open — implementation cannot begin until both are merged.
+- **Verdict values mismatch**: Issue Summary says `done/partial/failed`; Research Findings correct this to `yes/partial/no` per FEAT-1075 spec. Implementation must use corrected values.
+- **Routing design choice resolved**: Call `self._route(state, result.verdict, ctx)` directly — `_route()` at line 713 already handles `"yes"/"partial"/"no"`. No `_route_parallel()` method needed. Implementation Step 2 is eliminated.
+
 ## Session Log
+- `/ll:refine-issue` - 2026-04-12T22:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d78494ba-e368-4d92-ac07-474ca60ddbb1.jsonl`
 - `/ll:wire-issue` - 2026-04-12T22:00:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbab3ea7-aba1-4f99-878c-4df082545c74.jsonl`
 - `/ll:refine-issue` - 2026-04-12T21:53:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6227012-241e-4253-adf1-d540b03b8c94.jsonl`
 - `/ll:format-issue` - 2026-04-12T21:50:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e24121c8-614a-47dc-b39d-f7ef139d0a8c.jsonl`
 - `/ll:issue-size-review` - 2026-04-12T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d6467f5-0702-4f04-ae61-18783596ccff.jsonl`
 
 ---
 
