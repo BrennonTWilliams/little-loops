@@ -1,0 +1,216 @@
+name: svg-textgrad
+category: harness
+input_key: description
+description: |
+  TextGrad-style SVG harness: optimizes the visual brief via structured gradient updates
+  rather than feeding raw critique directly to the generator. Each iteration computes a
+  FAILURE_PATTERN → ROOT_CAUSE → GRADIENT and rewrites brief.md to address the root cause.
+  A gradients.md log accumulates gradient history so compute_gradient can detect repeated
+  failure patterns and escalate the gradient strength accordingly.
+initial: init
+max_iterations: 20
+timeout: 7200
+
+# HARNESS: Context variables control output location and quality threshold.
+# Pass a custom output_dir to write files elsewhere.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  output_dir: ".loops/tmp/svg-textgrad"
+  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+
+states:
+
+  init:
+    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
+    # captures the full path so all subsequent states write to an isolated directory.
+    # Also initializes gradients.md so compute_gradient can safely read it on iteration 1.
+    action_type: shell
+    action: |
+      TS=$(date -u +%Y%m%d-%H%M%S)
+      DIR="${context.output_dir}/$TS"
+      mkdir -p "$DIR"
+      touch "$DIR/gradients.md"
+      echo "$DIR"
+    capture: run_dir
+    next: plan
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a detailed visual brief.
+    # The brief is the optimizable artifact in svg-textgrad; apply_gradient rewrites it each
+    # iteration rather than feeding raw critique back to the generator directly.
+    action_type: prompt
+    action: |
+      Write a visual brief to ${captured.run_dir.output}/brief.md for the following SVG:
+      "${context.description}"
+
+      The brief must include:
+      - **Shape language**: primary geometric vocabulary (angular vs. organic, line weight,
+        stroke vs. fill, symmetry or deliberate asymmetry)
+      - **Color palette**: specific hex values (2–4 colors max), rationale for each choice
+      - **Mood and intended use**: what emotion does it convey? At what sizes will it be used?
+        (e.g. 16px favicon, 64px app icon, 256px illustration)
+      - **Unique creative angle**: what makes this image distinctive? Avoid clip-art defaults.
+      - **Anti-patterns to avoid**: overly complex paths that muddy at small sizes, default
+        gradients, generic stock-icon shapes, excessive detail that disappears at icon scale
+
+      Be specific and opinionated. The brief will be iteratively refined via gradient updates.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates the SVG using only the visual brief.
+    # Unlike svg-image-generator, this loop does NOT feed critique.md to the generator.
+    # The brief has already been gradient-updated by apply_gradient on prior iterations;
+    # the generator follows the brief directly. Critique is consumed by compute_gradient only.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md for the visual brief.
+
+      Write a single self-contained SVG file to ${captured.run_dir.output}/image.svg that:
+      - Implements the shape language and color palette from the brief exactly
+      - Has a proper viewBox attribute (e.g. viewBox="0 0 800 800") so it scales correctly
+      - Contains no external dependencies: no <image href="...">, no external fonts,
+        no xlink:href pointing to remote resources — everything embedded or drawn with paths
+      - Uses clean, intentional paths with consistent stroke weights and deliberate proportions
+      - Achieves a distinctive aesthetic — avoid generic clip-art silhouettes and default
+        geometric shapes with no creative angle
+      - STRICT SIZE LIMIT: Keep the SVG under 250 lines. Prefer <circle>, <path>, and
+        <text> elements over verbose repeated markup. Use <g> with transform for repeated
+        elements. Conciseness is a hard requirement.
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// SVG.
+    # Routes to score on success; routes back to generate on failure so the loop
+    # can still make progress via LLM-only scoring if Playwright is unavailable.
+    action_type: shell
+    action: |
+      playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
+    # criteria and writes structured critique for compute_gradient to analyze.
+    # Key divergence from svg-image-generator: routes to compute_gradient on ITERATE
+    # rather than back to generate directly — gradient computation sits between evaluation
+    # and generation, updating the brief before the next generation attempt.
+    action_type: prompt
+    action: |
+      Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the generated SVG.
+      Also read ${captured.run_dir.output}/brief.md to recall the visual intent.
+
+      Score the SVG on each criterion from 1 to 10 and write the evaluation to
+      ${captured.run_dir.output}/critique.md using this exact format:
+
+      ```
+      # Evaluation
+
+      visual_clarity: N/10 — [explanation: is the concept immediately readable with no
+        ambiguity? At icon scale, can you tell what it is in under 2 seconds?]
+      originality: N/10 — [explanation: evidence of custom creative decisions?
+        Best designs avoid generic clip-art shapes and stock icon conventions.
+        Penalize: default silhouettes, unmodified geometric primitives, AI-slop fill patterns.]
+      craft: N/10 — [explanation: clean paths, consistent stroke weights, proper proportions,
+        deliberate use of negative space, color harmony.]
+      scalability: N/10 — [explanation: does the level of detail hold up at icon scale?
+        Complex paths that collapse below 32px should be penalized.]
+
+      ## Issues to Address
+      [Specific, actionable critique. List each problem concisely.]
+      ```
+
+      After writing the file, evaluate the scores:
+      - visual_clarity weight: 2× (threshold ${context.pass_threshold})
+      - originality weight: 2× (threshold ${context.pass_threshold})
+      - craft weight: 1× (threshold ${context.pass_threshold})
+      - scalability weight: 1× (threshold ${context.pass_threshold})
+
+      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "PASS"
+    on_yes: done
+    on_no: compute_gradient
+
+  compute_gradient:
+    # TEXTGRAD: Gradient computation phase — analyzes why the brief caused this failure.
+    # Reads the full gradient history to detect repeated ROOT_CAUSE patterns and escalate
+    # (demand a stronger structural brief change) when the same root cause recurs 2+ times.
+    # Outputs exactly three labeled lines: FAILURE_PATTERN, ROOT_CAUSE, GRADIENT.
+    action_type: prompt
+    action: |
+      You are computing a text gradient to improve the visual brief, not the SVG itself.
+
+      Read these files:
+      - ${captured.run_dir.output}/brief.md — the current visual brief (the optimizable prompt)
+      - ${captured.run_dir.output}/critique.md — the evaluator's critique of the latest SVG
+      - ${captured.run_dir.output}/gradients.md — the full gradient history from all prior iterations
+
+      Analyze the critique against the brief to identify why the brief caused this failure.
+      Check gradients.md: if the same ROOT_CAUSE appears 2 or more times in the history,
+      escalate the gradient — demand a stronger structural change, not a minor tweak.
+
+      Output exactly three labeled lines:
+      FAILURE_PATTERN: <what is wrong with the generated SVG>
+      ROOT_CAUSE: <what in the brief caused this — vague color spec? missing size constraint? contradiction?>
+      GRADIENT: <precise instruction for how to change the brief to fix this root cause>
+    capture: gradient
+    next: append_gradient
+
+  append_gradient:
+    # TEXTGRAD: Log phase — appends the computed gradient to the history file.
+    # gradients.md is read by compute_gradient on every subsequent iteration to detect
+    # repeated ROOT_CAUSE patterns and calibrate gradient escalation.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      ITER="${state.iteration}"
+      TS=$(date -u +%Y%m%dT%H%M%SZ)
+      GRAD="${captured.gradient.output}"
+      {
+        printf '## Iteration %s — %s\n' "$ITER" "$TS"
+        printf '%s\n\n' "$GRAD"
+      } >> "$DIR/gradients.md"
+    next: apply_gradient
+
+  apply_gradient:
+    # TEXTGRAD: Brief rewrite phase — applies the gradient to update brief.md directly.
+    # This is the core TextGrad insight: updating the brief (the prompt) rather than the SVG
+    # means the generator always works from a coherent, improved specification rather than
+    # reconciling conflicting signals from brief + raw critique simultaneously.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md — the current visual brief.
+
+      Apply this gradient to rewrite the brief:
+      ${captured.gradient.output}
+
+      The rewritten brief must:
+      - Address the ROOT_CAUSE identified in the gradient directly and specifically
+      - Follow the GRADIENT instruction precisely
+      - Preserve all aspects of the brief that were NOT causing failures
+      - Remain a complete, actionable visual brief (do not truncate or omit sections)
+
+      Overwrite ${captured.run_dir.output}/brief.md with the rewritten brief.
+    next: generate
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports the final output files including the gradient history log.
+    action_type: prompt
+    action: |
+      The SVG generation loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/image.svg     — the generated SVG (primary output)
+      - ${captured.run_dir.output}/brief.md      — the final gradient-optimized visual brief
+      - ${captured.run_dir.output}/critique.md   — the final evaluation scores and notes
+      - ${captured.run_dir.output}/gradients.md  — the full gradient history across all iterations
+      - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
+
+      Report these paths to the user and confirm the SVG is ready.
+    terminal: true

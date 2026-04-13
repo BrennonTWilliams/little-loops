@@ -86,6 +86,7 @@ class TestBuiltinLoopFiles:
             "html-website-generator",
             "sprint-refine-and-implement",
             "svg-image-generator",
+            "svg-textgrad",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -1473,6 +1474,90 @@ class TestSvgImageGeneratorLoop:
         ctx = data.get("context", {})
         assert "description" in ctx
         assert ctx.get("output_dir") == ".loops/tmp/svg-image-generator"
+
+    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+
+class TestSvgTextgradLoop:
+    """Structural tests for the svg-textgrad FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "svg-textgrad.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, and states fields."""
+        assert data.get("name") == "svg-textgrad"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "init", "plan", "generate", "evaluate", "score",
+            "compute_gradient", "append_gradient", "apply_gradient", "done",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_init_state_is_shell_with_capture(self, data: dict) -> None:
+        """init state must be a shell action that captures the timestamped run directory."""
+        state = data["states"].get("init", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("capture") == "run_dir"
+        assert state.get("next") == "plan"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_generate_does_not_reference_critique(self, data: dict) -> None:
+        """generate state must NOT reference critique.md (reads only brief.md)."""
+        state = data["states"].get("generate", {})
+        action = state.get("action", "")
+        assert "critique" not in action, "generate state must not reference critique.md"
+
+    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+        """score state must route to done when all criteria pass."""
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_score_state_routes_to_compute_gradient_on_iterate(self, data: dict) -> None:
+        """score state must route to compute_gradient (not generate) on ITERATE."""
+        state = data["states"].get("score", {})
+        assert state.get("on_no") == "compute_gradient"
+
+    def test_compute_gradient_captures_gradient(self, data: dict) -> None:
+        """compute_gradient state must capture its output as 'gradient' and route to append_gradient."""
+        state = data["states"].get("compute_gradient", {})
+        assert state.get("capture") == "gradient"
+        assert state.get("next") == "append_gradient"
+
+    def test_append_gradient_is_shell_routes_to_apply_gradient(self, data: dict) -> None:
+        """append_gradient state must be a shell state that routes to apply_gradient."""
+        state = data["states"].get("append_gradient", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("next") == "apply_gradient"
+
+    def test_apply_gradient_routes_to_generate(self, data: dict) -> None:
+        """apply_gradient state must route back to generate."""
+        state = data["states"].get("apply_gradient", {})
+        assert state.get("next") == "generate"
+
+    def test_context_has_description_and_output_dir(self, data: dict) -> None:
+        """context block must define description and output_dir with correct defaults."""
+        ctx = data.get("context", {})
+        assert "description" in ctx
+        assert ctx.get("output_dir") == ".loops/tmp/svg-textgrad"
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""

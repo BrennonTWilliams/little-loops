@@ -168,13 +168,13 @@ After 3 iterations, `gradients.md` shows the brief's color spec was too vague tw
 
 ## Acceptance Criteria
 
-- [ ] `svg-textgrad.yaml` exists in `scripts/little_loops/loops/`
-- [ ] `generate` state does not reference `critique.md`
-- [ ] `compute_gradient` state produces FAILURE_PATTERN, ROOT_CAUSE, GRADIENT
-- [ ] Each iteration appends to `gradients.md` with iteration number
-- [ ] `compute_gradient` is prompted to read full `gradients.md` and escalate on repeated ROOT_CAUSE
-- [ ] `apply_gradient` overwrites `brief.md`
-- [ ] Loop reaches `done` on a simple description within 20 iterations
+- [x] `svg-textgrad.yaml` exists in `scripts/little_loops/loops/`
+- [x] `generate` state does not reference `critique.md`
+- [x] `compute_gradient` state produces FAILURE_PATTERN, ROOT_CAUSE, GRADIENT
+- [x] Each iteration appends to `gradients.md` with iteration number
+- [x] `compute_gradient` is prompted to read full `gradients.md` and escalate on repeated ROOT_CAUSE
+- [x] `apply_gradient` overwrites `brief.md`
+- [ ] Loop reaches `done` on a simple description within 20 iterations (manual test)
 
 ## Related Key Documentation
 
@@ -184,13 +184,29 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feat`, `loops`, `harness`, `captured`
 
+## Resolution
+
+Implemented `svg-textgrad.yaml` as a pure YAML FSM loop. Key design decisions:
+
+- State machine: `init → plan → generate → evaluate → score → compute_gradient → append_gradient → apply_gradient → generate` (cycles back until PASS or max_iterations)
+- `score` routes `on_no: compute_gradient` (critical divergence from `svg-image-generator`)
+- `init` touches `gradients.md` so `compute_gradient` can safely read it on iteration 1
+- `generate` reads only `brief.md` — no `critique.md` reference
+- `compute_gradient` instructs Claude to read full gradient history and escalate if ROOT_CAUSE recurs 2+ times
+- `append_gradient` uses shell `printf` to append each gradient with iteration counter and ISO timestamp
+
+Also updated: `test_builtin_loops.py` (added `"svg-textgrad"` to expected set + `TestSvgTextgradLoop` class), `loops/README.md` (Harness table row), `README.md` (40→41 loop count), `docs/guides/LOOPS_GUIDE.md` (Harness Examples table row).
+
+All 4747 tests pass.
+
 ## Status
 
-**Open** | Created: 2026-04-13 | Priority: P3
+**Completed** | Created: 2026-04-13 | Resolved: 2026-04-13 | Priority: P3
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T20:11:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12fc2d40-967a-4755-b6db-3fd9fc6053cd.jsonl`
 - `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdedf90e-4d4e-4f89-b815-b5c239501618.jsonl`
 - `/ll:wire-issue` - 2026-04-13T19:20:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee2a7734-4c20-43d2-81d7-7fc7742b4beb.jsonl`
 - `/ll:refine-issue` - 2026-04-13T19:00:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0a940ed-94f1-4edf-888f-181582227a03.jsonl`
