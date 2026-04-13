@@ -70,6 +70,10 @@ _STATIC_COLUMN_SPECS: dict[str, tuple[int, str, bool]] = {
     "fmt": (_FMT_WIDTH, "fmt", False),
     "ready": (_SCORE_WIDTH, "ready", True),
     "confidence": (_CONF_WIDTH, "conf", True),
+    "score_complexity": (_SCORE_WIDTH, "cmplx", True),
+    "score_test_coverage": (_SCORE_WIDTH, "tcov", True),
+    "score_ambiguity": (_SCORE_WIDTH, "ambig", True),
+    "score_change_surface": (_SCORE_WIDTH, "chsrf", True),
     "total": (_TOTAL_WIDTH, "total", True),
 }
 
@@ -84,11 +88,25 @@ _DEFAULT_STATIC_COLUMNS: list[str] = [
     "fmt",
     "ready",
     "confidence",
+    "score_complexity",
+    "score_test_coverage",
+    "score_ambiguity",
+    "score_change_surface",
     "total",
 ]
 
 # Columns that belong after the dynamic command block (all others go before)
-_POST_CMD_STATIC: frozenset[str] = frozenset(["ready", "confidence", "total"])
+_POST_CMD_STATIC: frozenset[str] = frozenset(
+    [
+        "ready",
+        "confidence",
+        "score_complexity",
+        "score_test_coverage",
+        "score_ambiguity",
+        "score_change_surface",
+        "total",
+    ]
+)
 
 # Columns that are always pinned — never elided regardless of terminal width
 _PINNED_COLUMNS: frozenset[str] = frozenset(["id", "priority", "title"])
@@ -96,7 +114,19 @@ _PINNED_COLUMNS: frozenset[str] = frozenset(["id", "priority", "title"])
 # Default column elision order: columns dropped first when table overflows.
 # Command columns not listed here are dropped rightmost-first after this list
 # is exhausted.
-_DEFAULT_ELIDE_ORDER: list[str] = ["source", "norm", "fmt", "size", "confidence", "ready", "total"]
+_DEFAULT_ELIDE_ORDER: list[str] = [
+    "source",
+    "norm",
+    "fmt",
+    "size",
+    "score_change_surface",
+    "score_ambiguity",
+    "score_test_coverage",
+    "score_complexity",
+    "confidence",
+    "ready",
+    "total",
+]
 
 
 def _cmd_label(cmd: str) -> str:
@@ -298,6 +328,10 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "commands": issue.session_commands,
                 "confidence_score": issue.confidence_score,
                 "outcome_confidence": issue.outcome_confidence,
+                "score_complexity": issue.score_complexity,
+                "score_test_coverage": issue.score_test_coverage,
+                "score_ambiguity": issue.score_ambiguity,
+                "score_change_surface": issue.score_change_surface,
                 "size": issue.size,
                 "total": len(issue.session_commands),
                 "normalized": is_normalized(issue.path.name),
@@ -319,6 +353,10 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "commands": issue.session_commands,
                 "confidence_score": issue.confidence_score,
                 "outcome_confidence": issue.outcome_confidence,
+                "score_complexity": issue.score_complexity,
+                "score_test_coverage": issue.score_test_coverage,
+                "score_ambiguity": issue.score_ambiguity,
+                "score_change_surface": issue.score_change_surface,
                 "size": issue.size,
                 "total": len(issue.session_commands),
                 "normalized": is_normalized(issue.path.name),
@@ -411,6 +449,20 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             return (
                 str(issue.outcome_confidence) if issue.outcome_confidence is not None else "\u2014"
             )
+        if col == "score_complexity":
+            return str(issue.score_complexity) if issue.score_complexity is not None else "\u2014"
+        if col == "score_test_coverage":
+            return (
+                str(issue.score_test_coverage) if issue.score_test_coverage is not None else "\u2014"
+            )
+        if col == "score_ambiguity":
+            return str(issue.score_ambiguity) if issue.score_ambiguity is not None else "\u2014"
+        if col == "score_change_surface":
+            return (
+                str(issue.score_change_surface)
+                if issue.score_change_surface is not None
+                else "\u2014"
+            )
         if col == "total":
             return str(len(issue.session_commands))
         return "\u2014"  # unknown column: em-dash
@@ -486,4 +538,8 @@ def _print_key(all_cmds: list[str]) -> None:
             print(f"  {label:<12} {cmd}")
     print(f"  {'ready':<12} Readiness score (0\u2013100)")
     print(f"  {'conf':<12} Outcome confidence score (0\u2013100)")
+    print(f"  {'cmplx':<12} Outcome criterion A \u2013 Complexity (0\u201325)")
+    print(f"  {'tcov':<12} Outcome criterion B \u2013 Test Coverage (0\u201325)")
+    print(f"  {'ambig':<12} Outcome criterion C \u2013 Ambiguity (0\u201325)")
+    print(f"  {'chsrf':<12} Outcome criterion D \u2013 Change Surface (0\u201325)")
     print(f"  {'total':<12} Number of /ll:* skills applied")

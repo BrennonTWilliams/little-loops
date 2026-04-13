@@ -216,6 +216,10 @@ class IssueInfo:
         impact: Impact estimate (1=low, 2=medium, 3=high), inferred from priority if absent
         confidence_score: Readiness score (0-100) written by /ll:confidence-check, or None
         outcome_confidence: Outcome confidence (0-100) written by /ll:confidence-check, or None
+        score_complexity: Outcome criterion A – Complexity (0-25), written by /ll:confidence-check, or None
+        score_test_coverage: Outcome criterion B – Test Coverage (0-25), written by /ll:confidence-check, or None
+        score_ambiguity: Outcome criterion C – Ambiguity (0-25), written by /ll:confidence-check, or None
+        score_change_surface: Outcome criterion D – Change Surface (0-25), written by /ll:confidence-check, or None
         testable: Whether TDD phase should be applied; False skips TDD, None treated as testable
         session_commands: Distinct /ll:* commands found in the ## Session Log section
         session_command_counts: Per-command occurrence counts from the ## Session Log section
@@ -234,6 +238,10 @@ class IssueInfo:
     impact: int | None = None
     confidence_score: int | None = None
     outcome_confidence: int | None = None
+    score_complexity: int | None = None
+    score_test_coverage: int | None = None
+    score_ambiguity: int | None = None
+    score_change_surface: int | None = None
     size: str | None = None
     testable: bool | None = None
     session_commands: list[str] = field(default_factory=list)
@@ -264,6 +272,10 @@ class IssueInfo:
             "impact": self.impact,
             "confidence_score": self.confidence_score,
             "outcome_confidence": self.outcome_confidence,
+            "score_complexity": self.score_complexity,
+            "score_test_coverage": self.score_test_coverage,
+            "score_ambiguity": self.score_ambiguity,
+            "score_change_surface": self.score_change_surface,
             "size": self.size,
             "testable": self.testable,
             "session_commands": self.session_commands,
@@ -287,6 +299,10 @@ class IssueInfo:
             impact=data.get("impact"),
             confidence_score=data.get("confidence_score"),
             outcome_confidence=data.get("outcome_confidence"),
+            score_complexity=data.get("score_complexity"),
+            score_test_coverage=data.get("score_test_coverage"),
+            score_ambiguity=data.get("score_ambiguity"),
+            score_change_surface=data.get("score_change_surface"),
             size=data.get("size"),
             testable=data.get("testable"),
             session_commands=data.get("session_commands", []),
@@ -354,6 +370,30 @@ class IssueParser:
         outcome_confidence = (
             int(outcome_raw) if outcome_raw is not None and str(outcome_raw).isdigit() else None
         )
+        complexity_raw = frontmatter.get("score_complexity")
+        test_coverage_raw = frontmatter.get("score_test_coverage")
+        ambiguity_raw = frontmatter.get("score_ambiguity")
+        change_surface_raw = frontmatter.get("score_change_surface")
+        score_complexity = (
+            int(complexity_raw)
+            if complexity_raw is not None and str(complexity_raw).isdigit()
+            else None
+        )
+        score_test_coverage = (
+            int(test_coverage_raw)
+            if test_coverage_raw is not None and str(test_coverage_raw).isdigit()
+            else None
+        )
+        score_ambiguity = (
+            int(ambiguity_raw)
+            if ambiguity_raw is not None and str(ambiguity_raw).isdigit()
+            else None
+        )
+        score_change_surface = (
+            int(change_surface_raw)
+            if change_surface_raw is not None and str(change_surface_raw).isdigit()
+            else None
+        )
         testable_raw = frontmatter.get("testable")
         if isinstance(testable_raw, str):
             testable_value: bool | None = (
@@ -389,6 +429,10 @@ class IssueParser:
             impact=impact,
             confidence_score=confidence_score,
             outcome_confidence=outcome_confidence,
+            score_complexity=score_complexity,
+            score_test_coverage=score_test_coverage,
+            score_ambiguity=score_ambiguity,
+            score_change_surface=score_change_surface,
             size=size,
             testable=testable_value,
             session_commands=session_commands,

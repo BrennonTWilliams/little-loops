@@ -876,6 +876,10 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `discovered_by` | string | — | Tool or person that created the issue |
 | `confidence_score` | int (0–100) | absent | Readiness score from `/ll:confidence-check` |
 | `outcome_confidence` | int (0–100) | absent | Outcome confidence score from `/ll:confidence-check` |
+| `score_complexity` | int (0–25) | absent | Outcome criterion A – Complexity, from `/ll:confidence-check` |
+| `score_test_coverage` | int (0–25) | absent | Outcome criterion B – Test Coverage, from `/ll:confidence-check` |
+| `score_ambiguity` | int (0–25) | absent | Outcome criterion C – Ambiguity, from `/ll:confidence-check` |
+| `score_change_surface` | int (0–25) | absent | Outcome criterion D – Change Surface, from `/ll:confidence-check` |
 | `testable` | bool | absent (= true) | Set to `false` to skip Phase 3a (Write Tests — Red) when `tdd_mode: true` |
 | `size` | string | absent | Size label written by `/ll:issue-size-review`: `Small`, `Medium`, `Large`, or `Very Large` |
 

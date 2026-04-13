@@ -1593,3 +1593,178 @@ class TestIssueInfoSize:
         info = parser.parse_file(issue_file)
 
         assert info.size is None
+
+
+class TestIssueInfoScoreDimensions:
+    """Tests for IssueInfo score dimension fields (score_complexity, score_test_coverage,
+    score_ambiguity, score_change_surface)."""
+
+    def test_score_dimensions_default_none(self) -> None:
+        """All four dimension fields default to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1099",
+            title="Test",
+        )
+        assert info.score_complexity is None
+        assert info.score_test_coverage is None
+        assert info.score_ambiguity is None
+        assert info.score_change_surface is None
+
+    def test_score_dimensions_values(self) -> None:
+        """All four dimension fields can be set to integer values."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1099",
+            title="Test",
+            score_complexity=20,
+            score_test_coverage=18,
+            score_ambiguity=22,
+            score_change_surface=12,
+        )
+        assert info.score_complexity == 20
+        assert info.score_test_coverage == 18
+        assert info.score_ambiguity == 22
+        assert info.score_change_surface == 12
+
+    def test_score_dimensions_in_to_dict(self) -> None:
+        """All four dimension fields appear in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1099",
+            title="Test",
+            score_complexity=20,
+            score_test_coverage=18,
+            score_ambiguity=22,
+            score_change_surface=12,
+        )
+        data = info.to_dict()
+        assert data["score_complexity"] == 20
+        assert data["score_test_coverage"] == 18
+        assert data["score_ambiguity"] == 22
+        assert data["score_change_surface"] == 12
+
+    def test_score_dimensions_none_in_to_dict(self) -> None:
+        """None dimension fields are preserved as None in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1099",
+            title="Test",
+        )
+        data = info.to_dict()
+        assert data["score_complexity"] is None
+        assert data["score_test_coverage"] is None
+        assert data["score_ambiguity"] is None
+        assert data["score_change_surface"] is None
+
+    def test_score_dimensions_from_dict(self) -> None:
+        """All four dimension fields are restored from dict."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1099",
+            "title": "Test Issue",
+            "score_complexity": 20,
+            "score_test_coverage": 18,
+            "score_ambiguity": 22,
+            "score_change_surface": 12,
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.score_complexity == 20
+        assert info.score_test_coverage == 18
+        assert info.score_ambiguity == 22
+        assert info.score_change_surface == 12
+
+    def test_score_dimensions_from_dict_missing(self) -> None:
+        """from_dict defaults all four fields to None when keys are absent."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1099",
+            "title": "Test Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.score_complexity is None
+        assert info.score_test_coverage is None
+        assert info.score_ambiguity is None
+        assert info.score_change_surface is None
+
+    def test_parse_file_score_dimensions_present(self, tmp_path: Path) -> None:
+        """Integration: parse_file reads all four dimension scores from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P3-ENH-1099-dims-test.md"
+        issue_file.write_text(
+            "---\n"
+            "score_complexity: 20\n"
+            "score_test_coverage: 18\n"
+            "score_ambiguity: 22\n"
+            "score_change_surface: 12\n"
+            "---\n"
+            "# ENH-1099: Dimension Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.score_complexity == 20
+        assert info.score_test_coverage == 18
+        assert info.score_ambiguity == 22
+        assert info.score_change_surface == 12
+
+    def test_parse_file_score_dimensions_absent(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields None for all four fields when absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P3-ENH-1100-no-dims.md"
+        issue_file.write_text(
+            "---\ndiscovered_by: scan-codebase\n---\n# ENH-1100: No Dimensions\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.score_complexity is None
+        assert info.score_test_coverage is None
+        assert info.score_ambiguity is None
+        assert info.score_change_surface is None

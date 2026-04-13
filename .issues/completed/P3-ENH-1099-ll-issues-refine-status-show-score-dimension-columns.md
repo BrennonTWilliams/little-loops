@@ -172,6 +172,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 15. In `test_issue_parser.py`, add `TestIssueInfoScoreDimensions` class (modeled after `TestIssueInfoSize`, lines 1455–1595) covering default-None, value, `to_dict`, `from_dict`, `parse_file` present/absent for all four fields
 16. Extend JSON record assertions in `test_refine_status.py` at lines 819–827, 855–858, and 1372–1374 to include all 4 new dimension score fields
 
+## Scope Boundaries
+
+- **Not in scope**: Changes to the confidence-check scoring algorithm, criteria weights, or thresholds — this enhancement only exposes already-computed values
+- **Not in scope**: Adding new scoring criteria beyond the existing four (Complexity, Test Coverage, Ambiguity, Change Surface)
+- **Not in scope**: Making dimension score fields required frontmatter — issues without scores display `—` (backward-compatible additive change)
+- **Not in scope**: Filtering or sorting by individual dimension scores in `refine-status` — display-only columns
+- **Not in scope**: Changes to existing `ready` or `conf` column behavior
+
 ## Impact
 
 - **Files changed**: ~3–4 (SKILL.md, issue_parser.py, refine_status.py, test_refine_status.py)
@@ -192,14 +200,40 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
+## Resolution
+
+**State**: Completed  
+**Completed**: 2026-04-13
+
+### Changes Made
+
+- `skills/confidence-check/SKILL.md` — Extended Phase 4 frontmatter write-back to include `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface` (0–25 each) alongside the existing aggregate scores
+- `scripts/little_loops/issue_parser.py` — Added 4 new `int | None = None` fields to `IssueInfo`; added parse blocks, `to_dict`, `from_dict` entries, and constructor args
+- `scripts/little_loops/cli/issues/refine_status.py` — Added 4 column specs (`cmplx`, `tcov`, `ambig`, `chsrf`) to `_STATIC_COLUMN_SPECS`, `_DEFAULT_STATIC_COLUMNS`, `_POST_CMD_STATIC`, `_DEFAULT_ELIDE_ORDER`; added `_cell_value` branches; updated both JSON output blocks; added legend entries to `_print_key`
+- `scripts/tests/test_refine_status.py` — Extended `_make_issue` with 4 new params; added `test_dimension_score_columns_present` and `test_dimension_score_columns_absent`; updated JSON assertion tests; added terminal width mocks to 5 tests that needed wide-terminal rendering
+- `scripts/tests/test_issue_parser.py` — Added `TestIssueInfoScoreDimensions` class (8 tests covering default-None, values, `to_dict`, `from_dict`, `parse_file` present/absent)
+- `config-schema.json` — Updated `columns` description to list new column names
+- `docs/reference/API.md` — Added 4 new `IssueInfo` fields to dataclass listing
+- `docs/reference/CLI.md` — Added column names to refine-status description and updated elide order description
+- `docs/reference/CONFIGURATION.md` — Updated valid `columns` enumeration and default `elide_order`
+- `docs/reference/ISSUE_TEMPLATE.md` — Added 4 new optional frontmatter fields
+
+### Verification
+
+All 4757 tests pass.
+
+---
+
 ## Status
 
-**State**: Open
+**State**: Completed
 **Assignee**: —
 **Milestone**: —
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T20:15:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4119b7f-c66e-4356-ba44-626aab115633.jsonl`
 - `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c3151a7-1ff6-4fbf-9704-43e5cc5e1606.jsonl`
 - `/ll:wire-issue` - 2026-04-13T20:09:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53122ea2-9d1d-40fb-96e4-bb9f54c45744.jsonl`
 - `/ll:refine-issue` - 2026-04-13T19:29:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9695aacf-403b-43f3-b1c5-452f7a1b7656.jsonl`
 - `/ll:capture-issue` - 2026-04-13T14:24:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac88abde-52c1-42fa-afd6-ba7adbf884d8.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00 - implemented

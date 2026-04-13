@@ -486,8 +486,8 @@ Display settings for `ll-issues refine-status` / `ll-issues rs`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `columns` | `[]` (all defaults) | Ordered list of columns to display. Valid names: `id`, `priority`, `size`, `title`, `source`, `norm`, `fmt`, `ready`, `confidence`, `total`. Empty list uses the default set. |
-| `elide_order` | `["source", "norm", "fmt", "size", "confidence", "ready", "total"]` | Ordered list of columns to drop (first to last) when the table exceeds terminal width. `id`, `priority`, and `title` are always pinned and cannot be elided. Any column omitted from this list (other than pinned columns) is dropped rightmost-first after the explicit list is exhausted. Empty list (`[]`) restores the default drop sequence. |
+| `columns` | `[]` (all defaults) | Ordered list of columns to display. Valid names: `id`, `priority`, `size`, `title`, `source`, `norm`, `fmt`, `ready`, `confidence`, `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface`, `total`. Empty list uses the default set. |
+| `elide_order` | `["source", "norm", "fmt", "size", "score_change_surface", "score_ambiguity", "score_test_coverage", "score_complexity", "confidence", "ready", "total"]` | Ordered list of columns to drop (first to last) when the table exceeds terminal width. `id`, `priority`, and `title` are always pinned and cannot be elided. Any column omitted from this list (other than pinned columns) is dropped rightmost-first after the explicit list is exhausted. Empty list (`[]`) restores the default drop sequence. |
 
 **Example** — drop `source` and `fmt` before other columns on narrow terminals:
 

@@ -101,6 +101,7 @@ states:
       pattern: "CAPTURED"
     on_yes: score
     on_no: generate
+    on_error: generate
 
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
@@ -147,6 +148,7 @@ states:
       pattern: "PASS"
     on_yes: done
     on_no: generate
+    on_error: failed
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
@@ -162,4 +164,10 @@ states:
       - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
 
       Report these paths to the user and confirm the SVG is ready.
+    terminal: true
+
+  failed:
+    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
+    # (e.g. LLM failure in score state). Provides a clear signal distinct from a
+    # max_iterations timeout, making failure mode visible in ll-loop history.
     terminal: true

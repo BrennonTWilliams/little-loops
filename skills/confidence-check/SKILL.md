@@ -397,10 +397,10 @@ Combine both scores in the final output. The readiness score drives the go/no-go
 
 ### Phase 4: Update Frontmatter
 
-After scoring, update the issue file's YAML frontmatter with both scores.
+After scoring, update the issue file's YAML frontmatter with both aggregate scores and the four per-dimension scores from Phase 2b (criteria A–D).
 
 If the issue file has existing frontmatter (starts with `---`):
-- Add or update the `confidence_score` and `outcome_confidence` fields within the frontmatter block
+- Add or update the `confidence_score`, `outcome_confidence`, and the four `score_*` fields within the frontmatter block
 - Use the Edit tool to replace the frontmatter section
 
 Example — if frontmatter is:
@@ -418,16 +418,30 @@ discovered_date: 2026-02-13
 discovered_by: capture-issue
 confidence_score: 85
 outcome_confidence: 62
+score_complexity: 20
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 12
 ---
 ```
 
-If `confidence_score` or `outcome_confidence` already exist, replace their values with the new scores.
+Where the four `score_*` values are the per-criterion integer scores (0–25 each) recorded during Phase 2b:
+- `score_complexity` — Criterion A score
+- `score_test_coverage` — Criterion B score
+- `score_ambiguity` — Criterion C score
+- `score_change_surface` — Criterion D score
+
+If any of these fields already exist, replace their values with the new scores.
 
 If the issue file has no frontmatter, add one:
 ```yaml
 ---
 confidence_score: 85
 outcome_confidence: 62
+score_complexity: 20
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 12
 ---
 ```
 

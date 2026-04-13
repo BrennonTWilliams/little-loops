@@ -23,6 +23,10 @@ def _make_issue(
     *,
     confidence_score: int | None = None,
     outcome_confidence: int | None = None,
+    score_complexity: int | None = None,
+    score_test_coverage: int | None = None,
+    score_ambiguity: int | None = None,
+    score_change_surface: int | None = None,
     session_commands: list[str] | None = None,
     size: str | None = None,
 ) -> None:
@@ -32,6 +36,14 @@ def _make_issue(
         frontmatter_lines.append(f"confidence_score: {confidence_score}")
     if outcome_confidence is not None:
         frontmatter_lines.append(f"outcome_confidence: {outcome_confidence}")
+    if score_complexity is not None:
+        frontmatter_lines.append(f"score_complexity: {score_complexity}")
+    if score_test_coverage is not None:
+        frontmatter_lines.append(f"score_test_coverage: {score_test_coverage}")
+    if score_ambiguity is not None:
+        frontmatter_lines.append(f"score_ambiguity: {score_ambiguity}")
+    if score_change_surface is not None:
+        frontmatter_lines.append(f"score_change_surface: {score_change_surface}")
     if size is not None:
         frontmatter_lines.append(f"size: {size}")
 
@@ -303,8 +315,14 @@ class TestRefineStatusTable:
             session_commands=["/ll:issue-size-review"],
         )
 
-        with patch.object(
-            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        import os
+
+        fake_size = os.terminal_size((200, 40))
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -346,6 +364,87 @@ class TestRefineStatusTable:
         assert "size" in out, "Size column header should appear"
         assert "\u2014" in out, "Em-dash should appear for issues without size"
 
+    def test_dimension_score_columns_present(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Dimension score fields are shown as integers when present in frontmatter."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-033-dims.md",
+            "FEAT-033: Issue with dimension scores",
+            confidence_score=85,
+            outcome_confidence=62,
+            score_complexity=20,
+            score_test_coverage=18,
+            score_ambiguity=22,
+            score_change_surface=12,
+            session_commands=["/ll:confidence-check"],
+        )
+
+        import os
+
+        fake_size = os.terminal_size((200, 40))
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "cmplx" in out, "Complexity column header should appear"
+        assert "tcov" in out, "Test coverage column header should appear"
+        assert "ambig" in out, "Ambiguity column header should appear"
+        assert "chsrf" in out, "Change surface column header should appear"
+        assert "20" in out, "score_complexity value should appear"
+        assert "18" in out, "score_test_coverage value should appear"
+        assert "22" in out, "score_ambiguity value should appear"
+        assert "12" in out, "score_change_surface value should appear"
+
+    def test_dimension_score_columns_absent(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Dimension score columns show em-dash when frontmatter fields are absent."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-034-no-dims.md",
+            "FEAT-034: Issue without dimension scores",
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "cmplx" in out, "Complexity column header should appear"
+        assert "\u2014" in out, "Em-dash should appear for missing dimension scores"
+
     def test_size_very_large_not_truncated(
         self,
         temp_project_dir: Path,
@@ -366,8 +465,14 @@ class TestRefineStatusTable:
             size="Very Large",
         )
 
-        with patch.object(
-            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        import os
+
+        fake_size = os.terminal_size((200, 40))
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -440,8 +545,14 @@ class TestRefineStatusTable:
             bugs_dir, "P2-BUG-080-normalized.md", "BUG-080: Normalized filename"
         )
 
-        with patch.object(
-            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        import os
+
+        fake_size = os.terminal_size((200, 40))
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -468,8 +579,14 @@ class TestRefineStatusTable:
 
         _make_issue(bugs_dir, "invalid-filename.md", "Non-normalized issue")
 
-        with patch.object(
-            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        import os
+
+        fake_size = os.terminal_size((200, 40))
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -821,6 +938,10 @@ class TestRefineStatusJson:
         assert record["priority"] == "P1"
         assert record["confidence_score"] == 90
         assert record["outcome_confidence"] == 80
+        assert record["score_complexity"] is None
+        assert record["score_test_coverage"] is None
+        assert record["score_ambiguity"] is None
+        assert record["score_change_surface"] is None
         assert "refine-issue" in record["commands"][0]
         assert record["total"] == 2
         assert record["refine_count"] == 1
@@ -855,6 +976,10 @@ class TestRefineStatusJson:
         record = json.loads(out.strip())
         assert record["confidence_score"] is None
         assert record["outcome_confidence"] is None
+        assert record["score_complexity"] is None
+        assert record["score_test_coverage"] is None
+        assert record["score_ambiguity"] is None
+        assert record["score_change_surface"] is None
         assert record["total"] == 0
 
     def test_json_normalized_field(
@@ -1371,6 +1496,10 @@ class TestRefineStatusJsonFlag:
         assert record["priority"] == "P2"
         assert record["confidence_score"] == 90
         assert record["outcome_confidence"] == 80
+        assert record["score_complexity"] is None
+        assert record["score_test_coverage"] is None
+        assert record["score_ambiguity"] is None
+        assert record["score_change_surface"] is None
         assert record["total"] == 1
         assert record["refine_count"] == 1
         assert "normalized" in record
@@ -1733,8 +1862,24 @@ class TestColumnElision:
         import os
 
         # Configure elide_order that does NOT include "norm" — it should be pinned.
-        # "size" is included so it can be dropped and the table still fits at 70 cols.
-        config = {**sample_config, "refine_status": {"elide_order": ["source", "fmt", "size"]}}
+        # Dimension columns are included so they can be dropped to meet the narrow terminal.
+        config = {
+            **sample_config,
+            "refine_status": {
+                "elide_order": [
+                    "source",
+                    "fmt",
+                    "size",
+                    "score_change_surface",
+                    "score_ambiguity",
+                    "score_test_coverage",
+                    "score_complexity",
+                    "confidence",
+                    "ready",
+                    "total",
+                ]
+            },
+        }
         _write_config(temp_project_dir, config)
         bugs_dir = self._setup_issues_dir(temp_project_dir)
 
