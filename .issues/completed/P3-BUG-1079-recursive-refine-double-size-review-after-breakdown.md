@@ -170,6 +170,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `loops`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T01:45:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579bfd95-9ed4-4bec-8204-290aa9e0bfbe.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99711cfa-c6a8-4520-8e2f-6622a3224ca6.jsonl`
 - `/ll:wire-issue` - 2026-04-12T23:03:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3cd62e7-0dae-42cb-bbc9-f72e7d7cff7b.jsonl`
 - `/ll:refine-issue` - 2026-04-12T22:40:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7c9802d-2089-4939-b342-91f160e169da.jsonl`
@@ -178,6 +179,36 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
+## Resolution
+
+**Fixed** | Resolved: 2026-04-12 | Priority: P3
+
+### Changes Made
+
+1. **`scripts/little_loops/loops/refine-to-ready-issue.yaml`**:
+   - Added `write_broke_down` state after `breakdown_issue` that writes `printf '1' > .loops/tmp/recursive-refine-broke-down` before exiting to `done`
+   - Changed `breakdown_issue.next` from `done` to `write_broke_down`
+   - Added `printf '0' > .loops/tmp/recursive-refine-broke-down` to `resolve_issue` init block so the flag is cleared for non-`recursive-refine` callers (e.g. `issue-refinement.yaml`)
+
+2. **`scripts/little_loops/loops/recursive-refine.yaml`**:
+   - Added `check_broke_down` guard state between `size_review_snap` and `recheck_scores`; reads the flag file with `output_numeric lt 1`; routes `on_no` to `enqueue_or_skip` (skip), `on_yes`/`on_error` to `recheck_scores` (proceed normally)
+   - Changed `size_review_snap.next` from `recheck_scores` to `check_broke_down`
+   - Added `rm -f .loops/tmp/recursive-refine-broke-down` to `capture_baseline` to clear the flag at the start of each per-issue iteration
+
+3. **`scripts/tests/test_builtin_loops.py`**:
+   - Updated `test_required_states_exist` (added `check_broke_down`)
+   - Renamed `test_size_review_snap_routes_to_recheck_scores` → `test_size_review_snap_routes_to_check_broke_down`
+   - Updated `test_breakdown_issue_routes_to_done` → `test_breakdown_issue_routes_to_write_broke_down`
+   - Added 6 new tests for `check_broke_down` in `TestRecursiveRefineLoop`
+   - Added 4 new tests for `write_broke_down` in `TestRefineToReadyIssueSubLoop`
+
+4. **`docs/guides/LOOPS_GUIDE.md`**: Updated FSM diagram, Technique prose, Score gate callout (added Breakdown guard section), and Notes tmp-files list.
+
+### Verification
+
+- `python -m pytest scripts/tests/test_builtin_loops.py` — 54 tests pass (including all 10 new)
+- `python -m pytest scripts/tests/test_fsm_fragments.py` — 57 tests pass
+
 ## Status
 
-**Open** | Created: 2026-04-12 | Priority: P3
+**Completed** | Created: 2026-04-12 | Resolved: 2026-04-12 | Priority: P3
