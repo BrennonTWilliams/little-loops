@@ -731,6 +731,74 @@ init → plan → generate → evaluate
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - To customize the scoring criteria, install the loop locally (`ll-loop install svg-image-generator`) and edit the `score` state's prompt.
 
+### `svg-textgrad` — TextGrad-Style SVG Optimization Loop
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`).
+
+**Technique**: A TextGrad-style adaptation of `svg-image-generator`. Instead of feeding raw critique directly back to the generator, the loop treats the **visual brief** as the optimizable artifact. After each failed evaluation, a `compute_gradient` state analyzes `critique.md` against `brief.md` to produce a structured gradient — three labeled lines: `FAILURE_PATTERN`, `ROOT_CAUSE`, and `GRADIENT`. The gradient is appended to `gradients.md` (a running history), and `apply_gradient` rewrites `brief.md` to address the root cause. The generator then works from the improved brief rather than reconciling conflicting signals from brief + raw critique simultaneously.
+
+**Gradient escalation**: `compute_gradient` reads the full `gradients.md` history. If the same `ROOT_CAUSE` appears two or more times, the loop escalates the gradient — demanding a stronger structural change to `brief.md` rather than a minor tweak. This prevents the loop from stalling on a persistent failure pattern.
+
+**When to use**: When `svg-image-generator` converges to a local optimum — producing SVGs that are technically valid but aesthetically wrong in a repeatable way. The TextGrad approach is better at fixing systematic brief problems (vague color specs, missing scale constraints, contradictory requirements) because it optimizes the *specification* rather than reacting to each failure in isolation.
+
+**Usage:**
+
+```bash
+ll-loop run svg-textgrad "a minimalist coffee cup icon"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
+| `output_dir` | `.loops/tmp/svg-textgrad` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/svg-textgrad/20260413-143022/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, and `screenshot.png` |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
+
+Override per-run:
+
+```bash
+ll-loop run svg-textgrad "lightning bolt icon" \
+  --context output_dir=/tmp/my-icon \
+  --context pass_threshold=7
+```
+
+**FSM flow:**
+
+```
+init → plan → generate → evaluate
+                            ├─ CAPTURED → score
+                            │              ├─ PASS    → done
+                            │              └─ ITERATE → compute_gradient → append_gradient → apply_gradient → generate
+                            └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+```
+
+**Evaluation criteria** (same four as `svg-image-generator`; all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `visual_clarity` | 2× | Is the concept immediately readable at icon scale? Can you identify it within 2 seconds? |
+| `originality` | 2× | Evidence of custom creative decisions? Penalizes default clip-art silhouettes and generic geometric shapes. |
+| `craft` | 1× | Clean paths, consistent stroke weights, deliberate proportions, effective use of negative space |
+| `scalability` | 1× | Does the level of detail hold up at small sizes (≤32px)? Penalizes excessive complexity. |
+
+**Output files** (written to the timestamped run folder):
+
+| File | Description |
+|------|-------------|
+| `image.svg` | The generated SVG (primary output) |
+| `brief.md` | The final gradient-optimized visual brief |
+| `critique.md` | The last evaluation scores and per-criterion notes |
+| `gradients.md` | Full gradient history: one entry per iteration, with `FAILURE_PATTERN`, `ROOT_CAUSE`, and `GRADIENT` lines |
+| `screenshot.png` | The last Playwright-captured render |
+
+**Notes:**
+- The SVG generator receives only `brief.md` — it never sees `critique.md` directly. Critique is consumed exclusively by `compute_gradient`. This keeps the generator working from a coherent specification rather than reconciling conflicting signals.
+- If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the SVG source rather than a screenshot.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- To customize scoring criteria or gradient computation, install the loop locally (`ll-loop install svg-textgrad`) and edit the `score` or `compute_gradient` state's prompt.
+- Prefer `svg-image-generator` for quick iterations; reach for `svg-textgrad` when you see the same failure pattern repeating across iterations.
+
 ## Beyond the Basics
 
 The sections below cover features you'll encounter as you move past simple loops: evaluators, variable interpolation, capture, routing, action types, retry and timing fields, handoff behavior, and scope-based concurrency. For full technical details — schema definitions, compiler internals, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md).
