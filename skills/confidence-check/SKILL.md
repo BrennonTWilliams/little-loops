@@ -440,18 +440,9 @@ After presenting the output, determine whether there are findings to write back.
 - **Gaps to Address** (present when readiness score < 70)
 - **Outcome Risk Factors** (present when outcome confidence < 60)
 
-**Interactive mode** (`AUTO_MODE` is false):
+If `HAS_FINDINGS` is false: skip (clean bill of health — no update needed).
 
-If `HAS_FINDINGS` is true, use `AskUserQuestion` to ask:
-> "Should I update the issue file to include these findings (concerns, gaps, and risk factors)?"
-
-Options: Yes / No
-
-**Auto mode bypass**: When `AUTO_MODE` is true and `HAS_FINDINGS` is true, skip the `AskUserQuestion` prompt and proceed automatically.
-
-**Auto mode with no findings** (`AUTO_MODE` is true and `HAS_FINDINGS` is false): Skip (clean bill of health — no update needed).
-
-If the user confirms (interactive) or `AUTO_MODE` is true with findings, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):
+If `HAS_FINDINGS` is true, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):
 
 ```markdown
 ## Confidence Check Notes
@@ -474,7 +465,7 @@ _(omit this subsection if no gaps)_
 _(omit this subsection if no risk factors)_
 ```
 
-After appending findings (or skipping if no findings/user declined), stage the updated issue file:
+After appending findings (or skipping if no findings), stage the updated issue file:
 
 ```bash
 git add "[issue-file-path]"
