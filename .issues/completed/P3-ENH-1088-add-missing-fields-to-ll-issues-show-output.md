@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-12
 discovered_by: /ll:capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # ENH-1088: Add missing fields to ll-issues show output
@@ -129,11 +131,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 `cli`, `ll-issues`, `show`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T01:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eb5963e-38bb-46a0-86b5-f4effd434cb7.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ff2181d-6ede-47a8-9549-e752a280945a.jsonl`
 - `/ll:wire-issue` - 2026-04-13T01:00:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90984138-30d2-411d-a35b-e7b980602eb0.jsonl`
 - `/ll:refine-issue` - 2026-04-13T00:54:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0b40f01-0f45-4840-a5cb-6aa6c3c11276.jsonl`
 - `/ll:capture-issue` - 2026-04-12T19:44:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5dd91ad2-03f5-4e33-9759-d4e7dc16b21f.jsonl`
 
 ---
 
+## Resolution
+
+**Status**: Completed | **Resolved**: 2026-04-12
+
+### Changes Made
+- `scripts/little_loops/cli/issues/show.py`: Added `_SHOW_CMD_ALIASES` dict and `_source_label()` helper; extended `_parse_card_fields()` to extract `source`, `norm`, `fmt`; updated `_render_card()` to display `Source: <label>  │  Norm: ✓/✗  │  Fmt: ✓/✗` as first detail line
+- `scripts/tests/test_issues_cli.py`: Added `test_show_with_source_norm_fmt`, `test_show_json_includes_source_norm_fmt`; updated `test_show_new_fields_absent_gracefully`
+- `docs/reference/CLI.md`, `docs/reference/OUTPUT_STYLING.md`, `docs/reference/API.md`: Updated show documentation
+
+### Verification
+- All 94 `test_issues_cli.py` tests pass
+
 ## Status
-**Open** | Created: 2026-04-12 | Priority: P3
+**Completed** | Created: 2026-04-12 | Priority: P3

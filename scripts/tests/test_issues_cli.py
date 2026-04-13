@@ -1375,6 +1375,8 @@ class TestIssuesCLIShow:
         assert "Risk:" not in captured.out
         assert "Labels:" not in captured.out
         assert "History:" not in captured.out
+        # Source is absent (no discovered_by in frontmatter); Norm/Fmt still appear
+        assert "Source:" not in captured.out
 
     def test_show_json_output(
         self,
@@ -1450,6 +1452,69 @@ class TestIssuesCLIShow:
             result = main_issues()
 
         assert result == 1
+
+    def test_show_with_source_norm_fmt(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays Source, Norm, and Fmt fields from frontmatter and filename."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        enh_dir = temp_project_dir / ".issues" / "enhancements"
+        enh_dir.mkdir(parents=True, exist_ok=True)
+        (enh_dir / "P3-ENH-400-source-test.md").write_text(
+            "---\ndiscovered_by: /ll:capture-issue\n---\n# ENH-400: Source test\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "ENH-400", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Source: capture" in captured.out
+        assert "Norm: \u2713" in captured.out
+
+    def test_show_json_includes_source_norm_fmt(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output includes source, norm, and fmt keys."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        enh_dir = temp_project_dir / ".issues" / "enhancements"
+        enh_dir.mkdir(parents=True, exist_ok=True)
+        (enh_dir / "P3-ENH-401-json-fields-test.md").write_text(
+            "---\ndiscovered_by: /ll:scan-codebase\n---\n# ENH-401: JSON fields test\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "ENH-401", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "source" in data
+        assert "norm" in data
+        assert "fmt" in data
+        assert data["source"] == "scan"
 
 
 class TestIssuesCLICount:

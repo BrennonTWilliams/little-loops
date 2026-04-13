@@ -14,6 +14,21 @@ if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
 
+_SHOW_CMD_ALIASES: dict[str, str] = {
+    "/ll:capture-issue": "capture",
+    "/ll:scan-codebase": "scan",
+    "/ll:audit-architecture": "audit",
+    "/ll:format-issue": "format",
+}
+
+
+def _source_label(discovered_by: str | None) -> str:
+    """Return a short display label for the discovered_by frontmatter field."""
+    if not discovered_by:
+        return "\u2014"
+    return _SHOW_CMD_ALIASES.get(discovered_by, discovered_by[:7])
+
+
 def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     """Resolve user input to an issue file path.
 
@@ -132,6 +147,14 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     confidence = frontmatter.get("confidence_score")
     outcome = frontmatter.get("outcome_confidence")
     effort = frontmatter.get("effort")
+    discovered_by = frontmatter.get("discovered_by")
+
+    # Source / norm / fmt fields
+    from little_loops.issue_parser import is_formatted, is_normalized
+
+    source = _source_label(discovered_by)
+    norm = "\u2713" if is_normalized(path.name) else "\u2717"
+    fmt = "\u2713" if is_formatted(path) else "\u2717"
 
     # --- New fields ---
 
@@ -202,6 +225,9 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "labels": labels,
         "history": history,
         "path": rel_path,
+        "source": source,
+        "norm": norm,
+        "fmt": fmt,
     }
 
 
@@ -266,8 +292,20 @@ def _render_card(fields: dict[str, str | None]) -> str:
         score_parts.append(f"Outcome: {fields['outcome']}")
     scores_line = "  \u2502  ".join(score_parts) if score_parts else None
 
-    # Build detail lines (integration+labels, history)
+    # Build detail lines (source/norm/fmt, integration+labels, history)
     detail_lines: list[str] = []
+    source_parts: list[str] = []
+    source_val = fields.get("source")
+    if source_val and source_val != "\u2014":
+        source_parts.append(f"Source: {source_val}")
+    norm_val = fields.get("norm")
+    if norm_val:
+        source_parts.append(f"Norm: {norm_val}")
+    fmt_val = fields.get("fmt")
+    if fmt_val:
+        source_parts.append(f"Fmt: {fmt_val}")
+    if source_parts:
+        detail_lines.append("  \u2502  ".join(source_parts))
     detail_mid_parts: list[str] = []
     if fields.get("integration_files"):
         detail_mid_parts.append(f"Integration: {fields['integration_files']} files")

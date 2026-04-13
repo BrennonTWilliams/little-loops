@@ -105,19 +105,30 @@ logo = get_logo()     # returns str | None
 ### Layout
 
 ```
-┌──────────────────────────────────────┐
-│ FEAT-518: Issue title                │
-├──────────────────────────────────────┤
-│ Priority: P3  │  Status: Open        │
-├──────────────────────────────────────┤
-│ Summary text wrapped to content      │
-│ width...                             │
-├──────────────────────────────────────┤
-│ Integration: 4 files  │  Labels: ... │
-├──────────────────────────────────────┤
-│ Path: .issues/features/...           │
-└──────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ FEAT-518: Issue title                            │
+├──────────────────────────────────────────────────┤
+│ Priority: P3  │  Status: Open                    │
+│ Confidence: 85  │  Outcome: 78                   │
+├──────────────────────────────────────────────────┤
+│ Summary text wrapped to content                  │
+│ width...                                         │
+├──────────────────────────────────────────────────┤
+│ Source: capture  │  Norm: ✓  │  Fmt: ✗           │
+│ Integration: 4 files  │  Labels: cli, ll-issues  │
+│ History: /ll:capture-issue, /ll:refine-issue     │
+├──────────────────────────────────────────────────┤
+│ Path: .issues/features/...                       │
+└──────────────────────────────────────────────────┘
 ```
+
+**Detail line fields:**
+
+| Field | Source | Display |
+|-------|--------|---------|
+| `Source` | `discovered_by` frontmatter | Short alias (`capture`, `scan`, `audit`, `format`) or first 7 chars; omitted if absent |
+| `Norm` | Filename pattern check | `✓` if matches `P[0-5]-TYPE-NNN-desc.md`, `✗` otherwise |
+| `Fmt` | Required sections check | `✓` if file has all required template sections, `✗` otherwise |
 
 Width is computed dynamically: the maximum of all content line lengths plus 2 padding, with a minimum of 62 characters. The summary section is wrapped with `textwrap.wrap()` to fit the structural width.
 

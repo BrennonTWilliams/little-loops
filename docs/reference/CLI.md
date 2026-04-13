@@ -427,9 +427,11 @@ Count active issues. Outputs a single integer by default, or a JSON object with 
 
 Show summary card for a single issue. Accepts short form (`518`), type-prefixed (`FEAT-518`), or full (`P3-FEAT-518`). Searches all active category directories, the completed directory, and the deferred directory.
 
+The card includes: ID, title, priority, status, effort, risk, confidence scores, source (discovered_by), norm (normalized filename check), fmt (formatted/required sections check), integration file count, labels, session history, and path.
+
 | Flag | Description |
 |------|-------------|
-| `--json` / `-j` | Output issue fields as JSON |
+| `--json` / `-j` | Output issue fields as JSON (includes `source`, `norm`, `fmt` keys) |
 
 #### `ll-issues path <issue_id>` / `ll-issues p <issue_id>`
 
