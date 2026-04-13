@@ -28,7 +28,7 @@ states:
     action_type: shell
     action: |
       TS=$(date -u +%Y%m%d-%H%M%S)
-      DIR="${captured.run_dir.output}/$TS"
+      DIR="${context.output_dir}/$TS"
       mkdir -p "$DIR"
       echo "$DIR"
     capture: run_dir
