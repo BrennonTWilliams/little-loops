@@ -385,11 +385,11 @@ get_next_issue → [issue found?]
 
 **Notes**: All tmp files are prefixed `sprint-refine-and-implement-*` to avoid state collision with `auto-refine-and-implement` when both loops are used in the same project. The loop uses `on_handoff: spawn` and `max_iterations: 500` with an 8-hour global timeout, so it can survive session boundaries for long sprints.
 
-**Skip tracking**: When `recursive-refine` marks an issue as skipped (refinement failure or decomposition), it is written to `.loops/tmp/sprint-refine-and-implement-skipped.txt` — both for the current run and for any future resume of the same sprint. On resume, `get_next_issue` reads the skip file and advances past any previously processed issues.
+**Skip tracking**: When `recursive-refine` marks an issue as skipped (refinement failure or decomposition), it is written to `.loops/tmp/sprint-refine-and-implement-skipped.txt` — both for the current run and for any future resume of the same sprint. Decomposed parents are additionally moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset. On resume, `get_next_issue` reads the skip file and advances past any previously processed issues.
 
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 
-**Technique**: For each backlog issue in priority order, run `recursive-refine` as a sub-loop to bring it to ready status (with automatic decomposition of oversized issues into child issues). After refinement, all issues that passed are queued for implementation via `ll-auto --only`; decomposed parents and failed issues are recorded in a skip list and excluded from subsequent `ll-issues next-issue` calls so the loop never retries a persistently failing issue.
+**Technique**: For each backlog issue in priority order, run `recursive-refine` as a sub-loop to bring it to ready status (with automatic decomposition of oversized issues into child issues). After refinement, all issues that passed are queued for implementation via `ll-auto --only`; decomposed parents are moved to `.issues/completed/` and recorded in a skip list; failed issues are recorded in a skip list — both are excluded from subsequent `ll-issues next-issue` calls so the loop never retries a persistently failing issue.
 
 **When to use**: When you want fully-automated end-to-end issue processing — from raw backlog to committed implementation — without manual intervention between refinement and implementation. Prefer `issue-refinement` if you only want to refine issues without implementing them, or `ll-auto` for direct implementation without the refinement pass.
 
@@ -483,7 +483,7 @@ Passed  (2): FEAT-42, FEAT-43
 Skipped (1): BUG-17
 ```
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`.
 
 **Code Quality**
 

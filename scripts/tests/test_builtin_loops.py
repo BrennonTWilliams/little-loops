@@ -1166,6 +1166,47 @@ class TestRecursiveRefineLoop:
             "enqueue_or_skip must filter candidates by 'Decomposed from' parent reference"
         )
 
+    def test_enqueue_children_moves_parent_to_completed(self, data: dict) -> None:
+        """enqueue_children must find and move the parent file to .issues/completed/ after decomposition."""
+        state = data["states"].get("enqueue_children", {})
+        action = state.get("action", "")
+        assert "find .issues" in action, (
+            "enqueue_children must use 'find .issues' to locate the parent file"
+        )
+        assert "completed" in action, (
+            "enqueue_children must reference 'completed' directory for the move"
+        )
+        assert "mv" in action, (
+            "enqueue_children must contain 'mv' to move the parent file"
+        )
+
+    def test_enqueue_or_skip_moves_parent_to_completed_when_children_found(self, data: dict) -> None:
+        """enqueue_or_skip children-found branch must find and move the parent file to .issues/completed/."""
+        state = data["states"].get("enqueue_or_skip", {})
+        action = state.get("action", "")
+        # The find+mv block must appear before the 'else' (no-children branch)
+        children_branch = action.split("else")[0] if "else" in action else action
+        assert "find .issues" in children_branch, (
+            "enqueue_or_skip children-found branch must use 'find .issues' to locate the parent file"
+        )
+        assert "completed" in children_branch, (
+            "enqueue_or_skip children-found branch must reference 'completed' directory"
+        )
+        assert "mv" in children_branch, (
+            "enqueue_or_skip children-found branch must contain 'mv' to move the parent file"
+        )
+
+    def test_enqueue_or_skip_else_does_not_move_parent(self, data: dict) -> None:
+        """enqueue_or_skip else branch (no children) must NOT move the parent to completed/."""
+        state = data["states"].get("enqueue_or_skip", {})
+        action = state.get("action", "")
+        assert "else" in action, "enqueue_or_skip must have an else branch"
+        else_branch = action.split("else", 1)[1]
+        assert "completed" not in else_branch, (
+            "enqueue_or_skip else branch must NOT move parent to completed/ — "
+            "issue remains open for future retry"
+        )
+
 
 class TestSprintBuildAndValidateLoop:
     """Structural tests for the sprint-build-and-validate FSM loop."""

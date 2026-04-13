@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-13
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # BUG-1096: recursive-refine does not move decomposed parents to completed
@@ -22,6 +24,14 @@ After `recursive-refine` decomposes a parent issue into children:
 ## Expected Behavior
 
 After decomposition, the parent issue file should be moved to `.issues/completed/` so that `ll-issues next-issue` never returns it again, regardless of skip file state.
+
+## Steps to Reproduce
+
+1. Have an active parent issue in `.issues/` whose size/complexity triggers decomposition
+2. Run `recursive-refine` — the parent is decomposed: children are enqueued and the parent ID is written to `.loops/tmp/recursive-refine-skipped.txt`
+3. Start a new run of `recursive-refine` (skip file cleared, e.g., after a restart or BUG-1095 fix)
+4. Observe: `ll-issues next-issue` returns the parent issue again (it was never moved to `completed/`)
+5. Observe: the parent is re-refined and re-decomposed, creating duplicate child issues
 
 ## Root Cause
 
@@ -71,18 +81,30 @@ Note: `git mv` first so the move is tracked in git history; `mv` fallback handle
 - `ll-issues` has no `complete` or `close` subcommand — shell `find + mv` is the only mechanism available in YAML loops
 - `scripts/little_loops/issue_lifecycle.py:294` — `_move_issue_to_completed()` is the Python equivalent but is not callable from shell
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml:37` — calls `loop: recursive-refine`; reads `recursive-refine-skipped.txt` at lines 48–49. The fix is additive (skip-list write is preserved), so this consumer is unaffected.
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml:51` — calls `loop: recursive-refine`; reads `recursive-refine-skipped.txt` at lines 62–63. Same analysis — unaffected.
+- `scripts/little_loops/loops/sprint-build-and-validate.yaml:117` — calls `loop: recursive-refine`; does not read output files. Unaffected.
+
 ### Dependent Issues
 - BUG-1095 (`auto-refine-and-implement` exits immediately) — this fix is a prerequisite: without it, cleared skip files cause re-decomposition of parents that should be completed
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py:959` — `TestRecursiveRefineLoop` class; add new test methods:
+- `scripts/tests/test_builtin_loops.py:960` — `TestRecursiveRefineLoop` class; add new test methods:
   - `test_enqueue_children_moves_parent_to_completed`: assert `enqueue_children` action contains `find .issues` and `mv` targeting `completed/`
   - `test_enqueue_or_skip_moves_parent_to_completed_when_children_found`: assert the `if [ -s ...new-children.txt ]` branch contains `find .issues` and `mv` targeting `completed/`
   - `test_enqueue_or_skip_else_does_not_move_parent`: assert the shell code after the `else` does NOT contain `mv` to `completed/`
 - `scripts/tests/test_next_issue.py` — verify that a file in `.issues/completed/` is excluded from `ll-issues next-issue` results (existing coverage validates the fix end-to-end)
+- `scripts/tests/test_fsm_fragments.py:836` — passive YAML schema validator; runs `load_and_validate("recursive-refine.yaml")` and will catch any structural breakage (unclosed quotes, invalid YAML keys) introduced by the fix. No changes needed; just include in the test run. [Wiring pass — `/ll:wire-issue`]
 
 ### Documentation
-- None required
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md:388,422` — prose states decomposed parents are "recorded in a skip list." After the fix they are also moved to `completed/` — these descriptions are incomplete and should be updated.
+- `docs/guides/LOOPS_GUIDE.md:462-476` — FSM flow diagram for `recursive-refine` does not show a move-to-completed step; optional update if diagram accuracy is desired.
+- `docs/guides/LOOPS_GUIDE.md:486` — skip-file description omits the file-move side-effect; update to note that decomposed parents are moved to `.issues/completed/` in addition to being recorded in the skip list.
 
 ## Implementation Steps
 
@@ -120,10 +142,25 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `loops`, `recursive-refine`, `captured`
 
+## Resolution
+
+**Status**: Resolved
+**Resolved date**: 2026-04-13
+**Resolution summary**: Added `find + git mv || mv` blocks to both decomposition paths in `recursive-refine.yaml` — after the skip-list write in `enqueue_children` and after the skip-list write in the children-found branch of `enqueue_or_skip`. Decomposed parents are now moved to `.issues/completed/` immediately after decomposition, so they never re-appear as active candidates after skip-file reset. Three structural tests added to `TestRecursiveRefineLoop`; LOOPS_GUIDE.md updated at the three affected prose locations.
+
+**Files changed**:
+- `scripts/little_loops/loops/recursive-refine.yaml` — `enqueue_children` and `enqueue_or_skip` states
+- `scripts/tests/test_builtin_loops.py` — 3 new tests in `TestRecursiveRefineLoop`
+- `docs/guides/LOOPS_GUIDE.md` — lines 388, 392, 486
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T15:50:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/080f67dd-1e35-435c-bf3f-82fe653d9c70.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc481db0-34a9-460a-bd1c-9d4fc83fa11a.jsonl`
+- `/ll:wire-issue` - 2026-04-13T15:00:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bceb0804-3abe-419c-a877-e6ee19f12e43.jsonl`
 - `/ll:refine-issue` - 2026-04-13T14:50:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d22c48e-5d04-4aa3-8512-55595e860c13.jsonl`
 - `/ll:capture-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6681d3d-2446-482f-83ae-c425d516d2ac.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ---
 
-**Open** | Created: 2026-04-13 | Priority: P2
+**Completed** | Created: 2026-04-13 | Resolved: 2026-04-13 | Priority: P2

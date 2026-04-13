@@ -191,6 +191,12 @@ states:
         | grep -v '^[[:space:]]*$' \
         > .loops/tmp/recursive-refine-queue.txt
       echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+      PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -n "$PARENT_FILE" ]; then
+        mkdir -p .issues/completed
+        git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
+          || mv "$PARENT_FILE" .issues/completed/
+      fi
       CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
       echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
     action_type: shell
@@ -308,6 +314,12 @@ states:
           | grep -v '^[[:space:]]*$' \
           > .loops/tmp/recursive-refine-queue.txt
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$PARENT_FILE" ]; then
+          mkdir -p .issues/completed
+          git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
+            || mv "$PARENT_FILE" .issues/completed/
+        fi
         CHILD_COUNT=$(wc -l < .loops/tmp/recursive-refine-new-children.txt | tr -d ' ')
         echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
       else
