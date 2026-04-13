@@ -274,6 +274,7 @@ Examples:
     ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")
     ie.set_defaults(command="impact-effort")
     ie.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    ie.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
     add_config_arg(ie)
 
     refine_s = subs.add_parser(

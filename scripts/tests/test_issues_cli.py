@@ -902,6 +902,158 @@ class TestIssuesCLIImpactEffort:
         assert "FEAT-001" not in captured.out
         assert "FEAT-002" not in captured.out
 
+    def test_impact_effort_json_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """impact-effort --json returns valid object with all four quadrant keys."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "impact-effort", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "quick_wins" in data
+        assert "major_projects" in data
+        assert "fill_ins" in data
+        assert "thankless_tasks" in data
+        all_issues = (
+            data["quick_wins"]
+            + data["major_projects"]
+            + data["fill_ins"]
+            + data["thankless_tasks"]
+        )
+        assert len(all_issues) == 5
+        for item in all_issues:
+            assert "id" in item
+            assert "title" in item
+            assert "priority" in item
+            assert "effort" in item
+            assert "impact" in item
+
+    def test_impact_effort_json_quadrant_correctness(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """P5 issue with effort:1, impact:3 frontmatter appears in quick_wins."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P5-BUG-010-low-priority.md").write_text(
+            "---\neffort: 1\nimpact: 3\n---\n# BUG-010: Low priority high impact\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "impact-effort", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        quick_win_ids = [item["id"] for item in data["quick_wins"]]
+        assert "BUG-010" in quick_win_ids
+
+    def test_impact_effort_json_type_filter(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--type BUG --json emits no FEAT ids in any quadrant."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "impact-effort",
+                "--type",
+                "BUG",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        all_ids = [
+            item["id"]
+            for q in data.values()
+            for item in q
+        ]
+        assert all(not id_.startswith("FEAT") for id_ in all_ids)
+        assert any(id_.startswith("BUG") for id_ in all_ids)
+
+    def test_impact_effort_json_short(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-j short form returns a dict with the four quadrant keys."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "impact-effort", "-j", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert set(data.keys()) == {"quick_wins", "major_projects", "fill_ins", "thankless_tasks"}
+
+    def test_impact_effort_json_suppresses_ascii(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ASCII grid is suppressed when --json is passed."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "impact-effort", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "EFFORT" not in captured.out
+        assert "QUICK WINS" not in captured.out
+
 
 class TestIssuesCLIShow:
     """Tests for ll-issues show sub-command."""

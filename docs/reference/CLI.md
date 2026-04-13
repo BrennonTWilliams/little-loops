@@ -480,6 +480,7 @@ Display an impact vs. effort matrix for active issues.
 | Flag | Description |
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
+| `--json` / `-j` | Output as JSON object with quadrant keys |
 
 #### `ll-issues refine-status` / `ll-issues rs`
 
@@ -610,6 +611,8 @@ ll-issues sequence --limit 10
 ll-issues sequence --json             # Ordered sequence as JSON
 ll-issues impact-effort
 ll-issues impact-effort --type BUG    # Only bugs
+ll-issues impact-effort --json        # JSON object with quadrant arrays
+ll-issues impact-effort --json --type BUG  # Filtered JSON output
 ll-issues refine-status
 ll-issues refine-status FEAT-873              # Single-issue view
 ll-issues refine-status FEAT-873 --json       # Single issue as JSON object

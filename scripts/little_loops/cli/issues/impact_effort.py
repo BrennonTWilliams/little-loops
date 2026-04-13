@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import TYPE_COLOR, colorize, terminal_width
+from little_loops.cli.output import TYPE_COLOR, colorize, print_json, terminal_width
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -209,6 +209,23 @@ def cmd_impact_effort(config: BRConfig, args: argparse.Namespace) -> int:
             q_low_low.append(issue)
         else:
             q_low_high.append(issue)
+
+    if getattr(args, "json", False):
+        def _rec(issue: IssueInfo) -> dict:
+            return {
+                "id": issue.issue_id,
+                "title": issue.title,
+                "priority": issue.priority,
+                "effort": _infer_effort(issue),
+                "impact": _infer_impact(issue),
+            }
+        print_json({
+            "quick_wins":      [_rec(i) for i in q_high_low],
+            "major_projects":  [_rec(i) for i in q_high_high],
+            "fill_ins":        [_rec(i) for i in q_low_low],
+            "thankless_tasks": [_rec(i) for i in q_low_high],
+        })
+        return 0
 
     print(_render_grid(q_high_low, q_high_high, q_low_low, q_low_high))
 

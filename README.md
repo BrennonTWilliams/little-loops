@@ -416,6 +416,7 @@ ll-issues sequence --limit 5                  # Show top 5 issues to work on
 ll-issues sequence --json                     # JSON output for scripting
 ll-issues impact-effort                       # ASCII impact vs effort matrix
 ll-issues impact-effort --type FEAT           # Filter matrix to a specific issue type
+ll-issues impact-effort --json                # JSON object with quadrant arrays
 ll-issues refine-status                       # Refinement depth table sorted by commands touched
 ll-issues refine-status --type BUG            # Filter to bugs only
 ll-issues refine-status --format json         # JSONL output for scripting
