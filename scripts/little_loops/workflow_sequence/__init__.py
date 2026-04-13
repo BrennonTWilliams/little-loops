@@ -167,9 +167,7 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
 
         # Validate threshold ranges
         if not (0.0 <= args.overlap_threshold <= 1.0):
-            logger.error(
-                f"--overlap-threshold must be in [0.0, 1.0], got {args.overlap_threshold}"
-            )
+            logger.error(f"--overlap-threshold must be in [0.0, 1.0], got {args.overlap_threshold}")
             return 1
 
         if not (0.0 <= args.boundary_threshold <= 1.0):

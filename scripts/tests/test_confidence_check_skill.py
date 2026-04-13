@@ -41,9 +41,7 @@ class TestConfidenceCheckSkillWriteBack:
         content = SKILL_FILE.read_text()
         phase_4_5_start = content.index("### Phase 4.5: Findings Write-Back")
         phase_4_5_text = content[phase_4_5_start : phase_4_5_start + 2000]
-        assert "HAS_FINDINGS" in phase_4_5_text, (
-            "Phase 4.5 must preserve the HAS_FINDINGS gate"
-        )
+        assert "HAS_FINDINGS" in phase_4_5_text, "Phase 4.5 must preserve the HAS_FINDINGS gate"
 
     def test_confidence_check_notes_section_name_preserved(self) -> None:
         """The '## Confidence Check Notes' section name must remain in Phase 4.5."""

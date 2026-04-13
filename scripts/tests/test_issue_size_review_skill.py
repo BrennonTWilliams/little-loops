@@ -57,9 +57,7 @@ class TestIssueSizeReviewSkillWriteBack:
         content = SKILL_FILE.read_text()
         phase_3_start = content.index("### Phase 3: Frontmatter Write-back")
         phase_3_text = content[phase_3_start : phase_3_start + 3000]
-        assert "size" in phase_3_text, (
-            "Phase 3 must write 'size' as the frontmatter key"
-        )
+        assert "size" in phase_3_text, "Phase 3 must write 'size' as the frontmatter key"
 
     def test_six_phase_workflow_header(self) -> None:
         """Workflow header must reflect 6 phases after insertion."""
