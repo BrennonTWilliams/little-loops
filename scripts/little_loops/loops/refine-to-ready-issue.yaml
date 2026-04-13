@@ -21,6 +21,7 @@ states:
       mkdir -p .loops/tmp &&
       printf '0' > .loops/tmp/refine-to-ready-refine-count &&
       printf '0' > .loops/tmp/refine-to-ready-wire-done &&
+      printf '0' > .loops/tmp/recursive-refine-broke-down &&
       { [ -n "${context.input}" ] && printf '%s' "${context.input}" ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -231,8 +232,14 @@ states:
   breakdown_issue:
     action: "/ll:issue-size-review ${captured.issue_id.output} --auto"
     action_type: slash_command
-    next: done
+    next: write_broke_down
     on_error: failed
+
+  write_broke_down:
+    action: printf '1' > .loops/tmp/recursive-refine-broke-down
+    action_type: shell
+    next: done
+    on_error: done
 
   done:
     terminal: true

@@ -425,13 +425,15 @@ get_next_issue → [issue found?]
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 
-**Technique**: Accepts a single issue ID or a comma-separated list. For each issue, delegates `format → refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop. If the sub-loop exits without meeting thresholds, the loop runs `/ll:issue-size-review` to check whether the issue should be decomposed. When child issues are detected (either from the sub-loop's `breakdown_issue` path or from an explicit size-review), they are prepended to the queue depth-first and refined before the next sibling. Issues that cannot be decomposed further are recorded as skipped.
+**Technique**: Accepts a single issue ID or a comma-separated list. For each issue, delegates `format → refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop. If the sub-loop exits without meeting thresholds, the loop checks whether `breakdown_issue` already ran inside the sub-loop (via the `recursive-refine-broke-down` flag). If so, `/ll:issue-size-review` is skipped and the loop proceeds directly to `enqueue_or_skip`; otherwise it runs `/ll:issue-size-review` explicitly. When child issues are detected, they are prepended to the queue depth-first and refined before the next sibling. Issues that cannot be decomposed further are recorded as skipped.
 
 **Child detection**: Uses a two-step parent-verification filter to avoid picking up unrelated issues created concurrently. First, `comm -13` of the pre- and post-refinement ID snapshots is written to `recursive-refine-diff-ids.txt`. Each candidate ID is then checked: its issue file must contain `Decomposed from <PARENT_ID>` (the line written by `/ll:issue-size-review` when it creates child issues) before it is accepted into `recursive-refine-new-children.txt`. Issues that appear in the diff but lack this parent reference are silently ignored.
 
 **When to use**: When you have one or more issues you want refined to ready status, including any children that get split off along the way. Prefer `issue-refinement` for full-backlog refinement; use `recursive-refine` when you want targeted, tree-aware refinement of a specific set of issues.
 
-**Score gate**: Before running `/ll:issue-size-review`, a `recheck_scores` state checks whether the issue's current `confidence` and `outcome` scores already meet project thresholds. If both pass, the issue is recorded as passed and size-review is skipped entirely — avoiding unnecessary LLM cycles on already-ready issues.
+**Breakdown guard**: After `detect_children` finds no children from the sub-loop, a `check_broke_down` state reads the `.loops/tmp/recursive-refine-broke-down` flag. If the flag is set (meaning `breakdown_issue` ran and already invoked `/ll:issue-size-review` inside the sub-loop), the loop skips `recheck_scores` and `run_size_review` and goes directly to `enqueue_or_skip`, preventing a duplicate size-review call.
+
+**Score gate**: When `check_broke_down` passes (flag not set), a `recheck_scores` state checks whether the issue's current `confidence` and `outcome` scores already meet project thresholds. If both pass, the issue is recorded as passed and size-review is skipped entirely — avoiding unnecessary LLM cycles on already-ready issues.
 
 **Required context variables**:
 
@@ -466,9 +468,11 @@ parse_input → dequeue_next → [queue empty?]
               │                └─ NO  → detect_children
               └─ on_failure/on_error → detect_children → [children found from sub-loop?]
                                         ├─ YES → enqueue_children → dequeue_next (depth-first)
-                                        └─ NO  → size_review_snap → recheck_scores → [scores pass?]
-                                                                                      ├─ YES → dequeue_next
-                                                                                      └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
+                                        └─ NO  → size_review_snap → check_broke_down → [breakdown_issue already ran?]
+                                                                                        ├─ YES (flag=1) → enqueue_or_skip → dequeue_next
+                                                                                        └─ NO  (flag=0) → recheck_scores → [scores pass?]
+                                                                                                                            ├─ YES → dequeue_next
+                                                                                                                            └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
 **Summary output**: When the queue is exhausted, `done` emits a structured summary:
@@ -479,7 +483,7 @@ Passed  (2): FEAT-42, FEAT-43
 Skipped (1): BUG-17
 ```
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`.
 
 **Code Quality**
 

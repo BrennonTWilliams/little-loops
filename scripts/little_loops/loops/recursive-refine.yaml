@@ -73,8 +73,10 @@ states:
     # Snapshot all active issue IDs before running the refine sub-loop so we
     # can detect newly-created child issues afterward (via detect_children and
     # enqueue_or_skip). The snapshot is refreshed in size_review_snap before
-    # an explicit size-review run.
+    # an explicit size-review run. Clear the broke-down flag so each issue
+    # iteration starts clean.
     action: |
+      rm -f .loops/tmp/recursive-refine-broke-down
       ll-issues list --json | python3 -c "
       import json, sys
       issues = json.load(sys.stdin)
@@ -205,7 +207,22 @@ states:
            .loops/tmp/recursive-refine-pre-ids.txt
       fi
     action_type: shell
-    next: recheck_scores
+    next: check_broke_down
+    on_error: check_broke_down
+
+  check_broke_down:
+    # Guard: if breakdown_issue already ran inside the sub-loop, the issue was
+    # already size-reviewed — skip straight to enqueue_or_skip to avoid a
+    # duplicate /ll:issue-size-review call.
+    action: |
+      cat .loops/tmp/recursive-refine-broke-down 2>/dev/null || echo 0
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 1
+    on_yes: recheck_scores    # 0 → not broken down → proceed normally
+    on_no: enqueue_or_skip    # 1 → already size-reviewed → skip
     on_error: recheck_scores
 
   recheck_scores:

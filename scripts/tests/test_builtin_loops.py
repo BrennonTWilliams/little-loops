@@ -594,11 +594,38 @@ class TestRefineToReadyIssueSubLoop:
             "breakdown_issue action must include '--auto' flag to prevent interactive stalling"
         )
 
-    def test_breakdown_issue_routes_to_done(self, data: dict) -> None:
-        """breakdown_issue.next must be 'done' on success."""
+    def test_breakdown_issue_routes_to_write_broke_down(self, data: dict) -> None:
+        """breakdown_issue.next must be 'write_broke_down' to set the flag before exiting."""
         state = data["states"].get("breakdown_issue", {})
+        assert state.get("next") == "write_broke_down", (
+            f"breakdown_issue.next should be 'write_broke_down', got {state.get('next')!r}"
+        )
+
+    def test_write_broke_down_state_exists(self, data: dict) -> None:
+        """write_broke_down state must exist to signal to recursive-refine that breakdown ran."""
+        assert "write_broke_down" in data["states"], (
+            "State 'write_broke_down' not found in refine-to-ready-issue.yaml"
+        )
+
+    def test_write_broke_down_routes_to_done(self, data: dict) -> None:
+        """write_broke_down.next must route to done."""
+        state = data["states"].get("write_broke_down", {})
         assert state.get("next") == "done", (
-            f"breakdown_issue.next should be 'done', got {state.get('next')!r}"
+            f"write_broke_down.next should be 'done', got {state.get('next')!r}"
+        )
+
+    def test_write_broke_down_action_writes_flag(self, data: dict) -> None:
+        """write_broke_down action must write to the recursive-refine-broke-down flag file."""
+        state = data["states"].get("write_broke_down", {})
+        assert "recursive-refine-broke-down" in state.get("action", ""), (
+            "write_broke_down action must write to '.loops/tmp/recursive-refine-broke-down'"
+        )
+
+    def test_broke_down_flag_initialized_in_resolve_issue(self, data: dict) -> None:
+        """resolve_issue action must initialize the recursive-refine-broke-down flag file."""
+        state = data["states"].get("resolve_issue", {})
+        assert "recursive-refine-broke-down" in state.get("action", ""), (
+            "resolve_issue action must initialize '.loops/tmp/recursive-refine-broke-down' flag"
         )
 
     def test_breakdown_issue_on_error_is_failed(self, data: dict) -> None:
@@ -956,6 +983,7 @@ class TestRecursiveRefineLoop:
             "detect_children",
             "enqueue_children",
             "size_review_snap",
+            "check_broke_down",
             "recheck_scores",
             "run_size_review",
             "enqueue_or_skip",
@@ -1039,11 +1067,59 @@ class TestRecursiveRefineLoop:
         assert "outcome_threshold" in ctx
         assert "max_refine_count" in ctx
 
-    def test_size_review_snap_routes_to_recheck_scores(self, data: dict) -> None:
-        """size_review_snap.next must route to recheck_scores (not directly to run_size_review)."""
+    def test_size_review_snap_routes_to_check_broke_down(self, data: dict) -> None:
+        """size_review_snap.next must route to check_broke_down to guard against duplicate size-review."""
         state = data["states"].get("size_review_snap", {})
-        assert state.get("next") == "recheck_scores", (
-            f"size_review_snap.next should be 'recheck_scores', got {state.get('next')!r}"
+        assert state.get("next") == "check_broke_down", (
+            f"size_review_snap.next should be 'check_broke_down', got {state.get('next')!r}"
+        )
+
+    def test_check_broke_down_state_exists(self, data: dict) -> None:
+        """check_broke_down state must exist to skip duplicate size-review after breakdown_issue."""
+        assert "check_broke_down" in data["states"], (
+            "State 'check_broke_down' not found in recursive-refine.yaml"
+        )
+
+    def test_check_broke_down_evaluate_output_numeric_lt_1(self, data: dict) -> None:
+        """check_broke_down must use output_numeric lt 1 to detect whether breakdown_issue ran."""
+        state = data["states"].get("check_broke_down", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_broke_down evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("operator") == "lt", (
+            f"check_broke_down evaluate.operator should be 'lt', got {evaluate.get('operator')!r}"
+        )
+        assert evaluate.get("target") == 1, (
+            f"check_broke_down evaluate.target should be 1, got {evaluate.get('target')!r}"
+        )
+
+    def test_check_broke_down_on_yes_routes_to_recheck_scores(self, data: dict) -> None:
+        """check_broke_down.on_yes (flag=0, not broken down) must route to recheck_scores."""
+        state = data["states"].get("check_broke_down", {})
+        assert state.get("on_yes") == "recheck_scores", (
+            f"check_broke_down.on_yes should be 'recheck_scores', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_broke_down_on_no_routes_to_enqueue_or_skip(self, data: dict) -> None:
+        """check_broke_down.on_no (flag=1, already broken down) must route to enqueue_or_skip."""
+        state = data["states"].get("check_broke_down", {})
+        assert state.get("on_no") == "enqueue_or_skip", (
+            f"check_broke_down.on_no should be 'enqueue_or_skip', got {state.get('on_no')!r}"
+        )
+
+    def test_check_broke_down_on_error_routes_to_recheck_scores(self, data: dict) -> None:
+        """check_broke_down.on_error must route to recheck_scores (fail-safe: treat as not broken down)."""
+        state = data["states"].get("check_broke_down", {})
+        assert state.get("on_error") == "recheck_scores", (
+            f"check_broke_down.on_error should be 'recheck_scores', got {state.get('on_error')!r}"
+        )
+
+    def test_broke_down_flag_cleared_in_capture_baseline(self, data: dict) -> None:
+        """capture_baseline must clear recursive-refine-broke-down so each issue iteration starts clean."""
+        state = data["states"].get("capture_baseline", {})
+        assert "recursive-refine-broke-down" in state.get("action", ""), (
+            "capture_baseline action must clear '.loops/tmp/recursive-refine-broke-down' flag"
         )
 
     def test_recheck_scores_routes_to_dequeue_next(self, data: dict) -> None:
