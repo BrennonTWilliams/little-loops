@@ -7,6 +7,7 @@ model: sonnet
 allowed-tools:
   - Read
   - Glob
+  - Edit
   - Bash(ll-issues:*, git:*)
 ---
 
@@ -73,7 +74,7 @@ if [[ -n "$SPRINT_NAME" ]]; then AUTO_MODE=true; fi
 
 ## Workflow
 
-The skill follows a 5-phase workflow:
+The skill follows a 6-phase workflow:
 
 ### Phase 1: Discovery
 
@@ -123,7 +124,55 @@ Apply scoring heuristics to each issue:
 
 Issues scoring **≥5 points** are candidates for decomposition.
 
-### Phase 3: Decomposition Proposal
+### Phase 3: Frontmatter Write-back
+
+Skip this phase when `CHECK_MODE=true`.
+
+For each assessed issue, use the Edit tool to add or update `size: <label>` in the YAML frontmatter block. Apply the Size Thresholds table to derive the label from the score:
+
+- Score 0-2 → `Small`
+- Score 3-4 → `Medium`
+- Score 5-7 → `Large`
+- Score 8+ → `Very Large`
+
+Write-back applies to **all** assessed issues (not just decomposition candidates). Perform the write-back per-issue inside the assessment loop immediately after each score is computed.
+
+If the issue file has existing frontmatter (starts with `---`):
+- Add or update the `size` field within the frontmatter block using the Edit tool
+- Preserve all other existing fields
+
+Example — if frontmatter is:
+```yaml
+---
+id: ENH-123
+priority: P2
+---
+```
+
+Update to:
+```yaml
+---
+id: ENH-123
+priority: P2
+size: Medium
+---
+```
+
+If `size` already exists, replace its value with the new label.
+
+If the issue file has no frontmatter, add one:
+```yaml
+---
+size: Medium
+---
+```
+
+After writing back, stage the file:
+```bash
+git add "<issue-file-path>"
+```
+
+### Phase 4: Decomposition Proposal
 
 For each candidate issue:
 
@@ -152,7 +201,7 @@ For each candidate issue:
    [Relevant sections from parent...]
    ```
 
-### Phase 4: User Approval
+### Phase 5: User Approval
 
 #### Auto Mode Behavior
 
@@ -180,7 +229,7 @@ questions:
 
 Present proposals one at a time or batch (user preference).
 
-### Phase 5: Execution
+### Phase 6: Execution
 
 For each approved decomposition:
 

@@ -39,7 +39,7 @@ The `--sprint` flag scopes the audit to sprint issues — it's reasonable to exp
 
 ## Proposed Solution
 
-In **Phase 5: Execution** of the `issue-size-review` skill, after completing each decomposition, check if `SPRINT_NAME` is set and update the sprint YAML:
+In **Phase 6: Execution** of the `issue-size-review` skill, after completing each decomposition, check if `SPRINT_NAME` is set and update the sprint YAML:
 
 ```python
 # In skills/issue-size-review/SKILL.md Phase 5 execution block

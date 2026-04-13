@@ -156,6 +156,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `enhancement`, `issue-size-review`, `frontmatter`, `skill`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T02:29:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a05252dd-602c-4971-8046-d4e06bc3971f.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ecbdeb4-1c63-45f3-9557-6949fade4f15.jsonl`
 - `/ll:wire-issue` - 2026-04-13T02:17:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7addff48-eee5-445a-8178-a9b53cef39e6.jsonl`
 - `/ll:refine-issue` - 2026-04-13T02:12:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/557fd7f8-4e77-4e6b-b846-071483492cc3.jsonl`
@@ -164,6 +165,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-04-12
+- **Implementation**:
+  - Added `Edit` to `allowed-tools` in `skills/issue-size-review/SKILL.md`
+  - Updated workflow header from "5-phase" to "6-phase"
+  - Inserted Phase 3: Frontmatter Write-back (skipped when `CHECK_MODE=true`) between Phase 2 and the former Phase 3 (Decomposition Proposal)
+  - Renumbered former Phase 4 (User Approval) → Phase 5, former Phase 5 (Execution) → Phase 6
+  - Created `scripts/tests/test_issue_size_review_skill.py` with 7 structural assertions
+  - Added `size` field to frontmatter table in `docs/reference/ISSUE_TEMPLATE.md`
+  - Added write-back note to `/ll:issue-size-review` entry in `docs/reference/COMMANDS.md`
+  - Updated BUG-1062 to reference Phase 6: Execution (phase renumbering follow-up)
+
+## Session Log
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a05252dd-602c-4971-8046-d4e06bc3971f.jsonl`
+
+---
+
 ## Status
 
-**State**: active
+**State**: completed

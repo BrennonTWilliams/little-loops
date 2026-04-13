@@ -244,8 +244,11 @@ Evaluate the size and complexity of active issues and propose decomposition for 
 
 **Decomposition output**: For each oversized issue, proposes 2–4 smaller child issues with independent scopes, clear dependencies between them, and a suggested execution order. Child issues can be created directly from the output.
 
+**Frontmatter write-back**: After assessing each issue, the skill writes `size: <label>` to the issue's YAML frontmatter (one of: `Small`, `Medium`, `Large`, `Very Large`). This is skipped when `--check` mode is active.
+
 **Flags:**
 - `--auto`: Non-interactive; auto-decomposes issues scoring ≥8 without prompting
+- `--check`: Check-only mode; runs scoring without decomposition or frontmatter write-back; exits 1 if any issues score ≥5
 - `--sprint <name>`: Scope to issues in a named sprint definition only
 
 **Trigger keywords:** "issue size review", "decompose issues", "split large issues"

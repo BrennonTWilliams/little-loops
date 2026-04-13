@@ -877,6 +877,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `confidence_score` | int (0–100) | absent | Readiness score from `/ll:confidence-check` |
 | `outcome_confidence` | int (0–100) | absent | Outcome confidence score from `/ll:confidence-check` |
 | `testable` | bool | absent (= true) | Set to `false` to skip Phase 3a (Write Tests — Red) when `tdd_mode: true` |
+| `size` | string | absent | Size label written by `/ll:issue-size-review`: `Small`, `Medium`, `Large`, or `Very Large` |
 
 ### `testable: false`
 
