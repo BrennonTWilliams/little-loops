@@ -129,15 +129,28 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `skills`, `update`, `path-resolution`, `captured`
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-04-12 | Priority: P2
+**Fixed** | Resolved: 2026-04-12 | Priority: P2
+
+### Changes Made
+
+- `skills/update/SKILL.md:124–128` — Replaced one-liner with `if/fi` block that extracts the absolute path from `pip show little-loops` output via `sed`, then uses it in `INSTALL_CMD`
+- `skills/configure/SKILL.md:74–81` — Same `if/fi` fix applied to the identical editable-install detection block
+- `scripts/tests/test_update_skill.py` — Added `test_package_step_does_not_use_relative_scripts_path` to `TestUpdateSkillConsumerPath` and `test_configure_skill_does_not_use_relative_scripts_path` to `TestConfigureSkillDevInstallFix` as regression guards
+
+### Verification
+
+- `python -m pytest scripts/tests/test_update_skill.py -v` — 27 passed (2 pre-existing `TestMarketplaceVersionSync` failures, unrelated)
+- Both new regression tests confirm relative path is absent from both skill files
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T01:52:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9505b531-2954-46c0-b8ad-4121d25162a3.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a11f70cd-766c-4f45-b29e-1c8bed62643d.jsonl`
 - `/ll:wire-issue` - 2026-04-12T20:41:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c305cac4-c25e-482f-86f7-9adf26df1b0e.jsonl`
 - `/ll:refine-issue` - 2026-04-12T20:38:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d44c09c2-55d3-4e29-ae39-b193249296cd.jsonl`
 - `/ll:format-issue` - 2026-04-12T20:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d54c0e6-ea63-4ad6-9f8e-a2b042846215.jsonl`
 - `/ll:capture-issue` - 2026-04-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c42196c-bf0e-4df5-b271-139f23c7c2c3.jsonl`
+- `/ll:manage-issue bug fix` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

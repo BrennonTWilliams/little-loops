@@ -129,6 +129,14 @@ class TestUpdateSkillConsumerPath:
             "that happen to have a scripts/ directory as dev installs"
         )
 
+    def test_package_step_does_not_use_relative_scripts_path(self) -> None:
+        """Package step must NOT use a relative './scripts' path in pip install -e."""
+        content = SKILL_FILE.read_text()
+        assert "pip install -e './scripts'" not in content, (
+            "pip install -e './scripts' uses a relative path that breaks when run outside "
+            "the little-loops repo — use the absolute path from 'pip show little-loops' instead"
+        )
+
 
 class TestPublishCommandExists:
     """Verify commands/publish.md exists with required source-repo-only structure."""
@@ -208,6 +216,14 @@ class TestConfigureSkillDevInstallFix:
         assert "Editable project location" in content, (
             "Configure skill must use 'pip show little-loops | grep -E \"^Editable project location:\"' "
             "to detect editable installs, not [ -d './scripts' ]"
+        )
+
+    def test_configure_skill_does_not_use_relative_scripts_path(self) -> None:
+        """Configure skill must NOT use a relative './scripts' path in pip install -e."""
+        content = CONFIGURE_SKILL_FILE.read_text()
+        assert "pip install -e './scripts'" not in content, (
+            "pip install -e './scripts' uses a relative path that breaks when run outside "
+            "the little-loops repo — use the absolute path from 'pip show little-loops' instead"
         )
 
 

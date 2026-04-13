@@ -122,7 +122,12 @@ echo "========================================"
 Detect install command based on whether little-loops is installed in editable mode:
 ```bash
 EDITABLE_INSTALL=$(pip show little-loops 2>/dev/null | grep -E "^Editable project location:")
-[ -n "$EDITABLE_INSTALL" ] && INSTALL_CMD="pip install -e './scripts'" || INSTALL_CMD="pip install --upgrade little-loops"
+if [ -n "$EDITABLE_INSTALL" ]; then
+    EDITABLE_PATH=$(echo "$EDITABLE_INSTALL" | sed 's/^Editable project location: //')
+    INSTALL_CMD="pip install -e '$EDITABLE_PATH'"
+else
+    INSTALL_CMD="pip install --upgrade little-loops"
+fi
 ```
 
 Read version before update:
