@@ -327,10 +327,10 @@ grep state_file .ll/ll-config.json
 
 **Symptom**: No warnings appear when context fills up
 
-**Cause**: Hook not installed or `jq` missing
+**Cause**: Plugin not active, `jq` missing, or `context_monitor` disabled in config
 
 **Solution**:
-1. Verify hook is installed (run `/ll:init` or check `hooks/hooks.json` is active)
+1. Verify the `ll@little-loops` plugin is globally enabled in Claude Code — hooks fire automatically when the plugin is registered (no manual install step needed). Check with `/ll:configure hooks show`.
 2. Verify `jq` is installed (required for the hook):
    ```bash
    jq --version

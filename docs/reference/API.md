@@ -535,6 +535,7 @@ class IssueInfo:
     impact: int | None = None              # Impact estimate (1=low, 2=medium, 3=high)
     confidence_score: int | None = None    # Readiness score (0-100) from /ll:confidence-check
     outcome_confidence: int | None = None  # Outcome confidence (0-100) from /ll:confidence-check
+    size: str | None = None               # Issue size from /ll:issue-size-review (Small, Medium, Large, Very Large)
     testable: bool | None = None           # False = skip TDD phase; None = treat as testable
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts

@@ -17,6 +17,7 @@ _MIN_TITLE_WIDTH = 20
 # Fixed column widths for non-title columns
 _ID_WIDTH = 8  # "BUG-525 "
 _PRI_WIDTH = 4  # "P2  "
+_SIZE_WIDTH = 10  # "Very Large" (longest valid value)
 _SCORE_WIDTH = 5  # "ready" col
 _CONF_WIDTH = 5  # "conf" col
 _TOTAL_WIDTH = 5  # "total"
@@ -62,6 +63,7 @@ _CMD_ALIASES: dict[str, str] = {
 _STATIC_COLUMN_SPECS: dict[str, tuple[int, str, bool]] = {
     "id": (_ID_WIDTH, "ID", False),
     "priority": (_PRI_WIDTH, "Pri", False),
+    "size": (_SIZE_WIDTH, "size", False),
     "title": (0, "Title", False),
     "source": (_SOURCE_WIDTH, "source", False),
     "norm": (_NORM_WIDTH, "norm", False),
@@ -75,6 +77,7 @@ _STATIC_COLUMN_SPECS: dict[str, tuple[int, str, bool]] = {
 _DEFAULT_STATIC_COLUMNS: list[str] = [
     "id",
     "priority",
+    "size",
     "title",
     "source",
     "norm",
@@ -93,7 +96,7 @@ _PINNED_COLUMNS: frozenset[str] = frozenset(["id", "priority", "title"])
 # Default column elision order: columns dropped first when table overflows.
 # Command columns not listed here are dropped rightmost-first after this list
 # is exhausted.
-_DEFAULT_ELIDE_ORDER: list[str] = ["source", "norm", "fmt", "confidence", "ready", "total"]
+_DEFAULT_ELIDE_ORDER: list[str] = ["source", "norm", "fmt", "size", "confidence", "ready", "total"]
 
 
 def _cmd_label(cmd: str) -> str:
@@ -295,6 +298,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "commands": issue.session_commands,
                 "confidence_score": issue.confidence_score,
                 "outcome_confidence": issue.outcome_confidence,
+                "size": issue.size,
                 "total": len(issue.session_commands),
                 "normalized": is_normalized(issue.path.name),
                 "formatted": is_formatted(issue.path),
@@ -315,6 +319,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "commands": issue.session_commands,
                 "confidence_score": issue.confidence_score,
                 "outcome_confidence": issue.outcome_confidence,
+                "size": issue.size,
                 "total": len(issue.session_commands),
                 "normalized": is_normalized(issue.path.name),
                 "formatted": is_formatted(issue.path),
@@ -400,6 +405,8 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             return "\u2713" if is_formatted(issue.path) else "\u2717"
         if col == "ready":
             return str(issue.confidence_score) if issue.confidence_score is not None else "\u2014"
+        if col == "size":
+            return issue.size if issue.size else "\u2014"
         if col == "confidence":
             return (
                 str(issue.outcome_confidence) if issue.outcome_confidence is not None else "\u2014"

@@ -228,7 +228,9 @@ Pre-implementation confidence check that validates readiness and estimates outco
 **Arguments:**
 - `issue_id` (optional): Specific issue to check
 
-**Flags:** `--auto` (non-interactive), `--all` (batch all active issues), `--sprint <name>` (scope to sprint issues only)
+**Flags:** `--auto` (non-interactive), `--all` (batch all active issues), `--sprint <name>` (scope to sprint issues only), `--check` (check-only mode: run scoring without writes, print `[ID] check: score N/100` per issue, exit 1 if any fail)
+
+**Findings write-back**: When concerns, gaps, or outcome risk factors are found (and `--check` is not set), the skill automatically appends a `## Confidence Check Notes` section to the issue file and stages it with `git add` — no confirmation prompt. This fires in both interactive and `--auto` modes. If all scores are clean, no write occurs.
 
 ### `/ll:issue-workflow`
 Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.

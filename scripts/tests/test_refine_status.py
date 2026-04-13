@@ -24,6 +24,7 @@ def _make_issue(
     confidence_score: int | None = None,
     outcome_confidence: int | None = None,
     session_commands: list[str] | None = None,
+    size: str | None = None,
 ) -> None:
     """Write a minimal issue file with optional frontmatter and Session Log."""
     frontmatter_lines: list[str] = []
@@ -31,6 +32,8 @@ def _make_issue(
         frontmatter_lines.append(f"confidence_score: {confidence_score}")
     if outcome_confidence is not None:
         frontmatter_lines.append(f"outcome_confidence: {outcome_confidence}")
+    if size is not None:
+        frontmatter_lines.append(f"size: {size}")
 
     parts: list[str] = []
     if frontmatter_lines:
@@ -278,6 +281,101 @@ class TestRefineStatusTable:
         out = capsys.readouterr().out
         assert "88" in out, "confidence_score should appear"
         assert "72" in out, "outcome_confidence should appear"
+
+    def test_size_column_shown(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """size frontmatter field is displayed in the Size column."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-031-sized.md",
+            "FEAT-031: Sized feature",
+            size="Large",
+            session_commands=["/ll:issue-size-review"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "size" in out, "Size column header should appear"
+        assert "Large" in out, "Size value 'Large' should appear in the row"
+
+    def test_size_absent_shows_dash(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """When size frontmatter is absent, the Size column shows em-dash."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-032-no-size.md",
+            "FEAT-032: No size feature",
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "size" in out, "Size column header should appear"
+        assert "\u2014" in out, "Em-dash should appear for issues without size"
+
+    def test_size_very_large_not_truncated(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """'Very Large' (10 chars) fits in the size column without truncation."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-033-very-large.md",
+            "FEAT-033: Very large feature",
+            size="Very Large",
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Very Large" in out, "'Very Large' must not be truncated"
 
     def test_type_filter(
         self,
@@ -726,6 +824,7 @@ class TestRefineStatusJson:
         assert "refine-issue" in record["commands"][0]
         assert record["total"] == 2
         assert record["refine_count"] == 1
+        assert record["size"] is None
 
     def test_json_missing_scores_are_null(
         self,
@@ -1126,6 +1225,8 @@ class TestRefineStatusConfigColumns:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Empty columns list falls back to the default column set."""
+        import os
+
         custom_config = dict(sample_config)
         custom_config["refine_status"] = {"columns": []}
         _write_config(temp_project_dir, custom_config)
@@ -1136,10 +1237,15 @@ class TestRefineStatusConfigColumns:
 
         _make_issue(bugs_dir, "P2-BUG-401-default-cols.md", "BUG-401: Default columns test")
 
-        with patch.object(
-            sys,
-            "argv",
-            ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+        # Wide terminal so all default columns are visible without elision
+        fake_size = os.terminal_size((200, 40))
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+            ),
         ):
             from little_loops.cli import main_issues
 
@@ -1147,6 +1253,7 @@ class TestRefineStatusConfigColumns:
 
         assert result == 0
         out = capsys.readouterr().out
+        assert "size" in out
         assert "source" in out
         assert "norm" in out
         assert "fmt" in out
@@ -1270,6 +1377,7 @@ class TestRefineStatusJsonFlag:
         assert "formatted" in record
         assert "source" in record
         assert "commands" in record
+        assert "size" in record
 
     def test_json_flag_no_color_codes(
         self,
@@ -1603,7 +1711,7 @@ class TestColumnElision:
         assert len(records) == 1
         record = records[0]
         # All standard fields must be present regardless of terminal width
-        for field in ("id", "priority", "title", "source", "commands", "confidence_score", "total"):
+        for field in ("id", "priority", "title", "source", "commands", "confidence_score", "total", "size"):
             assert field in record, f"JSON field '{field}' missing in narrow-terminal output"
 
     def test_custom_elide_order_respected(
@@ -1615,8 +1723,9 @@ class TestColumnElision:
         """Custom elide_order config pins columns absent from the list."""
         import os
 
-        # Configure elide_order that does NOT include "norm" — it should be pinned
-        config = {**sample_config, "refine_status": {"elide_order": ["source", "fmt"]}}
+        # Configure elide_order that does NOT include "norm" — it should be pinned.
+        # "size" is included so it can be dropped and the table still fits at 70 cols.
+        config = {**sample_config, "refine_status": {"elide_order": ["source", "fmt", "size"]}}
         _write_config(temp_project_dir, config)
         bugs_dir = self._setup_issues_dir(temp_project_dir)
 

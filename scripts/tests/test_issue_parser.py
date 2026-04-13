@@ -1450,3 +1450,146 @@ class TestIssueInfoTestable:
         info = parser.parse_file(issue_file)
 
         assert info.testable is None
+
+
+class TestIssueInfoSize:
+    """Tests for IssueInfo.size field."""
+
+    def test_size_default_none(self) -> None:
+        """Test size defaults to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1091",
+            title="Test",
+        )
+        assert info.size is None
+
+    def test_size_value(self) -> None:
+        """Test size can be set to a valid value."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1091",
+            title="Test",
+            size="Large",
+        )
+        assert info.size == "Large"
+
+    def test_size_very_large(self) -> None:
+        """Test size can hold 'Very Large' (10 chars, max valid value)."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1091",
+            title="Test",
+            size="Very Large",
+        )
+        assert info.size == "Very Large"
+
+    def test_size_in_to_dict(self) -> None:
+        """Test size appears in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1091",
+            title="Test",
+            size="Medium",
+        )
+        data = info.to_dict()
+        assert data["size"] == "Medium"
+
+    def test_size_none_in_to_dict(self) -> None:
+        """Test size=None is preserved in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1091",
+            title="Test",
+        )
+        data = info.to_dict()
+        assert data["size"] is None
+
+    def test_size_from_dict(self) -> None:
+        """Test size is restored from dict."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1091",
+            "title": "Test Issue",
+            "size": "Small",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.size == "Small"
+
+    def test_size_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None when size key is absent."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1091",
+            "title": "Test Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.size is None
+
+    def test_parse_file_size_present(self, tmp_path: Path) -> None:
+        """Integration: parse_file reads size from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P3-ENH-1091-size-test.md"
+        issue_file.write_text("---\nsize: Very Large\n---\n# ENH-1091: Size Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.size == "Very Large"
+
+    def test_parse_file_size_absent(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields size=None when frontmatter key absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P3-ENH-1092-no-size.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1092: No Size\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.size is None

@@ -678,7 +678,7 @@
         "columns": {
           "type": "array",
           "items": {"type": "string"},
-          "description": "Ordered list of columns to display in refine-status table output. Valid names: id, priority, title, source, norm, fmt, ready, confidence, total. Unknown names render as \u2014. Omit or leave empty to use the default column set.",
+          "description": "Ordered list of columns to display in refine-status table output. Valid names: id, priority, size, title, source, norm, fmt, ready, confidence, total. Unknown names render as \u2014. Omit or leave empty to use the default column set.",
           "default": []
         },
         "elide_order": {

@@ -234,6 +234,7 @@ class IssueInfo:
     impact: int | None = None
     confidence_score: int | None = None
     outcome_confidence: int | None = None
+    size: str | None = None
     testable: bool | None = None
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
@@ -263,6 +264,7 @@ class IssueInfo:
             "impact": self.impact,
             "confidence_score": self.confidence_score,
             "outcome_confidence": self.outcome_confidence,
+            "size": self.size,
             "testable": self.testable,
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
@@ -285,6 +287,7 @@ class IssueInfo:
             impact=data.get("impact"),
             confidence_score=data.get("confidence_score"),
             outcome_confidence=data.get("outcome_confidence"),
+            size=data.get("size"),
             testable=data.get("testable"),
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
@@ -335,6 +338,7 @@ class IssueParser:
         # Parse frontmatter for discovered_by, product impact, effort, and impact
         frontmatter = parse_frontmatter(content)
         discovered_by = frontmatter.get("discovered_by")
+        size = frontmatter.get("size")
         product_impact = self._parse_product_impact(frontmatter)
         effort_raw = frontmatter.get("effort")
         impact_raw = frontmatter.get("impact")
@@ -385,6 +389,7 @@ class IssueParser:
             impact=impact,
             confidence_score=confidence_score,
             outcome_confidence=outcome_confidence,
+            size=size,
             testable=testable_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
