@@ -98,6 +98,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `harness-single-shot` | EXAMPLE: Single-shot harness demonstrating all evaluation phases (stall detection, concrete, semantic, invariant); `check_mcp` and `check_skill` as commented-out optional gates. Adapt for one-item workflows. |
 | `harness-multi-item` | EXAMPLE: Multi-item harness with all five evaluation phases active (`check_concrete`, `check_mcp`, `check_skill`, `check_semantic`, `check_invariants`). Includes discover/advance loop. Adapt for batch workflows. |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI. Canonical demonstration of the GAN-style architecture from Anthropic's harness design article. |
+| `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI. Direct port of the html-website-generator pattern; no HTTP server required. |
 
 ---
 

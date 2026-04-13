@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`svg-image-generator` FSM Loop** — New built-in generator-evaluator harness for SVG icon and illustration creation; accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI with four SVG-specific scoring criteria (`visual_clarity` 2×, `originality` 2×, `craft` 1×, `scalability` 1×); direct port of the `html-website-generator` pattern (FEAT-1094)
+
 ### Planned
 
 - Windows compatibility testing

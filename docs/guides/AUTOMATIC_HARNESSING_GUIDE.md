@@ -737,4 +737,5 @@ states:
 - [`scripts/little_loops/loops/harness-single-shot.yaml`](../../scripts/little_loops/loops/harness-single-shot.yaml) — Runnable Variant A example: single-shot harness with all evaluation phases annotated
 - [`scripts/little_loops/loops/harness-multi-item.yaml`](../../scripts/little_loops/loops/harness-multi-item.yaml) — Runnable Variant B example: multi-item harness including `check_mcp` and `check_skill` gates
 - [`scripts/little_loops/loops/html-website-generator.yaml`](../../scripts/little_loops/loops/html-website-generator.yaml) — Real-world GAN-style harness: generator-evaluator loop for single-page website design with Playwright screenshot evaluation
+- [`scripts/little_loops/loops/svg-image-generator.yaml`](../../scripts/little_loops/loops/svg-image-generator.yaml) — Real-world GAN-style harness: generator-evaluator loop for SVG icon and illustration creation with Playwright screenshot evaluation
 - `/ll:create-eval-from-issues` — Generate a `check_skill`-only eval harness from one or more issue IDs; translates Expected Behavior and Acceptance Criteria into synthesized execute and evaluation prompts automatically

@@ -1,0 +1,149 @@
+name: svg-image-generator
+category: harness
+input_key: description
+description: |
+  Generator-evaluator harness for SVG icon and illustration creation.
+  Accepts a natural language description via loop_input and iteratively
+  generates and refines a self-contained SVG using Playwright CLI screenshot
+  evaluation. Implements the GAN-style architecture from Anthropic's harness
+  design article, adapted for SVG's simpler self-contained structure —
+  no HTTP server required, no external dependencies, direct file:// rendering.
+initial: plan
+max_iterations: 20
+timeout: 7200
+
+# HARNESS: Context variables control output location and quality threshold.
+# Pass a custom output_dir to write files elsewhere.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  output_dir: "/tmp/ll-svg-generator"
+  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+
+states:
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a visual brief.
+    # This mirrors the "generator receives a spec" role from the harness design article.
+    # The brief captures shape language, color palette, and creative intent so the
+    # generator has strong direction on the first iteration.
+    action_type: prompt
+    action: |
+      Create directory ${context.output_dir} if it does not already exist.
+
+      Write a visual brief to ${context.output_dir}/brief.md for the following SVG:
+      "${context.description}"
+
+      The brief must include:
+      - **Shape language**: primary geometric vocabulary (angular vs. organic, line weight,
+        stroke vs. fill, symmetry or deliberate asymmetry)
+      - **Color palette**: specific hex values (2–4 colors max), rationale for each choice
+      - **Mood and intended use**: what emotion does it convey? At what sizes will it be used?
+        (e.g. 16px favicon, 64px app icon, 256px illustration)
+      - **Unique creative angle**: what makes this image distinctive? Avoid clip-art defaults.
+      - **Anti-patterns to avoid**: overly complex paths that muddy at small sizes, default
+        gradients, generic stock-icon shapes, excessive detail that disappears at icon scale
+
+      Be specific and opinionated. The generator will use this brief as its primary reference.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates or refines the SVG file.
+    # On the first pass it uses only the visual brief. On subsequent iterations it also
+    # incorporates the evaluator's critique, directly addressing each flagged issue.
+    # SVGs must be fully self-contained: no external image hrefs, no external fonts,
+    # proper viewBox so they scale correctly at any size.
+    action_type: prompt
+    action: |
+      Read ${context.output_dir}/brief.md for the visual brief.
+
+      If ${context.output_dir}/critique.md exists, read it and address all issues
+      listed in the "Issues to Address" section specifically and completely.
+
+      Write a single self-contained SVG file to ${context.output_dir}/image.svg that:
+      - Implements the shape language and color palette from the brief
+      - Has a proper viewBox attribute (e.g. viewBox="0 0 100 100") so it scales correctly
+      - Contains no external dependencies: no <image href="...">, no external fonts,
+        no xlink:href pointing to remote resources — everything embedded or drawn with paths
+      - Uses clean, intentional paths with consistent stroke weights and deliberate proportions
+      - Achieves a distinctive aesthetic — avoid generic clip-art silhouettes and default
+        geometric shapes with no creative angle
+      - If critique exists, resolves every specific issue before introducing new ideas
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// SVG.
+    # SVGs render natively in browsers under file:// without an HTTP server, making
+    # them even simpler than HTML pages for this pattern. Routes to score on success;
+    # routes back to generate on failure (e.g. Playwright not installed, or file missing)
+    # so the loop can still make progress via LLM-only scoring if the shell tool is
+    # unavailable.
+    action_type: shell
+    action: |
+      playwright screenshot "file://${context.output_dir}/image.svg" "${context.output_dir}/screenshot.png" && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
+    # criteria and writes structured critique for the generator's next iteration.
+    # Uses output_contains: "PASS" for routing — simple and robust vs JSON parsing.
+    # The PNG produced by the evaluate state is read as a multimodal image input.
+    action_type: prompt
+    action: |
+      Read the screenshot at ${context.output_dir}/screenshot.png to view the generated SVG.
+      Also read ${context.output_dir}/brief.md to recall the visual intent.
+
+      Score the SVG on each criterion from 1 to 10 and write the evaluation to
+      ${context.output_dir}/critique.md using this exact format:
+
+      ```
+      # Evaluation
+
+      visual_clarity: N/10 — [explanation: is the concept immediately readable with no
+        ambiguity? At icon scale, can you tell what it is in under 2 seconds?]
+      originality: N/10 — [explanation: evidence of custom creative decisions?
+        Best designs avoid generic clip-art shapes and stock icon conventions.
+        Penalize: default silhouettes, unmodified geometric primitives, AI-slop fill patterns.]
+      craft: N/10 — [explanation: clean paths, consistent stroke weights, proper proportions,
+        deliberate use of negative space, color harmony.]
+      scalability: N/10 — [explanation: does the level of detail hold up at icon scale?
+        Complex paths that collapse below 32px should be penalized.]
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator. List each problem concisely
+       so the generator can address it directly on the next pass. If all scores meet
+       threshold, write "No issues — all criteria pass."]
+      ```
+
+      After writing the file, evaluate the scores:
+      - visual_clarity weight: 2× (threshold ${context.pass_threshold})
+      - originality weight: 2× (threshold ${context.pass_threshold})
+      - craft weight: 1× (threshold ${context.pass_threshold})
+      - scalability weight: 1× (threshold ${context.pass_threshold})
+
+      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "PASS"
+    on_yes: done
+    on_no: generate
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports the final output file locations before ending.
+    action_type: prompt
+    action: |
+      The SVG generation loop has completed successfully.
+
+      Final output files:
+      - ${context.output_dir}/image.svg   — the generated SVG (primary output)
+      - ${context.output_dir}/brief.md    — the visual planning brief
+      - ${context.output_dir}/critique.md — the final evaluation scores and notes
+      - ${context.output_dir}/screenshot.png — the last Playwright-captured render
+
+      Report these paths to the user and confirm the SVG is ready.
+    terminal: true

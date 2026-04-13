@@ -121,7 +121,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── loops/                # Built-in FSM loop definitions (34 YAML files)
+├── loops/                # Built-in FSM loop definitions (40 YAML files)
 ├── skills/               # 26 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── analyze-loop/                 # Analyze loop execution history

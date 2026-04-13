@@ -85,6 +85,7 @@ class TestBuiltinLoopFiles:
             "recursive-refine",
             "html-website-generator",
             "sprint-refine-and-implement",
+            "svg-image-generator",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -1298,6 +1299,79 @@ class TestHtmlWebsiteGeneratorLoop:
     def test_required_top_level_fields(self, data: dict) -> None:
         """Loop must have name, initial, input_key, and states fields."""
         assert data.get("name") == "html-website-generator"
+        assert data.get("initial") == "plan"
+        assert data.get("input_key") == "description"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"plan", "generate", "evaluate", "score", "done"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_evaluate_state_is_shell(self, data: dict) -> None:
+        """evaluate state must use action_type: shell for the Playwright CLI call."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("action_type") == "shell"
+
+    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("evaluate", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+        """evaluate state must route to score when screenshot succeeds."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_yes") == "score"
+
+    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+        """evaluate state must route back to generate when screenshot fails."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_no") == "generate"
+
+    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+        """score state must route to done when all criteria pass."""
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
+        """score state must route back to generate when criteria are not met."""
+        state = data["states"].get("score", {})
+        assert state.get("on_no") == "generate"
+
+    def test_context_has_description_and_output_dir(self, data: dict) -> None:
+        """context block must define description and output_dir variables."""
+        ctx = data.get("context", {})
+        assert "description" in ctx
+        assert "output_dir" in ctx
+
+    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+
+class TestSvgImageGeneratorLoop:
+    """Structural tests for the svg-image-generator FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "svg-image-generator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, and states fields."""
+        assert data.get("name") == "svg-image-generator"
         assert data.get("initial") == "plan"
         assert data.get("input_key") == "description"
         assert isinstance(data.get("states"), dict)

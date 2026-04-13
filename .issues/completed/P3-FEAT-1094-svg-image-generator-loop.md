@@ -177,6 +177,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `loops`, `harness`, `svg`, `captured`
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-13T14:58:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/329ccb1c-f63d-4b65-9cbf-df408d8e5d7c.jsonl`
+- `/ll:ready-issue` - 2026-04-13T14:53:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23fe1a90-9dab-4b2b-86ec-90e7ecfd5c14.jsonl`
 - `/ll:confidence-check` - 2026-04-13T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d22c48e-5d04-4aa3-8512-55595e860c13.jsonl`
 - `/ll:wire-issue` - 2026-04-13T14:49:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d22c48e-5d04-4aa3-8512-55595e860c13.jsonl`
 - `/ll:refine-issue` - 2026-04-13T14:38:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3402160-b653-4d97-830f-c84897abb872.jsonl`
@@ -185,4 +187,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-04-13 | Priority: P3
+## Resolution
+
+**Status**: Completed
+**Completed**: 2026-04-13
+
+### Changes Made
+
+1. **Created** `scripts/little_loops/loops/svg-image-generator.yaml` — five-state FSM loop (`plan → generate → evaluate → score → done`) porting the `html-website-generator` pattern with SVG-specific criteria (`visual_clarity` 2×, `originality` 2×, `craft` 1×, `scalability` 1×), `max_iterations: 20`, `timeout: 7200`
+2. **Updated** `scripts/tests/test_builtin_loops.py` — added `"svg-image-generator"` to `test_expected_loops_exist` expected set; added `TestSvgImageGeneratorLoop` class with 11 structural assertions mirroring `TestHtmlWebsiteGeneratorLoop`
+3. **Updated** `scripts/little_loops/loops/README.md` — added `svg-image-generator` row to Harness/Templates table
+4. **Updated** `docs/guides/LOOPS_GUIDE.md` — added `svg-image-generator` row to harness table; added full `### svg-image-generator` section with usage, context variables, FSM flow, criteria table, and notes; generalized GAN architecture reference sentence
+5. **Updated** `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — added `svg-image-generator` to real-world harness examples list
+6. **Updated** `README.md` — `**39 FSM loops**` → `**40 FSM loops**`
+7. **Updated** `CONTRIBUTING.md` — `(34 YAML files)` → `(40 YAML files)`
+8. **Updated** `CHANGELOG.md` — added `[Unreleased] > ### Added` entry for FEAT-1094
+
+### Verification
+
+- `python -m pytest scripts/tests/test_builtin_loops.py -v` — **165 passed**
+- `ll-loop list` auto-discovers `svg-image-generator` (filename-based, no registration needed)
+
+---
+
+**Completed** | Created: 2026-04-13 | Priority: P3

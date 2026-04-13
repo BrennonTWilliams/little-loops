@@ -616,8 +616,9 @@ run_eval → score_results → analyze_failures
 | `harness-single-shot` | Annotated single-shot harness example — all evaluation phases with commented-out optional gates |
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
+| `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 
-For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+For background on the GAN-style generator-evaluator architecture used by `html-website-generator` and `svg-image-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
 ### `html-website-generator` — GAN-Style Website Design Loop
 
@@ -673,6 +674,61 @@ plan → generate → evaluate
 - If Playwright is unavailable (missing binary, permission error), the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source rather than a screenshot.
 - The loop runs up to 30 iterations with a 4-hour timeout (`max_iterations: 30`, `timeout: 14400`).
 - To customize the design criteria or scoring weights, install the loop locally (`ll-loop install html-website-generator`) and edit the `score` state's prompt.
+
+### `svg-image-generator` — GAN-Style SVG Creation Loop
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`).
+
+**Technique**: Direct port of the `html-website-generator` pattern adapted for SVG. The loop runs four states in sequence: a **planner** expands the one-line description into a visual brief (shape language, color palette, mood, anti-patterns to avoid); a **generator** writes a fully self-contained SVG file with a proper `viewBox` and no external dependencies; an **evaluator** uses Playwright CLI to screenshot the rendered SVG via `file://` URL (no HTTP server required — SVGs render natively in browsers); and a **scorer** judges the screenshot against four SVG-specific weighted criteria, routing back to the generator with structured critique until all scores clear `pass_threshold`.
+
+**When to use**: When you want rapid, automated iterations on a custom icon or illustration without manual refinement. The self-contained SVG structure (no external fonts, no image hrefs) makes convergence faster than HTML — there are fewer variables and no layout engine complexity.
+
+**Usage:**
+
+```bash
+ll-loop run svg-image-generator "a minimalist coffee cup icon"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
+| `output_dir` | `/tmp/ll-svg-generator` | Output directory for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png` |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
+
+Override per-run:
+
+```bash
+ll-loop run svg-image-generator "lightning bolt icon" \
+  --context output_dir=/tmp/my-icon \
+  --context pass_threshold=7
+```
+
+**FSM flow:**
+
+```
+plan → generate → evaluate
+                     ├─ CAPTURED → score
+                     │              ├─ PASS    → done
+                     │              └─ ITERATE → generate (with critique)
+                     └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+```
+
+**Evaluation criteria** (all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `visual_clarity` | 2× | Is the concept immediately readable at icon scale? Can you identify it within 2 seconds? |
+| `originality` | 2× | Evidence of custom creative decisions? Penalizes default clip-art silhouettes and generic geometric shapes. |
+| `craft` | 1× | Clean paths, consistent stroke weights, deliberate proportions, effective use of negative space |
+| `scalability` | 1× | Does the level of detail hold up at small sizes (≤32px)? Penalizes excessive complexity. |
+
+**Notes:**
+- The SVG file embeds all shapes as paths and uses only inline colors — no external image hrefs, no external fonts — so it renders correctly under a `file://` URL without a web server.
+- If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the SVG source rather than a screenshot.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- To customize the scoring criteria, install the loop locally (`ll-loop install svg-image-generator`) and edit the `score` state's prompt.
 
 ## Beyond the Basics
 
