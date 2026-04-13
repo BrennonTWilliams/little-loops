@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # BUG-1079: recursive-refine runs issue-size-review twice when breakdown_issue fires
@@ -168,6 +170,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `loops`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99711cfa-c6a8-4520-8e2f-6622a3224ca6.jsonl`
 - `/ll:wire-issue` - 2026-04-12T23:03:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3cd62e7-0dae-42cb-bbc9-f72e7d7cff7b.jsonl`
 - `/ll:refine-issue` - 2026-04-12T22:40:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7c9802d-2089-4939-b342-91f160e169da.jsonl`
 

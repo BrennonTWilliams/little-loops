@@ -2025,8 +2025,8 @@ class TestMainDefaultInput:
             result = main()
         captured = capsys.readouterr()
         assert result == 1
-        assert "ll-messages" in captured.err
         assert ".ll/workflow-analysis/step1-patterns.jsonl" in captured.err
+        assert "ll-messages" in captured.out
 
     def test_explicit_input_missing_no_ll_messages_hint(
         self,
@@ -2043,7 +2043,7 @@ class TestMainDefaultInput:
             result = main()
         captured = capsys.readouterr()
         assert result == 1
-        assert "ll-messages" not in captured.err
+        assert "ll-messages" not in captured.out
 
     def test_default_input_does_not_require_flag(
         self,

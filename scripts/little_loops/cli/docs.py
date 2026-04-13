@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.logger import Logger
+
 
 def main_verify_docs() -> int:
     """Entry point for ll-verify-docs command.
@@ -71,6 +74,9 @@ Exit codes:
 
     args = parser.parse_args()
 
+    configure_output()
+    logger = Logger(use_color=use_color_enabled())
+
     # Determine base directory
     base_dir = args.directory or Path.cwd()
 
@@ -90,8 +96,8 @@ Exit codes:
     # Auto-fix if requested
     if args.fix and not result.all_match:
         fix_result = fix_counts(base_dir, result)
-        print(
-            f"\nFixed {fix_result.fixed_count} count(s) in {len(fix_result.files_modified)} file(s)"
+        logger.success(
+            f"Fixed {fix_result.fixed_count} count(s) in {len(fix_result.files_modified)} file(s)"
         )
 
     # Return exit code based on results
@@ -187,6 +193,8 @@ Exit codes:
     )
 
     args = parser.parse_args()
+
+    configure_output()
 
     # Determine base directory
     base_dir = args.directory or Path.cwd()

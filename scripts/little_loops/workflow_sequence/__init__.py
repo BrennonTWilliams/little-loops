@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.logger import Logger
 from little_loops.workflow_sequence.analysis import (
     analyze_workflows,
     calculate_boundary_weight,
@@ -66,7 +68,6 @@ def main() -> int:
         Exit code (0 = success, 1 = failure)
     """
     import argparse
-    import sys
 
     parser = argparse.ArgumentParser(
         description="Identify multi-step workflow patterns from user message history",
@@ -145,6 +146,9 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
 
     args = parser.parse_args()
 
+    configure_output()
+    logger = Logger(use_color=use_color_enabled())
+
     if args.command is None:
         parser.print_help()
         return 1
@@ -152,30 +156,25 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
     if args.command == "analyze":
         # Validate input files
         if not args.input.exists():
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+            logger.error(f"Input file not found: {args.input}")
             if args.input == _DEFAULT_INPUT_PATH:
-                print(
-                    "  Run 'll-messages' first to generate the input file.",
-                    file=sys.stderr,
-                )
+                logger.info("  Run 'll-messages' first to generate the input file.")
             return 1
 
         if not args.patterns.exists():
-            print(f"Error: Patterns file not found: {args.patterns}", file=sys.stderr)
+            logger.error(f"Patterns file not found: {args.patterns}")
             return 1
 
         # Validate threshold ranges
         if not (0.0 <= args.overlap_threshold <= 1.0):
-            print(
-                f"Error: --overlap-threshold must be in [0.0, 1.0], got {args.overlap_threshold}",
-                file=sys.stderr,
+            logger.error(
+                f"--overlap-threshold must be in [0.0, 1.0], got {args.overlap_threshold}"
             )
             return 1
 
         if not (0.0 <= args.boundary_threshold <= 1.0):
-            print(
-                f"Error: --boundary-threshold must be in [0.0, 1.0], got {args.boundary_threshold}",
-                file=sys.stderr,
+            logger.error(
+                f"--boundary-threshold must be in [0.0, 1.0], got {args.boundary_threshold}"
             )
             return 1
 
@@ -188,9 +187,9 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
                 output_path = Path(".ll/workflow-analysis/step2-workflows.yaml")
 
         if args.verbose:
-            print(f"Input: {args.input}")
-            print(f"Patterns: {args.patterns}")
-            print(f"Output: {output_path}")
+            logger.info(f"Input: {args.input}")
+            logger.info(f"Patterns: {args.patterns}")
+            logger.info(f"Output: {output_path}")
 
         try:
             analysis = analyze_workflows(
@@ -204,16 +203,16 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
             )
 
             if args.verbose:
-                print(f"Analyzed {analysis.metadata['message_count']} messages")
-                print(f"Found {len(analysis.session_links)} session links")
-                print(f"Found {len(analysis.entity_clusters)} entity clusters")
-                print(f"Detected {len(analysis.workflows)} workflows")
-            print(f"Output written to: {output_path}")
+                logger.info(f"Analyzed {analysis.metadata['message_count']} messages")
+                logger.info(f"Found {len(analysis.session_links)} session links")
+                logger.info(f"Found {len(analysis.entity_clusters)} entity clusters")
+                logger.info(f"Detected {len(analysis.workflows)} workflows")
+            logger.success(f"Output written to: {output_path}")
 
             return 0
 
         except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
+            logger.error(str(e))
             return 1
 
     return 1

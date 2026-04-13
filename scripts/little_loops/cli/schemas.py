@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.logger import Logger
+
 
 def main_generate_schemas() -> int:
     """Entry point for ll-generate-schemas command.
@@ -42,12 +45,15 @@ Exit codes:
 
     args = parser.parse_args()
 
+    configure_output()
+    logger = Logger(use_color=use_color_enabled())
+
     output_dir = args.output or Path.cwd() / "docs" / "reference" / "schemas"
 
     try:
         paths = generate_schemas(output_dir)
-        print(f"Generated {len(paths)} schema(s) in {output_dir}/")
+        logger.success(f"Generated {len(paths)} schema(s) in {output_dir}/")
         return 0
     except Exception as exc:
-        print(f"Error: {exc}")
+        logger.error(str(exc))
         return 1

@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.cli_args import add_config_arg
 from little_loops.config import BRConfig
+from little_loops.logger import Logger
 
 
 def main_history() -> int:
@@ -191,6 +193,8 @@ Examples:
     # Determine directories
     project_root = args.config or Path.cwd()
     config = BRConfig(project_root)
+    configure_output(config.cli)
+    logger = Logger(use_color=use_color_enabled())
     issues_dir = args.directory or config.project_root / config.issues.base_dir
     completed_dir = issues_dir / "completed"
 
@@ -268,7 +272,7 @@ Examples:
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(doc, encoding="utf-8")
-            print(f"Documentation written to {args.output}")
+            logger.success(f"Documentation written to {args.output}")
         else:
             print(doc)
 

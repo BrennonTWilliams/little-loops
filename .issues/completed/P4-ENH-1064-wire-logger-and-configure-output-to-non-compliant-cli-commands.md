@@ -13,6 +13,14 @@ outcome_confidence: 85
 
 7 of 15 `ll-` CLI commands emit all output via raw `print()`, bypassing the project's two-part output styling system (`Logger` + `cli/output.py`). These tools do not respect `NO_COLOR`, do not produce colored/prefixed status output, and are inconsistent with the 8 compliant tools.
 
+## Current Behavior
+
+7 of 15 `ll-` CLI commands (`ll-deps`, `ll-workflows`, `ll-create-extension`, `ll-history`, `ll-verify-docs`, `ll-check-links`, `ll-generate-schemas`) emit all output via raw `print()` calls, bypassing the project's `Logger` + `configure_output()` output system. These tools produce plain, uncolored output and do not honor the `NO_COLOR` environment variable.
+
+## Expected Behavior
+
+All 15 `ll-` CLI commands use `configure_output()` + `Logger` for status/error/progress output, producing consistent colored output and honoring `NO_COLOR`. Raw data output (JSON, pre-formatted reports, tabular graphs) remains as `print()` to stay pipeable.
+
 ## Motivation
 
 The project has a well-established output contract:
@@ -153,13 +161,13 @@ configure_output(config.cli)  # ADD THIS LINE
 - `scripts/tests/test_issue_history_cli.py` — covers `history.py`
 - `scripts/tests/test_logger.py` / `test_cli_output.py` — Logger + configure_output unit tests
 
-**Testing patterns for Logger output** (`test_cli_sync.py:222-258`):
+**Testing patterns for Logger output** (`test_cli_sync.py:221-258`):
 - Pass `MagicMock()` as logger; assert on `logger.info.call_args_list` / `logger.error.call_args_list`
 - Or use `pytest` `capsys` fixture to capture stdout and assert on plain text
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_doc_synthesis.py:388-482` — also calls `main_history`; lines 393-394, 456-457 assert on data-output `print()` lines kept as-is — survives the migration
-- `scripts/tests/test_cli.py:2685-2837` (`TestHistoryCLI`) — calls `main_history` extensively; return-code assertions only — safe
+- `scripts/tests/test_cli.py:2590-2837` (`TestMainHistoryCoverage`) — calls `main_history` extensively; return-code assertions only — safe
 
 ### Documentation
 
@@ -169,6 +177,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### `workflow_sequence/analysis.py` Note
 
 `analysis.py:661-679` contains 8 `print(..., file=sys.stderr)` calls gated by `if verbose:`. These are in library code (`analyze_workflows()`), not the CLI entry point — treat separately or leave unchanged (the verbose flag already provides control).
+
+## Scope Boundaries
+
+- **In scope**: Wire `Logger` + `configure_output()` into the 7 non-compliant CLI entry points listed above
+- **Out of scope**: Library function `analyze_workflows()` in `workflow_sequence/analysis.py:661-679` — its 8 stderr prints are already gated by a `verbose` flag and live in library code, not a CLI entry point
+- **Out of scope**: Already-compliant tools (`ll-auto`, `ll-parallel`, `ll-sync`, `ll-gitignore`, `ll-loop`, `ll-messages`, `ll-issues`, `ll-sprint`)
+- **Out of scope**: Changes to the `Logger` or `configure_output()` APIs themselves
+- **Out of scope**: New output formatting or coloring behavior beyond what Logger already provides
 
 ## Impact
 
@@ -184,11 +200,27 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-**Open** | Created: 2026-04-12 | Priority: P4
+**Completed** | Created: 2026-04-12 | Completed: 2026-04-13 | Priority: P4
 
+## Resolution
+
+Wired `configure_output()` + `Logger` into all 7 non-compliant CLI entry points:
+
+- `cli/schemas.py`: Added `configure_output()` + `Logger`; `print("Generated N...")` → `logger.success`; `print("Error: ...")` → `logger.error`
+- `cli/create_extension.py`: Added `configure_output()` + `Logger`; error/dry-run/success/info prints → logger equivalents
+- `cli/docs.py`: Added `configure_output()` + `Logger` to both entry points; `"Fixed N count(s)"` → `logger.success`; raw data output kept as `print()`
+- `workflow_sequence/__init__.py`: Added `configure_output()` + `Logger` at module level; all stderr error prints → `logger.error`; verbose progress → `logger.info`; `"Output written to:"` → `logger.success`; removed unused `import sys`
+- `cli/history.py`: Added `configure_output(config.cli)` + `Logger` after BRConfig construction; `"Documentation written to"` → `logger.success`; all data output kept as `print()`
+- `cli/deps.py`: Added `configure_output()` + `Logger`; error/status prints → logger equivalents; all report/graph/JSON output kept as `print()`; removed unused `import sys`
+
+Updated `test_workflow_sequence_analyzer.py` to reflect that the "ll-messages" hint now goes to stdout (via `logger.info`) rather than stderr.
+
+All 4687 tests pass; ruff reports no issues on modified files.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-13T01:36:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e3722e7-a57d-48d1-a6fa-57ba269d61b3.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60aa1d19-112b-4250-a43b-a5986852e393.jsonl`
 - `/ll:wire-issue` - 2026-04-13T01:29:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1b3029d-1f24-48d8-a235-4f55d666b8c3.jsonl`
 - `/ll:refine-issue` - 2026-04-13T01:17:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b19e73-9a31-4405-88d4-1165503fb996.jsonl`
 - `/ll:capture-issue` - 2026-04-12T19:32:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0da757c9-7ce6-4e48-97f4-06e4c7a2b36b.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b19e73-9a31-4405-88d4-1165503fb996.jsonl`

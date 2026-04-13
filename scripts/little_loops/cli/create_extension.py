@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.cli_args import add_dry_run_arg
+from little_loops.logger import Logger
 
 
 def _to_pkg_name(name: str) -> str:
@@ -142,12 +144,15 @@ Examples:
     name: str = args.name
     dry_run: bool = args.dry_run
 
+    configure_output()
+    logger = Logger(use_color=use_color_enabled())
+
     pkg_name = _to_pkg_name(name)
     class_name = _to_class_name(name)
     target = _get_cwd() / name
 
     if _target_exists(target):
-        print(f"Error: directory '{name}' already exists. Remove it or choose a different name.")
+        logger.error(f"directory '{name}' already exists. Remove it or choose a different name.")
         return 1
 
     files: dict[Path, str] = {
@@ -158,18 +163,18 @@ Examples:
     }
 
     if dry_run:
-        print(f"[DRY RUN] Would create: {name}/")
+        logger.info(f"[DRY RUN] Would create: {name}/")
         for path in files:
-            print(f"  {path.relative_to(target)}")
+            logger.info(f"  {path.relative_to(target)}")
         return 0
 
     _write_scaffold(target, files)
-    print(f"Created: {name}/")
+    logger.success(f"Created: {name}/")
     for path in files:
-        print(f"  {path.relative_to(target)}")
-    print("\nNext steps:")
-    print(f"  cd {name}")
-    print("  pip install -e .")
-    print("  python -m pytest tests/")
+        logger.info(f"  {path.relative_to(target)}")
+    logger.info("\nNext steps:")
+    logger.info(f"  cd {name}")
+    logger.info("  pip install -e .")
+    logger.info("  python -m pytest tests/")
 
     return 0

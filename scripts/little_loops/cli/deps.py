@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.logger import Logger
+
 
 def _load_issues(
     issues_dir: Path,
@@ -60,7 +63,6 @@ def main_deps() -> int:
         Exit code (0 = success, 1 = failure)
     """
     import json as _json
-    import sys
 
     from little_loops.dependency_mapper import (
         analyze_dependencies,
@@ -204,13 +206,16 @@ Examples:
 
     args = parser.parse_args()
 
+    configure_output()
+    logger = Logger(use_color=use_color_enabled())
+
     if not args.command:
         parser.print_help()
         return 1
 
     issues_dir = args.issues_dir or Path.cwd() / ".issues"
     if not issues_dir.exists():
-        print(f"Error: Issues directory not found: {issues_dir}", file=sys.stderr)
+        logger.error(f"Issues directory not found: {issues_dir}")
         return 1
 
     # Sprint-scoped filtering
@@ -229,21 +234,21 @@ Examples:
 
         sprint = Sprint.load(sprints_dir, args.sprint)
         if sprint is None:
-            print(f"Error: Sprint not found: {args.sprint}", file=sys.stderr)
+            logger.error(f"Sprint not found: {args.sprint}")
             return 1
         only_ids = set(sprint.issues)
         if not only_ids:
-            print(f"Sprint '{args.sprint}' has no issues.")
+            logger.warning(f"Sprint '{args.sprint}' has no issues.")
             return 0
 
     try:
         issues, issue_contents, completed_ids = _load_issues(issues_dir, only_ids=only_ids)
     except Exception as e:
-        print(f"Error loading issues: {e}", file=sys.stderr)
+        logger.error(f"Error loading issues: {e}")
         return 1
 
     if not issues:
-        print("No active issues found.")
+        logger.warning("No active issues found.")
         return 0
 
     # Gather all issue IDs on disk to avoid false "nonexistent" warnings
@@ -313,7 +318,7 @@ Examples:
         result = validate_dependencies(issues, completed_ids, all_known_ids)
 
         if not result.has_issues:
-            print("No validation issues found.")
+            logger.info("No validation issues found.")
             return 0
 
         lines: list[str] = []
@@ -392,20 +397,15 @@ Examples:
         # Explicit-pair mode: all three positional args must be provided together
         if args.source or args.relation or args.target:
             if not (args.source and args.relation and args.target):
-                print(
-                    "Error: explicit pair requires all three arguments: "
-                    "<source> <relation> <target>",
-                    file=sys.stderr,
+                logger.error(
+                    "explicit pair requires all three arguments: <source> <relation> <target>"
                 )
                 return 1
 
             all_ids = {i.issue_id for i in issues} | all_known_ids
             for id_to_check, label in [(args.source, "source"), (args.target, "target")]:
                 if id_to_check not in all_ids:
-                    print(
-                        f"Error: {label} issue {id_to_check!r} not found",
-                        file=sys.stderr,
-                    )
+                    logger.error(f"{label} issue {id_to_check!r} not found")
                     return 1
 
             # Determine which issue receives the "Blocked By" entry
@@ -418,10 +418,7 @@ Examples:
 
             blocked_path = issue_files.get(blocked_id)
             if blocked_path is None:
-                print(
-                    f"Error: issue {blocked_id!r} is not in active issues (cannot write to it)",
-                    file=sys.stderr,
-                )
+                logger.error(f"issue {blocked_id!r} is not in active issues (cannot write to it)")
                 return 1
 
             print(f"# {prefix}Dependency Apply Report")
@@ -447,7 +444,7 @@ Examples:
         filtered = [p for p in report.proposals if p.confidence >= args.min_confidence]
 
         if not filtered:
-            print(f"No proposals at or above confidence threshold ({args.min_confidence}).")
+            logger.info(f"No proposals at or above confidence threshold ({args.min_confidence}).")
             return 0
 
         print(f"# {prefix}Dependency Apply Report")
