@@ -1507,6 +1507,18 @@ class TestSvgImageGeneratorLoop:
         assert data.get("max_iterations", 0) > 0
         assert data.get("timeout", 0) > 0
 
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path so file:// URIs are valid."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+
+    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
+        """evaluate action must redirect stderr to stdout so playwright errors surface."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
+
 
 class TestSvgTextgradLoop:
     """Structural tests for the svg-textgrad FSM loop."""
@@ -1597,3 +1609,37 @@ class TestSvgTextgradLoop:
         """Loop must define max_iterations and timeout."""
         assert data.get("max_iterations", 0) > 0
         assert data.get("timeout", 0) > 0
+
+    def test_evaluate_state_is_shell(self, data: dict) -> None:
+        """evaluate state must use action_type: shell for the Playwright CLI call."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("action_type") == "shell"
+
+    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("evaluate", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+        """evaluate state must route to score when screenshot succeeds."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_yes") == "score"
+
+    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+        """evaluate state must route back to generate when screenshot fails."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_no") == "generate"
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path so file:// URIs are valid."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+
+    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
+        """evaluate action must redirect stderr to stdout so playwright errors surface."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"

@@ -30,7 +30,7 @@ states:
       TS=$(date -u +%Y%m%d-%H%M%S)
       DIR="${context.output_dir}/$TS"
       mkdir -p "$DIR"
-      echo "$DIR"
+      echo "$(pwd)/$DIR"
     capture: run_dir
     next: plan
 
@@ -95,7 +95,7 @@ states:
     # unavailable.
     action_type: shell
     action: |
-      playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" && echo "CAPTURED"
+      playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
     evaluate:
       type: output_contains
       pattern: "CAPTURED"

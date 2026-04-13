@@ -30,7 +30,7 @@ states:
       DIR="${context.output_dir}/$TS"
       mkdir -p "$DIR"
       touch "$DIR/gradients.md"
-      echo "$DIR"
+      echo "$(pwd)/$DIR"
     capture: run_dir
     next: plan
 
@@ -84,7 +84,7 @@ states:
     # can still make progress via LLM-only scoring if Playwright is unavailable.
     action_type: shell
     action: |
-      playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" && echo "CAPTURED"
+      playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
     evaluate:
       type: output_contains
       pattern: "CAPTURED"
