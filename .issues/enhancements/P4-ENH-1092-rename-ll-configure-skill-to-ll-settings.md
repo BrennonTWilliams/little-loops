@@ -5,6 +5,8 @@ priority: P4
 size: XS
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 28
 ---
 
 # ENH-1092: Rename /ll:configure Skill to /ll:settings
@@ -119,10 +121,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `ux`, `captured`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-12_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 28/100 → VERY LOW
+
+### Outcome Risk Factors
+- Wide reference surface (14+ external files) despite mechanical changes — real risk is missing a reference; use grep validation after implementation
+- Tests break immediately after `git mv`: update `test_update_skill.py:17` and `test_create_extension_wiring.py:16` in the same commit as the rename
+- Alias vs. remove is implicitly resolved as "remove" by the implementation steps — confirm this is intentional before starting
+- ENH-753 (cited precedent) is still open — no prior skill rename has been completed in this codebase
+
 ## Session Log
 - `/ll:wire-issue` - 2026-04-13T04:37:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad8a9ad0-9a73-4793-b1e6-e50aecd235da.jsonl`
 - `/ll:refine-issue` - 2026-04-13T04:03:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c999cd5-2c5d-4efe-b7aa-08e541838d9e.jsonl`
 
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be8d38a6-5096-4b3f-866b-c58ff412ccff.jsonl`
 - `/ll:capture-issue` - 2026-04-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0fdf433f-8715-497e-8e15-6a521d4707d0.jsonl`
 
 ---
