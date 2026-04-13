@@ -1,14 +1,14 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: capture-issue
-depends_on: [FEAT-1072]
+depends_on: [FEAT-1074, FEAT-1075, FEAT-1076]
 ---
 
-# ENH-1073: Migrate Queue-Based Orchestrator Loops to `parallel:` State
+# ENH-1073: Extend Orchestrator Loops with Optional Parallel Fan-Out
 
 ## Summary
 
-Restructure the 6 queue-based orchestrator loops to replace their sequential dequeue→sub-loop→loop-back patterns with wave-based concurrent fan-out using the `parallel:` state type (FEAT-1072). Each loop processes its current generation of items in parallel, collects children or results, then fans out the next generation until the queue is empty.
+Extend the 6 queue-based orchestrator loops to support optional wave-based concurrent fan-out using the `parallel:` state type (FEAT-1072), while preserving sequential queue execution as the default fallback. When `max_workers: 1` or unset, loops behave exactly as today. When `max_workers > 1`, each loop fans out its current generation of items in parallel, collects children or results, then fans out the next generation until the queue is empty.
 
 ## Current Behavior
 
@@ -25,7 +25,13 @@ Each loop pays full serial cost: N items × average item duration = total wall-c
 
 ## Expected Behavior
 
-Each loop is restructured to use a wave-based model:
+**Mode selection** (driven by `max_workers` in loop config or `ll-config.json`):
+- `max_workers: 1` (or unset): Loop runs in existing sequential queue mode — no behavioral change.
+- `max_workers > 1`: Loop uses wave-based fan-out via the `parallel:` state.
+
+All 6 loops remain fully functional without any config changes. Parallel mode is opt-in.
+
+When parallel mode is active, loops use a wave-based model:
 
 ```yaml
 # recursive-refine (restructured)
@@ -61,16 +67,16 @@ Wall-clock time becomes: ceil(N / max_workers) × average_item_duration instead 
 
 ## Motivation
 
-Queue-based loops are the slowest operations in the ll system. `recursive-refine` over 10 issues with 4 workers runs in ~3 serial issue durations instead of 10. `sprint-refine-and-implement` over a 6-issue sprint drops proportionally. The `parallel:` state type (FEAT-1072) makes this restructuring straightforward — each loop's queue management becomes a wave counter rather than a serial cursor. Without this migration, FEAT-1072 provides infrastructure with no loops using it.
+Queue-based loops are the slowest operations in the ll system. `recursive-refine` over 10 issues with 4 workers runs in ~3 serial issue durations instead of 10. `sprint-refine-and-implement` over a 6-issue sprint drops proportionally. The `parallel:` state type (FEAT-1072) makes this extension straightforward — each loop gains a parallel fan-out path alongside its existing queue path. Without this extension, FEAT-1072 provides infrastructure with no loops using it. Sequential mode is preserved for rate-limiting, debugging, dependency ordering, and environments where parallelism is undesirable.
 
 ## Proposed Solution
 
-For each loop, the migration follows a consistent pattern:
+For each loop, the extension follows a consistent pattern:
 
-1. Rename/repurpose the queue management states: `parse_input` stays, `dequeue_next` → `fan_out` (parallel state), `loop_back` removed
-2. Replace the `loop:` sub-loop delegation state with a `parallel:` state pointing at the same sub-loop
+1. Add a `fan_out` parallel state alongside (not replacing) the existing `dequeue_next`/`loop_back` queue states. Route to `fan_out` when `max_workers > 1`, otherwise continue through the existing queue path.
+2. Point `fan_out` at the same sub-loop already used by the `loop:` delegation state — no sub-loop changes required
 3. Add a `collect_children` (or `collect_results`) state that aggregates all worker outputs and determines whether a next generation exists
-4. The `detect_children` / `enqueue_children` states in recursive-refine collapse into `collect_children` since all workers' outputs are available simultaneously
+4. The `detect_children` / `enqueue_children` states in recursive-refine collapse into `collect_children` in parallel mode since all workers' outputs are available simultaneously; they remain unchanged in sequential mode
 
 **Isolation mode by loop:**
 - `recursive-refine`, `sprint-refine-and-implement`, `auto-refine-and-implement`: `isolation: worktree` (write issue files)
@@ -110,21 +116,23 @@ For each loop, the migration follows a consistent pattern:
 ## Implementation Steps
 
 1. Implement and validate FEAT-1072 (`parallel:` state type) — prerequisite
-2. Restructure `recursive-refine.yaml` first (most complex; establishes the wave-based pattern)
-3. Restructure `sprint-refine-and-implement.yaml` and `auto-refine-and-implement.yaml` (similar queue patterns)
-4. Restructure `harness-multi-item.yaml` (eval-focused, slightly different child collection logic)
-5. Restructure `prompt-across-issues.yaml` and `outer-loop-eval.yaml` (simpler — thread isolation, no child collection)
-6. Validate each restructured loop with a small input set; confirm event logs show parallel worker dispatch
+2. Extend `recursive-refine.yaml` first — add the `fan_out` parallel path while keeping existing `dequeue_next`/`loop_back` queue states intact for `max_workers: 1`
+3. Extend `sprint-refine-and-implement.yaml` and `auto-refine-and-implement.yaml` (same dual-path pattern)
+4. Extend `harness-multi-item.yaml` (eval-focused, slightly different child collection logic in parallel path)
+5. Extend `prompt-across-issues.yaml` and `outer-loop-eval.yaml` (simpler — thread isolation, no child collection)
+6. Validate each extended loop in both modes: confirm sequential behavior unchanged at `max_workers: 1`; confirm parallel fan-out in event logs at `max_workers > 1`
 
 ## Success Metrics
 
-- `recursive-refine` over N issues completes in ≤ ceil(N / max_workers) × single-issue duration (±10% for merge overhead)
-- All 6 loops produce identical output to their sequential predecessors on the same inputs
-- No regressions in child issue discovery (recursive-refine's decomposition tree must be fully explored)
+- `recursive-refine` over N issues completes in ≤ ceil(N / max_workers) × single-issue duration (±10% for merge overhead) when `max_workers > 1`
+- With `max_workers: 1` (or unset), all 6 loops produce identical output and timing to their current sequential implementations
+- All 6 loops produce identical output between sequential and parallel modes on the same inputs
+- No regressions in child issue discovery (recursive-refine's decomposition tree must be fully explored in both modes)
 
 ## Scope Boundaries
 
-- Does not restructure sequential pipeline orchestrators (backlog-flow-optimizer, issue-discovery-triage, greenfield-builder) — these have inter-stage dependencies that prevent fan-out
+- Queue-based sequential execution is preserved for all 6 loops when `max_workers: 1` or unset — this is the default and requires no config changes
+- Does not touch sequential pipeline orchestrators (backlog-flow-optimizer, issue-discovery-triage, greenfield-builder) — these have inter-stage dependencies that prevent fan-out and remain queue-only
 - Does not change leaf loops (refine-to-ready-issue, fix-quality-and-tests, etc.) — they are the sub-loops being fanned out
 - Does not add `max_workers` to `ll-config.json` at this stage — loops use hardcoded defaults initially; config wiring is a follow-on
 
