@@ -28,12 +28,12 @@ Documentation issue found by `/ll:audit-docs`.
 
 ## Problem
 
-Two entry points installed via `pip install little-loops` are not documented anywhere:
+Two entry points installed via `pip install little-loops` are documented in `docs/reference/CLI.md` (lines 1074 and 1096 respectively) but are absent from README.md's "What's Included" summary and the README CLI tools section:
 
 - **`ll-generate-schemas`** — Regenerates JSON Schema files for all `LLEvent` types into `docs/reference/schemas/`. Developer/maintainer build tool used when the event schema changes.
 - **`mcp-call`** — CLI wrapper for calling MCP tools: `mcp-call server/tool-name '{"param": "value"}'`. Debugging/testing utility for MCP integrations.
 
-Users who discover these via `which ll-generate-schemas` or tab-completion have no documentation to reference.
+The tools are discoverable via `docs/reference/CLI.md` (linked from README), but the README "14 CLI tools" count and the CLI section do not surface them. The question is whether README should acknowledge them or whether omitting internal/debug tools from README is intentional.
 
 ## Expected Content
 
