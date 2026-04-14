@@ -4270,7 +4270,8 @@ Manage loop state persistence and event streaming.
 | `append_event(event)` | Append event to JSONL file |
 | `read_events()` | Read all events from file |
 | `clear_events()` | Remove events file |
-| `clear_all()` | Clear state and events |
+| `clear_all()` | Archive current run to history, then clear state and events |
+| `archive_run()` | Copy current state and events to `.loops/.history/<run_id>-<name>/` |
 
 **File structure:**
 ```

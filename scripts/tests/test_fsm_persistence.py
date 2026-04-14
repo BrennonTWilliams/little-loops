@@ -871,6 +871,23 @@ class TestPersistentExecutor:
         assert state.status == "timed_out"
 
 
+    def test_run_archives_to_history_on_completion(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """Completed run should be immediately archived without needing a second invocation."""
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
+
+        executor.run()
+
+        history_base = tmp_loops_dir / ".history"
+        assert history_base.exists()
+        run_dirs = [d for d in history_base.iterdir() if d.name.endswith("-test-loop")]
+        assert len(run_dirs) == 1
+        assert (run_dirs[0] / "state.json").exists()
+        assert (run_dirs[0] / "events.jsonl").exists()
+
+
 class TestUtilityFunctions:
     """Tests for utility functions."""
 

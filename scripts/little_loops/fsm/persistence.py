@@ -464,6 +464,7 @@ class PersistentExecutor:
             accumulated_ms=result.duration_ms,
         )
         self.persistence.save_state(final_state)
+        self.persistence.archive_run()
 
         return result
 
