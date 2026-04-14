@@ -7,14 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`svg-image-generator` FSM Loop** — New built-in generator-evaluator harness for SVG icon and illustration creation; accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI with four SVG-specific scoring criteria (`visual_clarity` 2×, `originality` 2×, `craft` 1×, `scalability` 1×); direct port of the `html-website-generator` pattern (FEAT-1094)
-
 ### Planned
 
 - Windows compatibility testing
 - Performance benchmarks for large repositories
+
+## [1.82.0] - 2026-04-14
+
+### Added
+
+- **`svg-textgrad` FSM Loop** — New built-in loop applying gradient-based text optimization to SVG generation; tracks gradient history across iterations with escalating refinement prompts, best-artifact retention, and convergence detection (FEAT-1098)
+- **`svg-image-generator` FSM Loop** — New built-in generator-evaluator harness for SVG icon and illustration creation; accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI with four SVG-specific scoring criteria (`visual_clarity` 2×, `originality` 2×, `craft` 1×, `scalability` 1×); creates a timestamped run folder under `.loops/tmp/` for each execution (FEAT-1094, ENH-1097)
+
+### Changed
+
+- **`ll-issues show` Score Dimension Columns** — Card output now displays `cmplx`, `tcov`, `ambig`, and `chsrf` score dimension columns for richer issue triage at a glance (ENH-1100)
+- **`ll-issues refine-status` Score Dimension Columns** — `refine-status` table now includes score dimension columns sourced from issue frontmatter (ENH-1099)
+- **`ll-issues impact-effort` JSON Output** — Added `--json` flag for machine-readable impact/effort data (ENH-1101)
+- **`svg-image-generator` Error Routing** — Added error routing and explicit failure terminal states to the loop (ENH-1100)
+- **`svg-textgrad` Robustness** — Added error handlers, per-iteration score history, best-artifact tracking, and convergence detection (ENH-1103)
+- **`ll-generate-schemas` Internal Tooling** — Marked as internal dev tooling with a notice in CLI help and documentation; added `ll-generate-schemas` and `mcp-call` entry points to CLI reference docs (ENH-1025, ENH-1093)
+
+### Fixed
+
+- **`auto-refine-and-implement` Skip File Accumulation** — Added `init` state to clear the skip file at the start of each run, preventing premature exit when skips accumulate across runs (BUG-1095)
+- **`recursive-refine` Parent Cleanup** — Decomposed parent issues are now correctly moved to `.issues/completed/` after breakdown (BUG-1096)
+- **`svg-textgrad` Evaluate State URI** — Resolved invalid `file://` URI in the evaluate state of svg loops that caused repeated exit-code-1 failures (BUG-1102)
+- **Loop Run History Archiving** — Loop runs are now archived to history immediately upon completion rather than deferred to the next run (BUG-1104)
 
 ## [1.81.1] - 2026-04-13
 
@@ -143,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.82.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.1...v1.82.0
 [1.81.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.0...v1.81.1
 [1.81.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.80.0...v1.81.0
 [1.80.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.79.0...v1.80.0
