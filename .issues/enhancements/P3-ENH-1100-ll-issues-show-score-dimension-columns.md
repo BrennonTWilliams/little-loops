@@ -90,7 +90,9 @@ Add `dim_scores_line` to `structural_lines` for width calculation (when not None
 - `scripts/little_loops/cli/issues/refine_status.py:453–465` — `_cell_value` for the same four fields (shows the frontmatter key names)
 
 ### Tests
-- `scripts/tests/test_show.py` — add two tests: (1) `test_dim_scores_present` — issue with all four dimension fields in frontmatter → card contains "Cmplx:", "Tcov:", "Ambig:", "Chsrf:"; (2) `test_dim_scores_absent` — issue without dimension fields → card does not contain "Cmplx:" (backward-compat); (3) `test_json_output_includes_dim_scores` — `--json` output dict contains all four keys
+- `scripts/tests/test_issues_cli.py:TestIssuesCLIShow` — add three tests following the pattern of `test_show_with_frontmatter_scores` (line 1172): (1) `test_show_dim_scores_present` — issue with all four dimension fields in frontmatter → card contains "Cmplx:", "Tcov:", "Ambig:", "Chsrf:"; (2) `test_show_dim_scores_absent` — issue without dimension fields → card does not contain "Cmplx:" (backward-compat); (3) `test_show_json_includes_dim_scores` — `--json` output dict contains all four keys with correct values
+
+  **Note**: There is NO `test_show.py` — all show tests live in `test_issues_cli.py`.
 
 ### Related
 - `scripts/little_loops/cli/issues/refine_status.py` — already reads and renders these same four fields; serves as the reference implementation
@@ -100,12 +102,31 @@ Add `dim_scores_line` to `structural_lines` for width calculation (when not None
 
 1. In `_parse_card_fields()` (after line 148), add four `frontmatter.get(...)` reads for the four dimension keys.
 2. Add the four keys to the `return` dict (after `"outcome"` entry) as `str(x) if x is not None else None`.
-3. In `_render_card()` (after `scores_line` is built, ~line 293), build `dim_scores_line` from `fields` using the four new keys.
-4. Add `dim_scores_line` to `structural_lines` (for width calculation) when it is not None.
-5. In the card-body rendering block (~line 381), add `if dim_scores_line: lines.append(...)` directly after the existing `if scores_line:` block.
-6. In `cmd_show()` JSON branch (~line 417), the `fields` dict returned by `_parse_card_fields` already contains the four new keys — no additional change needed; verify the JSON output includes them.
-7. Add tests to `scripts/tests/test_show.py`: value-present (card contains labels) and value-absent (card does not contain labels).
-8. Run `python -m pytest scripts/tests/test_show.py -v` to confirm.
+3. In `_render_card()` (after `scores_line` is built at line 293), build `dim_scores_line` from `fields` using the four new keys.
+4. Add `dim_scores_line` to `structural_lines` (line 323–326 region, for width calculation) when it is not None.
+5. In the card-body rendering block (after line 382 `if scores_line:` block), add `if dim_scores_line: lines.append(f"{v} {dim_scores_line:<{width - 1}}{v}")`.
+6. In `cmd_show()` JSON branch (line 417), the `fields` dict returned by `_parse_card_fields` already contains the four new keys — no additional change needed; verify the JSON output includes them.
+7. Add three tests to `scripts/tests/test_issues_cli.py` in `TestIssuesCLIShow` (after the existing `test_show_with_frontmatter_scores` test at line 1172), following the same fixture + `write_text` pattern.
+8. Run `python -m pytest scripts/tests/test_issues_cli.py::TestIssuesCLIShow -v` to confirm.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Precise line anchors in `show.py`:**
+- `confidence`/`outcome` reads: lines 147–148 (confirmed)
+- `scores_line` build: lines 287–293 (confirmed)
+- `structural_lines` build: line 323, guarded append at 324–326
+- Existing `if scores_line:` card render: line 381–382
+
+**Test file correction:** All `show` command tests are in `scripts/tests/test_issues_cli.py:TestIssuesCLIShow` (line 1051). There is no `test_show.py`. The test pattern to follow is `test_show_with_frontmatter_scores` (line 1172–1199) which:
+  1. Creates an issue file with frontmatter via `write_text(...)`
+  2. Invokes `main_issues()` via `patch.object(sys, "argv", [...])`
+  3. Asserts on `capsys.readouterr().out`
+
+**JSON path:** `cmd_show()` calls `print_json(fields)` at line 418 — the `fields` dict flows unchanged from `_parse_card_fields()`, so the four new keys appear automatically with no further changes.
+
+**`IssueInfo` model:** The four dimension fields already exist in `little_loops/issue_parser.py:241–244` and are parsed from frontmatter at lines 373–435. The `show.py` change reads them independently via `frontmatter.get(...)` (same approach as `confidence_score` / `outcome_confidence`).
 
 ## Impact
 
@@ -126,6 +147,7 @@ Add `dim_scores_line` to `structural_lines` for width calculation (when not None
 `enhancement`, `ll-issues`, `show`, `confidence-check`, `cli`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-04-14T03:59:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9e8886a-31c2-46ba-b5b1-6b68e4055cce.jsonl`
 - `/ll:capture-issue` - 2026-04-13T21:24:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43909014-7cf5-4dcd-8cb6-2b74700e6f59.jsonl`
 
 ---
