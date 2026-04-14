@@ -60,6 +60,7 @@ ll-create-extension = "little_loops.cli:main_create_extension"
 ll-issues = "little_loops.cli:main_issues"
 ll-deps = "little_loops.cli:main_deps"
 ll-gitignore = "little_loops.cli:main_gitignore"
+# internal: dev tooling — regenerates docs/reference/schemas/ after LLEvent changes
 ll-generate-schemas = "little_loops.cli:main_generate_schemas"
 mcp-call = "little_loops.mcp_call:main"
 
