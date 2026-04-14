@@ -39,6 +39,14 @@ This child covers the core behavioral change: detect 429/rate-limit responses in
 
 See BUG-1105 for full root cause analysis.
 
+## Steps to Reproduce
+
+1. Create an FSM loop with a state that runs a Claude Code action against the API
+2. Run the loop under API rate pressure (`ll-loop run <loop-name>`) so the action receives a 429/rate-limit response
+3. Observe: the `before_route` interceptor receives the `ActionResult` containing rate-limit output but does not inspect it
+4. Observe: the 429-failed state routes through `on_error`/`on_no` identically to an intentional skip — work is silently lost with no retry or backoff
+5. Expected: executor should detect the rate-limit signal, apply exponential backoff, and retry the state in-place; after retry exhaustion, emit `rate_limit_exhausted` and route to `on_rate_limit_exhausted`/`on_error`
+
 ## Key Implementation Details
 
 - **Detection patterns**: reuse `classify_failure()` from `scripts/little_loops/issue_lifecycle.py:47` — actual signature is `classify_failure(error_output: str, returncode: int) -> tuple[FailureType, str]`; quota patterns at lines 59-75: `["429", "rate limit", "too many requests", "quota exceeded", "resource exhausted", "resourceexhausted", "out of extra usage", "usage limit", "api limit"]`; pass combined `output + stderr` as `error_output` and `action_result.exit_code` as `returncode`
@@ -94,21 +102,59 @@ See BUG-1105 for full root cause analysis.
 
 ## Acceptance Criteria
 
-- [ ] `before_route` detects rate-limit patterns in `ActionResult.output` + `ActionResult.stderr`
-- [ ] Exponential backoff with jitter (`base * 2^n + uniform(0, base)`) applied; sleep is cancellable via `_shutdown_requested`
-- [ ] Jitter desynchronizes wakeup times across parallel worktrees (thundering herd prevention)
-- [ ] `_rate_limit_retries` dict tracks per-state retry counts (parallel to `_retry_counts`)
-- [ ] `rate_limit_exhausted` event emitted when retries exhausted
-- [ ] Routes to `on_rate_limit_exhausted` if present on state config, otherwise `on_error`
-- [ ] `persistence.py` saves and restores `_rate_limit_retries`
-- [ ] `__init__.py` exports the new event type constant
-- [ ] Non-429 failures are unaffected
+- [x] `before_route` detects rate-limit patterns in `ActionResult.output` + `ActionResult.stderr`
+- [x] Exponential backoff with jitter (`base * 2^n + uniform(0, base)`) applied; sleep is cancellable via `_shutdown_requested`
+- [x] Jitter desynchronizes wakeup times across parallel worktrees (thundering herd prevention)
+- [x] `_rate_limit_retries` dict tracks per-state retry counts (parallel to `_retry_counts`)
+- [x] `rate_limit_exhausted` event emitted when retries exhausted
+- [x] Routes to `on_rate_limit_exhausted` if present on state config, otherwise `on_error`
+- [x] `persistence.py` saves and restores `_rate_limit_retries`
+- [x] `__init__.py` exports the new event type constant
+- [x] Non-429 failures are unaffected
+
+## Resolution
+
+**Fixed in**: commit pending | **Date**: 2026-04-14
+
+Detection branch added to `FSMExecutor._execute_state` at `scripts/little_loops/fsm/executor.py:471-522` — placed before the `before_route` interceptor dispatch so an in-place retry bypasses registered hooks. Uses `classify_failure(combined_output, exit_code)` from `issue_lifecycle.py` with a `FailureType.TRANSIENT` check plus `"rate limit"`/`"quota"` reason-string guard to avoid misfiring on non-rate-limit transient errors (network, timeout).
+
+Backoff computed as `_DEFAULT_RATE_LIMIT_BACKOFF_BASE * 2**(attempt-1) + random.uniform(0, base)` with interruptible-sleep loop polling `_shutdown_requested` every 100ms (mirrors `executor.py:299-305` pattern). Defaults: `_DEFAULT_RATE_LIMIT_RETRIES = 3`, `_DEFAULT_RATE_LIMIT_BACKOFF_BASE = 30` — BUG-1108 will replace these with per-state config reads.
+
+Exhaustion path emits `RATE_LIMIT_EXHAUSTED_EVENT = "rate_limit_exhausted"` via `_emit()` and routes to `state.extra_routes["rate_limit_exhausted"]` (stub until BUG-1108 promotes it to a first-class `StateConfig` field) falling back to `state.on_error`. Counter is reset on non-rate-limit results so intermittent 429s don't accumulate.
+
+`LoopState.rate_limit_retries: dict[str, int]` added parallel to `retry_counts` with matching `to_dict`/`from_dict`/save/restore wiring (`persistence.py:102, 124-125, 153, 431, 499`). Omitted from `to_dict` when empty for wire-format compatibility with older state files.
+
+**Files changed**:
+- `scripts/little_loops/fsm/executor.py` — detection branch, constants, counter, event, imports
+- `scripts/little_loops/fsm/persistence.py` — `LoopState.rate_limit_retries` field and save/restore
+- `scripts/little_loops/fsm/__init__.py` — re-export `RATE_LIMIT_EXHAUSTED_EVENT`
+- `scripts/tests/test_fsm_executor.py` — 8 tests in `TestRateLimitRetries` (in-place retry, counter reset, event emission, routing, fallback, non-429 unaffected, sleep called, export)
+- `scripts/tests/test_fsm_persistence.py` — 5 tests in `TestRateLimitRetriesPersistence` (roundtrip, empty-omit, missing-default, save, resume)
+
+Tests patch `_DEFAULT_RATE_LIMIT_BACKOFF_BASE` to 0 (or 0.05 for the sleep-called test) so the interruptible-sleep loop exits immediately — cleaner than mocking `time.time`/`time.sleep` and avoids iterator-exhaustion hangs.
+
+**Verification**: 258/258 FSM executor + persistence tests pass; 4805/4807 full suite pass (2 pre-existing marketplace version-sync failures unrelated to this change). ruff clean, mypy clean on modified files.
+
+**Follow-on**: BUG-1108 will add `StateConfig.max_rate_limit_retries` + `StateConfig.rate_limit_backoff_base_seconds` + first-class `on_rate_limit_exhausted` field; BUG-1109 will add integration tests and update docs/EVENT-SCHEMA.md.
 
 ## Dependencies
 
 - Depends on BUG-1108 for `StateConfig.max_rate_limit_retries` and `on_rate_limit_exhausted` fields (stub with defaults during implementation if needed)
 
+## Impact
+
+- **Priority**: P2 — Rate-limit failures silently skip all state work with no retry or backoff; loop correctness is broken under API pressure; prerequisite for BUG-1108 (config fields) and BUG-1109 (tests/docs)
+- **Effort**: Medium — Adds a new detection+backoff branch inside `_execute_state` and a parallel `_rate_limit_retries` dict; persistence changes mirror existing `retry_counts` pattern
+- **Risk**: Medium — Modifies core executor routing path; changes are additive and isolated to the rate-limit detection branch; non-429 failures are entirely unaffected
+- **Breaking Change**: No — Additive changes only; no existing behavior altered
+
+## Labels
+
+`bug`, `fsm`, `rate-limit`, `executor`, `persistence`, `reliability`
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-14T18:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1defb91-5a29-46cb-a793-f97c945ac442.jsonl`
+- `/ll:ready-issue` - 2026-04-14T16:23:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d8797e9-af80-4be1-86af-ea2dc537dc4a.jsonl`
 - `/ll:refine-issue` - 2026-04-14T16:00:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd35ea7b-b89a-4d9f-9b21-2d82d177c6c6.jsonl`
 - `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
 - `/ll:confidence-check` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a94e7ca3-0764-413e-b1a0-589250334b95.jsonl`

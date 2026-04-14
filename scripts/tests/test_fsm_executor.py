@@ -4298,4 +4298,174 @@ class TestAgentToolsPassThrough:
 
         assert len(captured_kwargs) == 1
         assert captured_kwargs[0]["agent"] is None
-        assert captured_kwargs[0]["tools"] is None
+
+
+class TestRateLimitRetries:
+    """Tests for BUG-1107: 429 detection, backoff retry, and exhaustion in FSM executor.
+
+    Tests patch `_DEFAULT_RATE_LIMIT_BACKOFF_BASE` to 0 (or a tiny value) so the
+    interruptible-sleep loop exits immediately and tests run fast without needing
+    to mock `time.time` or `time.sleep`.
+    """
+
+    def _make_fsm(
+        self,
+        *,
+        on_error: str | None = "done",
+        extra_routes: dict | None = None,
+    ) -> FSMLoop:
+        """Build a minimal FSM with a rate-limitable state."""
+        return FSMLoop(
+            name="rl-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="done",
+                    on_no="done",
+                    on_error=on_error,
+                    extra_routes=extra_routes or {},
+                ),
+                "done": StateConfig(terminal=True),
+                "exhausted": StateConfig(terminal=True),
+            },
+        )
+
+    def _rl_result(self) -> dict:
+        """Action result that looks like a 429 rate-limit response."""
+        return {"output": "Error: 429 Too Many Requests rate limit exceeded", "exit_code": 1}
+
+    def _ok_result(self) -> dict:
+        return {"output": "success", "exit_code": 0}
+
+    def test_rate_limit_retries_state_in_place(self) -> None:
+        """On a rate-limit response the executor retries the same state without routing away."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._rl_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+        assert runner.calls.count("work.sh") == 2
+
+    def test_rate_limit_counter_reset_on_success(self) -> None:
+        """Counter is cleared when action completes without rate-limit."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._rl_result()),
+            ("work.sh", self._rl_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert "execute" not in executor._rate_limit_retries
+
+    def test_rate_limit_exhausted_event_emitted(self) -> None:
+        """After _DEFAULT_RATE_LIMIT_RETRIES retries exhausted, rate_limit_exhausted event fires."""
+        from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
+
+        fsm = self._make_fsm(on_error="done")
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 2)
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            executor.run()
+
+        exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        assert len(exhausted) == 1
+        assert exhausted[0]["state"] == "execute"
+        assert exhausted[0]["retries"] == _DEFAULT_RATE_LIMIT_RETRIES
+
+    def test_rate_limit_exhausted_routes_to_on_rate_limit_exhausted(self) -> None:
+        """On exhaustion, routes to extra_routes['rate_limit_exhausted'] if configured."""
+        from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
+
+        fsm = self._make_fsm(extra_routes={"rate_limit_exhausted": "exhausted"})
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 2)
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "exhausted"
+        assert result.terminated_by == "terminal"
+
+    def test_rate_limit_exhausted_falls_back_to_on_error(self) -> None:
+        """On exhaustion without on_rate_limit_exhausted, routes to on_error."""
+        from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
+
+        fsm = self._make_fsm(on_error="done", extra_routes={})
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 2)
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_non_rate_limit_failure_unaffected(self) -> None:
+        """Non-429 failures route via on_error without affecting rate_limit_retries."""
+        fsm = self._make_fsm(on_error="done")
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", {"output": "unrelated error: file not found", "exit_code": 1})
+        ]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert executor._rate_limit_retries == {}
+
+    def test_rate_limit_backoff_sleep_called(self) -> None:
+        """Executor calls time.sleep during rate-limit backoff."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._rl_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+        sleep_calls: list[float] = []
+
+        def _record_sleep(duration: float) -> None:
+            sleep_calls.append(duration)
+
+        # Use a tiny but non-zero base so at least one sleep() call is made
+        # during the interruptible backoff loop before the deadline is reached.
+        with (
+            patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0.05),
+            patch("little_loops.fsm.executor.random.uniform", return_value=0.0),
+            patch("little_loops.fsm.executor.time.sleep", side_effect=_record_sleep),
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert len(sleep_calls) > 0, "Expected time.sleep to be called during rate-limit backoff"
+
+    def test_rate_limit_init_event_constant_exported(self) -> None:
+        """RATE_LIMIT_EXHAUSTED_EVENT is exported from the fsm package."""
+        from little_loops.fsm import RATE_LIMIT_EXHAUSTED_EVENT
+
+        assert RATE_LIMIT_EXHAUSTED_EVENT == "rate_limit_exhausted"

@@ -11,6 +11,7 @@ This module provides the execution engine that runs FSM loops:
 from __future__ import annotations
 
 import json
+import random
 import subprocess
 import threading
 import time
@@ -42,7 +43,15 @@ from little_loops.fsm.runners import (
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
+from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.session_log import get_current_session_jsonl
+
+# Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
+_DEFAULT_RATE_LIMIT_RETRIES: int = 3
+# Base backoff in seconds; actual sleep = base * 2^(attempt-1) + uniform(0, base).
+_DEFAULT_RATE_LIMIT_BACKOFF_BASE: int = 30
+# Event name emitted when rate-limit retries are exhausted.
+RATE_LIMIT_EXHAUSTED_EVENT: str = "rate_limit_exhausted"
 
 
 def _iso_now() -> str:
@@ -146,6 +155,12 @@ class FSMExecutor:
         self._retry_counts: dict[str, int] = {}
         # State entered in the previous iteration (None on first iteration or after resume).
         self._prev_state: str | None = None
+
+        # Per-state rate-limit retry tracking (parallel to _retry_counts).
+        # _rate_limit_retries[state_name] = number of 429/rate-limit retries attempted.
+        # Incremented inside _execute_state on each detected rate-limit response.
+        # Reset when the state completes without a rate-limit, or after exhaustion.
+        self._rate_limit_retries: dict[str, int] = {}
 
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
@@ -452,6 +467,49 @@ class FSMExecutor:
             ctx=ctx,
             iteration=self.iteration,
         )
+        # 429 / rate-limit detection — runs before interceptors so an in-place retry
+        # returns early without dispatching to registered before_route hooks.
+        if action_result is not None:
+            _combined = (action_result.output or "") + "\n" + (action_result.stderr or "")
+            _failure_type, _reason = classify_failure(_combined, action_result.exit_code)
+            if _failure_type == FailureType.TRANSIENT and (
+                "rate limit" in _reason.lower() or "quota" in _reason.lower()
+            ):
+                _state_name = route_ctx.state_name
+                self._rate_limit_retries[_state_name] = (
+                    self._rate_limit_retries.get(_state_name, 0) + 1
+                )
+                _attempt = self._rate_limit_retries[_state_name]
+                if _attempt > _DEFAULT_RATE_LIMIT_RETRIES:
+                    # Retries exhausted — emit event and route to on_rate_limit_exhausted/on_error
+                    self._rate_limit_retries.pop(_state_name, None)
+                    _target = state.extra_routes.get("rate_limit_exhausted") or state.on_error
+                    self._emit(
+                        RATE_LIMIT_EXHAUSTED_EVENT,
+                        {
+                            "state": _state_name,
+                            "retries": _DEFAULT_RATE_LIMIT_RETRIES,
+                            "next": _target,
+                        },
+                    )
+                    if _target:
+                        return _target
+                    return None
+                # Interruptible backoff sleep with jitter — desynchronizes parallel worktrees
+                # to prevent thundering herd on shared API quota.
+                _sleep = _DEFAULT_RATE_LIMIT_BACKOFF_BASE * (2 ** (_attempt - 1)) + random.uniform(
+                    0, _DEFAULT_RATE_LIMIT_BACKOFF_BASE
+                )
+                _deadline = time.time() + _sleep
+                while time.time() < _deadline:
+                    if self._shutdown_requested:
+                        break
+                    time.sleep(min(0.1, _deadline - time.time()))
+                return route_ctx.state_name  # retry in place
+            else:
+                # Not rate-limited: reset counter so future 429s start from zero.
+                self._rate_limit_retries.pop(route_ctx.state_name, None)
+
         for interceptor in self._interceptors:
             if hasattr(interceptor, "before_route"):
                 decision = interceptor.before_route(route_ctx)

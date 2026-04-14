@@ -101,6 +101,9 @@ class LoopState:
     continuation_prompt: str | None = None
     accumulated_ms: int = 0  # total elapsed ms across all segments (for resume offset)
     retry_counts: dict[str, int] = field(default_factory=dict)  # per-state retry tracking
+    rate_limit_retries: dict[str, int] = field(
+        default_factory=dict
+    )  # per-state rate-limit retry tracking
     active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
 
     def to_dict(self) -> dict[str, Any]:
@@ -121,6 +124,8 @@ class LoopState:
             result["continuation_prompt"] = self.continuation_prompt
         if self.retry_counts:
             result["retry_counts"] = self.retry_counts
+        if self.rate_limit_retries:
+            result["rate_limit_retries"] = self.rate_limit_retries
         if self.active_sub_loop is not None:
             result["active_sub_loop"] = self.active_sub_loop
         return result
@@ -148,6 +153,7 @@ class LoopState:
             continuation_prompt=data.get("continuation_prompt"),
             accumulated_ms=data.get("accumulated_ms", 0),
             retry_counts=data.get("retry_counts", {}),
+            rate_limit_retries=data.get("rate_limit_retries", {}),
             active_sub_loop=data.get("active_sub_loop"),
         )
 
@@ -424,6 +430,7 @@ class PersistentExecutor:
             - self._executor.start_time_ms
             + self._executor.elapsed_offset_ms,
             retry_counts=dict(self._executor._retry_counts),
+            rate_limit_retries=dict(self._executor._rate_limit_retries),
         )
         self.persistence.save_state(state)
 
@@ -491,6 +498,7 @@ class PersistentExecutor:
         self._executor.started_at = state.started_at
         self._last_result = state.last_result
         self._executor._retry_counts = dict(state.retry_counts)
+        self._executor._rate_limit_retries = dict(state.rate_limit_retries)
 
         # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect
         # the full loop lifetime (all segments), not just the resumed segment.

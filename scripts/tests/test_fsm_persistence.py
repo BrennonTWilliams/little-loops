@@ -1729,3 +1729,135 @@ class TestSignalHandlingPersistence:
         # Last step1 was call 3, last step2 was call 4
         assert result.captured["step1_out"]["output"] == "call_3"
         assert result.captured["step2_out"]["output"] == "call_4"
+
+
+class TestRateLimitRetriesPersistence:
+    """Tests for BUG-1107: persistence of _rate_limit_retries across pause/resume."""
+
+    def test_loop_state_rate_limit_retries_roundtrip(self) -> None:
+        """rate_limit_retries round-trips through LoopState.to_dict/from_dict."""
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="execute",
+            iteration=2,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+            rate_limit_retries={"execute": 2},
+        )
+        restored = LoopState.from_dict(state.to_dict())
+        assert restored.rate_limit_retries == {"execute": 2}
+
+    def test_loop_state_rate_limit_retries_omitted_when_empty(self) -> None:
+        """rate_limit_retries key is omitted from to_dict when empty (mirrors retry_counts pattern)."""
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+        )
+        d = state.to_dict()
+        assert "rate_limit_retries" not in d
+
+    def test_loop_state_from_dict_missing_rate_limit_retries_defaults_to_empty(self) -> None:
+        """from_dict with no rate_limit_retries key (old state file) defaults to {}."""
+        data = {
+            "loop_name": "test-loop",
+            "current_state": "check",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2024-01-15T10:30:00Z",
+            "updated_at": "",
+            "status": "running",
+            "accumulated_ms": 0,
+        }
+        state = LoopState.from_dict(data)
+        assert state.rate_limit_retries == {}
+
+    def test_save_state_includes_rate_limit_retries(self, tmp_path: Path) -> None:
+        """PersistentExecutor._save_state() persists _rate_limit_retries to the state file."""
+        fsm = FSMLoop(
+            name="rl-persist",
+            initial="execute",
+            states={
+                "execute": StateConfig(action="work.sh", on_yes="done", on_no="execute"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        class _AlwaysOkRunner:
+            def run(self, action: str, **kwargs: Any) -> ActionResult:  # type: ignore[override]
+                del action, kwargs
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+        persistence = StatePersistence("rl-persist", tmp_path)
+        persistence.initialize()
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=_AlwaysOkRunner())
+
+        # Manually inject rate_limit_retries into underlying FSMExecutor
+        executor._executor._rate_limit_retries = {"execute": 2}
+        executor._save_state()
+
+        loaded = persistence.load_state()
+        assert loaded is not None
+        assert loaded.rate_limit_retries == {"execute": 2}
+
+    def test_resume_restores_rate_limit_retries(self, tmp_path: Path) -> None:
+        """PersistentExecutor.resume() restores _rate_limit_retries from saved state."""
+        fsm = FSMLoop(
+            name="rl-resume",
+            initial="execute",
+            states={
+                "execute": StateConfig(action="work.sh", on_yes="done", on_no="execute"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        persistence = StatePersistence("rl-resume", tmp_path)
+        persistence.initialize()
+
+        # Save a state that includes rate_limit_retries
+        saved = LoopState(
+            loop_name="rl-resume",
+            current_state="execute",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+            rate_limit_retries={"execute": 1},
+        )
+        persistence.save_state(saved)
+
+        class _OkRunner:
+            def run(self, action: str, **kwargs: Any) -> ActionResult:  # type: ignore[override]
+                del action, kwargs
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=_OkRunner())
+        # Resume restores state; we check _rate_limit_retries before run() clears it
+        # by intercepting at the point after restore but before execution.
+        restored_counts: list[dict] = []
+
+        original_run = executor._executor.run
+
+        def _capture_and_run() -> Any:
+            restored_counts.append(dict(executor._executor._rate_limit_retries))
+            return original_run()
+
+        executor._executor.run = _capture_and_run  # type: ignore[method-assign]
+        executor.resume()
+
+        assert restored_counts[0] == {"execute": 1}
