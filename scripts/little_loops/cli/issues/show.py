@@ -224,9 +224,13 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "confidence": str(confidence) if confidence is not None else None,
         "outcome": str(outcome) if outcome is not None else None,
         "score_complexity": str(score_complexity) if score_complexity is not None else None,
-        "score_test_coverage": str(score_test_coverage) if score_test_coverage is not None else None,
+        "score_test_coverage": str(score_test_coverage)
+        if score_test_coverage is not None
+        else None,
         "score_ambiguity": str(score_ambiguity) if score_ambiguity is not None else None,
-        "score_change_surface": str(score_change_surface) if score_change_surface is not None else None,
+        "score_change_surface": str(score_change_surface)
+        if score_change_surface is not None
+        else None,
         "summary": summary,
         "integration_files": str(integration_files) if integration_files is not None else None,
         "risk": risk,
