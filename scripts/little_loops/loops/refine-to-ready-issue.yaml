@@ -26,12 +26,6 @@ states:
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
     capture: issue_id
-    next: format_issue
-    on_error: failed
-
-  format_issue:
-    action: "/ll:format-issue ${captured.issue_id.output} --auto"
-    action_type: slash_command
     next: check_lifetime_limit
     on_error: failed
 

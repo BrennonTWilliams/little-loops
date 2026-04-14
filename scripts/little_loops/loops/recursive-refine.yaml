@@ -3,7 +3,7 @@ category: issue-management
 description: |
   Refine one or more issues to readiness, recursively processing child issues
   produced by issue-size-review decomposition. Accepts a single issue ID or a
-  comma-separated list. For each issue, delegates format → refine → wire →
+  comma-separated list. For each issue, delegates refine → wire →
   confidence-check to the refine-to-ready-issue sub-loop. When thresholds are
   not met and issue-size-review creates child issues, each child is prepended
   to the queue (depth-first) and refined before the next sibling. Continues
