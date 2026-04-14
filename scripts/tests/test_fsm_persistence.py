@@ -870,13 +870,14 @@ class TestPersistentExecutor:
         assert state is not None
         assert state.status == "timed_out"
 
-
     def test_run_archives_to_history_on_completion(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:
         """Completed run should be immediately archived without needing a second invocation."""
         mock_runner = MockActionRunner()
-        executor = PersistentExecutor(simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+        )
 
         executor.run()
 

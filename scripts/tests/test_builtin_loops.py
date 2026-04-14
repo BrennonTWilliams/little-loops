@@ -1511,7 +1511,9 @@ class TestSvgImageGeneratorLoop:
         """init action must echo an absolute path so file:// URIs are valid."""
         state = data["states"].get("init", {})
         action = state.get("action", "")
-        assert "$(pwd)" in action, f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
 
     def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
         """evaluate action must redirect stderr to stdout so playwright errors surface."""
@@ -1643,7 +1645,9 @@ class TestSvgTextgradLoop:
         """init action must echo an absolute path so file:// URIs are valid."""
         state = data["states"].get("init", {})
         action = state.get("action", "")
-        assert "$(pwd)" in action, f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
 
     def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
         """evaluate action must redirect stderr to stdout so playwright errors surface."""
@@ -1720,7 +1724,9 @@ class TestSvgTextgradLoop:
         """init action must touch scores.md so compute_gradient can read it on iteration 1."""
         state = data["states"].get("init", {})
         action = state.get("action", "")
-        assert "scores.md" in action, "init.action must touch scores.md to prevent read errors on iteration 1"
+        assert "scores.md" in action, (
+            "init.action must touch scores.md to prevent read errors on iteration 1"
+        )
 
     def test_score_uses_weighted_average_pass_condition(self, data: dict) -> None:
         """score state must use weighted average pass condition, not flat all-scores check."""
