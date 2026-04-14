@@ -151,3 +151,24 @@ class TestBug863HooksInstallRemoved:
             "docs/reference/COMMANDS.md must not describe hooks as 'installs/shows/validates' — "
             "install was removed (BUG-863)"
         )
+
+
+CONTRIBUTING_MD = PROJECT_ROOT / "CONTRIBUTING.md"
+
+
+class TestEnh1093UndocumentedCliEntryPoints:
+    """ENH-1093: ll-generate-schemas and mcp-call must be documented in appropriate locations."""
+
+    def test_ll_generate_schemas_in_claude_md(self) -> None:
+        """ll-generate-schemas must appear in .claude/CLAUDE.md CLI Tools list."""
+        content = CLAUDE_MD.read_text()
+        assert "ll-generate-schemas" in content, (
+            ".claude/CLAUDE.md CLI Tools list must include ll-generate-schemas (ENH-1093)"
+        )
+
+    def test_mcp_call_in_contributing_md(self) -> None:
+        """mcp-call must be documented in CONTRIBUTING.md as a debug utility."""
+        content = CONTRIBUTING_MD.read_text()
+        assert "mcp-call" in content, (
+            "CONTRIBUTING.md must document mcp-call as a developer debug utility (ENH-1093)"
+        )

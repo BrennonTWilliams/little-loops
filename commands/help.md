@@ -229,6 +229,7 @@ ll-verify-docs    Verify documented counts match actual file counts
 ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-create-extension Scaffold a new little-loops extension project
+ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]

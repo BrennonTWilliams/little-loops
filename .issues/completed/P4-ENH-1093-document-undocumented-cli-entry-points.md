@@ -10,6 +10,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 25
+testable: false
 ---
 
 # ENH-1093: Document undocumented CLI entry points (ll-generate-schemas, mcp-call)
@@ -34,7 +35,7 @@ Documentation issue found by `/ll:audit-docs`.
 
 ## Problem
 
-Two entry points installed via `pip install little-loops` are documented in `docs/reference/CLI.md` (lines 1074 and 1096 respectively) but are absent from README.md's "What's Included" summary and the README CLI tools section:
+Two entry points installed via `pip install little-loops` are documented in `docs/reference/CLI.md` (lines 1077 and 1099 respectively) but are absent from README.md's "What's Included" summary and the README CLI tools section:
 
 - **`ll-generate-schemas`** — Regenerates JSON Schema files for all `LLEvent` types into `docs/reference/schemas/`. Developer/maintainer build tool used when the event schema changes.
 - **`mcp-call`** — CLI wrapper for calling MCP tools: `mcp-call server/tool-name '{"param": "value"}'`. Debugging/testing utility for MCP integrations.
@@ -62,15 +63,31 @@ Decision required (see Options):
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-14T04:17:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee52f0a2-eca4-41fb-afb5-0b3daae7b6e4.jsonl`
 - `/ll:wire-issue` - 2026-04-14T04:13:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdd82526-543a-44f0-b343-dcd790e5f0b0.jsonl`
 - `/ll:refine-issue` - 2026-04-14T04:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1d9eec7-9fed-4a0d-b665-ecc469834e45.jsonl`
 - `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb32025b-1ca1-4d96-a7ab-c26226a21aaf.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - implemented Option A
+
+---
+
+## Resolution
+
+**Implemented Option A** (2026-04-13):
+
+- `CONTRIBUTING.md` — Added "MCP Debugging" section documenting `mcp-call` as a developer debug utility with usage and pointer to `docs/reference/CLI.md`
+- `.claude/CLAUDE.md` — Added `ll-generate-schemas` to the CLI Tools list (counted in README "15" but absent from the list)
+- `skills/init/SKILL.md` — Added `ll-generate-schemas` to both inline CLAUDE.md boilerplate CLI lists (append and create branches)
+- `commands/help.md` — Added `ll-generate-schemas` to the CLI TOOLS enumeration
+- `scripts/tests/test_create_extension_wiring.py` — Added `TestEnh1093UndocumentedCliEntryPoints` with two regression tests; all 18 tests pass
+
+README count remains at 15; `mcp-call` treated as internal debug tool not counted in user-facing total.
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-04-12 | Priority: P4
+**Completed** | Created: 2026-04-12 | Resolved: 2026-04-13 | Priority: P4
 
 ---
 

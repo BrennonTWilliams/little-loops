@@ -561,6 +561,16 @@ When adding a new `LLEvent` type or changing payload fields:
 
 4. Commit the updated `.json` files in `docs/reference/schemas/` alongside the source change.
 
+## MCP Debugging
+
+`mcp-call` is a developer utility for calling MCP tools directly from the shell without a full Claude Code session. Useful when debugging or testing MCP server integrations.
+
+```bash
+mcp-call server/tool-name '{"param": "value"}'
+```
+
+It reads `.mcp.json` from the current directory, spawns the MCP server subprocess, performs a JSON-RPC handshake, and prints the result. Full reference: [`docs/reference/CLI.md`](docs/reference/CLI.md) (search for `mcp-call`).
+
 ## Questions?
 
 - Check [docs/development/TROUBLESHOOTING.md](docs/development/TROUBLESHOOTING.md) for common issues

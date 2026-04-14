@@ -500,6 +500,7 @@ If user opted in:
    - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
    - `ll-create-extension` - Scaffold a new little-loops extension project
+   - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 
    Install: `pip install -e "./scripts[dev]"`
    ```
@@ -525,6 +526,7 @@ If user opted in:
    - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
    - `ll-create-extension` - Scaffold a new little-loops extension project
+   - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 
    Install: `pip install -e "./scripts[dev]"`
    ```
