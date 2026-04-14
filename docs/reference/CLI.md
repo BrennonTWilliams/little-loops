@@ -1076,6 +1076,8 @@ python -m pytest tests/   # Run starter tests
 
 ### ll-generate-schemas
 
+> **Internal:** Maintainer/developer tool. End users do not need to run this directly.
+
 Generate JSON Schema (draft-07) files for all 19 `LLEvent` types and write them to `docs/reference/schemas/`.
 
 **Flags:**
