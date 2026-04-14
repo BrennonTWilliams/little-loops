@@ -85,6 +85,14 @@ dim_scores_line = "  \u2502  ".join(dim_parts) if dim_parts else None
 
 Add `dim_scores_line` to `structural_lines` for width calculation (when not None), and render it in the card body directly after the existing `scores_line` row, following the same `f"{v} {dim_scores_line:<{width - 1}}{v}"` pattern.
 
+## Scope Boundaries
+
+- Changes are limited to `scripts/little_loops/cli/issues/show.py` and its tests; no other subcommands are modified.
+- `ll-issues list`, `ll-issues refine-status`, and all other subcommands are out of scope.
+- This enhancement does not change how dimension scores are calculated or stored — only how they are displayed by `show`.
+- Dimension score labels (`Cmplx`, `Tcov`, `Ambig`, `Chsrf`) match the existing `refine-status` display labels; no new label conventions are introduced.
+- Documentation updates are limited to the three files identified in the Integration Map (API.md, OUTPUT_STYLING.md, CLI.md).
+
 ## Integration Map
 
 ### Files to Modify
@@ -175,7 +183,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `enhancement`, `ll-issues`, `show`, `confidence-check`, `cli`
 
+## Resolution
+
+Implemented in `scripts/little_loops/cli/issues/show.py`:
+- Extended `_parse_card_fields()` to read `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface` from frontmatter
+- Added `dim_scores_line` to `_render_card()` rendered after `scores_line` when any dimension score is present
+- JSON output gains four new fields automatically (no extra change needed in `cmd_show`)
+- Added 3 tests to `TestIssuesCLIShow` covering presence, absence, and JSON output
+- Updated `docs/reference/API.md`, `docs/reference/OUTPUT_STYLING.md`, `docs/reference/CLI.md`
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-14T04:14:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e610f37-abe7-4494-bd8b-aa14084cda5a.jsonl`
 - `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62c384ec-5056-4196-81c6-e365d0f8badc.jsonl`
 - `/ll:wire-issue` - 2026-04-14T04:04:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfa819a3-3434-4473-847e-41c2ad9e17f3.jsonl`
 - `/ll:refine-issue` - 2026-04-14T03:59:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9e8886a-31c2-46ba-b5b1-6b68e4055cce.jsonl`
@@ -183,4 +202,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
-**Open** | Created: 2026-04-13 | Priority: P3
+**Completed** | Created: 2026-04-13 | Resolved: 2026-04-13 | Priority: P3

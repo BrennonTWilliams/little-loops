@@ -110,6 +110,7 @@ logo = get_logo()     # returns str | None
 ├──────────────────────────────────────────────────┤
 │ Priority: P3  │  Status: Open                    │
 │ Confidence: 85  │  Outcome: 78                   │
+│ Cmplx: 22  │  Tcov: 24  │  Ambig: 25  │  Chsrf: 22│
 ├──────────────────────────────────────────────────┤
 │ Summary text wrapped to content                  │
 │ width...                                         │

@@ -4,6 +4,12 @@ discovered_branch: main
 discovered_date: 2026-04-12T00:00:00Z
 discovered_by: audit-docs
 doc_file: README.md
+confidence_score: 95
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-1093: Document undocumented CLI entry points (ll-generate-schemas, mcp-call)
@@ -56,7 +62,9 @@ Decision required (see Options):
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-04-14T04:13:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdd82526-543a-44f0-b343-dcd790e5f0b0.jsonl`
 - `/ll:refine-issue` - 2026-04-14T04:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1d9eec7-9fed-4a0d-b665-ecc469834e45.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb32025b-1ca1-4d96-a7ab-c26226a21aaf.jsonl`
 
 ---
 
@@ -91,7 +99,9 @@ Scope depends on which Option (A/B/C) is chosen:
 **Option A (recommended — document `mcp-call` in CONTRIBUTING.md, keep README count at 15):**
 - `CONTRIBUTING.md:553-563` — Add `mcp-call` documentation alongside the existing "Event Schema Maintenance" section (which already covers `ll-generate-schemas` inline)
 - `.claude/CLAUDE.md:101-119` — CLI tools list omits both tools; add `ll-generate-schemas` (already counted in 15) to align list with count
-- No README count change, no test change needed
+- `skills/init/SKILL.md:484-504` and `skills/init/SKILL.md:508-530` — two inline CLAUDE.md boilerplate blocks written to target projects by `/ll:init`; currently list 14 tools, will diverge from `.claude/CLAUDE.md` if `ll-generate-schemas` is added there [wiring pass]
+- `commands/help.md:216-231` — flat CLI TOOLS enumeration listing 14 tools; will diverge from `.claude/CLAUDE.md` if `ll-generate-schemas` is added there [wiring pass]
+- No README count change; new regression tests needed (see Tests subsection below)
 
 **Option B (document both in README, bump count to 16):**
 - `README.md:90` — Bump `"15 CLI tools"` → `"16 CLI tools"`
@@ -109,6 +119,12 @@ Scope depends on which Option (A/B/C) is chosen:
 ### Documentation Already Written (No Authoring Needed)
 - `docs/reference/CLI.md:1077-1096` — Full docs for `ll-generate-schemas` (flags table, exit codes, examples, maintenance note)
 - `docs/reference/CLI.md:1099-1118` — Full docs for `mcp-call` (arguments table, exit codes, examples)
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_create_extension_wiring.py` — add new test asserting `"ll-generate-schemas"` appears in `.claude/CLAUDE.md` (no such test currently exists; follow the `.read_text()` pattern in the existing `TestFeat1045DocUpdates` class)
+- `scripts/tests/test_create_extension_wiring.py` — add new test asserting `"mcp-call"` appears in `CONTRIBUTING.md` (no test currently asserts on real `CONTRIBUTING.md` content; follow same pattern)
 
 ### Related Issues
 - `.issues/enhancements/P5-ENH-1025-mark-ll-generate-schemas-as-internal-dev-tooling.md` — Companion issue specifically about classifying `ll-generate-schemas` as internal tooling
@@ -154,6 +170,15 @@ The actual discrepancy is **1 tool** (`mcp-call`), not 2. The core decision is w
 1. Add `mcp-call` documentation to `CONTRIBUTING.md` — append a brief entry after the "Event Schema Maintenance" section (`CONTRIBUTING.md:563`) introducing `mcp-call` as a debug utility with usage and pointer to `docs/reference/CLI.md`
 2. Update `.claude/CLAUDE.md:101-119` — add `ll-generate-schemas` to the CLI tools bullet list (it is counted in the README 15 but absent from CLAUDE.md's list of 14)
 3. Verify no regressions: `python -m pytest scripts/tests/test_create_extension_wiring.py -v`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+4. Update `skills/init/SKILL.md:484-504` — add `ll-generate-schemas` to the first inline CLAUDE.md boilerplate CLI list (currently 14 tools; must stay in sync with `.claude/CLAUDE.md`)
+5. Update `skills/init/SKILL.md:508-530` — add `ll-generate-schemas` to the second inline CLAUDE.md boilerplate CLI list (duplicate block for the "no file exists" branch)
+6. Update `commands/help.md:216-231` — add `ll-generate-schemas` to the CLI TOOLS enumeration (currently 14 tools)
+7. Add regression tests to `scripts/tests/test_create_extension_wiring.py` — assert `"ll-generate-schemas"` appears in `.claude/CLAUDE.md` and `"mcp-call"` appears in `CONTRIBUTING.md`; follow the `TestFeat1045DocUpdates` `.read_text()` pattern
 
 **Option B (if both tools should be user-visible):**
 

@@ -146,6 +146,10 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     # Extract optional frontmatter fields
     confidence = frontmatter.get("confidence_score")
     outcome = frontmatter.get("outcome_confidence")
+    score_complexity = frontmatter.get("score_complexity")
+    score_test_coverage = frontmatter.get("score_test_coverage")
+    score_ambiguity = frontmatter.get("score_ambiguity")
+    score_change_surface = frontmatter.get("score_change_surface")
     effort = frontmatter.get("effort")
     discovered_by = frontmatter.get("discovered_by")
 
@@ -219,6 +223,10 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "effort": str(effort) if effort is not None else None,
         "confidence": str(confidence) if confidence is not None else None,
         "outcome": str(outcome) if outcome is not None else None,
+        "score_complexity": str(score_complexity) if score_complexity is not None else None,
+        "score_test_coverage": str(score_test_coverage) if score_test_coverage is not None else None,
+        "score_ambiguity": str(score_ambiguity) if score_ambiguity is not None else None,
+        "score_change_surface": str(score_change_surface) if score_change_surface is not None else None,
         "summary": summary,
         "integration_files": str(integration_files) if integration_files is not None else None,
         "risk": risk,
@@ -292,6 +300,18 @@ def _render_card(fields: dict[str, str | None]) -> str:
         score_parts.append(f"Outcome: {fields['outcome']}")
     scores_line = "  \u2502  ".join(score_parts) if score_parts else None
 
+    # Build dimension scores line (only if at least one dimension score present)
+    dim_parts: list[str] = []
+    if fields.get("score_complexity"):
+        dim_parts.append(f"Cmplx: {fields['score_complexity']}")
+    if fields.get("score_test_coverage"):
+        dim_parts.append(f"Tcov: {fields['score_test_coverage']}")
+    if fields.get("score_ambiguity"):
+        dim_parts.append(f"Ambig: {fields['score_ambiguity']}")
+    if fields.get("score_change_surface"):
+        dim_parts.append(f"Chsrf: {fields['score_change_surface']}")
+    dim_scores_line = "  \u2502  ".join(dim_parts) if dim_parts else None
+
     # Build detail lines (source/norm/fmt, integration+labels, history)
     detail_lines: list[str] = []
     source_parts: list[str] = []
@@ -323,6 +343,8 @@ def _render_card(fields: dict[str, str | None]) -> str:
     structural_lines = [header, meta_line, path_line]
     if scores_line:
         structural_lines.append(scores_line)
+    if dim_scores_line:
+        structural_lines.append(dim_scores_line)
     structural_lines.extend(detail_lines)
     wrap_width = max((len(line) for line in structural_lines), default=60)
     wrap_width = max(wrap_width, 60)  # minimum content width
@@ -380,6 +402,8 @@ def _render_card(fields: dict[str, str | None]) -> str:
     lines.append(f"{v} {_ljust(colored_meta_line, width - 1)}{v}")
     if scores_line:
         lines.append(f"{v} {scores_line:<{width - 1}}{v}")
+    if dim_scores_line:
+        lines.append(f"{v} {dim_scores_line:<{width - 1}}{v}")
     if summary_lines:
         lines.append(mid_border)
         for sl in summary_lines:

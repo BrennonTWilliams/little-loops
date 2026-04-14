@@ -1661,6 +1661,118 @@ class TestIssuesCLIShow:
         assert "fmt" in data
         assert data["source"] == "scan"
 
+    def test_show_dim_scores_present(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays dimension score line when all four fields are in frontmatter."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-500-dim-scores.md").write_text(
+            "---\n"
+            "confidence_score: 85\n"
+            "outcome_confidence: 72\n"
+            "score_complexity: 22\n"
+            "score_test_coverage: 24\n"
+            "score_ambiguity: 25\n"
+            "score_change_surface: 22\n"
+            "---\n"
+            "# FEAT-500: With dimension scores\n\n"
+            "## Summary\nHas all four dimension scores."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-500", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Cmplx: 22" in captured.out
+        assert "Tcov: 24" in captured.out
+        assert "Ambig: 25" in captured.out
+        assert "Chsrf: 22" in captured.out
+
+    def test_show_dim_scores_absent(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show omits dimension score line when dimension fields are absent (backward-compat)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-501-no-dim-scores.md").write_text(
+            "---\nconfidence_score: 80\noutcome_confidence: 70\n---\n"
+            "# FEAT-501: Without dimension scores\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-501", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Confidence: 80" in captured.out
+        assert "Cmplx:" not in captured.out
+        assert "Tcov:" not in captured.out
+        assert "Ambig:" not in captured.out
+        assert "Chsrf:" not in captured.out
+
+    def test_show_json_includes_dim_scores(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output includes all four dimension score keys with correct values."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-502-json-dim-scores.md").write_text(
+            "---\n"
+            "confidence_score: 90\n"
+            "outcome_confidence: 80\n"
+            "score_complexity: 20\n"
+            "score_test_coverage: 23\n"
+            "score_ambiguity: 21\n"
+            "score_change_surface: 19\n"
+            "---\n"
+            "# FEAT-502: JSON dimension scores\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "FEAT-502", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data.get("score_complexity") == "20"
+        assert data.get("score_test_coverage") == "23"
+        assert data.get("score_ambiguity") == "21"
+        assert data.get("score_change_surface") == "19"
+
 
 class TestIssuesCLICount:
     """Tests for ll-issues count sub-command."""
