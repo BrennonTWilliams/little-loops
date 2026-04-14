@@ -752,8 +752,8 @@ ll-loop run svg-textgrad "a minimalist coffee cup icon"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
-| `output_dir` | `.loops/tmp/svg-textgrad` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/svg-textgrad/20260413-143022/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, and `screenshot.png` |
-| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
+| `output_dir` | `.loops/tmp/svg-textgrad` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/svg-textgrad/20260413-143022/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, `scores.md`, `screenshot.png`, `best.svg`, and `best-brief.md` |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **weighted average** `(2×visual_clarity + 2×originality + craft + scalability) / 6` must meet or exceed this value |
 
 Override per-run:
 
@@ -769,11 +769,15 @@ ll-loop run svg-textgrad "lightning bolt icon" \
 init → plan → generate → evaluate
                             ├─ CAPTURED → score
                             │              ├─ PASS    → done
-                            │              └─ ITERATE → compute_gradient → append_gradient → apply_gradient → generate
-                            └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+                            │              ├─ ITERATE → record_scores → compute_gradient → route_convergence
+                            │              │                                                   ├─ CONVERGED → done
+                            │              │                                                   └─ continue  → append_gradient → apply_gradient → generate
+                            │              └─ ERROR   → failed
+                            ├─ FAILED  → generate
+                            └─ ERROR   → generate
 ```
 
-**Evaluation criteria** (same four as `svg-image-generator`; all four must meet `pass_threshold`):
+**Evaluation criteria** (same four as `svg-image-generator`; weighted average must meet `pass_threshold`):
 
 | Criterion | Weight | What it checks |
 |-----------|--------|----------------|
@@ -790,11 +794,15 @@ init → plan → generate → evaluate
 | `brief.md` | The final gradient-optimized visual brief |
 | `critique.md` | The last evaluation scores and per-criterion notes |
 | `gradients.md` | Full gradient history: one entry per iteration, with `FAILURE_PATTERN`, `ROOT_CAUSE`, and `GRADIENT` lines |
+| `scores.md` | Per-iteration score history used by `compute_gradient` to detect plateaus and regressions |
 | `screenshot.png` | The last Playwright-captured render |
+| `best.svg` | Best-scoring iteration SVG (present if at least one score was recorded) |
+| `best-brief.md` | Brief from the best-scoring iteration (present if at least one score was recorded) |
+| `best.txt` | Weighted score of the best iteration (internal; used for comparison across iterations) |
 
 **Notes:**
 - Unlike `svg-image-generator`, the generator receives only `brief.md` and never sees `critique.md`. Critique is consumed exclusively by `compute_gradient`, which distills it into a structured gradient before the brief is updated — keeping the generator working from a coherent specification rather than reconciling conflicting signals.
-- If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the SVG source rather than a screenshot.
+- If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate` — no scoring occurs and the loop continues with the unchanged brief. Playwright is required to produce the screenshot that `score` reads; without it the loop re-generates rather than scoring without visual evidence.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - To customize scoring criteria or gradient computation, install the loop locally (`ll-loop install svg-textgrad`) and edit the `score` or `compute_gradient` state's prompt.
 - The generator enforces a strict 250-line SVG size limit — use `<circle>`, `<path>`, and `<text>` with `<g transform="">` for repeated elements rather than verbose repeated markup.

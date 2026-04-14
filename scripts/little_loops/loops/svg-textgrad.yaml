@@ -23,13 +23,15 @@ states:
   init:
     # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
     # captures the full path so all subsequent states write to an isolated directory.
-    # Also initializes gradients.md so compute_gradient can safely read it on iteration 1.
+    # Also initializes gradients.md and scores.md so compute_gradient can safely read
+    # both on iteration 1 without file-not-found errors.
     action_type: shell
     action: |
       TS=$(date -u +%Y%m%d-%H%M%S)
       DIR="${context.output_dir}/$TS"
       mkdir -p "$DIR"
       touch "$DIR/gradients.md"
+      touch "$DIR/scores.md"
       echo "$(pwd)/$DIR"
     capture: run_dir
     next: plan
@@ -80,8 +82,9 @@ states:
 
   evaluate:
     # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// SVG.
-    # Routes to score on success; routes back to generate on failure so the loop
-    # can still make progress via LLM-only scoring if Playwright is unavailable.
+    # Routes to score on success; routes back to generate on failure or error so the loop
+    # can continue regardless of Playwright availability.
+    # on_no: re-generates from the unchanged brief without scoring — no evaluation occurs.
     action_type: shell
     action: |
       playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
@@ -90,13 +93,14 @@ states:
       pattern: "CAPTURED"
     on_yes: score
     on_no: generate
+    on_error: generate
 
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
     # criteria and writes structured critique for compute_gradient to analyze.
-    # Key divergence from svg-image-generator: routes to compute_gradient on ITERATE
-    # rather than back to generate directly — gradient computation sits between evaluation
-    # and generation, updating the brief before the next generation attempt.
+    # Key divergence from svg-image-generator: routes to record_scores on ITERATE
+    # rather than back to generate directly — score history and gradient computation
+    # sit between evaluation and generation, updating the brief before the next attempt.
     action_type: prompt
     action: |
       Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the generated SVG.
@@ -128,19 +132,50 @@ states:
       - craft weight: 1× (threshold ${context.pass_threshold})
       - scalability weight: 1× (threshold ${context.pass_threshold})
 
-      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: PASS
+      Compute the weighted average: (2 × visual_clarity + 2 × originality + craft + scalability) / 6.
+      If the weighted average >= ${context.pass_threshold}, output exactly: PASS
       Otherwise output: ITERATE
     evaluate:
       type: output_contains
       pattern: "PASS"
     on_yes: done
-    on_no: compute_gradient
+    on_no: record_scores
+    on_error: failed
+
+  record_scores:
+    # TEXTGRAD: Score history + best-artifact tracking — runs after score.on_no (ITERATE).
+    # Appends per-iteration scores to scores.md so compute_gradient can detect plateaus
+    # and regressions across iterations. Also preserves the best-scoring SVG and brief
+    # so a single bad generation after a good one does not produce a worse final output.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      ITER="${state.iteration}"
+      # --- Append scores to history ---
+      grep -E "^(visual_clarity|originality|craft|scalability):" "$DIR/critique.md" \
+        | awk -v iter="$ITER" 'BEGIN{printf "## Iteration %s\n", iter} {print}' \
+        >> "$DIR/scores.md"
+      echo "" >> "$DIR/scores.md"
+      # --- Best-artifact tracking (weighted sum: 2×vc + 2×orig + craft + scalability, max=60) ---
+      VC=$(grep -E "^visual_clarity: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      OG=$(grep -E "^originality: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      CR=$(grep -E "^craft: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      SC=$(grep -E "^scalability: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      TOTAL=$((2*VC + 2*OG + CR + SC))
+      BEST=$(cat "$DIR/best.txt" 2>/dev/null || echo 0)
+      if [ "$TOTAL" -gt "$BEST" ]; then
+        echo "$TOTAL" > "$DIR/best.txt"
+        cp "$DIR/image.svg" "$DIR/best.svg"
+        cp "$DIR/brief.md" "$DIR/best-brief.md"
+      fi
+    next: compute_gradient
 
   compute_gradient:
     # TEXTGRAD: Gradient computation phase — analyzes why the brief caused this failure.
     # Reads the full gradient history to detect repeated ROOT_CAUSE patterns and escalate
     # (demand a stronger structural brief change) when the same root cause recurs 2+ times.
-    # Outputs exactly three labeled lines: FAILURE_PATTERN, ROOT_CAUSE, GRADIENT.
+    # Also reads scores.md to detect plateaus across the last 3 iterations — if no score
+    # improved, outputs CONVERGED instead of the three labeled gradient lines.
     action_type: prompt
     action: |
       You are computing a text gradient to improve the visual brief, not the SVG itself.
@@ -149,17 +184,35 @@ states:
       - ${captured.run_dir.output}/brief.md — the current visual brief (the optimizable prompt)
       - ${captured.run_dir.output}/critique.md — the evaluator's critique of the latest SVG
       - ${captured.run_dir.output}/gradients.md — the full gradient history from all prior iterations
+      - ${captured.run_dir.output}/scores.md — per-iteration score history (format: "## Iteration N" header, then four scored lines)
 
-      Analyze the critique against the brief to identify why the brief caused this failure.
-      Check gradients.md: if the same ROOT_CAUSE appears 2 or more times in the history,
-      escalate the gradient — demand a stronger structural change, not a minor tweak.
+      First, read scores.md. If the last 3 recorded ## Iteration sections show no improvement
+      in any individual score (visual_clarity, originality, craft, or scalability all flat or
+      declining across those 3 iterations), output CONVERGED on its own line and nothing else.
+
+      Otherwise, analyze the critique against the brief to identify why the brief caused this
+      failure. Check gradients.md: if the same ROOT_CAUSE appears 2 or more times in the
+      history, escalate the gradient — demand a stronger structural change, not a minor tweak.
 
       Output exactly three labeled lines:
       FAILURE_PATTERN: <what is wrong with the generated SVG>
       ROOT_CAUSE: <what in the brief caused this — vague color spec? missing size constraint? contradiction?>
       GRADIENT: <precise instruction for how to change the brief to fix this root cause>
     capture: gradient
-    next: append_gradient
+    next: route_convergence
+
+  route_convergence:
+    # TEXTGRAD: Convergence routing — checks if compute_gradient detected a score plateau.
+    # Reads from the captured gradient output (not a new action) — source: key is required
+    # so the evaluator reads the prior state's output rather than this state's (empty) output.
+    # Routes to done early on convergence; continues the gradient cycle otherwise.
+    evaluate:
+      type: output_contains
+      source: "${captured.gradient.output}"
+      pattern: "CONVERGED"
+    on_yes: done
+    on_no: append_gradient
+    on_error: append_gradient
 
   append_gradient:
     # TEXTGRAD: Log phase — appends the computed gradient to the history file.
@@ -199,18 +252,27 @@ states:
     next: generate
 
   done:
-    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
-    # Reports the final output files including the gradient history log.
+    # HARNESS: Terminal state — reached when all criteria pass, convergence is detected,
+    # or max_iterations exhausted. Reports final and best-scoring artifacts.
     action_type: prompt
     action: |
       The SVG generation loop has completed successfully.
 
       Final output files:
-      - ${captured.run_dir.output}/image.svg     — the generated SVG (primary output)
-      - ${captured.run_dir.output}/brief.md      — the final gradient-optimized visual brief
-      - ${captured.run_dir.output}/critique.md   — the final evaluation scores and notes
-      - ${captured.run_dir.output}/gradients.md  — the full gradient history across all iterations
+      - ${captured.run_dir.output}/image.svg      — the generated SVG (primary output)
+      - ${captured.run_dir.output}/brief.md       — the final gradient-optimized visual brief
+      - ${captured.run_dir.output}/critique.md    — the final evaluation scores and notes
+      - ${captured.run_dir.output}/gradients.md   — the full gradient history across all iterations
+      - ${captured.run_dir.output}/scores.md      — per-iteration score history for plateau detection
       - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
+      - ${captured.run_dir.output}/best.svg       — best-scoring iteration SVG (present if at least one score was recorded)
+      - ${captured.run_dir.output}/best-brief.md  — best-scoring iteration brief (present if at least one score was recorded)
 
       Report these paths to the user and confirm the SVG is ready.
+    terminal: true
+
+  failed:
+    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
+    # (e.g. LLM failure in score state). Provides a clear signal distinct from a
+    # max_iterations timeout, making failure mode visible in ll-loop history.
     terminal: true

@@ -253,7 +253,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `enhancement`, `loops`, `svg-textgrad`, `captured`
 
+## Resolution
+
+**Completed**: 2026-04-13
+
+**Changes made**:
+- `scripts/little_loops/loops/svg-textgrad.yaml`: Added `on_error: generate` to `evaluate`; added `on_error: failed` and rerouted `on_no` → `record_scores` on `score`; updated pass condition to weighted average; added `record_scores` shell state (score history + best-artifact tracking); changed `compute_gradient.next` → `route_convergence` and added scores.md to its file list + convergence detection instruction; added `route_convergence` state reading from `${captured.gradient.output}`; updated `done` to list `scores.md`, `best.svg`, `best-brief.md`; added `failed` terminal state; added `touch "$DIR/scores.md"` to `init`.
+- `scripts/tests/test_builtin_loops.py`: Fixed `test_score_state_routes_to_compute_gradient_on_iterate` → `test_score_state_routes_to_record_scores_on_iterate`; split `test_compute_gradient_captures_gradient` (added `test_compute_gradient_routes_to_route_convergence`); expanded `test_required_states_exist` with `record_scores`, `route_convergence`, `failed`; added 14 new test methods covering all new states.
+- `docs/guides/LOOPS_GUIDE.md`: Updated FSM flow diagram; updated output files table; corrected `pass_threshold` description to weighted average; corrected misleading `on_no` note; updated evaluation criteria header.
+
+**Verification**: 207 tests pass, ruff lint clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - current session
+- `/ll:ready-issue` - 2026-04-14T01:49:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/818b13e2-fdc2-4dc3-8847-f1cf51da41a9.jsonl`
 - `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2a35301-9e9f-472b-891c-b2b8d87d943d.jsonl`
 - `/ll:refine-issue` - 2026-04-14T01:23:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93817ff5-e7c7-47c7-8e1e-21ed9f2139ab.jsonl`
 - `/ll:confidence-check` - 2026-04-13T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b58bc250-37fe-4a3c-aa5d-a5634a8341f0.jsonl`
@@ -264,4 +277,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
-**Open** | Created: 2026-04-13 | Priority: P3
+**Completed** | Created: 2026-04-13 | Priority: P3

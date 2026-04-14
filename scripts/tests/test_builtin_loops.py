@@ -1545,10 +1545,13 @@ class TestSvgTextgradLoop:
             "generate",
             "evaluate",
             "score",
+            "record_scores",
             "compute_gradient",
+            "route_convergence",
             "append_gradient",
             "apply_gradient",
             "done",
+            "failed",
         }
         actual = set(data["states"].keys())
         missing = required - actual
@@ -1577,16 +1580,20 @@ class TestSvgTextgradLoop:
         state = data["states"].get("score", {})
         assert state.get("on_yes") == "done"
 
-    def test_score_state_routes_to_compute_gradient_on_iterate(self, data: dict) -> None:
-        """score state must route to compute_gradient (not generate) on ITERATE."""
+    def test_score_state_routes_to_record_scores_on_iterate(self, data: dict) -> None:
+        """score state must route to record_scores (not compute_gradient) on ITERATE."""
         state = data["states"].get("score", {})
-        assert state.get("on_no") == "compute_gradient"
+        assert state.get("on_no") == "record_scores"
 
     def test_compute_gradient_captures_gradient(self, data: dict) -> None:
-        """compute_gradient state must capture its output as 'gradient' and route to append_gradient."""
+        """compute_gradient state must capture its output as 'gradient'."""
         state = data["states"].get("compute_gradient", {})
         assert state.get("capture") == "gradient"
-        assert state.get("next") == "append_gradient"
+
+    def test_compute_gradient_routes_to_route_convergence(self, data: dict) -> None:
+        """compute_gradient state must route to route_convergence (not append_gradient directly)."""
+        state = data["states"].get("compute_gradient", {})
+        assert state.get("next") == "route_convergence"
 
     def test_append_gradient_is_shell_routes_to_apply_gradient(self, data: dict) -> None:
         """append_gradient state must be a shell state that routes to apply_gradient."""
@@ -1643,3 +1650,82 @@ class TestSvgTextgradLoop:
         state = data["states"].get("evaluate", {})
         action = state.get("action", "")
         assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True
+
+    def test_evaluate_on_error_routes_to_generate(self, data: dict) -> None:
+        """evaluate state must route to generate on error so Playwright failures don't stall."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_error") == "generate"
+
+    def test_score_on_error_routes_to_failed(self, data: dict) -> None:
+        """score state must route to failed on error to surface LLM failures explicitly."""
+        state = data["states"].get("score", {})
+        assert state.get("on_error") == "failed"
+
+    def test_record_scores_is_shell(self, data: dict) -> None:
+        """record_scores state must be a shell action."""
+        state = data["states"].get("record_scores", {})
+        assert state.get("action_type") == "shell"
+
+    def test_record_scores_routes_to_compute_gradient(self, data: dict) -> None:
+        """record_scores state must route to compute_gradient."""
+        state = data["states"].get("record_scores", {})
+        assert state.get("next") == "compute_gradient"
+
+    def test_route_convergence_has_output_contains_evaluator(self, data: dict) -> None:
+        """route_convergence must have an output_contains evaluator with pattern CONVERGED."""
+        state = data["states"].get("route_convergence", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CONVERGED"
+
+    def test_route_convergence_evaluator_source(self, data: dict) -> None:
+        """route_convergence evaluate block must define source pointing to gradient capture."""
+        state = data["states"].get("route_convergence", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("source") == "${captured.gradient.output}", (
+            "route_convergence.evaluate must have "
+            "'source: \"${captured.gradient.output}\"' so the evaluator "
+            "reads the prior compute_gradient output, not this state's (empty) output"
+        )
+
+    def test_route_convergence_on_yes_routes_to_done(self, data: dict) -> None:
+        """route_convergence must route to done when CONVERGED is detected."""
+        state = data["states"].get("route_convergence", {})
+        assert state.get("on_yes") == "done"
+
+    def test_route_convergence_on_no_routes_to_append_gradient(self, data: dict) -> None:
+        """route_convergence must route to append_gradient when not converged."""
+        state = data["states"].get("route_convergence", {})
+        assert state.get("on_no") == "append_gradient"
+
+    def test_route_convergence_has_on_error(self, data: dict) -> None:
+        """route_convergence must define on_error to handle evaluator failures gracefully."""
+        state = data["states"].get("route_convergence", {})
+        assert "on_error" in state
+
+    def test_done_reports_scores_md_and_best_artifacts(self, data: dict) -> None:
+        """done state action must reference scores.md, best.svg, and best-brief.md."""
+        state = data["states"].get("done", {})
+        action = state.get("action", "")
+        assert "scores.md" in action, "done.action must reference scores.md"
+        assert "best.svg" in action, "done.action must reference best.svg"
+        assert "best-brief.md" in action, "done.action must reference best-brief.md"
+
+    def test_init_touches_scores_md(self, data: dict) -> None:
+        """init action must touch scores.md so compute_gradient can read it on iteration 1."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "scores.md" in action, "init.action must touch scores.md to prevent read errors on iteration 1"
+
+    def test_score_uses_weighted_average_pass_condition(self, data: dict) -> None:
+        """score state must use weighted average pass condition, not flat all-scores check."""
+        state = data["states"].get("score", {})
+        action = state.get("action", "")
+        assert "weighted average" in action.lower(), (
+            "score.action must use weighted average pass condition to match the 2× weight documentation"
+        )
