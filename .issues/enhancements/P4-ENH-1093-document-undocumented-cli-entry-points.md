@@ -55,6 +55,9 @@ Decision required (see Options):
 
 `enhancement`, `documentation`, `auto-generated`
 
+## Session Log
+- `/ll:refine-issue` - 2026-04-14T04:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1d9eec7-9fed-4a0d-b665-ecc469834e45.jsonl`
+
 ---
 
 ## Status
@@ -76,3 +79,86 @@ Re-audited by `/ll:audit-docs`. State has changed since this issue was created:
 **Current discrepancy**: 16 actual entry points vs 15 claimed in README (1 off, not 2).
 
 Options A/B/C from the original issue remain valid. Option A (document `ll-generate-schemas` in CONTRIBUTING.md and treat `mcp-call` as an internal debug tool, leave README count at 15) is still recommended if neither tool is intended for end users.
+
+---
+
+## Integration Map
+
+### Files to Modify
+
+Scope depends on which Option (A/B/C) is chosen:
+
+**Option A (recommended — document `mcp-call` in CONTRIBUTING.md, keep README count at 15):**
+- `CONTRIBUTING.md:553-563` — Add `mcp-call` documentation alongside the existing "Event Schema Maintenance" section (which already covers `ll-generate-schemas` inline)
+- `.claude/CLAUDE.md:101-119` — CLI tools list omits both tools; add `ll-generate-schemas` (already counted in 15) to align list with count
+- No README count change, no test change needed
+
+**Option B (document both in README, bump count to 16):**
+- `README.md:90` — Bump `"15 CLI tools"` → `"16 CLI tools"`
+- `README.md` (after line 466, CLI tools section) — Add `### ll-generate-schemas` and `### mcp-call` sections using the H3 + bash examples pattern from `README.md:256-267`
+- `scripts/tests/test_create_extension_wiring.py:77-81` — Update hardcoded `"15 CLI tools"` assertion to `"16 CLI tools"`
+- `.claude/CLAUDE.md:101-119` — Add both tools to the CLI list
+
+**Option C (no change):**
+- No files to modify
+
+### Dependent Files (Tests / Assertions with Hardcoded Counts)
+- `scripts/tests/test_create_extension_wiring.py:77-81` — Asserts `"15 CLI tools"` in `README.md`; **must update if count changes**
+- `scripts/tests/test_create_extension_wiring.py:55-58` — Asserts `"Authorize all 14 ll-"` in `skills/configure/areas.md:793`; not affected by `mcp-call` (no `ll-` prefix) or by Option A
+
+### Documentation Already Written (No Authoring Needed)
+- `docs/reference/CLI.md:1077-1096` — Full docs for `ll-generate-schemas` (flags table, exit codes, examples, maintenance note)
+- `docs/reference/CLI.md:1099-1118` — Full docs for `mcp-call` (arguments table, exit codes, examples)
+
+### Related Issues
+- `.issues/enhancements/P5-ENH-1025-mark-ll-generate-schemas-as-internal-dev-tooling.md` — Companion issue specifically about classifying `ll-generate-schemas` as internal tooling
+
+---
+
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Current State Clarification (Critical)
+
+The test at `scripts/tests/test_create_extension_wiring.py:77-81` reveals that the "15 CLI tools" count in `README.md:90` already **includes `ll-generate-schemas`** — the assertion comment reads: *"incremented from 14 after ll-generate-schemas landed"*. This reframes the problem:
+
+- **`ll-generate-schemas`**: Already counted in the README "15" but has no dedicated section in the README CLI tools list — correctly absorbed into the count but intentionally unsurfaced as a user tool. Full docs at `docs/reference/CLI.md:1077-1096`. Already referenced in `CONTRIBUTING.md:553-563` under "Event Schema Maintenance."
+- **`mcp-call`**: The truly uncounted tool (16th entry point vs 15 claimed). Zero presence in README or CONTRIBUTING.md. Full docs at `docs/reference/CLI.md:1099-1118`. Only entry point without an `ll-` prefix — convention further signals internal/debug status.
+
+The actual discrepancy is **1 tool** (`mcp-call`), not 2. The core decision is whether to count and document `mcp-call` in README or treat it as a developer-internal utility excluded from the user-facing count.
+
+### Tool Audience Analysis
+
+**`ll-generate-schemas`** (`scripts/little_loops/cli/schemas.py:12`):
+- Build-time maintainer tool — regenerates JSON Schema files for all 19 `LLEvent` types into `docs/reference/schemas/`
+- Usage: `ll-generate-schemas` or `ll-generate-schemas --output path/to/dir/`
+- Audience: contributors only; referenced exclusively in `CONTRIBUTING.md:553-563`
+
+**`mcp-call`** (`scripts/little_loops/mcp_call.py:315`):
+- CLI wrapper for calling MCP tools directly via JSON-RPC from a shell, without a full Claude Code session
+- Usage: `mcp-call server/tool-name '{"param": "value"}'`
+- Reads `.mcp.json` from cwd, spawns the MCP server subprocess, performs JSON-RPC handshake, returns result
+- Audience: developers/debuggers; zero CONTRIBUTING.md presence
+
+### areas.md Count (Secondary — Not Affected by mcp-call)
+
+`skills/configure/areas.md:793` hardcodes `"14 ll- CLI tools"` (a permission group covering only `ll-`-prefixed tools). `mcp-call` has no `ll-` prefix so it would not be included regardless of README option chosen. Tested by `test_create_extension_wiring.py:55-58`.
+
+---
+
+## Implementation Steps
+
+**Option A (recommended):**
+
+1. Add `mcp-call` documentation to `CONTRIBUTING.md` — append a brief entry after the "Event Schema Maintenance" section (`CONTRIBUTING.md:563`) introducing `mcp-call` as a debug utility with usage and pointer to `docs/reference/CLI.md`
+2. Update `.claude/CLAUDE.md:101-119` — add `ll-generate-schemas` to the CLI tools bullet list (it is counted in the README 15 but absent from CLAUDE.md's list of 14)
+3. Verify no regressions: `python -m pytest scripts/tests/test_create_extension_wiring.py -v`
+
+**Option B (if both tools should be user-visible):**
+
+1. Update `README.md:90` — change `"15 CLI tools"` to `"16 CLI tools"`
+2. Add tool sections to README after line 466 using the H3 pattern from `README.md:256-267`
+3. Update `scripts/tests/test_create_extension_wiring.py:77` — change `"15 CLI tools"` assertion to `"16 CLI tools"`
+4. Update `.claude/CLAUDE.md:101-119` — add both tools to the CLI list
+5. Verify: `python -m pytest scripts/tests/test_create_extension_wiring.py -v`
