@@ -1,12 +1,12 @@
 ---
 discovered_date: "2026-04-13"
 discovered_by: capture-issue
-confidence_score: 95
-outcome_confidence: 79
+confidence_score: 100
+outcome_confidence: 90
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-1103: Update svg-textgrad Loop — Address Missing Pieces
@@ -164,17 +164,60 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_builtin_loops.py:35–43` — schema validation runs automatically on `svg-textgrad`; new states (including `failed`, `record_scores`, `route_convergence`) will be validated for dangling references and routing completeness with no test file changes needed
 - `docs/guides/LOOPS_GUIDE.md:734` — svg-textgrad guide section starts here (not `docs/LOOPS_GUIDE.md` as originally written in the issue)
 - `test_loop_schemas.py` does **not exist** — the issue originally referenced a non-existent file; use `test_builtin_loops.py` instead
+- `svg-textgrad.yaml:32` — `init` state calls `touch "$DIR/gradients.md"` but does NOT touch `scores.md`; `record_scores` will create `scores.md` on first write, but `compute_gradient` reads it on every pass (including iteration 1 before `record_scores` has run) — `init` must also call `touch "$DIR/scores.md"` to prevent read errors
+- `critique.md` line format from `score` prompt: `visual_clarity: N/10 — [explanation]`; `grep -oP "^visual_clarity: \K[0-9]+"` extracts the integer score — this pattern works for all four criteria; on macOS (no `-P` flag), use `grep -E "^visual_clarity: [0-9]+" | grep -oE "[0-9]+" | head -1` instead
+- Best-artifact tracking uses weighted sum `2*vc + 2*orig + craft + scalability` (max=60) — same weights as documented in score prompt; combining best-artifact tracking and score recording in one `record_scores` state is cleaner than a separate shell state since both read `critique.md`
+- `apo-textgrad.yaml:40` — convergence detection instruction in `compute_gradient` prompt: `"If PASS_RATE=100 or PASS_RATE exceeds ${context.target_pass_rate}, output CONVERGED on its own line instead."` — svg-textgrad uses score history instead of pass rate; adapt to: check last 3 `## Iteration` sections in `scores.md` for any score improvement
+- `svg-image-generator.yaml` score prompt (lines 138–145) has identical weight notation (`2×`) and identical flat pass condition (`ALL four individual scores >= threshold`) — both loops share this inconsistency; svg-textgrad fix applies the same pattern that svg-image-generator has but never implemented
 
 ## Implementation Steps
 
-1. **`svg-textgrad.yaml` — `on_error` handlers + `failed` terminal**: Copy pattern from `svg-image-generator.yaml:104,151,169–173`. Add `on_error: generate` to `evaluate` state (~line 92); add `on_error: failed` to `score` state (~line 137); add bare `failed` terminal state (only `terminal: true`, no action) after `done`.
-2. **`svg-textgrad.yaml` — `record_scores` shell state**: Insert between `score.on_no` and `compute_gradient`. Follow `append_gradient` pattern at lines 164–178 using `${state.iteration}`. Parse score values from `critique.md` and append to `scores.md`. Update `score.on_no` → `record_scores` and `record_scores.next` → `compute_gradient`.
-3. **`svg-textgrad.yaml` — best-artifact tracking**: Add shell logic to `record_scores` (or a standalone shell state) that compares new scores against `best.txt`; copies `image.svg` → `best.svg` and `brief.md` → `best-brief.md` when score improves.
-4. **`svg-textgrad.yaml` — `route_convergence` state**: Change `compute_gradient.next` from `append_gradient` → `route_convergence`. Add the `route_convergence` state reading `source: "${captured.gradient.output}"` (see `apo-textgrad.yaml:44–51`). Enrich the `compute_gradient` prompt with convergence instructions referencing `scores.md`.
-5. **`svg-textgrad.yaml` — fix `evaluate.on_no` comment**: Correct the misleading comment to state that `on_no: generate` re-generates without scoring (Playwright screenshot was unavailable or empty).
-6. **`svg-textgrad.yaml` — scoring weight consistency**: Either implement weighted average (`(2*vc + 2*orig + craft + scalability)/6 >= threshold`) or remove the 2× weight documentation from the `score` prompt (lines 126–129).
-7. **`svg-textgrad.yaml` — update `done` state**: Add `scores.md`, `best.svg`, `best-brief.md` to the artifact list in the `done` prompt (~lines 201–216).
-8. **`docs/guides/LOOPS_GUIDE.md:734–801`**: Update FSM flow diagram and output files table to reflect new states (`record_scores`, `route_convergence`, `failed`) and new output files.
+1. **`svg-textgrad.yaml` — `on_error` handlers + `failed` terminal**: Copy pattern from `svg-image-generator.yaml:104,151,169–173`. Add `on_error: generate` to `evaluate` state (~line 92); add `on_error: failed` to `score` state (~line 137); add bare `failed` terminal state (only `terminal: true`, no action) after `done`. Also add `touch "$DIR/scores.md"` to `init` at line 32 alongside the existing `touch "$DIR/gradients.md"` — `compute_gradient` reads `scores.md` on iteration 1 and will error if the file doesn't exist.
+2. **`svg-textgrad.yaml` — `record_scores` shell state**: Insert between `score.on_no` and `compute_gradient`. Combine score recording and best-artifact tracking in a single shell state:
+   ```yaml
+   record_scores:
+     action_type: shell
+     action: |
+       DIR="${captured.run_dir.output}"
+       ITER="${state.iteration}"
+       # --- Append scores to history ---
+       grep -E "^(visual_clarity|originality|craft|scalability):" "$DIR/critique.md" \
+         | awk -v iter="$ITER" 'BEGIN{printf "## Iteration %s\n", iter} {print}' \
+         >> "$DIR/scores.md"
+       echo "" >> "$DIR/scores.md"
+       # --- Best-artifact tracking (weighted sum: 2×vc + 2×orig + craft + scalability) ---
+       VC=$(grep -oP "^visual_clarity: \K[0-9]+" "$DIR/critique.md" 2>/dev/null || echo 0)
+       OG=$(grep -oP "^originality: \K[0-9]+" "$DIR/critique.md" 2>/dev/null || echo 0)
+       CR=$(grep -oP "^craft: \K[0-9]+" "$DIR/critique.md" 2>/dev/null || echo 0)
+       SC=$(grep -oP "^scalability: \K[0-9]+" "$DIR/critique.md" 2>/dev/null || echo 0)
+       TOTAL=$((2*VC + 2*OG + CR + SC))
+       BEST=$(cat "$DIR/best.txt" 2>/dev/null || echo 0)
+       if [ "$TOTAL" -gt "$BEST" ]; then
+         echo "$TOTAL" > "$DIR/best.txt"
+         cp "$DIR/image.svg" "$DIR/best.svg"
+         cp "$DIR/brief.md" "$DIR/best-brief.md"
+       fi
+     next: compute_gradient
+   ```
+   Update `score.on_no` → `record_scores`. Note: `grep -oP` requires GNU grep (standard on Linux; on macOS use `grep -E "^visual_clarity: [0-9]+" | grep -oE "[0-9]+" | head -1` as fallback).
+3. **`svg-textgrad.yaml` — `route_convergence` state**: Change `compute_gradient.next` from `append_gradient` → `route_convergence`. Add the `route_convergence` state reading `source: "${captured.gradient.output}"` (see `apo-textgrad.yaml:44–51`). Update the `compute_gradient` prompt with these exact additions:
+   - Add to the file list: `- ${captured.run_dir.output}/scores.md — per-iteration score history (format: "## Iteration N" header, then four scored lines)`
+   - Add before the "Output exactly three labeled lines" section: `First, read scores.md. If the last 3 recorded ## Iteration sections show no improvement in any individual score (visual_clarity, originality, craft, or scalability all flat or declining across those 3 iterations), output CONVERGED on its own line and nothing else.`
+4. **`svg-textgrad.yaml` — fix `evaluate.on_no` comment**: Correct line 84 comment `"can still make progress via LLM-only scoring if Playwright is unavailable"` — the `on_no: generate` path does NOT score; it re-generates from the existing brief without any evaluation. Change comment to: `"Routes back to generate; no scoring occurs — loop continues with the unchanged brief."` Also fix `docs/guides/LOOPS_GUIDE.md:797`.
+5. **`svg-textgrad.yaml` — scoring weight consistency**: Implement weighted average for consistency with the best-artifact tracking formula (`TOTAL = 2*vc + 2*orig + cr + sc`). Replace the pass condition at line 131 from `If ALL four individual scores are >= ${context.pass_threshold}` to: `Compute the weighted average: (2 × visual_clarity + 2 × originality + craft + scalability) / 6. If the weighted average >= ${context.pass_threshold}, output exactly: PASS`. This makes the documented 2× weights functionally meaningful rather than decorative. Update `docs/guides/LOOPS_GUIDE.md:756` to say "weighted average of the four criteria must clear this value" instead of "all four criteria".
+6. **`svg-textgrad.yaml` — update `done` state**: Add `scores.md`, `best.svg`, `best-brief.md` to the artifact list in the `done` prompt (currently lines 201–216). The `best.*` files may not exist if the loop exits via `max_iterations` before any score is recorded — mention them conditionally: `"best.svg / best-brief.md — best-scoring iteration artifacts (present if at least one score was recorded)"`.
+7. **`docs/guides/LOOPS_GUIDE.md:734–801`**: Update FSM flow diagram and output files table to reflect new states (`record_scores`, `route_convergence`, `failed`) and new output files. Updated FSM flow:
+   ```
+   init → plan → generate → evaluate
+                               ├─ CAPTURED → score
+                               │              ├─ PASS    → done
+                               │              ├─ ITERATE → record_scores → compute_gradient → route_convergence
+                               │              │                                                    ├─ CONVERGED → done
+                               │              │                                                    └─ continue  → append_gradient → apply_gradient → generate
+                               │              └─ ERROR   → failed
+                               ├─ FAILED  → generate
+                               └─ ERROR   → generate
+   ```
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -211,6 +254,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `enhancement`, `loops`, `svg-textgrad`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2a35301-9e9f-472b-891c-b2b8d87d943d.jsonl`
+- `/ll:refine-issue` - 2026-04-14T01:23:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93817ff5-e7c7-47c7-8e1e-21ed9f2139ab.jsonl`
 - `/ll:confidence-check` - 2026-04-13T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b58bc250-37fe-4a3c-aa5d-a5634a8341f0.jsonl`
 - `/ll:wire-issue` - 2026-04-13T22:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2129c183-0b70-41f6-8799-9dacd5b5f99e.jsonl`
 - `/ll:refine-issue` - 2026-04-13T21:58:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff5edae9-4701-414b-9704-2fdd2017809d.jsonl`
