@@ -165,3 +165,22 @@ class TestRateLimitFieldValidation:
         errors = validate_fsm(fsm)
         rate_errors = [e for e in errors if "rate_limit" in e.message.lower()]
         assert rate_errors == []
+
+    def test_standalone_backoff_base_seconds_passes(self) -> None:
+        """rate_limit_backoff_base_seconds is valid on its own (no paired-field requirement)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    rate_limit_backoff_base_seconds=30,
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        rate_errors = [e for e in errors if "rate_limit" in e.message.lower()]
+        assert rate_errors == []

@@ -610,6 +610,53 @@ class TestCommonYamlNewFragments:
         assert state["evaluate"]["target"] == 0
         assert "fragment" not in state
 
+    # BUG-1109: with_rate_limit_handling fragment tests
+
+    def test_with_rate_limit_handling_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "with_rate_limit_handling" in data["fragments"], (
+            "with_rate_limit_handling fragment missing from lib/common.yaml"
+        )
+
+    def test_with_rate_limit_handling_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["with_rate_limit_handling"]
+        assert frag.get("description", "").strip(), (
+            "with_rate_limit_handling fragment must have a non-empty description"
+        )
+
+    def test_with_rate_limit_handling_default_fields(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["with_rate_limit_handling"]
+        assert frag["max_rate_limit_retries"] == 3
+        assert frag["rate_limit_backoff_base_seconds"] == 30
+
+    def test_with_rate_limit_handling_resolves_from_real_common_yaml(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "work",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "work": {
+                    "fragment": "with_rate_limit_handling",
+                    "action": "run-job",
+                    "on_yes": "done",
+                    "on_no": "done",
+                    "on_rate_limit_exhausted": "parked",
+                },
+                "done": {"terminal": True},
+                "parked": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["work"]
+        assert state["max_rate_limit_retries"] == 3
+        assert state["rate_limit_backoff_base_seconds"] == 30
+        assert state["on_rate_limit_exhausted"] == "parked"
+        assert "fragment" not in state
+
 
 # ---------------------------------------------------------------------------
 # Integration: load_and_validate with import: no spurious warnings

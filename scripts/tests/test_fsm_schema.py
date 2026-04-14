@@ -522,6 +522,96 @@ class TestStateConfig:
 
         assert "action_type" not in result
 
+    # -------------------------------------------------------------------
+    # BUG-1109: rate-limit field tests (max_rate_limit_retries,
+    # on_rate_limit_exhausted, rate_limit_backoff_base_seconds)
+    # -------------------------------------------------------------------
+
+    def test_rate_limit_fields_construction(self) -> None:
+        """StateConfig accepts the three rate-limit fields."""
+        state = StateConfig(
+            action="run",
+            on_yes="done",
+            on_no="done",
+            max_rate_limit_retries=5,
+            on_rate_limit_exhausted="recover",
+            rate_limit_backoff_base_seconds=45,
+        )
+        assert state.max_rate_limit_retries == 5
+        assert state.on_rate_limit_exhausted == "recover"
+        assert state.rate_limit_backoff_base_seconds == 45
+
+    def test_rate_limit_fields_default_none(self) -> None:
+        """Rate-limit fields default to None when absent."""
+        state = StateConfig(action="run")
+        assert state.max_rate_limit_retries is None
+        assert state.on_rate_limit_exhausted is None
+        assert state.rate_limit_backoff_base_seconds is None
+
+    def test_rate_limit_fields_from_dict(self) -> None:
+        """from_dict reads rate-limit keys from YAML data."""
+        data = {
+            "action": "run",
+            "on_yes": "done",
+            "on_no": "done",
+            "max_rate_limit_retries": 3,
+            "on_rate_limit_exhausted": "recover",
+            "rate_limit_backoff_base_seconds": 30,
+        }
+        state = StateConfig.from_dict(data)
+        assert state.max_rate_limit_retries == 3
+        assert state.on_rate_limit_exhausted == "recover"
+        assert state.rate_limit_backoff_base_seconds == 30
+
+    def test_rate_limit_fields_to_dict(self) -> None:
+        """to_dict serializes rate-limit fields when set."""
+        state = StateConfig(
+            action="run",
+            on_yes="done",
+            max_rate_limit_retries=3,
+            on_rate_limit_exhausted="recover",
+            rate_limit_backoff_base_seconds=30,
+        )
+        d = state.to_dict()
+        assert d["max_rate_limit_retries"] == 3
+        assert d["on_rate_limit_exhausted"] == "recover"
+        assert d["rate_limit_backoff_base_seconds"] == 30
+
+    def test_rate_limit_fields_absent_from_to_dict_when_none(self) -> None:
+        """to_dict omits rate-limit keys when not set."""
+        state = StateConfig(action="run", on_yes="done")
+        d = state.to_dict()
+        assert "max_rate_limit_retries" not in d
+        assert "on_rate_limit_exhausted" not in d
+        assert "rate_limit_backoff_base_seconds" not in d
+
+    def test_on_rate_limit_exhausted_in_get_referenced_states(self) -> None:
+        """get_referenced_states includes on_rate_limit_exhausted target."""
+        state = StateConfig(
+            action="run",
+            on_yes="done",
+            on_no="done",
+            max_rate_limit_retries=3,
+            on_rate_limit_exhausted="recover",
+        )
+        refs = state.get_referenced_states()
+        assert "recover" in refs
+
+    def test_rate_limit_fields_roundtrip(self) -> None:
+        """Rate-limit fields survive to_dict/from_dict roundtrip."""
+        original = StateConfig(
+            action="run",
+            on_yes="done",
+            on_no="done",
+            max_rate_limit_retries=3,
+            on_rate_limit_exhausted="recover",
+            rate_limit_backoff_base_seconds=30,
+        )
+        restored = StateConfig.from_dict(original.to_dict())
+        assert restored.max_rate_limit_retries == 3
+        assert restored.on_rate_limit_exhausted == "recover"
+        assert restored.rate_limit_backoff_base_seconds == 30
+
 
 class TestLLMConfig:
     """Tests for LLMConfig dataclass."""

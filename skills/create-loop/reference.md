@@ -936,6 +936,45 @@ states:
 
 **Most users can omit these fields** — they are useful only when a state might loop indefinitely on bad input and you want automatic skip behavior instead of exhausting the global iteration budget.
 
+#### max_rate_limit_retries, on_rate_limit_exhausted, and rate_limit_backoff_base_seconds (Optional)
+
+A parallel safeguard to `max_retries`/`on_retry_exhausted`, but specialized for HTTP 429 rate-limit failures. When the executor detects a 429 response (typically from a prompt state hitting an LLM backend), it retries the same state in place — sleeping between attempts — rather than routing through `on_no`. Only after `max_rate_limit_retries` consecutive 429s does the FSM transition to `on_rate_limit_exhausted`.
+
+**Fields:**
+- `max_rate_limit_retries` (integer, minimum 1) — max consecutive 429 retries before giving up on this state. Requires `on_rate_limit_exhausted`.
+- `on_rate_limit_exhausted` (string) — target state when the rate-limit retry budget is exhausted. Requires `max_rate_limit_retries`.
+- `rate_limit_backoff_base_seconds` (integer, minimum 1, default `30`) — base seconds for exponential backoff; the delay between retry N and N+1 is `base * 2^N + jitter`. Valid on its own (no paired-field requirement).
+
+**When to use:**
+- Prompt states that talk to a rate-limited upstream (LLM API, code-hosting API, etc.)
+- Loops run under `ll-parallel` where many worktrees may trip the same shared rate limit simultaneously
+
+**Jitter rationale for `ll-parallel`:** The executor adds random jitter on top of the exponential backoff. When you run many worktrees in parallel and they all hit the same shared 429 at once, a fixed backoff would re-stampede the upstream service on the same tick (thundering herd). Jitter spreads the retries so the upstream catches its breath. Prefer a larger `rate_limit_backoff_base_seconds` over a smaller one when you know you're running wide parallelism.
+
+**Example — Prompt state guarded against upstream 429s:**
+```yaml
+name: "refine-with-rate-limit"
+initial: execute
+max_iterations: 100
+states:
+  execute:
+    action: "/ll:refine-issue ${current_item}"
+    action_type: prompt
+    max_rate_limit_retries: 3
+    on_rate_limit_exhausted: parked
+    rate_limit_backoff_base_seconds: 30
+    on_yes: done
+    on_no: execute
+  parked:
+    action: echo "Upstream rate-limited after 3 retries; parking item"
+    action_type: shell
+    next: done
+  done:
+    terminal: true
+```
+
+**Most users can omit these fields** — they matter only when the state hits a rate-limited upstream and you want the FSM to back off and retry in place rather than surface the 429 as a generic action failure.
+
 ---
 
 ### Sub-Loop Composition

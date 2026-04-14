@@ -3799,7 +3799,12 @@ class StateConfig:
     context_passthrough: bool = False  # Pass parent context vars to child; merge child captures back
     agent: str | None = None           # Subprocess agent name; passes --agent <name> to Claude CLI (prompt states only)
     tools: list[str] | None = None     # Subprocess tool scope; passes --tools <csv> to Claude CLI (prompt states only)
+    max_rate_limit_retries: int | None = None        # Max in-place retries on 429 rate limits; requires on_rate_limit_exhausted
+    on_rate_limit_exhausted: str | None = None       # Target state when rate-limit retries exhausted
+    rate_limit_backoff_base_seconds: int | None = None  # Backoff base seconds (default 30); delay = base * 2^n + jitter
 ```
+
+> **Rate-limit handling:** When a state's action returns an HTTP 429, the executor retries in place up to `max_rate_limit_retries` times, sleeping `rate_limit_backoff_base_seconds * 2^n` seconds plus jitter between attempts (default base is `30`). On exhaustion the FSM transitions to `on_rate_limit_exhausted`. The jitter is important under `ll-parallel` to avoid thundering-herd re-requests after a shared 429.
 
 > **Alias note:** `on_success` and `on_failure` are accepted as aliases for `on_yes` and `on_no` in all states (including sub-loop states).
 

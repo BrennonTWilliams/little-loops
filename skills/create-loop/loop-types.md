@@ -788,6 +788,9 @@ states:
     capture: execute_result      # captured as ${captured.execute_result.output}
     max_retries: <per-item-retries>        # optional: skip stuck items automatically
     on_retry_exhausted: advance            # optional: route here when retries exceeded
+    max_rate_limit_retries: 3              # optional: retry in place on HTTP 429 before exhaustion
+    on_rate_limit_exhausted: advance       # optional: route here when rate-limit budget exhausted
+    rate_limit_backoff_base_seconds: 30    # optional: base for exponential backoff + jitter (default 30)
     next: check_stall            # or check_concrete / check_semantic / check_invariants / advance if stall detection omitted
   check_stall:                   # include if stall detection selected (recommended for prompt-based skills)
     action: "echo 'checking stall'"
@@ -847,6 +850,8 @@ states:
 ```
 
 > **`max_retries` on harness states**: Use `max_retries` + `on_retry_exhausted` on any check state that routes back to `execute` on failure. This prevents a single bad item from exhausting the global `max_iterations` budget. See [reference.md](reference.md) for details.
+>
+> **`max_rate_limit_retries` on prompt states**: For prompt states that hit a rate-limited LLM upstream (especially under `ll-parallel`), pair `max_rate_limit_retries` with `on_rate_limit_exhausted` so 429s are retried in place with exponential backoff + jitter rather than surfaced as generic action failures. Override `rate_limit_backoff_base_seconds` (default `30`) upward when running wide parallelism — the jitter is load-bearing for avoiding thundering-herd retries. See [reference.md](reference.md) for details.
 
 **Discovery Commands by work item mode:**
 

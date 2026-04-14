@@ -105,6 +105,7 @@ This outputs a JSON object with a `"states"` key mapping state names to their co
 | `evaluate` | `verdict` (str: pass/fail/continue/retry/error), `reason` (str, optional) |
 | `route` | `from` (str), `to` (str) |
 | `retry_exhausted` | `state` (str), `retries` (int), `next` (str) |
+| `rate_limit_exhausted` | `state` (str), `retries` (int), `next` (str) |
 | `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
 
@@ -145,6 +146,13 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Priority: P3
 - Title: `"<state> retry flood (<N> re-entries) in <loop_name> loop; consider raising retry limit or adding guard"`
 - Include: iteration numbers when state was re-entered; include `retry_exhausted` event details if present
+
+#### BUG — Rate-limit exhaustion
+- Trigger: `rate_limit_exhausted` event is present for a state (the executor burned through `max_rate_limit_retries` consecutive 429s and routed to `on_rate_limit_exhausted`)
+- Priority: P3
+- Title: `"<state> rate-limit retries exhausted in <loop_name> loop; upstream 429 pressure"`
+- Include: `retries` count, event timestamps, and any neighbouring `rate_limit_exhausted` events on other states (potential storm)
+- **Note:** rate-limit exhaustion is distinct from a generic retry flood — the state is not misconfigured, the upstream service is refusing work. Classify separately from the Retry flood rule above.
 
 #### NOTE — Intentional cycling (informational only)
 - When an intentional cycling state (no `on_retry`/`max_retries` config) appears in `state_enter` events **5 or more times**, **do not generate an issue signal**.

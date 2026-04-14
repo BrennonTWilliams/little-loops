@@ -2386,6 +2386,21 @@ class TestEdgeLineColorization:
         edges = _collect_edges(fsm)
         assert ("a", "b", "retry_exhausted") in edges
 
+    def test_collect_edges_includes_on_rate_limit_exhausted(self) -> None:
+        """_collect_edges() collects on_rate_limit_exhausted transitions. BUG-1109."""
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(
+                    action="step",
+                    max_rate_limit_retries=3,
+                    on_rate_limit_exhausted="b",
+                ),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        edges = _collect_edges(fsm)
+        assert ("a", "b", "rate_limit_exhausted") in edges
+
     def test_error_edge_connector_chars_are_colored_red(self) -> None:
         """on_error transition connector characters (│, ▼) are colored red."""
         import little_loops.cli.output as output_mod

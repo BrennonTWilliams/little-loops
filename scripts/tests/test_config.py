@@ -1322,6 +1322,7 @@ class TestCliColorsEdgeLabelsConfig:
         assert config.default == "2"
         assert config.blocked == "31"
         assert config.retry_exhausted == "38;5;208"
+        assert config.rate_limit_exhausted == "38;5;214"
 
     def test_from_dict_empty(self) -> None:
         config = CliColorsEdgeLabelsConfig.from_dict({})

@@ -1631,6 +1631,20 @@ execute:
   next: check_concrete
 ```
 
+A parallel safeguard exists for HTTP 429 rate-limit failures. On a prompt state, set `max_rate_limit_retries` with `on_rate_limit_exhausted`, and optionally override `rate_limit_backoff_base_seconds` (default `30`). When the executor sees a 429, it sleeps for `base * 2^n` seconds plus jitter and retries the same state in place; only when the retry budget is exhausted does the FSM transition to `on_rate_limit_exhausted`:
+
+```yaml
+execute:
+  action: /ll:refine-issue ${captured.current_item.output} --auto
+  action_type: prompt
+  max_rate_limit_retries: 3
+  on_rate_limit_exhausted: parked
+  rate_limit_backoff_base_seconds: 30
+  next: check_concrete
+```
+
+> **Thundering-herd note for `ll-parallel`:** when many worktrees hit the same shared 429 at once, a fixed backoff would re-stampede the upstream service on the same tick. The added jitter is load-bearing — don't override it away, and prefer a larger `rate_limit_backoff_base_seconds` over a smaller one when you know you're running wide parallelism.
+
 ### Stall Detection
 
 For prompt-based skills that may produce no-ops ("already done"), add a `check_stall` state using the `diff_stall` evaluator between `execute` and the first check state. Without it, idempotent skills silently exhaust `max_iterations` without progress:
