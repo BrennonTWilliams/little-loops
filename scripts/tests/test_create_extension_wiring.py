@@ -74,10 +74,10 @@ class TestFeat1045DocUpdates:
             "README.md must have an ll-create-extension section in the CLI Tools block"
         )
 
-    def test_readme_tool_count_is_14(self) -> None:
+    def test_readme_tool_count_is_15(self) -> None:
         content = README.read_text()
-        assert "14 CLI tools" in content, (
-            "README.md must say '14 CLI tools' (incremented from 13 after ll-create-extension landed)"
+        assert "15 CLI tools" in content, (
+            "README.md must say '15 CLI tools' (incremented from 14 after ll-generate-schemas landed)"
         )
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
