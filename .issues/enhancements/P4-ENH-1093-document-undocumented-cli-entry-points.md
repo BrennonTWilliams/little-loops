@@ -60,3 +60,19 @@ Decision required (see Options):
 ## Status
 
 **Open** | Created: 2026-04-12 | Priority: P4
+
+---
+
+## Audit Update — 2026-04-13 (commit 4e5b8a97)
+
+Re-audited by `/ll:audit-docs`. State has changed since this issue was created:
+
+- README.md:92 now claims **"15 CLI tools"** (was "14 CLI tools" when issue was filed)
+- `pyproject.toml` still registers **16 entry points** (unchanged)
+- The count bump from 14→15 likely reflects `ll-create-extension` being added and counted; it does NOT resolve the two undocumented tools
+- **`ll-generate-schemas`** — still undocumented in README CLI section; still uncounted (or silently absorbed into the 15 count)
+- **`mcp-call`** — still undocumented in README CLI section; still uncounted
+
+**Current discrepancy**: 16 actual entry points vs 15 claimed in README (1 off, not 2).
+
+Options A/B/C from the original issue remain valid. Option A (document `ll-generate-schemas` in CONTRIBUTING.md and treat `mcp-call` as an internal debug tool, leave README count at 15) is still recommended if neither tool is intended for end users.

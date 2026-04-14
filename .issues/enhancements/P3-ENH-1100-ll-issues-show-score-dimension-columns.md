@@ -1,6 +1,12 @@
 ---
 discovered_date: 2026-04-13
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1100: ll-issues show add score dimension columns
@@ -84,6 +90,14 @@ Add `dim_scores_line` to `structural_lines` for width calculation (when not None
 ### Files to Modify
 - `scripts/little_loops/cli/issues/show.py` — `_parse_card_fields()` + `_render_card()` + `cmd_show()` JSON path
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/__init__.py:29,430` — imports and dispatches `cmd_show`; no change needed (signature unchanged) [Agent 1 finding]
+- `skills/create-eval-from-issues/SKILL.md:60,64` — calls `ll-issues show <ID> --json`; new JSON keys are additive and transparent [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:135,167,220` — reads `d.get('confidence')` / `d.get('outcome')` from `ll-issues show --json`; additive keys are transparent [Agent 2 finding]
+- `scripts/little_loops/loops/recursive-refine.yaml:124,256` — same JSON consumer pattern; no change needed [Agent 2 finding]
+
 ### Similar Patterns
 - `scripts/little_loops/cli/issues/show.py:147–148` — existing `confidence_score` / `outcome_confidence` reads (exact template)
 - `scripts/little_loops/cli/issues/show.py:287–293` — existing `scores_line` build (exact template for `dim_scores_line`)
@@ -97,6 +111,13 @@ Add `dim_scores_line` to `structural_lines` for width calculation (when not None
 ### Related
 - `scripts/little_loops/cli/issues/refine_status.py` — already reads and renders these same four fields; serves as the reference implementation
 - ENH-1099 — adds the four dimension fields to `refine-status` (and writes them from `confidence-check`); ENH-1100 depends on ENH-1099 having been implemented so the frontmatter fields exist
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:3074` — explicit `--json output fields` enumeration; add `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface` to the list [Agent 2 finding]
+- `docs/reference/OUTPUT_STYLING.md:107-123` — ASCII card layout diagram shows the scores row; add `dim_scores_line` row below it (between scores row and summary separator) [Agent 2 finding]
+- `docs/reference/CLI.md:430` — card field description mentions "confidence scores" but not dimension scores; update to include them [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -128,6 +149,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **`IssueInfo` model:** The four dimension fields already exist in `little_loops/issue_parser.py:241–244` and are parsed from frontmatter at lines 373–435. The `show.py` change reads them independently via `frontmatter.get(...)` (same approach as `confidence_score` / `outcome_confidence`).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Update `docs/reference/API.md:3074` — append `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface` to the `--json output fields` list on that line
+10. Update `docs/reference/OUTPUT_STYLING.md:107-123` — insert `dim_scores_line` row into the card layout ASCII diagram, between the scores row and the summary separator
+11. Update `docs/reference/CLI.md:430` — amend the card field description to mention the four dimension score labels ("Cmplx", "Tcov", "Ambig", "Chsrf") alongside "confidence scores"
+
 ## Impact
 
 - **Priority**: P3
@@ -147,6 +176,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `enhancement`, `ll-issues`, `show`, `confidence-check`, `cli`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62c384ec-5056-4196-81c6-e365d0f8badc.jsonl`
+- `/ll:wire-issue` - 2026-04-14T04:04:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfa819a3-3434-4473-847e-41c2ad9e17f3.jsonl`
 - `/ll:refine-issue` - 2026-04-14T03:59:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9e8886a-31c2-46ba-b5b1-6b68e4055cce.jsonl`
 - `/ll:capture-issue` - 2026-04-13T21:24:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43909014-7cf5-4dcd-8cb6-2b74700e6f59.jsonl`
 
