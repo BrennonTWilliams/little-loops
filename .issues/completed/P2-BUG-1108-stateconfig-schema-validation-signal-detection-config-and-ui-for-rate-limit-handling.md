@@ -19,6 +19,24 @@ Decomposed from BUG-1105: FSM Loops Silently Skip All Work on 429 Rate Limit Fai
 
 This child covers the data model layer and all wiring that surrounds the core executor change: new `StateConfig` fields, paired validation, JSON schema update, `RATE_LIMIT_STORM` signal rule, schema registry entry, diagram edge rendering, user-configurable edge colors, `with_rate_limit_handling` fragment in `common.yaml`, and opt-in wiring in the affected loop YAML configs.
 
+## Current Behavior
+
+`StateConfig` has no `max_rate_limit_retries` / `on_rate_limit_exhausted` / `rate_limit_backoff_base_seconds` fields. `executor.py` uses hardcoded module-level constants (`_DEFAULT_RATE_LIMIT_RETRIES = 3`, `_DEFAULT_RATE_LIMIT_BACKOFF_BASE = 30`) and routes rate-limit exhaustion via `extra_routes.get("rate_limit_exhausted")`. There is no `RATE_LIMIT_STORM` detection, no diagram edge rendering for rate-limit exhaustion, no user-configurable edge color, no fragment for opt-in wiring, and the schema registry omits `rate_limit_exhausted`.
+
+## Expected Behavior
+
+`StateConfig` exposes the three new fields with paired validation. The executor reads them from state, tracks a consecutive-exhaustion counter, and emits a `RATE_LIMIT_STORM` LLEvent at threshold. Diagrams render `on_rate_limit_exhausted` edges with a configurable color. A `with_rate_limit_handling` fragment in `common.yaml` lets loops opt in; `auto-refine-and-implement` and `recursive-refine` use it. Schema registry, CLI docstring count, JSON schema, and documentation all reflect the two new events.
+
+## Impact
+
+- **Users**: Gain per-state control over 429 retry budgets and exhaustion routing; rate-limit storms surface as first-class events rather than silent skips.
+- **Loop authors**: Can opt in via a single fragment reference instead of per-state boilerplate.
+- **Operators**: See rate-limit state clearly in rendered diagrams and event streams.
+
+## Labels
+
+bug, fsm, schema, executor, rate-limit, config, ui
+
 ## Scope
 
 ### StateConfig Schema (schema.py)
@@ -233,6 +251,19 @@ State-level fields win via `_deep_merge` (`fragments.py:139`), so any state can 
 
 `generate_schemas.py:78` defines `SCHEMA_DEFINITIONS` with sub-section comment `# FSM Executor (11 types)`. This issue adds **two** new events (`rate_limit_exhausted` — previously missing from registry despite being emitted by BUG-1107; and new `rate_limit_storm`), making it **13** FSM Executor types. Update the sub-section comment and the `cli/schemas.py:15` docstring to **21** total events.
 
+### Re-verification (2026-04-14, HEAD 8dba4536)
+
+Second refine pass re-read `schema.py:220-372` and `executor.py:40-524`. All cited anchors still hold:
+- `schema.py:228-229` retry field declarations ✓
+- `schema.py:270-273` to_dict ✓
+- `schema.py:298-308` `_known_on_keys` set ✓
+- `schema.py:315-338` from_dict kwargs ✓
+- `schema.py:362-363` `get_referenced_states` retry ref ✓
+- `executor.py:50-54` stub constants + `RATE_LIMIT_EXHAUSTED_EVENT` ✓
+- `executor.py:483` retry cap check, `executor.py:486` `extra_routes.get("rate_limit_exhausted")` lookup, `executor.py:491` payload `retries` field, `executor.py:500-501` backoff sleep ✓
+
+No drift since prior refine; implementation can proceed against the line numbers as written.
+
 ### Verified References vs. Issue Claims
 
 | Issue claim | Verified | Notes |
@@ -264,7 +295,26 @@ _Added by `/ll:confidence-check` on 2026-04-14_
 - **Fragment interpolation unverified (Ambiguity)**: `with_rate_limit_handling` uses `${context.*}` interpolation at the top-level StateConfig field level — the issue notes this is "a novel pattern" and advises confirming that fragment merge supports it before coding. If interpolation isn't supported, the fragment design changes significantly.
 - **Wide change surface (Change Surface 10/25)**: `schema.py` has 13 non-test importers; `signal_detector.py` has 19. Changes are additive, but regressions are possible across a broad surface.
 
+## Resolution
+
+Implemented 2026-04-14 via `/ll:manage-issue bug fix BUG-1108`.
+
+- **StateConfig** gains `max_rate_limit_retries`, `on_rate_limit_exhausted`, `rate_limit_backoff_base_seconds` (all optional). `on_rate_limit_exhausted` registered in `_known_on_keys`; `get_referenced_states` includes it.
+- **validation.py** enforces both-or-neither pairing and `>= 1` bounds.
+- **fsm-loop-schema.json** and **config-schema.json** updated for new StateConfig/edge-label fields.
+- **executor.py** reads per-state retry budget and backoff base (falling back to the module-level `_DEFAULT_RATE_LIMIT_*` constants), routes exhaustion via `state.on_rate_limit_exhausted or state.on_error`, tracks `_consecutive_rate_limit_exhaustions`, and emits `RATE_LIMIT_STORM_EVENT` on reaching 3 consecutive exhaustions. Counter resets on any successful non-rate-limited transition.
+- **Schema registry** (`generate_schemas.py`) gains `rate_limit_exhausted` + `rate_limit_storm` entries; `cli/schemas.py` docstring count bumped to 21; generated schema files under `docs/reference/schemas/` regenerated.
+- **UI**: `CliColorsEdgeLabelsConfig.rate_limit_exhausted` (amber `38;5;214`), `layout._EDGE_LABEL_COLORS`, `_edge_line_color` priority tuple, `_collect_edges` now emit `on_rate_limit_exhausted` edges. `BRConfig.to_dict` mirrors the new field.
+- **Fragment**: `with_rate_limit_handling` added to `lib/common.yaml` with literal `max_rate_limit_retries: 3` and `rate_limit_backoff_base_seconds: 30` defaults. Wired into `auto-refine-and-implement` (`implement_issue` state → `on_rate_limit_exhausted: done`) and `recursive-refine` (`run_refine` state → `on_rate_limit_exhausted: dequeue_next`).
+- **Tests**: `TestRateLimitRetries` migrated from `extra_routes={"rate_limit_exhausted": ...}` to the new `on_rate_limit_exhausted` field; added state-level override tests. New `TestRateLimitStorm` class covers storm emission at threshold, counter reset, and constant export. Paired-field validation tests added to `test_fsm_validation.py`. Schema registry count assertions updated from 19 → 21.
+- **Docs** updated: `EVENT-SCHEMA.md` (new sections, file tree, source table), `CONFIGURATION.md`, `OUTPUT_STYLING.md` (three tables), `LOOPS_GUIDE.md` (StateConfig field table).
+
+**Verification**: `python -m pytest scripts/tests/ --ignore=scripts/tests/test_update_skill.py` → 4788 passed, 5 skipped. `ruff check scripts/` → all checks passed. `python -m little_loops.generate_schemas docs/reference/schemas` → 21 schemas regenerated. The 2 `test_update_skill.py` failures are pre-existing marketplace version drift unrelated to this change.
+
 ## Session Log
+- `/ll:manage-issue bug fix BUG-1108` - 2026-04-14T14:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0195a231-de18-44e9-9535-5e854b3d3ad1.jsonl`
+- `/ll:ready-issue` - 2026-04-14T18:54:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e398c2f-92ed-4839-9487-4c5d4cf089cc.jsonl`
+- `/ll:refine-issue` - 2026-04-14T18:51:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db9b5fb3-380a-4219-addb-6e5e6ff1435f.jsonl`
 - `/ll:confidence-check` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:wire-issue` - 2026-04-14T17:45:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9622453-ef85-41be-ba58-37fdc2a25853.jsonl`
 - `/ll:refine-issue` - 2026-04-14T17:28:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a46c6016-f36a-4046-8296-d7eefba32350.jsonl`

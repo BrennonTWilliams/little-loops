@@ -221,6 +221,39 @@ Emitted when a state exceeds its `max_retries` limit and the executor transition
 
 ---
 
+### `rate_limit_exhausted`
+
+Emitted when a state exceeds its `max_rate_limit_retries` 429/rate-limit in-place retry budget and the executor transitions to `on_rate_limit_exhausted` (or `on_error`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state that exhausted rate-limit retries |
+| `retries` | `int` | Number of rate-limit retries that were attempted |
+| `next` | `str \| null` | Name of the `on_rate_limit_exhausted` target state, or null |
+
+**Example:**
+```json
+{"event": "rate_limit_exhausted", "ts": "...", "state": "implement", "retries": 3, "next": "halt"}
+```
+
+---
+
+### `rate_limit_storm`
+
+Emitted when consecutive `rate_limit_exhausted` events across any states reach the storm threshold (3). The counter resets on any successful non-rate-limited state transition.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state that triggered the storm threshold |
+| `count` | `int` | Consecutive `rate_limit_exhausted` count at emission time |
+
+**Example:**
+```json
+{"event": "rate_limit_storm", "ts": "...", "state": "implement", "count": 3}
+```
+
+---
+
 ### `handoff_detected`
 
 Emitted when the executor detects a handoff signal in the action output, indicating the loop needs to be paused and resumed in a fresh session.
@@ -517,6 +550,8 @@ docs/reference/schemas/
 ├── loop_resume.json
 ├── loop_start.json
 ├── parallel_worker_completed.json
+├── rate_limit_exhausted.json
+├── rate_limit_storm.json
 ├── retry_exhausted.json
 ├── route.json
 ├── state_enter.json
@@ -601,6 +636,8 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `action_complete` | FSM | `fsm/executor.py` |
 | `evaluate` | FSM | `fsm/executor.py` |
 | `retry_exhausted` | FSM | `fsm/executor.py` |
+| `rate_limit_exhausted` | FSM | `fsm/executor.py` |
+| `rate_limit_storm` | FSM | `fsm/executor.py` |
 | `handoff_detected` | FSM | `fsm/executor.py` |
 | `handoff_spawned` | FSM | `fsm/executor.py` |
 | `loop_complete` | FSM | `fsm/executor.py` |

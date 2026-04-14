@@ -84,6 +84,7 @@ class CliColorsEdgeLabelsConfig:
     default: str = "2"
     blocked: str = "31"
     retry_exhausted: str = "38;5;208"
+    rate_limit_exhausted: str = "38;5;214"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CliColorsEdgeLabelsConfig:
@@ -97,6 +98,7 @@ class CliColorsEdgeLabelsConfig:
             default=data.get("default", "2"),
             blocked=data.get("blocked", "31"),
             retry_exhausted=data.get("retry_exhausted", "38;5;208"),
+            rate_limit_exhausted=data.get("rate_limit_exhausted", "38;5;214"),
         )
 
     def to_dict(self) -> dict[str, str]:
@@ -113,6 +115,7 @@ class CliColorsEdgeLabelsConfig:
             "_": self.default,
             "blocked": self.blocked,
             "retry_exhausted": self.retry_exhausted,
+            "rate_limit_exhausted": self.rate_limit_exhausted,
         }
 
 

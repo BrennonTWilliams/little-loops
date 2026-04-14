@@ -258,6 +258,21 @@
           "type": "string",
           "description": "State to transition to when max_retries consecutive re-entries are exceeded. Required when max_retries is set."
         },
+        "max_rate_limit_retries": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max consecutive 429/rate-limit in-place retries for this state before transitioning to on_rate_limit_exhausted. Requires on_rate_limit_exhausted."
+        },
+        "on_rate_limit_exhausted": {
+          "type": "string",
+          "description": "State to transition to when max_rate_limit_retries consecutive rate-limit retries are exhausted. Required when max_rate_limit_retries is set."
+        },
+        "rate_limit_backoff_base_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Base seconds for exponential backoff between rate-limit retries; actual sleep = base * 2^(attempt-1) + uniform(0, base)."
+        },
         "loop": {
           "type": "string",
           "description": "Name of a loop YAML to execute as a sub-FSM. Mutually exclusive with action."

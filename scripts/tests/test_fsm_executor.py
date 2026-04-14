@@ -4313,6 +4313,9 @@ class TestRateLimitRetries:
         *,
         on_error: str | None = "done",
         extra_routes: dict | None = None,
+        on_rate_limit_exhausted: str | None = None,
+        max_rate_limit_retries: int | None = None,
+        rate_limit_backoff_base_seconds: int | None = None,
     ) -> FSMLoop:
         """Build a minimal FSM with a rate-limitable state."""
         return FSMLoop(
@@ -4325,6 +4328,9 @@ class TestRateLimitRetries:
                     on_no="done",
                     on_error=on_error,
                     extra_routes=extra_routes or {},
+                    on_rate_limit_exhausted=on_rate_limit_exhausted,
+                    max_rate_limit_retries=max_rate_limit_retries,
+                    rate_limit_backoff_base_seconds=rate_limit_backoff_base_seconds,
                 ),
                 "done": StateConfig(terminal=True),
                 "exhausted": StateConfig(terminal=True),
@@ -4396,7 +4402,7 @@ class TestRateLimitRetries:
         """On exhaustion, routes to extra_routes['rate_limit_exhausted'] if configured."""
         from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
 
-        fsm = self._make_fsm(extra_routes={"rate_limit_exhausted": "exhausted"})
+        fsm = self._make_fsm(on_rate_limit_exhausted="exhausted")
         runner = MockActionRunner()
         runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 2)
         runner.use_indexed_order = True
@@ -4469,3 +4475,163 @@ class TestRateLimitRetries:
         from little_loops.fsm import RATE_LIMIT_EXHAUSTED_EVENT
 
         assert RATE_LIMIT_EXHAUSTED_EVENT == "rate_limit_exhausted"
+
+    def test_state_level_max_rate_limit_retries_override(self) -> None:
+        """State's max_rate_limit_retries overrides the module-level default."""
+        fsm = self._make_fsm(
+            on_error="done",
+            max_rate_limit_retries=1,
+            on_rate_limit_exhausted="exhausted",
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * 5
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            result = executor.run()
+
+        exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        assert len(exhausted) == 1
+        assert exhausted[0]["retries"] == 1
+        assert result.final_state == "exhausted"
+
+    def test_state_level_backoff_base_override(self) -> None:
+        """State's rate_limit_backoff_base_seconds overrides module default."""
+        fsm = self._make_fsm(rate_limit_backoff_base_seconds=0)
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._rl_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        # Do NOT patch the module constant. State value must be what the executor
+        # uses. Leave real default (30); if the state value is ignored the test hangs.
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+
+class TestRateLimitStorm:
+    """Tests for RATE_LIMIT_STORM event emission on consecutive exhaustions."""
+
+    def _make_multi_fsm(self) -> FSMLoop:
+        """Three states chained A→B→C, each can rate-limit and route to next on exhaustion."""
+        return FSMLoop(
+            name="storm-test",
+            initial="a",
+            states={
+                "a": StateConfig(
+                    action="a.sh",
+                    on_yes="done",
+                    on_error="done",
+                    max_rate_limit_retries=1,
+                    on_rate_limit_exhausted="b",
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "b": StateConfig(
+                    action="b.sh",
+                    on_yes="done",
+                    on_error="done",
+                    max_rate_limit_retries=1,
+                    on_rate_limit_exhausted="c",
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "c": StateConfig(
+                    action="c.sh",
+                    on_yes="done",
+                    on_error="done",
+                    max_rate_limit_retries=1,
+                    on_rate_limit_exhausted="done",
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def _rl_result(self) -> dict:
+        return {"output": "429 rate limit", "exit_code": 1}
+
+    def _ok_result(self) -> dict:
+        return {"output": "success", "exit_code": 0}
+
+    def test_storm_event_fires_at_three_consecutive_exhaustions(self) -> None:
+        fsm = self._make_multi_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("a.sh", self._rl_result()),
+            ("a.sh", self._rl_result()),
+            ("b.sh", self._rl_result()),
+            ("b.sh", self._rl_result()),
+            ("c.sh", self._rl_result()),
+            ("c.sh", self._rl_result()),
+        ]
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        executor.run()
+
+        storms = [e for e in events if e.get("event") == "rate_limit_storm"]
+        assert len(storms) == 1
+        assert storms[0]["count"] == 3
+        assert storms[0]["state"] == "c"
+
+    def test_storm_counter_resets_on_success(self) -> None:
+        fsm = FSMLoop(
+            name="storm-reset-test",
+            initial="a",
+            states={
+                "a": StateConfig(
+                    action="a.sh",
+                    on_yes="b",
+                    on_error="done",
+                    max_rate_limit_retries=1,
+                    on_rate_limit_exhausted="b",
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "b": StateConfig(
+                    action="b.sh",
+                    on_yes="c",
+                    on_error="done",
+                    max_rate_limit_retries=1,
+                    on_rate_limit_exhausted="c",
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "c": StateConfig(
+                    action="c.sh",
+                    on_yes="done",
+                    on_error="done",
+                    max_rate_limit_retries=1,
+                    on_rate_limit_exhausted="done",
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("a.sh", self._rl_result()),
+            ("a.sh", self._rl_result()),  # a exhausts → b (storm_count=1)
+            ("b.sh", self._ok_result()),  # b succeeds → counter reset to 0
+            ("c.sh", self._rl_result()),
+            ("c.sh", self._rl_result()),  # c exhausts → done (storm_count=1, no storm)
+        ]
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        executor.run()
+
+        storms = [e for e in events if e.get("event") == "rate_limit_storm"]
+        assert len(storms) == 0
+        exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        assert len(exhausted) == 2
+
+    def test_storm_event_constant_exported(self) -> None:
+        from little_loops.fsm.executor import RATE_LIMIT_STORM_EVENT
+
+        assert RATE_LIMIT_STORM_EVENT == "rate_limit_storm"

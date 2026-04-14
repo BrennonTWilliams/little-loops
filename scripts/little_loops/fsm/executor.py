@@ -52,6 +52,10 @@ _DEFAULT_RATE_LIMIT_RETRIES: int = 3
 _DEFAULT_RATE_LIMIT_BACKOFF_BASE: int = 30
 # Event name emitted when rate-limit retries are exhausted.
 RATE_LIMIT_EXHAUSTED_EVENT: str = "rate_limit_exhausted"
+# Event name emitted when consecutive rate-limit exhaustions reach the storm threshold.
+RATE_LIMIT_STORM_EVENT: str = "rate_limit_storm"
+# Number of consecutive rate_limit_exhausted events that constitute a storm.
+_RATE_LIMIT_STORM_THRESHOLD: int = 3
 
 
 def _iso_now() -> str:
@@ -161,6 +165,11 @@ class FSMExecutor:
         # Incremented inside _execute_state on each detected rate-limit response.
         # Reset when the state completes without a rate-limit, or after exhaustion.
         self._rate_limit_retries: dict[str, int] = {}
+
+        # Consecutive rate_limit_exhausted emissions across all states. Reset on any
+        # successful non-rate-limited state transition. When this reaches
+        # _RATE_LIMIT_STORM_THRESHOLD, a RATE_LIMIT_STORM event is emitted.
+        self._consecutive_rate_limit_exhaustions: int = 0
 
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
@@ -476,30 +485,51 @@ class FSMExecutor:
                 "rate limit" in _reason.lower() or "quota" in _reason.lower()
             ):
                 _state_name = route_ctx.state_name
+                _max_retries = (
+                    state.max_rate_limit_retries
+                    if state.max_rate_limit_retries is not None
+                    else _DEFAULT_RATE_LIMIT_RETRIES
+                )
+                _backoff_base = (
+                    state.rate_limit_backoff_base_seconds
+                    if state.rate_limit_backoff_base_seconds is not None
+                    else _DEFAULT_RATE_LIMIT_BACKOFF_BASE
+                )
                 self._rate_limit_retries[_state_name] = (
                     self._rate_limit_retries.get(_state_name, 0) + 1
                 )
                 _attempt = self._rate_limit_retries[_state_name]
-                if _attempt > _DEFAULT_RATE_LIMIT_RETRIES:
+                if _attempt > _max_retries:
                     # Retries exhausted — emit event and route to on_rate_limit_exhausted/on_error
                     self._rate_limit_retries.pop(_state_name, None)
-                    _target = state.extra_routes.get("rate_limit_exhausted") or state.on_error
+                    _target = state.on_rate_limit_exhausted or state.on_error
                     self._emit(
                         RATE_LIMIT_EXHAUSTED_EVENT,
                         {
                             "state": _state_name,
-                            "retries": _DEFAULT_RATE_LIMIT_RETRIES,
+                            "retries": _max_retries,
                             "next": _target,
                         },
                     )
+                    # Storm detection: count consecutive exhaustions across states.
+                    self._consecutive_rate_limit_exhaustions += 1
+                    if (
+                        self._consecutive_rate_limit_exhaustions
+                        >= _RATE_LIMIT_STORM_THRESHOLD
+                    ):
+                        self._emit(
+                            RATE_LIMIT_STORM_EVENT,
+                            {
+                                "state": _state_name,
+                                "count": self._consecutive_rate_limit_exhaustions,
+                            },
+                        )
                     if _target:
                         return _target
                     return None
                 # Interruptible backoff sleep with jitter — desynchronizes parallel worktrees
                 # to prevent thundering herd on shared API quota.
-                _sleep = _DEFAULT_RATE_LIMIT_BACKOFF_BASE * (2 ** (_attempt - 1)) + random.uniform(
-                    0, _DEFAULT_RATE_LIMIT_BACKOFF_BASE
-                )
+                _sleep = _backoff_base * (2 ** (_attempt - 1)) + random.uniform(0, _backoff_base)
                 _deadline = time.time() + _sleep
                 while time.time() < _deadline:
                     if self._shutdown_requested:
@@ -509,6 +539,8 @@ class FSMExecutor:
             else:
                 # Not rate-limited: reset counter so future 429s start from zero.
                 self._rate_limit_retries.pop(route_ctx.state_name, None)
+                # Successful non-rate-limited outcome resets the storm counter.
+                self._consecutive_rate_limit_exhaustions = 0
 
         for interceptor in self._interceptors:
             if hasattr(interceptor, "before_route"):

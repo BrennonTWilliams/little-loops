@@ -300,6 +300,39 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
             )
         )
 
+    # Validate rate-limit retry field pairing (mirrors max_retries/on_retry_exhausted)
+    if state.max_rate_limit_retries is not None and state.on_rate_limit_exhausted is None:
+        errors.append(
+            ValidationError(
+                message="'max_rate_limit_retries' requires 'on_rate_limit_exhausted' to also be set",
+                path=path,
+            )
+        )
+    if state.on_rate_limit_exhausted is not None and state.max_rate_limit_retries is None:
+        errors.append(
+            ValidationError(
+                message="'on_rate_limit_exhausted' requires 'max_rate_limit_retries' to also be set",
+                path=path,
+            )
+        )
+    if state.max_rate_limit_retries is not None and state.max_rate_limit_retries < 1:
+        errors.append(
+            ValidationError(
+                message=f"'max_rate_limit_retries' must be >= 1, got {state.max_rate_limit_retries}",
+                path=path,
+            )
+        )
+    if state.rate_limit_backoff_base_seconds is not None and state.rate_limit_backoff_base_seconds < 1:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"'rate_limit_backoff_base_seconds' must be >= 1, "
+                    f"got {state.rate_limit_backoff_base_seconds}"
+                ),
+                path=path,
+            )
+        )
+
     return errors
 
 

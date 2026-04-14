@@ -92,11 +92,13 @@ states:
     # context_passthrough passes captured.input as context.input to the sub-loop.
     # on_success = sub-loop reached 'done' (confidence pass OR breakdown_issue path).
     # on_failure = sub-loop reached 'failed' (true error condition; breakdown now occurs in sub-loop).
+    fragment: with_rate_limit_handling
     loop: refine-to-ready-issue
     context_passthrough: true
     on_success: check_passed
     on_failure: detect_children
     on_error: detect_children
+    on_rate_limit_exhausted: dequeue_next
 
   check_passed:
     # Verify confidence and outcome scores meet project thresholds.

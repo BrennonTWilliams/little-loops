@@ -64,3 +64,104 @@ class TestExtraRoutesReachability:
         errors = validate_fsm(fsm)
         warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
         assert any("not reachable" in e.message for e in warnings)
+
+
+class TestRateLimitFieldValidation:
+    """BUG-1108: paired validation for max_rate_limit_retries / on_rate_limit_exhausted."""
+
+    def test_max_without_on_fails(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    max_rate_limit_retries=3,
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "max_rate_limit_retries" in e.message and "on_rate_limit_exhausted" in e.message
+            for e in errors
+        )
+
+    def test_on_without_max_fails(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    on_rate_limit_exhausted="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "on_rate_limit_exhausted" in e.message and "max_rate_limit_retries" in e.message
+            for e in errors
+        )
+
+    def test_max_less_than_one_fails(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    max_rate_limit_retries=0,
+                    on_rate_limit_exhausted="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any("max_rate_limit_retries" in e.message and ">= 1" in e.message for e in errors)
+
+    def test_backoff_base_less_than_one_fails(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    rate_limit_backoff_base_seconds=0,
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "rate_limit_backoff_base_seconds" in e.message and ">= 1" in e.message for e in errors
+        )
+
+    def test_both_fields_set_passes(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    max_rate_limit_retries=3,
+                    on_rate_limit_exhausted="done",
+                    rate_limit_backoff_base_seconds=30,
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        rate_errors = [e for e in errors if "rate_limit" in e.message.lower()]
+        assert rate_errors == []

@@ -46,6 +46,14 @@ fragments:
     evaluate:
       type: llm_structured
 
+  with_rate_limit_handling:
+    description: |
+      Applies per-state rate-limit retry handling with 3 retries and 30s base backoff.
+      State must supply: on_rate_limit_exhausted (target state name when retries exhausted).
+      State may override: max_rate_limit_retries, rate_limit_backoff_base_seconds.
+    max_rate_limit_retries: 3
+    rate_limit_backoff_base_seconds: 30
+
   numeric_gate:
     description: |
       Shell command evaluated by numeric output comparison.

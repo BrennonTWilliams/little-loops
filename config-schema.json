@@ -889,7 +889,8 @@
                 "next":            { "type": "string", "default": "2",       "description": "ANSI SGR code for 'next' transitions (default: dim)" },
                 "default":         { "type": "string", "default": "2",       "description": "ANSI SGR code for unlabeled ('_') transitions (default: dim)" },
                 "blocked":         { "type": "string", "default": "31",      "description": "ANSI SGR code for 'blocked' transitions (default: red)" },
-                "retry_exhausted": { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'retry_exhausted' transitions (default: orange)" }
+                "retry_exhausted": { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'retry_exhausted' transitions (default: orange)" },
+                "rate_limit_exhausted": { "type": "string", "default": "38;5;214","description": "ANSI SGR code for 'rate_limit_exhausted' transitions (default: amber)" }
               },
               "additionalProperties": false
             }

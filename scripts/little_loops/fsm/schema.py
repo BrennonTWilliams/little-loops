@@ -205,6 +205,15 @@ class StateConfig:
             Requires on_retry_exhausted to also be set.
         on_retry_exhausted: State to transition to when max_retries consecutive re-entries
             are exceeded. Required when max_retries is set.
+        max_rate_limit_retries: Max consecutive 429/rate-limit in-place retries for this
+            state before transitioning to on_rate_limit_exhausted. Requires
+            on_rate_limit_exhausted to also be set.
+        on_rate_limit_exhausted: State to transition to when max_rate_limit_retries
+            consecutive rate-limit retries are exceeded. Required when
+            max_rate_limit_retries is set.
+        rate_limit_backoff_base_seconds: Base seconds for exponential backoff between
+            rate-limit retries; actual sleep is base * 2^(attempt-1) + uniform(0, base).
+            Defaults to 30.
         loop: Name of a loop YAML to execute as a sub-FSM. Mutually exclusive with action.
         context_passthrough: When True, pass parent context variables to child loop and
             merge child captures back into parent context.
@@ -227,6 +236,9 @@ class StateConfig:
     on_maintain: str | None = None
     max_retries: int | None = None
     on_retry_exhausted: str | None = None
+    max_rate_limit_retries: int | None = None
+    on_rate_limit_exhausted: str | None = None
+    rate_limit_backoff_base_seconds: int | None = None
     loop: str | None = None
     context_passthrough: bool = False
     agent: str | None = None
@@ -271,6 +283,12 @@ class StateConfig:
             result["max_retries"] = self.max_retries
         if self.on_retry_exhausted is not None:
             result["on_retry_exhausted"] = self.on_retry_exhausted
+        if self.max_rate_limit_retries is not None:
+            result["max_rate_limit_retries"] = self.max_rate_limit_retries
+        if self.on_rate_limit_exhausted is not None:
+            result["on_rate_limit_exhausted"] = self.on_rate_limit_exhausted
+        if self.rate_limit_backoff_base_seconds is not None:
+            result["rate_limit_backoff_base_seconds"] = self.rate_limit_backoff_base_seconds
         if self.loop is not None:
             result["loop"] = self.loop
         if self.context_passthrough:
@@ -305,6 +323,7 @@ class StateConfig:
             "on_blocked",
             "on_maintain",
             "on_retry_exhausted",
+            "on_rate_limit_exhausted",
         }
         extra_routes = {
             key[3:]: val
@@ -330,6 +349,9 @@ class StateConfig:
             on_maintain=data.get("on_maintain"),
             max_retries=data.get("max_retries"),
             on_retry_exhausted=data.get("on_retry_exhausted"),
+            max_rate_limit_retries=data.get("max_rate_limit_retries"),
+            on_rate_limit_exhausted=data.get("on_rate_limit_exhausted"),
+            rate_limit_backoff_base_seconds=data.get("rate_limit_backoff_base_seconds"),
             loop=data.get("loop"),
             context_passthrough=data.get("context_passthrough", False),
             agent=data.get("agent"),
@@ -361,6 +383,8 @@ class StateConfig:
             refs.add(self.on_maintain)
         if self.on_retry_exhausted is not None:
             refs.add(self.on_retry_exhausted)
+        if self.on_rate_limit_exhausted is not None:
+            refs.add(self.on_rate_limit_exhausted)
         if self.route is not None:
             refs.update(self.route.routes.values())
             if self.route.default is not None:

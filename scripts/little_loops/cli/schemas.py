@@ -12,7 +12,7 @@ from little_loops.logger import Logger
 def main_generate_schemas() -> int:
     """Entry point for ll-generate-schemas command.
 
-    Generate JSON Schema (draft-07) files for all 19 LLEvent types and write them
+    Generate JSON Schema (draft-07) files for all 21 LLEvent types and write them
     to docs/reference/schemas/ (or a custom output directory).
 
     Returns:

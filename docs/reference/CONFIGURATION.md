@@ -592,6 +592,7 @@ Override the default ANSI color codes used for FSM diagram edge labels and conne
 | `blocked` | `31` | Red | `on_blocked` routing |
 | `partial` | `33` | Yellow | Partial-success transitions |
 | `retry_exhausted` | `38;5;208` | Orange | `on_retry_exhausted` transitions |
+| `rate_limit_exhausted` | `38;5;214` | Amber | `on_rate_limit_exhausted` transitions |
 | `next` | `2` | Dim | Default/unconditional transitions |
 
 **Example** — use cyan for success edges and magenta for error edges:

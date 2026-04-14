@@ -1,4 +1,4 @@
-"""JSON Schema generation for all 19 LLEvent types.
+"""JSON Schema generation for all 21 LLEvent types.
 
 Generates one JSON Schema (draft-07) file per event type to docs/reference/schemas/.
 Schemas validate the flat wire format: {"event": type, "ts": timestamp, ...payload}.
@@ -71,12 +71,12 @@ def _schema(
 
 
 # ---------------------------------------------------------------------------
-# Schema definitions — all 19 LLEvent types
+# Schema definitions — all 21 LLEvent types
 # Source of truth: docs/reference/EVENT-SCHEMA.md
 # ---------------------------------------------------------------------------
 
 SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
-    # FSM Executor (11 types)
+    # FSM Executor (13 types)
     "loop_start": _schema(
         "loop_start",
         "Loop Start",
@@ -157,6 +157,27 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "next": _str("Next state the FSM transitions to"),
         },
         ["state", "retries", "next"],
+    ),
+    "rate_limit_exhausted": _schema(
+        "rate_limit_exhausted",
+        "Rate Limit Exhausted",
+        "Emitted when all 429/rate-limit retries for a state are exhausted.",
+        {
+            "state": _str("State name that exhausted rate-limit retries"),
+            "retries": _int("Number of rate-limit retries attempted"),
+            "next": _nullable_str("Next state the FSM transitions to, or null if none"),
+        },
+        ["state", "retries"],
+    ),
+    "rate_limit_storm": _schema(
+        "rate_limit_storm",
+        "Rate Limit Storm",
+        "Emitted when consecutive rate_limit_exhausted events reach the storm threshold.",
+        {
+            "state": _str("State name that triggered the storm threshold"),
+            "count": _int("Consecutive rate_limit_exhausted count at emission time"),
+        },
+        ["state", "count"],
     ),
     "handoff_detected": _schema(
         "handoff_detected",
@@ -296,7 +317,7 @@ def event_type_to_filename(event_type: str) -> str:
 
 
 def generate_schemas(output_dir: Path) -> list[Path]:
-    """Generate JSON Schema files for all 19 LLEvent types.
+    """Generate JSON Schema files for all 21 LLEvent types.
 
     Args:
         output_dir: Directory to write schema files into. Created if it doesn't exist.

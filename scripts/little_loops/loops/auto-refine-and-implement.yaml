@@ -89,8 +89,10 @@ states:
     on_error: get_next_issue
 
   implement_issue:
+    fragment: with_rate_limit_handling
     action: "ll-auto --only ${captured.impl_id.output}"
     action_type: shell
+    on_rate_limit_exhausted: done
     next: implement_next
 
   skip_and_continue:

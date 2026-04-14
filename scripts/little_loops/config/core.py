@@ -481,6 +481,7 @@ class BRConfig:
                         "default": self._cli.colors.fsm_edge_labels.default,
                         "blocked": self._cli.colors.fsm_edge_labels.blocked,
                         "retry_exhausted": self._cli.colors.fsm_edge_labels.retry_exhausted,
+                        "rate_limit_exhausted": self._cli.colors.fsm_edge_labels.rate_limit_exhausted,
                     },
                 },
             },

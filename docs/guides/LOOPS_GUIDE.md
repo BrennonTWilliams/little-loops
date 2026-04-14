@@ -992,6 +992,9 @@ These optional fields can be added to any state:
 | `backoff:` | number (seconds) | Delay before executing this state's action. Useful for rate-limited APIs or CI systems. Overridden at runtime by `--delay <SECONDS>`. |
 | `max_retries:` | integer | Maximum number of times the engine re-enters this state before triggering `on_retry_exhausted`. |
 | `on_retry_exhausted:` | state name | Target state when `max_retries` is reached. Common pattern in harness loops: `on_retry_exhausted: advance` to skip a stuck item and continue processing. |
+| `max_rate_limit_retries:` | integer | Max consecutive 429/rate-limit in-place retries before transitioning to `on_rate_limit_exhausted`. Requires `on_rate_limit_exhausted`. |
+| `on_rate_limit_exhausted:` | state name | Target state when `max_rate_limit_retries` is exhausted. Required when `max_rate_limit_retries` is set. |
+| `rate_limit_backoff_base_seconds:` | integer | Base seconds for exponential backoff between rate-limit retries; actual sleep = base * 2^(attempt-1) + uniform(0, base). Defaults to 30. |
 
 Example — skip an item after 3 failed attempts:
 

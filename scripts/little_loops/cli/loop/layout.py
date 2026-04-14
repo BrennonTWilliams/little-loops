@@ -33,6 +33,7 @@ _EDGE_LABEL_COLORS: dict[str, str] = {
     "_": "2",
     "blocked": "31",
     "retry_exhausted": "38;5;208",
+    "rate_limit_exhausted": "38;5;214",
 }
 
 
@@ -63,7 +64,7 @@ def _edge_line_color(label: str) -> str:
     parts = label.split("/")
     code = ""
     for part in parts:
-        if part in ("no", "error", "blocked", "retry_exhausted"):
+        if part in ("no", "error", "blocked", "retry_exhausted", "rate_limit_exhausted"):
             return _EDGE_LABEL_COLORS.get(part, "31")
         if part == "partial" and not code:
             code = _EDGE_LABEL_COLORS["partial"]
@@ -200,6 +201,8 @@ def _collect_edges(fsm: FSMLoop) -> list[tuple[str, str, str]]:
             edges.append((name, state.on_blocked, "blocked"))
         if state.on_retry_exhausted:
             edges.append((name, state.on_retry_exhausted, "retry_exhausted"))
+        if state.on_rate_limit_exhausted:
+            edges.append((name, state.on_rate_limit_exhausted, "rate_limit_exhausted"))
         if state.next:
             edges.append((name, state.next, "next"))
         if state.route:
