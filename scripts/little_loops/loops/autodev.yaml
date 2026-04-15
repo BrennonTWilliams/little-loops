@@ -1,0 +1,122 @@
+name: "autodev"
+category: issue-management
+description: |
+  Targeted refine-and-implement for a specific set of issues. Accepts a single
+  issue ID or a comma-separated list. For each input issue (in order):
+  recursively refine via recursive-refine (which handles decomposition into
+  child issues internally), then implement every issue that passed refinement
+  via `ll-auto --only`. Moves to the next input issue only after the current
+  one is fully refined and implemented. Terminates when the input queue drains.
+
+  Unlike auto-refine-and-implement, this loop does not poll the backlog and
+  does not maintain a skip list — the input set is finite and fixed.
+
+  Usage:
+    ll-loop run autodev "ISSUE_ID"
+    ll-loop run autodev "ID1,ID2,ID3"
+initial: init
+max_iterations: 500
+timeout: 28800
+on_handoff: spawn
+import:
+  - lib/common.yaml
+
+states:
+  init:
+    # Validate input, reset autodev tmp files, and seed the input queue from
+    # the comma-separated context.input.
+    action: |
+      if [ -z "${context.input}" ]; then
+        echo "ERROR: input is required. Usage: ll-loop run autodev \"ID1,ID2\""
+        exit 1
+      fi
+      mkdir -p .loops/tmp
+      printf '' > .loops/tmp/autodev-impl-queue.txt
+      echo "${context.input}" | tr ',' '\n' \
+        | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | grep -v '^[[:space:]]*$' \
+        > .loops/tmp/autodev-queue.txt
+      COUNT=$(wc -l < .loops/tmp/autodev-queue.txt | tr -d ' ')
+      echo "Queued $COUNT issue(s) for autodev"
+    fragment: shell_exit
+    on_yes: dequeue_next
+    on_no: done
+    on_error: done
+
+  dequeue_next:
+    # Pop the head of the input queue. Captures the ID as 'input' so that
+    # context_passthrough forwards it to the recursive-refine sub-loop as
+    # context.input. Exits 1 (→ done) when the queue is empty.
+    action: |
+      if [ ! -s .loops/tmp/autodev-queue.txt ]; then
+        exit 1
+      fi
+      CURRENT=$(head -1 .loops/tmp/autodev-queue.txt)
+      tail -n +2 .loops/tmp/autodev-queue.txt > .loops/tmp/autodev-queue.tmp
+      mv .loops/tmp/autodev-queue.tmp .loops/tmp/autodev-queue.txt
+      echo "$CURRENT"
+    fragment: shell_exit
+    capture: input
+    on_yes: refine_issue
+    on_no: done
+    on_error: done
+
+  refine_issue:
+    # Recursively refine the current input issue. recursive-refine handles
+    # decomposition internally (child issues are enqueued depth-first inside
+    # its own queue) and writes the full set of passed leaves to
+    # .loops/tmp/recursive-refine-passed.txt.
+    loop: recursive-refine
+    context_passthrough: true
+    on_success: seed_impl_queue
+    on_failure: dequeue_next
+    on_error: dequeue_next
+
+  seed_impl_queue:
+    # Copy the passed list from recursive-refine into autodev's impl queue.
+    # Must run immediately after refine_issue, before the next recursive-refine
+    # invocation overwrites recursive-refine-passed.txt.
+    action: |
+      IMPL_QUEUE=".loops/tmp/autodev-impl-queue.txt"
+      printf '' > "$IMPL_QUEUE"
+      if [ -s .loops/tmp/recursive-refine-passed.txt ]; then
+        grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-passed.txt > "$IMPL_QUEUE"
+      fi
+      if [ -s "$IMPL_QUEUE" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    fragment: shell_exit
+    on_yes: implement_next
+    on_no: dequeue_next
+    on_error: dequeue_next
+
+  implement_next:
+    # Pop the head of the impl queue. Captures the ID as 'impl_id' for the
+    # subsequent ll-auto call. Exits 1 (→ dequeue_next) when the impl queue
+    # is empty, advancing to the next input issue.
+    action: |
+      IMPL_QUEUE=".loops/tmp/autodev-impl-queue.txt"
+      if [ ! -s "$IMPL_QUEUE" ]; then
+        exit 1
+      fi
+      CURRENT=$(head -1 "$IMPL_QUEUE")
+      tail -n +2 "$IMPL_QUEUE" > "$IMPL_QUEUE.tmp"
+      mv "$IMPL_QUEUE.tmp" "$IMPL_QUEUE"
+      echo "$CURRENT"
+    fragment: shell_exit
+    capture: impl_id
+    on_yes: implement_issue
+    on_no: dequeue_next
+    on_error: dequeue_next
+
+  implement_issue:
+    fragment: with_rate_limit_handling
+    action: "ll-auto --only ${captured.impl_id.output}"
+    action_type: shell
+    on_rate_limit_exhausted: done
+    next: implement_next
+
+  done:
+    terminal: true
