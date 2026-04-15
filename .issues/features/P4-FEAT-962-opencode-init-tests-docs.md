@@ -11,6 +11,8 @@ blocked_by: [FEAT-961]
 
 # FEAT-962: OpenCode ll:init Support, Tests, and Docs
 
+> **⚠️ Superseded by FEAT-1116.** FEAT-1116 (Hook-Intent Abstraction Layer) takes precedence over this issue. Do not proceed independently — FEAT-1116 reshapes the OpenCode multi-host approach and this issue's scope, priority, and design must be re-evaluated in that context first.
+
 ## Summary
 
 Update `ll:init` to detect OpenCode and offer plugin registration, fix missing `.gitignore` entries, add integration tests for OpenCode config paths in hook scripts, and update architecture/contributing documentation.

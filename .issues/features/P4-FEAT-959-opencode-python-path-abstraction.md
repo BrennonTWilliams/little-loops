@@ -12,6 +12,8 @@ outcome_confidence: 72
 
 # FEAT-959: OpenCode Python Path Abstraction
 
+> **⚠️ Superseded by FEAT-1116.** FEAT-1116 (Hook-Intent Abstraction Layer) takes precedence over this issue. Do not proceed independently — FEAT-1116 reshapes the OpenCode multi-host approach and this issue's scope, priority, and design must be re-evaluated in that context first.
+
 ## Summary
 
 Update the Python layer of little-loops to support `.opencode/` config and log paths alongside the existing `.claude/` paths, enabling OpenCode users to have config and session log discovery work correctly.

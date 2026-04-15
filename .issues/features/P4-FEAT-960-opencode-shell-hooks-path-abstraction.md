@@ -11,6 +11,8 @@ blocked_by: [FEAT-959]
 
 # FEAT-960: OpenCode Shell Hooks Path Abstraction
 
+> **⚠️ Superseded by FEAT-1116.** FEAT-1116 (Hook-Intent Abstraction Layer) takes precedence over this issue. Do not proceed independently — FEAT-1116 reshapes the OpenCode multi-host approach and this issue's scope, priority, and design must be re-evaluated in that context first.
+
 ## Summary
 
 Update all shell hook scripts to support `.opencode/` config and state paths via `${LL_STATE_DIR:-.claude}` environment variable substitution, and inject `LL_STATE_DIR=".opencode"` from Python CLI entry points when OpenCode context is detected.

@@ -11,6 +11,8 @@ blocked_by: [FEAT-960]
 
 # FEAT-961: OpenCode JS/TS Plugin Implementation
 
+> **⚠️ Superseded by FEAT-1116.** FEAT-1116 (Hook-Intent Abstraction Layer) takes precedence over this issue. Do not proceed independently — FEAT-1116 reshapes the OpenCode multi-host approach and this issue's scope, priority, and design must be re-evaluated in that context first.
+
 ## Summary
 
 Create the `opencode-plugin/` directory with a Bun/TypeScript plugin that bridges little-loops' hook logic to OpenCode's event API via `@opencode-ai/plugin`, implementing all 6 event handlers.
