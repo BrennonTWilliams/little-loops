@@ -232,7 +232,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `general-task` | Definition-of-done driven task loop — define verifiable criteria first, then execute and verify until all criteria pass |
 | `greenfield-builder` | End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle |
 | `eval-driven-development` | Reusable eval-driven development cycle: implement issues, run eval harness, capture issues from failures, refine, and iterate until the harness passes |
-| `refine-to-ready-issue` | Single-issue refinement pipeline — format → refine → confidence-check → ready-issue until the issue reaches ready status |
+| `refine-to-ready-issue` | Single-issue refinement pipeline — refine → wire → confidence-check until the issue reaches ready status |
 
 The `general-task` loop requires the `input` context variable — a natural-language description of the task to complete:
 
@@ -287,6 +287,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `auto-refine-and-implement` | For each backlog issue in priority order: recursively refine via `recursive-refine` (which handles decomposition into child issues), then implement all passed issues; skips issues that fail refinement or are decomposed, tracking them to avoid retrying; loops until backlog is exhausted |
 | `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
 | `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling; accepts a single ID or comma-separated list |
+| `autodev` | Targeted refine-and-implement for a specific set of issues; accepts a single ID or comma-separated list, recursively refines each via `recursive-refine`, then implements all passed issues via `ll-auto --only`; terminates when the input queue drains |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
@@ -423,9 +424,37 @@ init → get_next_issue → [issue found?]
 
 **Notes**: The loop runs up to 100 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize the refinement thresholds or post-implementation steps.
 
+### `autodev` — Targeted Refine-and-Implement for Specific Issues
+
+**Technique**: Accepts a single issue ID or a comma-separated list. For each input issue (in order): recursively refines via `recursive-refine` (which handles decomposition into child issues internally), then implements every issue that passed refinement via `ll-auto --only`. Moves to the next input issue only after the current one is fully refined and implemented. Terminates when the input queue drains.
+
+**When to use**: When you have a specific set of issues you want refined and implemented end-to-end. Unlike `auto-refine-and-implement`, this loop does not poll the backlog and does not maintain a skip list — the input set is finite and fixed. Prefer `auto-refine-and-implement` for full-backlog processing.
+
+**Invocation**:
+```bash
+# Single issue
+ll-loop run autodev "FEAT-42"
+
+# Multiple issues (processed in order)
+ll-loop run autodev "FEAT-42,BUG-17,ENH-99"
+```
+
+**FSM flow**:
+```
+init → dequeue_next → [queue empty?]
+         ├─ YES → done
+         └─ NO  → refine_issue (sub-loop: recursive-refine) → [success?]
+                    ├─ YES → seed_impl_queue → [any passed?]
+                    │         ├─ YES → implement_next → implement_issue (ll-auto --only) → implement_next (loop)
+                    │         └─ NO  → dequeue_next (loop)
+                    └─ NO  → dequeue_next (loop)
+```
+
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. The `implement_issue` state uses the `with_rate_limit_handling` fragment (3 retries, 30s base backoff); if rate limits are exhausted the loop terminates via `done`.
+
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 
-**Technique**: Accepts a single issue ID or a comma-separated list. For each issue, delegates `format → refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop. If the sub-loop exits without meeting thresholds, the loop checks whether `breakdown_issue` already ran inside the sub-loop (via the `recursive-refine-broke-down` flag). If so, `/ll:issue-size-review` is skipped and the loop proceeds directly to `enqueue_or_skip`; otherwise it runs `/ll:issue-size-review` explicitly. When child issues are detected, they are prepended to the queue depth-first and refined before the next sibling. Issues that cannot be decomposed further are recorded as skipped.
+**Technique**: Accepts a single issue ID or a comma-separated list. For each issue, delegates `refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop. If the sub-loop exits without meeting thresholds, the loop checks whether `breakdown_issue` already ran inside the sub-loop (via the `recursive-refine-broke-down` flag). If so, `/ll:issue-size-review` is skipped and the loop proceeds directly to `enqueue_or_skip`; otherwise it runs `/ll:issue-size-review` explicitly. When child issues are detected, they are prepended to the queue depth-first and refined before the next sibling. Issues that cannot be decomposed further are recorded as skipped.
 
 **Child detection**: Uses a two-step parent-verification filter to avoid picking up unrelated issues created concurrently. First, `comm -13` of the pre- and post-refinement ID snapshots is written to `recursive-refine-diff-ids.txt`. Each candidate ID is then checked: its issue file must contain `Decomposed from <PARENT_ID>` (the line written by `/ll:issue-size-review` when it creates child issues) before it is accepted into `recursive-refine-new-children.txt`. Issues that appear in the diff but lack this parent reference are silently ignored.
 
@@ -1991,6 +2020,7 @@ Generic structure fragments (action_type + evaluate combinator) used by all buil
 | `retry_counter` | Increments a counter file and checks if still below `context.max_retries`. | Shell counter script + `output_numeric` evaluator | `context.counter_key`, `context.max_retries`, routing |
 | `llm_gate` | LLM prompt state with structured yes/no output. | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
 | `numeric_gate` | Shell command evaluated by numeric output comparison. | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
+| `with_rate_limit_handling` | Applies per-state rate-limit retry handling with 3 retries and 30s base backoff. | `max_rate_limit_retries: 3` + `rate_limit_backoff_base_seconds: 30` | `on_rate_limit_exhausted` (target state name) |
 
 #### `lib/cli.yaml` — ll- CLI tool fragments
 
