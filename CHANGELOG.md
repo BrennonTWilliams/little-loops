@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.83.0] - 2026-04-16
+
+### Added
+
+- **`autodev` FSM Loop** — New built-in loop definition for automated development workflows (FEAT-1116)
+
+### Fixed
+
+- **FSM 429 Rate Limit Detection and Retry** — FSM executor now detects 429 rate-limit responses, retries in-place with exponential backoff and jitter, and persists retry counts across pause/resume (BUG-1107)
+- **Rate Limit StateConfig, Validation, and UI** — Added `max_rate_limit_retries`, `on_rate_limit_exhausted`, and `rate_limit_backoff_base_seconds` fields to StateConfig with paired-field validation, storm detection, configurable edge colors, and `with_rate_limit_handling` fragment (BUG-1108)
+- **Rate Limit Tests and Documentation** — Comprehensive test coverage for rate-limit fields, events, fragments, and edge rendering; documentation updates across 6 files (BUG-1109)
+- **FSM Loops Silently Skip Work on 429 Rate Limits** — Root cause fix: sub-loops hitting 429 errors no longer silently skip all work; decomposed into targeted detection, config, and testing issues (BUG-1105)
+
+### Changed
+
+- **`refine-to-ready` Sub-Loop** — Removed unnecessary `/ll:format-issue` step that added latency; `/ll:refine-issue` already establishes the needed template structure (ENH-1110)
+
 ## [1.82.0] - 2026-04-14
 
 ### Added
@@ -162,6 +179,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.83.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.82.0...v1.83.0
 [1.82.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.1...v1.82.0
 [1.81.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.0...v1.81.1
 [1.81.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.80.0...v1.81.0
