@@ -420,8 +420,7 @@ def run_foreground(
             if not quiet and verbose:
                 line = event.get("line", "")
                 if line.strip():
-                    display = line[:max_line] + "..." if len(line) > max_line else line
-                    print(f"{indent}       {display}", flush=True)
+                    print(f"{indent}       {line}", flush=True)
 
         elif event_type == "action_complete":
             if not quiet:

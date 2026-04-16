@@ -1429,6 +1429,42 @@ class TestRunClaudeCommandModelDetection:
 
         assert callback_calls == [("Stream me", False)]
 
+    def test_assistant_event_multiline_text_dispatched_per_line(self) -> None:
+        """Multi-paragraph assistant text dispatches stream_callback once per real line (BUG-1118)."""
+        assistant_event = (
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "text", "text": "Para one line A\\nPara one line B"},'
+            '{"type": "text", "text": "Para two only"}]}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(assistant_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        callback_calls: list[tuple[str, bool]] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command(
+                    "test",
+                    stream_callback=lambda line, is_stderr: callback_calls.append(
+                        (line, is_stderr)
+                    ),
+                )
+
+        # "\n\n".join joins blocks; .splitlines() then yields 4 lines:
+        # ["Para one line A", "Para one line B", "", "Para two only"]
+        assert callback_calls == [
+            ("Para one line A", False),
+            ("Para one line B", False),
+            ("", False),
+            ("Para two only", False),
+        ]
+        # stdout reconstruction preserves the full text via "\n".join
+        assert result.stdout == "Para one line A\nPara one line B\n\nPara two only"
+
     def test_unknown_event_type_skipped(self) -> None:
         """Non-init, non-assistant JSON events are skipped: no stdout, no callback."""
         result_event = '{"type": "result", "subtype": "success", "cost_usd": 0.01}\n'

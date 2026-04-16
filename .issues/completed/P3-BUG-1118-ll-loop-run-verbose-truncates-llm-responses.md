@@ -19,6 +19,12 @@ When `ll-loop run ... --verbose` is used, prompts (inputs to the LLM) display in
 
 Running a prompt-state loop with `--verbose` on a loop whose state produces a long multi-paragraph reply renders the entire response as a single truncated row ending in `...`. Prompts display correctly because they are authored with real newlines; responses do not because they arrive as one logical "line" from the stream-json assistant events.
 
+## Steps to Reproduce
+
+1. Pick (or author) a loop whose first state is a Claude prompt expected to produce a long multi-paragraph reply.
+2. Run `ll-loop run <fsm> --verbose`.
+3. Observe: the assistant response renders as a single row ending in `...` instead of a multi-paragraph block.
+
 ## Expected Behavior
 
 With `--verbose`, the full LLM response should be displayed with paragraph breaks preserved. The persisted `action_output` event stream should also contain one entry per real line (not one giant entry), so `ll-loop history` and `ll-loop show` render captured output with preserved structure.
@@ -203,7 +209,33 @@ _Added by `/ll:refine-issue` — based on codebase research (locator + analyzer)
 - Completed: ENH-979 — `ll-auto --verbose` truncation (different CLI, different file `issue_manager.py`).
 - Completed: BUG-566 / BUG-564 — earlier `ll-loop run` output sparseness (different symptoms, addressed preview length not live streaming).
 
+## Impact
+
+- **Priority**: P3 — defect only surfaces under `--verbose` (opt-in inspection flag); no data loss (full output still persisted to events.jsonl and `result.stdout`).
+- **Effort**: Small — ~10 lines changed across two files, plus one new and one cloned test.
+- **Risk**: Low — directly analogous to completed fix ENH-979; callers verified unchanged (`issue_manager.py`, `fsm/executor.py`, `fsm/runners.py`, `fsm/persistence.py`, `info.py`).
+- **Breaking Change**: No — event shape per-event is unchanged (one `line` field). The only observable change is 1→N `action_output` events per assistant response; no downstream consumer joins consecutive events.
+
+## Labels
+
+`bug`, `cli`, `ll-loop`, `verbose-output`, `refined`
+
+## Resolution
+
+Both fixes applied as planned:
+
+- **Fix A** (`scripts/little_loops/subprocess_utils.py:198-222`) — restructured `etype == "assistant"` branch to join text blocks with `"\n\n"`, split into real lines via `splitlines()`, and dispatch `stream_callback` once per sub-line. Each sub-line is appended to `stdout_lines` individually so `"\n".join(stdout_lines)` reconstructs the full text for `result.stdout` and downstream evaluators.
+- **Fix B** (`scripts/little_loops/cli/loop/_helpers.py:419-423`) — removed the `display = line[:max_line] + "..."` clip on the verbose `action_output` branch. The terminal now wraps long lines instead of being silently truncated.
+
+Tests added:
+- `test_subprocess_utils.py::TestRunClaudeCommandModelDetection::test_assistant_event_multiline_text_dispatched_per_line` — multi-paragraph assistant text dispatches stream_callback per real line; reconstructed `result.stdout` preserves the full text.
+- `test_ll_loop_display.py::TestDisplayProgressEvents::test_verbose_action_output_not_clipped` — 200-char `action_output` line under 80-col terminal renders in full with no `"..."` trailer.
+
+Verified: targeted suites (`TestRunClaudeCommandModelDetection`, `TestDisplayProgressEvents`, all `verbose|stream|action_output|assistant`-keyword tests) pass; full `pytest scripts/tests/` runs 4831 passed (1 unrelated pre-existing failure: `test_expected_loops_exist` missing `autodev` from expected set, present on main without these changes); `ruff check scripts/` clean; `mypy` clean on both modified modules.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-16T13:29:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8088d28-1441-4c5b-b904-dd061399021d.jsonl`
+- `/ll:ready-issue` - 2026-04-16T18:24:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d0bd034-325a-41e5-8b99-228d276a913d.jsonl`
 - `/ll:refine-issue` - 2026-04-16T18:18:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57cdaad0-2b25-4d7b-bcd0-33867cfa3683.jsonl`
 - `/ll:capture-issue` - 2026-04-16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cbadf88-a8c9-4bb2-bbd8-6c53bfc5e75e.jsonl`
@@ -213,4 +245,4 @@ _Added by `/ll:refine-issue` — based on codebase research (locator + analyzer)
 ## Status
 - **Priority**: P3
 - **Type**: BUG
-- **State**: backlog
+- **State**: completed

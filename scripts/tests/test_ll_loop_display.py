@@ -1581,6 +1581,25 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert out.count("fmt") == 1
 
+    def test_verbose_action_output_not_clipped(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In verbose mode, long action_output lines render in full with no '...' trailer (BUG-1118)."""
+        from unittest.mock import patch as _patch
+
+        long_line = "x" * 200
+        events = [
+            {"event": "action_output", "line": long_line},
+        ]
+        executor = MockExecutor(events)
+        with _patch(
+            "little_loops.cli.loop._helpers.terminal_width", return_value=80
+        ):
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert long_line in out
+        assert long_line + "..." not in out
+
     def test_nonverbose_shell_output_shows_preview(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

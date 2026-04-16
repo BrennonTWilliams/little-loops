@@ -202,9 +202,14 @@ def run_claude_command(
                                     for block in msg.get("content", [])
                                     if block.get("type") == "text"
                                 ]
-                                line = "".join(text_parts)
-                                if not line:
+                                text = "\n\n".join(text_parts)
+                                if not text:
                                     continue
+                                for sub_line in text.splitlines() or [""]:
+                                    stdout_lines.append(sub_line)
+                                    if stream_callback:
+                                        stream_callback(sub_line, is_stderr)
+                                continue
                             else:
                                 continue  # skip other event types (result, tool_use, etc.)
                         except (json.JSONDecodeError, KeyError, TypeError):
