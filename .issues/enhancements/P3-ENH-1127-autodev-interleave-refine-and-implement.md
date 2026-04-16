@@ -2,10 +2,10 @@
 discovered_date: 2026-04-16
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 71
+outcome_confidence: 75
 score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 25
 ---
 
@@ -124,6 +124,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Session Log
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55b4de4f-cca6-43c5-91b9-e3975086b634.jsonl`
+- `/ll:confidence-check` - 2026-04-16T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aaebd784-810f-4805-a32b-e4738f31ef3f.jsonl`
 - `/ll:wire-issue` - 2026-04-16T20:42:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96d02ce5-8f98-44e4-8c86-7a470c9fbe61.jsonl`
 - `/ll:refine-issue` - 2026-04-16T20:35:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2b798fe-90a5-495d-a364-a94a8c145fba.jsonl`
 
