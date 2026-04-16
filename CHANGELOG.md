@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`autodev` Interleaved Refine-and-Implement** — The `autodev` loop now interleaves refinement and implementation instead of draining the full decomposition tree before running any implementation. Each leaf is implemented via `ll-auto --only` as soon as it passes refinement; decomposed children are prepended to the queue depth-first and refined-and-implemented before the next sibling. Behavior for non-decomposed inputs is unchanged. Known tradeoff: sibling children often share implicit dependencies, so a child implementation failure can silently invalidate the context under which later siblings were refined — re-inspect remaining subtree output after a child failure. `recursive-refine` used standalone is unchanged. (ENH-1127)
+
 ### Planned
 
 - Windows compatibility testing

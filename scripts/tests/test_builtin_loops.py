@@ -82,6 +82,7 @@ class TestBuiltinLoopFiles:
             "greenfield-builder",
             "outer-loop-eval",
             "auto-refine-and-implement",
+            "autodev",
             "recursive-refine",
             "html-website-generator",
             "sprint-refine-and-implement",
@@ -983,6 +984,204 @@ class TestAutoRefineAndImplementLoop:
         action = state.get("action", "")
         assert "recursive-refine-passed.txt" in action
         assert "recursive-refine-skipped.txt" in action
+
+
+class TestAutodevLoop:
+    """Structural tests for the autodev FSM loop (ENH-1127: interleaved refine+implement)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "autodev.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "autodev"
+        assert data.get("initial") == "init"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """Interleaved state machine must have these states; the old refine-all-then-implement-all
+        intermediary states (refine_issue, seed_impl_queue, implement_next, implement_issue) must be gone."""
+        required = {
+            "init",
+            "dequeue_next",
+            "refine_current",
+            "check_passed",
+            "detect_children",
+            "enqueue_children",
+            "size_review_snap",
+            "check_broke_down",
+            "recheck_scores",
+            "run_size_review",
+            "enqueue_or_skip",
+            "implement_current",
+            "done",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_old_states_removed(self, data: dict) -> None:
+        """Old two-phase states must be removed in favor of the interleaved design."""
+        states = set(data["states"].keys())
+        forbidden = {"refine_issue", "seed_impl_queue", "implement_next", "implement_issue"}
+        present = states & forbidden
+        assert not present, f"Deprecated states still present: {present}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_init_references_autodev_queue(self, data: dict) -> None:
+        """init must initialize .loops/tmp/autodev-queue.txt as the unified queue."""
+        init = data["states"].get("init", {})
+        action = init.get("action", "")
+        assert "autodev-queue.txt" in action
+        assert ".loops/tmp/" in action
+
+    def test_init_does_not_reference_impl_queue(self, data: dict) -> None:
+        """init must NOT reference the now-removed autodev-impl-queue.txt."""
+        init = data["states"].get("init", {})
+        action = init.get("action", "")
+        assert "autodev-impl-queue.txt" not in action, (
+            "autodev-impl-queue.txt is removed in the interleaved design"
+        )
+
+    def test_no_state_references_impl_queue(self, data: dict) -> None:
+        """No state anywhere should reference the deleted autodev-impl-queue.txt."""
+        for name, state in data["states"].items():
+            action = state.get("action", "")
+            assert "autodev-impl-queue.txt" not in action, (
+                f"State {name!r} still references deleted autodev-impl-queue.txt"
+            )
+
+    def test_no_state_references_recursive_refine_passed(self, data: dict) -> None:
+        """autodev must write its own passed file, not read from recursive-refine's."""
+        for name, state in data["states"].items():
+            action = state.get("action", "")
+            assert "recursive-refine-passed.txt" not in action, (
+                f"State {name!r} must not read recursive-refine-passed.txt; "
+                f"autodev manages its own passed list now"
+            )
+
+    def test_dequeue_next_captures_input(self, data: dict) -> None:
+        """dequeue_next must capture as 'input' for context_passthrough to the sub-loop."""
+        state = data["states"].get("dequeue_next", {})
+        assert state.get("capture") == "input"
+
+    def test_dequeue_next_routes_to_refine_current(self, data: dict) -> None:
+        """dequeue_next must route to refine_current on success."""
+        state = data["states"].get("dequeue_next", {})
+        assert state.get("on_yes") == "refine_current"
+
+    def test_refine_current_delegates_to_refine_to_ready_issue(self, data: dict) -> None:
+        """refine_current must delegate to refine-to-ready-issue (NOT recursive-refine)."""
+        state = data["states"].get("refine_current", {})
+        assert state.get("loop") == "refine-to-ready-issue"
+        assert state.get("context_passthrough") is True
+
+    def test_refine_current_has_success_and_failure_routes(self, data: dict) -> None:
+        """refine_current must define on_success and on_failure routes."""
+        state = data["states"].get("refine_current", {})
+        assert "on_success" in state
+        assert "on_failure" in state
+
+    def test_implement_current_uses_rate_limit_fragment(self, data: dict) -> None:
+        """implement_current must use with_rate_limit_handling fragment."""
+        state = data["states"].get("implement_current", {})
+        assert state.get("fragment") == "with_rate_limit_handling"
+
+    def test_implement_current_on_rate_limit_exhausted_is_done(self, data: dict) -> None:
+        """implement_current must route to done when rate-limit retries are exhausted."""
+        state = data["states"].get("implement_current", {})
+        assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_implement_current_runs_ll_auto_only(self, data: dict) -> None:
+        """implement_current must invoke ll-auto --only against the captured input."""
+        state = data["states"].get("implement_current", {})
+        action = state.get("action", "")
+        assert "ll-auto --only" in action
+        assert "${captured.input.output}" in action
+
+    def test_implement_current_routes_back_to_dequeue_next(self, data: dict) -> None:
+        """After implementing, return to dequeue_next for the next queued issue."""
+        state = data["states"].get("implement_current", {})
+        assert state.get("next") == "dequeue_next"
+
+    def test_check_passed_on_yes_routes_to_implement_current(self, data: dict) -> None:
+        """On threshold pass, interleave: implement the issue immediately."""
+        state = data["states"].get("check_passed", {})
+        assert state.get("on_yes") == "implement_current"
+
+    def test_check_passed_on_no_routes_to_detect_children(self, data: dict) -> None:
+        """On threshold fail, detect children just like recursive-refine does."""
+        state = data["states"].get("check_passed", {})
+        assert state.get("on_no") == "detect_children"
+
+    def test_enqueue_children_prepends_to_autodev_queue(self, data: dict) -> None:
+        """enqueue_children must rewrite .loops/tmp/autodev-queue.txt, not recursive-refine-queue.txt."""
+        state = data["states"].get("enqueue_children", {})
+        action = state.get("action", "")
+        assert "autodev-queue.txt" in action
+        assert "recursive-refine-queue.txt" not in action
+
+    def test_enqueue_children_filters_by_parent_reference(self, data: dict) -> None:
+        """enqueue_children must filter candidates by 'Decomposed from' parent reference
+        (same discipline as recursive-refine's detect_children/enqueue_children)."""
+        # Detect_children does the filter; enqueue_children consumes the filtered file.
+        detect_action = data["states"].get("detect_children", {}).get("action", "")
+        assert "Decomposed from" in detect_action
+
+    def test_broke_down_flag_copied_to_autodev_namespace(self, data: dict) -> None:
+        """autodev must copy .loops/tmp/recursive-refine-broke-down to .loops/tmp/autodev-broke-down
+        after the sub-loop returns, and read the copy for its own routing."""
+        # Some state must cp the source file to autodev-broke-down.
+        copied = any(
+            "autodev-broke-down" in s.get("action", "")
+            and "recursive-refine-broke-down" in s.get("action", "")
+            for s in data["states"].values()
+        )
+        assert copied, (
+            "No state copies recursive-refine-broke-down to autodev-broke-down; "
+            "cross-loop handshake must be namespaced into autodev-*"
+        )
+
+    def test_check_broke_down_reads_autodev_namespaced_flag(self, data: dict) -> None:
+        """check_broke_down must read the autodev-namespaced copy, not the source file."""
+        state = data["states"].get("check_broke_down", {})
+        action = state.get("action", "")
+        assert "autodev-broke-down" in action
+
+    def test_tmp_files_use_autodev_namespace(self, data: dict) -> None:
+        """All new bookkeeping temp files must use the autodev-* namespace, not recursive-refine-*."""
+        for name, state in data["states"].items():
+            action = state.get("action", "")
+            # These recursive-refine-scoped files must not be read or written from autodev
+            # (except recursive-refine-broke-down, which is the shared handshake source — copied to autodev-*).
+            assert "recursive-refine-passed.txt" not in action, (
+                f"State {name!r} reads recursive-refine-passed.txt"
+            )
+            assert "recursive-refine-skipped.txt" not in action, (
+                f"State {name!r} reads recursive-refine-skipped.txt"
+            )
+            assert "recursive-refine-queue.txt" not in action, (
+                f"State {name!r} rewrites recursive-refine-queue.txt"
+            )
+            assert "recursive-refine-pre-ids.txt" not in action, (
+                f"State {name!r} uses recursive-refine-pre-ids.txt; namespace as autodev-*"
+            )
+            assert "recursive-refine-post-ids.txt" not in action, (
+                f"State {name!r} uses recursive-refine-post-ids.txt; namespace as autodev-*"
+            )
+
+    def test_context_passthrough_on_refine_current(self, data: dict) -> None:
+        """refine_current must use context_passthrough so the captured input reaches the sub-loop."""
+        state = data["states"].get("refine_current", {})
+        assert state.get("context_passthrough") is True
 
 
 class TestRecursiveRefineLoop:

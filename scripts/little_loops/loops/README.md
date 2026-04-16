@@ -17,6 +17,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `refine-to-ready-issue` | Pick the next issue and run format → refine → wire → confidence-check until ready |
 | `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling |
 | `auto-refine-and-implement` | For each backlog issue in priority order: refine to ready, then implement; skips issues that fail refinement |
+| `autodev` | Targeted refine-and-implement for a fixed set of issue IDs; interleaves refinement and implementation — each leaf is implemented via `ll-auto --only` as soon as it passes refinement, before the next leaf is refined. Assumes single-reader access to `.loops/tmp/` (concurrent `recursive-refine` runs can race on the broke-down handshake file). |
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder to inject each issue's ID |
 

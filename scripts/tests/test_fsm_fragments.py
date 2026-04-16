@@ -873,6 +873,7 @@ class TestBuiltinLoopMigration:
 
         loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
         migration_targets = [
+            "autodev.yaml",
             "dead-code-cleanup.yaml",
             "docs-sync.yaml",
             "fix-quality-and-tests.yaml",

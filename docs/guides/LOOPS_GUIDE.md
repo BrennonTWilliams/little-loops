@@ -287,7 +287,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `auto-refine-and-implement` | For each backlog issue in priority order: recursively refine via `recursive-refine` (which handles decomposition into child issues), then implement all passed issues; skips issues that fail refinement or are decomposed, tracking them to avoid retrying; loops until backlog is exhausted |
 | `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
 | `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling; accepts a single ID or comma-separated list |
-| `autodev` | Targeted refine-and-implement for a specific set of issues; accepts a single ID or comma-separated list, recursively refines each via `recursive-refine`, then implements all passed issues via `ll-auto --only`; terminates when the input queue drains |
+| `autodev` | Targeted refine-and-implement for a specific set of issues; accepts a single ID or comma-separated list and interleaves refinement and implementation — as soon as a leaf passes refinement it is implemented via `ll-auto --only` before the next leaf is refined; decomposed children are prepended depth-first; terminates when the input queue drains |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
@@ -426,7 +426,7 @@ init → get_next_issue → [issue found?]
 
 ### `autodev` — Targeted Refine-and-Implement for Specific Issues
 
-**Technique**: Accepts a single issue ID or a comma-separated list. For each input issue (in order): recursively refines via `recursive-refine` (which handles decomposition into child issues internally), then implements every issue that passed refinement via `ll-auto --only`. Moves to the next input issue only after the current one is fully refined and implemented. Terminates when the input queue drains.
+**Technique**: Accepts a single issue ID or a comma-separated list. Drives a **single unified queue** through an interleaved refine-then-implement loop: delegates per-issue `format → refine → wire → confidence-check` to the `refine-to-ready-issue` sub-loop, and on threshold pass immediately runs `ll-auto --only` against that issue before dequeuing the next one. When `/ll:issue-size-review` decomposes an issue, the new children are prepended depth-first to the same queue and each child is refined-and-implemented before the next sibling. First implementation runs as soon as the first leaf passes refinement — no "refine-all-then-implement-all" gap. Terminates when the queue drains.
 
 **When to use**: When you have a specific set of issues you want refined and implemented end-to-end. Unlike `auto-refine-and-implement`, this loop does not poll the backlog and does not maintain a skip list — the input set is finite and fixed. Prefer `auto-refine-and-implement` for full-backlog processing.
 
@@ -443,14 +443,19 @@ ll-loop run autodev "FEAT-42,BUG-17,ENH-99"
 ```
 init → dequeue_next → [queue empty?]
          ├─ YES → done
-         └─ NO  → refine_issue (sub-loop: recursive-refine) → [success?]
-                    ├─ YES → seed_impl_queue → [any passed?]
-                    │         ├─ YES → implement_next → implement_issue (ll-auto --only) → implement_next (loop)
-                    │         └─ NO  → dequeue_next (loop)
-                    └─ NO  → dequeue_next (loop)
+         └─ NO  → refine_current (sub-loop: refine-to-ready-issue)
+                    → copy_broke_down → check_passed → [thresholds met?]
+                         ├─ YES → implement_current (ll-auto --only) → dequeue_next
+                         └─ NO  → detect_children → [children found?]
+                                    ├─ YES → enqueue_children (prepend depth-first) → dequeue_next
+                                    └─ NO  → size_review_snap → check_broke_down → [already size-reviewed?]
+                                               ├─ YES → enqueue_or_skip → dequeue_next
+                                               └─ NO  → recheck_scores → [passed now?]
+                                                          ├─ YES → implement_current → dequeue_next
+                                                          └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. The `implement_issue` state uses the `with_rate_limit_handling` fragment (3 retries, 30s base backoff); if rate limits are exhausted the loop terminates via `done`.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Both `refine_current` (sub-loop) and `implement_current` (shell `ll-auto`) use the `with_rate_limit_handling` fragment (3 retries, 30s base backoff); `refine_current` on rate-limit exhaustion dequeues and continues, while `implement_current` on exhaustion terminates the loop via `done`. The broke-down handshake flag (written by `refine-to-ready-issue` to `.loops/tmp/recursive-refine-broke-down`) is copied after each sub-loop return into `.loops/tmp/autodev-broke-down`, so the rest of autodev's state machine reads only the `autodev-*` namespace. This interleaved design also means partial forward progress is preserved if the run is interrupted — any leaves that already passed refinement have already been implemented.
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 

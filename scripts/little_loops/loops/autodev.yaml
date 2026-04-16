@@ -2,11 +2,11 @@ name: "autodev"
 category: issue-management
 description: |
   Targeted refine-and-implement for a specific set of issues. Accepts a single
-  issue ID or a comma-separated list. For each input issue (in order):
-  recursively refine via recursive-refine (which handles decomposition into
-  child issues internally), then implement every issue that passed refinement
-  via `ll-auto --only`. Moves to the next input issue only after the current
-  one is fully refined and implemented. Terminates when the input queue drains.
+  issue ID or a comma-separated list. Interleaves refinement and implementation:
+  refines one issue; on threshold pass, implements it immediately via
+  `ll-auto --only`; on decomposition into children, prepends children to the
+  queue depth-first and refines them before the next sibling. First
+  implementation runs as soon as the first leaf passes refinement.
 
   Unlike auto-refine-and-implement, this loop does not poll the backlog and
   does not maintain a skip list — the input set is finite and fixed.
@@ -18,20 +18,27 @@ initial: init
 max_iterations: 500
 timeout: 28800
 on_handoff: spawn
+context:
+  readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
+  outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
 import:
   - lib/common.yaml
 
 states:
   init:
-    # Validate input, reset autodev tmp files, and seed the input queue from
-    # the comma-separated context.input.
+    # Validate input, reset autodev tmp files, and seed the unified queue from
+    # the comma-separated context.input. The same .loops/tmp/autodev-queue.txt
+    # serves both refinement and implementation throughout — there is no
+    # separate impl queue.
     action: |
       if [ -z "${context.input}" ]; then
         echo "ERROR: input is required. Usage: ll-loop run autodev \"ID1,ID2\""
         exit 1
       fi
       mkdir -p .loops/tmp
-      printf '' > .loops/tmp/autodev-impl-queue.txt
+      printf '' > .loops/tmp/autodev-passed.txt
+      printf '' > .loops/tmp/autodev-skipped.txt
+      rm -f .loops/tmp/autodev-broke-down
       echo "${context.input}" | tr ',' '\n' \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v '^[[:space:]]*$' \
@@ -44,8 +51,10 @@ states:
     on_error: done
 
   dequeue_next:
-    # Pop the head of the input queue. Captures the ID as 'input' so that
-    # context_passthrough forwards it to the recursive-refine sub-loop as
+    # Pop the head of the unified queue; snapshot current active issue IDs as
+    # the per-iteration baseline for child detection; clear the broke-down
+    # handshake flags so each iteration starts clean. Captures the ID as
+    # 'input' so context_passthrough forwards it to refine-to-ready-issue as
     # context.input. Exits 1 (→ done) when the queue is empty.
     action: |
       if [ ! -s .loops/tmp/autodev-queue.txt ]; then
@@ -54,69 +63,323 @@ states:
       CURRENT=$(head -1 .loops/tmp/autodev-queue.txt)
       tail -n +2 .loops/tmp/autodev-queue.txt > .loops/tmp/autodev-queue.tmp
       mv .loops/tmp/autodev-queue.tmp .loops/tmp/autodev-queue.txt
+
+      rm -f .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
+      (ll-issues list --json | python3 -c "
+      import json, sys
+      try:
+          issues = json.load(sys.stdin)
+          for i in sorted(i['id'] for i in issues):
+              print(i)
+      except Exception:
+          pass
+      " > .loops/tmp/autodev-pre-ids.txt) || true
+
       echo "$CURRENT"
     fragment: shell_exit
     capture: input
-    on_yes: refine_issue
+    on_yes: refine_current
     on_no: done
     on_error: done
 
-  refine_issue:
-    # Recursively refine the current input issue. recursive-refine handles
-    # decomposition internally (child issues are enqueued depth-first inside
-    # its own queue) and writes the full set of passed leaves to
-    # .loops/tmp/recursive-refine-passed.txt.
-    loop: recursive-refine
+  refine_current:
+    # Delegate format → refine → wire → confidence-check for a single issue to
+    # refine-to-ready-issue. context_passthrough forwards captured.input as
+    # context.input to the sub-loop. on_success = sub-loop reached 'done' (true
+    # confidence pass OR breakdown_issue path). on_failure = sub-loop reached
+    # 'failed' — still route through copy_broke_down so the rest of the state
+    # machine can detect children and update the queue consistently.
+    fragment: with_rate_limit_handling
+    loop: refine-to-ready-issue
     context_passthrough: true
-    on_success: seed_impl_queue
-    on_failure: dequeue_next
-    on_error: dequeue_next
+    on_success: copy_broke_down
+    on_failure: copy_broke_down
+    on_error: copy_broke_down
+    on_rate_limit_exhausted: dequeue_next
 
-  seed_impl_queue:
-    # Copy the passed list from recursive-refine into autodev's impl queue.
-    # Must run immediately after refine_issue, before the next recursive-refine
-    # invocation overwrites recursive-refine-passed.txt.
+  copy_broke_down:
+    # Handshake: refine-to-ready-issue writes .loops/tmp/recursive-refine-broke-down
+    # (0 at resolve_issue start, 1 at write_broke_down). Copy it into autodev's
+    # namespace so the rest of the state machine reads autodev-* temp files and
+    # so concurrent recursive-refine runs don't overwrite our view mid-iteration.
     action: |
-      IMPL_QUEUE=".loops/tmp/autodev-impl-queue.txt"
-      printf '' > "$IMPL_QUEUE"
-      if [ -s .loops/tmp/recursive-refine-passed.txt ]; then
-        grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-passed.txt > "$IMPL_QUEUE"
+      if [ -f .loops/tmp/recursive-refine-broke-down ]; then
+        cp .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
+      else
+        printf '0' > .loops/tmp/autodev-broke-down
       fi
-      if [ -s "$IMPL_QUEUE" ]; then
+    action_type: shell
+    next: check_passed
+    on_error: check_passed
+
+  check_passed:
+    # Verify confidence and outcome scores meet project thresholds. Even on
+    # sub-loop success the issue may not have met thresholds —
+    # refine-to-ready-issue can exit via breakdown_issue → done rather than a
+    # genuine confidence pass. Records passing issues in autodev-passed.txt
+    # and routes to implement_current to interleave implementation.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      issue_id = '${captured.input.output}'
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
+      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      passed = (int(d.get('confidence') or 0) >= readiness
+                and int(d.get('outcome') or 0) >= outcome)
+      if passed:
+          with open('.loops/tmp/autodev-passed.txt', 'a') as f:
+              f.write(issue_id + '\n')
+      sys.exit(0 if passed else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: implement_current
+    on_no: detect_children
+    on_error: detect_children
+
+  implement_current:
+    # Interleaved implementation: as soon as a leaf passes refinement, run
+    # ll-auto --only against it. Returns to dequeue_next to process the next
+    # queued issue (which may be a sibling, a prepended child, or the next
+    # top-level input). Rate-limit exhaustion terminates the loop to match
+    # the old implement_issue behavior.
+    fragment: with_rate_limit_handling
+    action: "ll-auto --only ${captured.input.output}"
+    action_type: shell
+    on_rate_limit_exhausted: done
+    next: dequeue_next
+
+  detect_children:
+    # Diff current issue IDs against the pre-refinement baseline to find any
+    # child issues created during the sub-loop (e.g., via its breakdown_issue
+    # state). Writes discovered child IDs to a temp file for use by
+    # enqueue_children. Exits 0 (→ enqueue_children) if children found;
+    # exits 1 (→ size_review_snap) if none were found.
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > .loops/tmp/autodev-post-ids.txt
+
+      comm -13 .loops/tmp/autodev-pre-ids.txt \
+               .loops/tmp/autodev-post-ids.txt \
+               > .loops/tmp/autodev-diff-ids.txt
+
+      PARENT_ID="${captured.input.output}"
+      while IFS= read -r child_id; do
+        child_file=$(find .issues -name "*-$child_id-*" \
+          ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+          echo "$child_id"
+        fi
+      done < .loops/tmp/autodev-diff-ids.txt \
+        > .loops/tmp/autodev-new-children.txt
+
+      if [ -s .loops/tmp/autodev-new-children.txt ]; then
+        cat .loops/tmp/autodev-new-children.txt
         exit 0
       else
         exit 1
       fi
     fragment: shell_exit
-    on_yes: implement_next
-    on_no: dequeue_next
-    on_error: dequeue_next
+    on_yes: enqueue_children
+    on_no: size_review_snap
+    on_error: size_review_snap
 
-  implement_next:
-    # Pop the head of the impl queue. Captures the ID as 'impl_id' for the
-    # subsequent ll-auto call. Exits 1 (→ dequeue_next) when the impl queue
-    # is empty, advancing to the next input issue.
+  enqueue_children:
+    # Prepend newly-detected child issues to the front of the unified queue
+    # (depth-first), so children are refined AND implemented before the next
+    # sibling in the original list. Records the parent as skipped (it was
+    # decomposed, not refined to ready) and moves the parent file to
+    # .issues/completed/ to mirror recursive-refine's cleanup discipline.
     action: |
-      IMPL_QUEUE=".loops/tmp/autodev-impl-queue.txt"
-      if [ ! -s "$IMPL_QUEUE" ]; then
-        exit 1
+      CHILDREN=$(cat .loops/tmp/autodev-new-children.txt)
+      EXISTING=$(cat .loops/tmp/autodev-queue.txt 2>/dev/null || true)
+      { echo "$CHILDREN"; echo "$EXISTING"; } \
+        | grep -v '^[[:space:]]*$' \
+        > .loops/tmp/autodev-queue.txt
+      echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
+      PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -n "$PARENT_FILE" ]; then
+        mkdir -p .issues/completed
+        git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
+          || mv "$PARENT_FILE" .issues/completed/
       fi
-      CURRENT=$(head -1 "$IMPL_QUEUE")
-      tail -n +2 "$IMPL_QUEUE" > "$IMPL_QUEUE.tmp"
-      mv "$IMPL_QUEUE.tmp" "$IMPL_QUEUE"
-      echo "$CURRENT"
-    fragment: shell_exit
-    capture: impl_id
-    on_yes: implement_issue
-    on_no: dequeue_next
+      CHILD_COUNT=$(wc -l < .loops/tmp/autodev-new-children.txt | tr -d ' ')
+      echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
+    action_type: shell
+    next: dequeue_next
     on_error: dequeue_next
 
-  implement_issue:
-    fragment: with_rate_limit_handling
-    action: "ll-auto --only ${captured.impl_id.output}"
+  size_review_snap:
+    # Update pre-ids to the current state (captured in detect_children's
+    # post-ids) so the enqueue_or_skip diff reflects only what the explicit
+    # size-review creates, not children already created by the sub-loop.
+    action: |
+      if [ -f .loops/tmp/autodev-post-ids.txt ]; then
+        cp .loops/tmp/autodev-post-ids.txt \
+           .loops/tmp/autodev-pre-ids.txt
+      fi
     action_type: shell
-    on_rate_limit_exhausted: done
-    next: implement_next
+    next: check_broke_down
+    on_error: check_broke_down
+
+  check_broke_down:
+    # Guard: if breakdown_issue already ran inside the sub-loop (per the
+    # autodev-namespaced copy of recursive-refine-broke-down), the issue was
+    # already size-reviewed — skip straight to enqueue_or_skip to avoid a
+    # duplicate /ll:issue-size-review call.
+    action: |
+      cat .loops/tmp/autodev-broke-down 2>/dev/null || echo 0
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 1
+    on_yes: recheck_scores    # 0 → not broken down → proceed normally
+    on_no: enqueue_or_skip    # 1 → already size-reviewed → skip
+    on_error: recheck_scores
+
+  recheck_scores:
+    # Gate before size-review: if the issue already meets thresholds, skip
+    # size-review. Scores can pass even when the sub-loop failed/errored (e.g.,
+    # max-iterations hit while the issue was already ready). Mirrors
+    # check_passed logic exactly; on pass, interleave implementation.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      issue_id = '${captured.input.output}'
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
+      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      passed = (int(d.get('confidence') or 0) >= readiness
+                and int(d.get('outcome') or 0) >= outcome)
+      if passed:
+          with open('.loops/tmp/autodev-passed.txt', 'a') as f:
+              f.write(issue_id + '\n')
+      sys.exit(0 if passed else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: implement_current
+    on_no: run_size_review
+    on_error: run_size_review
+
+  run_size_review:
+    # Explicitly run issue-size-review when the sub-loop did not decompose the
+    # issue. If this creates child issues, enqueue_or_skip will detect and
+    # enqueue them.
+    action: "/ll:issue-size-review ${captured.input.output} --auto"
+    action_type: slash_command
+    next: enqueue_or_skip
+    on_error: enqueue_or_skip
+
+  enqueue_or_skip:
+    # After explicit size-review: diff IDs against the pre-size-review
+    # baseline. If children found: prepend to queue depth-first; mark parent
+    # as skipped; move parent to .issues/completed/. If none: mark parent as
+    # skipped (no further decomposition is possible).
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      for i in sorted(i['id'] for i in issues):
+          print(i)
+      " | sort > .loops/tmp/autodev-post-ids.txt
+
+      comm -13 .loops/tmp/autodev-pre-ids.txt \
+               .loops/tmp/autodev-post-ids.txt \
+               > .loops/tmp/autodev-diff-ids.txt
+
+      PARENT_ID="${captured.input.output}"
+      while IFS= read -r child_id; do
+        child_file=$(find .issues -name "*-$child_id-*" \
+          ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+          echo "$child_id"
+        fi
+      done < .loops/tmp/autodev-diff-ids.txt \
+        > .loops/tmp/autodev-new-children.txt
+
+      if [ -s .loops/tmp/autodev-new-children.txt ]; then
+        CHILDREN=$(cat .loops/tmp/autodev-new-children.txt)
+        EXISTING=$(cat .loops/tmp/autodev-queue.txt 2>/dev/null || true)
+        { echo "$CHILDREN"; echo "$EXISTING"; } \
+          | grep -v '^[[:space:]]*$' \
+          > .loops/tmp/autodev-queue.txt
+        echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
+        PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        if [ -n "$PARENT_FILE" ]; then
+          mkdir -p .issues/completed
+          git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
+            || mv "$PARENT_FILE" .issues/completed/
+        fi
+        CHILD_COUNT=$(wc -l < .loops/tmp/autodev-new-children.txt | tr -d ' ')
+        echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
+      else
+        echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
+        echo "Skipped: ${captured.input.output} (no further decomposition possible)"
+      fi
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   done:
+    # Emit a structured summary of passed and skipped issues for this run.
+    action: |
+      PASSED_IDS=$(cat .loops/tmp/autodev-passed.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+      SKIPPED_IDS=$(cat .loops/tmp/autodev-skipped.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+
+      PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+
+      PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
+      SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+
+      printf '\n=== Autodev Summary ===\n\n'
+      printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
+      printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
+      printf '\n'
+    action_type: shell
     terminal: true
