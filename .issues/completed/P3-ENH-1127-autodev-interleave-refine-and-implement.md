@@ -15,6 +15,14 @@ score_change_surface: 25
 
 Change the `autodev` loop so that when `/ll:issue-size-review` decomposes an issue into sub-issues, each sub-issue is implemented as soon as it passes refinement, rather than waiting for the entire decomposition tree to be refined first. Today the loop fully drains `recursive-refine`'s tree before any implementation runs, which delays real code progress behind arbitrary amounts of refinement work.
 
+## Current Behavior
+
+`autodev.yaml` runs a three-phase pipeline: `refine_issue` (delegates entire tree to `recursive-refine`) → `seed_impl_queue` (copies `.loops/tmp/recursive-refine-passed.txt` to `.loops/tmp/autodev-impl-queue.txt`) → `implement_next`/`implement_issue` loop. No implementation begins until the full decomposition tree has been refined.
+
+## Expected Behavior
+
+A unified queue drives one interleaved loop: dequeue → refine single issue via `refine-to-ready-issue` → on pass, immediately implement via `ll-auto --only` → on decomposition, prepend children depth-first and resume. First implementation runs as soon as the first leaf passes refinement; interruption still yields partial forward progress.
+
 ## Motivation
 
 `scripts/little_loops/loops/autodev.yaml` currently sequences work as **refine-all → implement-all**:
@@ -44,6 +52,15 @@ Sketch of the new state machine (replacing autodev.yaml:64-119):
 ### Alternative considered: teach `recursive-refine` to emit per-leaf events
 
 Rejected — would require FSM streaming hooks that don't exist today, and would push autodev-specific behavior into a general-purpose refinement loop. Inlining keeps the change local to autodev.
+
+### Scope Boundaries
+
+- `recursive-refine.yaml` is not modified — remains the standalone refine-only loop.
+- `refine-to-ready-issue.yaml` is not modified — including its side-effect of writing to `.loops/tmp/recursive-refine-broke-down`; autodev reads and copies that file rather than renaming it.
+- `auto-refine-and-implement.yaml` (older sibling loop with the same refine-all-then-implement-all anti-pattern) is not modified by this issue.
+- No new FSM fragments are introduced; reuse `with_rate_limit_handling` from `lib/common.yaml`.
+- Cross-loop `.loops/tmp/` lock/namespacing discipline is explicitly out of scope (inherit today's single-reader assumption; document in README).
+- No end-to-end integration test added for autodev (structural FSM tests only).
 
 ### Migration notes
 
@@ -114,6 +131,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Rate-limit handling on the implementation step continues to route to `done` (preserving today's `on_rate_limit_exhausted: done` on `implement_issue`, autodev.yaml:118).
 - `recursive-refine` used standalone via `ll-loop run recursive-refine "ID1"` is unchanged.
 
+## Impact
+
+- **Priority**: P3 - Quality-of-life improvement to an automation loop; no correctness bug, no user-blocking regression. Reasonable to defer behind P0-P2 work.
+- **Effort**: Medium - ~60 lines of new/modified FSM states in `autodev.yaml`, mirrored closely from proven `recursive-refine` logic; two test files updated; one doc file updated.
+- **Risk**: Medium - Touches an active automation loop; the non-decomposed path must remain byte-compatible with today, and the decomposition path must preserve `recursive-refine`'s depth-first ordering. Mitigated by mirroring `recursive-refine`'s shell logic and the dedicated `TestAutodevLoop` coverage called out in the wiring pass.
+- **Breaking Change**: No - `recursive-refine` standalone invocation unchanged; autodev's CLI surface (`ll-loop run autodev "IDs"`) unchanged. Only the internal execution sequence and log order change.
+
+## Labels
+
+`enhancement`, `loops`, `autodev`, `refinement`, `captured`, `wired`, `ready`
+
 ## Risks and Open Questions
 
 - **Partial tree under failure** — *Resolved by decision*: on `implement_current` failure, autodev **continues** the queue (refines+implements remaining siblings and unrelated top-level inputs). Rationale: matches today's `ll-auto --only` per-issue isolation; zero behavior drift for the non-decomposed path; maximum forward progress per run. Known tradeoff: sibling children often share implicit dependencies (e.g., C2 imports what C1 was supposed to build), so a C1 impl failure can silently invalidate the context under which C2 was refined. Must be called out in the changelog entry so users know to re-inspect remaining subtree output after a child failure. Alternatives considered: abort-on-failure (rejected — kills unrelated top-level inputs in multi-ID runs); skip-siblings-of-failed-parent (rejected — net new parent-tracking logic for marginal benefit).
@@ -122,7 +150,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Cross-loop collision on `recursive-refine-broke-down`** — *Resolved by decision*: inherit the existing single-reader assumption for `.loops/tmp/`. The broke-down flag file lives under `recursive-refine-*` but is actually authored by `refine-to-ready-issue` (write: `refine-to-ready-issue.yaml:232-235`; clear: `refine-to-ready-issue.yaml:25`). If autodev runs concurrently with a standalone `recursive-refine`, both will read/overwrite this file. Not a new risk — same race exists today between `recursive-refine` and any other caller of `refine-to-ready-issue`. Rationale for inheriting rather than adding a pid/lock file or run-ID-namespaced temp paths: no other built-in loop does this; fixing `.loops/tmp/` discipline belongs in a cross-cutting issue, not here. Mitigation: add one sentence to `scripts/little_loops/loops/README.md`'s autodev entry noting the single-reader assumption so users running concurrent loops are warned.
 - **`seed_impl_queue`'s temporal-coupling comment becomes obsolete**: `autodev.yaml:77-78` currently notes the fragility of relying on `recursive-refine-passed.txt` not being overwritten before `seed_impl_queue` runs. Removing `seed_impl_queue` also removes this subtle ordering dependency — net simplification.
 
+## Resolution
+
+Implemented via rewrite of `scripts/little_loops/loops/autodev.yaml` into a single interleaved state machine. The old `refine_issue` → `seed_impl_queue` → `implement_next` → `implement_issue` chain (delegating the whole tree to `recursive-refine` before any implementation) is replaced with a 14-state machine driving one unified queue (`.loops/tmp/autodev-queue.txt`): `init` → `dequeue_next` → `refine_current` (sub-loop: `refine-to-ready-issue`) → `copy_broke_down` → `check_passed` → `implement_current` (ll-auto --only) → back to `dequeue_next`; on threshold-miss, `detect_children` / `enqueue_children` prepend children depth-first, or fall through to `size_review_snap` → `check_broke_down` → `recheck_scores` / `run_size_review` → `enqueue_or_skip`. All bookkeeping temp files use the `autodev-*` namespace; the broke-down handshake flag is copied out of `recursive-refine-broke-down` into `autodev-broke-down` after each sub-loop return so autodev's routing doesn't race with concurrent `recursive-refine` runs.
+
+Tests: new `TestAutodevLoop` class (24 structural assertions) in `scripts/tests/test_builtin_loops.py`; `"autodev"` added to `test_expected_loops_exist`; `"autodev.yaml"` added to `TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`. Full suite: 4856 passed, ruff clean, FSM loads with 14 states and no validation warnings.
+
+Docs: updated `docs/guides/LOOPS_GUIDE.md` (summary table, Technique paragraph, FSM flow diagram, Notes paragraph); added `autodev` entry to `scripts/little_loops/loops/README.md` with the single-reader `.loops/tmp/` caveat; added Changed entry under `[Unreleased]` in `CHANGELOG.md` noting the sibling-dependency tradeoff.
+
+Out of scope (as specified): `recursive-refine.yaml`, `refine-to-ready-issue.yaml`, `auto-refine-and-implement.yaml` are unmodified; cross-loop `.loops/tmp/` lock discipline remains a future cross-cutting issue.
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-16T21:13:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d92dd787-613a-4b5b-b647-4d4d13988224.jsonl`
+- `/ll:manage-issue` - 2026-04-16T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d92dd787-613a-4b5b-b647-4d4d13988224.jsonl`
+- `/ll:ready-issue` - 2026-04-16T21:05:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b1d464-b428-4d24-bdd8-cdaeee0a8f26.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55b4de4f-cca6-43c5-91b9-e3975086b634.jsonl`
 - `/ll:confidence-check` - 2026-04-16T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aaebd784-810f-4805-a32b-e4738f31ef3f.jsonl`
 - `/ll:wire-issue` - 2026-04-16T20:42:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96d02ce5-8f98-44e4-8c86-7a470c9fbe61.jsonl`
@@ -132,4 +173,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
-**Open** | Created: 2026-04-16 | Priority: P3
+**Completed** | Created: 2026-04-16 | Completed: 2026-04-16 | Priority: P3
