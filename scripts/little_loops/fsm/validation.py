@@ -322,7 +322,10 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
                 path=path,
             )
         )
-    if state.rate_limit_backoff_base_seconds is not None and state.rate_limit_backoff_base_seconds < 1:
+    if (
+        state.rate_limit_backoff_base_seconds is not None
+        and state.rate_limit_backoff_base_seconds < 1
+    ):
         errors.append(
             ValidationError(
                 message=(

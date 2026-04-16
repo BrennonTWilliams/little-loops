@@ -513,10 +513,7 @@ class FSMExecutor:
                     )
                     # Storm detection: count consecutive exhaustions across states.
                     self._consecutive_rate_limit_exhaustions += 1
-                    if (
-                        self._consecutive_rate_limit_exhaustions
-                        >= _RATE_LIMIT_STORM_THRESHOLD
-                    ):
+                    if self._consecutive_rate_limit_exhaustions >= _RATE_LIMIT_STORM_THRESHOLD:
                         self._emit(
                             RATE_LIMIT_STORM_EVENT,
                             {
