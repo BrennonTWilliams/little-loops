@@ -1690,6 +1690,18 @@ Shutdown requests (`SIGTERM`) are observed promptly during long-wait sleeps — 
 
 > **Thundering-herd note for `ll-parallel`:** when many worktrees hit the same shared 429 at once, a fixed backoff would re-stampede the upstream service on the same tick. The added jitter is load-bearing — don't override it away, and prefer a larger `rate_limit_backoff_base_seconds` over a smaller one when you know you're running wide parallelism.
 
+#### Cross-worktree circuit breaker
+
+Layered on top of the two-tier retry ladder is a shared **circuit breaker** that lets concurrent `ll-parallel` workers skip redundant LLM calls when one of their peers has already observed a 429. It is intentionally coarse-grained — a single recovery timestamp, shared via a file on disk — so its correctness does not depend on any message bus or coordinator process.
+
+- **Pre-action check (prompt-mode only).** Before each `execute` step, the FSM consults the shared circuit state. If a recovery timestamp is in the future, the executor pre-sleeps until `estimated_recovery_at` instead of issuing an API call that would almost certainly 429. This gating applies **only** to `action_type: prompt` (Claude SDK LLM calls). Shell-based `action_type: slash_command` actions are not gated and run unthrottled, since they don't consume the rate-limited upstream quota.
+- **Cross-worktree coordination.** When any worker receives a 429, it writes a sidecar record to `.loops/tmp/rate-limit-circuit.json` (path configurable). Every other worker reads that file at the start of its next `execute` and honors the open circuit — a single 429 observation suppresses a wave of doomed calls from sibling worktrees.
+- **Stale auto-ignore.** Circuit-breaker entries older than 1 hour are silently ignored on read, so a process that crashes mid-retry cannot wedge peers indefinitely. No manual reset is required; the circuit simply expires.
+- **Atomicity.** Writes use `fcntl.flock` on a sidecar lock, plus `tempfile.mkstemp` + `os.replace` for crash-safe content swaps. The recovery timestamp advances **monotonically** (`max(current, proposed)`), so a late writer with a shorter window can never shrink an in-flight cooldown set by an earlier writer.
+- **Configuration.** Controlled by two keys under `commands.rate_limits`:
+  - `circuit_breaker_enabled` (default `true`) — set to `false` to disable pre-action gating and sidecar writes entirely.
+  - `circuit_breaker_path` (default `.loops/tmp/rate-limit-circuit.json`) — override to relocate the shared file (e.g. onto a tmpfs or a path shared across multiple checkouts).
+
 ### Stall Detection
 
 For prompt-based skills that may produce no-ops ("already done"), add a `check_stall` state using the `diff_stall` evaluator between `execute` and the first check state. Without it, idempotent skills silently exhaust `max_iterations` without progress:

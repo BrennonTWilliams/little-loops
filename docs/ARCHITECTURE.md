@@ -264,7 +264,8 @@ little-loops/
         │   ├── validation.py        # Schema validation
         │   ├── persistence.py       # State persistence
         │   ├── signal_detector.py   # Output signal detection
-        │   └── handoff_handler.py   # Session handoff handling
+        │   ├── handoff_handler.py   # Session handoff handling
+        │   └── rate_limit_circuit.py # Shared cross-worktree 429 circuit breaker
         ├── extension.py             # Extension protocol, loader, and reference implementation
         ├── testing.py               # Offline LLTestBus test harness for extension development
         ├── output_parsing.py        # Shared output parsing (ll-auto, ll-parallel)

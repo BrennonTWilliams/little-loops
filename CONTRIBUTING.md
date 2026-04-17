@@ -240,7 +240,8 @@ little-loops/
         │   ├── validation.py
         │   ├── persistence.py
         │   ├── signal_detector.py
-        │   └── handoff_handler.py
+        │   ├── handoff_handler.py
+        │   └── rate_limit_circuit.py
         ├── extension.py         # Extension protocol, loader, and reference implementation
         ├── testing.py           # Offline LLTestBus test harness for extension development
         ├── extensions/          # Bundled reference extensions (sub-package)

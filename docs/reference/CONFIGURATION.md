@@ -76,7 +76,13 @@ For interactive editing, use `/ll:configure`.
       "outcome_threshold": 70
     },
     "tdd_mode": false,
-    "max_refine_count": 5
+    "max_refine_count": 5,
+    "rate_limits": {
+      "max_wait_seconds": 21600,
+      "long_wait_ladder": [300, 900, 1800, 3600],
+      "circuit_breaker_enabled": true,
+      "circuit_breaker_path": ".loops/tmp/rate-limit-circuit.json"
+    }
   },
 
   "scan": {
@@ -325,6 +331,10 @@ Command customization for `/ll:manage-issue`:
 | `confidence_gate.outcome_threshold` | `70` | Minimum outcome confidence score (1-100) required to proceed |
 | `tdd_mode` | `false` | Enable TDD mode: write failing tests before implementation |
 | `max_refine_count` | `5` | Maximum lifetime `/ll:refine-issue` calls per issue (1–20); enforced by the `refine-to-ready-issue` loop and by `recursive-refine` via sub-loop delegation |
+| `rate_limits.max_wait_seconds` | `21600` | Total wall-clock budget (seconds) spent retrying 429s before routing to `on_rate_limit_exhausted` (default 6h) |
+| `rate_limits.long_wait_ladder` | `[300, 900, 1800, 3600]` | Long-wait tier backoff ladder (seconds): 5 min → 15 min → 30 min → 1 h. Each 429 after the short-burst tier advances the index, capped at the last entry |
+| `rate_limits.circuit_breaker_enabled` | `true` | Enable cross-worktree circuit breaker: prompt-mode actions pre-sleep until `estimated_recovery_at` when a peer worker has observed a 429 |
+| `rate_limits.circuit_breaker_path` | `".loops/tmp/rate-limit-circuit.json"` | Path to the shared circuit-breaker sidecar file read/written by all `ll-parallel` workers |
 
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `readiness_threshold`, implementation halts. Use `--force-implement` to bypass.
 
