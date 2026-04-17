@@ -2,7 +2,7 @@
 id: ENH-1144
 type: ENH
 priority: P2
-status: open
+status: completed
 discovered_date: 2026-04-17
 parent: ENH-1135
 related: [ENH-1131, ENH-1132, ENH-1133, ENH-1134]
@@ -28,6 +28,32 @@ Decomposed from ENH-1135: 429 Resilience — Heartbeat Events, Public API & Docs
 ## Motivation
 
 Without heartbeat events, long rate-limit waits (up to 6h) look like a hung process to users watching `ll-loop` UI or tail logs. `rate_limit_waiting` events emitted every 60s provide live progress.
+
+## Current Behavior
+
+`_interruptible_sleep` (`executor.py:986-999`) takes a single `duration` param and emits no events during the wait. At the long-wait tier call site (`executor.py:963`), the FSM can sit silently for up to 6h (per `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS = 21600`). No `rate_limit_waiting` event exists — only terminal `rate_limit_exhausted` / `rate_limit_storm` events are emitted. UIs like `ll-loop` have no signal that the loop is still alive during a multi-hour wait.
+
+## Impact
+
+- **Users**: Long 429 backoffs appear indistinguishable from hangs in `ll-loop` UI and tail logs.
+- **Operators**: No way to measure actual wait time or budget consumption until exhaustion fires.
+- **Developers**: Parent ENH-1135 and all five sibling docs issues (ENH-1146, 1150–1153) have landed assuming this event exists; `test_enh1146_doc_wiring.py` already references `rate_limit_waiting` in docs. Without this code, the public API and docs are out of sync with reality.
+
+## Scope Boundaries
+
+**In scope**:
+- `RATE_LIMIT_WAITING_EVENT` constant + `fsm/__init__.py` re-export (plus `RATE_LIMIT_STORM_EVENT` which is also currently unexported)
+- `on_heartbeat` optional callback param on `_interruptible_sleep`
+- Heartbeat emit at long-wait tier call site (`executor.py:963`)
+- Schema registration, count bumps (21→22, 13→14), regenerated schema JSON
+- Test updates: `test_generate_schemas.py` (five `== 21` sites), `test_fsm_executor.py` `fake_sleep` signatures (3 sites), two new tests
+
+**Out of scope**:
+- Short-tier call at `executor.py:952` — remains callback-free (preserves backward compatibility)
+- Pre-action circuit-breaker wait at `executor.py:984` (`_maybe_wait_for_circuit`) — separate observability story owned by ENH-1134
+- UI status-pill rendering in `_helpers.py` `display_progress` — neither `rate_limit_exhausted` nor `rate_limit_storm` is rendered there today; either add all three or none (defer to follow-up)
+- Edge-label color in `layout.py` — `rate_limit_waiting` is a runtime event, not a routing edge
+- Doc edits to `EVENT-SCHEMA.md` / `CLI.md` / `CHANGELOG.md` / `skills/analyze-loop/SKILL.md` — already landed via ENH-1146 / 1150–1153
 
 ## Expected Behavior
 
@@ -256,7 +282,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/tests/test_fsm_executor.py:4876`, `:4902`, `:4926` — `fake_sleep` signatures updated with `on_heartbeat=None` parameter so `patch.object` side_effects don't raise `TypeError`
 - Short-tier `_interruptible_sleep` call at `executor.py:952` remains callback-free (backward compatible)
 
+## Resolution
+
+**Completed**: 2026-04-17
+
+Implemented the `rate_limit_waiting` heartbeat event end-to-end:
+
+- `scripts/little_loops/fsm/executor.py` — added `RATE_LIMIT_WAITING_EVENT` constant and `_RATE_LIMIT_HEARTBEAT_INTERVAL = 60.0`; imported `Callable`; extended `_interruptible_sleep` with optional `on_heartbeat` param that fires every 60s; wired the heartbeat emit lambda at the long-wait tier call site (short-tier call at `_handle_rate_limit` remains callback-free).
+- `scripts/little_loops/fsm/__init__.py` — re-exported `RATE_LIMIT_STORM_EVENT` and `RATE_LIMIT_WAITING_EVENT` (both absent before).
+- `scripts/little_loops/generate_schemas.py` — registered `rate_limit_waiting` schema with `state`/`elapsed_seconds`/`next_attempt_at`/`total_waited_seconds`/`budget_seconds`/`tier` fields; updated all three total-count references (21→22) and the FSM-executor sub-group counter (13→14).
+- `scripts/little_loops/cli/schemas.py` — updated docstring count (21→22).
+- `docs/reference/schemas/rate_limit_waiting.json` — regenerated via `ll-generate-schemas` (now 22 schema files).
+- `scripts/tests/test_generate_schemas.py` — updated all five `== 21` sites plus the `expected` event-name set.
+- `scripts/tests/test_fsm_executor.py` — added `on_heartbeat=None` to the three `fake_sleep` signatures so `patch.object` side-effects accept the new kwarg; added three new tests: `test_rate_limit_storm_event_constant_exported`, `test_rate_limit_waiting_event_constant_exported`, and `test_on_heartbeat_called_during_long_wait` (the first direct exercise of the callback mechanism, patching `_RATE_LIMIT_HEARTBEAT_INTERVAL` to 0.01 so the heartbeat fires within a short real-time sleep).
+
+**Verification**:
+- `python -m pytest scripts/tests/` — 4932 passed, 5 skipped
+- `ruff check scripts/` — all checks passed
+- `python -m mypy scripts/little_loops/` — only pre-existing `wcwidth` stub warning (unrelated)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-17T09:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8297905d-ec50-4589-8ffd-0dd4fb48b66b.jsonl`
+- `/ll:ready-issue` - 2026-04-17T14:05:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4658734b-4b50-48ca-b2e9-43b8f009fdfc.jsonl`
 - `/ll:confidence-check` - 2026-04-17T14:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b682e8a0-7d3e-4d04-ac6a-e6e918dfbd45.jsonl`
 - `/ll:refine-issue` - 2026-04-17T13:51:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dd2d091-ce7c-4813-83d1-6e6be1f87077.jsonl`
 - `/ll:wire-issue` - 2026-04-17T07:28:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9285cc5a-ccb9-40de-81d2-22a31b8af554.jsonl`
@@ -264,7 +311,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
 - `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66558bdd-4b8e-4ddb-99d3-bb9d5749e796.jsonl`
 
+## Labels
+
+rate-limit, observability, fsm-executor, heartbeat, event-schema
+
 ---
 
 ## Status
-- [ ] Open
+- [x] Completed

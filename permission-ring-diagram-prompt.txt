@@ -1,0 +1,15 @@
+# SVG conceptual architectural diagram showing permissioned Agent tools structured in three concentric circles.
+
+## Innermost ring "Core Context"
+Show labels scattered inside:
+- Read, Write, Edit, Blob, Grep
+
+## Next ring "Gateway":
+Show labels scattered inside:
+- Bash, Agent, WebResearch
+
+## Next ring "Offloaded Ecosystem":
+Show labels scattered inside:
+- ToolSearch, CLI tools, MCP servers
+
+Keep the SVG concise (under 250 lines).

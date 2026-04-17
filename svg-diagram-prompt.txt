@@ -1,0 +1,5 @@
+Create an SVG diagram featuring three concentric circular zones on a faint blue grid background. Use a clean, modern technical style. 
+
+*   **Inner Circle (Main Context):** Light blue fill with a thicker dark blue border. Centered text reads 'Core Tools' with '(Always Available)' below it. Add four smaller text labels inside: 'Read', 'Write', 'Edit', and 'Bash'. Place four small, hollow blue circles on the border at the N, S, E, and W compass points.
+*   **Middle Ring (The Gateway):** A dark gray circular path with a clockwise arrow head indicating flow. At the bottom, place the text 'The Gateway'. On the top arc, insert a light gray hexagonal badge with the text 'Tool_Search'. Add three small, hollow gray squares on this ring at the N, S, and E compass points.
+*   **Outer Zone (Offloaded Ecosystem):** Bounded by a large, dashed gray circle. Place the text 'Offloaded Ecosystem' at the top. Fill the annular space between the middle ring and this dashed boundary with scattered, small gray dots.
