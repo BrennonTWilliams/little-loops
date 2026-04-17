@@ -106,6 +106,7 @@ This outputs a JSON object with a `"states"` key mapping state names to their co
 | `route` | `from` (str), `to` (str) |
 | `retry_exhausted` | `state` (str), `retries` (int), `next` (str) |
 | `rate_limit_exhausted` | `state` (str), `retries` (int, total = short + long), `short_retries` (int), `long_retries` (int), `total_wait_seconds` (number), `next` (str) |
+| `rate_limit_waiting` | `state` (str), `elapsed_seconds` (number), `next_attempt_at` (str), `total_waited_seconds` (number), `budget_seconds` (number), `tier` (str: `"short"` or `"long"`) |
 | `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
 

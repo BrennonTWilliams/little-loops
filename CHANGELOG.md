@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-Hour 429 Resilience with Shared Circuit Breaker** — Two-tier retry ladder (short-burst + long-wait) with wall-clock budget; `rate_limit_waiting` heartbeat events; cross-worktree circuit breaker to pre-sleep peers; new `StateConfig` fields `rate_limit_max_wait_seconds` and `rate_limit_long_wait_ladder` (ENH-1131)
+
 ### Changed
 
 - **`autodev` Interleaved Refine-and-Implement** — The `autodev` loop now interleaves refinement and implementation instead of draining the full decomposition tree before running any implementation. Each leaf is implemented via `ll-auto --only` as soon as it passes refinement; decomposed children are prepended to the queue depth-first and refined-and-implemented before the next sibling. Behavior for non-decomposed inputs is unchanged. Known tradeoff: sibling children often share implicit dependencies, so a child implementation failure can silently invalidate the context under which later siblings were refined — re-inspect remaining subtree output after a child failure. `recursive-refine` used standalone is unchanged. (ENH-1127)
