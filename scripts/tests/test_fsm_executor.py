@@ -4853,6 +4853,92 @@ class TestRateLimitTwoTier:
         assert exhausted[0]["total_wait_seconds"] >= 0.0
 
 
+class TestRateLimitHeartbeat:
+    """ENH-1144/ENH-1148: ``rate_limit_waiting`` heartbeat cadence during the
+    long-wait tier of the two-tier rate-limit ladder."""
+
+    def _rl_result(self) -> dict:
+        return {"output": "Error: 429 Too Many Requests rate limit", "exit_code": 1}
+
+    def _ok_result(self) -> dict:
+        return {"output": "success", "exit_code": 0}
+
+    def _fsm(self, **state_kw: Any) -> FSMLoop:
+        defaults: dict[str, Any] = {
+            "action": "work.sh",
+            "on_yes": "done",
+            "on_no": "done",
+            "on_error": "done",
+            "on_rate_limit_exhausted": "exhausted",
+            "rate_limit_backoff_base_seconds": 0,
+            "max_rate_limit_retries": 0,  # skip short tier → long-wait tier fires immediately
+        }
+        defaults.update(state_kw)
+        return FSMLoop(
+            name="heartbeat-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(**defaults),
+                "done": StateConfig(terminal=True),
+                "exhausted": StateConfig(terminal=True),
+            },
+        )
+
+    def test_rate_limit_waiting_events_emitted_at_cadence(self) -> None:
+        """Long-wait tier emits ``rate_limit_waiting`` events with the documented payload.
+
+        Patches ``_RATE_LIMIT_HEARTBEAT_INTERVAL`` to a tiny value so the
+        100ms tick loop in ``_interruptible_sleep`` fires the heartbeat at
+        least once during a sub-second ladder wait. Asserts the six payload
+        keys defined by the heartbeat contract: ``state``, ``elapsed_seconds``,
+        ``next_attempt_at``, ``total_waited_seconds``, ``budget_seconds``,
+        ``tier``.
+        """
+        fsm = self._fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._rl_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        with (
+            patch("little_loops.fsm.executor._RATE_LIMIT_HEARTBEAT_INTERVAL", 0.01),
+            patch.multiple(
+                "little_loops.fsm.executor",
+                _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
+                _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0.3],
+                _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=10,
+            ),
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            executor.run()
+
+        waiting = [e for e in events if e.get("event") == "rate_limit_waiting"]
+        assert len(waiting) >= 1, f"Expected >=1 rate_limit_waiting events, got {len(waiting)}"
+
+        expected_keys = {
+            "state",
+            "elapsed_seconds",
+            "next_attempt_at",
+            "total_waited_seconds",
+            "budget_seconds",
+            "tier",
+        }
+        for event in waiting:
+            missing = expected_keys - event.keys()
+            assert not missing, f"rate_limit_waiting missing keys: {missing}"
+            assert event["state"] == "execute"
+            assert event["tier"] == "long_wait"
+            assert event["budget_seconds"] == 10
+            assert isinstance(event["elapsed_seconds"], float)
+            assert isinstance(event["next_attempt_at"], float)
+            assert isinstance(event["total_waited_seconds"], float)
+            assert event["elapsed_seconds"] > 0.0
+            assert event["total_waited_seconds"] >= event["elapsed_seconds"]
+
+
 class TestRateLimitCircuitIntegration:
     """Tests for ENH-1137: FSMExecutor integration with shared RateLimitCircuit.
 
