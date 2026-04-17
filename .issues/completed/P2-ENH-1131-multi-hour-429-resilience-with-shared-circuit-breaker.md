@@ -12,6 +12,7 @@ score_complexity: 0
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 0
+size: Very Large
 ---
 
 # ENH-1131: Multi-Hour 429 Resilience with Shared Circuit Breaker and Wall-Clock Budget
@@ -323,10 +324,26 @@ _Added by `/ll:confidence-check` on 2026-04-16_
 - **Open: heartbeat cadence**: 60s fixed is fine to ship; defer exponential heartbeat to follow-up if logs are noisy.
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-17T03:49:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37eb6f91-ce88-4b2e-ac38-9ea0e63feafd.jsonl`
 - `/ll:wire-issue` - 2026-04-17T03:40:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/607ed87d-f6ba-49c0-a4f2-fe4e4118bd49.jsonl`
 - `/ll:refine-issue` - 2026-04-17T03:28:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcd4368d-b7a1-4238-98dd-40992b932b88.jsonl`
 - `/ll:capture-issue` - 2026-04-16T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a1d5130-4f36-4679-8288-365c673b3c29.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1db273db-92c0-4518-a02e-d131c8a6790d.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-16
+- **Reason**: Issue too large for single session (score 11/11 — Very Large)
+
+### Decomposed Into
+- ENH-1132: 429 Resilience — Schema, Config & Fragment Foundation
+- ENH-1133: 429 Resilience — Two-Tier Retry Logic & Persistence
+- ENH-1134: 429 Resilience — Shared Circuit Breaker Module
+- ENH-1135: 429 Resilience — Heartbeat Events, Public API & Docs
 
 ---
 
