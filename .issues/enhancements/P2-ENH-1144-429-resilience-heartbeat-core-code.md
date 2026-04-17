@@ -195,6 +195,35 @@ The `on_heartbeat: Callable[[float], None] | None = None` signature directly mir
 **Additional files to audit for "21" count drift**
 Beyond `generate_schemas.py` and `cli/schemas.py:15`, grep the tree for other `21 LLEvent` / `21 event` / `len(SCHEMA_DEFINITIONS) == 21` occurrences before regenerating schemas. At minimum, `test_generate_schemas.py` (above) must be updated in the same change to keep tests green.
 
+**Docs, changelog, and skill entries already shipped ahead of code** (2026-04-17 refresh)
+The sibling docs issues (`ENH-1146`, `ENH-1150`, `ENH-1151`, `ENH-1152`, `ENH-1153`) are all in `.issues/completed/`. A grep for `rate_limit_waiting` finds it already present in:
+- `docs/reference/EVENT-SCHEMA.md` (file-tree + Quick Reference table)
+- `docs/reference/OUTPUT_STYLING.md`
+- `docs/reference/COMMANDS.md`
+- `docs/reference/CLI.md` (now reads "22 LLEvent types")
+- `skills/analyze-loop/SKILL.md`
+- `CHANGELOG.md`
+- `scripts/tests/test_enh1146_doc_wiring.py`
+
+Implications for this issue:
+1. The `Documentation` wiring block above (lines 146-150 of this file) is **already landed** — do not re-edit those files.
+2. **`scripts/tests/test_enh1146_doc_wiring.py` already passes today** because it only asserts text presence in docs; it does NOT import from `little_loops.fsm`. So it will continue to pass after this issue lands — no update needed.
+3. The schema file `docs/reference/schemas/rate_limit_waiting.json` does **not** exist yet (schemas/ currently contains 21 `.json` files). It must be produced by running `ll-generate-schemas` after registering the new schema in `generate_schemas.py`.
+4. The implementer must treat the total-event-count bump (21→22) as the **only** remaining doc-count change — but the existing doc-wiring tests in `test_enh1146_doc_wiring.py` already expect "22 LLEvent types" in `CLI.md`, so the count is consistent.
+
+**Third `_interruptible_sleep` call site — intentionally out of scope**
+A third call to `self._interruptible_sleep(wait)` lives at `executor.py:984` inside `_maybe_wait_for_circuit` (the pre-action circuit-breaker wait used when a shared `RateLimitCircuit` has an active recovery window). This issue intentionally **does not** add a heartbeat callback there: the circuit-breaker path has its own separate observability story (ENH-1134) and the scope of this enhancement is strictly the long-wait tier in `_drive_rate_limit_retry`. Leaving `executor.py:984` callback-free is deliberate, not an oversight — the implementer should not wire a heartbeat there.
+
+**Line-number re-verification (2026-04-17 refresh)**
+All line numbers cited in earlier findings re-verified against current `executor.py`:
+- `_interruptible_sleep` signature at `:986` and body `:986-999` — unchanged
+- Long-wait tier emit site at `:963` — unchanged
+- Short-tier call at `:952` — unchanged
+- `RATE_LIMIT_EXHAUSTED_EVENT` at `:61`, `RATE_LIMIT_STORM_EVENT` at `:63` — unchanged
+- `fsm/__init__.py:90` (import) and `:144` (`__all__` entry) — unchanged
+- `test_generate_schemas.py` count assertions at lines 17-19, 22-46, 52-56, 63, 168-173 — unchanged
+- `test_fsm_executor.py` `fake_sleep` signatures at `:4876`, `:4902`, `:4926` — unchanged
+
 ## Implementation Steps
 
 1. Add `RATE_LIMIT_WAITING_EVENT` constant at `executor.py:~64`
@@ -228,6 +257,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Short-tier `_interruptible_sleep` call at `executor.py:952` remains callback-free (backward compatible)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-17T14:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b682e8a0-7d3e-4d04-ac6a-e6e918dfbd45.jsonl`
+- `/ll:refine-issue` - 2026-04-17T13:51:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dd2d091-ce7c-4813-83d1-6e6be1f87077.jsonl`
 - `/ll:wire-issue` - 2026-04-17T07:28:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9285cc5a-ccb9-40de-81d2-22a31b8af554.jsonl`
 - `/ll:refine-issue` - 2026-04-17T07:21:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/011d2dd3-667a-4e14-8841-6cb6d04b6a05.jsonl`
 - `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`

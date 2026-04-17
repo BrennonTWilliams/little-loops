@@ -194,6 +194,7 @@ class TestCommandsWiring:
 - `ll-verify-docs` passes
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-17T09:24:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee709210-6491-4684-b5fd-fd33f555658f.jsonl`
 - `/ll:wire-issue` - 2026-04-17T09:19:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b68d27c-19f7-492b-9687-60064cd76d22.jsonl`
 - `/ll:refine-issue` - 2026-04-17T09:13:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1030243e-f4a8-4833-8379-4788d463a4a2.jsonl`
 - `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdbdbf5d-1514-44d9-a8b7-7ce3308a82dc.jsonl`
