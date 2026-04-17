@@ -307,11 +307,15 @@ states:
   run_size_review:
     # Explicitly run issue-size-review when the sub-loop did not decompose the
     # issue. If this creates child issues, enqueue_or_skip will detect and
-    # enqueue them.
+    # enqueue them. on_rate_limit_exhausted skips this issue and moves to the
+    # next queued one rather than masquerading as a clean "no decomposition"
+    # outcome (which enqueue_or_skip would otherwise report).
+    fragment: with_rate_limit_handling
     action: "/ll:issue-size-review ${captured.input.output} --auto"
     action_type: slash_command
     next: enqueue_or_skip
     on_error: enqueue_or_skip
+    on_rate_limit_exhausted: dequeue_next
 
   enqueue_or_skip:
     # After explicit size-review: diff IDs against the pre-size-review
