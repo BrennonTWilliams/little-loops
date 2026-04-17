@@ -56,6 +56,71 @@ class DuplicateDetectionConfig:
         )
 
 
+VALID_NEXT_ISSUE_STRATEGIES: frozenset[str] = frozenset({"confidence_first", "priority_first"})
+VALID_NEXT_ISSUE_SORT_KEYS: frozenset[str] = frozenset(
+    {
+        "priority",
+        "outcome_confidence",
+        "confidence_score",
+        "effort",
+        "impact",
+        "score_complexity",
+        "score_test_coverage",
+        "score_ambiguity",
+        "score_change_surface",
+    }
+)
+VALID_NEXT_ISSUE_SORT_DIRECTIONS: frozenset[str] = frozenset({"asc", "desc"})
+
+
+@dataclass
+class NextIssueSortKey:
+    """A single (key, direction) pair for custom next-issue sort orderings."""
+
+    key: str
+    direction: str = "asc"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NextIssueSortKey:
+        """Create NextIssueSortKey from dictionary, validating key/direction."""
+        key = data.get("key")
+        if key not in VALID_NEXT_ISSUE_SORT_KEYS:
+            raise ValueError(f"Unknown sort key: {key!r}")
+        direction = data.get("direction", "asc")
+        if direction not in VALID_NEXT_ISSUE_SORT_DIRECTIONS:
+            raise ValueError(f"Unknown sort direction: {direction!r}")
+        return cls(key=key, direction=direction)
+
+
+@dataclass
+class NextIssueConfig:
+    """Selection behavior for ll-issues next-issue / next-issues commands.
+
+    Strategy presets:
+    - "confidence_first" (default): sort by (-outcome_confidence, -confidence_score, priority_int)
+    - "priority_first": sort by (priority_int, -outcome_confidence, -confidence_score)
+
+    If sort_keys is provided, it overrides strategy.
+    """
+
+    strategy: str = "confidence_first"
+    sort_keys: list[NextIssueSortKey] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NextIssueConfig:
+        """Create NextIssueConfig from dictionary, validating strategy and sort_keys."""
+        strategy = data.get("strategy", "confidence_first")
+        if strategy not in VALID_NEXT_ISSUE_STRATEGIES:
+            raise ValueError(f"Unknown strategy: {strategy!r}")
+        sort_keys_data = data.get("sort_keys")
+        sort_keys: list[NextIssueSortKey] | None
+        if sort_keys_data is None:
+            sort_keys = None
+        else:
+            sort_keys = [NextIssueSortKey.from_dict(entry) for entry in sort_keys_data]
+        return cls(strategy=strategy, sort_keys=sort_keys)
+
+
 @dataclass
 class IssuesConfig:
     """Issue management configuration."""
@@ -68,6 +133,7 @@ class IssuesConfig:
     templates_dir: str | None = None
     capture_template: str = "full"
     duplicate_detection: DuplicateDetectionConfig = field(default_factory=DuplicateDetectionConfig)
+    next_issue: NextIssueConfig = field(default_factory=NextIssueConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
@@ -98,6 +164,7 @@ class IssuesConfig:
             duplicate_detection=DuplicateDetectionConfig.from_dict(
                 data.get("duplicate_detection", {})
             ),
+            next_issue=NextIssueConfig.from_dict(data.get("next_issue", {})),
         )
 
     def get_category_by_prefix(self, prefix: str) -> CategoryConfig | None:

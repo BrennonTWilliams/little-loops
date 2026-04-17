@@ -121,7 +121,28 @@ Acceptance criteria below validate the dataclass contract only; full CLI behavio
 - `NextIssueConfig.from_dict({"strategy": "bogus"})` raises `ValueError`
 - `IssuesConfig.from_dict({"next_issue": {...}})` correctly delegates to `NextIssueConfig.from_dict`
 
+## Resolution
+
+Implemented 2026-04-17.
+
+- Added `issues.next_issue` block to `config-schema.json` with `strategy` (enum: `confidence_first`, `priority_first`) and optional `sort_keys` array of `{key, direction}` objects. `additionalProperties: false` on all sub-objects.
+- Added `NextIssueConfig` and `NextIssueSortKey` dataclasses in `scripts/little_loops/config/features.py`. Module-level `VALID_NEXT_ISSUE_STRATEGIES` / `VALID_NEXT_ISSUE_SORT_KEYS` / `VALID_NEXT_ISSUE_SORT_DIRECTIONS` frozensets back validation.
+- `from_dict` raises `ValueError(f"Unknown strategy: {strategy!r}")` / `ValueError(f"Unknown sort key: {key!r}")` / `ValueError(f"Unknown sort direction: {direction!r}")` — first validating `from_dict` in the config package per the refinement note.
+- Wired `next_issue: NextIssueConfig = field(default_factory=NextIssueConfig)` into `IssuesConfig` and hydrated in `IssuesConfig.from_dict`.
+- Exported `NextIssueConfig` and `NextIssueSortKey` from `scripts/little_loops/config/__init__.py`.
+- Omitted from `BRConfig.to_dict()` consistent with `duplicate_detection` precedent (serialization is for template substitution, not round-trip).
+
+Full resolver/CLI wiring and dedicated unit tests deferred to ENH-1125 / ENH-1126 per scope boundaries.
+
+### Verification
+- Acceptance criteria exercised via ad-hoc harness (all 7 checks pass).
+- JSON Schema validation of valid/invalid payloads confirmed.
+- `python -m pytest scripts/tests/` — 4934 passed, 5 skipped.
+- `ruff check scripts/little_loops/config/` — clean.
+- `python -m mypy scripts/little_loops/config/` — clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/011d2dd3-667a-4e14-8841-6cb6d04b6a05.jsonl`
 - `/ll:wire-issue` - 2026-04-16T19:49:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/440521b7-a91d-45cb-a303-98153044e62c.jsonl`
 - `/ll:refine-issue` - 2026-04-16T19:45:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a48397f-7141-4224-9c75-454a5790de55.jsonl`
 - `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
@@ -129,4 +150,4 @@ Acceptance criteria below validate the dataclass contract only; full CLI behavio
 
 ---
 
-**Open** | Created: 2026-04-16 | Priority: P3
+**Completed** | Created: 2026-04-16 | Completed: 2026-04-17 | Priority: P3

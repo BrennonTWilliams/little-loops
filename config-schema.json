@@ -143,6 +143,52 @@
             }
           },
           "additionalProperties": false
+        },
+        "next_issue": {
+          "type": "object",
+          "description": "Selection behavior for ll-issues next-issue / next-issues commands",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": ["confidence_first", "priority_first"],
+              "description": "Named preset for sort ordering. 'confidence_first' (default) sorts by (-outcome_confidence, -confidence_score, priority_int); 'priority_first' sorts by (priority_int, -outcome_confidence, -confidence_score). Custom orderings use sort_keys instead.",
+              "default": "confidence_first"
+            },
+            "sort_keys": {
+              "type": ["array", "null"],
+              "description": "Optional custom sort order overriding strategy. Each entry specifies a sortable IssueInfo field and direction.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "enum": [
+                      "priority",
+                      "outcome_confidence",
+                      "confidence_score",
+                      "effort",
+                      "impact",
+                      "score_complexity",
+                      "score_test_coverage",
+                      "score_ambiguity",
+                      "score_change_surface"
+                    ],
+                    "description": "Sortable IssueInfo field"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": ["asc", "desc"],
+                    "description": "Sort direction",
+                    "default": "asc"
+                  }
+                },
+                "required": ["key"],
+                "additionalProperties": false
+              },
+              "default": null
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
