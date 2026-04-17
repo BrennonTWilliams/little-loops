@@ -886,9 +886,7 @@ class FSMExecutor:
             }
         )
 
-    def _handle_rate_limit(
-        self, state: StateConfig, state_name: str
-    ) -> tuple[bool, str | None]:
+    def _handle_rate_limit(self, state: StateConfig, state_name: str) -> tuple[bool, str | None]:
         """Handle a detected 429/rate-limit action outcome.
 
         Implements the two-tier retry ladder:
@@ -949,9 +947,7 @@ class FSMExecutor:
             # checked here; short-tier always advances to long-wait on exhaustion.
             short_retries += 1
             record["short_retries"] = short_retries
-            _sleep = _backoff_base * (2 ** (short_retries - 1)) + random.uniform(
-                0, _backoff_base
-            )
+            _sleep = _backoff_base * (2 ** (short_retries - 1)) + random.uniform(0, _backoff_base)
             if self._circuit is not None:
                 self._circuit.record_rate_limit(_sleep)
             total_wait += self._interruptible_sleep(_sleep)
@@ -1047,8 +1043,7 @@ class FSMExecutor:
             RATE_LIMIT_EXHAUSTED_EVENT,
             {
                 "state": state_name,
-                "retries": int(record.get("short_retries", 0))
-                + int(record.get("long_retries", 0)),
+                "retries": int(record.get("short_retries", 0)) + int(record.get("long_retries", 0)),
                 "short_retries": int(record.get("short_retries", 0)),
                 "long_retries": int(record.get("long_retries", 0)),
                 "total_wait_seconds": float(record.get("total_wait_seconds", 0.0)),

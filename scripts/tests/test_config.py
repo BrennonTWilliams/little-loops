@@ -260,9 +260,7 @@ class TestNextIssueConfig:
     def test_unknown_sort_key_raises(self) -> None:
         """Unknown sort key raises ValueError."""
         with pytest.raises(ValueError, match="Unknown sort key"):
-            NextIssueConfig.from_dict(
-                {"sort_keys": [{"key": "nonexistent", "direction": "asc"}]}
-            )
+            NextIssueConfig.from_dict({"sort_keys": [{"key": "nonexistent", "direction": "asc"}]})
 
     def test_issues_config_parses_next_issue(self) -> None:
         """IssuesConfig.from_dict reads the next_issue block."""

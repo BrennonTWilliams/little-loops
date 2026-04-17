@@ -132,9 +132,7 @@ class LoopState:
         if self.rate_limit_retries:
             result["rate_limit_retries"] = self.rate_limit_retries
         if self.consecutive_rate_limit_exhaustions:
-            result["consecutive_rate_limit_exhaustions"] = (
-                self.consecutive_rate_limit_exhaustions
-            )
+            result["consecutive_rate_limit_exhaustions"] = self.consecutive_rate_limit_exhaustions
         if self.active_sub_loop is not None:
             result["active_sub_loop"] = self.active_sub_loop
         return result
@@ -180,9 +178,7 @@ class LoopState:
             accumulated_ms=data.get("accumulated_ms", 0),
             retry_counts=data.get("retry_counts", {}),
             rate_limit_retries=migrated_rl,
-            consecutive_rate_limit_exhaustions=data.get(
-                "consecutive_rate_limit_exhaustions", 0
-            ),
+            consecutive_rate_limit_exhaustions=data.get("consecutive_rate_limit_exhaustions", 0),
             active_sub_loop=data.get("active_sub_loop"),
         )
 
@@ -459,12 +455,8 @@ class PersistentExecutor:
             - self._executor.start_time_ms
             + self._executor.elapsed_offset_ms,
             retry_counts=dict(self._executor._retry_counts),
-            rate_limit_retries={
-                k: dict(v) for k, v in self._executor._rate_limit_retries.items()
-            },
-            consecutive_rate_limit_exhaustions=(
-                self._executor._consecutive_rate_limit_exhaustions
-            ),
+            rate_limit_retries={k: dict(v) for k, v in self._executor._rate_limit_retries.items()},
+            consecutive_rate_limit_exhaustions=(self._executor._consecutive_rate_limit_exhaustions),
         )
         self.persistence.save_state(state)
 

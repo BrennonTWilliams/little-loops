@@ -4600,16 +4600,25 @@ class TestRateLimitStorm:
             initial="a",
             states={
                 "a": StateConfig(
-                    action="a.sh", on_yes="done", on_error="done",
-                    on_rate_limit_exhausted="b", **_cfg,
+                    action="a.sh",
+                    on_yes="done",
+                    on_error="done",
+                    on_rate_limit_exhausted="b",
+                    **_cfg,
                 ),
                 "b": StateConfig(
-                    action="b.sh", on_yes="done", on_error="done",
-                    on_rate_limit_exhausted="c", **_cfg,
+                    action="b.sh",
+                    on_yes="done",
+                    on_error="done",
+                    on_rate_limit_exhausted="c",
+                    **_cfg,
                 ),
                 "c": StateConfig(
-                    action="c.sh", on_yes="done", on_error="done",
-                    on_rate_limit_exhausted="done", **_cfg,
+                    action="c.sh",
+                    on_yes="done",
+                    on_error="done",
+                    on_rate_limit_exhausted="done",
+                    **_cfg,
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -4656,16 +4665,25 @@ class TestRateLimitStorm:
             initial="a",
             states={
                 "a": StateConfig(
-                    action="a.sh", on_yes="b", on_error="done",
-                    on_rate_limit_exhausted="b", **_cfg,
+                    action="a.sh",
+                    on_yes="b",
+                    on_error="done",
+                    on_rate_limit_exhausted="b",
+                    **_cfg,
                 ),
                 "b": StateConfig(
-                    action="b.sh", on_yes="c", on_error="done",
-                    on_rate_limit_exhausted="c", **_cfg,
+                    action="b.sh",
+                    on_yes="c",
+                    on_error="done",
+                    on_rate_limit_exhausted="c",
+                    **_cfg,
                 ),
                 "c": StateConfig(
-                    action="c.sh", on_yes="done", on_error="done",
-                    on_rate_limit_exhausted="done", **_cfg,
+                    action="c.sh",
+                    on_yes="done",
+                    on_error="done",
+                    on_rate_limit_exhausted="done",
+                    **_cfg,
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -5076,7 +5094,10 @@ class TestRateLimitCircuitIntegration:
         )
         runner = MockActionRunner()
         runner.results = [
-            ("/work", {"output": "Error: 429 Too Many Requests rate limit exceeded", "exit_code": 1}),
+            (
+                "/work",
+                {"output": "Error: 429 Too Many Requests rate limit exceeded", "exit_code": 1},
+            ),
             ("/work", {"output": "ok", "exit_code": 0}),
         ]
         runner.use_indexed_order = True

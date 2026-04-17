@@ -35,9 +35,7 @@ class TestApiReferenceWiring:
 
     def test_loops_dir_present(self) -> None:
         content = API_REFERENCE.read_text()
-        assert "loops_dir" in content, (
-            "docs/reference/API.md must reference `loops_dir`"
-        )
+        assert "loops_dir" in content, "docs/reference/API.md must reference `loops_dir`"
 
     def test_circuit_parameter_present(self) -> None:
         content = API_REFERENCE.read_text()
