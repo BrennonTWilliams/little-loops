@@ -2420,6 +2420,22 @@ class TestEdgeLineColorization:
         edges = _collect_edges(fsm)
         assert ("a", "b", "rate_limit_exhausted") in edges
 
+    def test_collect_edges_excludes_rate_limit_waiting(self) -> None:
+        # rate_limit_waiting is an event-only heartbeat, not a routed edge —
+        # first absence assertion in this suite (ENH-1149).
+        fsm = self._make_fsm(
+            states={
+                "a": StateConfig(
+                    action="step",
+                    max_rate_limit_retries=3,
+                    on_rate_limit_exhausted="b",
+                ),
+                "b": StateConfig(terminal=True),
+            }
+        )
+        edges = _collect_edges(fsm)
+        assert not any(label == "rate_limit_waiting" for _, _, label in edges)
+
     def test_error_edge_connector_chars_are_colored_red(self) -> None:
         """on_error transition connector characters (│, ▼) are colored red."""
         import little_loops.cli.output as output_mod

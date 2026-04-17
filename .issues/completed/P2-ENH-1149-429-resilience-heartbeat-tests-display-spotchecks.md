@@ -2,8 +2,9 @@
 id: ENH-1149
 type: ENH
 priority: P2
-status: open
+status: completed
 discovered_date: 2026-04-17
+completed_date: 2026-04-17
 parent: ENH-1145
 related: [ENH-1144, ENH-1145, ENH-1147, ENH-1148]
 size: Small
@@ -149,7 +150,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis 2026-04-17:_
 - All 11 spot-check files pass with no regressions
 - (Conditional) If color key exists: `test_config.py` and `test_config_schema.py` have passing assertions for `rate_limit_waiting`
 
+## Resolution
+
+- **Conditional branch**: Did not apply. `rate_limit_waiting` is not present in `scripts/little_loops/config/cli.py` (`CliColorsEdgeLabelsConfig` unchanged as of 2026-04-17), so `test_config.py` and `test_config_schema.py` require no updates.
+- **Negative-edge assertion**: Added `test_collect_edges_excludes_rate_limit_waiting` to `TestEdgeLineColorization` in `scripts/tests/test_ll_loop_display.py` immediately after `test_collect_edges_includes_on_rate_limit_exhausted`. Used `self._make_fsm(...)` helper per refine-issue correction; asserts `not any(label == "rate_limit_waiting" for _, _, label in edges)`.
+- **Spot-check suite**: All 12 listed files pass (1025 tests); full suite 4934 passed / 5 skipped. Lint clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c39b8bbc-0a48-4d3d-a0ec-30def08b84b3.jsonl`
+- `/ll:ready-issue` - 2026-04-17T14:29:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35d1a2fe-5e0e-4ba1-8f9d-c87fcc72462c.jsonl`
 - `/ll:refine-issue` - 2026-04-17T08:31:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f251cbb-bdbf-46f1-9afb-74de9598acdb.jsonl`
 - `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
 - `/ll:wire-issue` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
@@ -158,4 +167,4 @@ _Added by `/ll:refine-issue` — based on codebase analysis 2026-04-17:_
 ---
 
 ## Status
-- [ ] Open
+- [x] Completed
