@@ -22,6 +22,31 @@ Implement the sort-key resolver function that converts a `NextIssueConfig` into 
 
 Decomposed from ENH-1123: Configurable ll-issues next-issue Selection Behavior
 
+## Current Behavior
+
+`next_issue.py:33-39` and `next_issues.py:31-37` both contain a hardcoded sort-key lambda — `(-(outcome_confidence or -1), -(confidence_score or -1), priority_int)` — duplicated byte-for-byte across the two CLI handlers. Users cannot change selection behavior without editing source.
+
+## Expected Behavior
+
+Both CLI handlers call a single resolver (`build_sort_key(config.issues.next_issue)`) that returns a sort-key callable. Named strategies (`confidence_first`, `priority_first`) and explicit `sort_keys` lists in config change selection order; absent config, the default `confidence_first` strategy is byte-identical to today's lambda.
+
+## Impact
+
+- **Priority**: P3 — unlocks configurability unlocked by ENH-1124 schema; no user-visible regression required.
+- **Effort**: Medium — one new helper, two ~6-line call-site swaps, per-field sentinel logic documented by predecessor refinement passes.
+- **Risk**: Low — default preset is byte-identical to current tuple; existing `TestNextIssueSorting` / `TestNextIssuesRankedOrder` act as regression guards.
+- **Breaking Change**: No.
+
+## Scope Boundaries
+
+- Out of scope: test additions for `build_sort_key` itself and doc updates (both owned by ENH-1126).
+- Out of scope: config schema additions (owned by ENH-1124, now completed).
+- Out of scope: changing error-handling convention in other `cli/` subpackages; only `cli/issues/` local convention applies.
+
+## Labels
+
+`enhancement`, `cli`, `refactor`
+
 ## Proposed Solution
 
 1. Implement a sort-key resolver — a function `build_sort_key(config: NextIssueConfig) -> Callable[[IssueInfo], tuple]`:
@@ -130,7 +155,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - A config with unknown strategy causes `ll-issues next-issue` to exit 1 with an error message
 - Both `next_issue.py` and `next_issues.py` use the same resolver
 
+## Resolution
+
+- **Implementation**: Added `build_sort_key(config: NextIssueConfig) -> Callable[[IssueInfo], tuple]` as sibling helper to `_sort_issues` in `scripts/little_loops/cli/issues/search.py`. Strategy preset table (`_STRATEGY_SORT_KEYS`) maps `"confidence_first"`/`"priority_first"` to `(field, direction)` entry sequences; `sort_keys` takes precedence when set. Per-field sentinel: `desc` → `-value else 1`, `asc` → `value else 9999`. Schema key `"priority"` maps to `IssueInfo.priority_int`.
+- **Wiring**: Replaced hardcoded lambda in `next_issue.py:33-39` and `next_issues.py:31-37` with `build_sort_key(config.issues.next_issue)`. Both handlers wrap the resolver call in `try/except ValueError` following the local `cli/issues/` convention (`print(f"Error: {e}", file=sys.stderr); return 1`).
+- **Default parity**: `confidence_first` preset produces `(-(oc) or 1, -(cs) or 1, priority_int)` — byte-identical to the previous lambda. All regression tests pass unchanged.
+- **Verification**: 4934 tests pass (`python -m pytest scripts/tests/`), ruff clean, mypy clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-17T19:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-04-17T18:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9167bb39-d550-4147-9ba4-1c4c18f4332e.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5dd383c-269e-4293-be55-d331c7b17127.jsonl`
 - `/ll:refine-issue` - 2026-04-16T20:03:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23d47188-3676-49de-b1f7-a5cbc4800ff9.jsonl`
 - `/ll:wire-issue` - 2026-04-16T19:59:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4a1c636-06bb-43fb-a1e0-0981651dd6e7.jsonl`
