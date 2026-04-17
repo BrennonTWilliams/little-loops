@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-rate_limit_waiting.json",
+  "title": "Rate Limit Waiting",
+  "description": "Heartbeat emitted every ~60s during a long-wait rate-limit sleep so UIs can show live progress.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "elapsed_seconds",
+    "next_attempt_at"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name currently waiting on rate-limit recovery"
+    },
+    "elapsed_seconds": {
+      "type": "number",
+      "description": "Wall-clock seconds elapsed in the current tier's sleep"
+    },
+    "next_attempt_at": {
+      "type": "number",
+      "description": "Unix timestamp when this sleep is scheduled to end"
+    },
+    "total_waited_seconds": {
+      "type": "number",
+      "description": "Accumulated wall-clock seconds across all rate-limit waits for this state"
+    },
+    "budget_seconds": {
+      "type": "integer",
+      "description": "Configured rate_limit_max_wait_seconds budget"
+    },
+    "tier": {
+      "type": "string",
+      "description": "Wait tier identifier (currently only 'long_wait')"
+    }
+  },
+  "additionalProperties": true
+}

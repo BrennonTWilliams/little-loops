@@ -4502,6 +4502,42 @@ class TestRateLimitRetries:
 
         assert RATE_LIMIT_EXHAUSTED_EVENT == "rate_limit_exhausted"
 
+    def test_rate_limit_storm_event_constant_exported(self) -> None:
+        """RATE_LIMIT_STORM_EVENT is exported from the fsm package."""
+        from little_loops.fsm import RATE_LIMIT_STORM_EVENT
+
+        assert RATE_LIMIT_STORM_EVENT == "rate_limit_storm"
+
+    def test_rate_limit_waiting_event_constant_exported(self) -> None:
+        """RATE_LIMIT_WAITING_EVENT is exported from the fsm package."""
+        from little_loops.fsm import RATE_LIMIT_WAITING_EVENT
+
+        assert RATE_LIMIT_WAITING_EVENT == "rate_limit_waiting"
+
+    def test_on_heartbeat_called_during_long_wait(self) -> None:
+        """_interruptible_sleep invokes on_heartbeat at the configured interval.
+
+        Patches the heartbeat interval to a tiny value so we can observe the
+        callback firing within a short real-time sleep. Confirms both that the
+        callback receives the elapsed seconds and that it is invoked at least
+        once — the first direct exercise of the method's callback mechanism.
+        """
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner)
+
+        heartbeats: list[float] = []
+
+        with patch("little_loops.fsm.executor._RATE_LIMIT_HEARTBEAT_INTERVAL", 0.01):
+            elapsed = executor._interruptible_sleep(
+                0.2,
+                on_heartbeat=lambda secs: heartbeats.append(secs),
+            )
+
+        assert elapsed > 0.0
+        assert len(heartbeats) >= 1
+        assert all(isinstance(s, float) and s > 0.0 for s in heartbeats)
+
     def test_state_level_max_rate_limit_retries_override(self) -> None:
         """State's max_rate_limit_retries overrides the module-level default."""
         fsm = self._make_fsm(
@@ -4873,7 +4909,7 @@ class TestRateLimitCircuitIntegration:
         executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
         sleeps: list[float] = []
 
-        def fake_sleep(duration: float) -> float:
+        def fake_sleep(duration: float, on_heartbeat: object | None = None) -> float:
             sleeps.append(duration)
             return 0.0
 
@@ -4899,7 +4935,7 @@ class TestRateLimitCircuitIntegration:
         executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
         sleeps: list[float] = []
 
-        def fake_sleep(duration: float) -> float:
+        def fake_sleep(duration: float, on_heartbeat: object | None = None) -> float:
             sleeps.append(duration)
             return 0.0
 
@@ -4923,7 +4959,7 @@ class TestRateLimitCircuitIntegration:
         executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
         sleeps: list[float] = []
 
-        def fake_sleep(duration: float) -> float:
+        def fake_sleep(duration: float, on_heartbeat: object | None = None) -> float:
             sleeps.append(duration)
             return 0.0
 

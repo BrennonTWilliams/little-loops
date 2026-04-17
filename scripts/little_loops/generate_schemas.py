@@ -1,4 +1,4 @@
-"""JSON Schema generation for all 21 LLEvent types.
+"""JSON Schema generation for all 22 LLEvent types.
 
 Generates one JSON Schema (draft-07) file per event type to docs/reference/schemas/.
 Schemas validate the flat wire format: {"event": type, "ts": timestamp, ...payload}.
@@ -75,12 +75,12 @@ def _schema(
 
 
 # ---------------------------------------------------------------------------
-# Schema definitions — all 21 LLEvent types
+# Schema definitions — all 22 LLEvent types
 # Source of truth: docs/reference/EVENT-SCHEMA.md
 # ---------------------------------------------------------------------------
 
 SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
-    # FSM Executor (13 types)
+    # FSM Executor (14 types)
     "loop_start": _schema(
         "loop_start",
         "Loop Start",
@@ -187,6 +187,22 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "count": _int("Consecutive rate_limit_exhausted count at emission time"),
         },
         ["state", "count"],
+    ),
+    "rate_limit_waiting": _schema(
+        "rate_limit_waiting",
+        "Rate Limit Waiting",
+        "Heartbeat emitted every ~60s during a long-wait rate-limit sleep so UIs can show live progress.",
+        {
+            "state": _str("State name currently waiting on rate-limit recovery"),
+            "elapsed_seconds": _number("Wall-clock seconds elapsed in the current tier's sleep"),
+            "next_attempt_at": _number("Unix timestamp when this sleep is scheduled to end"),
+            "total_waited_seconds": _number(
+                "Accumulated wall-clock seconds across all rate-limit waits for this state"
+            ),
+            "budget_seconds": _int("Configured rate_limit_max_wait_seconds budget"),
+            "tier": _str("Wait tier identifier (currently only 'long_wait')"),
+        },
+        ["state", "elapsed_seconds", "next_attempt_at"],
     ),
     "handoff_detected": _schema(
         "handoff_detected",
@@ -326,7 +342,7 @@ def event_type_to_filename(event_type: str) -> str:
 
 
 def generate_schemas(output_dir: Path) -> list[Path]:
-    """Generate JSON Schema files for all 21 LLEvent types.
+    """Generate JSON Schema files for all 22 LLEvent types.
 
     Args:
         output_dir: Directory to write schema files into. Created if it doesn't exist.

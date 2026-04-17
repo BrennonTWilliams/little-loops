@@ -88,6 +88,8 @@ from little_loops.fsm.evaluators import (
 )
 from little_loops.fsm.executor import (
     RATE_LIMIT_EXHAUSTED_EVENT,
+    RATE_LIMIT_STORM_EVENT,
+    RATE_LIMIT_WAITING_EVENT,
     ActionResult,
     ActionRunner,
     EventCallback,
@@ -142,6 +144,8 @@ __all__ = [
     "ActionResult",
     "ActionRunner",
     "RATE_LIMIT_EXHAUSTED_EVENT",
+    "RATE_LIMIT_STORM_EVENT",
+    "RATE_LIMIT_WAITING_EVENT",
     "DEFAULT_LLM_MODEL",
     "Evaluator",
     "EventCallback",

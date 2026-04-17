@@ -15,6 +15,7 @@ import random
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,6 +62,10 @@ _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER: list[int] = [300, 900, 1800, 3600]
 RATE_LIMIT_EXHAUSTED_EVENT: str = "rate_limit_exhausted"
 # Event name emitted when consecutive rate-limit exhaustions reach the storm threshold.
 RATE_LIMIT_STORM_EVENT: str = "rate_limit_storm"
+# Event name emitted every ~60s during a long-wait rate-limit sleep so UIs can show live progress.
+RATE_LIMIT_WAITING_EVENT: str = "rate_limit_waiting"
+# Interval (seconds) between rate_limit_waiting heartbeat emissions during long-wait sleeps.
+_RATE_LIMIT_HEARTBEAT_INTERVAL: float = 60.0
 # Number of consecutive rate_limit_exhausted events that constitute a storm.
 _RATE_LIMIT_STORM_THRESHOLD: int = 3
 # Action types that consume LLM quota and are gated by the shared circuit breaker.
@@ -960,7 +965,23 @@ class FSMExecutor:
         _wait = float(_ladder[_idx])
         if self._circuit is not None:
             self._circuit.record_rate_limit(_wait)
-        total_wait += self._interruptible_sleep(_wait)
+        _tier_start = time.time()
+        _deadline = _tier_start + _wait
+        _total_wait_before_tier = total_wait
+        total_wait += self._interruptible_sleep(
+            _wait,
+            on_heartbeat=lambda elapsed: self._emit(
+                RATE_LIMIT_WAITING_EVENT,
+                {
+                    "state": state_name,
+                    "elapsed_seconds": elapsed,
+                    "next_attempt_at": _deadline,
+                    "total_waited_seconds": _total_wait_before_tier + elapsed,
+                    "budget_seconds": _max_wait,
+                    "tier": "long_wait",
+                },
+            ),
+        )
         record["total_wait_seconds"] = total_wait
         if total_wait >= _max_wait:
             return True, self._exhaust_rate_limit(state, state_name, record)
@@ -983,19 +1004,34 @@ class FSMExecutor:
         if wait > 0:
             self._interruptible_sleep(wait)
 
-    def _interruptible_sleep(self, duration: float) -> float:
+    def _interruptible_sleep(
+        self,
+        duration: float,
+        on_heartbeat: Callable[[float], None] | None = None,
+    ) -> float:
         """Sleep for up to ``duration`` seconds in 100ms ticks, exiting promptly
         on ``_shutdown_requested``. Returns the actual elapsed seconds so callers
         can accumulate wall-clock time spent in rate-limit waits.
+
+        If ``on_heartbeat`` is provided, it is invoked with the elapsed seconds
+        roughly every ``_RATE_LIMIT_HEARTBEAT_INTERVAL`` seconds so UIs can show
+        live progress during long waits. The short-tier call site intentionally
+        omits the callback to preserve backward-compatible silent behavior.
         """
         if duration <= 0:
             return 0.0
         _start = time.time()
         _deadline = _start + duration
+        last_heartbeat = _start
         while time.time() < _deadline:
             if self._shutdown_requested:
                 break
             time.sleep(min(0.1, _deadline - time.time()))
+            if on_heartbeat is not None:
+                _now = time.time()
+                if _now - last_heartbeat >= _RATE_LIMIT_HEARTBEAT_INTERVAL:
+                    on_heartbeat(_now - _start)
+                    last_heartbeat = _now
         return time.time() - _start
 
     def _exhaust_rate_limit(
