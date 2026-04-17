@@ -3669,6 +3669,7 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | `little_loops.fsm.persistence` | Loop state persistence |
 | `little_loops.fsm.handoff_handler` | Context handoff signal handling |
 | `little_loops.fsm.concurrency` | Scope-based lock management for concurrent loops |
+| `little_loops.fsm.rate_limit_circuit` | Shared circuit-breaker state file for cross-worktree 429 coordination |
 | `little_loops.fsm.signal_detector` | Pattern-based signal detection in action output |
 
 ### Quick Import

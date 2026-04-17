@@ -65,6 +65,9 @@ Public exports:
     # Concurrency Control
     ScopeLock: Dataclass representing a scope lock
     LockManager: Manager for acquiring/releasing scope locks
+
+    # Circuit Breaker
+    RateLimitCircuit: Shared circuit-breaker state for cross-worktree 429 coordination
 """
 
 from little_loops.fsm.concurrency import (
@@ -111,6 +114,7 @@ from little_loops.fsm.persistence import (
     get_loop_history,
     list_running_loops,
 )
+from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
 from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
     EvaluateConfig,
@@ -160,6 +164,7 @@ __all__ = [
     "LockManager",
     "LoopState",
     "PersistentExecutor",
+    "RateLimitCircuit",
     "RouteConfig",
     "RouteContext",
     "RouteDecision",
