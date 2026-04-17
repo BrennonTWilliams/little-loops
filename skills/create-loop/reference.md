@@ -936,7 +936,7 @@ states:
 
 **Most users can omit these fields** — they are useful only when a state might loop indefinitely on bad input and you want automatic skip behavior instead of exhausting the global iteration budget.
 
-#### max_rate_limit_retries, on_rate_limit_exhausted, rate_limit_backoff_base_seconds, rate_limit_max_wait_seconds, and rate_limit_long_wait_ladder (Optional)
+#### max_rate_limit_retries, on_rate_limit_exhausted, rate_limit_backoff_base_seconds, rate_limit_max_wait_seconds, rate_limit_long_wait_ladder, circuit_breaker_enabled, and circuit_breaker_path (Optional)
 
 A parallel safeguard to `max_retries`/`on_retry_exhausted`, but specialized for HTTP 429 rate-limit failures. When the executor detects a 429 response (typically from a prompt state hitting an LLM backend), it retries the same state in place — sleeping between attempts — rather than routing through `on_no`. Retries run in two tiers: a short-tier exponential backoff (`max_rate_limit_retries` attempts with `rate_limit_backoff_base_seconds` base), followed by a long-wait tier that walks `rate_limit_long_wait_ladder` until `rate_limit_max_wait_seconds` of total wall-clock time is spent. Only after the full budget is exhausted does the FSM transition to `on_rate_limit_exhausted`.
 
@@ -946,6 +946,8 @@ A parallel safeguard to `max_retries`/`on_retry_exhausted`, but specialized for 
 - `rate_limit_backoff_base_seconds` (integer, minimum 1, default `30`) — base seconds for short-tier exponential backoff; the delay between retry N and N+1 is `base * 2^N + jitter`. Valid on its own (no paired-field requirement).
 - `rate_limit_max_wait_seconds` (integer, minimum 1) — total wall-clock budget (seconds) across both tiers before routing to `on_rate_limit_exhausted`. Defaults from `commands.rate_limits.max_wait_seconds` (21600 = 6h).
 - `rate_limit_long_wait_ladder` (array of positive integers) — backoff ladder (seconds) for the long-wait tier, walked in order for each attempt after the short-tier budget is spent. Defaults from `commands.rate_limits.long_wait_ladder` (`[300, 900, 1800, 3600]`).
+- `circuit_breaker_enabled` (boolean) — when `true`, the executor coordinates rate-limit state across worktrees via a shared circuit file so parallel runs back off in concert instead of re-stampeding a shared upstream. Defaults from `commands.rate_limits.circuit_breaker_enabled` (`true`).
+- `circuit_breaker_path` (string) — path to the shared circuit state file (relative to project root). Defaults from `commands.rate_limits.circuit_breaker_path` (`.loops/tmp/rate-limit-circuit.json`).
 
 **When to use:**
 - Prompt states that talk to a rate-limited upstream (LLM API, code-hosting API, etc.)

@@ -320,6 +320,11 @@ Current Commands Configuration
     outcome_threshold:    {{config.commands.confidence_gate.outcome_threshold}}
   tdd_mode:         {{config.commands.tdd_mode}}
   max_refine_count: {{config.commands.max_refine_count}}
+  rate_limits:
+    max_wait_seconds:        {{config.commands.rate_limits.max_wait_seconds}}
+    long_wait_ladder:        {{config.commands.rate_limits.long_wait_ladder}}
+    circuit_breaker_enabled: {{config.commands.rate_limits.circuit_breaker_enabled}}
+    circuit_breaker_path:    {{config.commands.rate_limits.circuit_breaker_path}}
 ```
 
 ### Round 1 (4 questions)
@@ -399,6 +404,31 @@ questions:
         description: "5 (default)"
       - label: "10"
         description: "10 (permissive)"
+    multiSelect: false
+```
+
+### Round 3 (2 questions)
+
+```yaml
+questions:
+  - header: "Circuit breaker"
+    question: "Enable cross-worktree rate-limit circuit breaker?"
+    options:
+      - label: "{{current rate_limits.circuit_breaker_enabled}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes, coordinate rate-limit state across worktrees (default)"
+      - label: "false"
+        description: "No, disable circuit breaker"
+    multiSelect: false
+
+  - header: "Circuit path"
+    question: "Path to the shared rate-limit circuit state file (relative to project root)?"
+    options:
+      - label: "{{current rate_limits.circuit_breaker_path}} (keep)"
+        description: "Keep current setting"
+      - label: ".loops/tmp/rate-limit-circuit.json"
+        description: "Default shared-state location under .loops/tmp/"
     multiSelect: false
 ```
 

@@ -97,7 +97,7 @@ BRConfig(project_root: Path)
 | `issues` | `IssuesConfig` | Issue management settings |
 | `automation` | `AutomationConfig` | Sequential automation settings |
 | `parallel` | `ParallelAutomationConfig` | Parallel automation settings |
-| `commands` | `CommandsConfig` | Command customization (includes `confidence_gate: ConfidenceGateConfig`, `tdd_mode: bool`) |
+| `commands` | `CommandsConfig` | Command customization (includes `confidence_gate: ConfidenceGateConfig`, `tdd_mode: bool`, `rate_limits: RateLimitsConfig`) |
 | `scan` | `ScanConfig` | Codebase scanning settings |
 | `sprints` | `SprintsConfig` | Sprint management settings |
 | `loops` | `LoopsConfig` | FSM loop settings |

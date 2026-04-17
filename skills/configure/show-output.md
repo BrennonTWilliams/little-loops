@@ -78,6 +78,11 @@ Commands Configuration
     outcome_threshold:    {{config.commands.confidence_gate.outcome_threshold}}    (default: 70)
   tdd_mode:         {{config.commands.tdd_mode}}                   (default: false)
   max_refine_count: {{config.commands.max_refine_count}}           (default: 5)
+  rate_limits:
+    max_wait_seconds:        {{config.commands.rate_limits.max_wait_seconds}}        (default: 21600)
+    long_wait_ladder:        {{config.commands.rate_limits.long_wait_ladder}}        (default: [300, 900, 1800, 3600])
+    circuit_breaker_enabled: {{config.commands.rate_limits.circuit_breaker_enabled}} (default: true)
+    circuit_breaker_path:    {{config.commands.rate_limits.circuit_breaker_path}}    (default: .loops/tmp/rate-limit-circuit.json)
 
 Edit: /ll:configure commands
 ```
