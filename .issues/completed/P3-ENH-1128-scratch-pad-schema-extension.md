@@ -2,7 +2,7 @@
 id: ENH-1128
 type: ENH
 priority: P3
-status: open
+status: completed
 parent: ENH-1111
 size: Small
 confidence_score: 100
@@ -113,8 +113,46 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 4. **Verify** — run `python -m pytest scripts/tests/test_config_schema.py -v` and `python -c "import json; json.load(open('.ll/ll-config.json'))"` to confirm schema is valid JSON and the template parses.
 
+## Impact
+
+- **Priority**: P3 — Foundational prerequisite for ENH-1129 hook work; schema-only change is low-urgency on its own.
+- **Effort**: Small — ~20 lines of schema JSON, 1 template block, 1 test method; purely additive.
+- **Risk**: Low — `additionalProperties: false` remains enforced; new keys have defaults matching hook behavior; existing `scratch_pad.enabled=false` default preserves no-op state.
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+- Out of scope: the PreToolUse hook implementation itself (ENH-1129) and documentation updates to `docs/reference/CONFIGURATION.md` (ENH-1130).
+- Out of scope: regenerating `site/reference/CONFIGURATION/index.html`.
+- Out of scope: changing existing `scratch_pad.enabled` or `threshold_lines` defaults.
+
+## Labels
+
+`enhancement`, `config`, `schema`, `scratch-pad`, `parent-ENH-1111`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-17T03:26:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/951ded3e-753e-42fd-8f39-9fd9094e2226.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10664fc9-e8f4-4704-aef0-4df6fb9ba0c9.jsonl`
 - `/ll:wire-issue` - 2026-04-17T03:20:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a1d5130-4f36-4679-8288-365c673b3c29.jsonl`
 - `/ll:refine-issue` - 2026-04-17T03:15:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/841f3369-f515-4521-99ea-cce418852f36.jsonl`
 - `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
+- `/ll:manage-issue` - 2026-04-16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2436aadd-5394-4708-8fd9-aadfc40d82f6.jsonl`
+
+**Status**: Completed | Created: 2026-04-16 | Completed: 2026-04-16 | Priority: P3
+
+## Resolution
+
+Extended `config-schema.json` `scratch_pad` block with four new properties (`automation_contexts_only`, `tail_lines`, `command_allowlist`, `file_extension_filters`) per spec. Added an inert opt-in `scratch_pad` template block to `.ll/ll-config.json` with `enabled: false`. Added `test_scratch_pad_properties` regression guard to `scripts/tests/test_config_schema.py`.
+
+### Changes
+- `config-schema.json` — 4 new properties added to `scratch_pad.properties` (keeps `additionalProperties: false`); bounded int (`tail_lines`), boolean (`automation_contexts_only`), and two string arrays with defaults matching the ENH-1129 hook.
+- `.ll/ll-config.json` — new `scratch_pad` template block grouped after `context_monitor`; validates against the extended schema with `enabled: false` preserving no-op state.
+- `scripts/tests/test_config_schema.py` — new `test_scratch_pad_properties` asserts defaults, bounds, and key presence (follows `test_extensions_in_properties` pattern).
+
+### Verification
+- `python -m pytest scripts/tests/` → 4857 passed, 5 skipped
+- `ruff check scripts/tests/test_config_schema.py` → clean
+- `python -m mypy scripts/tests/test_config_schema.py` → clean
+- `json.load` on both JSON files → parses OK
+
+Red phase verified before implementation: new test failed with `KeyError: 'automation_contexts_only'`, then passed after schema extension.

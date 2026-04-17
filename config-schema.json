@@ -538,6 +538,30 @@
           "default": 200,
           "minimum": 50,
           "maximum": 1000
+        },
+        "automation_contexts_only": {
+          "type": "boolean",
+          "description": "Only enforce scratch pad redirection in automation sessions (ll-auto, ll-parallel, ll-sprint); skip in interactive sessions",
+          "default": true
+        },
+        "tail_lines": {
+          "type": "integer",
+          "description": "Number of lines to surface via tail when redirecting large outputs to a scratch file",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 200
+        },
+        "command_allowlist": {
+          "type": "array",
+          "description": "Shell commands eligible for scratch pad redirection by the PreToolUse hook",
+          "items": {"type": "string"},
+          "default": ["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"]
+        },
+        "file_extension_filters": {
+          "type": "array",
+          "description": "File extensions eligible for scratch pad redirection when read by tooling",
+          "items": {"type": "string"},
+          "default": [".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]
         }
       },
       "additionalProperties": false

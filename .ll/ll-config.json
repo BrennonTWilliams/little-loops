@@ -26,6 +26,14 @@
     "enabled": true,
     "auto_handoff_threshold": 40
   },
+  "scratch_pad": {
+    "enabled": false,
+    "threshold_lines": 200,
+    "automation_contexts_only": true,
+    "tail_lines": 20,
+    "command_allowlist": ["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"],
+    "file_extension_filters": [".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]
+  },
   "commands": {
     "confidence_gate": {
       "enabled": true

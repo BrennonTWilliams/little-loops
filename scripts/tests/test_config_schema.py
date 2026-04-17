@@ -24,3 +24,14 @@ class TestConfigSchema:
             "extensions key is outside the properties block — "
             "any config using extensions would trigger additionalProperties violation"
         )
+
+    def test_scratch_pad_properties(self) -> None:
+        """scratch_pad block must expose all properties required by the PreToolUse hook."""
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        props = data["properties"]["scratch_pad"]["properties"]
+        assert props["automation_contexts_only"]["default"] is True
+        assert props["tail_lines"]["default"] == 20
+        assert props["tail_lines"]["minimum"] == 5
+        assert props["tail_lines"]["maximum"] == 200
+        assert "cat" in props["command_allowlist"]["default"]
+        assert ".py" in props["file_extension_filters"]["default"]
