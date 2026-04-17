@@ -3691,6 +3691,8 @@ from little_loops.fsm import (
     # Persistence
     LoopState, StatePersistence, PersistentExecutor,
     list_running_loops, get_loop_history,
+    # Rate Limiting
+    RateLimitCircuit,
 )
 ```
 
@@ -4005,8 +4007,12 @@ class FSMExecutor:
     def __init__(
         self,
         fsm: FSMLoop,
-        event_callback: Callable[[dict], None] | None = None,
+        event_callback: EventCallback | None = None,
         action_runner: ActionRunner | None = None,
+        signal_detector: SignalDetector | None = None,
+        handoff_handler: HandoffHandler | None = None,
+        loops_dir: Path | None = None,
+        circuit: RateLimitCircuit | None = None,
     )
 ```
 
@@ -4434,6 +4440,30 @@ Manage scope-based locks for concurrent loop execution. Lock files are stored in
 | `find_conflict(scope)` | `ScopeLock \| None` | Find conflicting running loop; cleans stale locks |
 | `list_locks()` | `list[ScopeLock]` | List all active locks; cleans stale locks |
 | `wait_for_scope(scope, timeout=300)` | `bool` | Wait until scope is available; `False` on timeout |
+
+---
+
+### little_loops.fsm.rate_limit_circuit
+
+Shared circuit-breaker state file for cross-worktree 429 coordination.
+
+#### RateLimitCircuit
+
+```python
+class RateLimitCircuit:
+    def __init__(self, path: Path) -> None
+```
+
+File-backed circuit-breaker for shared 429 backoff coordination. The `path` argument is the absolute path to the shared JSON state file (internally coerced via `Path(path)`); a sidecar `.lock` file is derived from it for `fcntl.flock`-guarded writes.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `record_rate_limit(backoff_seconds)` | `None` | Record a 429 event; increments `attempts` and advances `estimated_recovery_at` monotonically so concurrent observers cannot shrink an in-flight backoff window |
+| `get_estimated_recovery()` | `float \| None` | Epoch-seconds timestamp of estimated recovery, or `None` if the entry is stale or the file is absent |
+| `is_stale()` | `bool` | `True` when `last_seen` is older than `STALE_THRESHOLD_SECONDS` (3600s); `False` if the file is absent |
+| `clear()` | `None` | Remove the state file; no-op if already absent |
 
 ---
 
