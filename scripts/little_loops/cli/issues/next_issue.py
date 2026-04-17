@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -10,33 +11,35 @@ if TYPE_CHECKING:
 
 
 def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
-    """Print the highest-confidence active issue.
+    """Print the top-ranked active issue per ``config.issues.next_issue``.
 
-    Sort key: (-(outcome_confidence or -1), -(confidence_score or -1), priority_int)
+    The default ``confidence_first`` strategy is byte-identical to the prior
+    hardcoded sort: ``(-outcome_confidence, -confidence_score, priority_int)``.
 
     Args:
         config: Project configuration
         args: Parsed arguments with optional .json and .path flags
 
     Returns:
-        Exit code (0 = found, 1 = no issues)
+        Exit code (0 = found, 1 = no issues or invalid sort config)
     """
+    from little_loops.cli.issues.search import build_sort_key
     from little_loops.cli.output import print_json
     from little_loops.cli_args import parse_issue_ids
     from little_loops.issue_parser import find_issues
+
+    try:
+        sort_key = build_sort_key(config.issues.next_issue)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     skip_ids = parse_issue_ids(getattr(args, "skip", None))
     issues = find_issues(config, skip_ids=skip_ids or None)
     if not issues:
         return 1
 
-    issues.sort(
-        key=lambda i: (
-            -(i.outcome_confidence if i.outcome_confidence is not None else -1),
-            -(i.confidence_score if i.confidence_score is not None else -1),
-            i.priority_int,
-        )
-    )
+    issues.sort(key=sort_key)
 
     top = issues[0]
 

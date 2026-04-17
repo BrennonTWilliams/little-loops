@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from collections.abc import Callable
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from little_loops.config import BRConfig
+    from little_loops.config.features import NextIssueConfig
     from little_loops.issue_parser import IssueInfo
 
 
@@ -130,6 +132,68 @@ def _load_issues_with_status(
                     continue
 
     return results
+
+
+_STRATEGY_SORT_KEYS: dict[str, tuple[tuple[str, str], ...]] = {
+    "confidence_first": (
+        ("outcome_confidence", "desc"),
+        ("confidence_score", "desc"),
+        ("priority", "asc"),
+    ),
+    "priority_first": (
+        ("priority", "asc"),
+        ("outcome_confidence", "desc"),
+        ("confidence_score", "desc"),
+    ),
+}
+
+
+def build_sort_key(config: NextIssueConfig) -> Callable[[IssueInfo], tuple]:
+    """Return a sort-key callable for an IssueInfo list based on NextIssueConfig.
+
+    Resolution order:
+    - If ``config.sort_keys`` is set, it takes precedence over ``config.strategy``.
+    - Otherwise, the named strategy preset is used.
+
+    The returned callable produces a multi-field tuple where each component is
+    transformed per-field so that a plain ``sorted(..., reverse=False)`` call
+    yields the desired order. Do NOT pass ``reverse=True`` — mixed directions
+    are baked into each tuple component.
+
+    None-handling (per-field sentinel):
+    - ``direction="desc"`` (higher = better): component = ``-value`` when set, ``1`` when None.
+      This mirrors ``-(value or -1)`` — values > 0 sort first, None sorts after 0.
+    - ``direction="asc"``  (lower = better):  component = ``value``  when set, ``9999`` when None.
+
+    The schema key ``"priority"`` maps to ``IssueInfo.priority_int``; all other
+    keys are read directly off the dataclass.
+
+    Raises:
+        ValueError: If ``config.strategy`` is unknown (``from_dict`` normally
+            guards this, but direct instantiation can bypass validation).
+    """
+    if config.sort_keys is not None:
+        entries: tuple[tuple[str, str], ...] = tuple(
+            (sk.key, sk.direction) for sk in config.sort_keys
+        )
+    else:
+        preset = _STRATEGY_SORT_KEYS.get(config.strategy)
+        if preset is None:
+            raise ValueError(f"Unknown strategy: {config.strategy!r}")
+        entries = preset
+
+    def key(issue: IssueInfo) -> tuple:
+        parts: list[int] = []
+        for field_name, direction in entries:
+            attr = "priority_int" if field_name == "priority" else field_name
+            value = getattr(issue, attr)
+            if direction == "desc":
+                parts.append(-value if value is not None else 1)
+            else:
+                parts.append(value if value is not None else 9999)
+        return tuple(parts)
+
+    return key
 
 
 def _sort_issues(
