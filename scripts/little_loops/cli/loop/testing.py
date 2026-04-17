@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import load_loop
+from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
 from little_loops.logger import Logger
 
 
@@ -176,11 +177,16 @@ def cmd_simulate(
     args: argparse.Namespace,
     loops_dir: Path,
     logger: Logger,
+    circuit: RateLimitCircuit | None = None,
 ) -> int:
     """Run interactive simulation of loop execution.
 
     Traces through loop logic without executing commands, allowing users
     to verify state transitions and understand loop behavior.
+
+    The ``circuit`` kwarg lets tests redirect the shared 429 circuit-breaker
+    state file (normally under ``.loops/tmp/``) to a ``tmp_path``; the CLI
+    dispatcher does not pass one.
     """
     from little_loops.fsm.executor import FSMExecutor, SimulationActionRunner
 
@@ -244,6 +250,7 @@ def cmd_simulate(
         fsm,
         event_callback=simulation_callback,
         action_runner=sim_runner,
+        circuit=circuit,
     )
     result = executor.run()
 

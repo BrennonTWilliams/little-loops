@@ -248,15 +248,21 @@ def cmd_resume(
             print(f"Context: {prompt_preview}")
             print()
 
-    executor = PersistentExecutor(fsm, loops_dir=loops_dir)
+    from little_loops.config import BRConfig
+    from little_loops.extension import wire_extensions
+    from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+
+    config = BRConfig(Path.cwd())
+    circuit = (
+        RateLimitCircuit(Path(config.commands.rate_limits.circuit_breaker_path))
+        if config.commands.rate_limits.circuit_breaker_enabled
+        else None
+    )
+    executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit)
 
     # Register signal handlers for graceful shutdown (same as cmd_run)
     register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
-    from little_loops.config import BRConfig
-    from little_loops.extension import wire_extensions
-
-    config = BRConfig(Path.cwd())
     wire_extensions(executor.event_bus, config.extensions, executor=executor)
 
     result = executor.resume()

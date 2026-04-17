@@ -34,6 +34,7 @@ from little_loops.fsm.interpolation import (
     interpolate,
     interpolate_dict,
 )
+from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
 from little_loops.fsm.runners import (
     ActionRunner,
     DefaultActionRunner,
@@ -62,6 +63,9 @@ RATE_LIMIT_EXHAUSTED_EVENT: str = "rate_limit_exhausted"
 RATE_LIMIT_STORM_EVENT: str = "rate_limit_storm"
 # Number of consecutive rate_limit_exhausted events that constitute a storm.
 _RATE_LIMIT_STORM_THRESHOLD: int = 3
+# Action types that consume LLM quota and are gated by the shared circuit breaker.
+# `_action_mode()` collapses both to "prompt"; the frozenset documents intent.
+LLM_ACTION_TYPES: frozenset[str] = frozenset({"slash_command", "prompt"})
 
 
 def _iso_now() -> str:
@@ -116,6 +120,7 @@ class FSMExecutor:
         signal_detector: SignalDetector | None = None,
         handoff_handler: HandoffHandler | None = None,
         loops_dir: Path | None = None,
+        circuit: RateLimitCircuit | None = None,
     ):
         """Initialize the executor.
 
@@ -126,6 +131,7 @@ class FSMExecutor:
             signal_detector: Optional signal detector for output parsing
             handoff_handler: Optional handler for handoff signals
             loops_dir: Base directory for resolving sub-loop references
+            circuit: Optional shared rate-limit circuit breaker for 429 coordination
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -133,6 +139,7 @@ class FSMExecutor:
         self.signal_detector = signal_detector
         self.handoff_handler = handoff_handler
         self.loops_dir = loops_dir
+        self._circuit = circuit
 
         # Runtime state
         self.current_state = fsm.initial
@@ -392,6 +399,7 @@ class FSMExecutor:
             action_runner=self.action_runner,
             loops_dir=self.loops_dir,
             event_callback=_sub_event_callback,
+            circuit=self._circuit,
         )
         child_executor._depth = depth  # propagate depth for further nesting
         child_result = child_executor.run()
@@ -440,6 +448,7 @@ class FSMExecutor:
         # Handle unconditional transition
         if state.next:
             if state.action:
+                self._maybe_wait_for_circuit(state)
                 result = self._run_action(state.action, state, ctx)
                 self.prev_result = {
                     "output": result.output,
@@ -460,6 +469,7 @@ class FSMExecutor:
         # Execute action if present
         action_result = None
         if state.action:
+            self._maybe_wait_for_circuit(state)
             action_result = self._run_action(state.action, state, ctx)
 
         # Evaluate
@@ -937,6 +947,8 @@ class FSMExecutor:
             _sleep = _backoff_base * (2 ** (short_retries - 1)) + random.uniform(
                 0, _backoff_base
             )
+            if self._circuit is not None:
+                self._circuit.record_rate_limit(_sleep)
             total_wait += self._interruptible_sleep(_sleep)
             record["total_wait_seconds"] = total_wait
             return True, state_name  # retry in place
@@ -946,11 +958,30 @@ class FSMExecutor:
         record["long_retries"] = long_retries
         _idx = min(long_retries - 1, len(_ladder) - 1)
         _wait = float(_ladder[_idx])
+        if self._circuit is not None:
+            self._circuit.record_rate_limit(_wait)
         total_wait += self._interruptible_sleep(_wait)
         record["total_wait_seconds"] = total_wait
         if total_wait >= _max_wait:
             return True, self._exhaust_rate_limit(state, state_name, record)
         return True, state_name  # retry in place
+
+    def _maybe_wait_for_circuit(self, state: StateConfig) -> None:
+        """Pre-action circuit-breaker check: sleep until shared 429 recovery.
+
+        Skips quietly when no circuit is injected, when the state's action is not
+        an LLM-quota consumer, or when the circuit has no active recovery window.
+        """
+        if self._circuit is None:
+            return
+        if self._action_mode(state) != "prompt":
+            return
+        recovery = self._circuit.get_estimated_recovery()
+        if recovery is None:
+            return
+        wait = recovery - time.time()
+        if wait > 0:
+            self._interruptible_sleep(wait)
 
     def _interruptible_sleep(self, duration: float) -> float:
         """Sleep for up to ``duration`` seconds in 100ms ticks, exiting promptly

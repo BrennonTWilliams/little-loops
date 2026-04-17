@@ -4815,3 +4815,205 @@ class TestRateLimitTwoTier:
         assert len(exhausted) == 1
         assert "total_wait_seconds" in exhausted[0]
         assert exhausted[0]["total_wait_seconds"] >= 0.0
+
+
+class TestRateLimitCircuitIntegration:
+    """Tests for ENH-1137: FSMExecutor integration with shared RateLimitCircuit.
+
+    Covers pre-action sleep, stale-circuit bypass, non-LLM action skip, short-tier
+    ``record_rate_limit`` propagation, and the null-guard contract for executors
+    constructed without a ``circuit=`` kwarg.
+    """
+
+    def _prompt_fsm(self, action: str = "/work") -> FSMLoop:
+        """FSM with a slash-command state so _action_mode() resolves to 'prompt'."""
+        return FSMLoop(
+            name="circuit-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action=action,
+                    on_yes="done",
+                    on_no="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def _shell_fsm(self) -> FSMLoop:
+        """FSM with an explicit shell action_type state."""
+        return FSMLoop(
+            name="circuit-shell-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    action_type="shell",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_pre_action_sleep_when_circuit_active(self, tmp_path: Path) -> None:
+        """Active circuit recovery → pre-action _interruptible_sleep called with positive duration."""
+        from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+
+        circuit = RateLimitCircuit(tmp_path / "circuit.json")
+        circuit.record_rate_limit(1000.0)  # seeds a far-future recovery window
+
+        fsm = self._prompt_fsm()
+        runner = MockActionRunner()
+        runner.results = [("/work", {"output": "ok", "exit_code": 0})]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
+        sleeps: list[float] = []
+
+        def fake_sleep(duration: float) -> float:
+            sleeps.append(duration)
+            return 0.0
+
+        with patch.object(executor, "_interruptible_sleep", side_effect=fake_sleep):
+            executor.run()
+
+        # Pre-action sleep call should have happened with positive wait.
+        assert len(sleeps) >= 1
+        assert sleeps[0] > 0
+
+    def test_pre_action_no_sleep_when_circuit_stale(self, tmp_path: Path) -> None:
+        """Circuit present but with no active recovery → no pre-action sleep."""
+        from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+
+        # Never call record_rate_limit → get_estimated_recovery() returns None.
+        circuit = RateLimitCircuit(tmp_path / "circuit.json")
+
+        fsm = self._prompt_fsm()
+        runner = MockActionRunner()
+        runner.results = [("/work", {"output": "ok", "exit_code": 0})]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
+        sleeps: list[float] = []
+
+        def fake_sleep(duration: float) -> float:
+            sleeps.append(duration)
+            return 0.0
+
+        with patch.object(executor, "_interruptible_sleep", side_effect=fake_sleep):
+            executor.run()
+
+        assert sleeps == []
+
+    def test_pre_action_skipped_for_shell_action(self, tmp_path: Path) -> None:
+        """Non-LLM action type (shell) → pre-action circuit check skipped."""
+        from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+
+        circuit = RateLimitCircuit(tmp_path / "circuit.json")
+        circuit.record_rate_limit(1000.0)  # active window
+
+        fsm = self._shell_fsm()
+        runner = MockActionRunner()
+        runner.results = [("work.sh", {"output": "ok", "exit_code": 0})]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
+        sleeps: list[float] = []
+
+        def fake_sleep(duration: float) -> float:
+            sleeps.append(duration)
+            return 0.0
+
+        with patch.object(executor, "_interruptible_sleep", side_effect=fake_sleep):
+            executor.run()
+
+        # No pre-action sleep because action_mode is 'shell', not 'prompt'.
+        assert sleeps == []
+
+    def test_record_rate_limit_called_on_short_tier(self, tmp_path: Path) -> None:
+        """On 429 detection, _handle_rate_limit records the backoff window in the circuit."""
+        from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+
+        circuit = RateLimitCircuit(tmp_path / "circuit.json")
+
+        fsm = FSMLoop(
+            name="circuit-short-tier",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="/work",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("/work", {"output": "Error: 429 Too Many Requests rate limit exceeded", "exit_code": 1}),
+            ("/work", {"output": "ok", "exit_code": 0}),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner, circuit=circuit)
+            executor.run()
+
+        # A record was written — estimated_recovery is populated.
+        recovery = circuit.get_estimated_recovery()
+        assert recovery is not None
+
+    def test_record_rate_limit_not_called_when_circuit_none(self) -> None:
+        """Executor constructed without circuit= retains null _circuit and runs cleanly through 429."""
+        fsm = FSMLoop(
+            name="no-circuit-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", {"output": "Error: 429 rate limit exceeded", "exit_code": 1}),
+            ("work.sh", {"output": "ok", "exit_code": 0}),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert executor._circuit is None
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+
+    def test_sub_loop_inherits_parent_circuit(self, tmp_path: Path) -> None:
+        """Child executor in a sub-loop shares the parent's circuit instance."""
+        from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+
+        circuit = RateLimitCircuit(tmp_path / "circuit.json")
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="execute",
+            states={"execute": StateConfig(terminal=True)},
+        )
+        parent = FSMExecutor(parent_fsm, circuit=circuit)
+        # Mirror the argument list used in _execute_sub_loop.
+        child = FSMExecutor(
+            parent_fsm,
+            action_runner=parent.action_runner,
+            loops_dir=parent.loops_dir,
+            event_callback=parent.event_callback,
+            circuit=parent._circuit,
+        )
+        assert child._circuit is parent._circuit is circuit

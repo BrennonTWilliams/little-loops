@@ -29,6 +29,7 @@ def cmd_run(
     """Run a loop."""
     from little_loops.fsm.concurrency import LockManager
     from little_loops.fsm.persistence import PersistentExecutor
+    from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
     from little_loops.fsm.validation import load_and_validate
 
     try:
@@ -214,7 +215,12 @@ def cmd_run(
             os.environ["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
             os.chdir(_worktree_path)
 
-        executor = PersistentExecutor(fsm, loops_dir=loops_dir)
+        circuit = (
+            RateLimitCircuit(Path(_config.commands.rate_limits.circuit_breaker_path))
+            if _config.commands.rate_limits.circuit_breaker_enabled
+            else None
+        )
+        executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit)
 
         # Register signal handlers for graceful shutdown
         register_loop_signal_handlers(executor, pid_file=foreground_pid_file)

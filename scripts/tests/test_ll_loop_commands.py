@@ -2834,3 +2834,47 @@ class TestCmdFragments:
         out = capsys.readouterr().out
         assert "bare_fragment" in out
         assert "(no description)" in out
+
+
+class TestCmdSimulateCircuit:
+    """Tests for ENH-1137: cmd_simulate accepts and forwards a RateLimitCircuit."""
+
+    def test_cmd_simulate_forwards_circuit_kwarg(self, tmp_path: Path) -> None:
+        """Passing circuit= to cmd_simulate forwards it through to the FSMExecutor."""
+        from little_loops.cli.loop.testing import cmd_simulate
+        from little_loops.fsm.executor import FSMExecutor
+        from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "sim-loop.yaml"
+        loop_file.write_text(
+            "name: sim-loop\n"
+            "initial: execute\n"
+            "states:\n"
+            "  execute:\n"
+            "    action: 'echo hello'\n"
+            "    action_type: shell\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        circuit = RateLimitCircuit(tmp_path / "circuit.json")
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(max_iterations=1, scenario=None)
+
+        captured: dict[str, Any] = {}
+        original_init = FSMExecutor.__init__
+
+        def _capture_init(self: Any, *init_args: Any, **init_kwargs: Any) -> None:
+            captured["kwargs"] = init_kwargs
+            original_init(self, *init_args, **init_kwargs)
+
+        with patch.object(FSMExecutor, "__init__", _capture_init):
+            result = cmd_simulate("sim-loop", args, loops_dir, logger, circuit=circuit)
+
+        assert result == 0
+        assert captured["kwargs"].get("circuit") is circuit

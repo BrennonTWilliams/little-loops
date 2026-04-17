@@ -1022,3 +1022,75 @@ class TestCmdStatusLogFile:
         assert data["log_file"] is None
         assert data["log_updated_ago"] is None
         assert data["last_event"] is None
+
+
+class TestCmdResumeCircuitWiring:
+    """Tests for ENH-1137: cmd_resume wires RateLimitCircuit into PersistentExecutor."""
+
+    def test_cmd_resume_wires_circuit_when_enabled(self, tmp_path: Path) -> None:
+        """circuit_breaker_enabled=True → PersistentExecutor receives a RateLimitCircuit."""
+        from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 100
+        mock_result.terminated_by = "terminal"
+
+        mock_config = MagicMock()
+        mock_config.commands.rate_limits.circuit_breaker_enabled = True
+        mock_config.commands.rate_limits.circuit_breaker_path = str(
+            tmp_path / "rate-limit-circuit.json"
+        )
+        mock_config.extensions = {}
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("little_loops.extension.wire_extensions"),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        # PersistentExecutor was constructed with circuit= set to a RateLimitCircuit.
+        kwargs = mock_exec_cls.call_args.kwargs
+        assert "circuit" in kwargs
+        assert isinstance(kwargs["circuit"], RateLimitCircuit)
+
+    def test_cmd_resume_passes_none_when_disabled(self, tmp_path: Path) -> None:
+        """circuit_breaker_enabled=False → PersistentExecutor receives circuit=None."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 100
+        mock_result.terminated_by = "terminal"
+
+        mock_config = MagicMock()
+        mock_config.commands.rate_limits.circuit_breaker_enabled = False
+        mock_config.commands.rate_limits.circuit_breaker_path = str(
+            tmp_path / "rate-limit-circuit.json"
+        )
+        mock_config.extensions = {}
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("little_loops.extension.wire_extensions"),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        kwargs = mock_exec_cls.call_args.kwargs
+        assert kwargs.get("circuit") is None
