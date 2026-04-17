@@ -751,6 +751,22 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
    chmod +x hooks/scripts/check-duplicate-issue-id.sh
    chmod +x hooks/scripts/user-prompt-check.sh
    chmod +x hooks/scripts/precompact-state.sh
+   chmod +x hooks/scripts/scratch-pad-redirect.sh
+   ```
+
+   Manually exercise `scratch-pad-redirect.sh` with `scratch_pad.enabled: true` in
+   `.ll/ll-config.json`:
+   ```bash
+   # Bash rewrite (automation context): first token on allowlist triggers tee+tail
+   echo '{"tool_name":"Bash","tool_input":{"command":"pytest scripts/tests/"},"permission_mode":"bypassPermissions"}' \
+     | bash hooks/scripts/scratch-pad-redirect.sh
+   # → allow with updatedInput.command = "pytest ... > .loops/tmp/scratch/pytest-$$.txt 2>&1; tail -20 ..."
+
+   # Read deny: oversized file with filtered extension returns a deny + Bash suggestion
+   yes line | head -500 > /tmp/big.txt
+   echo '{"tool_name":"Read","tool_input":{"file_path":"/tmp/big.txt"},"permission_mode":"bypassPermissions"}' \
+     | bash hooks/scripts/scratch-pad-redirect.sh
+   # → deny with permissionDecisionReason suggesting cat > .loops/tmp/scratch/... && tail -20 ...
    ```
 3. Check `jq` is installed (required by most hooks):
    ```bash

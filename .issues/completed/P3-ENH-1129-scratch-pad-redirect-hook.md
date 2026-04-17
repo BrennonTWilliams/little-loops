@@ -2,7 +2,7 @@
 id: ENH-1129
 type: ENH
 priority: P3
-status: open
+status: completed
 parent: ENH-1111
 size: Medium
 confidence_score: 100
@@ -11,6 +11,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: 2026-04-16
 ---
 
 # ENH-1129: Implement scratch-pad-redirect.sh PreToolUse Hook
@@ -167,7 +168,29 @@ _These touchpoints were identified by wiring analysis and must be included in th
 2. Update `docs/development/TROUBLESHOOTING.md` (~line 753) — add `chmod +x hooks/scripts/scratch-pad-redirect.sh` to the chmod block and a manual invocation example showing a Bash rewrite and Read deny scenario
 3. Verify `session-cleanup.sh:17` (`rm -rf ".loops/tmp/scratch"`) already aligns with the hook's output path — no change needed, but confirm during integration test that scratch files from a rewritten command are removed on session stop
 
+## Resolution
+
+Implemented `hooks/scripts/scratch-pad-redirect.sh` as a PreToolUse hook registered in `hooks/hooks.json` (matcher `Bash|Read`, 5s timeout). Behavior:
+
+- **No-op** when `scratch_pad.enabled` is `false` (schema default) or `permission_mode != "bypassPermissions"` while `automation_contexts_only` is `true`.
+- **Bash rewrite**: first token (basename-normalized) matching `command_allowlist` → rewrites `command` to `<orig> > .loops/tmp/scratch/<name>-$$.txt 2>&1; tail -<tail_lines> ...`; emits `permissionDecision=allow` + `updatedInput.command` + `additionalContext`.
+- **Read deny**: file with extension in `file_extension_filters` and `wc -l` ≥ `threshold_lines` → `permissionDecision=deny` with `permissionDecisionReason` containing an actionable `cat > .loops/tmp/scratch/... && tail -N` suggestion.
+- Fail-open at every boundary (missing `jq`, missing config, empty stdin → allow).
+
+Implementation notes:
+- `allow_response` is locally defined per the `check-duplicate-issue-id.sh:17-20` pattern (common.sh does not export it).
+- Field extraction uses one-field-per-line jq output with a `"__end__"` sentinel to prevent `$(...)` from stripping trailing empty fields (the `@tsv` pattern from context-monitor.sh collapses consecutive tabs because tab is IFS-whitespace).
+- `scratch-pad-redirect.sh` added to `docs/ARCHITECTURE.md` hook tree and `docs/development/TROUBLESHOOTING.md` chmod block + manual invocation examples.
+- Seven unit tests in `TestScratchPadRedirect` cover disabled, non-automation, Bash rewrite, non-allowlist Bash, large Read deny, small Read allow, and unfiltered-extension Read allow.
+
+Verification:
+- `python -m pytest scripts/tests/` — 4864 passed, 5 skipped
+- `ruff check scripts/` — clean
+- `python -m mypy scripts/little_loops/` — pre-existing `wcwidth` stub warning only (unrelated to this change)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
+- `/ll:ready-issue` - 2026-04-17T03:45:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1db273db-92c0-4518-a02e-d131c8a6790d.jsonl`
 - `/ll:wire-issue` - 2026-04-17T03:41:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51944600-1620-40f1-b229-242412743430.jsonl`
 - `/ll:refine-issue` - 2026-04-17T03:36:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a72ddf9a-f502-4693-ad85-c0fbf00745d3.jsonl`

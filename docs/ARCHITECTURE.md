@@ -90,6 +90,7 @@ little-loops/
 │       ├── check-duplicate-issue-id.sh
 │       ├── context-monitor.sh
 │       ├── precompact-state.sh
+│       ├── scratch-pad-redirect.sh
 │       ├── session-cleanup.sh
 │       ├── session-start.sh
 │       ├── user-prompt-check.sh

@@ -1542,6 +1542,216 @@ class TestPrecompactState:
             os.chdir(original_dir)
 
 
+class TestScratchPadRedirect:
+    """Test scratch-pad-redirect.sh PreToolUse hook (ENH-1129)."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to scratch-pad-redirect.sh."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/scratch-pad-redirect.sh"
+
+    def _write_config(self, tmp_path: Path, enabled: bool = True, **overrides) -> None:
+        """Write ll-config.json with scratch_pad block."""
+        scratch_pad = {
+            "enabled": enabled,
+            "threshold_lines": 200,
+            "automation_contexts_only": True,
+            "tail_lines": 20,
+            "command_allowlist": ["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"],
+            "file_extension_filters": [".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"],
+        }
+        scratch_pad.update(overrides)
+        config = {"scratch_pad": scratch_pad}
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "ll-config.json").write_text(json.dumps(config))
+
+    def _run(self, hook_script: Path, input_data: dict) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+    def test_disabled_noop(self, hook_script: Path, tmp_path: Path):
+        """When scratch_pad.enabled is false, hook allows unchanged."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=False)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "pytest scripts/tests/"},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+            assert "updatedInput" not in output["hookSpecificOutput"]
+        finally:
+            os.chdir(original_dir)
+
+    def test_non_automation_noop(self, hook_script: Path, tmp_path: Path):
+        """When permission_mode is not bypassPermissions, hook is a no-op."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "pytest scripts/tests/"},
+                    # no permission_mode
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+            assert "updatedInput" not in output["hookSpecificOutput"]
+        finally:
+            os.chdir(original_dir)
+
+    def test_bash_rewritten(self, hook_script: Path, tmp_path: Path):
+        """Allowlisted Bash command in automation context is rewritten to tee+tail."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "pytest scripts/tests/"},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            hso = output["hookSpecificOutput"]
+            assert hso["permissionDecision"] == "allow"
+            assert "updatedInput" in hso
+            new_cmd = hso["updatedInput"]["command"]
+            assert ".loops/tmp/scratch/" in new_cmd
+            assert "tail -20" in new_cmd
+            assert "pytest scripts/tests/" in new_cmd
+            assert "additionalContext" in hso
+            assert ".loops/tmp/scratch/" in hso["additionalContext"]
+        finally:
+            os.chdir(original_dir)
+
+    def test_bash_non_allowlist_allow(self, hook_script: Path, tmp_path: Path):
+        """Non-allowlisted Bash command (e.g. git status) is allowed unchanged."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "git status"},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+            assert "updatedInput" not in output["hookSpecificOutput"]
+        finally:
+            os.chdir(original_dir)
+
+    def test_read_denied_over_threshold(self, hook_script: Path, tmp_path: Path):
+        """Read of a large filtered-extension file is denied with actionable hint."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            big_file = tmp_path / "big.txt"
+            big_file.write_text("line\n" * 500)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": str(big_file)},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            hso = output["hookSpecificOutput"]
+            assert hso["permissionDecision"] == "deny"
+            reason = hso["permissionDecisionReason"]
+            assert "cat" in reason
+            assert ".loops/tmp/scratch/" in reason
+            assert "tail" in reason
+        finally:
+            os.chdir(original_dir)
+
+    def test_read_small_file_allow(self, hook_script: Path, tmp_path: Path):
+        """Small file Read is allowed unchanged."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            small_file = tmp_path / "small.py"
+            small_file.write_text("x = 1\n" * 10)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": str(small_file)},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+        finally:
+            os.chdir(original_dir)
+
+    def test_read_unfiltered_extension_allow(self, hook_script: Path, tmp_path: Path):
+        """Read of large file with non-filtered extension is allowed."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            big_file = tmp_path / "big.yaml"
+            big_file.write_text("line\n" * 500)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": str(big_file)},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+        finally:
+            os.chdir(original_dir)
+
+
 class TestContextMonitorLockTimeout:
     """Test that context-monitor.sh uses correct lock timeout value."""
 
