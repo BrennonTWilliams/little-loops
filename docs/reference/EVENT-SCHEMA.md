@@ -223,17 +223,20 @@ Emitted when a state exceeds its `max_retries` limit and the executor transition
 
 ### `rate_limit_exhausted`
 
-Emitted when a state exceeds its `max_rate_limit_retries` 429/rate-limit in-place retry budget and the executor transitions to `on_rate_limit_exhausted` (or `on_error`).
+Emitted when the wall-clock rate-limit budget is spent across the short-burst and long-wait retry tiers and the executor transitions to `on_rate_limit_exhausted` (or `on_error`). See `rate_limit_max_wait_seconds` and `rate_limit_long_wait_ladder` on `StateConfig` for budget configuration.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `state` | `str` | Name of the state that exhausted rate-limit retries |
-| `retries` | `int` | Number of rate-limit retries that were attempted |
+| `retries` | `int` | Total rate-limit retries attempted across both tiers (`short_retries + long_retries`) |
+| `short_retries` | `int` | Retries attempted in the short-burst tier (before entering long-wait) |
+| `long_retries` | `int` | Retries attempted in the long-wait tier (ladder-based) |
+| `total_wait_seconds` | `number` | Accumulated wall-clock seconds spent sleeping in rate-limit waits |
 | `next` | `str \| null` | Name of the `on_rate_limit_exhausted` target state, or null |
 
 **Example:**
 ```json
-{"event": "rate_limit_exhausted", "ts": "...", "state": "implement", "retries": 3, "next": "halt"}
+{"event": "rate_limit_exhausted", "ts": "...", "state": "implement", "retries": 7, "short_retries": 3, "long_retries": 4, "total_wait_seconds": 21600.0, "next": "halt"}
 ```
 
 ---

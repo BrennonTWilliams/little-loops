@@ -3799,12 +3799,14 @@ class StateConfig:
     context_passthrough: bool = False  # Pass parent context vars to child; merge child captures back
     agent: str | None = None           # Subprocess agent name; passes --agent <name> to Claude CLI (prompt states only)
     tools: list[str] | None = None     # Subprocess tool scope; passes --tools <csv> to Claude CLI (prompt states only)
-    max_rate_limit_retries: int | None = None        # Max in-place retries on 429 rate limits; requires on_rate_limit_exhausted
-    on_rate_limit_exhausted: str | None = None       # Target state when rate-limit retries exhausted
-    rate_limit_backoff_base_seconds: int | None = None  # Backoff base seconds (default 30); delay = base * 2^n + jitter
+    max_rate_limit_retries: int | None = None        # Short-burst tier budget; requires on_rate_limit_exhausted
+    on_rate_limit_exhausted: str | None = None       # Target state when total wall-clock budget spent
+    rate_limit_backoff_base_seconds: int | None = None  # Short-tier backoff base (default 30); delay = base * 2^n + jitter
+    rate_limit_max_wait_seconds: int | None = None   # Total wall-clock budget across both tiers (default 21600 / 6h)
+    rate_limit_long_wait_ladder: list[int] | None = None  # Long-wait ladder (default [300, 900, 1800, 3600]); index caps at last entry
 ```
 
-> **Rate-limit handling:** When a state's action returns an HTTP 429, the executor retries in place up to `max_rate_limit_retries` times, sleeping `rate_limit_backoff_base_seconds * 2^n` seconds plus jitter between attempts (default base is `30`). On exhaustion the FSM transitions to `on_rate_limit_exhausted`. The jitter is important under `ll-parallel` to avoid thundering-herd re-requests after a shared 429.
+> **Rate-limit handling (two-tier):** When a state's action returns an HTTP 429, the executor runs a two-tier retry ladder. **Short-burst tier** (up to `max_rate_limit_retries` attempts) uses `rate_limit_backoff_base_seconds * 2^n` + jitter. Once the short tier is spent, the executor enters the **long-wait tier** and walks `rate_limit_long_wait_ladder` (advancing index on each 429, capped at the last entry). The FSM routes to `on_rate_limit_exhausted` only once `total_wait_seconds >= rate_limit_max_wait_seconds`. The jitter is important under `ll-parallel` to avoid thundering-herd re-requests after a shared 429.
 
 > **Alias note:** `on_success` and `on_failure` are accepted as aliases for `on_yes` and `on_no` in all states (including sub-loop states).
 

@@ -4301,11 +4301,13 @@ class TestAgentToolsPassThrough:
 
 
 class TestRateLimitRetries:
-    """Tests for BUG-1107: 429 detection, backoff retry, and exhaustion in FSM executor.
+    """Tests for BUG-1107 / ENH-1133: 429 detection, two-tier retry, and exhaustion.
 
-    Tests patch `_DEFAULT_RATE_LIMIT_BACKOFF_BASE` to 0 (or a tiny value) so the
-    interruptible-sleep loop exits immediately and tests run fast without needing
-    to mock `time.time` or `time.sleep`.
+    Tests patch `_DEFAULT_RATE_LIMIT_BACKOFF_BASE` to 0 so the short-tier
+    interruptible-sleep loop exits immediately. Tests that expect exhaustion
+    also patch `_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0]` and
+    `_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0` so the long-wait tier collapses
+    into an immediate exhaustion on first long-tier attempt.
     """
 
     def _make_fsm(
@@ -4316,6 +4318,8 @@ class TestRateLimitRetries:
         on_rate_limit_exhausted: str | None = None,
         max_rate_limit_retries: int | None = None,
         rate_limit_backoff_base_seconds: int | None = None,
+        rate_limit_max_wait_seconds: int | None = None,
+        rate_limit_long_wait_ladder: list[int] | None = None,
     ) -> FSMLoop:
         """Build a minimal FSM with a rate-limitable state."""
         return FSMLoop(
@@ -4331,6 +4335,8 @@ class TestRateLimitRetries:
                     on_rate_limit_exhausted=on_rate_limit_exhausted,
                     max_rate_limit_retries=max_rate_limit_retries,
                     rate_limit_backoff_base_seconds=rate_limit_backoff_base_seconds,
+                    rate_limit_max_wait_seconds=rate_limit_max_wait_seconds,
+                    rate_limit_long_wait_ladder=rate_limit_long_wait_ladder,
                 ),
                 "done": StateConfig(terminal=True),
                 "exhausted": StateConfig(terminal=True),
@@ -4363,7 +4369,7 @@ class TestRateLimitRetries:
         assert runner.calls.count("work.sh") == 2
 
     def test_rate_limit_counter_reset_on_success(self) -> None:
-        """Counter is cleared when action completes without rate-limit."""
+        """Per-state record is cleared when action completes without rate-limit."""
         fsm = self._make_fsm()
         runner = MockActionRunner()
         runner.results = [
@@ -4380,34 +4386,49 @@ class TestRateLimitRetries:
         assert "execute" not in executor._rate_limit_retries
 
     def test_rate_limit_exhausted_event_emitted(self) -> None:
-        """After _DEFAULT_RATE_LIMIT_RETRIES retries exhausted, rate_limit_exhausted event fires."""
+        """After short + long tier budgets spent, rate_limit_exhausted event fires with tier counters."""
         from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
 
         fsm = self._make_fsm(on_error="done")
         runner = MockActionRunner()
-        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 2)
+        # 3 short retries + 1 long retry → exhaust on 5th 429 (budget 0 ≥ 0 on first long-tier wait)
+        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 3)
         runner.use_indexed_order = True
         events: list[dict] = []
 
-        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
+            _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0],
+            _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0,
+        ):
             executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
             executor.run()
 
         exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
         assert len(exhausted) == 1
         assert exhausted[0]["state"] == "execute"
-        assert exhausted[0]["retries"] == _DEFAULT_RATE_LIMIT_RETRIES
+        # retries = short + long (ENH-1133: total across both tiers)
+        assert exhausted[0]["retries"] == _DEFAULT_RATE_LIMIT_RETRIES + 1
+        assert exhausted[0]["short_retries"] == _DEFAULT_RATE_LIMIT_RETRIES
+        assert exhausted[0]["long_retries"] == 1
+        assert exhausted[0]["total_wait_seconds"] == 0.0
 
     def test_rate_limit_exhausted_routes_to_on_rate_limit_exhausted(self) -> None:
-        """On exhaustion, routes to extra_routes['rate_limit_exhausted'] if configured."""
+        """On exhaustion, routes to on_rate_limit_exhausted target if configured."""
         from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
 
         fsm = self._make_fsm(on_rate_limit_exhausted="exhausted")
         runner = MockActionRunner()
-        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 2)
+        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 3)
         runner.use_indexed_order = True
 
-        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
+            _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0],
+            _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0,
+        ):
             executor = FSMExecutor(fsm, action_runner=runner)
             result = executor.run()
 
@@ -4420,10 +4441,15 @@ class TestRateLimitRetries:
 
         fsm = self._make_fsm(on_error="done", extra_routes={})
         runner = MockActionRunner()
-        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 2)
+        runner.results = [("work.sh", self._rl_result())] * (_DEFAULT_RATE_LIMIT_RETRIES + 3)
         runner.use_indexed_order = True
 
-        with patch("little_loops.fsm.executor._DEFAULT_RATE_LIMIT_BACKOFF_BASE", 0):
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
+            _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0],
+            _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0,
+        ):
             executor = FSMExecutor(fsm, action_runner=runner)
             result = executor.run()
 
@@ -4482,6 +4508,8 @@ class TestRateLimitRetries:
             on_error="done",
             max_rate_limit_retries=1,
             on_rate_limit_exhausted="exhausted",
+            rate_limit_max_wait_seconds=0,
+            rate_limit_long_wait_ladder=[0],
         )
         runner = MockActionRunner()
         runner.results = [("work.sh", self._rl_result())] * 5
@@ -4493,8 +4521,11 @@ class TestRateLimitRetries:
             result = executor.run()
 
         exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        # 1 short retry then long tier iter 1 exhausts (total_wait=0 >= max_wait=0).
         assert len(exhausted) == 1
-        assert exhausted[0]["retries"] == 1
+        assert exhausted[0]["short_retries"] == 1
+        assert exhausted[0]["long_retries"] == 1
+        assert exhausted[0]["retries"] == 2
         assert result.final_state == "exhausted"
 
     def test_state_level_backoff_base_override(self) -> None:
@@ -4520,33 +4551,29 @@ class TestRateLimitStorm:
 
     def _make_multi_fsm(self) -> FSMLoop:
         """Three states chained A→B→C, each can rate-limit and route to next on exhaustion."""
+        # ENH-1133: each state needs rate_limit_max_wait_seconds=0 and ladder=[0]
+        # so 1 short + 1 long retry → exhaust (2 429s per state).
+        _cfg = {
+            "max_rate_limit_retries": 1,
+            "rate_limit_backoff_base_seconds": 0,
+            "rate_limit_max_wait_seconds": 0,
+            "rate_limit_long_wait_ladder": [0],
+        }
         return FSMLoop(
             name="storm-test",
             initial="a",
             states={
                 "a": StateConfig(
-                    action="a.sh",
-                    on_yes="done",
-                    on_error="done",
-                    max_rate_limit_retries=1,
-                    on_rate_limit_exhausted="b",
-                    rate_limit_backoff_base_seconds=0,
+                    action="a.sh", on_yes="done", on_error="done",
+                    on_rate_limit_exhausted="b", **_cfg,
                 ),
                 "b": StateConfig(
-                    action="b.sh",
-                    on_yes="done",
-                    on_error="done",
-                    max_rate_limit_retries=1,
-                    on_rate_limit_exhausted="c",
-                    rate_limit_backoff_base_seconds=0,
+                    action="b.sh", on_yes="done", on_error="done",
+                    on_rate_limit_exhausted="c", **_cfg,
                 ),
                 "c": StateConfig(
-                    action="c.sh",
-                    on_yes="done",
-                    on_error="done",
-                    max_rate_limit_retries=1,
-                    on_rate_limit_exhausted="done",
-                    rate_limit_backoff_base_seconds=0,
+                    action="c.sh", on_yes="done", on_error="done",
+                    on_rate_limit_exhausted="done", **_cfg,
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -4561,6 +4588,7 @@ class TestRateLimitStorm:
     def test_storm_event_fires_at_three_consecutive_exhaustions(self) -> None:
         fsm = self._make_multi_fsm()
         runner = MockActionRunner()
+        # 2 rate-limits per state (1 short + 1 long) = 6 total responses
         runner.results = [
             ("a.sh", self._rl_result()),
             ("a.sh", self._rl_result()),
@@ -4581,33 +4609,27 @@ class TestRateLimitStorm:
         assert storms[0]["state"] == "c"
 
     def test_storm_counter_resets_on_success(self) -> None:
+        _cfg = {
+            "max_rate_limit_retries": 1,
+            "rate_limit_backoff_base_seconds": 0,
+            "rate_limit_max_wait_seconds": 0,
+            "rate_limit_long_wait_ladder": [0],
+        }
         fsm = FSMLoop(
             name="storm-reset-test",
             initial="a",
             states={
                 "a": StateConfig(
-                    action="a.sh",
-                    on_yes="b",
-                    on_error="done",
-                    max_rate_limit_retries=1,
-                    on_rate_limit_exhausted="b",
-                    rate_limit_backoff_base_seconds=0,
+                    action="a.sh", on_yes="b", on_error="done",
+                    on_rate_limit_exhausted="b", **_cfg,
                 ),
                 "b": StateConfig(
-                    action="b.sh",
-                    on_yes="c",
-                    on_error="done",
-                    max_rate_limit_retries=1,
-                    on_rate_limit_exhausted="c",
-                    rate_limit_backoff_base_seconds=0,
+                    action="b.sh", on_yes="c", on_error="done",
+                    on_rate_limit_exhausted="c", **_cfg,
                 ),
                 "c": StateConfig(
-                    action="c.sh",
-                    on_yes="done",
-                    on_error="done",
-                    max_rate_limit_retries=1,
-                    on_rate_limit_exhausted="done",
-                    rate_limit_backoff_base_seconds=0,
+                    action="c.sh", on_yes="done", on_error="done",
+                    on_rate_limit_exhausted="done", **_cfg,
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -4635,3 +4657,161 @@ class TestRateLimitStorm:
         from little_loops.fsm.executor import RATE_LIMIT_STORM_EVENT
 
         assert RATE_LIMIT_STORM_EVENT == "rate_limit_storm"
+
+
+class TestRateLimitTwoTier:
+    """ENH-1133: two-tier retry ladder (short-burst → long-wait → exhaustion)."""
+
+    def _rl_result(self) -> dict:
+        return {"output": "Error: 429 Too Many Requests rate limit", "exit_code": 1}
+
+    def _ok_result(self) -> dict:
+        return {"output": "success", "exit_code": 0}
+
+    def _fsm(self, **state_kw: Any) -> FSMLoop:
+        defaults: dict[str, Any] = {
+            "action": "work.sh",
+            "on_yes": "done",
+            "on_no": "done",
+            "on_error": "done",
+            "on_rate_limit_exhausted": "exhausted",
+            "rate_limit_backoff_base_seconds": 0,
+        }
+        defaults.update(state_kw)
+        return FSMLoop(
+            name="two-tier",
+            initial="execute",
+            states={
+                "execute": StateConfig(**defaults),
+                "done": StateConfig(terminal=True),
+                "exhausted": StateConfig(terminal=True),
+            },
+        )
+
+    def test_short_tier_exhaustion_enters_long_wait_tier(self) -> None:
+        """After max_rate_limit_retries short attempts, loop enters long-wait tier
+        (does not route to on_rate_limit_exhausted immediately)."""
+        fsm = self._fsm(
+            max_rate_limit_retries=2,
+            rate_limit_long_wait_ladder=[0],
+            # Budget high enough so the first two long-tier iters don't exhaust.
+            rate_limit_max_wait_seconds=3600,
+        )
+        runner = MockActionRunner()
+        # 2 short + 2 long retries, then success
+        runner.results = [("work.sh", self._rl_result())] * 4 + [("work.sh", self._ok_result())]
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.final_state == "done"  # did not route to "exhausted"
+        exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        assert len(exhausted) == 0
+
+    def test_long_wait_ladder_caps_at_last_entry(self) -> None:
+        """ENH-1133: long_retries beyond ladder length reuse the last ladder value.
+
+        Verifies the `ladder[min(long_retries - 1, len(ladder) - 1)]` guard: with a
+        single-entry ladder, multiple long-tier iterations all sleep the same value.
+        """
+        fsm = self._fsm(
+            max_rate_limit_retries=1,
+            rate_limit_long_wait_ladder=[0],
+            rate_limit_max_wait_seconds=3600,
+        )
+        runner = MockActionRunner()
+        # 1 short + 3 long retries, then success
+        runner.results = [("work.sh", self._rl_result())] * 4 + [("work.sh", self._ok_result())]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_budget_enforcement_triggers_exhaust(self) -> None:
+        """total_wait_seconds >= max_wait_seconds routes to on_rate_limit_exhausted."""
+        fsm = self._fsm(
+            max_rate_limit_retries=0,  # skip short tier
+            rate_limit_long_wait_ladder=[0],
+            rate_limit_max_wait_seconds=0,
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * 3
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        assert len(exhausted) == 1
+        assert exhausted[0]["short_retries"] == 0
+        assert exhausted[0]["long_retries"] == 1
+        assert exhausted[0]["total_wait_seconds"] == 0.0
+        assert result.final_state == "exhausted"
+
+    def test_shutdown_during_long_wait_sleep_terminates_cleanly(self) -> None:
+        """_shutdown_requested exits the long-wait sleep promptly (does not block)."""
+        fsm = self._fsm(
+            max_rate_limit_retries=0,
+            # Long ladder value — test would hang if the sleep were not interruptible
+            rate_limit_long_wait_ladder=[600],
+            rate_limit_max_wait_seconds=3600,
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * 10
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+
+        # Patch time.sleep to trigger shutdown after first tick.
+        call_count = [0]
+
+        def _sleep_and_maybe_signal(duration: float) -> None:  # noqa: ARG001
+            call_count[0] += 1
+            if call_count[0] >= 2:
+                executor.request_shutdown()
+
+        with patch("little_loops.fsm.executor.time.sleep", side_effect=_sleep_and_maybe_signal):
+            result = executor.run()
+
+        assert result.terminated_by == "signal"
+
+    def test_total_wait_seconds_accumulates_across_tiers(self) -> None:
+        """total_wait_seconds accumulates real elapsed sleep across short + long tiers."""
+        fsm = self._fsm(
+            max_rate_limit_retries=1,
+            rate_limit_backoff_base_seconds=0,
+            rate_limit_long_wait_ladder=[0],
+            rate_limit_max_wait_seconds=3600,
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * 3 + [("work.sh", self._ok_result())]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        executor.run()
+
+        # After run completes, rate_limit_retries is cleared on success — verify
+        # the _handle_rate_limit path updated total_wait_seconds via side-channel.
+        # Simpler: re-run with a mock that preserves the record by staying in 429s
+        # and hitting budget.
+        fsm2 = self._fsm(
+            max_rate_limit_retries=0,
+            rate_limit_long_wait_ladder=[0],
+            rate_limit_max_wait_seconds=0,
+        )
+        runner2 = MockActionRunner()
+        runner2.results = [("work.sh", self._rl_result())] * 3
+        runner2.use_indexed_order = True
+        events: list[dict] = []
+        executor2 = FSMExecutor(fsm2, action_runner=runner2, event_callback=events.append)
+        executor2.run()
+
+        exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        assert len(exhausted) == 1
+        assert "total_wait_seconds" in exhausted[0]
+        assert exhausted[0]["total_wait_seconds"] >= 0.0

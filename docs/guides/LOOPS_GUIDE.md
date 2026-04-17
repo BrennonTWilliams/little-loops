@@ -1026,9 +1026,11 @@ These optional fields can be added to any state:
 | `backoff:` | number (seconds) | Delay before executing this state's action. Useful for rate-limited APIs or CI systems. Overridden at runtime by `--delay <SECONDS>`. |
 | `max_retries:` | integer | Maximum number of times the engine re-enters this state before triggering `on_retry_exhausted`. |
 | `on_retry_exhausted:` | state name | Target state when `max_retries` is reached. Common pattern in harness loops: `on_retry_exhausted: advance` to skip a stuck item and continue processing. |
-| `max_rate_limit_retries:` | integer | Max consecutive 429/rate-limit in-place retries before transitioning to `on_rate_limit_exhausted`. Requires `on_rate_limit_exhausted`. |
-| `on_rate_limit_exhausted:` | state name | Target state when `max_rate_limit_retries` is exhausted. Required when `max_rate_limit_retries` is set. |
-| `rate_limit_backoff_base_seconds:` | integer | Base seconds for exponential backoff between rate-limit retries; actual sleep = base * 2^(attempt-1) + uniform(0, base). Defaults to 30. |
+| `max_rate_limit_retries:` | integer | Max consecutive 429/rate-limit retries in the **short-burst tier** before advancing to the long-wait tier. Requires `on_rate_limit_exhausted`. |
+| `on_rate_limit_exhausted:` | state name | Target state routed to when the total wall-clock rate-limit budget (`rate_limit_max_wait_seconds`) is spent. Required when `max_rate_limit_retries` is set. |
+| `rate_limit_backoff_base_seconds:` | integer | Base seconds for exponential backoff in the short-burst tier; actual sleep = base * 2^(attempt-1) + uniform(0, base). Defaults to 30. |
+| `rate_limit_max_wait_seconds:` | integer | Total wall-clock budget (seconds) across both tiers before routing to `on_rate_limit_exhausted`. Defaults to 21600 (6h). Overrides global `commands.rate_limits.max_wait_seconds`. |
+| `rate_limit_long_wait_ladder:` | list of integers | Long-wait tier ladder (seconds), walked once the short-burst tier is spent. Defaults to `[300, 900, 1800, 3600]`. Index caps at the last entry. Overrides global `commands.rate_limits.long_wait_ladder`. |
 
 Example — skip an item after 3 failed attempts:
 
@@ -1665,17 +1667,26 @@ execute:
   next: check_concrete
 ```
 
-A parallel safeguard exists for HTTP 429 rate-limit failures. On a prompt state, set `max_rate_limit_retries` with `on_rate_limit_exhausted`, and optionally override `rate_limit_backoff_base_seconds` (default `30`). When the executor sees a 429, it sleeps for `base * 2^n` seconds plus jitter and retries the same state in place; only when the retry budget is exhausted does the FSM transition to `on_rate_limit_exhausted`:
+A parallel safeguard exists for HTTP 429 rate-limit failures and is structured as a **two-tier retry ladder**:
+
+1. **Short-burst tier** — up to `max_rate_limit_retries` in-place retries with exponential backoff + jitter (`rate_limit_backoff_base_seconds * 2^n + uniform(0, base)`, default base `30`). Handles transient 429s from brief quota dips.
+2. **Long-wait tier** — once the short-burst tier is spent, the executor walks `rate_limit_long_wait_ladder` (default `[300, 900, 1800, 3600]` — 5 min → 15 min → 30 min → 1 h). Each 429 advances the ladder index, capped at the last entry.
+
+The FSM only routes to `on_rate_limit_exhausted` once `total_wait_seconds >= rate_limit_max_wait_seconds` (default 21600 = 6h). This is designed to ride out multi-hour upstream outages without giving up prematurely:
 
 ```yaml
 execute:
   action: /ll:refine-issue ${captured.current_item.output} --auto
   action_type: prompt
-  max_rate_limit_retries: 3
-  on_rate_limit_exhausted: parked
+  max_rate_limit_retries: 3           # short-burst budget
   rate_limit_backoff_base_seconds: 30
+  rate_limit_long_wait_ladder: [300, 900, 1800, 3600]
+  rate_limit_max_wait_seconds: 21600  # total budget (short + long)
+  on_rate_limit_exhausted: parked
   next: check_concrete
 ```
+
+Shutdown requests (`SIGTERM`) are observed promptly during long-wait sleeps — the executor checks the shutdown flag every 100 ms. Resume across process restarts is durable: the per-state record (`short_retries`, `long_retries`, `total_wait_seconds`, `first_seen_at`) and the storm counter are persisted in `LoopState`.
 
 > **Thundering-herd note for `ll-parallel`:** when many worktrees hit the same shared 429 at once, a fixed backoff would re-stampede the upstream service on the same tick. The added jitter is load-bearing — don't override it away, and prefer a larger `rate_limit_backoff_base_seconds` over a smaller one when you know you're running wide parallelism.
 
@@ -2025,7 +2036,7 @@ Generic structure fragments (action_type + evaluate combinator) used by all buil
 | `retry_counter` | Increments a counter file and checks if still below `context.max_retries`. | Shell counter script + `output_numeric` evaluator | `context.counter_key`, `context.max_retries`, routing |
 | `llm_gate` | LLM prompt state with structured yes/no output. | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
 | `numeric_gate` | Shell command evaluated by numeric output comparison. | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
-| `with_rate_limit_handling` | Applies per-state rate-limit retry handling with 3 retries and 30s base backoff. | `max_rate_limit_retries: 3` + `rate_limit_backoff_base_seconds: 30` | `on_rate_limit_exhausted` (target state name) |
+| `with_rate_limit_handling` | Applies per-state two-tier rate-limit retry handling: 3 short retries (30 s base backoff) then the default long-wait ladder (5 min → 15 min → 30 min → 1 h) up to a 6 h wall-clock budget. | `max_rate_limit_retries: 3`, `rate_limit_backoff_base_seconds: 30`, plus inherited `rate_limit_long_wait_ladder` and `rate_limit_max_wait_seconds` defaults | `on_rate_limit_exhausted` (target state name) |
 
 #### `lib/cli.yaml` — ll- CLI tool fragments
 

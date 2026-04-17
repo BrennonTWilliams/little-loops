@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "little-loops://event-rate_limit_exhausted.json",
   "title": "Rate Limit Exhausted",
-  "description": "Emitted when all 429/rate-limit retries for a state are exhausted.",
+  "description": "Emitted when the wall-clock rate-limit budget is spent across short + long tiers.",
   "type": "object",
   "required": [
     "event",
@@ -26,7 +26,19 @@
     },
     "retries": {
       "type": "integer",
-      "description": "Number of rate-limit retries attempted"
+      "description": "Total rate-limit retries attempted (short + long)"
+    },
+    "short_retries": {
+      "type": "integer",
+      "description": "Retries attempted in the short-burst tier"
+    },
+    "long_retries": {
+      "type": "integer",
+      "description": "Retries attempted in the long-wait tier"
+    },
+    "total_wait_seconds": {
+      "type": "number",
+      "description": "Accumulated wall-clock seconds spent in rate-limit waits"
     },
     "next": {
       "type": [

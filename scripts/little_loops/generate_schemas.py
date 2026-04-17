@@ -38,6 +38,10 @@ def _int(description: str) -> dict[str, Any]:
     return {"type": "integer", "description": description}
 
 
+def _number(description: str) -> dict[str, Any]:
+    return {"type": "number", "description": description}
+
+
 def _bool(description: str) -> dict[str, Any]:
     return {"type": "boolean", "description": description}
 
@@ -161,10 +165,15 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
     "rate_limit_exhausted": _schema(
         "rate_limit_exhausted",
         "Rate Limit Exhausted",
-        "Emitted when all 429/rate-limit retries for a state are exhausted.",
+        "Emitted when the wall-clock rate-limit budget is spent across short + long tiers.",
         {
             "state": _str("State name that exhausted rate-limit retries"),
-            "retries": _int("Number of rate-limit retries attempted"),
+            "retries": _int("Total rate-limit retries attempted (short + long)"),
+            "short_retries": _int("Retries attempted in the short-burst tier"),
+            "long_retries": _int("Retries attempted in the long-wait tier"),
+            "total_wait_seconds": _number(
+                "Accumulated wall-clock seconds spent in rate-limit waits"
+            ),
             "next": _nullable_str("Next state the FSM transitions to, or null if none"),
         },
         ["state", "retries"],

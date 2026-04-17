@@ -1735,7 +1735,13 @@ class TestRateLimitRetriesPersistence:
     """Tests for BUG-1107: persistence of _rate_limit_retries across pause/resume."""
 
     def test_loop_state_rate_limit_retries_roundtrip(self) -> None:
-        """rate_limit_retries round-trips through LoopState.to_dict/from_dict."""
+        """rate_limit_retries dict-of-record round-trips through LoopState.to_dict/from_dict."""
+        record = {
+            "short_retries": 2,
+            "long_retries": 0,
+            "total_wait_seconds": 12.5,
+            "first_seen_at": 1700000000.0,
+        }
         state = LoopState(
             loop_name="test-loop",
             current_state="execute",
@@ -1746,10 +1752,69 @@ class TestRateLimitRetriesPersistence:
             started_at="2024-01-15T10:30:00Z",
             updated_at="",
             status="running",
-            rate_limit_retries={"execute": 2},
+            rate_limit_retries={"execute": record},
         )
         restored = LoopState.from_dict(state.to_dict())
-        assert restored.rate_limit_retries == {"execute": 2}
+        assert restored.rate_limit_retries == {"execute": record}
+
+    def test_loop_state_rate_limit_retries_legacy_int_migration(self) -> None:
+        """ENH-1133: legacy int values migrate to dict-of-record on from_dict."""
+        data = {
+            "loop_name": "legacy",
+            "current_state": "execute",
+            "iteration": 2,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2024-01-15T10:30:00Z",
+            "updated_at": "",
+            "status": "running",
+            "accumulated_ms": 0,
+            "rate_limit_retries": {"execute": 2},  # legacy int shape
+        }
+        state = LoopState.from_dict(data)
+        assert state.rate_limit_retries == {
+            "execute": {
+                "short_retries": 2,
+                "long_retries": 0,
+                "total_wait_seconds": 0.0,
+                "first_seen_at": None,
+            }
+        }
+
+    def test_loop_state_consecutive_rate_limit_exhaustions_roundtrip(self) -> None:
+        """ENH-1133: storm counter round-trips through LoopState serialization."""
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="execute",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+            consecutive_rate_limit_exhaustions=2,
+        )
+        restored = LoopState.from_dict(state.to_dict())
+        assert restored.consecutive_rate_limit_exhaustions == 2
+
+    def test_loop_state_consecutive_rate_limit_exhaustions_defaults_to_zero(self) -> None:
+        """from_dict with no storm counter key (legacy state file) defaults to 0."""
+        data = {
+            "loop_name": "test-loop",
+            "current_state": "check",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2024-01-15T10:30:00Z",
+            "updated_at": "",
+            "status": "running",
+            "accumulated_ms": 0,
+        }
+        state = LoopState.from_dict(data)
+        assert state.consecutive_rate_limit_exhaustions == 0
 
     def test_loop_state_rate_limit_retries_omitted_when_empty(self) -> None:
         """rate_limit_retries key is omitted from to_dict when empty (mirrors retry_counts pattern)."""
@@ -1804,13 +1869,19 @@ class TestRateLimitRetriesPersistence:
         persistence.initialize()
         executor = PersistentExecutor(fsm, persistence=persistence, action_runner=_AlwaysOkRunner())
 
-        # Manually inject rate_limit_retries into underlying FSMExecutor
-        executor._executor._rate_limit_retries = {"execute": 2}
+        # Manually inject rate_limit_retries record (ENH-1133 dict-of-record shape)
+        record = {
+            "short_retries": 2,
+            "long_retries": 0,
+            "total_wait_seconds": 60.0,
+            "first_seen_at": 1700000000.0,
+        }
+        executor._executor._rate_limit_retries = {"execute": record}
         executor._save_state()
 
         loaded = persistence.load_state()
         assert loaded is not None
-        assert loaded.rate_limit_retries == {"execute": 2}
+        assert loaded.rate_limit_retries == {"execute": record}
 
     def test_resume_restores_rate_limit_retries(self, tmp_path: Path) -> None:
         """PersistentExecutor.resume() restores _rate_limit_retries from saved state."""
@@ -1826,7 +1897,13 @@ class TestRateLimitRetriesPersistence:
         persistence = StatePersistence("rl-resume", tmp_path)
         persistence.initialize()
 
-        # Save a state that includes rate_limit_retries
+        # Save a state that includes rate_limit_retries (dict-of-record shape)
+        saved_record = {
+            "short_retries": 1,
+            "long_retries": 0,
+            "total_wait_seconds": 30.0,
+            "first_seen_at": 1700000000.0,
+        }
         saved = LoopState(
             loop_name="rl-resume",
             current_state="execute",
@@ -1837,7 +1914,8 @@ class TestRateLimitRetriesPersistence:
             started_at="2024-01-15T10:30:00Z",
             updated_at="",
             status="running",
-            rate_limit_retries={"execute": 1},
+            rate_limit_retries={"execute": saved_record},
+            consecutive_rate_limit_exhaustions=2,
         )
         persistence.save_state(saved)
 
@@ -1847,17 +1925,22 @@ class TestRateLimitRetriesPersistence:
                 return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
 
         executor = PersistentExecutor(fsm, persistence=persistence, action_runner=_OkRunner())
-        # Resume restores state; we check _rate_limit_retries before run() clears it
-        # by intercepting at the point after restore but before execution.
+        # Resume restores state; we check _rate_limit_retries and the storm counter
+        # before run() clears them by intercepting after restore, before execution.
         restored_counts: list[dict] = []
+        restored_storm: list[int] = []
 
         original_run = executor._executor.run
 
         def _capture_and_run() -> Any:
-            restored_counts.append(dict(executor._executor._rate_limit_retries))
+            restored_counts.append(
+                {k: dict(v) for k, v in executor._executor._rate_limit_retries.items()}
+            )
+            restored_storm.append(executor._executor._consecutive_rate_limit_exhaustions)
             return original_run()
 
         executor._executor.run = _capture_and_run  # type: ignore[method-assign]
         executor.resume()
 
-        assert restored_counts[0] == {"execute": 1}
+        assert restored_counts[0] == {"execute": saved_record}
+        assert restored_storm[0] == 2

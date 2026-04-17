@@ -50,6 +50,12 @@ from little_loops.session_log import get_current_session_jsonl
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
 # Base backoff in seconds; actual sleep = base * 2^(attempt-1) + uniform(0, base).
 _DEFAULT_RATE_LIMIT_BACKOFF_BASE: int = 30
+# Total wall-clock budget (seconds) across short + long tiers before routing to
+# on_rate_limit_exhausted. Mirrors RateLimitsConfig.max_wait_seconds default (6h).
+_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS: int = 21600
+# Long-wait tier ladder (seconds), walked once the short-tier budget is spent.
+# Mirrors RateLimitsConfig.long_wait_ladder default.
+_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER: list[int] = [300, 900, 1800, 3600]
 # Event name emitted when rate-limit retries are exhausted.
 RATE_LIMIT_EXHAUSTED_EVENT: str = "rate_limit_exhausted"
 # Event name emitted when consecutive rate-limit exhaustions reach the storm threshold.
@@ -161,10 +167,16 @@ class FSMExecutor:
         self._prev_state: str | None = None
 
         # Per-state rate-limit retry tracking (parallel to _retry_counts).
-        # _rate_limit_retries[state_name] = number of 429/rate-limit retries attempted.
-        # Incremented inside _execute_state on each detected rate-limit response.
+        # _rate_limit_retries[state_name] = dict-of-record:
+        #   {
+        #       "short_retries": int,       # attempts in short-burst tier
+        #       "long_retries": int,        # attempts in long-wait tier
+        #       "total_wait_seconds": float,
+        #       "first_seen_at": float | None,  # epoch timestamp of first 429
+        #   }
+        # Incremented inside _handle_rate_limit on each detected rate-limit response.
         # Reset when the state completes without a rate-limit, or after exhaustion.
-        self._rate_limit_retries: dict[str, int] = {}
+        self._rate_limit_retries: dict[str, dict[str, Any]] = {}
 
         # Consecutive rate_limit_exhausted emissions across all states. Reset on any
         # successful non-rate-limited state transition. When this reaches
@@ -484,55 +496,9 @@ class FSMExecutor:
             if _failure_type == FailureType.TRANSIENT and (
                 "rate limit" in _reason.lower() or "quota" in _reason.lower()
             ):
-                _state_name = route_ctx.state_name
-                _max_retries = (
-                    state.max_rate_limit_retries
-                    if state.max_rate_limit_retries is not None
-                    else _DEFAULT_RATE_LIMIT_RETRIES
-                )
-                _backoff_base = (
-                    state.rate_limit_backoff_base_seconds
-                    if state.rate_limit_backoff_base_seconds is not None
-                    else _DEFAULT_RATE_LIMIT_BACKOFF_BASE
-                )
-                self._rate_limit_retries[_state_name] = (
-                    self._rate_limit_retries.get(_state_name, 0) + 1
-                )
-                _attempt = self._rate_limit_retries[_state_name]
-                if _attempt > _max_retries:
-                    # Retries exhausted — emit event and route to on_rate_limit_exhausted/on_error
-                    self._rate_limit_retries.pop(_state_name, None)
-                    _target = state.on_rate_limit_exhausted or state.on_error
-                    self._emit(
-                        RATE_LIMIT_EXHAUSTED_EVENT,
-                        {
-                            "state": _state_name,
-                            "retries": _max_retries,
-                            "next": _target,
-                        },
-                    )
-                    # Storm detection: count consecutive exhaustions across states.
-                    self._consecutive_rate_limit_exhaustions += 1
-                    if self._consecutive_rate_limit_exhaustions >= _RATE_LIMIT_STORM_THRESHOLD:
-                        self._emit(
-                            RATE_LIMIT_STORM_EVENT,
-                            {
-                                "state": _state_name,
-                                "count": self._consecutive_rate_limit_exhaustions,
-                            },
-                        )
-                    if _target:
-                        return _target
-                    return None
-                # Interruptible backoff sleep with jitter — desynchronizes parallel worktrees
-                # to prevent thundering herd on shared API quota.
-                _sleep = _backoff_base * (2 ** (_attempt - 1)) + random.uniform(0, _backoff_base)
-                _deadline = time.time() + _sleep
-                while time.time() < _deadline:
-                    if self._shutdown_requested:
-                        break
-                    time.sleep(min(0.1, _deadline - time.time()))
-                return route_ctx.state_name  # retry in place
+                _handled, _target = self._handle_rate_limit(state, route_ctx.state_name)
+                if _handled:
+                    return _target
             else:
                 # Not rate-limited: reset counter so future 429s start from zero.
                 self._rate_limit_retries.pop(route_ctx.state_name, None)
@@ -904,6 +870,134 @@ class FSMExecutor:
                 **data,
             }
         )
+
+    def _handle_rate_limit(
+        self, state: StateConfig, state_name: str
+    ) -> tuple[bool, str | None]:
+        """Handle a detected 429/rate-limit action outcome.
+
+        Implements the two-tier retry ladder:
+        1. Short-burst tier: up to ``max_rate_limit_retries`` attempts with
+           exponential backoff (``rate_limit_backoff_base_seconds * 2^n + jitter``).
+        2. Long-wait tier: walks ``rate_limit_long_wait_ladder`` with index capped
+           at the last entry, accumulating ``total_wait_seconds``.
+
+        Routes to ``on_rate_limit_exhausted`` (falling back to ``on_error``) only
+        once ``total_wait_seconds >= rate_limit_max_wait_seconds``. Emits
+        ``rate_limit_exhausted`` on routing (including tier counters) and
+        ``rate_limit_storm`` when consecutive exhaustions reach the threshold.
+
+        Returns:
+            (handled, target). ``handled=True`` means the caller should return
+            ``target`` directly (in-place retry uses ``state_name``; exhaustion
+            uses the routed target). ``handled=False`` should not occur for the
+            current rate-limit classification path but is reserved for future
+            extensions.
+        """
+        _short_max = (
+            state.max_rate_limit_retries
+            if state.max_rate_limit_retries is not None
+            else _DEFAULT_RATE_LIMIT_RETRIES
+        )
+        _backoff_base = (
+            state.rate_limit_backoff_base_seconds
+            if state.rate_limit_backoff_base_seconds is not None
+            else _DEFAULT_RATE_LIMIT_BACKOFF_BASE
+        )
+        _max_wait = (
+            state.rate_limit_max_wait_seconds
+            if state.rate_limit_max_wait_seconds is not None
+            else _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS
+        )
+        _ladder = (
+            state.rate_limit_long_wait_ladder
+            if state.rate_limit_long_wait_ladder is not None
+            else _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER
+        )
+
+        record = self._rate_limit_retries.get(state_name)
+        if record is None:
+            record = {
+                "short_retries": 0,
+                "long_retries": 0,
+                "total_wait_seconds": 0.0,
+                "first_seen_at": time.time(),
+            }
+            self._rate_limit_retries[state_name] = record
+
+        short_retries = int(record.get("short_retries", 0))
+        long_retries = int(record.get("long_retries", 0))
+        total_wait = float(record.get("total_wait_seconds", 0.0))
+
+        if short_retries < _short_max:
+            # Short-burst tier — exponential backoff with jitter. Budget is not
+            # checked here; short-tier always advances to long-wait on exhaustion.
+            short_retries += 1
+            record["short_retries"] = short_retries
+            _sleep = _backoff_base * (2 ** (short_retries - 1)) + random.uniform(
+                0, _backoff_base
+            )
+            total_wait += self._interruptible_sleep(_sleep)
+            record["total_wait_seconds"] = total_wait
+            return True, state_name  # retry in place
+
+        # Long-wait tier — walk ladder with capped index.
+        long_retries += 1
+        record["long_retries"] = long_retries
+        _idx = min(long_retries - 1, len(_ladder) - 1)
+        _wait = float(_ladder[_idx])
+        total_wait += self._interruptible_sleep(_wait)
+        record["total_wait_seconds"] = total_wait
+        if total_wait >= _max_wait:
+            return True, self._exhaust_rate_limit(state, state_name, record)
+        return True, state_name  # retry in place
+
+    def _interruptible_sleep(self, duration: float) -> float:
+        """Sleep for up to ``duration`` seconds in 100ms ticks, exiting promptly
+        on ``_shutdown_requested``. Returns the actual elapsed seconds so callers
+        can accumulate wall-clock time spent in rate-limit waits.
+        """
+        if duration <= 0:
+            return 0.0
+        _start = time.time()
+        _deadline = _start + duration
+        while time.time() < _deadline:
+            if self._shutdown_requested:
+                break
+            time.sleep(min(0.1, _deadline - time.time()))
+        return time.time() - _start
+
+    def _exhaust_rate_limit(
+        self, state: StateConfig, state_name: str, record: dict[str, Any]
+    ) -> str | None:
+        """Finalize rate-limit exhaustion: emit event, storm detection, and
+        return the routed target. Pops the per-state record and is called only
+        once the wall-clock budget is spent.
+        """
+        self._rate_limit_retries.pop(state_name, None)
+        target = state.on_rate_limit_exhausted or state.on_error
+        self._emit(
+            RATE_LIMIT_EXHAUSTED_EVENT,
+            {
+                "state": state_name,
+                "retries": int(record.get("short_retries", 0))
+                + int(record.get("long_retries", 0)),
+                "short_retries": int(record.get("short_retries", 0)),
+                "long_retries": int(record.get("long_retries", 0)),
+                "total_wait_seconds": float(record.get("total_wait_seconds", 0.0)),
+                "next": target,
+            },
+        )
+        self._consecutive_rate_limit_exhaustions += 1
+        if self._consecutive_rate_limit_exhaustions >= _RATE_LIMIT_STORM_THRESHOLD:
+            self._emit(
+                RATE_LIMIT_STORM_EVENT,
+                {
+                    "state": state_name,
+                    "count": self._consecutive_rate_limit_exhaustions,
+                },
+            )
+        return target
 
     def _finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult:
         """Finalize execution and return result."""

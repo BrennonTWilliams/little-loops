@@ -101,9 +101,14 @@ class LoopState:
     continuation_prompt: str | None = None
     accumulated_ms: int = 0  # total elapsed ms across all segments (for resume offset)
     retry_counts: dict[str, int] = field(default_factory=dict)  # per-state retry tracking
-    rate_limit_retries: dict[str, int] = field(
-        default_factory=dict
-    )  # per-state rate-limit retry tracking
+    # Per-state rate-limit retry tracking (ENH-1133: dict-of-record).
+    # Each record: {"short_retries": int, "long_retries": int,
+    #               "total_wait_seconds": float, "first_seen_at": float | None}.
+    # Legacy int values (dict[str, int]) are coerced in from_dict.
+    rate_limit_retries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Count of consecutive rate_limit_exhausted emissions across states. Reset
+    # on any non-rate-limited state outcome. Persisted for resume durability.
+    consecutive_rate_limit_exhaustions: int = 0
     active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
 
     def to_dict(self) -> dict[str, Any]:
@@ -126,6 +131,10 @@ class LoopState:
             result["retry_counts"] = self.retry_counts
         if self.rate_limit_retries:
             result["rate_limit_retries"] = self.rate_limit_retries
+        if self.consecutive_rate_limit_exhaustions:
+            result["consecutive_rate_limit_exhaustions"] = (
+                self.consecutive_rate_limit_exhaustions
+            )
         if self.active_sub_loop is not None:
             result["active_sub_loop"] = self.active_sub_loop
         return result
@@ -134,12 +143,29 @@ class LoopState:
     def from_dict(cls, data: dict[str, Any]) -> LoopState:
         """Create LoopState from dictionary.
 
+        Migrates legacy ``rate_limit_retries`` values from ``dict[str, int]``
+        (BUG-1107 pre-ENH-1133 shape) to the dict-of-record shape. Integer
+        values are coerced to ``{"short_retries": <int>, "long_retries": 0,
+        "total_wait_seconds": 0.0, "first_seen_at": None}``.
+
         Args:
             data: Dictionary with loop state fields
 
         Returns:
             LoopState instance
         """
+        raw_rl = data.get("rate_limit_retries", {}) or {}
+        migrated_rl: dict[str, dict[str, Any]] = {}
+        for state_name, value in raw_rl.items():
+            if isinstance(value, int):
+                migrated_rl[state_name] = {
+                    "short_retries": value,
+                    "long_retries": 0,
+                    "total_wait_seconds": 0.0,
+                    "first_seen_at": None,
+                }
+            elif isinstance(value, dict):
+                migrated_rl[state_name] = value
         return cls(
             loop_name=data["loop_name"],
             current_state=data["current_state"],
@@ -153,7 +179,10 @@ class LoopState:
             continuation_prompt=data.get("continuation_prompt"),
             accumulated_ms=data.get("accumulated_ms", 0),
             retry_counts=data.get("retry_counts", {}),
-            rate_limit_retries=data.get("rate_limit_retries", {}),
+            rate_limit_retries=migrated_rl,
+            consecutive_rate_limit_exhaustions=data.get(
+                "consecutive_rate_limit_exhaustions", 0
+            ),
             active_sub_loop=data.get("active_sub_loop"),
         )
 
@@ -430,7 +459,12 @@ class PersistentExecutor:
             - self._executor.start_time_ms
             + self._executor.elapsed_offset_ms,
             retry_counts=dict(self._executor._retry_counts),
-            rate_limit_retries=dict(self._executor._rate_limit_retries),
+            rate_limit_retries={
+                k: dict(v) for k, v in self._executor._rate_limit_retries.items()
+            },
+            consecutive_rate_limit_exhaustions=(
+                self._executor._consecutive_rate_limit_exhaustions
+            ),
         )
         self.persistence.save_state(state)
 
@@ -498,7 +532,12 @@ class PersistentExecutor:
         self._executor.started_at = state.started_at
         self._last_result = state.last_result
         self._executor._retry_counts = dict(state.retry_counts)
-        self._executor._rate_limit_retries = dict(state.rate_limit_retries)
+        self._executor._rate_limit_retries = {
+            k: dict(v) for k, v in state.rate_limit_retries.items()
+        }
+        self._executor._consecutive_rate_limit_exhaustions = (
+            state.consecutive_rate_limit_exhaustions
+        )
 
         # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect
         # the full loop lifetime (all segments), not just the resumed segment.
