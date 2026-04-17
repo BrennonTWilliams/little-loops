@@ -257,6 +257,26 @@ Emitted when consecutive `rate_limit_exhausted` events across any states reach t
 
 ---
 
+### `rate_limit_waiting`
+
+Emitted periodically by the FSM executor while sleeping between 429 retry attempts (both short-burst and long-wait tiers). Provides heartbeat visibility into in-progress waits so dashboards and analysis tooling can surface progress toward the wall-clock budget defined by `rate_limit_max_wait_seconds`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state currently retrying |
+| `elapsed_seconds` | `number` | Wall-clock seconds elapsed in the current sleep window |
+| `next_attempt_at` | `str` | ISO-8601 timestamp at which the next retry will fire |
+| `total_waited_seconds` | `number` | Accumulated wall-clock seconds across all 429 waits for this state |
+| `budget_seconds` | `number` | Configured `rate_limit_max_wait_seconds` budget |
+| `tier` | `str` | Current retry tier: `"short"` or `"long"` |
+
+**Example:**
+```json
+{"event": "rate_limit_waiting", "ts": "...", "state": "implement", "elapsed_seconds": 60.0, "next_attempt_at": "2026-04-17T12:34:56Z", "total_waited_seconds": 180.0, "budget_seconds": 21600, "tier": "short"}
+```
+
+---
+
 ### `handoff_detected`
 
 Emitted when the executor detects a handoff signal in the action output, indicating the loop needs to be paused and resumed in a fresh session.
@@ -555,6 +575,7 @@ docs/reference/schemas/
 ├── parallel_worker_completed.json
 ├── rate_limit_exhausted.json
 ├── rate_limit_storm.json
+├── rate_limit_waiting.json
 ├── retry_exhausted.json
 ├── route.json
 ├── state_enter.json
@@ -641,6 +662,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `retry_exhausted` | FSM | `fsm/executor.py` |
 | `rate_limit_exhausted` | FSM | `fsm/executor.py` |
 | `rate_limit_storm` | FSM | `fsm/executor.py` |
+| `rate_limit_waiting` | FSM | `fsm/executor.py` |
 | `handoff_detected` | FSM | `fsm/executor.py` |
 | `handoff_spawned` | FSM | `fsm/executor.py` |
 | `loop_complete` | FSM | `fsm/executor.py` |

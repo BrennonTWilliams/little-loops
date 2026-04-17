@@ -58,6 +58,7 @@ Edge colors (used in FSM diagrams — applied to both label text and connector l
 | `partial` | `33` | Yellow |
 | `retry_exhausted` | `38;5;208` | Orange |
 | `rate_limit_exhausted` | `38;5;214` | Amber |
+| `rate_limit_waiting` | `38;5;214` | Amber |
 | `next`, `_` | `2` | Dim |
 
 ### Startup configuration
@@ -214,9 +215,12 @@ Default edge color mapping (see `Output Color Reference > Edge colors` above for
 | `partial` | Yellow |
 | `retry_exhausted` | Orange |
 | `rate_limit_exhausted` | Amber |
+| `rate_limit_waiting` | Amber |
 | `next` / `_` (default) | Dim |
 
 Edge label colors are **user-configurable** via `cli.colors.fsm_edge_labels` in `ll-config.json`. See [`CONFIGURATION.md → cli.colors.fsm_edge_labels`](CONFIGURATION.md#clicolorsfsm_edge_labels).
+
+> **Note:** `rate_limit_waiting` is a heartbeat event (not a diagram edge label), but it shares the Amber styling with `rate_limit_exhausted` so rate-limit activity is visually consistent across diagrams and event logs.
 
 > **Note:** `cli.colors.fsm_edge_labels` governs more than diagram arrows. As of ENH-1050, the same config key also controls:
 > - The `✓`/`✗` verdict symbol colors in `display_progress()` (the `yes`, `no`, and `error` keys map to checkmark and x-mark colors during evaluate events)

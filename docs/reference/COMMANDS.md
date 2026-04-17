@@ -510,7 +510,7 @@ Analyze loop execution history to synthesize actionable issues from failure patt
 - `loop_complete.terminated_by == "signal"` (SIGKILL) → BUG P2
 - `loop_complete.terminated_by == "error"` (FATAL_ERROR) → BUG P2
 - True retry state (has `on_retry`/`max_retries`) entered 5+ times, or `retry_exhausted` event present → ENH P3; intentional cycling state (no retry config) noted informally unless >20 consecutive re-entries → ENH P4
-- `rate_limit_exhausted` event present on a state (max rate-limit retries burned through) → BUG P3; surfaces upstream rate-limit pressure separate from generic retry loops
+- `rate_limit_exhausted` event present on a state (max rate-limit retries burned through) → BUG P3; surfaces upstream rate-limit pressure separate from generic retry loops. `rate_limit_waiting` heartbeat events in the same window indicate in-progress sleeps contributing to the budget.
 - Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
 - `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
 
