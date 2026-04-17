@@ -790,7 +790,9 @@ states:
     on_retry_exhausted: advance            # optional: route here when retries exceeded
     max_rate_limit_retries: 3              # optional: retry in place on HTTP 429 before exhaustion
     on_rate_limit_exhausted: advance       # optional: route here when rate-limit budget exhausted
-    rate_limit_backoff_base_seconds: 30    # optional: base for exponential backoff + jitter (default 30)
+    rate_limit_backoff_base_seconds: 30    # optional: base for short-tier exponential backoff + jitter (default 30)
+    rate_limit_max_wait_seconds: 21600     # optional: total wall-clock budget for long-wait tier (default from commands.rate_limits.max_wait_seconds, 6h)
+    rate_limit_long_wait_ladder: [300, 900, 1800, 3600]  # optional: long-wait ladder once short-tier exhausted (defaults from commands.rate_limits.long_wait_ladder)
     next: check_stall            # or check_concrete / check_semantic / check_invariants / advance if stall detection omitted
   check_stall:                   # include if stall detection selected (recommended for prompt-based skills)
     action: "echo 'checking stall'"

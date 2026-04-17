@@ -110,6 +110,43 @@ class ConfidenceGateConfig:
 
 
 @dataclass
+class RateLimitsConfig:
+    """Global rate-limit resilience configuration.
+
+    Defaults for per-state rate-limit handling when a state does not
+    override `rate_limit_max_wait_seconds` or `rate_limit_long_wait_ladder`,
+    plus shared circuit-breaker coordination settings used across parallel
+    worktrees.
+
+    Attributes:
+        max_wait_seconds: Total wall-clock budget for rate-limit handling
+            before routing to `on_rate_limit_exhausted`. Default 21600 (6h).
+        long_wait_ladder: Backoff ladder (seconds) for the long-wait tier
+            used once the short-tier retry budget is spent.
+        circuit_breaker_enabled: Whether the shared circuit breaker is active.
+        circuit_breaker_path: Path (relative to project root) for the shared
+            circuit-breaker state file.
+    """
+
+    max_wait_seconds: int = 21600
+    long_wait_ladder: list[int] = field(default_factory=lambda: [300, 900, 1800, 3600])
+    circuit_breaker_enabled: bool = True
+    circuit_breaker_path: str = ".loops/tmp/rate-limit-circuit.json"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RateLimitsConfig:
+        """Create RateLimitsConfig from dictionary."""
+        return cls(
+            max_wait_seconds=data.get("max_wait_seconds", 21600),
+            long_wait_ladder=data.get("long_wait_ladder", [300, 900, 1800, 3600]),
+            circuit_breaker_enabled=data.get("circuit_breaker_enabled", True),
+            circuit_breaker_path=data.get(
+                "circuit_breaker_path", ".loops/tmp/rate-limit-circuit.json"
+            ),
+        )
+
+
+@dataclass
 class CommandsConfig:
     """Command customization configuration."""
 
@@ -118,6 +155,7 @@ class CommandsConfig:
     custom_verification: list[str] = field(default_factory=list)
     confidence_gate: ConfidenceGateConfig = field(default_factory=ConfidenceGateConfig)
     tdd_mode: bool = False
+    rate_limits: RateLimitsConfig = field(default_factory=RateLimitsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CommandsConfig:
@@ -128,6 +166,7 @@ class CommandsConfig:
             custom_verification=data.get("custom_verification", []),
             confidence_gate=ConfidenceGateConfig.from_dict(data.get("confidence_gate", {})),
             tdd_mode=data.get("tdd_mode", False),
+            rate_limits=RateLimitsConfig.from_dict(data.get("rate_limits", {})),
         )
 
 

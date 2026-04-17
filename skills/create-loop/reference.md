@@ -936,18 +936,21 @@ states:
 
 **Most users can omit these fields** — they are useful only when a state might loop indefinitely on bad input and you want automatic skip behavior instead of exhausting the global iteration budget.
 
-#### max_rate_limit_retries, on_rate_limit_exhausted, and rate_limit_backoff_base_seconds (Optional)
+#### max_rate_limit_retries, on_rate_limit_exhausted, rate_limit_backoff_base_seconds, rate_limit_max_wait_seconds, and rate_limit_long_wait_ladder (Optional)
 
-A parallel safeguard to `max_retries`/`on_retry_exhausted`, but specialized for HTTP 429 rate-limit failures. When the executor detects a 429 response (typically from a prompt state hitting an LLM backend), it retries the same state in place — sleeping between attempts — rather than routing through `on_no`. Only after `max_rate_limit_retries` consecutive 429s does the FSM transition to `on_rate_limit_exhausted`.
+A parallel safeguard to `max_retries`/`on_retry_exhausted`, but specialized for HTTP 429 rate-limit failures. When the executor detects a 429 response (typically from a prompt state hitting an LLM backend), it retries the same state in place — sleeping between attempts — rather than routing through `on_no`. Retries run in two tiers: a short-tier exponential backoff (`max_rate_limit_retries` attempts with `rate_limit_backoff_base_seconds` base), followed by a long-wait tier that walks `rate_limit_long_wait_ladder` until `rate_limit_max_wait_seconds` of total wall-clock time is spent. Only after the full budget is exhausted does the FSM transition to `on_rate_limit_exhausted`.
 
 **Fields:**
-- `max_rate_limit_retries` (integer, minimum 1) — max consecutive 429 retries before giving up on this state. Requires `on_rate_limit_exhausted`.
-- `on_rate_limit_exhausted` (string) — target state when the rate-limit retry budget is exhausted. Requires `max_rate_limit_retries`.
-- `rate_limit_backoff_base_seconds` (integer, minimum 1, default `30`) — base seconds for exponential backoff; the delay between retry N and N+1 is `base * 2^N + jitter`. Valid on its own (no paired-field requirement).
+- `max_rate_limit_retries` (integer, minimum 1) — max consecutive short-tier 429 retries before escalating to the long-wait tier. Requires `on_rate_limit_exhausted`.
+- `on_rate_limit_exhausted` (string) — target state when the combined retry + wait budget is exhausted. Requires `max_rate_limit_retries`.
+- `rate_limit_backoff_base_seconds` (integer, minimum 1, default `30`) — base seconds for short-tier exponential backoff; the delay between retry N and N+1 is `base * 2^N + jitter`. Valid on its own (no paired-field requirement).
+- `rate_limit_max_wait_seconds` (integer, minimum 1) — total wall-clock budget (seconds) across both tiers before routing to `on_rate_limit_exhausted`. Defaults from `commands.rate_limits.max_wait_seconds` (21600 = 6h).
+- `rate_limit_long_wait_ladder` (array of positive integers) — backoff ladder (seconds) for the long-wait tier, walked in order for each attempt after the short-tier budget is spent. Defaults from `commands.rate_limits.long_wait_ladder` (`[300, 900, 1800, 3600]`).
 
 **When to use:**
 - Prompt states that talk to a rate-limited upstream (LLM API, code-hosting API, etc.)
 - Loops run under `ll-parallel` where many worktrees may trip the same shared rate limit simultaneously
+- Long-running automations that must survive multi-hour upstream rate-limit windows without losing progress
 
 **Jitter rationale for `ll-parallel`:** The executor adds random jitter on top of the exponential backoff. When you run many worktrees in parallel and they all hit the same shared 429 at once, a fixed backoff would re-stampede the upstream service on the same tick (thundering herd). Jitter spreads the retries so the upstream catches its breath. Prefer a larger `rate_limit_backoff_base_seconds` over a smaller one when you know you're running wide parallelism.
 

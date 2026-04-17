@@ -35,3 +35,29 @@ class TestConfigSchema:
         assert props["tail_lines"]["maximum"] == 200
         assert "cat" in props["command_allowlist"]["default"]
         assert ".py" in props["file_extension_filters"]["default"]
+
+    def test_commands_rate_limits_block(self) -> None:
+        """commands.rate_limits must be declared inside the commands block.
+
+        The `commands` object has additionalProperties: false, so any config
+        that sets commands.rate_limits will fail schema validation unless the
+        block is declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        commands = data["properties"]["commands"]
+        assert commands.get("additionalProperties") is False, (
+            "commands block is expected to have additionalProperties: false — "
+            "if that changes, this test's rationale no longer holds"
+        )
+        assert "rate_limits" in commands["properties"], (
+            "commands.rate_limits is not declared; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        rate_limits = commands["properties"]["rate_limits"]
+        assert rate_limits["type"] == "object"
+        assert rate_limits.get("additionalProperties") is False
+        rl_props = rate_limits["properties"]
+        assert rl_props["max_wait_seconds"]["default"] == 21600
+        assert rl_props["long_wait_ladder"]["default"] == [300, 900, 1800, 3600]
+        assert rl_props["circuit_breaker_enabled"]["default"] is True
+        assert rl_props["circuit_breaker_path"]["default"] == ".loops/tmp/rate-limit-circuit.json"

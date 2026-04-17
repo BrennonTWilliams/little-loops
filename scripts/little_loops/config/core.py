@@ -408,6 +408,12 @@ class BRConfig:
                     "outcome_threshold": self._commands.confidence_gate.outcome_threshold,
                 },
                 "tdd_mode": self._commands.tdd_mode,
+                "rate_limits": {
+                    "max_wait_seconds": self._commands.rate_limits.max_wait_seconds,
+                    "long_wait_ladder": self._commands.rate_limits.long_wait_ladder,
+                    "circuit_breaker_enabled": self._commands.rate_limits.circuit_breaker_enabled,
+                    "circuit_breaker_path": self._commands.rate_limits.circuit_breaker_path,
+                },
             },
             "scan": {
                 "focus_dirs": self._scan.focus_dirs,

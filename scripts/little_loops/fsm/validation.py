@@ -335,6 +335,36 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
                 path=path,
             )
         )
+    if state.rate_limit_max_wait_seconds is not None and state.rate_limit_max_wait_seconds < 1:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"'rate_limit_max_wait_seconds' must be >= 1, "
+                    f"got {state.rate_limit_max_wait_seconds}"
+                ),
+                path=path,
+            )
+        )
+    if state.rate_limit_long_wait_ladder is not None:
+        if len(state.rate_limit_long_wait_ladder) == 0:
+            errors.append(
+                ValidationError(
+                    message="'rate_limit_long_wait_ladder' must be non-empty if specified",
+                    path=path,
+                )
+            )
+        else:
+            for idx, value in enumerate(state.rate_limit_long_wait_ladder):
+                if not isinstance(value, int) or value < 1:
+                    errors.append(
+                        ValidationError(
+                            message=(
+                                f"'rate_limit_long_wait_ladder[{idx}]' must be a "
+                                f"positive integer, got {value!r}"
+                            ),
+                            path=path,
+                        )
+                    )
 
     return errors
 

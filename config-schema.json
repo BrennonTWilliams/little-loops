@@ -334,6 +334,38 @@
           "default": 5,
           "minimum": 1,
           "maximum": 20
+        },
+        "rate_limits": {
+          "type": "object",
+          "description": "Global rate-limit resilience defaults applied when a state does not override per-state rate-limit fields, plus shared circuit-breaker coordination settings.",
+          "properties": {
+            "max_wait_seconds": {
+              "type": "integer",
+              "description": "Total wall-clock budget (seconds) for rate-limit handling before routing to on_rate_limit_exhausted.",
+              "default": 21600,
+              "minimum": 0
+            },
+            "long_wait_ladder": {
+              "type": "array",
+              "description": "Backoff ladder (seconds) for the long-wait tier used once the short-tier retry budget is spent.",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "default": [300, 900, 1800, 3600]
+            },
+            "circuit_breaker_enabled": {
+              "type": "boolean",
+              "description": "Enable the shared rate-limit circuit breaker across parallel worktrees.",
+              "default": true
+            },
+            "circuit_breaker_path": {
+              "type": "string",
+              "description": "Path (relative to project root) for the shared circuit-breaker state file.",
+              "default": ".loops/tmp/rate-limit-circuit.json"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

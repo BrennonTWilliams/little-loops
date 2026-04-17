@@ -28,6 +28,7 @@ from little_loops.config import (
     LoopsGlyphsConfig,
     ParallelAutomationConfig,
     ProjectConfig,
+    RateLimitsConfig,
     ScanConfig,
     ScoringWeightsConfig,
     SprintsConfig,
@@ -368,6 +369,34 @@ class TestConfidenceGateConfig:
         assert config.readiness_threshold == 75
 
 
+class TestRateLimitsConfig:
+    """Tests for RateLimitsConfig dataclass."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating RateLimitsConfig with all schema-aligned fields."""
+        data = {
+            "max_wait_seconds": 7200,
+            "long_wait_ladder": [60, 120, 240],
+            "circuit_breaker_enabled": False,
+            "circuit_breaker_path": "/tmp/cb.json",
+        }
+        config = RateLimitsConfig.from_dict(data)
+
+        assert config.max_wait_seconds == 7200
+        assert config.long_wait_ladder == [60, 120, 240]
+        assert config.circuit_breaker_enabled is False
+        assert config.circuit_breaker_path == "/tmp/cb.json"
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating RateLimitsConfig with default values."""
+        config = RateLimitsConfig.from_dict({})
+
+        assert config.max_wait_seconds == 21600
+        assert config.long_wait_ladder == [300, 900, 1800, 3600]
+        assert config.circuit_breaker_enabled is True
+        assert config.circuit_breaker_path == ".loops/tmp/rate-limit-circuit.json"
+
+
 class TestCommandsConfig:
     """Tests for CommandsConfig dataclass."""
 
@@ -379,6 +408,10 @@ class TestCommandsConfig:
             "custom_verification": ["npm test", "npm run e2e"],
             "confidence_gate": {"enabled": True, "readiness_threshold": 90},
             "tdd_mode": True,
+            "rate_limits": {
+                "max_wait_seconds": 7200,
+                "long_wait_ladder": [60, 120],
+            },
         }
         config = CommandsConfig.from_dict(data)
 
@@ -388,6 +421,8 @@ class TestCommandsConfig:
         assert config.confidence_gate.enabled is True
         assert config.confidence_gate.readiness_threshold == 90
         assert config.tdd_mode is True
+        assert config.rate_limits.max_wait_seconds == 7200
+        assert config.rate_limits.long_wait_ladder == [60, 120]
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating CommandsConfig with default values."""
@@ -399,6 +434,9 @@ class TestCommandsConfig:
         assert config.confidence_gate.enabled is False
         assert config.confidence_gate.readiness_threshold == 85
         assert config.tdd_mode is False
+        assert config.rate_limits.max_wait_seconds == 21600
+        assert config.rate_limits.long_wait_ladder == [300, 900, 1800, 3600]
+        assert config.rate_limits.circuit_breaker_enabled is True
 
 
 class TestScanConfig:

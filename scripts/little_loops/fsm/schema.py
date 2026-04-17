@@ -214,6 +214,13 @@ class StateConfig:
         rate_limit_backoff_base_seconds: Base seconds for exponential backoff between
             rate-limit retries; actual sleep is base * 2^(attempt-1) + uniform(0, base).
             Defaults to 30.
+        rate_limit_max_wait_seconds: Total wall-clock budget (seconds) for rate-limit
+            handling in this state before routing to on_rate_limit_exhausted. When unset,
+            defaults from commands.rate_limits.max_wait_seconds (21600 = 6h).
+        rate_limit_long_wait_ladder: Backoff ladder (seconds) for the long-wait tier used
+            once the short-tier retry budget is spent. Each entry is the sleep before the
+            next retry attempt. When unset, defaults from
+            commands.rate_limits.long_wait_ladder ([300, 900, 1800, 3600]).
         loop: Name of a loop YAML to execute as a sub-FSM. Mutually exclusive with action.
         context_passthrough: When True, pass parent context variables to child loop and
             merge child captures back into parent context.
@@ -239,6 +246,8 @@ class StateConfig:
     max_rate_limit_retries: int | None = None
     on_rate_limit_exhausted: str | None = None
     rate_limit_backoff_base_seconds: int | None = None
+    rate_limit_max_wait_seconds: int | None = None
+    rate_limit_long_wait_ladder: list[int] | None = None
     loop: str | None = None
     context_passthrough: bool = False
     agent: str | None = None
@@ -289,6 +298,10 @@ class StateConfig:
             result["on_rate_limit_exhausted"] = self.on_rate_limit_exhausted
         if self.rate_limit_backoff_base_seconds is not None:
             result["rate_limit_backoff_base_seconds"] = self.rate_limit_backoff_base_seconds
+        if self.rate_limit_max_wait_seconds is not None:
+            result["rate_limit_max_wait_seconds"] = self.rate_limit_max_wait_seconds
+        if self.rate_limit_long_wait_ladder is not None:
+            result["rate_limit_long_wait_ladder"] = self.rate_limit_long_wait_ladder
         if self.loop is not None:
             result["loop"] = self.loop
         if self.context_passthrough:
@@ -352,6 +365,8 @@ class StateConfig:
             max_rate_limit_retries=data.get("max_rate_limit_retries"),
             on_rate_limit_exhausted=data.get("on_rate_limit_exhausted"),
             rate_limit_backoff_base_seconds=data.get("rate_limit_backoff_base_seconds"),
+            rate_limit_max_wait_seconds=data.get("rate_limit_max_wait_seconds"),
+            rate_limit_long_wait_ladder=data.get("rate_limit_long_wait_ladder"),
             loop=data.get("loop"),
             context_passthrough=data.get("context_passthrough", False),
             agent=data.get("agent"),

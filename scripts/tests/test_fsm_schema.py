@@ -612,6 +612,60 @@ class TestStateConfig:
         assert restored.on_rate_limit_exhausted == "recover"
         assert restored.rate_limit_backoff_base_seconds == 30
 
+    # -------------------------------------------------------------------
+    # ENH-1132: long-wait rate-limit fields
+    # (rate_limit_max_wait_seconds, rate_limit_long_wait_ladder)
+    # -------------------------------------------------------------------
+
+    def test_long_wait_rate_limit_fields_default_none(self) -> None:
+        """Long-wait rate-limit fields default to None when absent."""
+        state = StateConfig(action="run")
+        assert state.rate_limit_max_wait_seconds is None
+        assert state.rate_limit_long_wait_ladder is None
+
+    def test_long_wait_rate_limit_fields_from_dict(self) -> None:
+        """from_dict reads long-wait keys from YAML data."""
+        data = {
+            "action": "run",
+            "on_yes": "done",
+            "rate_limit_max_wait_seconds": 21600,
+            "rate_limit_long_wait_ladder": [300, 900, 1800, 3600],
+        }
+        state = StateConfig.from_dict(data)
+        assert state.rate_limit_max_wait_seconds == 21600
+        assert state.rate_limit_long_wait_ladder == [300, 900, 1800, 3600]
+
+    def test_long_wait_rate_limit_fields_to_dict(self) -> None:
+        """to_dict serializes long-wait fields when set."""
+        state = StateConfig(
+            action="run",
+            on_yes="done",
+            rate_limit_max_wait_seconds=21600,
+            rate_limit_long_wait_ladder=[300, 900, 1800, 3600],
+        )
+        d = state.to_dict()
+        assert d["rate_limit_max_wait_seconds"] == 21600
+        assert d["rate_limit_long_wait_ladder"] == [300, 900, 1800, 3600]
+
+    def test_long_wait_rate_limit_fields_absent_from_to_dict_when_none(self) -> None:
+        """to_dict omits long-wait keys when not set."""
+        state = StateConfig(action="run", on_yes="done")
+        d = state.to_dict()
+        assert "rate_limit_max_wait_seconds" not in d
+        assert "rate_limit_long_wait_ladder" not in d
+
+    def test_long_wait_rate_limit_fields_roundtrip(self) -> None:
+        """Long-wait fields survive to_dict/from_dict roundtrip."""
+        original = StateConfig(
+            action="run",
+            on_yes="done",
+            rate_limit_max_wait_seconds=7200,
+            rate_limit_long_wait_ladder=[60, 120, 240],
+        )
+        restored = StateConfig.from_dict(original.to_dict())
+        assert restored.rate_limit_max_wait_seconds == 7200
+        assert restored.rate_limit_long_wait_ladder == [60, 120, 240]
+
 
 class TestLLMConfig:
     """Tests for LLMConfig dataclass."""

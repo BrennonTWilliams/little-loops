@@ -273,6 +273,19 @@
           "default": 30,
           "description": "Base seconds for exponential backoff between rate-limit retries; actual sleep = base * 2^(attempt-1) + uniform(0, base)."
         },
+        "rate_limit_max_wait_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total wall-clock budget (seconds) for rate-limit handling in this state before routing to on_rate_limit_exhausted. Defaults from commands.rate_limits.max_wait_seconds (21600 = 6h)."
+        },
+        "rate_limit_long_wait_ladder": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "Backoff ladder (seconds) for the long-wait tier used after the short-tier retry budget is spent. Defaults from commands.rate_limits.long_wait_ladder ([300, 900, 1800, 3600])."
+        },
         "loop": {
           "type": "string",
           "description": "Name of a loop YAML to execute as a sub-FSM. Mutually exclusive with action."

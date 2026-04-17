@@ -48,11 +48,18 @@ fragments:
 
   with_rate_limit_handling:
     description: |
-      Applies per-state rate-limit retry handling with 3 retries and 30s base backoff.
-      State must supply: on_rate_limit_exhausted (target state name when retries exhausted).
-      State may override: max_rate_limit_retries, rate_limit_backoff_base_seconds.
+      Applies per-state rate-limit retry handling with a short-tier (3 retries, 30s base
+      exponential backoff) and a long-wait tier (21600s total wall-clock budget, ladder
+      of 5m/15m/30m/60m). Together these give multi-hour 429 resilience by default.
+      State must supply: on_rate_limit_exhausted (target state when the full budget is spent).
+      State may override any of: max_rate_limit_retries, rate_limit_backoff_base_seconds,
+      rate_limit_max_wait_seconds, rate_limit_long_wait_ladder.
+      Opt out of long-wait handling by setting rate_limit_max_wait_seconds: 0 at the state
+      level, or by composing a custom fragment instead of this one.
     max_rate_limit_retries: 3
     rate_limit_backoff_base_seconds: 30
+    rate_limit_max_wait_seconds: 21600
+    rate_limit_long_wait_ladder: [300, 900, 1800, 3600]
 
   numeric_gate:
     description: |

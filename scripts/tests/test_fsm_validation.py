@@ -184,3 +184,83 @@ class TestRateLimitFieldValidation:
         errors = validate_fsm(fsm)
         rate_errors = [e for e in errors if "rate_limit" in e.message.lower()]
         assert rate_errors == []
+
+    # -------------------------------------------------------------------
+    # ENH-1132: rate_limit_max_wait_seconds / rate_limit_long_wait_ladder
+    # -------------------------------------------------------------------
+
+    def test_max_wait_seconds_less_than_one_fails(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    rate_limit_max_wait_seconds=0,
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "rate_limit_max_wait_seconds" in e.message and ">= 1" in e.message for e in errors
+        )
+
+    def test_long_wait_ladder_empty_fails(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    rate_limit_long_wait_ladder=[],
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "rate_limit_long_wait_ladder" in e.message and "non-empty" in e.message for e in errors
+        )
+
+    def test_long_wait_ladder_zero_entry_fails(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    rate_limit_long_wait_ladder=[300, 0, 900],
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "rate_limit_long_wait_ladder" in e.message and "positive" in e.message for e in errors
+        )
+
+    def test_long_wait_fields_valid_pass(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="run",
+                    on_yes="done",
+                    on_no="done",
+                    rate_limit_max_wait_seconds=21600,
+                    rate_limit_long_wait_ladder=[300, 900, 1800, 3600],
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        rate_errors = [e for e in errors if "rate_limit" in e.message.lower()]
+        assert rate_errors == []

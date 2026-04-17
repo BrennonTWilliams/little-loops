@@ -630,6 +630,8 @@ class TestCommonYamlNewFragments:
         frag = data["fragments"]["with_rate_limit_handling"]
         assert frag["max_rate_limit_retries"] == 3
         assert frag["rate_limit_backoff_base_seconds"] == 30
+        assert frag["rate_limit_max_wait_seconds"] == 21600
+        assert frag["rate_limit_long_wait_ladder"] == [300, 900, 1800, 3600]
 
     def test_with_rate_limit_handling_resolves_from_real_common_yaml(self) -> None:
         """Full resolve_fragments integration against the real lib/common.yaml."""
@@ -654,6 +656,8 @@ class TestCommonYamlNewFragments:
         state = result["states"]["work"]
         assert state["max_rate_limit_retries"] == 3
         assert state["rate_limit_backoff_base_seconds"] == 30
+        assert state["rate_limit_max_wait_seconds"] == 21600
+        assert state["rate_limit_long_wait_ladder"] == [300, 900, 1800, 3600]
         assert state["on_rate_limit_exhausted"] == "parked"
         assert "fragment" not in state
 
