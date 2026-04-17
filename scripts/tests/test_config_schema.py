@@ -36,6 +36,23 @@ class TestConfigSchema:
         assert "cat" in props["command_allowlist"]["default"]
         assert ".py" in props["file_extension_filters"]["default"]
 
+    def test_issues_next_issue_in_schema(self) -> None:
+        """issues.next_issue block must declare strategy enum with the two known presets.
+
+        Uses structural JSON-key assertions only; jsonschema is not a dependency,
+        so this acts as a sentinel guard rather than runtime validation.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        issues_props = data["properties"]["issues"]["properties"]
+        assert "next_issue" in issues_props, (
+            "issues.next_issue is not declared in config-schema.json"
+        )
+        strategy = issues_props["next_issue"]["properties"]["strategy"]
+        assert "enum" in strategy
+        assert "confidence_first" in strategy["enum"]
+        assert "priority_first" in strategy["enum"]
+        assert "bogus" not in strategy["enum"]  # sentinel guard, not real validation
+
     def test_commands_rate_limits_block(self) -> None:
         """commands.rate_limits must be declared inside the commands block.
 

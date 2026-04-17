@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from little_loops.config import (
     DEFAULT_CATEGORIES,
     REQUIRED_CATEGORIES,
@@ -26,6 +28,7 @@ from little_loops.config import (
     IssuesConfig,
     LoopsConfig,
     LoopsGlyphsConfig,
+    NextIssueConfig,
     ParallelAutomationConfig,
     ProjectConfig,
     RateLimitsConfig,
@@ -168,6 +171,8 @@ class TestIssuesConfig:
         assert config.capture_template == "full"
         assert config.duplicate_detection.exact_threshold == 0.8
         assert config.duplicate_detection.similar_threshold == 0.5
+        assert config.next_issue.strategy == "confidence_first"
+        assert config.next_issue.sort_keys is None
 
 
 class TestDuplicateDetectionConfig:
@@ -224,6 +229,46 @@ class TestDuplicateDetectionConfig:
         )
         assert match_custom.should_skip is True  # 0.75 >= 0.7
         assert match_custom.should_update is False
+
+
+class TestNextIssueConfig:
+    """Tests for NextIssueConfig dataclass (selection strategy for ll-issues next-issue)."""
+
+    def test_defaults(self) -> None:
+        """Default strategy is confidence_first; sort_keys is None."""
+        config = NextIssueConfig()
+        assert config.strategy == "confidence_first"
+        assert config.sort_keys is None
+
+    def test_from_dict_with_strategy(self) -> None:
+        """from_dict accepts a named strategy and leaves sort_keys as None."""
+        config = NextIssueConfig.from_dict({"strategy": "priority_first"})
+        assert config.strategy == "priority_first"
+        assert config.sort_keys is None
+
+    def test_from_dict_with_empty_dict(self) -> None:
+        """Empty dict yields defaults."""
+        config = NextIssueConfig.from_dict({})
+        assert config.strategy == "confidence_first"
+        assert config.sort_keys is None
+
+    def test_unknown_strategy_raises(self) -> None:
+        """Unknown strategy raises ValueError (locks in validating-from_dict convention)."""
+        with pytest.raises(ValueError, match="Unknown strategy"):
+            NextIssueConfig.from_dict({"strategy": "bogus"})
+
+    def test_unknown_sort_key_raises(self) -> None:
+        """Unknown sort key raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown sort key"):
+            NextIssueConfig.from_dict(
+                {"sort_keys": [{"key": "nonexistent", "direction": "asc"}]}
+            )
+
+    def test_issues_config_parses_next_issue(self) -> None:
+        """IssuesConfig.from_dict reads the next_issue block."""
+        config = IssuesConfig.from_dict({"next_issue": {"strategy": "priority_first"}})
+        assert config.next_issue.strategy == "priority_first"
+        assert config.next_issue.sort_keys is None
 
 
 class TestAutomationConfig:

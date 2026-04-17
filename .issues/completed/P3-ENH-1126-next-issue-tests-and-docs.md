@@ -215,7 +215,24 @@ _Added by `/ll:confidence-check` on 2026-04-16_
 - ENH-1125 (sort resolver + CLI wiring) must be complete before implementation: `build_sort_key` doesn't exist; `test_priority_first_strategy_overrides_default` would pass vacuously without it
 - Both are structural prerequisites — ENH-1126 can be planned now but cannot begin implementation until ENH-1124 + ENH-1125 are in `completed/`
 
+## Resolution
+
+- **Tests added**:
+  - `TestNextIssueConfig` in `scripts/tests/test_config.py` (6 methods): defaults, `from_dict` strategy/empty, `pytest.raises` on unknown strategy and unknown sort key, `IssuesConfig` parse-through. Plus one-line assertion in `test_from_dict_with_defaults` and `NextIssueConfig` added to the module-level import.
+  - `test_issues_next_issue_in_schema` in `test_config_schema.py`: structural assertions on `issues.next_issue.strategy.enum` (sentinel guard — `jsonschema` is not a dependency).
+  - `TestBuildSortKey` in `test_issues_search.py` (6 methods): `confidence_first` byte-parity, `priority_first` preset, custom `sort_keys` override, None-sentinel paths (`1` for desc, `9999` for asc), `ValueError` on unknown strategy via direct instantiation bypass.
+  - `test_priority_first_strategy_overrides_default` in both `test_next_issue.py` and `test_next_issues.py`: end-to-end CLI regression proving the strategy knob is wired (uses inline `{**sample_config, "issues": {**sample_config["issues"], "next_issue": {"strategy": "priority_first"}}}` since the `config_file` fixture has no `next_issue` key).
+- **Existing regression guards held**: `TestNextIssueSorting` (4 tests) and `TestNextIssuesRankedOrder` (2 tests) pass unchanged — `confidence_first` is byte-identical to the legacy lambda as promised.
+- **Docs updated**:
+  - `docs/reference/CLI.md:526,:541` — sort-order lines now reference `issues.next_issue.strategy` with `confidence_first` default. `--config` flag in `next-issues` table was already present (pre-satisfied, skipped).
+  - `docs/reference/API.md` — added `next_issue: NextIssueConfig` field to the `IssuesConfig` block; new `### NextIssueConfig` section after `### DuplicateDetectionConfig`; `**Strategy**:` + `**Configuration**:` blocks inserted into both `next-issue` and `next-issues` CLI sections.
+  - `docs/reference/CONFIGURATION.md` — added `next_issue` to the full `issues` example, two rows in the options table, and a new `### issues.next_issue` subsection with two JSON examples.
+  - `docs/guides/LOOPS_GUIDE.md:2080` — extended `ll_issues_next_issue` fragment description.
+- **Verification**: `python -m pytest scripts/tests/` → 4949 passed, 5 skipped; `ruff check scripts/` → All checks passed.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-17T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9dea2f7-a026-41f0-8819-fee1d6b41b64.jsonl`
+- `/ll:ready-issue` - 2026-04-17T18:47:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3524e92-3759-4e68-9b5a-0d8957383583.jsonl`
 - `/ll:refine-issue` - 2026-04-16T20:22:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e18081d-8068-4ea1-96f9-98b4dd8ce46c.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/418956b8-6e25-4bef-a5bf-3bbf5a213336.jsonl`
 - `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/360a9ca9-1f29-487b-ada1-c4e4af3801ba.jsonl`

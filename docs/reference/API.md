@@ -334,6 +334,7 @@ class IssuesConfig:
     templates_dir: str | None = None
     capture_template: str = "full"
     duplicate_detection: DuplicateDetectionConfig  # thresholds for skip/update/create
+    next_issue: NextIssueConfig  # selection strategy for ll-issues next-issue / next-issues
 ```
 
 ### DuplicateDetectionConfig
@@ -346,6 +347,32 @@ class DuplicateDetectionConfig:
     exact_threshold: float = 0.8   # score >= this → skip (duplicate)
     similar_threshold: float = 0.5  # score >= this → update existing issue
 ```
+
+### NextIssueConfig
+
+Selection behavior for `ll-issues next-issue` / `next-issues` commands. Named strategies map to preset sort orderings; an explicit `sort_keys` list overrides the preset.
+
+```python
+@dataclass
+class NextIssueConfig:
+    strategy: str = "confidence_first"   # "confidence_first" | "priority_first"
+    sort_keys: list[NextIssueSortKey] | None = None  # custom sort, overrides strategy
+
+@dataclass
+class NextIssueSortKey:
+    key: str         # "priority" | "outcome_confidence" | "confidence_score" |
+                     # "effort" | "impact" | "score_complexity" |
+                     # "score_test_coverage" | "score_ambiguity" | "score_change_surface"
+    direction: str = "asc"  # "asc" | "desc"
+```
+
+Strategy presets:
+- `confidence_first` (default): `(-outcome_confidence, -confidence_score, priority_int)` — byte-identical to the legacy hardcoded ordering.
+- `priority_first`: `(priority_int, -outcome_confidence, -confidence_score)`.
+
+None-handling (per-field sentinel): `direction="desc"` → component is `-value` when set, `1` when `None` (sorts after negatives); `direction="asc"` → component is `value` when set, `9999` when `None` (sorts last).
+
+`NextIssueConfig.from_dict` validates `strategy` and each `sort_keys[*].key` against the allowed enum, raising `ValueError` on unknown values.
 
 ### CategoryConfig
 
@@ -2972,7 +2999,18 @@ Print the single highest-confidence active issue ID. Uses the same sort key as `
 
 **Exit codes:** 0 when an issue is found; 1 when no active issues exist (after filtering).
 
-**Sort key**: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int`
+**Strategy**: Config-driven via `issues.next_issue.strategy` (default `confidence_first`). See [`NextIssueConfig`](#nextissueconfig) for available presets and custom sort keys.
+
+**Sort key (default, `confidence_first`)**: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int` — byte-identical to the legacy hardcoded tuple.
+
+**Configuration**: Switch strategies via `.ll/ll-config.json`:
+```json
+{
+  "issues": {
+    "next_issue": { "strategy": "priority_first" }
+  }
+}
+```
 
 **Examples:**
 ```bash
@@ -3002,7 +3040,18 @@ Print all active issues sorted by outcome confidence, readiness score, and prior
 
 **Exit codes:** 0 when at least one issue found; 1 when no active issues exist.
 
-**Sort key**: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int`
+**Strategy**: Config-driven via `issues.next_issue.strategy` (default `confidence_first`). See [`NextIssueConfig`](#nextissueconfig) for available presets and custom sort keys.
+
+**Sort key (default, `confidence_first`)**: `-(outcome_confidence or -1)`, `-(confidence_score or -1)`, `priority_int` — byte-identical to the legacy hardcoded tuple.
+
+**Configuration**: Switch strategies via `.ll/ll-config.json`:
+```json
+{
+  "issues": {
+    "next_issue": { "strategy": "priority_first" }
+  }
+}
+```
 
 **Examples:**
 ```bash

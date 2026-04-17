@@ -143,6 +143,56 @@ class TestNextIssuesRankedOrder:
         assert lines == ["FEAT-001", "FEAT-002"]
 
 
+class TestNextIssuesStrategy:
+    """Regression tests for config-driven selection strategy on the ranked list command."""
+
+    def test_priority_first_strategy_overrides_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Under priority_first the ranked output orders by priority_int first, so the
+        higher-priority issue appears before a lower-priority but higher-confidence one."""
+        config_with_strategy = {
+            **sample_config,
+            "issues": {
+                **sample_config["issues"],
+                "next_issue": {"strategy": "priority_first"},
+            },
+        }
+        _write_config(temp_project_dir, config_with_strategy)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            features_dir,
+            "P1-FEAT-001-high-pri.md",
+            "FEAT-001: High priority",
+            outcome_confidence=40,
+            confidence_score=40,
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-002-high-conf.md",
+            "FEAT-002: High confidence",
+            outcome_confidence=95,
+            confidence_score=95,
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issues", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        lines = out.strip().splitlines()
+        assert result == 0
+        assert lines[0] == "FEAT-001"
+        assert lines[1] == "FEAT-002"
+
+
 class TestNextIssuesCountArg:
     """Tests for the optional count positional argument."""
 

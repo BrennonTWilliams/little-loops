@@ -2077,7 +2077,7 @@ states:
 | `ll_auto` | `ll-auto` | Run ll-auto sequentially. Override `action` to add `--priority`, `--quiet`, etc. |
 | `ll_issues_list` | `ll-issues list --json` | List all active issues as JSON. |
 | `ll_issues_next` | `ll-issues next-action` | Get next recommended action. Override `action` to add `--skip "..."`. |
-| `ll_issues_next_issue` | `ll-issues next-issue` | Get next-priority issue file path. |
+| `ll_issues_next_issue` | `ll-issues next-issue` | Get next-priority issue file path. Selection order is config-driven via `issues.next_issue.strategy` (default: `confidence_first`). |
 | `ll_history_summary` | `ll-history summary` | Print completed issue history summary. Override `action` to add `2>/dev/null` fallback. |
 | `ll_check_links` | `ll-check-links 2>&1` | Check markdown docs for broken links. |
 | `ll_messages` | `ll-messages --stdout` | Extract user messages from session logs. Override `action` to add `--skill`, `--examples-format`, etc. |

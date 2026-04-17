@@ -912,3 +912,104 @@ class TestSearchCombinedFilters:
         assert result == 0
         assert "FEAT-011" in captured.out
         assert "BUG-002" not in captured.out  # right query but wrong type
+
+
+# ---------------------------------------------------------------------------
+# TestBuildSortKey: unit tests for the sort-key resolver
+# ---------------------------------------------------------------------------
+
+
+def _issue(
+    priority: str = "P2",
+    *,
+    issue_id: str = "FEAT-001",
+    outcome_confidence: int | None = None,
+    confidence_score: int | None = None,
+):
+    """Construct a minimal IssueInfo for sort-key testing."""
+    from little_loops.issue_parser import IssueInfo
+
+    return IssueInfo(
+        path=Path(f"/tmp/{issue_id}.md"),
+        issue_type="features",
+        priority=priority,
+        issue_id=issue_id,
+        title=issue_id,
+        outcome_confidence=outcome_confidence,
+        confidence_score=confidence_score,
+    )
+
+
+class TestBuildSortKey:
+    """Tests for build_sort_key resolver (strategy presets, custom keys, None handling)."""
+
+    def test_confidence_first_matches_legacy_lambda(self) -> None:
+        """confidence_first preset is byte-identical to the previous hardcoded lambda."""
+        from little_loops.cli.issues.search import build_sort_key
+        from little_loops.config.features import NextIssueConfig
+
+        key = build_sort_key(NextIssueConfig(strategy="confidence_first"))
+        issue = _issue("P2", outcome_confidence=80, confidence_score=70)
+        # legacy lambda: (-(oc or -1), -(cs or -1), priority_int) → values > 0 negated
+        # new sentinel: desc → -value else 1; for positive values this matches -(value or -1)
+        assert key(issue) == (-80, -70, 2)
+
+    def test_priority_first_orders_by_priority(self) -> None:
+        """priority_first preset produces (priority_int, -oc, -cs)."""
+        from little_loops.cli.issues.search import build_sort_key
+        from little_loops.config.features import NextIssueConfig
+
+        key = build_sort_key(NextIssueConfig(strategy="priority_first"))
+        high_pri = _issue("P1", outcome_confidence=40, confidence_score=40)
+        low_pri = _issue("P3", outcome_confidence=99, confidence_score=99)
+        assert sorted([low_pri, high_pri], key=key)[0] is high_pri
+        assert key(high_pri) == (1, -40, -40)
+
+    def test_custom_sort_keys_override_strategy(self) -> None:
+        """Explicit sort_keys take precedence over strategy preset."""
+        from little_loops.cli.issues.search import build_sort_key
+        from little_loops.config.features import NextIssueConfig, NextIssueSortKey
+
+        config = NextIssueConfig(
+            strategy="confidence_first",  # should be ignored
+            sort_keys=[NextIssueSortKey(key="priority", direction="asc")],
+        )
+        key = build_sort_key(config)
+        issue = _issue("P2", outcome_confidence=80, confidence_score=70)
+        assert key(issue) == (2,)
+
+    def test_none_with_desc_uses_sentinel_1(self) -> None:
+        """None value with direction=desc → sentinel component 1 (sorts after negatives)."""
+        from little_loops.cli.issues.search import build_sort_key
+        from little_loops.config.features import NextIssueConfig
+
+        key = build_sort_key(NextIssueConfig(strategy="confidence_first"))
+        scored = _issue("P2", outcome_confidence=50, confidence_score=50)
+        unscored = _issue("P2", outcome_confidence=None, confidence_score=None)
+        # scored tuple: (-50, -50, 2); unscored tuple: (1, 1, 2) → scored sorts first
+        assert key(unscored)[0] == 1
+        assert sorted([unscored, scored], key=key)[0] is scored
+
+    def test_none_with_asc_uses_sentinel_9999(self) -> None:
+        """None value with direction=asc → sentinel component 9999 (sorts last)."""
+        from little_loops.cli.issues.search import build_sort_key
+        from little_loops.config.features import NextIssueConfig, NextIssueSortKey
+
+        config = NextIssueConfig(
+            sort_keys=[NextIssueSortKey(key="outcome_confidence", direction="asc")],
+        )
+        key = build_sort_key(config)
+        unscored = _issue("P2", outcome_confidence=None)
+        assert key(unscored) == (9999,)
+
+    def test_unknown_strategy_raises(self) -> None:
+        """Direct instantiation with an unknown strategy raises at resolver time.
+
+        (from_dict normally guards this; this test covers the bypass path.)
+        """
+        from little_loops.cli.issues.search import build_sort_key
+        from little_loops.config.features import NextIssueConfig
+
+        config = NextIssueConfig(strategy="bogus")  # bypasses from_dict validation
+        with pytest.raises(ValueError, match="Unknown strategy"):
+            build_sort_key(config)

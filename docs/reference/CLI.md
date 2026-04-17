@@ -523,7 +523,7 @@ Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
 
 Print the issue ranked highest by outcome confidence and readiness score. Designed for FSM loop integration — use this to pick the best issue to work on next based on implementation readiness rather than raw priority.
 
-**Sort order:** `outcome_confidence` (desc), `confidence_score` (desc), `priority` (asc). Issues without scores are ranked below all scored issues.
+**Sort order:** Config-driven via `issues.next_issue.strategy` (default: `confidence_first` — `outcome_confidence` desc, `confidence_score` desc, `priority` asc). Issues without scores are ranked below all scored issues.
 
 **Exit codes:** 0 = issue found, 1 = no active issues.
 
@@ -538,7 +538,7 @@ Print the issue ranked highest by outcome confidence and readiness score. Design
 
 Print all active issues in ranked order by outcome confidence and readiness score. Designed for FSM loop integration — use this to get a ranked list of all issues, not just the top one.
 
-**Sort order:** `outcome_confidence` (desc), `confidence_score` (desc), `priority` (asc). Issues without scores are ranked below all scored issues.
+**Sort order:** Config-driven via `issues.next_issue.strategy` (default: `confidence_first` — `outcome_confidence` desc, `confidence_score` desc, `priority` asc). Issues without scores are ranked below all scored issues.
 
 **Exit codes:** 0 = at least one issue found, 1 = no active issues.
 

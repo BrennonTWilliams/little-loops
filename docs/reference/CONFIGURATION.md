@@ -37,7 +37,8 @@ For interactive editing, use `/ll:configure`.
     "duplicate_detection": {
       "exact_threshold": 0.8,
       "similar_threshold": 0.5
-    }
+    },
+    "next_issue": { "strategy": "confidence_first" }
   },
 
   "automation": {
@@ -252,6 +253,8 @@ Issue management settings:
 | `capture_template` | `"full"` | Default template style for captured issues (`"full"` or `"minimal"`) |
 | `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.5-1.0) |
 | `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.1-0.9) |
+| `next_issue.strategy` | `"confidence_first"` | Selection order for `ll-issues next-issue` / `next-issues`. Named preset: `confidence_first` or `priority_first`. See [`issues.next_issue`](#issuesnext_issue). |
+| `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
 
 **Custom Categories**: The three core categories (bugs, features, enhancements) are always included automatically. You can add custom categories and they will be merged with the required ones:
 
@@ -527,6 +530,44 @@ Dependency mapping threshold configuration for overlap detection and conflict sc
 | `exclude_common_files` | See below | Infrastructure files excluded from overlap detection |
 
 Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"]`
+
+### `issues.next_issue`
+
+Selection behavior for `ll-issues next-issue` / `next-issues`. Picks which issue (or ranked list) the commands return. The default `confidence_first` preset is byte-identical to the legacy hardcoded ordering, so existing projects see no change until they opt in.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `strategy` | `"confidence_first"` | Named preset. `confidence_first`: sort by `(-outcome_confidence, -confidence_score, priority_int)`. `priority_first`: sort by `(priority_int, -outcome_confidence, -confidence_score)`. |
+| `sort_keys` | `null` | Optional custom sort. A list of `{key, direction}` entries that overrides `strategy`. Valid keys: `priority`, `outcome_confidence`, `confidence_score`, `effort`, `impact`, `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface`. Valid directions: `asc`, `desc`. |
+
+None-handling: missing values use a per-field sentinel — `direction: "desc"` puts `None` after all scored issues; `direction: "asc"` puts `None` last.
+
+Unknown `strategy` or `sort_keys[*].key` values raise `ValueError` at config load time rather than falling back to defaults.
+
+**Example** (prefer raw priority order for a deadline-driven sprint):
+
+```json
+{
+  "issues": {
+    "next_issue": { "strategy": "priority_first" }
+  }
+}
+```
+
+**Example** (custom ordering — complexity first, then priority):
+
+```json
+{
+  "issues": {
+    "next_issue": {
+      "sort_keys": [
+        { "key": "score_complexity", "direction": "asc" },
+        { "key": "priority", "direction": "asc" }
+      ]
+    }
+  }
+}
+```
 
 ### `cli`
 

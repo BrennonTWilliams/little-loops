@@ -197,6 +197,58 @@ class TestNextIssueSorting:
         assert "FEAT-002" in out
 
 
+class TestNextIssueStrategy:
+    """Regression tests for config-driven selection strategy."""
+
+    def test_priority_first_strategy_overrides_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Under priority_first, a lower-priority-but-higher-confidence issue loses to a
+        higher-priority one. Under the default confidence_first it would win — this test
+        proves the strategy knob is wired end-to-end."""
+        config_with_strategy = {
+            **sample_config,
+            "issues": {
+                **sample_config["issues"],
+                "next_issue": {"strategy": "priority_first"},
+            },
+        }
+        _write_config(temp_project_dir, config_with_strategy)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        # FEAT-001 has higher priority (P1) but lower confidence scores.
+        # FEAT-002 has lower priority (P3) but higher confidence scores.
+        # confidence_first → FEAT-002; priority_first → FEAT-001.
+        _make_issue(
+            features_dir,
+            "P1-FEAT-001-high-pri.md",
+            "FEAT-001: High priority",
+            outcome_confidence=40,
+            confidence_score=40,
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-002-high-conf.md",
+            "FEAT-002: High confidence",
+            outcome_confidence=95,
+            confidence_score=95,
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "FEAT-001" in out
+
+
 class TestNextIssueOutputFlags:
     """Tests for --json and --path output flags."""
 
