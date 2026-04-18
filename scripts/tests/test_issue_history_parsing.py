@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,7 +14,10 @@ from little_loops.issue_history import (
     scan_active_issues,
     scan_completed_issues,
 )
-from little_loops.issue_history.parsing import _parse_completion_date
+from little_loops.issue_history.parsing import (
+    _parse_completion_date,
+    _parse_discovered_date,
+)
 
 
 class TestParseCompletedIssue:
@@ -90,8 +93,8 @@ discovered_by: null
 
         assert issue.discovered_by is None
 
-    def test_parse_ignores_captured_at(self, tmp_path: Path) -> None:
-        """Test parse_completed_issue ignores captured_at and still reads discovered_by."""
+    def test_parse_captures_captured_at(self, tmp_path: Path) -> None:
+        """parse_completed_issue populates issue.captured_at from frontmatter."""
         issue_file = tmp_path / "P1-BUG-001-test.md"
         issue_file.write_text(
             "---\ncaptured_at: 2026-04-18T10:30:00Z\ndiscovered_by: capture-issue\n---\n\n# BUG-001: Test\n"
@@ -100,10 +103,73 @@ discovered_by: null
         issue = parse_completed_issue(issue_file)
 
         assert issue.discovered_by == "capture-issue"
+        assert issue.captured_at == datetime(2026, 4, 18, 10, 30, 0)
+        assert issue.discovered_date == date(2026, 4, 18)
+
+    def test_parse_captures_completed_at(self, tmp_path: Path) -> None:
+        """parse_completed_issue populates issue.completed_at from frontmatter."""
+        issue_file = tmp_path / "P1-BUG-002-test.md"
+        issue_file.write_text(
+            "---\ncompleted_at: 2026-04-18T15:02:41Z\n---\n\n# BUG-002: Test\n"
+        )
+
+        issue = parse_completed_issue(issue_file)
+
+        assert issue.completed_at == datetime(2026, 4, 18, 15, 2, 41)
+        assert issue.completed_date == date(2026, 4, 18)
+
+
+class TestParseDiscoveredDate:
+    """Tests for _parse_discovered_date: captured_at preference, fallbacks, malformed."""
+
+    def test_prefers_captured_at(self) -> None:
+        """captured_at in frontmatter is preferred over discovered_date."""
+        fm = {
+            "captured_at": "2026-01-01T09:00:00Z",
+            "discovered_date": "2026-02-01",
+        }
+        assert _parse_discovered_date(fm) == date(2026, 1, 1)
+
+    def test_falls_back_to_discovered_date(self) -> None:
+        """discovered_date is used when captured_at is absent."""
+        fm = {"discovered_date": "2026-02-01"}
+        assert _parse_discovered_date(fm) == date(2026, 2, 1)
+
+    def test_falls_back_on_invalid_captured_at(self) -> None:
+        """Malformed captured_at triggers discovered_date fallback."""
+        fm = {
+            "captured_at": "not-a-date",
+            "discovered_date": "2026-02-01",
+        }
+        assert _parse_discovered_date(fm) == date(2026, 2, 1)
+
+    def test_returns_none_when_both_absent(self) -> None:
+        """Returns None when neither field is present."""
+        assert _parse_discovered_date({}) is None
+
+    def test_returns_none_when_both_malformed(self) -> None:
+        """Returns None when captured_at and discovered_date are both malformed."""
+        fm = {"captured_at": "not-a-date", "discovered_date": "also-bad"}
+        assert _parse_discovered_date(fm) is None
+
+    def test_captured_at_non_string_is_ignored(self) -> None:
+        """Non-string captured_at is ignored; falls back to discovered_date."""
+        fm = {"captured_at": 12345, "discovered_date": "2026-02-01"}
+        assert _parse_discovered_date(fm) == date(2026, 2, 1)
 
 
 class TestParseCompletionDate:
     """Tests for _parse_completion_date: field label variants and git-log fallback."""
+
+    def test_prefers_completed_at_frontmatter(self, tmp_path: Path) -> None:
+        """completed_at frontmatter is preferred over Resolution section text."""
+        f = tmp_path / "P1-BUG-001-test.md"
+        f.write_text(
+            "---\ncompleted_at: 2026-03-17T15:02:41Z\n---\n\n"
+            "## Resolution\n\n- **Completed**: 2020-01-01\n"
+        )
+        result = _parse_completion_date(f.read_text(), f)
+        assert result == date(2026, 3, 17)
 
     def test_fixed_label(self, tmp_path: Path) -> None:
         """**Fixed**: label is parsed correctly."""

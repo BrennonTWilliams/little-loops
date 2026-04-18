@@ -8,7 +8,7 @@ clustering, test gap analysis, and technical debt metrics.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,8 @@ class CompletedIssue:
     discovered_by: str | None = None
     discovered_date: date | None = None
     completed_date: date | None = None
+    captured_at: datetime | None = None
+    completed_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -35,6 +37,8 @@ class CompletedIssue:
             "discovered_by": self.discovered_by,
             "discovered_date": (self.discovered_date.isoformat() if self.discovered_date else None),
             "completed_date": (self.completed_date.isoformat() if self.completed_date else None),
+            "captured_at": (self.captured_at.isoformat() if self.captured_at else None),
+            "completed_at": (self.completed_at.isoformat() if self.completed_at else None),
         }
 
 

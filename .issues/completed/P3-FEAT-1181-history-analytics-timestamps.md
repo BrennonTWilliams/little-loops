@@ -2,8 +2,9 @@
 id: FEAT-1181
 type: FEAT
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-04-18
+completed_at: 2026-04-18T22:34:16Z
 discovered_by: issue-size-review
 parent: FEAT-1163
 size: Very Large
@@ -194,7 +195,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 3. **`test_issue_history_parsing.py:93-102`** — rename and add assertion for `test_parse_ignores_captured_at` in `TestParseCompletedIssue` (semantically stale; rename and add positive `issue.captured_at` assertion, matching the rewrite in `test_issue_parser.py:521-541`).
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-04-18
+- **Changes**:
+  - `scripts/little_loops/issue_history/parsing.py`: `_parse_discovered_date` prefers `captured_at` (coerced to date); `_parse_completion_date` prefers `completed_at` and now parses frontmatter from `content` when `fm` is not passed, so external callers (`cli/issues/list_cmd.py`, `cli/issues/search.py`) benefit transparently. Added `_parse_iso_datetime`, `_parse_captured_at`, `_parse_completed_at` helpers.
+  - `scripts/little_loops/issue_history/models.py`: `CompletedIssue` gained `captured_at: datetime | None` and `completed_at: datetime | None` fields plus `to_dict()` serialization.
+  - `scripts/tests/test_issue_history_parsing.py`: added `TestParseDiscoveredDate` (6 cases); added `test_prefers_completed_at_frontmatter`; renamed `test_parse_ignores_captured_at` → `test_parse_captures_captured_at` with positive assertions; added `test_parse_captures_completed_at`.
+  - `scripts/tests/test_issue_history_summary.py`: `TestCompletedIssue.test_to_dict` / `test_to_dict_none_values` assert new keys.
+  - `docs/reference/API.md`: `CompletedIssue` dataclass block lists the new fields.
+  - `docs/reference/CLI.md`: `ll-history` section notes `captured_at` / `completed_at` preference.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-18T22:34:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7af998df-c21c-4688-a42d-351d3cbb9b5b.jsonl`
+- `/ll:ready-issue` - 2026-04-18T22:29:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/693f620a-9592-40ea-9092-1faa4ef5a9a4.jsonl`
 - `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e58df0f-c3c0-4e98-b115-f2aecae2688f.jsonl`
 - `/ll:refine-issue` - 2026-04-18T22:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2fd4193-ac00-45c4-9296-d01de4f293d7.jsonl`
 - `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15c98b83-3ad9-479c-a58c-76eec31c24c2.jsonl`

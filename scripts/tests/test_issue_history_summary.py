@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from little_loops.issue_history import (
@@ -33,6 +33,8 @@ class TestCompletedIssue:
             issue_id="BUG-001",
             discovered_by="scan-codebase",
             completed_date=date(2026, 1, 15),
+            captured_at=datetime(2026, 1, 14, 9, 0, 0),
+            completed_at=datetime(2026, 1, 15, 17, 30, 45),
         )
         result = issue.to_dict()
 
@@ -42,6 +44,8 @@ class TestCompletedIssue:
         assert result["issue_id"] == "BUG-001"
         assert result["discovered_by"] == "scan-codebase"
         assert result["completed_date"] == "2026-01-15"
+        assert result["captured_at"] == "2026-01-14T09:00:00"
+        assert result["completed_at"] == "2026-01-15T17:30:45"
 
     def test_to_dict_none_values(self) -> None:
         """Test to_dict with None values."""
@@ -55,6 +59,8 @@ class TestCompletedIssue:
 
         assert result["discovered_by"] is None
         assert result["completed_date"] is None
+        assert result["captured_at"] is None
+        assert result["completed_at"] is None
 
 
 class TestHistorySummary:

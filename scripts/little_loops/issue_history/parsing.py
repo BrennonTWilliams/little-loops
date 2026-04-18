@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -53,13 +53,15 @@ def parse_completed_issue(
         issue_type = type_match.group(1)
         issue_id = f"{type_match.group(1)}-{type_match.group(2)}"
 
-    # Parse frontmatter once for discovered_by and discovered_date
+    # Parse frontmatter once for discovered_by, discovered_date, captured_at
     fm = parse_frontmatter(content)
     discovered_by = _parse_discovered_by(fm)
+    captured_at = _parse_captured_at(fm)
     discovered_date = _parse_discovered_date(fm)
 
     # Parse completion date from Resolution section or file mtime
-    completed_date = _parse_completion_date(content, file_path, batch_dates=batch_dates)
+    completed_at = _parse_completed_at(fm)
+    completed_date = _parse_completion_date(content, file_path, batch_dates=batch_dates, fm=fm)
 
     return CompletedIssue(
         path=file_path,
@@ -69,7 +71,33 @@ def parse_completed_issue(
         discovered_by=discovered_by,
         discovered_date=discovered_date,
         completed_date=completed_date,
+        captured_at=captured_at,
+        completed_at=completed_at,
     )
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    """Parse an ISO 8601 string into a naive datetime, or return None.
+
+    Strips a trailing ``Z`` for Python <3.11 compatibility (same convention as
+    the sibling ``cli/issues/search.py`` implementation).
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.rstrip("Z"))
+    except ValueError:
+        return None
+
+
+def _parse_captured_at(fm: dict[str, Any]) -> datetime | None:
+    """Extract captured_at datetime from parsed frontmatter."""
+    return _parse_iso_datetime(fm.get("captured_at"))
+
+
+def _parse_completed_at(fm: dict[str, Any]) -> datetime | None:
+    """Extract completed_at datetime from parsed frontmatter."""
+    return _parse_iso_datetime(fm.get("completed_at"))
 
 
 def _parse_discovered_by(fm: dict[str, Any]) -> str | None:
@@ -129,9 +157,17 @@ def _batch_completion_dates(completed_dir: Path) -> dict[str, date]:
 
 
 def _parse_completion_date(
-    content: str, file_path: Path, *, batch_dates: dict[str, date] | None = None
+    content: str,
+    file_path: Path,
+    *,
+    batch_dates: dict[str, date] | None = None,
+    fm: dict[str, Any] | None = None,
 ) -> date | None:
-    """Extract completion date from Resolution section or file mtime.
+    """Extract completion date from frontmatter, Resolution section, or git log.
+
+    Checks ``completed_at`` frontmatter first (coerced to ``date`` via ``.date()``
+    to preserve the existing return type); then the Resolution section regex;
+    then falls back to batch_dates or a per-file git log call.
 
     Args:
         content: File content
@@ -139,10 +175,20 @@ def _parse_completion_date(
         batch_dates: Optional pre-fetched mapping of filename → add-date from a batch
             git log call; when provided, skips the per-file subprocess call if the
             file is found in the mapping.
+        fm: Optional pre-parsed frontmatter dict. When absent, frontmatter is
+            parsed from ``content`` so external callers with no ``fm`` benefit
+            from the ``completed_at`` check transparently.
 
     Returns:
         Completion date or None
     """
+    # Try completed_at frontmatter first (sub-day resolution source of truth)
+    if fm is None:
+        fm = parse_frontmatter(content)
+    completed_at = _parse_completed_at(fm)
+    if completed_at is not None:
+        return completed_at.date()
+
     # Try Resolution section: **Completed/Fixed/Closed/Date**: YYYY-MM-DD
     match = re.search(r"\*\*(?:Completed|Fixed|Closed|Date)\*\*:\s*(\d{4}-\d{2}-\d{2})", content)
     if match:
@@ -289,14 +335,24 @@ def scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]:
 
 
 def _parse_discovered_date(fm: dict[str, Any]) -> date | None:
-    """Extract discovered_date from parsed frontmatter.
+    """Extract discovered date from parsed frontmatter.
+
+    Prefers ``captured_at`` (ISO datetime, sub-day resolution) when present,
+    coercing via ``.date()`` to preserve the legacy ``date | None`` return type
+    so callers in ``summary.py`` / ``analysis.py`` / ``cli/history.py`` don't
+    need ``.date()`` adjustments. Falls back to ``discovered_date`` on absence
+    or parse failure.
 
     Args:
         fm: Parsed frontmatter dictionary
 
     Returns:
-        discovered_date value or None
+        Discovered date or None
     """
+    captured = _parse_captured_at(fm)
+    if captured is not None:
+        return captured.date()
+
     value = fm.get("discovered_date")
     if not isinstance(value, str):
         return None

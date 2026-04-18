@@ -712,6 +712,8 @@ ll-deps apply FEAT-001 blocked-by FEAT-002   # Manual explicit pair (inverse)
 
 Display summary statistics and analysis for completed issues.
 
+When present in issue frontmatter, `captured_at` and `completed_at` are preferred over the legacy `discovered_date` field and Resolution body regex / git-log fallbacks; the JSON serialization of `CompletedIssue` includes both fields at sub-day ISO 8601 resolution.
+
 **Subcommands:**
 
 #### `ll-history summary`

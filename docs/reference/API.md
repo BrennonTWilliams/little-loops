@@ -1566,6 +1566,8 @@ class CompletedIssue:
     discovered_by: str | None = None
     discovered_date: date | None = None
     completed_date: date | None = None
+    captured_at: datetime | None = None   # sub-day precision from `captured_at` frontmatter
+    completed_at: datetime | None = None  # sub-day precision from `completed_at` frontmatter
 ```
 
 #### HistorySummary
