@@ -24,7 +24,7 @@
   },
   "context_monitor": {
     "enabled": true,
-    "auto_handoff_threshold": 40
+    "auto_handoff_threshold": 50
   },
   "scratch_pad": {
     "enabled": false,

@@ -7,7 +7,6 @@ allowed-tools:
   - Glob
   - Task
   - Bash
-  - Skill
   - TodoWrite
 arguments:
   - name: file
