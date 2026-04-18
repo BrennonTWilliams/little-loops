@@ -1596,6 +1596,125 @@ class TestDisplayProgressEvents:
         assert long_line in out
         assert long_line + "..." not in out
 
+    def test_verbose_action_start_prompt_not_clipped(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-1154: verbose action_start prompt lines render in full with no '...' trailer."""
+        from unittest.mock import patch as _patch
+
+        long_line = "p" * 200
+        events = [
+            {"event": "action_start", "action": long_line, "is_prompt": True},
+        ]
+        executor = MockExecutor(events)
+        with _patch("little_loops.cli.loop._helpers.terminal_width", return_value=80):
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert long_line in out
+        assert long_line + "..." not in out
+
+    def test_verbose_action_start_shell_not_clipped(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-1154: verbose action_start shell command renders in full with no '...' trailer."""
+        from unittest.mock import patch as _patch
+
+        long_cmd = "echo " + "y" * 200
+        events = [
+            {"event": "action_start", "action": long_cmd, "is_prompt": False},
+        ]
+        executor = MockExecutor(events)
+        with _patch("little_loops.cli.loop._helpers.terminal_width", return_value=80):
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert long_cmd in out
+        assert long_cmd + "..." not in out
+
+    def test_verbose_evaluate_reason_not_clipped(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-1154: verbose evaluate reason renders in full (no 300-char cap)."""
+        from unittest.mock import patch as _patch
+
+        long_reason = "r" * 500
+        events = [
+            {"event": "evaluate", "verdict": "yes", "confidence": 0.9, "reason": long_reason},
+        ]
+        executor = MockExecutor(events)
+        with _patch("little_loops.cli.loop._helpers.terminal_width", return_value=80):
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert long_reason in out
+        assert long_reason[:300] + "..." not in out
+
+    def test_verbose_evaluate_reason_multiline_preserved(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-1154: verbose evaluate reason with embedded newlines renders as multiple rows."""
+        reason = "first line of reason\nsecond line of reason\nthird line of reason"
+        events = [
+            {"event": "evaluate", "verdict": "yes", "confidence": 0.9, "reason": reason},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        lines_with_reason = [
+            ln for ln in out.splitlines() if "line of reason" in ln
+        ]
+        assert len(lines_with_reason) == 3, f"Expected 3 reason rows, got: {lines_with_reason}"
+
+    def test_verbose_evaluate_raw_preview_not_clipped(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-1154: verbose evaluate raw_preview renders in full (no 200-char cap)."""
+        long_preview = "z" * 400
+        events = [
+            {
+                "event": "evaluate",
+                "verdict": "error",
+                "error": "parse failure",
+                "raw_preview": long_preview,
+            },
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert long_preview in out
+
+    def test_nonverbose_action_start_still_clips(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-1154: non-verbose action_start prompt retains per-line clip and 5-line cap."""
+        from unittest.mock import patch as _patch
+
+        long_line = "p" * 200
+        many_lines = "\n".join(f"line {i}" for i in range(8))
+        events = [
+            {"event": "action_start", "action": long_line, "is_prompt": True},
+            {"event": "action_start", "action": many_lines, "is_prompt": True},
+        ]
+        executor = MockExecutor(events)
+        with _patch("little_loops.cli.loop._helpers.terminal_width", return_value=80):
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+        out = capsys.readouterr().out
+        assert long_line not in out
+        assert "..." in out
+        assert "3 more lines" in out
+
+    def test_nonverbose_evaluate_reason_still_caps_at_300(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-1154: non-verbose evaluate reason retains 300-char cap with '...' trailer."""
+        long_reason = "r" * 500
+        events = [
+            {"event": "evaluate", "verdict": "yes", "confidence": 0.9, "reason": long_reason},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+        out = capsys.readouterr().out
+        assert long_reason not in out
+        assert ("r" * 300) + "..." in out
+
     def test_nonverbose_shell_output_shows_preview(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

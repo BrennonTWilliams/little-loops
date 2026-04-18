@@ -406,14 +406,22 @@ def run_foreground(
                     )
                     show_count = line_count if verbose else min(5, line_count)
                     for line in lines[:show_count]:
-                        display = line[:max_line] + "..." if len(line) > max_line else line
-                        print(f"{indent}       {display}", flush=True)
+                        if verbose:
+                            print(f"{indent}       {line}", flush=True)
+                        else:
+                            display = line[:max_line] + "..." if len(line) > max_line else line
+                            print(f"{indent}       {display}", flush=True)
                     if line_count > show_count:
                         print(
                             f"{indent}       ... ({line_count - show_count} more lines)", flush=True
                         )
                 else:
-                    action_display = action[:max_line] + "..." if len(action) > max_line else action
+                    if verbose:
+                        action_display = action
+                    else:
+                        action_display = (
+                            action[:max_line] + "..." if len(action) > max_line else action
+                        )
                     print(f"{indent} -> {colorize(action_display, '2')}", flush=True)
 
         elif event_type == "action_output":
@@ -501,11 +509,22 @@ def run_foreground(
                 # Show raw_preview for error verdicts to aid diagnosis
                 raw_preview = event.get("raw_preview", "")
                 if raw_preview and verdict == "error":
-                    print(f"{indent}         raw: {raw_preview[:200]}", flush=True)
+                    if verbose:
+                        sub_lines = raw_preview.splitlines() or [""]
+                        first, rest = sub_lines[0], sub_lines[1:]
+                        print(f"{indent}         raw: {first}", flush=True)
+                        for sub in rest:
+                            print(f"{indent}              {sub}", flush=True)
+                    else:
+                        print(f"{indent}         raw: {raw_preview[:200]}", flush=True)
                 # Show reason on a second line if present (and not already shown as error)
                 if reason and not (error and verdict == "error"):
-                    reason_display = reason[:300] + "..." if len(reason) > 300 else reason
-                    print(f"{indent}         {reason_display}", flush=True)
+                    if verbose:
+                        for sub in reason.splitlines() or [""]:
+                            print(f"{indent}         {sub}", flush=True)
+                    else:
+                        reason_display = reason[:300] + "..." if len(reason) > 300 else reason
+                        print(f"{indent}         {reason_display}", flush=True)
 
         elif event_type == "route":
             if not quiet:
