@@ -404,6 +404,20 @@ Append a session log entry to the issue file before moving it. Find the current 
 
 See [templates.md](templates.md) for the Session Log entry format.
 
+### 1.6. Inject `completed_at` Timestamp
+
+Before moving the issue file, add a `completed_at` field to its YAML frontmatter with the current ISO 8601 UTC timestamp. Use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format (Z-suffixed, matches the `captured_at` precedent and the Python helper `_completed_at_now()`). Use the Edit tool to insert the line into the issue's frontmatter block (after `captured_at` if present, otherwise alongside the other timestamp fields):
+
+```yaml
+---
+captured_at: 2026-03-17T14:32:07Z
+completed_at: 2026-03-17T15:02:41Z  # <-- new line, value from `date -u +"%Y-%m-%dT%H:%M:%SZ"`
+discovered_date: 2026-03-17T00:00:00Z
+---
+```
+
+This parallels the Python-driven completion paths (`ll-auto`, `ll-parallel`) that inject `completed_at` via `update_frontmatter`; the interactive path must match so all completion paths produce consistent frontmatter.
+
 ### 2. Move to Completed
 
 **CRITICAL**: Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` - this is a SIBLING directory to bugs/features/enhancements, NOT a subdirectory within them.

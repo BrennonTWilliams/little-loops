@@ -873,6 +873,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | Field | Type | Default | Purpose |
 |-------|------|---------|---------|
 | `captured_at` | ISO 8601 UTC datetime | — | Exact timestamp when the issue was captured (set by `capture-issue`) |
+| `completed_at` | ISO 8601 UTC datetime | — | Set when issue is moved to `completed/` (by `manage-issue` skill, `ll-auto`, or `ll-parallel`) |
 | `discovered_date` | ISO 8601 datetime | — | When the issue was identified |
 | `discovered_by` | string | — | Tool or person that created the issue |
 | `confidence_score` | int (0–100) | absent | Readiness score from `/ll:confidence-check` |
@@ -893,6 +894,7 @@ When `tdd_mode: true` is enabled in `ll-config.json`, `manage-issue` normally wr
 ```yaml
 ---
 captured_at: 2026-03-17T14:32:07Z
+completed_at: 2026-03-17T15:02:41Z
 discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
 testable: false
