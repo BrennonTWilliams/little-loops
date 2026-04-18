@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: capture-issue
-depends_on: [FEAT-1074, FEAT-1075, FEAT-1076, ENH-1167]
+depends_on: [FEAT-1074, FEAT-1075, FEAT-1076]
 ---
 
 # ENH-1073: Extend Orchestrator Loops with Optional Parallel Fan-Out
@@ -53,9 +53,19 @@ states:
       on_partial: collect_children
       on_no: done
 
+  snapshot_ids:
+    action: shell
+    shell: "ll-issues list --ids-only > ${tmp}/pre_gen_ids.txt && echo done"
+    on_yes: fan_out
+
+  fan_out:
+    # (as above — parallel state)
+
   collect_children:
-    # shell: diff issue IDs pre/post, gather children from all workers
-    # exit 0 if next generation exists, 1 if done
+    action: shell
+    shell: |
+      NEW_IDS=$(comm -13 <(sort ${tmp}/pre_gen_ids.txt) <(ll-issues list --ids-only | sort))
+      if [ -n "$NEW_IDS" ]; then echo "$NEW_IDS"; exit 0; else exit 1; fi
     on_yes: fan_out    # next generation
     on_no: done
 
@@ -64,6 +74,22 @@ states:
 ```
 
 Wall-clock time becomes: ceil(N / max_workers) × average_item_duration instead of N × duration.
+
+### `collect_children` semantics for parallel worktree mode
+
+The `collect_children` state is how each orchestrator loop discovers newly-written issues across a wave of workers. Its design is non-obvious in parallel worktree mode because workers write issue files to per-worker branches that must be merged back before `collect_children` runs. Details:
+
+**Pre-fan-out snapshot (`snapshot_ids` state):** Before entering `fan_out`, an orchestrator captures the current set of issue IDs to a temp file. This is the only reliable way to later identify "children written in this generation" vs. pre-existing issues.
+
+**Merge-back guarantee (from FEAT-1075):** `ParallelRunner` guarantees that all successful worker branches are merged back to the parent branch before `run()` returns. After `fan_out` completes, children from successful workers are visible on the parent branch via normal filesystem reads (`ll-issues list`). Children from failed workers (in `fail_mode: collect`) are **excluded** — their branches are not merged. This is correct: failed items are surfaced in `ParallelResult.failed` and reported separately; including their partial children in the next generation would propagate broken state.
+
+**Diff-based discovery:** `collect_children` diffs the pre-snapshot against current issue IDs (`comm -13`) to identify new IDs. Exit 0 with new IDs on stdout → next generation exists → route `on_yes: fan_out`. Exit 1 → no children → route `on_no: done`.
+
+**Why not capture-based discovery?** An alternative is to have each worker emit its child IDs as captures (`captured[state].output`), then read `${captured.fan_out.results}` in `collect_children`. This avoids the snapshot step but requires every sub-loop (`refine-to-ready-issue`, `fix-quality-and-tests`, etc.) to be modified to emit child IDs consistently. The filesystem-diff approach is robust to sub-loop changes and lines up naturally with how sequential mode already discovers children (filesystem read after `detect_children`). Diff is the right default; capture-based may be revisited per-loop if needed.
+
+**Recovery semantics:** `collect_children`'s guarantees depend on merge-back behavior. If merge-back partially fails (e.g., a worker's branch conflicts with main), that worker is treated as failed regardless of its sub-loop verdict — its children are dropped. This matches the success metric "no regressions in child issue discovery": correct children only, never partial.
+
+**Integration with per-loop differences:** Each loop's `collect_children` shell command is identical in structure (diff-based) but may differ in the filter applied to the ID list — e.g., `harness-multi-item` filters to eval items only. Per-loop variations go in each loop's YAML, not in shared infrastructure.
 
 ## Motivation
 
@@ -140,20 +166,19 @@ For each loop, the extension follows a consistent pattern:
 
 - **Hard blockers**:
   - `FEAT-1074` — `ParallelStateConfig` schema + validation
-  - `FEAT-1075` — `ParallelRunner` execution engine
+  - `FEAT-1075` — `ParallelRunner` execution engine (incl. merge-back guarantee that `collect_children` relies on)
   - `FEAT-1076` — executor dispatch for `parallel:` states
-  - `ENH-1167` — **must be completed first**; `collect_children` semantics for parallel worktree mode are defined there. Without ENH-1167, the `collect_children` state in every worktree-mode loop below (recursive-refine, sprint-refine-and-implement, auto-refine-and-implement, harness-multi-item) is underspecified: how children issue IDs are diffed, where worker-captured children live in the captures dict, and how merged worktree state is read back into the parent are all open questions that ENH-1167 resolves.
 
 ## Impact
 
-- **Priority**: P3 — High value but blocked on FEAT-1072 and ENH-1167; no user-visible benefit until both the primitive and the `collect_children` semantics exist
+- **Priority**: P3 — High value but blocked on FEAT-1072; no user-visible benefit until the primitive ships
 - **Effort**: Medium — Each loop follows the same restructuring template; `recursive-refine` is the hardest; others are mechanical
-- **Risk**: Low — YAML-only changes to loop configs; FSM engine is unchanged; rollback is trivial (revert YAML files). **Implementation blocked pending ENH-1167 resolution** — attempting this issue before ENH-1167 lands will require rework once `collect_children` is finalized.
+- **Risk**: Low — YAML-only changes to loop configs; FSM engine is unchanged; rollback is trivial (revert YAML files)
 - **Breaking Change**: No — same loop names and interfaces; behavioral change is faster execution, not different outcomes
 
 ### Pre-implementation gate
 
-Given this issue touches 6 orchestrator loops and has non-trivial branching between sequential and parallel paths in each, run `/ll:issue-size-review` on it before starting implementation. Decomposing into per-loop sub-issues may be warranted if `collect_children` (post-ENH-1167) turns out to vary meaningfully by loop.
+Given this issue touches 6 orchestrator loops and has non-trivial branching between sequential and parallel paths in each, run `/ll:issue-size-review` on it before starting implementation. Decomposing into per-loop sub-issues may be warranted if `collect_children` turns out to vary meaningfully by loop.
 
 ## Related Key Documentation
 
