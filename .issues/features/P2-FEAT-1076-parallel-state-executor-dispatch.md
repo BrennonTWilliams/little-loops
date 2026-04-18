@@ -148,6 +148,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - FEAT-1074 (schema) and FEAT-1075 (ParallelRunner) must be complete
 
+## Known Limitations / Follow-ups
+
+- **Unresolved-context-variable pre-scan does not cover `state.parallel.items`** — `cli/loop/run.py:107-115` pre-scans `state.action` for unresolved `{{ }}` context variables but not `state.parallel.items`. An `items:` field referencing `{{ captured.X.Y }}` that fails to resolve at runtime will split on an empty string or on literal-brace text and fan out zero (or garbage) workers with no early warning. Tracked as **ENH-1173** (`.issues/enhancements/P3-ENH-1173-extend-unresolved-context-variable-pre-scan-to-cover-parallel-items.md`).
+
 ## Acceptance Criteria
 
 - `parallel:` key in a state YAML triggers concurrent sub-loop fan-out via `_execute_parallel_state()`

@@ -141,7 +141,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/__init__.py:113-184` — re-exports `StateConfig` via `__all__`; `LoopConfigOverrides` precedent = **do not export** `ParallelStateConfig` through `__init__.py` (import it directly from `schema.py` like `LoopConfigOverrides`); no change needed but decision must be deliberate
 - `scripts/little_loops/cli/loop/layout.py:118-133` — `_get_state_badge()` switches on `state.loop`, `state.action`, `state.route`; no `parallel` branch — parallel states render with no badge (out of scope; address in FEAT-1078)
 - `scripts/little_loops/cli/loop/info.py:556-563` — `_print_state_overview_table` Type column has no `parallel` branch (FEAT-1078 scope)
-- `scripts/little_loops/cli/loop/run.py:107-115` — context variable pre-scan checks `state.action` but not `state.parallel.items`; `{{ issue_list }}`-style expressions in `items` won't be caught (FEAT-1078 scope)
+- `scripts/little_loops/cli/loop/run.py:107-115` — context variable pre-scan checks `state.action` but not `state.parallel.items`; `{{ issue_list }}`-style expressions in `items` won't be caught. Tracked as **ENH-1173** (see `.issues/enhancements/P3-ENH-1173-extend-unresolved-context-variable-pre-scan-to-cover-parallel-items.md`) — follow-up after FEAT-1074 lands.
 
 ### Similar Patterns (Exact Code References)
 - `schema.py:438-481` — `LoopConfigOverrides.to_dict/from_dict`: shows skip-if-None pattern, but uses nested dict remapping; **`ParallelStateConfig` is flat so skip the nesting complexity**

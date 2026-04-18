@@ -261,6 +261,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Verdict: all succeed → `"yes"`, all fail → `"no"`, mixed → `"partial"`
 - Module importable standalone without executor dependency
 
+## Related / See Also
+
+- **ENH-1173** (`.issues/enhancements/P3-ENH-1173-extend-unresolved-context-variable-pre-scan-to-cover-parallel-items.md`) — extends the `cli/loop/run.py` unresolved-context-variable pre-scan to cover `state.parallel.items`. Runner code doesn't change, but the author-experience gap around unresolved `{{ }}` in `items:` closes there rather than here.
+
 ## Implementation Notes
 
 - `link_checker.py:284–318` is the canonical `ThreadPoolExecutor` + `as_completed` pattern in this codebase (`scripts/little_loops/link_checker.py`, not `parallel/`)
