@@ -58,8 +58,19 @@ Create `scripts/tests/test_parallel_runner.py` (flat directory — all FSM tests
 - Thread mode `fail_fast`: verify remaining futures cancelled on first failure
 - Worktree mode: mock worktree setup/teardown, verify merge-back called
 - `context_passthrough: true`: verify parent context passed to each worker
+- `test_parallel_runner_context_passthrough_is_read_only_snapshot` — thread-safety invariant from FEAT-1075: spawn N (≥4) workers that each read the same keys from `parent_context` and assert they observe identical values; after the run, assert the parent's original dict is unchanged. This protects against accidental regression to pass-by-reference.
+- `timeout_seconds`: worker exceeding timeout records timeout verdict and is aggregated under `fail_mode` (`collect` → listed in `failed`; `fail_fast` → cancels remaining futures); `timeout_seconds=None` means no timeout enforced
 - Edge: 0 items → immediate `ParallelResult(succeeded=[], failed=[], all_captures=[], verdict="yes")`
 - Edge: 1 item fails of 1 → `verdict="no"`
+
+### End-to-end integration test
+
+One end-to-end test must exercise a real parallel loop YAML through `FSMExecutor.run()` **without mocking `ParallelRunner` or `FSMExecutor`**:
+
+- Add `test_parallel_state_end_to_end` to `scripts/tests/test_ll_loop_execution.py` (this file already exercises full `PersistentExecutor.run()` paths per the wiring notes on FEAT-1076)
+- Fixture: a loop YAML with a `parallel:` state pointing at ≥2 toy sub-loops (smallest possible — e.g., two trivial one-state sub-loops that immediately reach `done`)
+- Assert: fan-out actually executes N sub-loops (verify via captures), verdict aggregation produces the expected `"yes"`/`"partial"`/`"no"` value, and the outer loop routes correctly on each of `on_yes` / `on_partial` / `on_no` — parameterize or run three variants to cover all three routes
+- Use `isolation: "thread"` (the new default) and `timeout_seconds: None` for speed; worktree-mode integration coverage stays in the unit tests
 
 ### Existing test files to extend
 
@@ -191,6 +202,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/tests/fixtures/fsm/parallel-loop.yaml` — New fixture
 - `scripts/tests/test_fsm_schema_fuzz.py` — Add `parallel` to `malformed_state_config` strategy at line 174
 - `scripts/tests/test_ll_loop_display.py` — Add parallel badge test to `TestStateBadges` (last step; requires FEAT-1078)
+- `scripts/tests/test_ll_loop_execution.py` — Add `test_parallel_state_end_to_end` integration test (three route variants: on_yes/on_partial/on_no); runs real `FSMExecutor.run()` with a parallel state and ≥2 toy sub-loops, `isolation: "thread"`
 
 ## Implementation Notes
 
@@ -228,7 +240,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- All new tests pass: `python -m pytest scripts/tests/test_parallel_runner.py scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_schema.py scripts/tests/test_fsm_validation.py scripts/tests/test_ll_loop_display.py -x`
+- All new tests pass: `python -m pytest scripts/tests/test_parallel_runner.py scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_schema.py scripts/tests/test_fsm_validation.py scripts/tests/test_ll_loop_display.py scripts/tests/test_ll_loop_execution.py -x`
+- At least one end-to-end test exercises a real parallel loop YAML through `FSMExecutor.run()` (not mocked) with ≥2 toy sub-loops, verifying fan-out, verdict aggregation, and correct routing on each of `on_yes`, `on_partial`, `on_no`
+- `test_parallel_runner_context_passthrough_is_read_only_snapshot` exists and asserts that concurrent workers observe identical snapshot values and the parent's captured dict is not mutated
 - `test_fsm_schema.py:TestFSMValidation` — no regressions in existing error-count assertions
 - `test_fsm_fragments.py` + `test_builtin_loops.py` — all 33 built-in loops still pass validation
 - `parallel-loop.yaml` fixture round-trips without validation errors

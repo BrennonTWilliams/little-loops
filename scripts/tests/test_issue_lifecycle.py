@@ -12,6 +12,7 @@ Provides comprehensive test coverage for issue lifecycle management including:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -892,6 +893,11 @@ class TestCloseIssue:
         content = completed.read_text()
         assert "## Resolution" in content
         assert "Already Fixed" in content
+        # Verify completed_at frontmatter injection (FEAT-1170)
+        assert "completed_at:" in content
+        match = re.search(r"completed_at:\s*'?(\S+?)'?\s*$", content, re.MULTILINE)
+        assert match is not None
+        assert match.group(1).endswith("Z")
 
     def test_close_when_already_completed(
         self,
@@ -1153,6 +1159,11 @@ class TestCompleteIssueLifecycle:
         content = completed.read_text()
         assert "## Resolution" in content
         assert "**Action**: fix" in content  # bugs category action
+        # Verify completed_at frontmatter injection (FEAT-1170)
+        assert "completed_at:" in content
+        match = re.search(r"completed_at:\s*'?(\S+?)'?\s*$", content, re.MULTILINE)
+        assert match is not None
+        assert match.group(1).endswith("Z")
 
     def test_complete_when_already_in_completed(
         self,

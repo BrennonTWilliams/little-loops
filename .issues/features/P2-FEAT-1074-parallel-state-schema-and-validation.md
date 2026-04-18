@@ -12,16 +12,20 @@ outcome_confidence: 86
 
 Add `ParallelStateConfig` dataclass to `schema.py`, extend `StateConfig` with a `parallel:` field, update `fsm-loop-schema.json`, and add mutual exclusion validation rules to `validation.py`.
 
+The dataclass has **7 fields** (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`, `context_passthrough`, `timeout_seconds`) with `isolation` defaulting to `"thread"` and `timeout_seconds` defaulting to `None` (no per-worker timeout).
+
 ## Current Behavior
 
 No `ParallelStateConfig` dataclass exists in `schema.py`. States with a `parallel:` key will trigger "unknown key" validation warnings. There are no mutual exclusion checks to prevent conflicting configurations (e.g., a state with both `parallel:` and `action:`).
 
 ## Expected Behavior
 
-- `ParallelStateConfig` dataclass exists in `schema.py` with 6 fields and correct round-trip serialization (`to_dict` / `from_dict`)
+- `ParallelStateConfig` dataclass exists in `schema.py` with 7 fields and correct round-trip serialization (`to_dict` / `from_dict`)
 - `StateConfig.parallel` deserializes correctly — `None` when absent, `ParallelStateConfig` when present
 - `"parallel"` is in `KNOWN_TOP_LEVEL_KEYS` — no unknown-key warnings on loops using `parallel:` states
 - Mutual exclusion rules in `validation.py` reject `parallel:` + `action:`, `parallel:` + `loop:`, `parallel:` + `next:` with clear error messages
+- `isolation` defaults to `"thread"` (fast, read-safe); `"worktree"` is opt-in for sub-loops that write files concurrently
+- `timeout_seconds` provides an optional per-worker timeout; `None` means no timeout
 - `fsm-loop-schema.json` enforces field types and constraints for IDE/lint validation
 
 ## Motivation
@@ -37,7 +41,7 @@ This feature would:
 
 **Context**: Authoring a `parallel:` state in a loop YAML (e.g., `items: "{{ issue_list }}"`, `loop: "manage-issue"`)
 
-**Goal**: Define a `parallel:` state with all supported fields (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`) without triggering unknown-key validation warnings
+**Goal**: Define a `parallel:` state with all supported fields (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`, `context_passthrough`, `timeout_seconds`) without triggering unknown-key validation warnings
 
 **Outcome**: The FSM parser accepts the `parallel:` state, serializes/deserializes round-trip correctly, and rejects malformed configs (bad enum values, conflicting fields) with actionable error messages
 
@@ -54,12 +58,13 @@ Add `ParallelStateConfig` dataclass following the `LoopConfigOverrides` pattern 
 ```python
 @dataclass
 class ParallelStateConfig:
-    items: str                    # interpolated expression resolving to newline-delimited list
-    loop: str                     # sub-loop name to run per item
+    items: str                       # interpolated expression resolving to newline-delimited list
+    loop: str                        # sub-loop name to run per item
     max_workers: int = 4
-    isolation: str = "worktree"   # "worktree" | "thread"
-    fail_mode: str = "collect"    # "collect" | "fail_fast"
+    isolation: str = "thread"        # "thread" (default) | "worktree"
+    fail_mode: str = "collect"       # "collect" | "fail_fast"
     context_passthrough: bool = False
+    timeout_seconds: int | None = None  # per-worker timeout; None = no timeout
 
     def to_dict(self) -> dict:
         ...
@@ -75,7 +80,7 @@ Add `parallel: ParallelStateConfig | None = None` to `StateConfig`. Follow the `
 
 - Add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` frozenset at `validation.py:77–99`
 - Add mutual exclusion checks: `parallel` + `action`, `parallel` + `loop`, `parallel` + `next`
-- Add range validation: `max_workers >= 1`
+- Add range validation: `max_workers >= 1`; `timeout_seconds is None or timeout_seconds >= 1`
 - Add enum checks: `isolation` in `{"worktree", "thread"}`, `fail_mode` in `{"collect", "fail_fast"}`
 
 ### fsm-loop-schema.json
@@ -87,12 +92,13 @@ Add `parallel:` as a valid state-level key with sub-fields matching `ParallelSta
 ```python
 @dataclass
 class ParallelStateConfig:
-    items: str                    # interpolated expression resolving to newline-delimited list
-    loop: str                     # sub-loop name to run per item
+    items: str                       # interpolated expression resolving to newline-delimited list
+    loop: str                        # sub-loop name to run per item
     max_workers: int = 4
-    isolation: str = "worktree"   # "worktree" | "thread"
-    fail_mode: str = "collect"    # "collect" | "fail_fast"
+    isolation: str = "thread"        # "thread" (default) | "worktree"
+    fail_mode: str = "collect"       # "collect" | "fail_fast"
     context_passthrough: bool = False
+    timeout_seconds: int | None = None  # per-worker timeout; None = no timeout
 
     def to_dict(self) -> dict: ...
 
@@ -107,7 +113,7 @@ parallel: ParallelStateConfig | None = None
 
 1. Add `ParallelStateConfig` dataclass to `schema.py` following the `LoopConfigOverrides` pattern at `schema.py:419` — implement `to_dict()` and `from_dict()` using the same guard/cast idioms
 2. Extend `StateConfig` with `parallel: ParallelStateConfig | None = None`; update `to_dict()` to skip if None (follow `loop` field pattern at ~line 316) and `from_dict()` to hydrate via `ParallelStateConfig.from_dict()` when key present
-3. Update `validation.py`: add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` (lines 77–99); add mutual exclusion checks (`parallel` + `action`, `parallel` + `loop`, `parallel` + `next`); add `max_workers >= 1`, enum checks for `isolation` and `fail_mode`
+3. Update `validation.py`: add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` (lines 77–99); add mutual exclusion checks (`parallel` + `action`, `parallel` + `loop`, `parallel` + `next`); add `max_workers >= 1`, `timeout_seconds is None or timeout_seconds >= 1`, enum checks for `isolation` and `fail_mode`
 4. Update `fsm-loop-schema.json`: add `parallel:` as a valid state-level key with sub-field types and constraints matching `ParallelStateConfig`
 5. Fix `_validate_state_routing` no-transition guard in `validation.py:271` — add `has_parallel = state.parallel is not None` to the guard condition so valid `parallel:` states are not falsely flagged as having "no transition defined" (model after the existing `has_loop` exemption at the same line; test with `test_parallel_state_no_transition_not_flagged`)
 6. Run `test_fsm_schema.py`, `test_fsm_schema_fuzz.py`, `test_fsm_validation.py`, `test_fsm_fragments.py`, and `test_builtin_loops.py` to verify no regressions from the new mutual-exclusion rules
@@ -179,11 +185,13 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 
 ## Acceptance Criteria
 
-- `ParallelStateConfig` dataclass exists with all 6 fields and `to_dict`/`from_dict`
+- `ParallelStateConfig` dataclass exists with all 7 fields and `to_dict`/`from_dict`
 - `StateConfig.parallel` field serializes/deserializes round-trip correctly (None when absent)
 - `"parallel"` present in `KNOWN_TOP_LEVEL_KEYS` — no unknown-key warnings on loops using `parallel:`
+- `isolation` defaults to `"thread"` in the dataclass, the JSON schema, and all example snippets
+- `timeout_seconds` defaults to `None`; round-trips through `to_dict`/`from_dict`; `timeout_seconds=0` fails validation; `timeout_seconds=None` is permitted (no timeout)
 - Mutual exclusion: state with `parallel:` + `action:` fails validation with a clear error
-- Mutual exclusion: state with `parallel:` + `loop:` fails validation
+- Mutual exclusion: state with `parallel:` + `loop:` fails validation — error message names the `parallel.loop` sub-field as the correct way to declare a sub-loop for fan-out
 - Mutual exclusion: state with `parallel:` + `next:` fails validation
 - `max_workers: 0` fails validation
 - `isolation: "invalid"` fails validation
@@ -195,6 +203,21 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 - Follow `LoopConfigOverrides.to_dict()` / `from_dict()` at `schema.py:419` as the serialization template
 - `test_fsm_schema.py:636` `TestFSMValidation` may assert specific error counts — review for regressions after adding new mutual-exclusion rules
 - `test_fsm_fragments.py` + `test_builtin_loops.py` call `validate_fsm` across all 33 built-in loops — new rules must not reject existing loops
+
+### Why `isolation` defaults to `"thread"` (not `"worktree"`)
+
+`thread` is sufficient and much faster for the common sub-loop shapes we expect to fan out: read-heavy analyses (lint, review, scan), evaluations, and classifiers. These sub-loops either don't write files or scope their writes to non-conflicting paths. Worktree isolation costs a `git worktree add` plus a working-copy checkout per worker, which dominates wall-clock time for small-to-medium loops. Making `thread` the default keeps the common case fast.
+
+`worktree` remains the correct choice — and must be opted into — whenever sub-loops:
+- Write the same files concurrently (e.g., two workers both editing `CHANGELOG.md`)
+- Need an isolated working tree to run tests or build artifacts
+- Change branch state or stage/unstage files
+
+Authors who need worktree isolation set `isolation: "worktree"` explicitly; there is no magic auto-detection.
+
+### Per-worker timeouts (`timeout_seconds`)
+
+`timeout_seconds` caps a single worker's wall-clock time. `None` (the default) means no timeout. The runner spec in FEAT-1075 honors this via `future.result(timeout=timeout_seconds)` on each worker's future; a timed-out worker records a timeout verdict and is aggregated under `fail_mode` like any other failure. Keep the field optional — most loops will not need per-worker timeouts, and adding one by default would mask slow but valid sub-loops.
 
 ### Codebase Research Findings
 
@@ -211,12 +234,14 @@ def to_dict(self) -> dict[str, Any]:
     result: dict[str, Any] = {"items": self.items, "loop": self.loop}
     if self.max_workers != 4:
         result["max_workers"] = self.max_workers
-    if self.isolation != "worktree":
+    if self.isolation != "thread":
         result["isolation"] = self.isolation
     if self.fail_mode != "collect":
         result["fail_mode"] = self.fail_mode
     if self.context_passthrough:
         result["context_passthrough"] = self.context_passthrough
+    if self.timeout_seconds is not None:
+        result["timeout_seconds"] = self.timeout_seconds
     return result
 
 # from_dict: data.get with defaults for optional fields
@@ -226,9 +251,10 @@ def from_dict(cls, data: dict[str, Any]) -> "ParallelStateConfig":
         items=data["items"],
         loop=data["loop"],
         max_workers=data.get("max_workers", 4),
-        isolation=data.get("isolation", "worktree"),
+        isolation=data.get("isolation", "thread"),
         fail_mode=data.get("fail_mode", "collect"),
         context_passthrough=data.get("context_passthrough", False),
+        timeout_seconds=data.get("timeout_seconds"),
     )
 ```
 
@@ -249,13 +275,14 @@ if "parallel" in data:
 ```python
 # Mutual exclusion errors (ERROR severity, path = f"states.{state_name}")
 "'parallel' and 'action' are mutually exclusive — a parallel state cannot also have an action"
-"'parallel' and 'loop' are mutually exclusive — a parallel state cannot also be a sub-loop state"
+"'parallel' and 'loop' are mutually exclusive at the state level — use 'parallel.loop' to name the sub-loop to fan out; do not set a top-level 'loop:' field on the same state"
 "'parallel' and 'next' are mutually exclusive — parallel state transitions are managed by the parallel runner"
 
 # Range validation
 f"'max_workers' must be >= 1, got {state.parallel.max_workers}"
+f"'timeout_seconds' must be >= 1 when set, got {state.parallel.timeout_seconds}"
 
-# Enum validation  
+# Enum validation
 f"'isolation' must be one of {{'worktree', 'thread'}}, got {repr(state.parallel.isolation)}"
 f"'fail_mode' must be one of {{'collect', 'fail_fast'}}, got {repr(state.parallel.fail_mode)}"
 ```
@@ -271,9 +298,10 @@ f"'fail_mode' must be one of {{'collect', 'fail_fast'}}, got {repr(state.paralle
     "items": {"type": "string"},
     "loop": {"type": "string"},
     "max_workers": {"type": "integer", "minimum": 1, "default": 4},
-    "isolation": {"type": "string", "enum": ["worktree", "thread"], "default": "worktree"},
+    "isolation": {"type": "string", "enum": ["worktree", "thread"], "default": "thread"},
     "fail_mode": {"type": "string", "enum": ["collect", "fail_fast"], "default": "collect"},
-    "context_passthrough": {"type": "boolean", "default": false}
+    "context_passthrough": {"type": "boolean", "default": false},
+    "timeout_seconds": {"type": ["integer", "null"], "minimum": 1, "default": null}
   }
 }
 ```

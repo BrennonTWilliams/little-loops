@@ -18,6 +18,7 @@ from typing import Any
 
 from little_loops.config import BRConfig
 from little_loops.events import EventBus
+from little_loops.frontmatter import update_frontmatter
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger
 from little_loops.session_log import append_session_log_entry
@@ -26,6 +27,11 @@ from little_loops.session_log import append_session_log_entry
 def _iso_now() -> str:
     """Return current time as ISO 8601 string."""
     return datetime.now(UTC).isoformat()
+
+
+def _completed_at_now() -> str:
+    """Return current UTC time as ISO 8601 with ``Z`` suffix for ``completed_at``."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # =============================================================================
@@ -613,6 +619,7 @@ def close_issue(
             close_status, close_reason, fix_commit, files_changed
         )
         content = _prepare_issue_content(original_path, resolution)
+        content = update_frontmatter(content, {"completed_at": _completed_at_now()})
 
         # Move to completed directory
         _move_issue_to_completed(original_path, completed_path, content, logger)
@@ -688,6 +695,7 @@ def complete_issue_lifecycle(
         action = config.get_category_action(info.issue_type)
         resolution = _build_completion_resolution(action)
         content = _prepare_issue_content(original_path, resolution)
+        content = update_frontmatter(content, {"completed_at": _completed_at_now()})
 
         # Move to completed directory
         _move_issue_to_completed(original_path, completed_path, content, logger)

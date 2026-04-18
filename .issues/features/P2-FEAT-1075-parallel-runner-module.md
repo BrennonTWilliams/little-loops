@@ -55,10 +55,11 @@ class ParallelRunner:
 ```
 
 **Thread mode** (`isolation: "thread"`):
-- Use `ThreadPoolExecutor(max_workers=N, thread_name_prefix="fsm-parallel")` 
+- Use `ThreadPoolExecutor(max_workers=N, thread_name_prefix="fsm-parallel")`
 - Each thread constructs and runs an `FSMExecutor` for one item
 - Drain results with `as_completed()` — canonical pattern at `link_checker.py:286–318`
 - `fail_fast`: cancel remaining futures on first failure
+- Per-worker timeout (`config.timeout_seconds`): enforced via `future.result(timeout=config.timeout_seconds)` when not `None`; a `TimeoutError` is caught and recorded as a timeout verdict, then aggregated under `fail_mode` like any other failure
 
 **Worktree mode** (`isolation: "worktree"`):
 - Per-item worktree via `worktree_utils.py` (setup/teardown)
@@ -71,7 +72,19 @@ class ParallelRunner:
 - All failed → `"no"`
 - Mixed → `"partial"`
 
-**`context_passthrough: true`**: pass parent context dict into each worker's sub-loop initial context.
+**`context_passthrough: true`**: pass a **shallow snapshot** of the parent context (`parent_context = dict(self.captured)`) into each worker's sub-loop initial context. The runner MUST NOT pass `self.captured` by reference — see the Thread-Safety subsection below.
+
+### Thread-Safety: `parent_context` is a read-only snapshot
+
+In thread mode, all workers run in the same Python process and share the caller's memory. If the runner forwarded `self.captured` (the parent executor's live context dict) by reference to every worker, concurrent writes inside workers (or concurrent writes from the parent after fan-out started) could race on the same dict. That is a correctness bug, not just a performance smell.
+
+The contract is:
+- The parent executor hands the runner a **shallow copy** of its captured context: `parent_context=dict(self.captured)` at the call site in `FSMExecutor._execute_parallel_state()` (FEAT-1076 wiring).
+- The runner treats `parent_context` as immutable input. It does not mutate it and does not expose it mutably to workers.
+- Each worker receives the same snapshot. Workers may read any key but must not mutate the snapshot; values that are themselves mutable containers (nested dicts/lists) are already treated as read snapshots by downstream consumers in the FSM pipeline, so a shallow copy is sufficient for this layer.
+- Worker-private state (anything a worker wants to capture) lives in that worker's own `FSMExecutor.captured`, not in `parent_context`.
+
+This keeps thread mode safe without synchronization overhead: no locks, no GIL-dependent reasoning — just the rule "don't share mutable state across workers."
 
 ## Files to Create/Modify
 
@@ -225,7 +238,7 @@ class ParallelRunner:
 2. Implement thread mode: `ThreadPoolExecutor(max_workers=N)` + `as_completed()` — follow `link_checker.py:286–318` pattern
 3. Implement `fail_fast`: cancel remaining futures on first failure
 4. Implement worktree mode: per-item worktree via `worktree_utils.py`, merge-back via `MergeCoordinator`
-5. Implement `context_passthrough` to inject parent context dict into each worker's initial sub-loop context
+5. Implement `context_passthrough` to inject a **shallow snapshot** of the parent context (`dict(parent_context)`) into each worker's initial sub-loop context; workers must never see the parent's live captured dict by reference (see Thread-Safety subsection)
 6. Derive verdict: all succeeded → `"yes"`, all failed → `"no"`, mixed → `"partial"`
 7. Verify module is importable standalone (no circular executor dependency)
 
@@ -242,7 +255,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Thread mode: 4 items with `max_workers: 2` run 2 at a time; all captures collected
 - Thread mode `fail_fast`: remaining futures cancelled on first failure
 - Worktree mode: each item gets its own worktree; changes merged back
-- `context_passthrough: true` passes parent context dict to each worker
+- `context_passthrough: true` passes a **shallow snapshot** (`dict(parent_captured)`) of parent context to each worker — NOT the live dict
+- Concurrent workers reading `parent_context` observe identical values: a test spawns N workers that each read the same keys and assert no mutations/divergence (belongs in FEAT-1077 as `test_parallel_runner_context_passthrough_is_read_only_snapshot`)
+- Per-worker timeout: when `timeout_seconds` is set, a worker exceeding it records a timeout verdict and is aggregated under `fail_mode`; `timeout_seconds=None` disables the timeout
 - Verdict: all succeed → `"yes"`, all fail → `"no"`, mixed → `"partial"`
 - Module importable standalone without executor dependency
 
