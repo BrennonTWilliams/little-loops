@@ -81,17 +81,41 @@ Three insertions:
     items: "${captured.fetch.output}"
     loop: process-single-item
     max_workers: 4
-    isolation: worktree
+    # isolation defaults to "thread" — omit unless sub-loops write files concurrently
     fail_mode: collect
   on_yes: done
   on_partial: handle_partial
   on_no: handle_failure
 ```
 
+And a second example showing when to opt into worktree isolation:
+
+```yaml
+- name: refine_issues_concurrently
+  parallel:
+    items: "${captured.issue_list.output}"
+    loop: refine-to-ready-issue
+    max_workers: 4
+    isolation: worktree   # sub-loops write issue files; worktree prevents contention
+    fail_mode: collect
+    timeout_seconds: 600   # optional per-worker cap (None = no timeout)
+  on_yes: done
+```
+
+### Isolation Mode: `thread` vs `worktree`
+
+| Mode | Default? | When to use |
+|------|----------|-------------|
+| `thread` | **yes** | Read-heavy sub-loops (lint, review, analysis, evaluation). No filesystem contention. Fast — no worktree setup cost per worker. |
+| `worktree` | no (opt-in) | Sub-loops that **write the same files concurrently**, need an isolated working tree for tests/builds, or mutate branch/stage state. Pays `git worktree add` cost per worker. |
+
+Default guidance: **start with `thread`; switch to `worktree` only when you observe (or expect) concurrent write contention.** The schema default is `thread`, so omitting `isolation:` gives you the fast path automatically.
+
 ### Routing and Captures Reference
 
 - Routing: `on_yes` (all succeeded), `on_partial` (mixed), `on_no` (all failed)
 - Captures: `${captured.<state_name>.results}` contains `all_captures` (per-worker `captured` dicts)
+- Timeouts: `timeout_seconds` caps each worker individually; timed-out workers are aggregated under the configured `fail_mode` (`collect` or `fail_fast`)
 
 ## Dependencies
 
@@ -102,6 +126,8 @@ Three insertions:
 - `LOOPS_GUIDE.md` comparison table includes `parallel:` row and a new Parallel Fan-Out section with YAML example
 - `loops/README.md` "Composing Loops" describes `parallel:` fan-out with YAML snippet
 - `generalized-fsm-loop.md` pattern table, section, and schema definition all include `parallel:`
+- All three documents state the `isolation` default as `"thread"` (not `"worktree"`) and explain when to opt into `"worktree"` (concurrent file writes, isolated working tree needed)
+- `timeout_seconds` is documented as an optional per-worker cap with `None` default meaning no timeout
 
 ## Impact
 

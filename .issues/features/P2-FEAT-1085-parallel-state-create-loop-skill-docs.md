@@ -39,11 +39,12 @@ After line 731 (end of `#### loop (Optional)` field block), add a new `#### para
 - `items` — required, interpolated expression
 - `loop` — required, sub-loop name
 - `max_workers` — optional, default 4
-- `isolation` — optional, `"worktree"` or `"thread"`, default `"worktree"`
+- `isolation` — optional, `"thread"` or `"worktree"`, **default `"thread"`** (opt into `"worktree"` only when sub-loops write files concurrently)
 - `fail_mode` — optional, `"collect"` or `"fail_fast"`, default `"collect"`
 - `context_passthrough` — optional, bool, default `false`
+- `timeout_seconds` — optional, `int | None`, default `None` (no timeout); per-worker wall-clock cap; timed-out workers are aggregated under `fail_mode`
 
-Include mutual exclusion note: `parallel` cannot be combined with `action`, `loop` (field), or `next`.
+Include mutual exclusion note: `parallel` cannot be combined with `action`, `loop` (field), or `next`. The error message for `parallel` + `loop` directs authors to `parallel.loop` as the correct way to name the sub-loop to fan out.
 
 ### `skills/create-loop/loop-types.md`
 
@@ -94,25 +95,37 @@ Review existing state-type templates. If templates exist for composition types (
 | `items` | `str` | — | yes | Interpolated expression → newline-delimited item list |
 | `loop` | `str` | — | yes | Sub-loop name (resolved via `.loops/<name>.yaml`) |
 | `max_workers` | `int` | `4` | no | Maximum concurrent workers |
-| `isolation` | `str` | `"worktree"` | no | `"worktree"` (git-isolated) or `"thread"` (shared dir) |
+| `isolation` | `str` | `"thread"` | no | `"thread"` (shared dir, fast — default) or `"worktree"` (git-isolated; opt in when sub-loops write the same files concurrently) |
 | `fail_mode` | `str` | `"collect"` | no | `"collect"` (all run) or `"fail_fast"` (cancel on first fail) |
-| `context_passthrough` | `bool` | `false` | no | Pass parent captured context into each worker |
+| `context_passthrough` | `bool` | `false` | no | Pass a **shallow snapshot** (`dict(parent_captured)`) of parent context into each worker — never the live dict |
+| `timeout_seconds` | `int \| None` | `null` | no | Per-worker wall-clock cap; `null` disables. Timed-out workers aggregate under `fail_mode`. |
 
 Mutual exclusions: `parallel` + `action`, `parallel` + `loop` field, `parallel` + `next`.
 
 ### YAML Example
 
 ```yaml
-- name: process_items
+# Thread-isolation example (the default — omit `isolation:` to get this)
+- name: lint_files_concurrently
   parallel:
-    items: "${captured.fetch.output}"
-    loop: process-single-item
+    items: "${captured.list_files.output}"
+    loop: lint-single-file      # read-only sub-loop
     max_workers: 4
-    isolation: worktree
     fail_mode: collect
   on_yes: done
   on_partial: handle_partial
   on_no: handle_failure
+
+# Worktree-isolation example (opt in only when sub-loops write files concurrently)
+- name: refine_issues_concurrently
+  parallel:
+    items: "${captured.fetch.output}"
+    loop: refine-to-ready-issue
+    max_workers: 4
+    isolation: worktree         # sub-loops edit issue files
+    fail_mode: collect
+    timeout_seconds: 600        # optional per-worker cap
+  on_yes: done
 ```
 
 ## Dependencies
