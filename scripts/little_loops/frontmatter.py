@@ -1,7 +1,7 @@
-"""Frontmatter parsing utilities for little-loops.
+"""Frontmatter read/write utilities for little-loops.
 
-Provides shared YAML-subset frontmatter parsing and stripping used by
-issue_parser, sync, and issue_history modules.
+Provides shared YAML-subset frontmatter parsing, stripping, and updating
+used by issue_parser, sync, and issue_history modules.
 """
 
 from __future__ import annotations
@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -99,3 +101,29 @@ def strip_frontmatter(content: str) -> str:
         return content
 
     return content[3 + end_match.end() :]
+
+
+def update_frontmatter(content: str, updates: dict[str, str | int]) -> str:
+    """Update or add frontmatter fields in content.
+
+    Merges ``updates`` into an existing ``---`` delimited YAML frontmatter
+    block, preserving other fields and their order. If no frontmatter block
+    exists, a new one is prepended. Existing keys are overwritten with the
+    new values.
+
+    Args:
+        content: Full file content, possibly with existing frontmatter
+        updates: Fields to add/update in frontmatter
+
+    Returns:
+        Content with updated frontmatter block
+    """
+    fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+    if not fm_match:
+        fm_text = yaml.dump(dict(updates), default_flow_style=False, sort_keys=False).strip()
+        return f"---\n{fm_text}\n---\n{content}"
+
+    existing: dict[str, Any] = yaml.safe_load(fm_match.group(1)) or {}
+    existing.update(updates)
+    fm_text = yaml.dump(existing, default_flow_style=False, sort_keys=False).strip()
+    return f"---\n{fm_text}\n---{content[fm_match.end() :]}"

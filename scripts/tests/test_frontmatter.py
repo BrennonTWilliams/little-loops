@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
+from little_loops.frontmatter import parse_frontmatter, strip_frontmatter, update_frontmatter
 
 
 class TestParseFrontmatter:
@@ -175,3 +175,107 @@ class TestStripFrontmatter:
     def test_whitespace_around_closing_delimiter(self) -> None:
         content = "---\nkey: value\n---   \n\nBody\n"
         assert strip_frontmatter(content) == "Body\n"
+
+
+class TestUpdateFrontmatter:
+    """Tests for update_frontmatter function."""
+
+    def test_update_existing_frontmatter(self) -> None:
+        """Updates are merged into existing frontmatter."""
+        content = """---
+existing: value
+discovered_by: test
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"github_issue": 42}
+        result = update_frontmatter(content, updates)
+
+        assert "existing: value" in result
+        assert "discovered_by: test" in result
+        assert "github_issue: 42" in result
+        assert "# Title" in result
+
+    def test_update_creates_frontmatter(self) -> None:
+        """Frontmatter is created if missing."""
+        content = "# Title\n\nBody"
+        updates: dict[str, str | int] = {"github_issue": 42}
+        result = update_frontmatter(content, updates)
+
+        assert result.startswith("---")
+        assert "github_issue: 42" in result
+        assert "# Title" in result
+
+    def test_update_overwrites_existing_field(self) -> None:
+        """Existing field is overwritten with new value."""
+        content = """---
+github_issue: 1
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"github_issue": 99}
+        result = update_frontmatter(content, updates)
+
+        assert "github_issue: 99" in result
+        assert result.count("github_issue") == 1
+
+    def test_update_preserves_body(self) -> None:
+        """Body content is preserved after frontmatter update."""
+        content = """---
+key: value
+---
+
+# Title
+
+Body paragraph.
+"""
+        updates: dict[str, str | int] = {"new_key": "new_value"}
+        result = update_frontmatter(content, updates)
+
+        assert "# Title" in result
+        assert "Body paragraph." in result
+
+    def test_update_preserves_url_value(self) -> None:
+        """URL values (containing colons) survive a round-trip without corruption."""
+        content = """---
+discovered_by: test
+github_url: https://github.com/owner/repo/issues/42
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"last_synced": "2026-02-24T20:00:00+00:00"}
+        result = update_frontmatter(content, updates)
+
+        assert "https://github.com/owner/repo/issues/42" in result
+        result2 = update_frontmatter(result, {"github_issue": 42})
+        assert "https://github.com/owner/repo/issues/42" in result2
+
+    def test_update_preserves_integer_field(self) -> None:
+        """Integer fields round-trip correctly without becoming strings."""
+        content = """---
+github_issue: 7
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"github_issue": 99}
+        result = update_frontmatter(content, updates)
+
+        assert "github_issue: 99" in result
+        assert result.count("github_issue") == 1
+
+    def test_update_quoted_value_with_colon(self) -> None:
+        """Values containing colons are preserved without stripping quotes."""
+        content = """---
+title: 'value: with colon'
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"github_issue": 1}
+        result = update_frontmatter(content, updates)
+
+        assert "value: with colon" in result

@@ -38,7 +38,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.testing` | Offline test harness (LLTestBus) for extension development |
 | `little_loops.logger` | Logging utilities |
 | `little_loops.logo` | CLI logo display |
-| `little_loops.frontmatter` | YAML frontmatter parsing |
+| `little_loops.frontmatter` | YAML frontmatter read/write utilities |
 | `little_loops.doc_counts` | Documentation count verification |
 | `little_loops.link_checker` | Link validation for markdown docs |
 | `little_loops.user_messages` | User message extraction from Claude logs |
@@ -4697,13 +4697,15 @@ for s in manager.list_all():
 
 ## little_loops.frontmatter
 
-Shared YAML-subset frontmatter parsing used by issue_parser, sync, and issue_history modules.
+Shared YAML-subset frontmatter read/write utilities used by issue_parser, sync, and issue_history modules.
 
 ### Public Functions
 
 | Function | Purpose |
 |----------|---------|
 | `parse_frontmatter` | Extract YAML frontmatter from file content |
+| `strip_frontmatter` | Remove YAML frontmatter block, returning the body |
+| `update_frontmatter` | Merge updates into (or create) the YAML frontmatter block |
 
 ### parse_frontmatter
 
@@ -4728,6 +4730,30 @@ from little_loops.frontmatter import parse_frontmatter
 content = "---\npriority: P1\ngithub_issue: 42\n---\n# Title"
 meta = parse_frontmatter(content, coerce_types=True)
 print(meta)  # {"priority": "P1", "github_issue": 42}
+```
+
+### update_frontmatter
+
+```python
+def update_frontmatter(
+    content: str, updates: dict[str, str | int]
+) -> str
+```
+
+Merge `updates` into an existing `---` delimited YAML frontmatter block, preserving other fields and their order. If no frontmatter block exists, a new one is prepended. Existing keys are overwritten with the new values. Uses `yaml.dump` with `default_flow_style=False, sort_keys=False` so URLs and other colon-containing values round-trip correctly.
+
+**Parameters:**
+- `content` - Full file content, possibly with existing frontmatter
+- `updates` - Fields to add or overwrite in frontmatter
+
+**Returns:** Content with the updated frontmatter block.
+
+**Example:**
+```python
+from little_loops.frontmatter import update_frontmatter
+
+content = "---\npriority: P1\n---\n\n# Title\n"
+result = update_frontmatter(content, {"completed_at": "2026-04-18T12:00:00Z"})
 ```
 
 ---
