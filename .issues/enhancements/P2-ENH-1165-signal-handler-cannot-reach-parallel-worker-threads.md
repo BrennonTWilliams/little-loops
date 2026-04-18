@@ -65,8 +65,8 @@ FEAT-1076 explicitly documents this as a known limitation: "`ParallelRunner` wor
 
 ## Impact
 
-- **Priority**: P3 — Not blocking; parallel mode is functional without it, but graceful shutdown is table stakes for production use
-- **Effort**: Small (Option B) to Medium (Option A)
+- **Priority**: P2 — **Must ship with FEAT-1076 (Option B minimum).** Parallel loops fan out for extended durations; without at least cancellation of pending futures, Ctrl-C during a run leaves workers running to completion and forces users to SIGKILL the process — leaving worktree branches and issue files in inconsistent states (especially risky in `isolation: worktree` before merge-back). Graceful abort is table stakes for production, and uncancellable worker threads are a regression vs. today's sequential loops (where the signal handler does reach the running subprocess).
+- **Effort**: Small (Option B — required for ship) to Medium (Option A — can land as a follow-up)
 - **Risk**: Low — Additive; existing sequential loop behavior unaffected
 - **Breaking Change**: No
 
@@ -81,4 +81,8 @@ FEAT-1076 explicitly documents this as a known limitation: "`ParallelRunner` wor
 
 ---
 
-**Open** | Created: 2026-04-18 | Priority: P3
+**Open** | Created: 2026-04-18 | Priority: P2 (promoted from P3 on 2026-04-18 — Option B is a blocker for FEAT-1076 ship; Option A may land as follow-up)
+
+## Ship Bundling
+
+**Option B (cancel pending futures on `KeyboardInterrupt`) must land in the same release as FEAT-1076.** This is a ~10-line `try/finally` around `runner.run()` in `_execute_parallel_state()` — trivial to bundle, and avoids shipping a parallel feature with strictly worse cancellation behavior than the sequential one it replaces. Option A (full per-worker cancellation via shared `threading.Event`) is the right long-term fix but can land as a follow-up once the runner API is stable.

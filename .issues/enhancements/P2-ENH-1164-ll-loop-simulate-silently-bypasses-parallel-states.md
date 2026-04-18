@@ -97,10 +97,14 @@ The sequential path reuses the same verdict-derivation and result-shape logic as
 
 ## Impact
 
-- **Priority**: P3 — Not blocking parallel feature delivery; existing simulate users won't encounter until ENH-1073 or user-authored parallel loops ship
+- **Priority**: P2 — **Must ship with FEAT-1076.** Without this, `ll-loop simulate` on any loop containing a `parallel:` state triggers real concurrent sub-loop execution against live issue files — a data-safety issue, not a UX gap. Users dry-running ENH-1073 orchestrator loops in simulation will unknowingly run real refine/implement work. The cost of deferring is paid by users before they realize the bypass exists.
 - **Effort**: Small — Sequential dispatch branch, a verdict-derivation helper (possibly shared with `ParallelRunner`), one integration test, one doc note
 - **Risk**: Low — Additive branch on a new code path (`_execute_parallel_state` ships in FEAT-1076); no existing non-parallel behavior changed
 - **Breaking Change**: No — simulation mode with parallel states is currently broken (real execution); a sequential dry-run is strictly better
+
+## Ship Bundling
+
+**This issue must land in the same release as FEAT-1076.** FEAT-1076 introduces `_execute_parallel_state()`; this issue adds the simulation guard at its entry point. Shipping FEAT-1076 without this guard is equivalent to shipping a broken dry-run mode for any loop that adopts `parallel:`.
 
 ## Labels
 
@@ -113,4 +117,4 @@ The sequential path reuses the same verdict-derivation and result-shape logic as
 
 ---
 
-**Open** | Created: 2026-04-18 | Priority: P3
+**Open** | Created: 2026-04-18 | Priority: P2 (promoted from P3 on 2026-04-18 — blocker for FEAT-1076 ship)
