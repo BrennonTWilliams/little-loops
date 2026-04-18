@@ -18,6 +18,7 @@ Tests cover:
 from __future__ import annotations
 
 import json
+import re
 import signal
 import tempfile
 import threading
@@ -1705,6 +1706,54 @@ class TestCompleteIssueLifecycle:
         mock_log.assert_called_once()
         call_args = mock_log.call_args
         assert call_args.args[1] == "ll-parallel"
+
+        completed_path = (
+            temp_repo_with_config / ".issues" / "completed" / original_path.name
+        )
+        content = completed_path.read_text()
+        assert "completed_at:" in content
+        match = re.search(r"completed_at:\s*'?(\S+?)'?\s*$", content, re.MULTILINE)
+        assert match is not None
+        assert match.group(1).endswith("Z")
+
+    def test_injects_completed_at_before_git_mv_failure(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+        mock_issue: MagicMock,
+    ) -> None:
+        """completed_at is injected even when git mv fails and fallback write runs."""
+        original_path = temp_repo_with_config / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        original_path.write_text("# BUG-001: Test\n\n## Resolution\n\nDone.\n")
+        mock_issue.path = original_path
+        mock_issue.issue_type = "bugs"
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        # Mock git lock to simulate a failed git mv (no rename performed).
+        git_mv_fail = MagicMock()
+        git_mv_fail.returncode = 1
+        git_mv_fail.stderr = "simulated failure"
+
+        git_other_ok = MagicMock()
+        git_other_ok.returncode = 0
+
+        def mock_git_lock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if cmd[0] == "mv":
+                return git_mv_fail
+            return git_other_ok
+
+        orchestrator._git_lock.run = mock_git_lock_run  # type: ignore[method-assign]
+
+        orchestrator._complete_issue_lifecycle_if_needed("BUG-001")
+
+        completed_path = (
+            temp_repo_with_config / ".issues" / "completed" / original_path.name
+        )
+        content = completed_path.read_text()
+        assert "completed_at:" in content
+        match = re.search(r"completed_at:\s*'?(\S+?)'?\s*$", content, re.MULTILINE)
+        assert match is not None
+        assert match.group(1).endswith("Z")
 
 
 class TestCleanup:

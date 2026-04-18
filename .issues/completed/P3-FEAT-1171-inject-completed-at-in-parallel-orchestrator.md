@@ -2,7 +2,7 @@
 id: FEAT-1171
 type: FEAT
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
 parent: FEAT-1162
@@ -14,6 +14,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+completed_at: 2026-04-18T00:00:00Z
 ---
 
 # FEAT-1171: Inject `completed_at` in Parallel Orchestrator Path
@@ -148,7 +149,24 @@ _These touchpoints were identified by wiring analysis and must be included in th
 3. Update `test_orchestrator.py:1674` (`test_appends_session_log_after_successful_git_mv`) — after `mock_log.assert_called_once()`, derive `completed_path = temp_repo_with_config / ".issues" / "completed" / original_path.name` and assert `"completed_at:" in completed_path.read_text()` with regex match for `Z` suffix
 4. Add `test_injects_completed_at_before_git_mv_failure` — set `mock_git_lock_run` to return `returncode = 1` for the `mv` command (without renaming), call `_complete_issue_lifecycle_if_needed("BUG-001")`, and assert `"completed_at:"` is present in whatever file the fallback `write_text` produced
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-04-18
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/orchestrator.py`: imported `update_frontmatter`, injected `completed_at` ISO 8601 UTC (`Z` suffix) into issue frontmatter before the inline `git mv` in `_complete_issue_lifecycle_if_needed()`, and fixed the naive `datetime.now()` in the Resolution body to `datetime.now(UTC)`.
+- `scripts/tests/test_orchestrator.py`: added `re` import, extended `test_appends_session_log_after_successful_git_mv` with `completed_at` frontmatter assertions, and added new `test_injects_completed_at_before_git_mv_failure` covering the previously-untested `git mv` failure fallback path.
+
+### Verification Results
+- `python -m pytest scripts/tests/` — 4967 passed, 5 skipped
+- `ruff check scripts/little_loops/parallel/orchestrator.py scripts/tests/test_orchestrator.py` — clean
+- `python -m mypy scripts/little_loops/parallel/orchestrator.py` — clean
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0acc05ca-0e56-4d0d-b243-afd1e09ac0f8.jsonl`
 - `/ll:wire-issue` - 2026-04-18T20:51:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afe1f263-543e-40fd-838a-107e48c560ab.jsonl`
 - `/ll:refine-issue` - 2026-04-18T20:45:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78cf1b63-ee15-475a-9bbd-d4abe407f318.jsonl`
 - `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c5bb8fb-3ecb-45f7-9cd0-f674b644124e.jsonl`

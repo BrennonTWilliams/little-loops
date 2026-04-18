@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from little_loops.events import EventBus
+from little_loops.frontmatter import update_frontmatter
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.git_lock import GitLock
@@ -1163,7 +1164,7 @@ class ParallelOrchestrator:
 ## Resolution
 
 - **Action**: {action}
-- **Completed**: {datetime.now().strftime("%Y-%m-%d")}
+- **Completed**: {datetime.now(UTC).strftime("%Y-%m-%d")}
 - **Status**: Completed (parallel merge fallback)
 - **Implementation**: Merged from parallel worker branch
 
@@ -1177,6 +1178,13 @@ class ParallelOrchestrator:
 - See `git log --oneline` for merge commit details
 """
                 content += resolution
+
+            # Inject completed_at timestamp into frontmatter before the git mv,
+            # so both the success and failure write-back paths capture it.
+            content = update_frontmatter(
+                content,
+                {"completed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")},
+            )
 
             # Use git mv if possible (before writing content to avoid "destination exists")
             result = self._git_lock.run(
