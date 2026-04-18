@@ -7,6 +7,8 @@ import atexit
 import json
 import os
 import re
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
@@ -145,18 +147,45 @@ def cmd_run(
     # Scope-based locking
     lock_manager = LockManager(loops_dir)
     scope = fsm.scope or ["."]
+    _queue_entry_file: Path | None = None
+
+    def _cleanup_queue_entry() -> None:
+        if _queue_entry_file is not None:
+            _queue_entry_file.unlink(missing_ok=True)
 
     if not lock_manager.acquire(fsm.name, scope):
         conflict = lock_manager.find_conflict(scope)
         if conflict and getattr(args, "queue", False):
+            # Write queue entry so dashboard shows the waiting loop
+            queue_dir = loops_dir / ".queue"
+            queue_dir.mkdir(parents=True, exist_ok=True)
+            entry_id = str(uuid.uuid4())
+            entry = {
+                "id": entry_id,
+                "loopName": loop_name,
+                "enqueuedAt": datetime.now(timezone.utc).isoformat(),
+                "context": {
+                    "waitingFor": conflict.loop_name,
+                    "scope": conflict.scope,
+                    "pid": os.getpid(),
+                },
+            }
+            _queue_entry_file = queue_dir / f"{entry_id}.json"
+            _queue_entry_file.write_text(json.dumps(entry, indent=2))
+            atexit.register(_cleanup_queue_entry)
+
             logger.info(f"Waiting for conflicting loop '{conflict.loop_name}' to finish...")
             if not lock_manager.wait_for_scope(scope, timeout=3600):
+                _cleanup_queue_entry()
                 logger.error("Timeout waiting for scope to become available")
                 return 1
             # Re-acquire after waiting
             if not lock_manager.acquire(fsm.name, scope):
+                _cleanup_queue_entry()
                 logger.error("Failed to acquire lock after waiting")
                 return 1
+            # Lock acquired - no longer queued
+            _cleanup_queue_entry()
         elif conflict:
             logger.error(f"Scope conflict with running loop: {conflict.loop_name}")
             logger.info(f"  Conflicting scope: {conflict.scope}")
@@ -170,8 +199,6 @@ def cmd_run(
     try:
         # Worktree isolation: create branch + directory before anything reads Path.cwd()
         if getattr(args, "worktree", False):
-            from datetime import datetime
-
             from little_loops.config import BRConfig as _MainBRConfig
             from little_loops.parallel.git_lock import GitLock
             from little_loops.worktree_utils import cleanup_worktree, setup_worktree
