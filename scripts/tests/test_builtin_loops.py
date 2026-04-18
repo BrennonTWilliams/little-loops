@@ -1175,6 +1175,44 @@ class TestAutodevLoop:
         state = data["states"].get("check_broke_down", {})
         action = state.get("action", "")
         assert "autodev-broke-down" in action
+        # BUG-1183: the shortcut must also depend on a non-empty children file,
+        # not the flag alone.
+        assert "autodev-new-children.txt" in action
+
+    def test_check_broke_down_evaluate_output_numeric_lt_1(self, data: dict) -> None:
+        """check_broke_down must use output_numeric lt 1 to gate the shortcut."""
+        state = data["states"].get("check_broke_down", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_broke_down evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("operator") == "lt", (
+            f"check_broke_down evaluate.operator should be 'lt', got {evaluate.get('operator')!r}"
+        )
+        assert evaluate.get("target") == 1, (
+            f"check_broke_down evaluate.target should be 1, got {evaluate.get('target')!r}"
+        )
+
+    def test_check_broke_down_on_yes_routes_to_recheck_scores(self, data: dict) -> None:
+        """check_broke_down.on_yes (flag=0 OR no children) must route to recheck_scores."""
+        state = data["states"].get("check_broke_down", {})
+        assert state.get("on_yes") == "recheck_scores", (
+            f"check_broke_down.on_yes should be 'recheck_scores', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_broke_down_on_no_routes_to_enqueue_or_skip(self, data: dict) -> None:
+        """check_broke_down.on_no (flag=1 AND children exist) must route to enqueue_or_skip."""
+        state = data["states"].get("check_broke_down", {})
+        assert state.get("on_no") == "enqueue_or_skip", (
+            f"check_broke_down.on_no should be 'enqueue_or_skip', got {state.get('on_no')!r}"
+        )
+
+    def test_check_broke_down_on_error_routes_to_recheck_scores(self, data: dict) -> None:
+        """check_broke_down.on_error must route to recheck_scores (fail-safe)."""
+        state = data["states"].get("check_broke_down", {})
+        assert state.get("on_error") == "recheck_scores", (
+            f"check_broke_down.on_error should be 'recheck_scores', got {state.get('on_error')!r}"
+        )
 
     def test_tmp_files_use_autodev_namespace(self, data: dict) -> None:
         """All new bookkeeping temp files must use the autodev-* namespace, not recursive-refine-*."""
@@ -1362,6 +1400,14 @@ class TestRecursiveRefineLoop:
         assert state.get("on_error") == "recheck_scores", (
             f"check_broke_down.on_error should be 'recheck_scores', got {state.get('on_error')!r}"
         )
+
+    def test_check_broke_down_requires_children_file(self, data: dict) -> None:
+        """BUG-1183: shortcut must require flag=1 AND non-empty new-children file,
+        not the flag alone. Action must reference recursive-refine-new-children.txt."""
+        state = data["states"].get("check_broke_down", {})
+        action = state.get("action", "")
+        assert "recursive-refine-broke-down" in action
+        assert "recursive-refine-new-children.txt" in action
 
     def test_broke_down_flag_cleared_in_capture_baseline(self, data: dict) -> None:
         """capture_baseline must clear recursive-refine-broke-down so each issue iteration starts clean."""

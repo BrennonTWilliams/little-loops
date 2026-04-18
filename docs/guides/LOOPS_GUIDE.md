@@ -448,7 +448,7 @@ init → dequeue_next → [queue empty?]
                          ├─ YES → implement_current (ll-auto --only) → dequeue_next
                          └─ NO  → detect_children → [children found?]
                                     ├─ YES → enqueue_children (prepend depth-first) → dequeue_next
-                                    └─ NO  → size_review_snap → check_broke_down → [already size-reviewed?]
+                                    └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
                                                ├─ YES → enqueue_or_skip → dequeue_next
                                                └─ NO  → recheck_scores → [passed now?]
                                                           ├─ YES → implement_current → dequeue_next
@@ -465,7 +465,7 @@ init → dequeue_next → [queue empty?]
 
 **When to use**: When you have one or more issues you want refined to ready status, including any children that get split off along the way. Prefer `issue-refinement` for full-backlog refinement; use `recursive-refine` when you want targeted, tree-aware refinement of a specific set of issues.
 
-**Breakdown guard**: After `detect_children` finds no children from the sub-loop, a `check_broke_down` state reads the `.loops/tmp/recursive-refine-broke-down` flag. If the flag is set (meaning `breakdown_issue` ran and already invoked `/ll:issue-size-review` inside the sub-loop), the loop skips `recheck_scores` and `run_size_review` and goes directly to `enqueue_or_skip`, preventing a duplicate size-review call.
+**Breakdown guard**: After `detect_children` finds no children from the sub-loop, a `check_broke_down` state reads the `.loops/tmp/recursive-refine-broke-down` flag **AND** checks that `.loops/tmp/recursive-refine-new-children.txt` is non-empty. If the flag is set **and** the children file is non-empty (meaning `breakdown_issue` ran and actually produced child issues), the loop skips `recheck_scores` and `run_size_review` and goes directly to `enqueue_or_skip`, preventing a duplicate size-review call. If the flag is set but no children were created (sub-loop's `/ll:issue-size-review --auto` returned analysis only), the loop falls through to `recheck_scores` / `run_size_review` so the outer loop gets its own chance to decompose — avoiding the silent-skip regression from BUG-1183.
 
 **Score gate**: When `check_broke_down` passes (flag not set), a `recheck_scores` state checks whether the issue's current `confidence` and `outcome` scores already meet project thresholds. If both pass, the issue is recorded as passed and size-review is skipped entirely — avoiding unnecessary LLM cycles on already-ready issues.
 
@@ -502,9 +502,9 @@ parse_input → dequeue_next → [queue empty?]
               │                └─ NO  → detect_children
               └─ on_failure/on_error → detect_children → [children found from sub-loop?]
                                         ├─ YES → enqueue_children → dequeue_next (depth-first)
-                                        └─ NO  → size_review_snap → check_broke_down → [breakdown_issue already ran?]
-                                                                                        ├─ YES (flag=1) → enqueue_or_skip → dequeue_next
-                                                                                        └─ NO  (flag=0) → recheck_scores → [scores pass?]
+                                        └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
+                                                                                        ├─ YES (flag=1 AND children) → enqueue_or_skip → dequeue_next
+                                                                                        └─ NO  (flag=0 OR no children) → recheck_scores → [scores pass?]
                                                                                                                             ├─ YES → dequeue_next
                                                                                                                             └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```

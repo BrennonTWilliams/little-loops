@@ -246,19 +246,28 @@ states:
     on_error: check_broke_down
 
   check_broke_down:
-    # Guard: if breakdown_issue already ran inside the sub-loop (per the
-    # autodev-namespaced copy of recursive-refine-broke-down), the issue was
-    # already size-reviewed — skip straight to enqueue_or_skip to avoid a
-    # duplicate /ll:issue-size-review call.
+    # Guard: shortcut to enqueue_or_skip ONLY when breakdown_issue ran inside
+    # the sub-loop AND it actually produced child issues (detected and written
+    # to autodev-new-children.txt by detect_children). If the flag is set but
+    # no children exist (BUG-1183: /ll:issue-size-review --auto returned only
+    # analysis, no files), fall through to recheck_scores → run_size_review so
+    # the outer loop gets its own chance to decompose. This preserves the
+    # BUG-1079 "no double size-review" invariant because flag=1 AND children
+    # exist still shortcuts past run_size_review.
     action: |
-      cat .loops/tmp/autodev-broke-down 2>/dev/null || echo 0
+      FLAG=$(cat .loops/tmp/autodev-broke-down 2>/dev/null || echo 0)
+      if [ "$FLAG" = "1" ] && [ -s .loops/tmp/autodev-new-children.txt ]; then
+        echo 1
+      else
+        echo 0
+      fi
     action_type: shell
     evaluate:
       type: output_numeric
       operator: lt
       target: 1
-    on_yes: recheck_scores    # 0 → not broken down → proceed normally
-    on_no: enqueue_or_skip    # 1 → already size-reviewed → skip
+    on_yes: recheck_scores    # 0 → flag unset OR no children → proceed normally
+    on_no: enqueue_or_skip    # 1 → flag set AND children exist → skip
     on_error: recheck_scores
 
   recheck_scores:
