@@ -2421,6 +2421,44 @@ class TestListSorting:
         bug001_idx = next(i for i, ln in enumerate(lines) if "BUG-001" in ln)
         assert bug002_idx < feat010_idx < bug001_idx
 
+    def test_sort_by_created_prefers_captured_at(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Issues captured the same day sort by captured_at sub-day precision (FEAT-1180)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config, indent=2))
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (bugs_dir / "P2-BUG-201-morning.md").write_text(
+            "---\ncaptured_at: 2026-01-01T09:00:00Z\n"
+            "discovered_date: 2026-01-01T00:00:00Z\n---\n# BUG-201: Morning\n"
+        )
+        (bugs_dir / "P2-BUG-202-evening.md").write_text(
+            "---\ncaptured_at: 2026-01-01T20:00:00Z\n"
+            "discovered_date: 2026-01-01T00:00:00Z\n---\n# BUG-202: Evening\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--flat", "--sort", "created", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli.issues import main_issues
+
+            result = main_issues()
+
+        captured = capsys.readouterr()
+        assert result == 0
+        lines = [ln for ln in captured.out.splitlines() if ln.strip()]
+        evening_idx = next(i for i, ln in enumerate(lines) if "BUG-202" in ln)
+        morning_idx = next(i for i, ln in enumerate(lines) if "BUG-201" in ln)
+        # Default is desc (newest first): evening captured later than morning
+        assert evening_idx < morning_idx
+
     def test_sort_desc_flag(
         self,
         temp_project_dir: Path,

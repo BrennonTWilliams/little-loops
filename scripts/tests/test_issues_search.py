@@ -1013,3 +1013,134 @@ class TestBuildSortKey:
         config = NextIssueConfig(strategy="bogus")  # bypasses from_dict validation
         with pytest.raises(ValueError, match="Unknown strategy"):
             build_sort_key(config)
+
+
+# ---------------------------------------------------------------------------
+# _parse_discovered_date: captured_at preference (FEAT-1180)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_discovered_date_prefers_captured_at() -> None:
+    """When captured_at is present, it wins over discovered_date with sub-day precision."""
+    from datetime import datetime
+
+    from little_loops.cli.issues.search import _parse_discovered_date
+
+    content = (
+        "---\n"
+        "captured_at: 2026-01-01T14:30:45Z\n"
+        "discovered_date: 2026-01-01T00:00:00Z\n"
+        "---\n"
+        "# Body\n"
+    )
+    result = _parse_discovered_date(content)
+    assert result == datetime(2026, 1, 1, 14, 30, 45)
+
+
+def test_parse_discovered_date_falls_back_to_discovered_date() -> None:
+    """When captured_at is absent, discovered_date regex path is preserved."""
+    from datetime import datetime
+
+    from little_loops.cli.issues.search import _parse_discovered_date
+
+    content = "---\ndiscovered_date: 2026-02-15T00:00:00Z\n---\n# Body\n"
+    result = _parse_discovered_date(content)
+    assert result == datetime(2026, 2, 15, 0, 0, 0)
+
+
+def test_parse_discovered_date_returns_none_when_neither_present() -> None:
+    from little_loops.cli.issues.search import _parse_discovered_date
+
+    assert _parse_discovered_date("---\nid: FOO-1\n---\n# Body\n") is None
+
+
+def test_parse_discovered_date_falls_back_on_invalid_captured_at() -> None:
+    """Invalid captured_at value falls through to discovered_date regex."""
+    from datetime import datetime
+
+    from little_loops.cli.issues.search import _parse_discovered_date
+
+    content = (
+        "---\n"
+        "captured_at: not-a-date\n"
+        "discovered_date: 2026-03-01T00:00:00Z\n"
+        "---\n"
+    )
+    result = _parse_discovered_date(content)
+    assert result == datetime(2026, 3, 1, 0, 0, 0)
+
+
+class TestCreatedSortSubDayResolution:
+    """Sort by --sort created honors captured_at sub-day precision (FEAT-1180)."""
+
+    @pytest.fixture
+    def captured_at_issues_dir(self, temp_project_dir: Path, sample_config: dict) -> Path:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config, indent=2))
+
+        issues_base = temp_project_dir / ".issues"
+        bugs_dir = issues_base / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Three issues captured the same day at different times — all share
+        # discovered_date so only captured_at distinguishes them.
+        (bugs_dir / "P2-BUG-101-first.md").write_text(
+            "---\n"
+            "captured_at: 2026-01-01T09:00:00Z\n"
+            "discovered_date: 2026-01-01T00:00:00Z\n"
+            "---\n"
+            "# BUG-101: First\n\n## Summary\nFirst capture.\n"
+        )
+        (bugs_dir / "P2-BUG-102-second.md").write_text(
+            "---\n"
+            "captured_at: 2026-01-01T14:30:00Z\n"
+            "discovered_date: 2026-01-01T00:00:00Z\n"
+            "---\n"
+            "# BUG-102: Second\n\n## Summary\nSecond capture.\n"
+        )
+        (bugs_dir / "P2-BUG-103-third.md").write_text(
+            "---\n"
+            "captured_at: 2026-01-01T20:15:00Z\n"
+            "discovered_date: 2026-01-01T00:00:00Z\n"
+            "---\n"
+            "# BUG-103: Third\n\n## Summary\nThird capture.\n"
+        )
+        return issues_base
+
+    def test_created_sort_desc_uses_captured_at(
+        self, temp_project_dir: Path, captured_at_issues_dir: Path
+    ) -> None:
+        """--sort created (desc by default) orders by captured_at time-of-day."""
+        code, out = _run_search(temp_project_dir, "--sort", "created", "--format", "ids")
+        assert code == 0
+        ids = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        assert ids == ["BUG-103", "BUG-102", "BUG-101"]
+
+    def test_created_sort_asc_uses_captured_at(
+        self, temp_project_dir: Path, captured_at_issues_dir: Path
+    ) -> None:
+        code, out = _run_search(
+            temp_project_dir, "--sort", "created", "--asc", "--format", "ids"
+        )
+        assert code == 0
+        ids = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        assert ids == ["BUG-101", "BUG-102", "BUG-103"]
+
+    def test_since_filter_still_date_granular_with_captured_at(
+        self, temp_project_dir: Path, captured_at_issues_dir: Path
+    ) -> None:
+        """--since uses day-granular comparisons even when captured_at is a datetime."""
+        code, out = _run_search(temp_project_dir, "--since", "2026-01-01", "--format", "ids")
+        assert code == 0
+        ids = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        assert set(ids) == {"BUG-101", "BUG-102", "BUG-103"}
+
+    def test_json_output_is_date_string(
+        self, temp_project_dir: Path, captured_at_issues_dir: Path
+    ) -> None:
+        """--json emits discovered_date as YYYY-MM-DD, not 'YYYY-MM-DD HH:MM:SS'."""
+        code, out = _run_search(temp_project_dir, "--sort", "created", "--json")
+        assert code == 0
+        payload = json.loads(out)
+        for item in payload:
+            assert item["discovered_date"] == "2026-01-01"

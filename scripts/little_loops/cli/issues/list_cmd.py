@@ -21,7 +21,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success)
     """
-    from datetime import date
+    from datetime import date, datetime
 
     from little_loops.cli.issues.search import (
         _load_issues_with_status,
@@ -53,7 +53,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     need_content = sort_field in {"created", "completed"}
     enriched: list[tuple] = []
     for issue, stat in filtered:
-        disc_date: date | None = None
+        disc_date: datetime | None = None
         comp_date: date | None = None
         if need_content:
             try:
@@ -103,7 +103,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     "title": issue.title,
                     "path": str(issue.path),
                     "status": stat,
-                    "discovered_date": str(disc_date) if disc_date else None,
+                    "discovered_date": disc_date.date().isoformat() if disc_date else None,
                 }
                 for issue, stat, disc_date, _comp_date in enriched
             ]

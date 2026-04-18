@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import re
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json
@@ -18,8 +18,24 @@ if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
 
 
-def _parse_discovered_date(content: str) -> date | None:
-    """Extract discovered_date from YAML frontmatter."""
+def _parse_discovered_date(content: str) -> datetime | None:
+    """Extract creation datetime from YAML frontmatter.
+
+    Prefers ``captured_at`` (ISO datetime, sub-day resolution) when present,
+    falling back to ``discovered_date`` (date-granular). Always returns a
+    ``datetime`` — regex-only results are normalized to midnight — so sort
+    comparisons never mix ``date`` and ``datetime``.
+    """
+    from little_loops.frontmatter import parse_frontmatter
+
+    fm = parse_frontmatter(content)
+    captured = fm.get("captured_at")
+    if isinstance(captured, str) and captured:
+        try:
+            return datetime.fromisoformat(captured.rstrip("Z"))
+        except ValueError:
+            pass
+
     match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
     if not match:
         return None
@@ -28,10 +44,10 @@ def _parse_discovered_date(content: str) -> date | None:
         return None
     date_str = date_match.group(1).strip("\"'")
     try:
-        # Handle ISO datetime strings like 2026-03-13T21:11:34Z
-        return date.fromisoformat(date_str[:10])
+        d = date.fromisoformat(date_str[:10])
     except ValueError:
         return None
+    return datetime.combine(d, datetime.min.time())
 
 
 def _parse_updated_date(content: str, file_path: Path) -> date | None:
@@ -197,12 +213,11 @@ def build_sort_key(config: NextIssueConfig) -> Callable[[IssueInfo], tuple]:
 
 
 def _sort_issues(
-    items: list[tuple[IssueInfo, str, date | None, date | None]],
+    items: list[tuple[IssueInfo, str, datetime | None, date | None]],
     sort_field: str,
     descending: bool,
-) -> list[tuple[IssueInfo, str, date | None, date | None]]:
+) -> list[tuple[IssueInfo, str, datetime | None, date | None]]:
     """Sort issues by the requested field."""
-    sentinel = date(9999, 12, 31)
 
     def key(item: tuple) -> tuple:
         issue, _status, disc_date, comp_date = item
@@ -213,9 +228,9 @@ def _sort_issues(
             num = int(m.group(1)) if m else 0
             return (issue.issue_id.split("-", 1)[0], num)
         if sort_field in ("date", "created"):
-            return (disc_date or sentinel,)
+            return (disc_date or datetime.max,)
         if sort_field == "completed":
-            return (comp_date or sentinel,)
+            return (comp_date or date.max,)
         if sort_field == "type":
             return (issue.issue_id.split("-", 1)[0], issue.priority_int, issue.issue_id)
         if sort_field == "title":
@@ -294,7 +309,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
     )
 
     # Build enriched list: (IssueInfo, status, discovered_date, completed_date)
-    enriched: list[tuple[IssueInfo, str, date | None, date | None]] = []
+    enriched: list[tuple[IssueInfo, str, datetime | None, date | None]] = []
     for issue, stat in raw:
         if need_content:
             try:
@@ -336,8 +351,10 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
 
         # --- Filter: date range ---
         date_field = getattr(args, "date_field", "discovered")
+        ref_date: date | None
         if date_field == "discovered":
-            ref_date = disc_date
+            # disc_date is datetime for sort precision; normalize to date for day-granular filters
+            ref_date = disc_date.date() if disc_date is not None else None
         else:
             ref_date = _parse_updated_date(content, issue.path)
 
@@ -388,7 +405,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
                     "title": issue.title,
                     "path": str(issue.path),
                     "status": stat,
-                    "discovered_date": str(d) if d else None,
+                    "discovered_date": d.date().isoformat() if d else None,
                 }
                 for issue, stat, d in zip(issues_out, statuses_out, dates_out, strict=True)
             ]
