@@ -72,19 +72,19 @@ class ParallelRunner:
 - All failed → `"no"`
 - Mixed → `"partial"`
 
-**`context_passthrough: true`**: pass a **shallow snapshot** of the parent context (`parent_context = dict(self.captured)`) into each worker's sub-loop initial context. The runner MUST NOT pass `self.captured` by reference — see the Thread-Safety subsection below.
+**`context_passthrough: true`**: pass a **deep copy** of the parent context (`parent_context = copy.deepcopy(self.captured)`) into each worker's sub-loop initial context, produced once by the runner and then given to each worker as its own independent copy. The runner MUST NOT pass `self.captured` by reference and MUST NOT use a shallow copy — see the Thread-Safety subsection below.
 
-### Thread-Safety: `parent_context` is a read-only snapshot
+### Thread-Safety: `parent_context` is a per-worker deep copy
 
-In thread mode, all workers run in the same Python process and share the caller's memory. If the runner forwarded `self.captured` (the parent executor's live context dict) by reference to every worker, concurrent writes inside workers (or concurrent writes from the parent after fan-out started) could race on the same dict. That is a correctness bug, not just a performance smell.
+In thread mode, all workers run in the same Python process and share the caller's memory. A shallow copy (`dict(self.captured)`) is insufficient: top-level keys are isolated, but any value that is itself a mutable container (nested dict, list) is still shared by reference across workers and with the parent. A worker that mutates a nested structure would silently corrupt state visible to every other worker.
 
 The contract is:
-- The parent executor hands the runner a **shallow copy** of its captured context: `parent_context=dict(self.captured)` at the call site in `FSMExecutor._execute_parallel_state()` (FEAT-1076 wiring).
-- The runner treats `parent_context` as immutable input. It does not mutate it and does not expose it mutably to workers.
-- Each worker receives the same snapshot. Workers may read any key but must not mutate the snapshot; values that are themselves mutable containers (nested dicts/lists) are already treated as read snapshots by downstream consumers in the FSM pipeline, so a shallow copy is sufficient for this layer.
-- Worker-private state (anything a worker wants to capture) lives in that worker's own `FSMExecutor.captured`, not in `parent_context`.
+- The runner produces a **deep copy per worker** of the parent's captured context using `copy.deepcopy(self.captured)` when building each worker's initial context. One copy per worker, not one shared copy across workers.
+- No locks, no freezing, no conventions about which keys are "safe" to mutate — each worker owns its copy outright and may read or mutate it freely without affecting siblings or the parent.
+- Worker-private outputs (anything a worker wants to report back) live in that worker's own `FSMExecutor.captured` and surface via `ParallelResult.all_captures`, not in `parent_context`.
+- The parent's `self.captured` dict is untouched by fan-out. After `runner.run()` returns, `FSMExecutor._execute_parallel_state()` writes a single aggregate entry (`self.captured[state_name] = {"results": [...]}`) — that is the only mutation of parent state from parallel execution.
 
-This keeps thread mode safe without synchronization overhead: no locks, no GIL-dependent reasoning — just the rule "don't share mutable state across workers."
+**Cost rationale:** `copy.deepcopy` is O(total context size). In practice captures are small flat dicts (strings, ints, small lists of IDs) and the per-worker cost is microseconds. If profiling ever shows deepcopy as a real cost (e.g., orchestrator loops passing multi-megabyte contexts), revisit — but don't optimize speculatively. The mental-model win ("your snapshot is yours, do what you want with it") eliminates a whole class of silent-corruption bugs and is worth paying for.
 
 ## Files to Create/Modify
 

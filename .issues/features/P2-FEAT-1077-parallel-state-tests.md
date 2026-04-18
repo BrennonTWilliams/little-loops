@@ -58,7 +58,7 @@ Create `scripts/tests/test_parallel_runner.py` (flat directory — all FSM tests
 - Thread mode `fail_fast`: verify remaining futures cancelled on first failure
 - Worktree mode: mock worktree setup/teardown, verify merge-back called
 - `context_passthrough: true`: verify parent context passed to each worker
-- `test_parallel_runner_context_passthrough_is_read_only_snapshot` — thread-safety invariant from FEAT-1075: spawn N (≥4) workers that each read the same keys from `parent_context` and assert they observe identical values; after the run, assert the parent's original dict is unchanged. This protects against accidental regression to pass-by-reference.
+- `test_parallel_runner_context_passthrough_is_deep_copy_per_worker` — thread-safety invariant from FEAT-1075 (deep-copy contract): pass a `parent_context` that includes nested mutable structures (a dict-of-lists, e.g., `{"items": ["a", "b"], "meta": {"count": 0}}`). Spawn N (≥4) workers where each worker mutates its nested structures (e.g., appends to `items`, increments `meta["count"]`). After the run, assert: (a) every worker's mutations are visible only inside that worker's own `all_captures` entry, (b) sibling workers see no mutations from each other in their initial context, (c) the parent's original `self.captured` dict is byte-for-byte unchanged (including nested containers — check `parent_context["items"] is not worker_context["items"]` identity). This catches regressions to shallow-copy or pass-by-reference.
 - `timeout_seconds`: worker exceeding timeout records timeout verdict and is aggregated under `fail_mode` (`collect` → listed in `failed`; `fail_fast` → cancels remaining futures); `timeout_seconds=None` means no timeout enforced
 - Edge: 0 items → immediate `ParallelResult(succeeded=[], failed=[], all_captures=[], verdict="yes")`
 - Edge: 1 item fails of 1 → `verdict="no"`
@@ -71,6 +71,17 @@ One end-to-end test must exercise a real parallel loop YAML through `FSMExecutor
 - Fixture: a loop YAML with a `parallel:` state pointing at ≥2 toy sub-loops (smallest possible — e.g., two trivial one-state sub-loops that immediately reach `done`)
 - Assert: fan-out actually executes N sub-loops (verify via captures), verdict aggregation produces the expected `"yes"`/`"partial"`/`"no"` value, and the outer loop routes correctly on each of `on_yes` / `on_partial` / `on_no` — parameterize or run three variants to cover all three routes
 - Use `isolation: "thread"` (the new default) and `timeout_seconds: None` for speed; worktree-mode integration coverage stays in the unit tests
+
+### Real-threading concurrency tests (not mocked)
+
+Most `test_parallel_runner.py` tests mock `FSMExecutor` for speed and determinism. That leaves real `ThreadPoolExecutor` behavior unexercised — the exact surface where race conditions hide. Add a dedicated `TestParallelRunnerRealThreading` class in `test_parallel_runner.py` that runs real threads against minimal real workloads:
+
+- **`test_real_threads_deep_copy_isolates_mutations`** — 4 real workers, each mutates nested structures in its context. Use real `ThreadPoolExecutor` (no mocks). Assert each worker's mutations land only in its own `all_captures` and the parent dict is unchanged. This is the canonical regression test for the deep-copy contract.
+- **`test_real_threads_max_workers_enforced`** — 20 items, `max_workers=2`. Each worker records its start timestamp into a shared `threading.Lock`-protected list. After the run, assert at most 2 timestamps overlap at any point (no more than `max_workers` concurrent). Catches regressions that would silently let `ThreadPoolExecutor` exceed its pool.
+- **`test_real_threads_fail_fast_cancels_pending`** — 10 items, `fail_mode: fail_fast`, item 2 fails. Track how many worker bodies actually started (shared counter incremented at the top of each worker). Assert the counter is strictly less than 10 — pending futures were cancelled before starting. Uses real futures + cancellation, not mocked.
+- **`test_real_threads_timeout_one_while_others_complete`** — 4 workers, `timeout_seconds=1`, worker 2 sleeps 5 seconds. Assert worker 2 is recorded as timed-out, workers 0/1/3 complete normally, overall verdict is `"partial"`. Catches interaction bugs between timeout and aggregation.
+
+These tests MUST use `time.sleep` deliberately in worker bodies (not `time.monotonic` polling) so that actual thread scheduling is exercised. They may be slightly slower than the mocked suite (target < 5s total); tag with `@pytest.mark.integration` if they push overall test time up noticeably (note: `integration` is already registered per `pyproject.toml:106`, so no new marker needed).
 
 ### Existing test files to extend
 

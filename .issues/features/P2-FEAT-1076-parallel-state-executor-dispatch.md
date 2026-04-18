@@ -230,6 +230,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Risk**: Low — New code path only; existing `loop:` dispatch block is untouched; scope lock stays at CLI level
 - **Breaking Change**: No
 
+## Ship Companions (must land together)
+
+The following issues were originally filed as P3 "known limitations" of this dispatch but are now **P2 blockers that must ship in the same release as FEAT-1076**. Shipping `_execute_parallel_state()` without them would leave users with a broken dry-run mode and uncancellable worker threads — both regressions vs. the sequential loop behavior they replace.
+
+- **ENH-1164** — Simulation guard at the top of `_execute_parallel_state()`. Without this, `ll-loop simulate` on any loop with a `parallel:` state runs real concurrent sub-loops against live issue files.
+- **ENH-1165 (Option B)** — Wrap `runner.run()` in `try/finally` and call `executor.shutdown(wait=False, cancel_futures=True)` on `KeyboardInterrupt`. Option A (full per-worker cancellation via `threading.Event`) may land as a follow-up.
+
+These two additions are ~20 lines of code combined inside `_execute_parallel_state()`; the cost of bundling them now is much lower than the cost of shipping without them.
+
+### Follow-up issues (not blockers)
+
+Tracked for post-v1; do not gate this issue on them:
+- **FEAT-1174** — Per-worker checkpointing and resume (so mid-run interrupts don't re-run completed workers)
+- **ENH-1175** — Worker retry + side-effect cleanup contract
+- **ENH-1176** — Parallel state resource limits (max items, cumulative timeout, worktree warnings)
+- **ENH-1177** — Worker-tagged observability (per-worker event tags in logs)
+- **ENH-1178** — Thread-mode isolation safety detection (validation heuristic for unsafe sub-loops)
+
 ## Labels
 
 `fsm`, `parallel`, `executor`

@@ -152,6 +152,8 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     score_change_surface = frontmatter.get("score_change_surface")
     effort = frontmatter.get("effort")
     discovered_by = frontmatter.get("discovered_by")
+    captured_at = frontmatter.get("captured_at")
+    completed_at = frontmatter.get("completed_at")
 
     # Source / norm / fmt fields
     from little_loops.issue_parser import is_formatted, is_normalized
@@ -240,6 +242,8 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "source": source,
         "norm": norm,
         "fmt": fmt,
+        "captured_at": str(captured_at) if captured_at is not None else None,
+        "completed_at": str(completed_at) if completed_at is not None else None,
     }
 
 
@@ -337,6 +341,10 @@ def _render_card(fields: dict[str, str | None]) -> str:
         detail_mid_parts.append(f"Labels: {fields['labels']}")
     if detail_mid_parts:
         detail_lines.append("  \u2502  ".join(detail_mid_parts))
+    if fields.get("captured_at"):
+        detail_lines.append(f"Captured at: {fields['captured_at']}")
+    if fields.get("completed_at"):
+        detail_lines.append(f"Completed at: {fields['completed_at']}")
     if fields.get("history"):
         detail_lines.append(f"History: {fields['history']}")
 

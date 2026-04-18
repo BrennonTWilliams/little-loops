@@ -1522,6 +1522,8 @@ class TestIssuesCLIShow:
         assert "History:" not in captured.out
         # Source is absent (no discovered_by in frontmatter); Norm/Fmt still appear
         assert "Source:" not in captured.out
+        assert "Captured at:" not in captured.out
+        assert "Completed at:" not in captured.out
 
     def test_show_json_output(
         self,
@@ -1772,6 +1774,102 @@ class TestIssuesCLIShow:
         assert data.get("score_test_coverage") == "23"
         assert data.get("score_ambiguity") == "21"
         assert data.get("score_change_surface") == "19"
+
+    def test_show_displays_captured_at(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show renders captured_at row when present in frontmatter."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-601-captured.md").write_text(
+            "---\ncaptured_at: 2026-04-18T14:32:07Z\n---\n"
+            "# FEAT-601: Captured issue\n\n## Summary\nHas captured_at."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-601", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Captured at: 2026-04-18T14:32:07Z" in captured.out
+
+    def test_show_displays_completed_at_for_completed_issue(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show renders completed_at row when present in a completed issue file."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        (completed_dir / "P2-BUG-602-done.md").write_text(
+            "---\n"
+            "captured_at: 2026-04-18T14:32:07Z\n"
+            "completed_at: 2026-05-01T09:15:44Z\n"
+            "---\n"
+            "# BUG-602: Done issue\n\n## Summary\nFixed."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-602", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Status: Completed" in captured.out
+        assert "Captured at: 2026-04-18T14:32:07Z" in captured.out
+        assert "Completed at: 2026-05-01T09:15:44Z" in captured.out
+
+    def test_show_json_includes_timestamps(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output includes captured_at and completed_at keys."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        (completed_dir / "P2-FEAT-603-json-ts.md").write_text(
+            "---\n"
+            "captured_at: 2026-04-18T14:32:07Z\n"
+            "completed_at: 2026-05-01T09:15:44Z\n"
+            "---\n"
+            "# FEAT-603: JSON timestamps\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "FEAT-603", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data.get("captured_at") == "2026-04-18T14:32:07Z"
+        assert data.get("completed_at") == "2026-05-01T09:15:44Z"
 
 
 class TestIssuesCLICount:

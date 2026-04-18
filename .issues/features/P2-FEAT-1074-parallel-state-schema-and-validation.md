@@ -82,6 +82,11 @@ Add `parallel: ParallelStateConfig | None = None` to `StateConfig`. Follow the `
 - Add mutual exclusion checks: `parallel` + `action`, `parallel` + `loop`, `parallel` + `next`
 - Add range validation: `max_workers >= 1`; `timeout_seconds is None or timeout_seconds >= 1`
 - Add enum checks: `isolation` in `{"worktree", "thread"}`, `fail_mode` in `{"collect", "fail_fast"}`
+- **Forbid nested parallel**: after parsing, check that the loop named in `parallel.loop` does not itself contain any state with a `parallel:` field. Nesting multiplies concurrency uncontrollably (`max_workers` × `max_workers` → 16+ concurrent workers with no upper bound) and there is no concrete use case for it in the scoped orchestrator loops (ENH-1073). Error message: `"parallel.loop '<name>' contains a nested parallel state at <state>; nested parallel states are not supported. Decompose into separate top-level parallel states or flatten the sub-loop."` This check runs at validation time (across all loaded loops), not at execution time, so authors catch it before running.
+
+### Schema version marker
+
+Add a version note at the top of `fsm-loop-schema.json` indicating when `parallel:` support was added. External validators that pin to an older version of the schema will continue to work against pre-`parallel` loops. Suggested marker: a top-level `"x-fsm-features"` object (ignored by JSON Schema validators) listing `{"parallel": "added in v<plugin-version>"}`. This is purely informational — the schema remains strictly additive — but gives external tools a single place to check feature availability without diffing schemas.
 
 ### fsm-loop-schema.json
 
