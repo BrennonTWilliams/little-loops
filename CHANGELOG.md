@@ -7,19 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **Multi-Hour 429 Resilience with Shared Circuit Breaker** — Two-tier retry ladder (short-burst + long-wait) with wall-clock budget; `rate_limit_waiting` heartbeat events; cross-worktree circuit breaker to pre-sleep peers; new `StateConfig` fields `rate_limit_max_wait_seconds` and `rate_limit_long_wait_ladder` (ENH-1131)
-- **Configurable `next-issue` Selection** — `ll-issues next-issue` / `next-issues` sort order is now driven by `issues.next_issue` in `.ll/ll-config.json`. `strategy` accepts named presets `confidence_first` (default, byte-identical to legacy ordering) and `priority_first`; `sort_keys` overrides `strategy` with a custom list of `{key, direction}` entries across priority, confidence, impact/effort, and score dimensions. Unknown values raise `ValueError` at config load (ENH-1123 → ENH-1124/1125/1126)
-
-### Changed
-
-- **`autodev` Interleaved Refine-and-Implement** — The `autodev` loop now interleaves refinement and implementation instead of draining the full decomposition tree before running any implementation. Each leaf is implemented via `ll-auto --only` as soon as it passes refinement; decomposed children are prepended to the queue depth-first and refined-and-implemented before the next sibling. Behavior for non-decomposed inputs is unchanged. Known tradeoff: sibling children often share implicit dependencies, so a child implementation failure can silently invalidate the context under which later siblings were refined — re-inspect remaining subtree output after a child failure. `recursive-refine` used standalone is unchanged. (ENH-1127)
-
 ### Planned
 
 - Windows compatibility testing
 - Performance benchmarks for large repositories
+
+## [1.84.0] - 2026-04-17
+
+### Added
+
+- **Multi-Hour 429 Resilience with Shared Circuit Breaker** — Two-tier retry ladder (short-burst + long-wait) with wall-clock budget; `rate_limit_waiting` heartbeat events; cross-worktree circuit breaker to pre-sleep peers; new `StateConfig` fields `rate_limit_max_wait_seconds` and `rate_limit_long_wait_ladder` (ENH-1131, ENH-1132, ENH-1133, ENH-1136, ENH-1137, ENH-1139)
+- **Configurable `next-issue` Selection** — `ll-issues next-issue` / `next-issues` sort order is now driven by `issues.next_issue` in `.ll/ll-config.json`; `strategy` accepts named presets `confidence_first` (default, byte-identical to legacy ordering) and `priority_first`; `sort_keys` overrides `strategy` with a custom list of `{key, direction}` entries across priority, confidence, impact/effort, and score dimensions. Unknown values raise `ValueError` at config load (ENH-1123, ENH-1124, ENH-1125, ENH-1126)
+- **Scratch-Pad Enforcement via PreToolUse Hook** — New `scratch-pad-redirect.sh` hook automatically redirects large file reads and command outputs to scratch files, keeping automation context lean and preventing context blowout in long-running loops (ENH-1111, ENH-1128, ENH-1129)
+
+### Fixed
+
+- **`ll-loop run --verbose` Truncated LLM Responses** — Multi-paragraph assistant responses now display in full with paragraph breaks preserved, instead of being clipped to a single line (BUG-1118)
+- **Rate-Limit Exhaustion in `autodev` `run_size_review`** — `autodev` no longer silently skips size-review work on 429 exhaustion; exhaustion is now handled gracefully
+
+### Changed
+
+- **`autodev` Interleaved Refine-and-Implement** — The `autodev` loop now interleaves refinement and implementation instead of draining the full decomposition tree before running any implementation. Each leaf is implemented via `ll-auto --only` as soon as it passes refinement; decomposed children are prepended to the queue depth-first and refined-and-implemented before the next sibling. Behavior for non-decomposed inputs is unchanged. Known tradeoff: sibling children often share implicit dependencies, so a child implementation failure can silently invalidate the context under which later siblings were refined. (ENH-1127)
 
 ## [1.83.0] - 2026-04-16
 
@@ -188,6 +196,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FSM Sub-loop Outcome Routing** — Fixed executor to route sub-loop outcomes by terminal state name (`done` vs `failed`) rather than termination reason, preventing failed sub-loops from being treated as successes (BUG-1017)
 - **`resolve_fragments()` Built-In Loops Fallback** — Fragment resolution now automatically falls back to the built-in loops directory when user paths are absent, enabling shared library imports without manual copying (BUG-1008)
 
+[1.84.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.83.0...v1.84.0
 [1.83.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.82.0...v1.83.0
 [1.82.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.1...v1.82.0
 [1.81.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.0...v1.81.1
