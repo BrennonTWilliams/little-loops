@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Multi-Hour 429 Resilience with Shared Circuit Breaker** — Two-tier retry ladder (short-burst + long-wait) with wall-clock budget; `rate_limit_waiting` heartbeat events; cross-worktree circuit breaker to pre-sleep peers; new `StateConfig` fields `rate_limit_max_wait_seconds` and `rate_limit_long_wait_ladder` (ENH-1131)
+- **Configurable `next-issue` Selection** — `ll-issues next-issue` / `next-issues` sort order is now driven by `issues.next_issue` in `.ll/ll-config.json`. `strategy` accepts named presets `confidence_first` (default, byte-identical to legacy ordering) and `priority_first`; `sort_keys` overrides `strategy` with a custom list of `{key, direction}` entries across priority, confidence, impact/effort, and score dimensions. Unknown values raise `ValueError` at config load (ENH-1123 → ENH-1124/1125/1126)
 
 ### Changed
 
