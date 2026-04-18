@@ -171,6 +171,7 @@ _Added by `/ll:confidence-check` on 2026-04-18_
 - FEAT-1181: `ll-history` Analytics and `CompletedIssue` Timestamp Support
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-18T21:27:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1357a791-c921-47ef-95b7-1d0a7b03979b.jsonl`
 - `/ll:wire-issue` - 2026-04-18T21:22:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80e14588-3104-405e-a8e6-c53efd5b4b39.jsonl`
 - `/ll:refine-issue` - 2026-04-18T21:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83c799cc-9c6b-4537-928d-d6776c2531bf.jsonl`
 - `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a53c2eef-b0c1-4768-8f1f-aa378a05c411.jsonl`
