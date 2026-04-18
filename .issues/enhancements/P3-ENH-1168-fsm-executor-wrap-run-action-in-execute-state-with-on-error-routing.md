@@ -2,6 +2,12 @@
 captured_at: 2026-04-18T19:59:00Z
 discovered_date: 2026-04-18
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 18
 ---
 
 # ENH-1168: FSM executor wrap run_action in execute_state with on_error routing
@@ -180,6 +186,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-04-18 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-18T20:51:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c5bb8fb-3ecb-45f7-9cd0-f674b644124e.jsonl`
+- `/ll:confidence-check` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bda158c4-d7b8-4d82-9b6a-d835faf6e66e.jsonl`
 - `/ll:wire-issue` - 2026-04-18T20:29:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab781961-a8c6-4915-8190-7c4fd3723052.jsonl`
 - `/ll:refine-issue` - 2026-04-18T20:16:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc00f492-dc6a-41a8-aaba-c4d008a3652e.jsonl`
 - `/ll:capture-issue` - 2026-04-18T19:59:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4165baeb-7bcd-4b9f-99ed-2cf4c171d21e.jsonl`
