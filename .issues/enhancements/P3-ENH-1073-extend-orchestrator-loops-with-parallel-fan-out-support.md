@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: capture-issue
-depends_on: [FEAT-1074, FEAT-1075, FEAT-1076]
+depends_on: [FEAT-1074, FEAT-1075, FEAT-1076, ENH-1167]
 ---
 
 # ENH-1073: Extend Orchestrator Loops with Optional Parallel Fan-Out
@@ -136,12 +136,24 @@ For each loop, the extension follows a consistent pattern:
 - Does not change leaf loops (refine-to-ready-issue, fix-quality-and-tests, etc.) — they are the sub-loops being fanned out
 - Does not add `max_workers` to `ll-config.json` at this stage — loops use hardcoded defaults initially; config wiring is a follow-on
 
+## Dependencies
+
+- **Hard blockers**:
+  - `FEAT-1074` — `ParallelStateConfig` schema + validation
+  - `FEAT-1075` — `ParallelRunner` execution engine
+  - `FEAT-1076` — executor dispatch for `parallel:` states
+  - `ENH-1167` — **must be completed first**; `collect_children` semantics for parallel worktree mode are defined there. Without ENH-1167, the `collect_children` state in every worktree-mode loop below (recursive-refine, sprint-refine-and-implement, auto-refine-and-implement, harness-multi-item) is underspecified: how children issue IDs are diffed, where worker-captured children live in the captures dict, and how merged worktree state is read back into the parent are all open questions that ENH-1167 resolves.
+
 ## Impact
 
-- **Priority**: P3 — High value but blocked on FEAT-1072; no user-visible benefit until the primitive exists
+- **Priority**: P3 — High value but blocked on FEAT-1072 and ENH-1167; no user-visible benefit until both the primitive and the `collect_children` semantics exist
 - **Effort**: Medium — Each loop follows the same restructuring template; `recursive-refine` is the hardest; others are mechanical
-- **Risk**: Low — YAML-only changes to loop configs; FSM engine is unchanged; rollback is trivial (revert YAML files)
+- **Risk**: Low — YAML-only changes to loop configs; FSM engine is unchanged; rollback is trivial (revert YAML files). **Implementation blocked pending ENH-1167 resolution** — attempting this issue before ENH-1167 lands will require rework once `collect_children` is finalized.
 - **Breaking Change**: No — same loop names and interfaces; behavioral change is faster execution, not different outcomes
+
+### Pre-implementation gate
+
+Given this issue touches 6 orchestrator loops and has non-trivial branching between sequential and parallel paths in each, run `/ll:issue-size-review` on it before starting implementation. Decomposing into per-loop sub-issues may be warranted if `collect_children` (post-ENH-1167) turns out to vary meaningfully by loop.
 
 ## Related Key Documentation
 
