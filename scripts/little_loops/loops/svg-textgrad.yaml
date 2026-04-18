@@ -133,11 +133,11 @@ states:
       - scalability weight: 1× (threshold ${context.pass_threshold})
 
       Compute the weighted average: (2 × visual_clarity + 2 × originality + craft + scalability) / 6.
-      If the weighted average >= ${context.pass_threshold}, output exactly: PASS
+      If the weighted average >= ${context.pass_threshold}, output exactly: ALL_PASS
       Otherwise output: ITERATE
     evaluate:
       type: output_contains
-      pattern: "PASS"
+      pattern: "ALL_PASS"
     on_yes: done
     on_no: record_scores
     on_error: failed

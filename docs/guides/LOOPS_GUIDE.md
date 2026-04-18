@@ -690,8 +690,8 @@ ll-loop run html-website-generator "museum landing page" \
 ```
 plan → generate → evaluate
                      ├─ CAPTURED → score
-                     │              ├─ PASS    → done
-                     │              └─ ITERATE → generate (with critique)
+                     │              ├─ ALL_PASS → done
+                     │              └─ ITERATE  → generate (with critique)
                      └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
 ```
 
@@ -745,8 +745,8 @@ ll-loop run svg-image-generator "lightning bolt icon" \
 ```
 init → plan → generate → evaluate
                             ├─ CAPTURED → score
-                            │              ├─ PASS    → done
-                            │              └─ ITERATE → generate (with critique)
+                            │              ├─ ALL_PASS → done
+                            │              └─ ITERATE  → generate (with critique)
                             └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
 ```
 
@@ -802,8 +802,8 @@ ll-loop run svg-textgrad "lightning bolt icon" \
 ```
 init → plan → generate → evaluate
                             ├─ CAPTURED → score
-                            │              ├─ PASS    → done
-                            │              ├─ ITERATE → record_scores → compute_gradient → route_convergence
+                            │              ├─ ALL_PASS → done
+                            │              ├─ ITERATE  → record_scores → compute_gradient → route_convergence
                             │              │                                                   ├─ CONVERGED → done
                             │              │                                                   └─ continue  → append_gradient → apply_gradient → generate
                             │              └─ ERROR   → failed

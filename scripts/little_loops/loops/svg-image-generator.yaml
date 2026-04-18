@@ -106,7 +106,7 @@ states:
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
     # criteria and writes structured critique for the generator's next iteration.
-    # Uses output_contains: "PASS" for routing — simple and robust vs JSON parsing.
+    # Uses output_contains: "ALL_PASS" for routing — simple and robust vs JSON parsing.
     # The PNG produced by the evaluate state is read as a multimodal image input.
     action_type: prompt
     action: |
@@ -141,11 +141,11 @@ states:
       - craft weight: 1× (threshold ${context.pass_threshold})
       - scalability weight: 1× (threshold ${context.pass_threshold})
 
-      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: PASS
+      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: ALL_PASS
       Otherwise output: ITERATE
     evaluate:
       type: output_contains
-      pattern: "PASS"
+      pattern: "ALL_PASS"
     on_yes: done
     on_no: generate
     on_error: failed

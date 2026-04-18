@@ -92,6 +92,26 @@ class TestBuiltinLoopFiles:
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
 
+    def test_no_bare_pass_token_in_output_contains(self, builtin_loops: list[Path]) -> None:
+        """No built-in loop uses bare 'PASS' as an output_contains pattern.
+
+        Bare 'PASS' collides with per-criterion scoring annotations
+        (e.g. 'design_quality: 8/10 — PASS') in free-form LLM output.
+        Use compound tokens like 'ALL_PASS' or 'CONVERGED' instead.
+        """
+        for loop_file in builtin_loops:
+            with open(loop_file) as f:
+                data = yaml.safe_load(f)
+            for state_name, state in (data.get("states") or {}).items():
+                evaluate = state.get("evaluate") or {}
+                if evaluate.get("type") == "output_contains":
+                    pattern = evaluate.get("pattern")
+                    assert pattern != "PASS", (
+                        f"{loop_file.name}/{state_name} uses ambiguous 'PASS' token — "
+                        "scoring output annotations will match substring. "
+                        "Use a compound token (e.g. 'ALL_PASS')."
+                    )
+
 
 class TestBuiltinLoopResolution:
     """Tests for resolve_loop_path with built-in fallback."""
