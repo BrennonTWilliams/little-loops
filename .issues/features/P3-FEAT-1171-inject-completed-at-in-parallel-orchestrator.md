@@ -8,6 +8,12 @@ discovered_by: issue-size-review
 parent: FEAT-1162
 size: Small
 depends_on: FEAT-1169
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-1171: Inject `completed_at` in Parallel Orchestrator Path
