@@ -518,6 +518,28 @@ class TestIssueParser:
 
         assert info.discovered_by == "scan-codebase"
 
+    def test_parse_file_ignores_captured_at(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+    ) -> None:
+        """Test parse_file ignores captured_at frontmatter and still reads discovered_by."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text(
+            "---\ncaptured_at: 2026-04-18T10:30:00Z\ndiscovered_by: capture-issue\n---\n\n# BUG-001: Test\n"
+        )
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.discovered_by == "capture-issue"
+
     def test_parse_no_frontmatter(
         self,
         temp_project_dir: Path,

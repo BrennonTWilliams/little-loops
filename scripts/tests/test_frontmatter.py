@@ -52,6 +52,12 @@ class TestParseFrontmatter:
         result = parse_frontmatter(content)
         assert result["url"] == "https://example.com"
 
+    def test_iso_datetime_with_time_colons(self) -> None:
+        """ISO 8601 datetime with T and colons is preserved as a string."""
+        content = "---\ncaptured_at: 2026-04-18T10:30:00Z\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["captured_at"] == "2026-04-18T10:30:00Z"
+
     def test_no_coerce_types_default(self) -> None:
         """Without coerce_types, digit strings remain strings."""
         content = "---\ncount: 42\n---\n\n"

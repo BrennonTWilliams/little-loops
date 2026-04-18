@@ -225,6 +225,7 @@ Routing conventions: `on_yes` / `on_partial` / `on_no`. Captures: `${captured.<s
 ---
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-18T19:51:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ff9cd96-1544-4ffa-b28c-15aab5e9f3e8.jsonl`
 - `/ll:confidence-check` - 2026-04-12T19:21:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af507141-e237-44c4-86f4-c20c393e747e.jsonl`
 - `/ll:refine-issue` - 2026-04-13T00:19:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df842483-0396-4e4d-ad0e-01b546a41fd1.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64ed8017-a10a-4a9e-9954-5d3beb6f9e8e.jsonl`
@@ -235,4 +236,6 @@ Routing conventions: `on_yes` / `on_partial` / `on_no`. Captures: `${captured.<s
 
 ---
 
-**Open** | Created: 2026-04-12 | Priority: P2
+**Completed** | Created: 2026-04-12 | Completed: 2026-04-18 | Priority: P2
+
+**Completion note**: ARCHITECTURE.md and CONTRIBUTING.md scope decomposed into FEAT-1086. API.md (`StateConfig.parallel` field, `ParallelStateConfig`, `ParallelResult` blocks) remains the responsibility of FEAT-1086 or a follow-on issue.

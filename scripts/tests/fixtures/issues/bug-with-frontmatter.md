@@ -1,4 +1,5 @@
 ---
+captured_at: 2026-01-20T10:30:00Z
 discovered_commit: abc123
 discovered_branch: main
 discovered_date: 2026-01-20

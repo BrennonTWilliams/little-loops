@@ -133,6 +133,7 @@ The assembled file follows this structure:
 ```bash
 cat > "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
 ---
+captured_at: [ISO 8601 UTC timestamp, e.g. 2026-04-18T14:32:07Z]
 discovered_date: [YYYY-MM-DD]
 discovered_by: capture-issue
 # testable: false  # Only emitted when doc-only heuristic fires (2+ signal keywords matched)

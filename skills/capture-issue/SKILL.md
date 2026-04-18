@@ -232,7 +232,7 @@ ELSE:
 2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
 4. If `include_type_sections` is true, also include sections from `type_sections` that have a `creation_template`
-5. Always include YAML frontmatter with `discovered_date` and `discovered_by: capture-issue`
+5. Always include YAML frontmatter with `captured_at` (ISO 8601 UTC timestamp, e.g. `"2026-04-18T14:32:07Z"` — use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format), `discovered_date` (date-only, same day), and `discovered_by: capture-issue`
 6. **Infer `testable: false`** — after building the frontmatter, scan the issue title and description for doc-only signal keywords:
    - **Signal keywords**: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link"
    - **Threshold**: 2+ keyword matches (case-insensitive) in the combined title + description text

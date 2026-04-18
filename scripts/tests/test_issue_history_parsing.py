@@ -90,6 +90,17 @@ discovered_by: null
 
         assert issue.discovered_by is None
 
+    def test_parse_ignores_captured_at(self, tmp_path: Path) -> None:
+        """Test parse_completed_issue ignores captured_at and still reads discovered_by."""
+        issue_file = tmp_path / "P1-BUG-001-test.md"
+        issue_file.write_text(
+            "---\ncaptured_at: 2026-04-18T10:30:00Z\ndiscovered_by: capture-issue\n---\n\n# BUG-001: Test\n"
+        )
+
+        issue = parse_completed_issue(issue_file)
+
+        assert issue.discovered_by == "capture-issue"
+
 
 class TestParseCompletionDate:
     """Tests for _parse_completion_date: field label variants and git-log fallback."""
