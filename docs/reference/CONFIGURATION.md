@@ -486,12 +486,16 @@ Override individual glyphs to customize how FSM box diagrams render state type b
 
 ### `scratch_pad`
 
-Observation masking via scratch pad files to reduce context bloat in automation sessions:
+Observation masking via scratch pad files to reduce context bloat in automation sessions. When `enabled: true`, the `scratch-pad-redirect` PreToolUse hook (`hooks/scripts/scratch-pad-redirect.sh`) rewrites large `Bash` outputs and large `Read` calls to a scratch file + `tail`, keeping the transcript small.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Enable scratch pad instructions for automation sessions |
 | `threshold_lines` | `200` | Line count threshold above which tool outputs are redirected to scratch files (50-1000) |
+| `automation_contexts_only` | `true` | Only enforce redirection in automation sessions (`ll-auto`, `ll-parallel`, `ll-sprint`); skip in interactive sessions |
+| `tail_lines` | `20` | Number of lines to surface via `tail` when redirecting large outputs to a scratch file (5-200) |
+| `command_allowlist` | `["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"]` | Shell commands eligible for `Bash` redirection by the PreToolUse hook |
+| `file_extension_filters` | `[".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]` | File extensions eligible for `Read` redirection when tooling opens a large file |
 
 ### `refine_status`
 
