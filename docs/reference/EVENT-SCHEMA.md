@@ -187,6 +187,29 @@ Emitted after the action finishes, regardless of success or failure.
 
 ---
 
+### `action_error`
+
+Emitted when an action raises an unhandled exception that is routed to the state's `on_error` target. Only emitted when `on_error` is defined; if absent, the exception propagates to the top-level loop handler and terminates execution instead.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `state` | `str` | always | Name of the state whose action raised |
+| `error` | `str` | always | String representation of the raised exception |
+| `route` | `str` | always | Route taken in response (always `"on_error"`) |
+
+**Example:**
+```json
+{
+  "event": "action_error",
+  "ts": "...",
+  "state": "fetch_data",
+  "error": "ConnectionError: timed out after 30s",
+  "route": "on_error"
+}
+```
+
+---
+
 ### `evaluate`
 
 Emitted after the evaluator runs to determine the next routing decision.
@@ -560,6 +583,7 @@ Every event type listed in this document has a corresponding JSON Schema (draft-
 ```
 docs/reference/schemas/
 ├── action_complete.json
+├── action_error.json
 ├── action_output.json
 ├── action_start.json
 ├── evaluate.json
@@ -658,6 +682,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `action_start` | FSM | `fsm/executor.py` |
 | `action_output` | FSM | `fsm/executor.py` |
 | `action_complete` | FSM | `fsm/executor.py` |
+| `action_error` | FSM | `fsm/executor.py` |
 | `evaluate` | FSM | `fsm/executor.py` |
 | `retry_exhausted` | FSM | `fsm/executor.py` |
 | `rate_limit_exhausted` | FSM | `fsm/executor.py` |

@@ -2428,6 +2428,172 @@ class TestSignalHandling:
         assert result.terminated_by != "signal"
 
 
+class TestActionExceptionRouting:
+    """Tests for ENH-1168: action exceptions route to on_error when defined."""
+
+    @staticmethod
+    def _raising_runner(exc: Exception) -> Any:
+        class RaisingRunner:
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
+            ) -> ActionResult:
+                del action, timeout, is_slash_command, on_output_line, agent, tools
+                raise exc
+
+        return RaisingRunner()
+
+    def test_exception_in_branch_c_routes_to_on_error(self) -> None:
+        """Exception from _run_action in evaluated-action path routes to on_error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="recover",
+                ),
+                "done": StateConfig(terminal=True),
+                "recover": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(
+            fsm, action_runner=self._raising_runner(RuntimeError("boom"))
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "recover"
+
+    def test_exception_in_branch_c_without_on_error_reraises(self) -> None:
+        """Exception with no on_error re-raises and terminates with error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(
+            fsm, action_runner=self._raising_runner(RuntimeError("Connection failed"))
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert "Connection failed" in (result.error or "")
+
+    def test_exception_in_branch_b_routes_to_on_error_not_next(self) -> None:
+        """Exception on state with state.next and on_error routes to on_error, not next."""
+        fsm = FSMLoop(
+            name="test",
+            initial="score",
+            states={
+                "score": StateConfig(
+                    action="/score",
+                    next="refine",
+                    on_error="handle_error",
+                ),
+                "refine": StateConfig(action="/refine", next="score"),
+                "handle_error": StateConfig(terminal=True),
+            },
+        )
+        runner = self._raising_runner(RuntimeError("runner blew up"))
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "handle_error"
+
+    def test_action_error_event_emitted_on_routed_path(self) -> None:
+        """action_error event is emitted with state/error/route payload."""
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    on_yes="done",
+                    on_error="recover",
+                ),
+                "done": StateConfig(terminal=True),
+                "recover": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(
+            fsm,
+            event_callback=events.append,
+            action_runner=self._raising_runner(ValueError("bad input")),
+        )
+        executor.run()
+
+        action_error_events = [e for e in events if e.get("event") == "action_error"]
+        assert len(action_error_events) == 1
+        payload = action_error_events[0]
+        assert payload["state"] == "check"
+        assert "bad input" in payload["error"]
+        assert payload["route"] == "on_error"
+        assert "ts" in payload
+
+    def test_interpolation_error_routes_to_on_error_when_set(self) -> None:
+        """InterpolationError from action template routes to on_error when set."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="${missing_var}",
+                    action_type="prompt",
+                    on_yes="done",
+                    on_error="recover",
+                ),
+                "done": StateConfig(terminal=True),
+                "recover": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "recover"
+        # The friendly --context message must NOT be emitted when routed
+        assert "--context" not in (result.error or "")
+
+    def test_on_error_template_interpolated(self) -> None:
+        """on_error target can itself be an interpolation template."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            context={"fallback": "recover"},
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    on_yes="done",
+                    on_error="${context.fallback}",
+                ),
+                "done": StateConfig(terminal=True),
+                "recover": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(
+            fsm, action_runner=self._raising_runner(RuntimeError("fail"))
+        )
+        result = executor.run()
+
+        assert result.final_state == "recover"
+
+
 class TestSimulationActionRunner:
     """Tests for SimulationActionRunner."""
 

@@ -183,7 +183,30 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-**Open** | Created: 2026-04-18 | Priority: P3
+**Completed** | Created: 2026-04-18 | Completed: 2026-04-18 | Priority: P3
+
+## Resolution
+
+Wrapped the two `_run_action` call sites in `_execute_state` (Branch B at line 457 and Branch C at line 478) with a shared `_run_action_or_route` helper in `scripts/little_loops/fsm/executor.py`. Exceptions raised from `_run_action` now route to `state.on_error` (via `interpolate(state.on_error, ctx)`) when defined, emitting an `action_error` event with `{state, error, route: "on_error"}`. When no `on_error` is configured, the exception is re-raised — preserving the existing top-level error termination and the friendly `--context` message for missing interpolation variables.
+
+### Changes
+- `scripts/little_loops/fsm/executor.py` — added `_run_action_or_route` helper; updated both call sites.
+- `scripts/little_loops/generate_schemas.py` — added `action_error` schema, bumped count 22 → 23.
+- `docs/reference/schemas/action_error.json` — generated.
+- `docs/reference/EVENT-SCHEMA.md` — new `### action_error` section, updated listing + event-to-source table.
+- `docs/generalized-fsm-loop.md` — expanded the `on_error` precedence note to include raised exceptions.
+- `scripts/tests/test_fsm_executor.py` — added `TestActionExceptionRouting` with 6 cases (Branch B, Branch C, no-on_error re-raise, event emission, InterpolationError routing, interpolated on_error target).
+- `scripts/tests/test_generate_schemas.py` — bumped count assertions 22 → 23, added `"action_error"` to expected set.
+
+### Verification
+- Full test suite: 4973 passed, 5 skipped.
+- mypy: clean on modified file.
+- ruff: clean on modified files.
+
+### Notes
+- `test_missing_context_input_clear_error` (in `scripts/tests/test_ll_loop_errors.py`) was predicted to break by the wiring analysis but did not — it still passes. No change needed there.
+- Per wiring step 12, inlined the `"action_error"` string literal rather than defining a named constant; no re-export needed in `scripts/little_loops/fsm/__init__.py`.
+- Skipped optional wiring items 10 (ARCHITECTURE.md / API.md / LOOPS_GUIDE.md polish) and 11 (CLI renderers) — these are additive docs/UX and not on the correctness path.
 
 ## Session Log
 - `/ll:ready-issue` - 2026-04-18T20:51:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c5bb8fb-3ecb-45f7-9cd0-f674b644124e.jsonl`
@@ -191,3 +214,4 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `/ll:wire-issue` - 2026-04-18T20:29:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab781961-a8c6-4915-8190-7c4fd3723052.jsonl`
 - `/ll:refine-issue` - 2026-04-18T20:16:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc00f492-dc6a-41a8-aaba-c4d008a3652e.jsonl`
 - `/ll:capture-issue` - 2026-04-18T19:59:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4165baeb-7bcd-4b9f-99ed-2cf4c171d21e.jsonl`
+- `/ll:manage-issue` - 2026-04-18T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0acc05ca-0e56-4d0d-b243-afd1e09ac0f8.jsonl`

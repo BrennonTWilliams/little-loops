@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-action_error.json",
+  "title": "Action Error",
+  "description": "Emitted when an action raises an unhandled exception that is routed to on_error.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "error",
+    "route"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name whose action raised"
+    },
+    "error": {
+      "type": "string",
+      "description": "String representation of the raised exception"
+    },
+    "route": {
+      "type": "string",
+      "description": "Route taken in response to the exception (always 'on_error')"
+    }
+  },
+  "additionalProperties": true
+}

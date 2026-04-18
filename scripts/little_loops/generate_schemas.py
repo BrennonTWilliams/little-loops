@@ -1,4 +1,4 @@
-"""JSON Schema generation for all 22 LLEvent types.
+"""JSON Schema generation for all 23 LLEvent types.
 
 Generates one JSON Schema (draft-07) file per event type to docs/reference/schemas/.
 Schemas validate the flat wire format: {"event": type, "ts": timestamp, ...payload}.
@@ -75,12 +75,12 @@ def _schema(
 
 
 # ---------------------------------------------------------------------------
-# Schema definitions — all 22 LLEvent types
+# Schema definitions — all 23 LLEvent types
 # Source of truth: docs/reference/EVENT-SCHEMA.md
 # ---------------------------------------------------------------------------
 
 SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
-    # FSM Executor (14 types)
+    # FSM Executor (15 types)
     "loop_start": _schema(
         "loop_start",
         "Loop Start",
@@ -140,6 +140,17 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             ),
         },
         ["exit_code", "duration_ms", "is_prompt"],
+    ),
+    "action_error": _schema(
+        "action_error",
+        "Action Error",
+        "Emitted when an action raises an unhandled exception that is routed to on_error.",
+        {
+            "state": _str("State name whose action raised"),
+            "error": _str("String representation of the raised exception"),
+            "route": _str("Route taken in response to the exception (always 'on_error')"),
+        },
+        ["state", "error", "route"],
     ),
     "evaluate": _schema(
         "evaluate",
@@ -342,7 +353,7 @@ def event_type_to_filename(event_type: str) -> str:
 
 
 def generate_schemas(output_dir: Path) -> list[Path]:
-    """Generate JSON Schema files for all 22 LLEvent types.
+    """Generate JSON Schema files for all 23 LLEvent types.
 
     Args:
         output_dir: Directory to write schema files into. Created if it doesn't exist.

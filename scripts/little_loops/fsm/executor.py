@@ -454,7 +454,10 @@ class FSMExecutor:
         if state.next:
             if state.action:
                 self._maybe_wait_for_circuit(state)
-                result = self._run_action(state.action, state, ctx)
+                result, routed = self._run_action_or_route(state, ctx)
+                if routed is not None:
+                    return routed
+                assert result is not None
                 self.prev_result = {
                     "output": result.output,
                     "exit_code": result.exit_code,
@@ -475,7 +478,9 @@ class FSMExecutor:
         action_result = None
         if state.action:
             self._maybe_wait_for_circuit(state)
-            action_result = self._run_action(state.action, state, ctx)
+            action_result, routed = self._run_action_or_route(state, ctx)
+            if routed is not None:
+                return routed
 
         # Evaluate
         eval_result = self._evaluate(state, action_result, ctx)
@@ -857,6 +862,32 @@ class FSMExecutor:
         if state.action is not None and state.action.startswith("/"):
             return "prompt"
         return "shell"
+
+    def _run_action_or_route(
+        self, state: StateConfig, ctx: InterpolationContext
+    ) -> tuple[ActionResult | None, str | None]:
+        """Run the state action, routing unhandled exceptions to on_error.
+
+        Returns (action_result, routed_target). ``routed_target`` is a non-None
+        next-state string only when an exception was raised AND ``state.on_error``
+        is defined; in that case ``action_result`` is None. When no on_error is
+        set, the exception is re-raised for the top-level ``run()`` handler.
+        """
+        assert state.action is not None  # caller-guarded
+        try:
+            return self._run_action(state.action, state, ctx), None
+        except Exception as exc:
+            if state.on_error:
+                self._emit(
+                    "action_error",
+                    {
+                        "state": self.current_state,
+                        "error": str(exc),
+                        "route": "on_error",
+                    },
+                )
+                return None, interpolate(state.on_error, ctx)
+            raise
 
     def _build_context(self) -> InterpolationContext:
         """Build interpolation context for current state.
