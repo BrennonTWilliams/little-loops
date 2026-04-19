@@ -148,3 +148,33 @@ All guides pass accuracy, completeness, consistency, and link checks. No open fi
 | Fix | Location | Change |
 |-----|----------|--------|
 | Skill count | `AUDIT_REPORT.md` (2026-04-02 and 2026-04-05 tables) | `24` → `25` (`create-eval-from-issues` skill added in `42fe9662` after last audit) |
+
+---
+
+## Audit: 2026-04-18
+
+**Auditor:** Claude Code (`/ll:audit-docs @docs/guides/`)
+**Scope:** All files in `docs/guides/`
+**Discovered commit:** `8fe93d81`
+
+### Auto-fixes Applied
+
+| Fix | File | Change |
+|-----|------|--------|
+| Stale prompt path | `EXAMPLES_MINING_GUIDE.md:421` | `skills/refine-issue/SKILL.md` → `commands/refine-issue.md` (`refine-issue` is a command, not a skill directory) |
+
+### Verification Summary
+
+| Check | Result |
+|-------|--------|
+| File path references (all guides) | All targets exist ✓ |
+| CLI tool references (`ll-loop`, `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-messages`, `ll-workflows`, `ll-issues`) | All implemented ✓ |
+| FSM token references (`ALL_PASS`, score states) | Match current FSM code ✓ |
+| `/ll:run-tests` reference in `ISSUE_MANAGEMENT_GUIDE.md:88` | Valid — `commands/run-tests.md` exists ✓ |
+| `ll-workflows analyze --input` default (`WORKFLOW_ANALYSIS_GUIDE.md:193`) | Matches `_DEFAULT_INPUT_PATH` in `scripts/little_loops/workflow_sequence/__init__.py:45` ✓ |
+| `examples-miner.yaml` defaults (`prompt_file: system.md`, `skill_name: capture-issue`) | Doc reports actual YAML values ✓ |
+| Current inventory | 26 skills, 28 commands, 42 loops — historical audit entries reflect counts at their date and were not rewritten |
+
+### Current State (2026-04-18)
+
+All guides pass accuracy, completeness, consistency, and link checks after the single auto-fix above. No open findings.

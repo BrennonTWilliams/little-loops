@@ -418,7 +418,7 @@ The default `skill_name: capture-issue` is just a starting point. The miner work
 # Example: mine refine-issue sessions
 ll-loop run examples-miner \
   --context skill_name=refine-issue \
-  --context prompt_file=skills/refine-issue/SKILL.md \
+  --context prompt_file=commands/refine-issue.md \
   --context examples_file=refine-examples.json \
   --context corpus_state_file=refine-corpus.json
 
