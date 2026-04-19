@@ -308,8 +308,8 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
         or getattr(args, "date_field", "discovered") == "updated"
     )
 
-    # Build enriched list: (IssueInfo, status, discovered_date, completed_date)
-    enriched: list[tuple[IssueInfo, str, datetime | None, date | None]] = []
+    # Build enriched list: (IssueInfo, status, discovered_date, completed_date, labels)
+    enriched: list[tuple[IssueInfo, str, datetime | None, date | None, list[str]]] = []
     for issue, stat in raw:
         if need_content:
             try:
@@ -409,7 +409,9 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
                     "discovered_date": d.date().isoformat() if d else None,
                     "labels": lbls,
                 }
-                for issue, stat, d, lbls in zip(issues_out, statuses_out, dates_out, labels_out, strict=True)
+                for issue, stat, d, lbls in zip(
+                    issues_out, statuses_out, dates_out, labels_out, strict=True
+                )
             ]
         )
         return 0

@@ -2464,9 +2464,7 @@ class TestActionExceptionRouting:
                 "recover": StateConfig(terminal=True),
             },
         )
-        executor = FSMExecutor(
-            fsm, action_runner=self._raising_runner(RuntimeError("boom"))
-        )
+        executor = FSMExecutor(fsm, action_runner=self._raising_runner(RuntimeError("boom")))
         result = executor.run()
 
         assert result.terminated_by == "terminal"
@@ -2586,9 +2584,7 @@ class TestActionExceptionRouting:
                 "recover": StateConfig(terminal=True),
             },
         )
-        executor = FSMExecutor(
-            fsm, action_runner=self._raising_runner(RuntimeError("fail"))
-        )
+        executor = FSMExecutor(fsm, action_runner=self._raising_runner(RuntimeError("fail")))
         result = executor.run()
 
         assert result.final_state == "recover"

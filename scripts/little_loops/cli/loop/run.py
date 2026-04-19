@@ -8,7 +8,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
@@ -163,7 +163,7 @@ def cmd_run(
             entry = {
                 "id": entry_id,
                 "loopName": loop_name,
-                "enqueuedAt": datetime.now(timezone.utc).isoformat(),
+                "enqueuedAt": datetime.now(UTC).isoformat(),
                 "context": {
                     "waitingFor": conflict.loop_name,
                     "scope": conflict.scope,

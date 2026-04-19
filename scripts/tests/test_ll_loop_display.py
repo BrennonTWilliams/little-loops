@@ -1630,9 +1630,7 @@ class TestDisplayProgressEvents:
         assert long_cmd in out
         assert long_cmd + "..." not in out
 
-    def test_verbose_evaluate_reason_not_clipped(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_verbose_evaluate_reason_not_clipped(self, capsys: pytest.CaptureFixture[str]) -> None:
         """BUG-1154: verbose evaluate reason renders in full (no 300-char cap)."""
         from unittest.mock import patch as _patch
 
@@ -1658,9 +1656,7 @@ class TestDisplayProgressEvents:
         executor = MockExecutor(events)
         run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
         out = capsys.readouterr().out
-        lines_with_reason = [
-            ln for ln in out.splitlines() if "line of reason" in ln
-        ]
+        lines_with_reason = [ln for ln in out.splitlines() if "line of reason" in ln]
         assert len(lines_with_reason) == 3, f"Expected 3 reason rows, got: {lines_with_reason}"
 
     def test_verbose_evaluate_raw_preview_not_clipped(
@@ -1681,9 +1677,7 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert long_preview in out
 
-    def test_nonverbose_action_start_still_clips(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_nonverbose_action_start_still_clips(self, capsys: pytest.CaptureFixture[str]) -> None:
         """BUG-1154: non-verbose action_start prompt retains per-line clip and 5-line cap."""
         from unittest.mock import patch as _patch
 

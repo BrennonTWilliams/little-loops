@@ -109,9 +109,7 @@ discovered_by: null
     def test_parse_captures_completed_at(self, tmp_path: Path) -> None:
         """parse_completed_issue populates issue.completed_at from frontmatter."""
         issue_file = tmp_path / "P1-BUG-002-test.md"
-        issue_file.write_text(
-            "---\ncompleted_at: 2026-04-18T15:02:41Z\n---\n\n# BUG-002: Test\n"
-        )
+        issue_file.write_text("---\ncompleted_at: 2026-04-18T15:02:41Z\n---\n\n# BUG-002: Test\n")
 
         issue = parse_completed_issue(issue_file)
 

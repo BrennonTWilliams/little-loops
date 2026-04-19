@@ -1060,12 +1060,7 @@ def test_parse_discovered_date_falls_back_on_invalid_captured_at() -> None:
 
     from little_loops.cli.issues.search import _parse_discovered_date
 
-    content = (
-        "---\n"
-        "captured_at: not-a-date\n"
-        "discovered_date: 2026-03-01T00:00:00Z\n"
-        "---\n"
-    )
+    content = "---\ncaptured_at: not-a-date\ndiscovered_date: 2026-03-01T00:00:00Z\n---\n"
     result = _parse_discovered_date(content)
     assert result == datetime(2026, 3, 1, 0, 0, 0)
 
@@ -1119,9 +1114,7 @@ class TestCreatedSortSubDayResolution:
     def test_created_sort_asc_uses_captured_at(
         self, temp_project_dir: Path, captured_at_issues_dir: Path
     ) -> None:
-        code, out = _run_search(
-            temp_project_dir, "--sort", "created", "--asc", "--format", "ids"
-        )
+        code, out = _run_search(temp_project_dir, "--sort", "created", "--asc", "--format", "ids")
         assert code == 0
         ids = [ln.strip() for ln in out.splitlines() if ln.strip()]
         assert ids == ["BUG-101", "BUG-102", "BUG-103"]
