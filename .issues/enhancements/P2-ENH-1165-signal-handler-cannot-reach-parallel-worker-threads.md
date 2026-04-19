@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-18"
 discovered_by: capture-issue
-depends_on: [FEAT-1075, FEAT-1076]
+depends_on: [FEAT-1075, FEAT-1076, FEAT-1174]
 ---
 
 # ENH-1165: Signal Handler Cannot Reach Parallel Worker Threads
@@ -77,6 +77,7 @@ FEAT-1076 explicitly documents this as a known limitation: "`ParallelRunner` wor
 ---
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:capture-issue` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ff9cd96-1544-4ffa-b28c-15aab5e9f3e8.jsonl`
 
 ---

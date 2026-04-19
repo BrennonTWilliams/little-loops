@@ -96,6 +96,7 @@ Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a h
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 
 ---
@@ -103,3 +104,9 @@ Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful on
 ## Status
 
 Open
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Default mutable-boundary policy is **mutable-all** — files without `<!-- ll:mutable -->` / `<!-- ll:frozen -->` markers (per ENH-1122) are fully mutable by this loop. The frozen-all safety mode is opt-in via loop config. This preserves current behavior and keeps harness-optimize low-friction while ENH-1122's boundary markers let authors explicitly protect regions.

@@ -5,6 +5,7 @@ priority: P3
 status: open
 discovered_date: 2026-04-18
 discovered_by: capture-issue
+blocked_by: [FEAT-1112]
 related: [FEAT-1112, FEAT-1113]
 ---
 
@@ -144,6 +145,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `hooks`, `session-management`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:capture-issue` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa52965-8df7-4476-a2af-96e098002a6a.jsonl`
 
 ---

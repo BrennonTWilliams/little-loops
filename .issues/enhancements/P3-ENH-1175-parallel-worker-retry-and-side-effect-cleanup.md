@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-18"
 discovered_by: parallel-fsm-review
-depends_on: [FEAT-1075, FEAT-1076]
+depends_on: [FEAT-1075, FEAT-1076, FEAT-1174]
 ---
 
 # ENH-1175: Parallel Worker Retry and Side-Effect Cleanup Contract
@@ -91,6 +91,7 @@ Each entry in `ParallelResult.all_captures` gets a `verdict` field and, for fail
 ---
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `parallel-fsm-review` - 2026-04-18T00:00:00Z - spawned during parallel feature review discussion
 
 ---

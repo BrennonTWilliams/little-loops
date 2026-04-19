@@ -60,3 +60,13 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 
 - Inspiration: context-mode SQLite FTS5 session database
 - Depends on / unblocks: FEAT-1113 (PreCompact auto-handoff), ENH-1114 (intent filtering)
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `ll-logs` (FEAT-1002) is a downstream consumer that ships in Phase 1 reading JSONL directly from `~/.claude/projects/`. Once this store lands, a follow-up refactor will migrate `ll-logs` internals to query the SQLite database while preserving its CLI interface. Plan the schema to accommodate the fields ll-logs currently extracts from JSONL (see FEAT-1002 for field list).
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`

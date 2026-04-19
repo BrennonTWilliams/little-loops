@@ -6,6 +6,7 @@ status: open
 discovered_date: 2026-04-05
 discovered_by: issue-size-review
 parent_issue: FEAT-769
+blocked_by: [FEAT-1116]
 confidence_score: 90
 outcome_confidence: 72
 ---
@@ -273,6 +274,7 @@ Write `test_config.py` tests BEFORE modifying `core.py:74-75` — `config/core.p
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:confidence-check` - 2026-04-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29d9c69a-ea81-4ffe-8c79-77785ac2b32a.jsonl`

@@ -87,6 +87,7 @@ This is only meaningful once FEAT-1120 exists. Capture now so we don't forget; d
 Blocked by: FEAT-1120 (harness-optimize) — this convention is only meaningful once a mutating loop exists. Keep this issue deferred until FEAT-1120 lands and we have signal on whether the convention is actually needed (maybe authors are fine with whole-file mutation; maybe they're not).
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 
 ---
@@ -94,3 +95,9 @@ Blocked by: FEAT-1120 (harness-optimize) — this convention is only meaningful 
 ## Status
 
 Open
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): When consumed by FEAT-1120 (harness-optimize), the default policy for files without markers is **mutable-all** (preserves current behavior). `<!-- ll:frozen -->` markers are opt-in author protection; frozen-all policy (default-deny) is an explicit opt-in mode, not the default. Do not change FEAT-1120's defaults without coordinated update here.

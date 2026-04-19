@@ -5,6 +5,7 @@ priority: P5
 status: open
 discovered_date: 2026-04-08
 discovered_by: capture-issue
+blocked_by: [FEAT-957, FEAT-918]
 ---
 
 # FEAT-992: Add Pi Coding Agent Plugin Compatibility
@@ -106,6 +107,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba99d353-3f2a-47f1-ac66-f55be7e50744.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Blocked by FEAT-957 (establishes the plugin-compatibility pattern + reusable config-resolution abstraction) and FEAT-918 (event streaming lifecycle that plugin hooks must target). Reuse the config-directory-resolution abstraction introduced by FEAT-957 rather than independently patching `config/core.py` and `lib/common.sh`.

@@ -210,6 +210,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - FEAT-1006
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:confidence-check` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5bfe55d-50b8-488b-a0ce-e714fb6c9ff8.jsonl`
@@ -223,3 +224,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Status
 
 **Open** | Created: 2026-04-08 | Priority: P4
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue implements **Phase 1** — a standalone JSONL extractor reading from `~/.claude/projects/`. A follow-up refactor will migrate the internals to query FEAT-1112's unified SQLite + FTS5 store once that lands, keeping the `ll-logs` CLI interface stable. Do not block on FEAT-1112; build the Phase 1 tool now and refactor later.

@@ -196,6 +196,7 @@ _No documents linked._
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:refine-issue` - 2026-04-06T02:33:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c273f16-a946-4cde-a3ce-1eb1a83742ae.jsonl`
@@ -205,3 +206,9 @@ _No documents linked._
 ---
 
 **Open** | Created: 2026-04-05 | Priority: P5
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue establishes the plugin-compatibility pattern that FEAT-992 (Pi) will reuse. Extract a reusable config-directory-resolution abstraction in `scripts/little_loops/config/core.py` and `hooks/scripts/lib/common.sh` that accepts an ordered list of candidate config dirs (`.claude/`, `.codex/`, `.opencode/`, `.pi/`, ...), so FEAT-992 can reuse the mechanism instead of patching the same functions again.
