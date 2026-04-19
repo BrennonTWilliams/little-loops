@@ -249,7 +249,7 @@ Run a loop.
 | `--background` | `-b` | Run as background daemon |
 | `--quiet` | `-q` | Suppress progress output |
 | `--verbose` | `-v` | Stream all action output live; default shows a short response head preview |
-| `--queue` | | Wait for conflicting loops to finish |
+| `--queue` | | Wait for conflicting loops to finish; writes a queue entry to `<loops_dir>/.queue/<uuid>.json` while waiting (see [Queue entries](#queue-entries-loopsqueue)) |
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; the top-level loop is preceded by `== loop: <name> ====...` and, when sub-loops are active, each nesting level is rendered below its parent separated by `── sub-loop: <name> ──` (supports arbitrary depth) |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--builtin` | | Load loop from built-ins directory (bypasses project `.loops/` lookup) |
@@ -259,6 +259,27 @@ Run a loop.
 | `--context-limit` | | Override context window token estimate |
 
 > **Note:** `agent:` and `tools:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent and tool scoping options.
+
+##### Queue entries (`.loops/.queue/`)
+
+When `ll-loop run --queue` encounters a scope conflict with a running loop, it creates `<loops_dir>/.queue/<uuid>.json` before entering the wait and removes it on lock acquisition, timeout, error, or process exit (via `atexit`). The file lets external observers (e.g. a dashboard) enumerate loops that are waiting on a scope lock without scanning process state.
+
+**Entry schema:**
+
+```json
+{
+  "id": "<uuid>",
+  "loopName": "<loop name>",
+  "enqueuedAt": "<ISO 8601 UTC timestamp>",
+  "context": {
+    "waitingFor": "<name of conflicting running loop>",
+    "scope": ["<scope path>", ...],
+    "pid": <integer PID of the waiting process>
+  }
+}
+```
+
+Entries are short-lived and ephemeral — treat the directory as a live view, not a history log. Stale entries are possible if a process exits abnormally without running `atexit` handlers; cleanup tooling may want to prune entries whose `pid` is no longer alive.
 
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
 

@@ -213,14 +213,14 @@ def build_sort_key(config: NextIssueConfig) -> Callable[[IssueInfo], tuple]:
 
 
 def _sort_issues(
-    items: list[tuple[IssueInfo, str, datetime | None, date | None]],
+    items: list[tuple],
     sort_field: str,
     descending: bool,
-) -> list[tuple[IssueInfo, str, datetime | None, date | None]]:
+) -> list[tuple]:
     """Sort issues by the requested field."""
 
     def key(item: tuple) -> tuple:
-        issue, _status, disc_date, comp_date = item
+        issue, _status, disc_date, comp_date, *_rest = item
         if sort_field == "priority":
             return (issue.priority_int, issue.issue_id)
         if sort_field == "id":
@@ -368,7 +368,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
             from little_loops.issue_history.parsing import _parse_completion_date
 
             comp_date = _parse_completion_date(content, issue.path)
-        enriched.append((issue, stat, disc_date, comp_date))
+        enriched.append((issue, stat, disc_date, comp_date, labels))
 
     # --- Sort ---
     # Default direction: desc for date/created/completed (newest first), asc for everything else
@@ -394,6 +394,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
     issues_out = [item[0] for item in enriched]
     statuses_out = [item[1] for item in enriched]
     dates_out = [item[2] for item in enriched]
+    labels_out = [item[4] for item in enriched]
 
     if getattr(args, "json", False):
         print_json(
@@ -406,8 +407,9 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
                     "path": str(issue.path),
                     "status": stat,
                     "discovered_date": d.date().isoformat() if d else None,
+                    "labels": lbls,
                 }
-                for issue, stat, d in zip(issues_out, statuses_out, dates_out, strict=True)
+                for issue, stat, d, lbls in zip(issues_out, statuses_out, dates_out, labels_out, strict=True)
             ]
         )
         return 0

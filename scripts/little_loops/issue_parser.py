@@ -223,6 +223,7 @@ class IssueInfo:
         testable: Whether TDD phase should be applied; False skips TDD, None treated as testable
         session_commands: Distinct /ll:* commands found in the ## Session Log section
         session_command_counts: Per-command occurrence counts from the ## Session Log section
+        labels: Labels extracted from the ## Labels section of the issue file
     """
 
     path: Path
@@ -246,6 +247,7 @@ class IssueInfo:
     testable: bool | None = None
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
+    labels: list[str] = field(default_factory=list)
 
     @property
     def priority_int(self) -> int:
@@ -280,6 +282,7 @@ class IssueInfo:
             "testable": self.testable,
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
+            "labels": self.labels,
         }
 
     @classmethod
@@ -307,6 +310,7 @@ class IssueInfo:
             testable=data.get("testable"),
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
+            labels=data.get("labels", []),
         )
 
 

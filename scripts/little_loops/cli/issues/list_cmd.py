@@ -26,6 +26,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.cli.issues.search import (
         _load_issues_with_status,
         _parse_discovered_date,
+        _parse_labels_from_content,
         _sort_issues,
     )
 
@@ -51,22 +52,28 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     # Sort
     sort_field = getattr(args, "sort", "priority") or "priority"
     need_content = sort_field in {"created", "completed"}
+    want_json = getattr(args, "json", False)
     enriched: list[tuple] = []
     for issue, stat in filtered:
         disc_date: datetime | None = None
         comp_date: date | None = None
-        if need_content:
+        labels: list[str] = []
+        content = ""
+        if need_content or want_json:
             try:
                 content = issue.path.read_text(encoding="utf-8")
             except Exception:
                 content = ""
+        if need_content:
             if sort_field == "created":
                 disc_date = _parse_discovered_date(content)
             elif sort_field == "completed":
                 from little_loops.issue_history.parsing import _parse_completion_date
 
                 comp_date = _parse_completion_date(content, issue.path)
-        enriched.append((issue, stat, disc_date, comp_date))
+        if want_json:
+            labels = _parse_labels_from_content(content)
+        enriched.append((issue, stat, disc_date, comp_date, labels))
 
     if getattr(args, "desc", False):
         descending = True
@@ -104,8 +111,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     "path": str(issue.path),
                     "status": stat,
                     "discovered_date": disc_date.date().isoformat() if disc_date else None,
+                    "labels": lbls,
                 }
-                for issue, stat, disc_date, _comp_date in enriched
+                for issue, stat, disc_date, _comp_date, lbls in enriched
             ]
         )
         return 0
