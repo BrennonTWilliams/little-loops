@@ -12,6 +12,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.85.0] - 2026-04-19
+
+### Added
+
+- **Issue Capture and Completion Timestamps** — `captured_at` and `completed_at` ISO 8601 UTC timestamps are now written to issue frontmatter at capture time and at every completion path (sequential lifecycle, parallel orchestrator, and `manage-issue`). New `update_frontmatter` write utility in `frontmatter.py` powers the injection. `ll-issues show` displays both timestamps; `ll-issues search/list` prefer `captured_at` in date resolution; `ll-history` analytics and `CompletedIssue` model carry the new fields. (FEAT-1155, FEAT-1161, FEAT-1162, FEAT-1169, FEAT-1170, FEAT-1171, FEAT-1172, FEAT-1179, FEAT-1180, FEAT-1181)
+- **Parallel State Core Reference Documentation** — New reference docs for the parallel state core (FEAT-1083)
+- **`labels` Field on `IssueInfo`** — `ll-issues` JSON output now includes a `labels` field sourced from issue frontmatter
+- **Queue Entry File While Waiting for Scope Lock** — `ll-loop` writes a queue entry file while waiting for the scope lock so peers can see queued work
+
+### Fixed
+
+- **Score-State PASS Pattern Overmatches Annotations** — Loop evaluator score-state `PASS` token disambiguated to `ALL_PASS` so it no longer matches per-criterion `PASS` annotations (BUG-1182)
+- **`autodev` Silently Skipped Parent After Breakdown Signal** — New children are now required to shortcut the `check_broke_down` path, preventing silent skip when no children are actually created (BUG-1183)
+- **`ll-loop --verbose` Truncated FSM State Output** — `action_start` and evaluate output are no longer truncated under `--verbose` (BUG-1154)
+
+### Changed
+
+- **FSM Executor `on_error` Routing** — FSM executor now wraps `run_action` in `execute_state` with `on_error` routing (ENH-1168)
+- **Agent Model/Tool Tuning and Handoff Threshold** — `.claude/settings.json` agent models, tool allowlists, and context-handoff threshold tuned
+- **Ruff Format and `datetime.UTC` Modernization** — Codebase reformatted and `datetime.utc` usages modernized to `datetime.UTC`
+
+### Other
+
+- Issue audits and guide refreshes: `audit-issue-conflicts` findings recorded, 2026-04-18 audit entry added, stale `refine-issue` prompt path corrected, README FSM loop count fixed (42)
+
+[1.85.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.84.0...v1.85.0
+
 ## [1.84.0] - 2026-04-17
 
 ### Added
