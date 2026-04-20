@@ -21,7 +21,9 @@ outcome_confidence: 86
 
 Add `ParallelStateConfig` dataclass to `schema.py`, extend `StateConfig` with a `parallel:` field, update `fsm-loop-schema.json`, and add mutual exclusion validation rules to `validation.py`.
 
-The dataclass has **7 fields** (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`, `context_passthrough`, `timeout_seconds`) with `isolation` defaulting to `"thread"` and `timeout_seconds` defaulting to `None` (no per-worker timeout).
+The dataclass has **9 fields** (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`, `context_passthrough`, `timeout_seconds`, `max_items`, `max_total_seconds`) with `isolation` defaulting to `"thread"`, `timeout_seconds` defaulting to `None` (no per-worker timeout), `max_items` defaulting to `1000`, and `max_total_seconds` defaulting to `None` (no cumulative timeout).
+
+> **Note on `max_items` / `max_total_seconds`** (added 2026-04-20): these two fields were originally proposed in **ENH-1176** (parallel-state resource limits). They are pulled forward into this issue so the schema is internally consistent from v1 day one — downstream issues (FEAT-1075 runner, FEAT-1076 dispatch) can read the fields off `ParallelStateConfig` without a schema churn. ENH-1176 retains ownership of runtime *enforcement* (rejecting oversized fan-outs before spawning workers, wall-clock timer, worktree-count warnings, `try/finally` audit). This issue owns only the fields and basic range validation.
 
 ## Current Behavior
 
@@ -50,7 +52,7 @@ This feature would:
 
 **Context**: Authoring a `parallel:` state in a loop YAML (e.g., `items: "{{ issue_list }}"`, `loop: "manage-issue"`)
 
-**Goal**: Define a `parallel:` state with all supported fields (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`, `context_passthrough`, `timeout_seconds`) without triggering unknown-key validation warnings
+**Goal**: Define a `parallel:` state with all supported fields (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`, `context_passthrough`, `timeout_seconds`, `max_items`, `max_total_seconds`) without triggering unknown-key validation warnings
 
 **Outcome**: The FSM parser accepts the `parallel:` state, serializes/deserializes round-trip correctly, and rejects malformed configs (bad enum values, conflicting fields) with actionable error messages
 
@@ -74,6 +76,8 @@ class ParallelStateConfig:
     fail_mode: str = "collect"       # "collect" | "fail_fast"
     context_passthrough: bool = False
     timeout_seconds: int | None = None  # per-worker timeout; None = no timeout
+    max_items: int = 1000            # hard cap on fan-out size; enforcement in ENH-1176
+    max_total_seconds: int | None = None  # cumulative wall-clock cap; enforcement in ENH-1176
 
     def to_dict(self) -> dict:
         ...
@@ -89,7 +93,8 @@ Add `parallel: ParallelStateConfig | None = None` to `StateConfig`. Follow the `
 
 - Add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` frozenset at `validation.py:77–99`
 - Add mutual exclusion checks: `parallel` + `action`, `parallel` + `loop`, `parallel` + `next`
-- Add range validation: `max_workers >= 1`; `timeout_seconds is None or timeout_seconds >= 1`
+- Add range validation: `max_workers >= 1`; `timeout_seconds is None or timeout_seconds >= 1`; `max_items >= 1`; `max_total_seconds is None or max_total_seconds >= 1`
+- Add cross-field check: if both `max_total_seconds` and `timeout_seconds` are set, emit a WARN (not ERROR) when `max_total_seconds <= max_workers * timeout_seconds`, since the cumulative cap would be dominated by per-worker timeouts and effectively unreachable (see ENH-1176 rationale)
 - Add enum checks: `isolation` in `{"worktree", "thread"}`, `fail_mode` in `{"collect", "fail_fast"}`
 - **Forbid nested parallel**: after parsing, check that the loop named in `parallel.loop` does not itself contain any state with a `parallel:` field. Nesting multiplies concurrency uncontrollably (`max_workers` × `max_workers` → 16+ concurrent workers with no upper bound) and there is no concrete use case for it in the scoped orchestrator loops (ENH-1073). Error message: `"parallel.loop '<name>' contains a nested parallel state at <state>; nested parallel states are not supported. Decompose into separate top-level parallel states or flatten the sub-loop."` This check runs at validation time (across all loaded loops), not at execution time, so authors catch it before running.
 
@@ -113,6 +118,8 @@ class ParallelStateConfig:
     fail_mode: str = "collect"       # "collect" | "fail_fast"
     context_passthrough: bool = False
     timeout_seconds: int | None = None  # per-worker timeout; None = no timeout
+    max_items: int = 1000            # hard cap on fan-out size; runtime enforcement in ENH-1176
+    max_total_seconds: int | None = None  # cumulative wall-clock cap; runtime enforcement in ENH-1176
 
     def to_dict(self) -> dict: ...
 
@@ -127,7 +134,7 @@ parallel: ParallelStateConfig | None = None
 
 1. Add `ParallelStateConfig` dataclass to `schema.py` following the `LoopConfigOverrides` pattern at `schema.py:419` — implement `to_dict()` and `from_dict()` using the same guard/cast idioms
 2. Extend `StateConfig` with `parallel: ParallelStateConfig | None = None`; update `to_dict()` to skip if None (follow `loop` field pattern at ~line 316) and `from_dict()` to hydrate via `ParallelStateConfig.from_dict()` when key present
-3. Update `validation.py`: add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` (lines 77–99); add mutual exclusion checks (`parallel` + `action`, `parallel` + `loop`, `parallel` + `next`); add `max_workers >= 1`, `timeout_seconds is None or timeout_seconds >= 1`, enum checks for `isolation` and `fail_mode`
+3. Update `validation.py`: add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` (lines 77–99); add mutual exclusion checks (`parallel` + `action`, `parallel` + `loop`, `parallel` + `next`); add `max_workers >= 1`, `timeout_seconds is None or timeout_seconds >= 1`, `max_items >= 1`, `max_total_seconds is None or max_total_seconds >= 1`, enum checks for `isolation` and `fail_mode`; add WARN when both `max_total_seconds` and `timeout_seconds` are set and `max_total_seconds <= max_workers * timeout_seconds`
 4. Update `fsm-loop-schema.json`: add `parallel:` as a valid state-level key with sub-field types and constraints matching `ParallelStateConfig`
 5. Fix `_validate_state_routing` no-transition guard in `validation.py:271` — add `has_parallel = state.parallel is not None` to the guard condition so valid `parallel:` states are not falsely flagged as having "no transition defined" (model after the existing `has_loop` exemption at the same line; test with `test_parallel_state_no_transition_not_flagged`)
 6. Run `test_fsm_schema.py`, `test_fsm_schema_fuzz.py`, `test_fsm_validation.py`, `test_fsm_fragments.py`, and `test_builtin_loops.py` to verify no regressions from the new mutual-exclusion rules
@@ -201,7 +208,7 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 
 ## Acceptance Criteria
 
-- `ParallelStateConfig` dataclass exists with all 7 fields and `to_dict`/`from_dict`
+- `ParallelStateConfig` dataclass exists with all 9 fields (`items`, `loop`, `max_workers`, `isolation`, `fail_mode`, `context_passthrough`, `timeout_seconds`, `max_items`, `max_total_seconds`) and `to_dict`/`from_dict`
 - `StateConfig.parallel` field serializes/deserializes round-trip correctly (None when absent)
 - `"parallel"` present in `KNOWN_TOP_LEVEL_KEYS` — no unknown-key warnings on loops using `parallel:`
 - `isolation` defaults to `"thread"` in the dataclass, the JSON schema, and all example snippets
@@ -210,6 +217,9 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 - Mutual exclusion: state with `parallel:` + `loop:` fails validation — error message names the `parallel.loop` sub-field as the correct way to declare a sub-loop for fan-out
 - Mutual exclusion: state with `parallel:` + `next:` fails validation
 - `max_workers: 0` fails validation
+- `max_items: 0` fails validation; `max_items` defaults to `1000` and round-trips through `to_dict`/`from_dict`
+- `max_total_seconds: 0` fails validation; `max_total_seconds: None` is permitted (no cumulative cap); defaults to `None` and round-trips through `to_dict`/`from_dict`
+- A state with `max_workers: 4`, `timeout_seconds: 60`, `max_total_seconds: 120` emits a WARN that the cumulative cap is dominated by per-worker timeouts (cross-field sanity check)
 - `isolation: "invalid"` fails validation
 - `fail_mode: "invalid"` fails validation
 - `fsm-loop-schema.json` reflects all constraints
@@ -220,7 +230,7 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 Moved from FEAT-1077 (2026-04-20) to break the circular dependency where FEAT-1077 gated on FEAT-1075 but FEAT-1076 needed schema tests passing before it could merge. Unit tests for the schema now land with this issue:
 
 - **`test_fsm_schema.py::TestParallelStateConfig`** — round-trip `to_dict()`/`from_dict()`, defaults applied on minimal construction, `StateConfig` serializes/omits `parallel` key correctly
-- **`test_fsm_schema.py::TestParallelMutualExclusion`** — follows `test_loop_and_action_mutual_exclusion:1722` pattern; covers `parallel`+`action`, `parallel`+`loop`, `parallel`+`next`, `max_workers: 0`, `isolation: "invalid"`, `fail_mode: "invalid"`
+- **`test_fsm_schema.py::TestParallelMutualExclusion`** — follows `test_loop_and_action_mutual_exclusion:1722` pattern; covers `parallel`+`action`, `parallel`+`loop`, `parallel`+`next`, `max_workers: 0`, `max_items: 0`, `max_total_seconds: 0`, `isolation: "invalid"`, `fail_mode: "invalid"`, and the cumulative-cap-dominated-by-per-worker-timeout WARN
 - **`test_fsm_validation.py`** — one test asserting a `parallel:` state with routing does NOT trigger the no-transition guard (the guard at `validation.py:271` gains `and not has_parallel` in this issue)
 - **`test_fsm_schema_fuzz.py`** — add `parallel` block to `malformed_state_config` hypothesis strategy (insertion point: after line 174, before the `unexpected_*` block)
 
@@ -270,6 +280,10 @@ def to_dict(self) -> dict[str, Any]:
         result["context_passthrough"] = self.context_passthrough
     if self.timeout_seconds is not None:
         result["timeout_seconds"] = self.timeout_seconds
+    if self.max_items != 1000:
+        result["max_items"] = self.max_items
+    if self.max_total_seconds is not None:
+        result["max_total_seconds"] = self.max_total_seconds
     return result
 
 # from_dict: data.get with defaults for optional fields
@@ -283,6 +297,8 @@ def from_dict(cls, data: dict[str, Any]) -> "ParallelStateConfig":
         fail_mode=data.get("fail_mode", "collect"),
         context_passthrough=data.get("context_passthrough", False),
         timeout_seconds=data.get("timeout_seconds"),
+        max_items=data.get("max_items", 1000),
+        max_total_seconds=data.get("max_total_seconds"),
     )
 ```
 
@@ -309,6 +325,12 @@ if "parallel" in data:
 # Range validation
 f"'max_workers' must be >= 1, got {state.parallel.max_workers}"
 f"'timeout_seconds' must be >= 1 when set, got {state.parallel.timeout_seconds}"
+f"'max_items' must be >= 1, got {state.parallel.max_items}"
+f"'max_total_seconds' must be >= 1 when set, got {state.parallel.max_total_seconds}"
+
+# Cross-field sanity (WARN, not ERROR)
+f"'max_total_seconds' ({state.parallel.max_total_seconds}s) is <= max_workers * timeout_seconds "
+f"({state.parallel.max_workers} * {state.parallel.timeout_seconds}s); cumulative cap may be unreachable"
 
 # Enum validation
 f"'isolation' must be one of {{'worktree', 'thread'}}, got {repr(state.parallel.isolation)}"
@@ -329,7 +351,9 @@ f"'fail_mode' must be one of {{'collect', 'fail_fast'}}, got {repr(state.paralle
     "isolation": {"type": "string", "enum": ["worktree", "thread"], "default": "thread"},
     "fail_mode": {"type": "string", "enum": ["collect", "fail_fast"], "default": "collect"},
     "context_passthrough": {"type": "boolean", "default": false},
-    "timeout_seconds": {"type": ["integer", "null"], "minimum": 1, "default": null}
+    "timeout_seconds": {"type": ["integer", "null"], "minimum": 1, "default": null},
+    "max_items": {"type": "integer", "minimum": 1, "default": 1000},
+    "max_total_seconds": {"type": ["integer", "null"], "minimum": 1, "default": null}
   }
 }
 ```

@@ -17,8 +17,10 @@ outcome_confidence: 78
 
 **v1 known limitations (documented, tracked elsewhere):**
 
-- Worker tagging in the parent `event_callback` stream is NOT done in v1 — tracked in **P2-ENH-1177** (promoted from P3, 2026-04-20). FEAT-1081 adds a minimum per-worker display label so log tails are readable; full observability story ships in ENH-1177.
+- Worker tagging in the parent `event_callback` stream is **not added by this issue**, but IS shipped in v1 via **P2-ENH-1177** (promoted from P3, 2026-04-20). This module (FEAT-1075) propagates `self.event_callback` to child executors as-is with no wrapping; ENH-1177 adds the per-worker tagging wrapper around it. FEAT-1081 adds the minimum per-worker display label so log tails remain readable regardless of order of landing.
 - `context_passthrough: bool` is binary-only in v1. Finer-grained filtering (include/exclude keys, mask secrets) is tracked under **ENH-1186** (v1 scope doc) as a post-v1 enhancement candidate.
+
+**Signature coordination with FEAT-1174 (per-worker checkpointing):** the `ParallelRunner.run()` signature in this issue MUST include `on_worker_complete: Callable | None = None` and `starting_item_index: int = 0` parameters so FEAT-1174 can plug in the checkpoint callback and resume partial fan-outs without a signature break. See the Proposed Solution and API/Interface blocks below — both list the parameters. FEAT-1174 owns the behavior; this issue owns the signature surface.
 
 ## Summary
 
@@ -89,9 +91,15 @@ class ParallelRunner:
         loop_name: str,
         config: ParallelStateConfig,
         parent_context: dict | None = None,
+        on_worker_complete: Callable[[ParallelItemResult], None] | None = None,
+        starting_item_index: int = 0,
     ) -> ParallelResult:
         ...
 ```
+
+**Parameter contracts:**
+- `on_worker_complete` — optional callback invoked from the runner's main thread (not worker threads) each time a worker's `ParallelItemResult` is materialized into the pre-allocated slot. This is the extension point FEAT-1174 uses to write per-worker checkpoints as fan-out progresses. Callback exceptions are logged and swallowed so a bad callback cannot corrupt fan-out.
+- `starting_item_index` — resume offset. When FEAT-1174 reconstructs a partial fan-out from a checkpoint, it slices the remaining items and passes the original index of the first remaining item. The runner uses this to populate `ParallelItemResult.item_index` with the absolute (not relative) slot so downstream consumers see a contiguous `[0..N)` index space regardless of resume. Default `0` = fresh fan-out.
 
 ### Ordering guarantee
 
@@ -147,14 +155,16 @@ Per-worker context deepcopy covers `captured`, but the runner also MUST NOT corr
 
 A dedicated test class `TestParallelRunnerSingletonSafety` in `test_parallel_runner.py` (added by FEAT-1077) exercises each of these. See FEAT-1077 Acceptance Criteria for the specific tests.
 
-### Event callback worker-tagging (v1 limitation)
+### Event callback worker-tagging (scope boundary with ENH-1177)
 
-Workers' child `FSMExecutor` instances each emit their own event stream to the **same** `event_callback` the parent was constructed with. In v1, these streams MERGE with no per-worker tag — a dashboard consumer sees 4× events from 4 workers with no way to attribute them to a specific item or worker-id.
+Workers' child `FSMExecutor` instances each emit their own event stream to the **same** `event_callback` the parent was constructed with. Without a tagging wrapper, these streams would merge with no per-worker attribution.
 
-Consequence for this issue:
-- The runner MUST propagate `self.event_callback` to child executors as-is (no per-worker wrapping at runtime) to preserve the v1 contract. Adding a tagging wrapper is explicitly **out of scope** here.
-- Document this in the module docstring so extension authors don't depend on per-worker attribution.
-- Full story: **P2-ENH-1177** (worker-tagged observability). FEAT-1081 ships the CLI display minimum (per-worker label in `ll-loop info --verbose` output) so log tails are debuggable even before ENH-1177 lands.
+Scope split:
+- **This issue (FEAT-1075)**: propagate `self.event_callback` to child executors as-is. No per-worker wrapping, no tagging. The runner simply hands the callback through. This keeps the runner module self-contained and easy to unit-test.
+- **ENH-1177 (P2, ships v1)**: adds the per-worker tagging wrapper at the callsite (either in `_execute_parallel_state()` or as a thin adapter around `runner.run()`). Adds `worker_index`, `worker_label`, `parallel_state` fields to the `Event` dataclass. Since ENH-1177 is P2 and in the v1 ship, end users WILL see tagged events — this issue just doesn't do the tagging itself.
+- **FEAT-1081**: adds the CLI display minimum (per-worker label in `ll-loop info --verbose` and live output) so log tails are debuggable independently of the structured event tagging.
+
+Document the scope boundary in the module docstring so extension authors understand where tagging happens (ENH-1177's wrapper) vs. where the raw callback flows (this module).
 
 ## Files to Create/Modify
 
@@ -299,6 +309,8 @@ class ParallelRunner:
         loop_name: str,
         config: ParallelStateConfig,
         parent_context: dict | None = None,
+        on_worker_complete: Callable[[ParallelItemResult], None] | None = None,
+        starting_item_index: int = 0,
     ) -> ParallelResult: ...
 ```
 
@@ -334,6 +346,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Each failed `ParallelItemResult` carries a `ParallelItemError` with `kind` ∈ `{"timeout", "exception", "verdict_failure", "cancelled"}`, a short single-line `message`, and `exc_type` (qualified exception class name when applicable, else `None`). Classification rules: child `ExecutionResult.terminated_by == "timeout"` → `kind="timeout"`; a worker-level Python exception → `kind="exception"` with `exc_type` set; child terminated normally but not at `done` → `kind="verdict_failure"`; cancelled in `fail_fast` → `kind="cancelled"`
 - `ParallelItemError` is serialized as a plain dict (`{"kind": ..., "message": ..., "exc_type": ...}`) when stored into `self.captured[state_name].results[i].error` by FEAT-1076 — downstream states read `${captured.<state>.results[i].error.kind}` without any string parsing
 - Thread-safety contract honored: a `TestParallelRunnerSingletonSafety` test (scaffolding owned by FEAT-1077; audit-driven test methods contributed by ENH-1185) asserts the parent's config snapshot, checkpoint file, and session JSONL file are not written from worker threads
+- `on_worker_complete` callback is invoked from the runner's main thread exactly once per completed worker with that worker's fully-populated `ParallelItemResult`; callback exceptions are caught, logged, and do not abort fan-out (FEAT-1174 is the primary consumer; contract surfaced here so the signature is stable at v1)
+- `starting_item_index` offsets the `item_index` assignment: when called with `starting_item_index=3` and `items=["c", "d"]`, the returned `all_results[0].item_index == 3` and `all_results[1].item_index == 4` (resume-aware indexing for FEAT-1174)
 - Module importable standalone without executor dependency
 
 ## Tests (owned by this issue)
@@ -351,6 +365,9 @@ Moved from FEAT-1077 (2026-04-20) to break the circular dependency where FEAT-10
   - Edge: 0 items → `ParallelResult(all_results=[], verdict="yes")` with empty `.succeeded`/`.failed`
   - Edge: 1 item fails of 1 → `result.verdict == "no"`, `result.failed[0].error` non-empty
 - **`ParallelItemError` classification tests** — one test per `kind` value (`timeout`, `exception`, `verdict_failure`, `cancelled`) asserting both `kind` and `exc_type` are set correctly
+- **`test_parallel_runner_invokes_on_worker_complete_per_worker`** — 4 items, passing `on_worker_complete` callback; assert callback is invoked 4 times, once per worker, each with a fully-populated `ParallelItemResult`; assert invocation happens from the runner's main thread (not worker threads) by capturing `threading.current_thread().name` in the callback
+- **`test_parallel_runner_on_worker_complete_exception_is_swallowed`** — callback raises; fan-out still completes; assert a WARN-level log entry is produced and `ParallelResult` is fully populated
+- **`test_parallel_runner_starting_item_index_offsets_absolute_index`** — call with `items=["c", "d"]`, `starting_item_index=3`; assert `all_results[0].item_index == 3`, `all_results[1].item_index == 4`
 
 Integration-level real-threading tests (`TestParallelRunnerRealThreading`), singleton-safety scaffolding (`TestParallelRunnerSingletonSafety`), and the end-to-end loop tests remain with FEAT-1077.
 

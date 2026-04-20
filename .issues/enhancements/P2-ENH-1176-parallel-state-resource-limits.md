@@ -8,7 +8,9 @@ depends_on: [FEAT-1074, FEAT-1075, FEAT-1076]
 
 ## Summary
 
-Add enforced upper bounds on parallel state resource consumption: maximum items per fan-out, cumulative timeout across all workers, and a soft warning threshold for git worktree count. Without these, a parallel state defined over a very large items list (thousands), a pathological per-worker duration, or deep worktree nesting can degrade the host system or produce unbounded runtime.
+Add **runtime enforcement** of upper bounds on parallel state resource consumption: runtime checks against `max_items` (oversized-fan-out early rejection), cumulative wall-clock timer against `max_total_seconds`, soft warning thresholds for git worktree count, and a `try/finally` audit of `ParallelRunner.run()` cleanup paths. Without these, a parallel state defined over a very large items list (thousands), a pathological per-worker duration, or deep worktree nesting can degrade the host system or produce unbounded runtime.
+
+**Scope boundary vs. FEAT-1074 (updated 2026-04-20):** the schema fields `max_items: int = 1000` and `max_total_seconds: int | None = None`, plus their basic range validation (`>= 1`) and the cross-field sanity WARN, are owned by **FEAT-1074** — pulled forward so the schema is internally consistent from v1 day one and downstream runner/dispatch issues can read the fields without a schema churn. This issue owns only the **runtime behavior** that enforces those fields.
 
 ## Current Behavior (as of FEAT-1074/1075/1076)
 
@@ -19,12 +21,12 @@ Add enforced upper bounds on parallel state resource consumption: maximum items 
 
 ## Expected Behavior
 
-### Hard limits (fail validation or fail-fast at execution)
+### Hard limits (runtime enforcement of FEAT-1074 schema fields)
 
-Add to `ParallelStateConfig` (schema):
-- `max_items: int = 1000` — reject fan-outs larger than this at runtime with a clear error; configurable per-state
-- `max_total_seconds: int | None = None` — cumulative wall-clock timeout across the entire parallel state; when exceeded, cancel pending futures, mark in-flight workers as timed-out, aggregate per `fail_mode`
-- Validation: `max_items >= 1`, `max_total_seconds is None or max_total_seconds >= 1`, `max_total_seconds > (max_workers * timeout_seconds)` if both set (otherwise the cumulative cap is meaningless)
+The schema fields are declared in FEAT-1074 (`max_items: int = 1000`, `max_total_seconds: int | None = None`) with basic range validation and a cross-field sanity WARN. This issue adds the **runtime enforcement**:
+
+- `ParallelRunner.run()` checks `len(items) > config.max_items` **before launching any worker** and raises a `ValueError` with a clear message naming the state and the overage
+- `ParallelRunner.run()` wraps the fan-out in a wall-clock timer against `config.max_total_seconds`; when exceeded, cancel pending futures, mark in-flight workers as `terminated_by="timeout"`, aggregate per `fail_mode`
 
 ### Soft warnings (log but do not fail)
 
@@ -48,26 +50,26 @@ Document and test:
 
 ## Proposed Solution
 
-1. Add `max_items` and `max_total_seconds` to `ParallelStateConfig` with sensible defaults (`max_items: 1000`, `max_total_seconds: None`)
-2. In `ParallelRunner.run()`: check `len(items) > max_items` before launching; raise `ValueError` with a clear message before any worker is spawned
-3. In `ParallelRunner.run()`: wrap the fan-out in a wall-clock timer; on breach, cancel pending + mark in-flight as timed out
+1. ~~Add `max_items` and `max_total_seconds` to `ParallelStateConfig`~~ — **moved to FEAT-1074** on 2026-04-20. Schema fields and basic range validation land there so the dataclass ships complete at v1.
+2. In `ParallelRunner.run()`: check `len(items) > config.max_items` before launching; raise `ValueError` with a clear message before any worker is spawned
+3. In `ParallelRunner.run()`: wrap the fan-out in a wall-clock timer against `config.max_total_seconds`; on breach, cancel pending + mark in-flight as timed out
 4. Add `_check_worktree_count()` helper that counts `git worktree list` entries and emits warnings at thresholds
 5. Audit `ParallelRunner.run()` for `try/finally` completeness on shutdown + worktree teardown paths
 6. Document all limits in `docs/generalized-fsm-loop.md` and `CREATE_LOOP_SKILL.md`
-7. Add tests: oversized items rejected, cumulative timeout fires and aggregates correctly, worktree warning emitted at threshold, cleanup on exception
+7. Add tests: oversized items rejected at runtime, cumulative timeout fires and aggregates correctly, worktree warning emitted at threshold, cleanup on exception
 
 ## Dependencies
 
-- **Hard blockers**: FEAT-1074 (schema fields), FEAT-1075 (runner), FEAT-1076 (dispatch)
+- **Hard blockers**: FEAT-1074 (schema fields `max_items`, `max_total_seconds` — now owned there), FEAT-1075 (runner), FEAT-1076 (dispatch)
 - **Related**: ENH-1165 (cancellation) — the cumulative-timeout cancellation path mirrors the signal-based one
 
 ## Acceptance Criteria
 
-- `max_items` rejects oversized fan-outs before any worker spawns; error message names the state and the overage
-- `max_total_seconds` fires an aggregate timeout that cancels pending futures and records in-flight workers as timed out
+- Runtime check: `len(items) > config.max_items` rejects oversized fan-outs before any worker spawns; error message names the state and the overage (schema field itself is owned by FEAT-1074)
+- Runtime timer: `config.max_total_seconds` fires an aggregate timeout that cancels pending futures and records in-flight workers as `terminated_by="timeout"`
 - Worktree count warnings emit at 50 and 100 thresholds; do not fail execution
 - `ParallelRunner.run()` has `try/finally` guaranteeing executor shutdown and worktree teardown in all exception paths
-- Defaults (`max_items: 1000`, `max_total_seconds: None`) do not affect existing loops on small item lists
+- Defaults (declared in FEAT-1074: `max_items: 1000`, `max_total_seconds: None`) do not affect existing loops on small item lists — enforcement path is a no-op until fields are set
 - Tests cover: oversized items, cumulative timeout expiration, worktree warnings, cleanup on exception
 
 ## Impact
@@ -86,6 +88,7 @@ Document and test:
 ## Session Log
 - `parallel-fsm-review` - 2026-04-18T00:00:00Z - spawned during parallel feature review discussion
 - `parallel-family-review` - 2026-04-20T00:00:00Z - promoted from P3 to P2. Rationale recorded in Impact section: oversized fan-outs are a real foot-gun (misresolved context vars, liberal globs) with a blast radius that warrants v1 guardrails rather than post-incident hardening. Cross-referenced from FEAT-1080 CLI-awareness warning and from ENH-1186 v1 scope doc.
+- `parallel-family-review` - 2026-04-20T00:00:00Z - schema fields `max_items` and `max_total_seconds` moved to FEAT-1074 (schema issue) to resolve a field-count mismatch that would have forced a mid-implementation schema churn. This issue now owns runtime enforcement only (oversized-items rejection, cumulative wall-clock timer, worktree-count warnings, cleanup audit).
 
 ---
 
