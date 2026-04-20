@@ -58,10 +58,11 @@ Create `scripts/tests/test_parallel_runner.py` (flat directory — all FSM tests
 - Thread mode `fail_fast`: verify remaining futures cancelled on first failure
 - Worktree mode: mock worktree setup/teardown, verify merge-back called
 - `context_passthrough: true`: verify parent context passed to each worker
-- `test_parallel_runner_context_passthrough_is_deep_copy_per_worker` — thread-safety invariant from FEAT-1075 (deep-copy contract): pass a `parent_context` that includes nested mutable structures (a dict-of-lists, e.g., `{"items": ["a", "b"], "meta": {"count": 0}}`). Spawn N (≥4) workers where each worker mutates its nested structures (e.g., appends to `items`, increments `meta["count"]`). After the run, assert: (a) every worker's mutations are visible only inside that worker's own `all_captures` entry, (b) sibling workers see no mutations from each other in their initial context, (c) the parent's original `self.captured` dict is byte-for-byte unchanged (including nested containers — check `parent_context["items"] is not worker_context["items"]` identity). This catches regressions to shallow-copy or pass-by-reference.
-- `timeout_seconds`: worker exceeding timeout records timeout verdict and is aggregated under `fail_mode` (`collect` → listed in `failed`; `fail_fast` → cancels remaining futures); `timeout_seconds=None` means no timeout enforced
-- Edge: 0 items → immediate `ParallelResult(succeeded=[], failed=[], all_captures=[], verdict="yes")`
-- Edge: 1 item fails of 1 → `verdict="no"`
+- `test_parallel_runner_context_passthrough_is_deep_copy_per_worker` — thread-safety invariant from FEAT-1075 (deep-copy contract): pass a `parent_context` that includes nested mutable structures (a dict-of-lists, e.g., `{"items": ["a", "b"], "meta": {"count": 0}}`). Spawn N (≥4) workers where each worker mutates its nested structures (e.g., appends to `items`, increments `meta["count"]`). After the run, assert: (a) every worker's mutations are visible only inside that worker's own `ParallelItemResult.captures` entry, (b) sibling workers see no mutations from each other in their initial context, (c) the parent's original `self.captured` dict is byte-for-byte unchanged (including nested containers — check `parent_context["items"] is not worker_context["items"]` identity). This catches regressions to shallow-copy or pass-by-reference.
+- `test_parallel_runner_preserves_item_order_under_async_completion` — ordering guarantee from FEAT-1075: submit 4 items with durations `[3.0, 1.0, 2.0, 0.5]` seconds (deliberately inverted so completion order ≠ submission order). Assert `result.all_results[i].item == items[i]` for all `i`; assert `result.all_results[i].item_index == i`; assert completion timestamps are out of order (sanity check that the scheduling was actually async). Catches regressions that would append from `as_completed()` instead of writing into pre-allocated slots.
+- `timeout_seconds`: worker exceeding timeout records `ParallelItemResult(verdict="no", terminated_by="timeout", error="...")` and is aggregated under `fail_mode` (`collect` → lands in `result.failed`; `fail_fast` → cancels remaining futures); `timeout_seconds=None` means no timeout enforced
+- Edge: 0 items → immediate `ParallelResult(all_results=[], verdict="yes")` (also assert `.succeeded == [] and .failed == []`)
+- Edge: 1 item fails of 1 → `result.all_results[0].verdict == "no"`; `result.verdict == "no"`; `result.failed[0].error` is a non-empty string
 
 ### End-to-end integration test
 
@@ -76,7 +77,7 @@ One end-to-end test must exercise a real parallel loop YAML through `FSMExecutor
 
 Most `test_parallel_runner.py` tests mock `FSMExecutor` for speed and determinism. That leaves real `ThreadPoolExecutor` behavior unexercised — the exact surface where race conditions hide. Add a dedicated `TestParallelRunnerRealThreading` class in `test_parallel_runner.py` that runs real threads against minimal real workloads:
 
-- **`test_real_threads_deep_copy_isolates_mutations`** — 4 real workers, each mutates nested structures in its context. Use real `ThreadPoolExecutor` (no mocks). Assert each worker's mutations land only in its own `all_captures` and the parent dict is unchanged. This is the canonical regression test for the deep-copy contract.
+- **`test_real_threads_deep_copy_isolates_mutations`** — 4 real workers, each mutates nested structures in its context. Use real `ThreadPoolExecutor` (no mocks). Assert each worker's mutations land only in its own `ParallelItemResult.captures` and the parent dict is unchanged. This is the canonical regression test for the deep-copy contract.
 - **`test_real_threads_max_workers_enforced`** — 20 items, `max_workers=2`. Each worker records its start timestamp into a shared `threading.Lock`-protected list. After the run, assert at most 2 timestamps overlap at any point (no more than `max_workers` concurrent). Catches regressions that would silently let `ThreadPoolExecutor` exceed its pool.
 - **`test_real_threads_fail_fast_cancels_pending`** — 10 items, `fail_mode: fail_fast`, item 2 fails. Track how many worker bodies actually started (shared counter incremented at the top of each worker). Assert the counter is strictly less than 10 — pending futures were cancelled before starting. Uses real futures + cancellation, not mocked.
 - **`test_real_threads_timeout_one_while_others_complete`** — 4 workers, `timeout_seconds=1`, worker 2 sleeps 5 seconds. Assert worker 2 is recorded as timed-out, workers 0/1/3 complete normally, overall verdict is `"partial"`. Catches interaction bugs between timeout and aggregation.
@@ -221,7 +222,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **ParallelRunner.run() signature**: `run(items: list[str], loop_name: str, config: ParallelStateConfig, parent_context: dict | None = None) -> ParallelResult`
 - **Worker success condition**: `child_result.terminated_by == "terminal" and child_result.final_state == "done"` (mirrors `_execute_sub_loop()` at `executor.py:354–361`)
-- **Captures storage**: `self.captured[self.current_state] = {"results": result.all_captures}` (confirmed from executor dispatch design)
+- **Captures storage**: `self.captured[self.current_state] = {"results": [<ParallelItemResult-as-dict>, ...]}` — each entry has `item`, `item_index`, `verdict`, `terminated_by`, `captures`, `error` (see FEAT-1076 dispatch code)
 - **Routing**: `_route()` at `executor.py:713–762` already handles `"yes"/"partial"/"no"` at lines 747–753 — `_execute_parallel_state()` calls `self._route(state, result.verdict, ctx)` directly
 - **`test_fsm_validation.py` scope**: File currently has only 67 lines with one class (`TestExtraRoutesReachability`). Mutual exclusion tests go in `test_fsm_schema.py` (where `test_loop_and_action_mutual_exclusion:1722` lives). The single validation test added here is for the no-transition guard at `validation.py:271`.
 - **`_PARALLEL_BADGE` gate**: Badge test imports `_PARALLEL_BADGE` from `little_loops.cli.loop.layout` — this constant does not exist until FEAT-1078. Implement badge test last and guard with a skip if not yet available.
@@ -253,7 +254,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - All new tests pass: `python -m pytest scripts/tests/test_parallel_runner.py scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_schema.py scripts/tests/test_fsm_validation.py scripts/tests/test_ll_loop_display.py scripts/tests/test_ll_loop_execution.py -x`
 - At least one end-to-end test exercises a real parallel loop YAML through `FSMExecutor.run()` (not mocked) with ≥2 toy sub-loops, verifying fan-out, verdict aggregation, and correct routing on each of `on_yes`, `on_partial`, `on_no`
-- `test_parallel_runner_context_passthrough_is_read_only_snapshot` exists and asserts that concurrent workers observe identical snapshot values and the parent's captured dict is not mutated
+- `test_parallel_runner_context_passthrough_is_deep_copy_per_worker` exists and asserts that each worker receives an independent deep copy: workers may mutate nested containers freely without affecting sibling workers or the parent's `self.captured`
 - `test_fsm_schema.py:TestFSMValidation` — no regressions in existing error-count assertions
 - `test_fsm_fragments.py` + `test_builtin_loops.py` — all 33 built-in loops still pass validation
 - `parallel-loop.yaml` fixture round-trips without validation errors

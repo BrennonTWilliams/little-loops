@@ -122,12 +122,14 @@ parallel: ParallelStateConfig | None = None
 4. Update `fsm-loop-schema.json`: add `parallel:` as a valid state-level key with sub-field types and constraints matching `ParallelStateConfig`
 5. Fix `_validate_state_routing` no-transition guard in `validation.py:271` — add `has_parallel = state.parallel is not None` to the guard condition so valid `parallel:` states are not falsely flagged as having "no transition defined" (model after the existing `has_loop` exemption at the same line; test with `test_parallel_state_no_transition_not_flagged`)
 6. Run `test_fsm_schema.py`, `test_fsm_schema_fuzz.py`, `test_fsm_validation.py`, `test_fsm_fragments.py`, and `test_builtin_loops.py` to verify no regressions from the new mutual-exclusion rules
+7. Update `skills/review-loop/reference.md` V-series check table with three new rows (`parallel`+`action`, `parallel`+`loop`, `parallel`+`next` → ERROR) using the next available V-series IDs; add `parallel:` to State Type quick-reference table if one exists (folded from ENH-1166)
 
 ## Files to Modify
 
 - `scripts/little_loops/fsm/schema.py` — Add `ParallelStateConfig`, extend `StateConfig` (follow `to_dict`/`from_dict` pattern at lines ~288–338)
 - `scripts/little_loops/fsm/validation.py` — Add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` (lines 77–99); add mutual exclusion and value-range checks
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — Add `parallel:` object schema
+- `skills/review-loop/reference.md` — Add three V-series rows for parallel mutual exclusions; add `parallel:` to State Type quick-reference if present (folded from ENH-1166)
 
 ## Integration Map
 
@@ -202,6 +204,7 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 - `isolation: "invalid"` fails validation
 - `fail_mode: "invalid"` fails validation
 - `fsm-loop-schema.json` reflects all constraints
+- **V-series check table updated (folded from ENH-1166)**: `skills/review-loop/reference.md:21-38` V-series check table has three new rows covering `parallel`+`action`, `parallel`+`loop`, `parallel`+`next` mutual exclusions at ERROR severity, each with an invalid-YAML example. If a "State type quick reference" table exists in the same file, `parallel:` is added alongside `action:`, `loop:`, and `shell:` entries. This closes the gap between runtime validation (added by this issue) and `/ll:review-loop` authoring-time guidance.
 
 ## Implementation Notes
 

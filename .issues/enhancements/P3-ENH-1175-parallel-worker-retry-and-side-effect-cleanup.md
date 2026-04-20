@@ -6,6 +6,8 @@ depends_on: [FEAT-1075, FEAT-1076, FEAT-1174]
 
 # ENH-1175: Parallel Worker Retry and Side-Effect Cleanup Contract
 
+> **Scope narrowed 2026-04-20.** The side-effect cleanup contract (worktree branch deletion on failure, thread-mode write safety documentation, always-one-entry-per-item guarantee) was extracted into **FEAT-1184** and promoted to P2 as a v1 ship companion. This issue now covers only the **retry policy** (`retry_on_failure`, `retry_backoff_seconds`, transient-vs-permanent classification) and remains P3 — resilience improvement, not a v1 correctness blocker. The failure-classification fields on `ParallelItemResult` were absorbed into FEAT-1075's v1 dataclass.
+
 ## Summary
 
 Define and implement a retry policy for transient worker failures in `ParallelRunner`, and specify a cleanup contract for side effects left behind by failed workers in `fail_mode: collect` mode — especially in `isolation: worktree` where failed worker branches may be partially created, partially modified, or partially merged.
@@ -42,9 +44,9 @@ Document and enforce in `ParallelRunner`:
 4. **Thread mode, any failure**: workers share the parent filesystem; no automatic cleanup is possible. Document that thread-mode sub-loops should be read-only or idempotent, and that `fail_mode: collect` with thread-mode writers is "last write wins, possibly corrupted."
 5. **`self.captured[state_name].results`**: always contains one entry per item in item order, including failed entries (with `verdict: "no"` and `error: <message>`). Downstream states can filter on `verdict` to distinguish.
 
-### Failure classification in `all_captures`
+### Failure classification in `all_results`
 
-Each entry in `ParallelResult.all_captures` gets a `verdict` field and, for failed entries, an `error` field with a short description. Downstream `collect_children`-style states read from `all_captures` can skip failed entries consistently.
+**Moved to FEAT-1075**: the per-item `verdict`/`error`/`terminated_by` fields are now part of the v1 `ParallelItemResult` dataclass. Downstream `collect_children`-style states read from `${captured.<state>.results[*]}` and filter on `verdict` to skip failed entries. This section remains here for historical context only.
 
 ## Use Case
 
@@ -59,7 +61,7 @@ Each entry in `ParallelResult.all_captures` gets a `verdict` field and, for fail
 1. Add `retry_on_failure` and `retry_backoff_seconds` to `ParallelStateConfig` (FEAT-1074 follow-up, but this issue owns the spec and implementation)
 2. Implement retry in `ParallelRunner._run_worker()` via a loop with classification of retryable vs. non-retryable failures
 3. Implement worktree cleanup on failure: branch delete in addition to worktree teardown
-4. Extend `ParallelResult.all_captures` entries with `verdict` and optional `error` fields
+4. ~~Extend `ParallelResult.all_captures` entries with `verdict` and optional `error` fields~~ — absorbed into FEAT-1075's `ParallelItemResult` dataclass; no work remains under this issue for failure classification
 5. Document the cleanup contract in `docs/generalized-fsm-loop.md` (scope of FEAT-1084)
 6. Add tests: retry-then-succeed, retry-then-fail, non-retryable-failure-no-retry, worktree branch cleanup on failure
 

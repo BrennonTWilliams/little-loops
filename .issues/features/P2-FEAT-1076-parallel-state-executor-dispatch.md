@@ -59,9 +59,26 @@ def _execute_parallel_state(self, state: StateConfig) -> str:
         config=state.parallel,
         parent_context=self.captured if state.parallel.context_passthrough else None,
     )
-    self.captured[self.current_state] = {"results": result.all_captures}
+    # Serialize each ParallelItemResult as a dict for downstream interpolation.
+    # Order is by item_index (original items order), NOT completion order — the runner
+    # guarantees this by writing into pre-allocated slots (see FEAT-1075 "Ordering guarantee").
+    self.captured[self.current_state] = {
+        "results": [
+            {
+                "item": r.item,
+                "item_index": r.item_index,
+                "verdict": r.verdict,
+                "terminated_by": r.terminated_by,
+                "captures": r.captures,
+                "error": r.error,
+            }
+            for r in result.all_results
+        ]
+    }
     return result.verdict
 ```
+
+`ParallelRunner` owns the deep-copy boundary when `context_passthrough` is enabled; the caller may pass `self.captured` by reference here.
 
 **Insert dispatch** at `executor.py:396–402` immediately after the `if state.loop is not None:` block (line 403) and before the `if state.next:` block. Follow the same `try/except (FileNotFoundError, ValueError)` guard pattern:
 
@@ -78,7 +95,7 @@ if state.parallel is not None:
 - Option A (recommended): Leave scope lock management at the CLI level (`run.py:148`). Worktree isolation handles the real conflict risk. Document that `isolation: worktree` makes per-worker locking unnecessary.
 - Option B: Thread `lock_manager` into `FSMExecutor` as an optional constructor arg
 
-**Captured context**: parallel state stores results as `self.captured[self.current_state] = {"results": [per_worker_captured_dict, ...]}` — accessible downstream as `${captured.<state_name>.results}`.
+**Captured context**: parallel state stores results as `self.captured[self.current_state] = {"results": [<ParallelItemResult-as-dict>, ...]}` — accessible downstream as `${captured.<state_name>.results}`. Each entry has fields `item`, `item_index`, `verdict`, `terminated_by`, `captures`, `error`. Downstream states read `.verdict` to distinguish successes from failures and `.captures` for per-worker output.
 
 **Route method** — add `_route_parallel(state, verdict)` that maps `verdict` → `on_yes` / `on_partial` / `on_no` route keys.
 
@@ -163,6 +180,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `fail_mode: fail_fast` cancels remaining on first failure
 - Existing loops using `loop:` (sequential sub-loop delegation) are unaffected
 - Scope lock behavior is documented in code comments
+- **Simulation-mode guard (folded from ENH-1164)**: when `self.action_runner` is a `SimulationActionRunner`, `_execute_parallel_state()` runs items sequentially through the simulation runner instead of invoking `ParallelRunner` — no real threads, no worktrees, no subprocess execution. The resulting `self.captured[state_name] = {"results": [...]}` shape is identical to real execution so downstream `on_yes`/`on_partial`/`on_no` routing is unchanged. Raising `NotImplementedError` is explicitly rejected; see ENH-1164 §29-33 for rationale.
+- **Signal cancellation (folded from ENH-1165 Option B)**: `_execute_parallel_state()` wraps the `runner.run()` call in `try/finally`; on `KeyboardInterrupt` (or any signal-driven exception) it calls `executor.shutdown(wait=False, cancel_futures=True)` on the underlying `ThreadPoolExecutor` before re-raising. Pending (not-yet-started) workers are cancelled; running workers finish their current state before exiting. Full per-worker `threading.Event` cancellation (Option A) is deferred to a post-v1 follow-up.
 
 ## Implementation Notes
 
@@ -234,16 +253,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 The following issues were originally filed as P3 "known limitations" of this dispatch but are now **P2 blockers that must ship in the same release as FEAT-1076**. Shipping `_execute_parallel_state()` without them would leave users with a broken dry-run mode and uncancellable worker threads — both regressions vs. the sequential loop behavior they replace.
 
-- **ENH-1164** — Simulation guard at the top of `_execute_parallel_state()`. Without this, `ll-loop simulate` on any loop with a `parallel:` state runs real concurrent sub-loops against live issue files.
-- **ENH-1165 (Option B)** — Wrap `runner.run()` in `try/finally` and call `executor.shutdown(wait=False, cancel_futures=True)` on `KeyboardInterrupt`. Option A (full per-worker cancellation via `threading.Event`) may land as a follow-up.
+- **ENH-1164** (folded into this issue's acceptance criteria 2026-04-20) — Simulation guard at the top of `_execute_parallel_state()`. Without this, `ll-loop simulate` on any loop with a `parallel:` state runs real concurrent sub-loops against live issue files.
+- **ENH-1165 Option B** (folded into this issue's acceptance criteria 2026-04-20) — Wrap `runner.run()` in `try/finally` and call `executor.shutdown(wait=False, cancel_futures=True)` on `KeyboardInterrupt`. Option A (full per-worker cancellation via `threading.Event`) remains deferred as a follow-up.
+- **FEAT-1174** (promoted P3 → P2 on 2026-04-20) — Per-worker checkpointing and resume. v1 parallel must not regress sequential-loop checkpoint guarantees (SIGKILL mid-fan-out currently re-runs all workers).
+- **FEAT-1184** (new P2, split from ENH-1175 on 2026-04-20) — Worker side-effect cleanup contract: failed worktree-mode branches deleted; thread-mode write warning documented; always-one-entry-per-item result guarantee.
 
-These two additions are ~20 lines of code combined inside `_execute_parallel_state()`; the cost of bundling them now is much lower than the cost of shipping without them.
+Together these define "v1 parallel ship" as a correctness-complete unit. The two folded ENHs are ~20 lines combined inside `_execute_parallel_state()`; FEAT-1174 and FEAT-1184 are their own issues.
 
 ### Follow-up issues (not blockers)
 
 Tracked for post-v1; do not gate this issue on them:
-- **FEAT-1174** — Per-worker checkpointing and resume (so mid-run interrupts don't re-run completed workers)
-- **ENH-1175** — Worker retry + side-effect cleanup contract
+- **ENH-1165 Option A** — Full per-worker cancellation via shared `threading.Event` checked between worker state transitions (deferred in `.issues/deferred/P2-ENH-1165-...`)
+- **ENH-1175** — Worker retry policy (`retry_on_failure`, `retry_backoff_seconds`) — cleanup half split out to FEAT-1184; retry remains P3
 - **ENH-1176** — Parallel state resource limits (max items, cumulative timeout, worktree warnings)
 - **ENH-1177** — Worker-tagged observability (per-worker event tags in logs)
 - **ENH-1178** — Thread-mode isolation safety detection (validation heuristic for unsafe sub-loops)

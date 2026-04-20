@@ -6,6 +6,8 @@ depends_on: [FEAT-1075, FEAT-1076]
 
 # ENH-1164: `ll-loop simulate` Silently Bypasses Parallel States
 
+> **Superseded by FEAT-1076.** 2026-04-20: the simulation-mode guard described here was folded into FEAT-1076 as an acceptance criterion ("Simulation-mode guard — folded from ENH-1164"). This file is retained in `.issues/deferred/` for the rationale in §29-33 (why raising `NotImplementedError` was rejected in favor of a sequential dry-run). Do not re-implement; the work ships with FEAT-1076.
+
 ## Summary
 
 When `ll-loop simulate` runs a loop containing a `parallel:` state, `SimulationActionRunner` is bypassed and `ParallelRunner` launches real worker threads/worktrees. Users get real execution in simulation mode with no warning or error.

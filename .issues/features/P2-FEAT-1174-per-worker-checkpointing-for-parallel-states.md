@@ -40,7 +40,7 @@ Three coordinated changes:
 
 ### 1. Per-worker completion events from `ParallelRunner`
 
-`ParallelRunner.run()` gains an optional `on_worker_complete: Callable[[int, dict, str], None] | None` callback invoked as each worker's future resolves. The callback receives `(item_index, worker_captures, verdict)` so the caller can persist it immediately.
+`ParallelRunner.run()` gains an optional `on_worker_complete: Callable[[ParallelItemResult], None] | None` callback invoked as each worker's future resolves. The callback receives the completed `ParallelItemResult` (see FEAT-1075) so the caller can serialize the full per-worker record — `item`, `item_index`, `verdict`, `terminated_by`, `captures`, `error` — directly into the checkpoint.
 
 ### 2. Incremental checkpoint writes from `PersistentExecutor`
 
@@ -53,8 +53,8 @@ When `FSMExecutor` is a `PersistentExecutor` and is executing a parallel state, 
   "parallel_progress": {
     "fan_out": {
       "completed": [
-        {"item_index": 0, "captures": {...}, "verdict": "yes"},
-        {"item_index": 2, "captures": {...}, "verdict": "yes"}
+        {"item": "FEAT-1042", "item_index": 0, "verdict": "yes", "terminated_by": "terminal", "captures": {...}, "error": null},
+        {"item": "FEAT-1044", "item_index": 2, "verdict": "yes", "terminated_by": "terminal", "captures": {...}, "error": null}
       ],
       "total_items": 4,
       "items_hash": "<sha256 of items list>"
@@ -95,7 +95,7 @@ After `ParallelRunner.run()` returns, merge the resumed results with the previou
 
 ## Impact
 
-- **Priority**: P3 — Production quality-of-life for long orchestrator runs; not a correctness blocker for v1 parallel ship. Ship once FEAT-1076 lands and real usage patterns confirm mid-run interrupts are common.
+- **Priority**: P2 — v1 parallel must not regress sequential-loop checkpoint guarantees. `PersistentExecutor._save_state` fires after every `state_enter` today (`persistence.py:436`); losing up to N minutes of completed fan-out work on SIGKILL is a regression of that contract. Bundle with or immediately after FEAT-1076.
 - **Effort**: Medium — 3-file change with subtle resume semantics; needs integration tests against real `PersistentExecutor`
 - **Risk**: Medium — Checkpoint schema additions are backwards-compatible (old checkpoints without `parallel_progress` fall through to full re-run), but the resume path has more edge cases than typical state resume
 - **Breaking Change**: No — additive; absence of `parallel_progress` means status quo behavior
@@ -111,4 +111,4 @@ After `ParallelRunner.run()` returns, merge the resumed results with the previou
 
 ---
 
-**Open** | Created: 2026-04-18 | Priority: P3
+**Open** | Created: 2026-04-18 | Priority: P2 (promoted 2026-04-20)

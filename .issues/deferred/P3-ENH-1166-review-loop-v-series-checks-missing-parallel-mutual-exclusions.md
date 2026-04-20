@@ -6,6 +6,8 @@ depends_on: [FEAT-1074]
 
 # ENH-1166: `review-loop` V-Series Check Table Missing Parallel Mutual-Exclusion Entries
 
+> **Superseded by FEAT-1074.** 2026-04-20: the V-series table update was folded into FEAT-1074 as an acceptance criterion and into its Files-to-Modify list and Implementation Steps. Do not re-implement; the work ships with FEAT-1074.
+
 ## Summary
 
 `skills/review-loop/reference.md:21-38` V-series check table has no entries for the three `parallel:` mutual-exclusion validation rules added by FEAT-1074. This update was explicitly deferred to "FEAT-1078 scope" in FEAT-1074, but FEAT-1078 was completed by decomposition without capturing this work in any of its child issues (FEAT-1080, FEAT-1081, FEAT-1083, FEAT-1086).

@@ -97,7 +97,7 @@ Review existing state-type templates. If templates exist for composition types (
 | `max_workers` | `int` | `4` | no | Maximum concurrent workers |
 | `isolation` | `str` | `"thread"` | no | `"thread"` (shared dir, fast — default) or `"worktree"` (git-isolated; opt in when sub-loops write the same files concurrently) |
 | `fail_mode` | `str` | `"collect"` | no | `"collect"` (all run) or `"fail_fast"` (cancel on first fail) |
-| `context_passthrough` | `bool` | `false` | no | Pass a **shallow snapshot** (`dict(parent_captured)`) of parent context into each worker — never the live dict |
+| `context_passthrough` | `bool` | `false` | no | Pass a **deep copy** (`copy.deepcopy(parent_captured)`) of parent context into each worker — one independent copy per worker; never the live dict |
 | `timeout_seconds` | `int \| None` | `null` | no | Per-worker wall-clock cap; `null` disables. Timed-out workers aggregate under `fail_mode`. |
 
 Mutual exclusions: `parallel` + `action`, `parallel` + `loop` field, `parallel` + `next`.

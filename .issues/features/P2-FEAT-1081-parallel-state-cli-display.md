@@ -73,8 +73,9 @@ Without parallel state display support:
     ```
 - Add `state.parallel` branch showing fields from `ParallelStateConfig` (field names confirmed from FEAT-1074 spec):
   - **Always display**: `items: <state.parallel.items>`, `loop: <state.parallel.loop>`
-  - **Omit if default** (matches `ParallelStateConfig.to_dict()` omit-if-default convention): `max_workers` (default `4`), `isolation` (default `"worktree"`), `fail_mode` (default `"collect"`), `context_passthrough` (default `False`)
-  - Confirmed field types: `items: str`, `loop: str`, `max_workers: int = 4`, `isolation: str = "worktree"`, `fail_mode: str = "collect"`, `context_passthrough: bool = False`
+  - **Omit if default** (matches `ParallelStateConfig.to_dict()` omit-if-default convention): `max_workers` (default `4`), `isolation` (default `"thread"`), `fail_mode` (default `"collect"`), `context_passthrough` (default `False`)
+  - Confirmed field types: `items: str`, `loop: str`, `max_workers: int = 4`, `isolation: str = "thread"`, `fail_mode: str = "collect"`, `context_passthrough: bool = False`
+  - Rationale: omitting `"thread"` (the fast default) means the verbose display always surfaces the *explicit opt-in* value `"worktree"`. Omitting `"worktree"` would hide the safer-but-slower choice from authors, which is backwards — `"thread"` is what a casual reader already assumes.
 - Insert `state.loop` and `state.parallel` blocks immediately after `if state.timeout:` (line 801), before the transition collection block (line 803)
 - Follow structure of action block at lines 763–777 as template
 
@@ -153,7 +154,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `items: str` — interpolated expression resolving to newline-delimited list (always display)
 - `loop: str` — sub-loop name to run per item (always display)
 - `max_workers: int = 4` — omit if 4
-- `isolation: str = "worktree"` — values: `"worktree"` | `"thread"`; omit if `"worktree"`
+- `isolation: str = "thread"` — values: `"worktree"` | `"thread"`; omit if `"thread"`
 - `fail_mode: str = "collect"` — values: `"collect"` | `"fail_fast"`; omit if `"collect"`
 - `context_passthrough: bool = False` — omit if `False`
 

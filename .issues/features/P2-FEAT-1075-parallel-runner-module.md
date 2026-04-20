@@ -37,11 +37,26 @@ Decomposed from FEAT-1072: Add `parallel:` State Type to FSM for Concurrent Sub-
 
 ```python
 @dataclass
+class ParallelItemResult:
+    item: str                   # original item string from items[item_index]
+    item_index: int             # slot in original items list (stable; not completion order)
+    verdict: str                # "yes" (reached terminal "done") | "no" (failed) | "partial" (reserved)
+    terminated_by: str          # "terminal" | "error" | "timeout" | "signal" | "max_iterations" | "handoff"
+    captures: dict              # child FSMExecutor.captured at exit (may be {} on early failure)
+    error: str | None = None    # short human-readable message when verdict != "yes"; None on success
+
+@dataclass
 class ParallelResult:
-    succeeded: list[str]        # item values that reached terminal "done"
-    failed: list[str]           # items that did not
-    all_captures: list[dict]    # per-worker captured dicts (indexed by item order)
-    verdict: str                # "yes" | "partial" | "no"
+    all_results: list[ParallelItemResult]   # length == len(items); ordered by item_index (NOT completion order)
+    verdict: str                            # "yes" | "partial" | "no"
+
+    @property
+    def succeeded(self) -> list[ParallelItemResult]:
+        return [r for r in self.all_results if r.verdict == "yes"]
+
+    @property
+    def failed(self) -> list[ParallelItemResult]:
+        return [r for r in self.all_results if r.verdict != "yes"]
 
 class ParallelRunner:
     def run(
@@ -53,6 +68,17 @@ class ParallelRunner:
     ) -> ParallelResult:
         ...
 ```
+
+### Ordering guarantee
+
+`ThreadPoolExecutor.as_completed()` yields futures in completion order, NOT submission order. The runner MUST preserve original item order in `all_results`:
+
+- Pre-allocate `results: list[ParallelItemResult | None] = [None] * len(items)` before submission.
+- Submit each item along with its `item_index` (e.g., `executor.submit(self._run_worker, item, idx, ...)`).
+- As each future completes, write the result into `results[item_index]`, not append.
+- After join, assert `all(r is not None for r in results)` (in `fail_mode="collect"`) or fill cancelled slots with a `ParallelItemResult(verdict="no", terminated_by="cancelled", ...)` sentinel (in `fail_mode="fail_fast"`).
+
+This makes `all_results[i]` always refer to `items[i]` regardless of worker scheduling, so downstream routing logic and `${captured.<state_name>.results[*]}` interpolation are deterministic.
 
 **Thread mode** (`isolation: "thread"`):
 - Use `ThreadPoolExecutor(max_workers=N, thread_name_prefix="fsm-parallel")`
@@ -238,7 +264,7 @@ class ParallelRunner:
 2. Implement thread mode: `ThreadPoolExecutor(max_workers=N)` + `as_completed()` — follow `link_checker.py:286–318` pattern
 3. Implement `fail_fast`: cancel remaining futures on first failure
 4. Implement worktree mode: per-item worktree via `worktree_utils.py`, merge-back via `MergeCoordinator`
-5. Implement `context_passthrough` to inject a **shallow snapshot** of the parent context (`dict(parent_context)`) into each worker's initial sub-loop context; workers must never see the parent's live captured dict by reference (see Thread-Safety subsection)
+5. Implement `context_passthrough` to inject a **deep copy** of the parent context (`copy.deepcopy(parent_context)`) into each worker's initial sub-loop context; workers must never see the parent's live captured dict by reference, and a shallow copy is insufficient because nested containers (dicts, lists) would still be shared (see Thread-Safety subsection)
 6. Derive verdict: all succeeded → `"yes"`, all failed → `"no"`, mixed → `"partial"`
 7. Verify module is importable standalone (no circular executor dependency)
 
@@ -251,14 +277,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- `ParallelResult` dataclass exists with `succeeded`, `failed`, `all_captures`, `verdict`
+- `ParallelItemResult` dataclass exists with `item`, `item_index`, `verdict`, `terminated_by`, `captures`, `error` fields (see Proposed Solution for types)
+- `ParallelResult` dataclass exists with `all_results: list[ParallelItemResult]` and `verdict: str`; exposes `succeeded`/`failed` as derived `@property` filters over `all_results`
+- Ordering guarantee: `all_results[i]` always corresponds to `items[i]` regardless of completion order; results are written into the pre-allocated slot by `item_index`, never appended from `as_completed()` order
 - Thread mode: 4 items with `max_workers: 2` run 2 at a time; all captures collected
-- Thread mode `fail_fast`: remaining futures cancelled on first failure
+- Thread mode `fail_fast`: remaining futures cancelled on first failure; cancelled slots populated with `ParallelItemResult(verdict="no", terminated_by="cancelled", ...)` so `all_results` length still equals `len(items)`
 - Worktree mode: each item gets its own worktree; changes merged back
-- `context_passthrough: true` passes a **shallow snapshot** (`dict(parent_captured)`) of parent context to each worker — NOT the live dict
-- Concurrent workers reading `parent_context` observe identical values: a test spawns N workers that each read the same keys and assert no mutations/divergence (belongs in FEAT-1077 as `test_parallel_runner_context_passthrough_is_read_only_snapshot`)
-- Per-worker timeout: when `timeout_seconds` is set, a worker exceeding it records a timeout verdict and is aggregated under `fail_mode`; `timeout_seconds=None` disables the timeout
-- Verdict: all succeed → `"yes"`, all fail → `"no"`, mixed → `"partial"`
+- `context_passthrough: true` passes a **deep copy** (`copy.deepcopy(parent_captured)`) of parent context to each worker — one independent copy per worker, never the live dict and never a shallow copy (nested containers would still be shared)
+- Concurrent workers may read or mutate their per-worker `parent_context` copy without affecting siblings or the parent: a test spawns N workers that each mutate nested structures in their copy and asserts no cross-worker divergence and no mutation of the parent's captured dict (belongs in FEAT-1077 as `test_parallel_runner_context_passthrough_is_deep_copy_per_worker`)
+- Per-worker timeout: when `timeout_seconds` is set, a worker exceeding it records `ParallelItemResult(verdict="no", terminated_by="timeout", error="worker exceeded timeout_seconds=N")` and is aggregated under `fail_mode`; `timeout_seconds=None` disables the timeout
+- Verdict derivation: all `verdict=="yes"` → aggregate `"yes"`; all non-`"yes"` → aggregate `"no"`; mixed → `"partial"`
+- Each failed `ParallelItemResult` carries an `error` string (short, single-line) derived from the child `ExecutionResult` (e.g., `"terminated_by=error, final_state=failed"` or exception message for runner-level failures)
 - Module importable standalone without executor dependency
 
 ## Related / See Also

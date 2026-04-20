@@ -114,8 +114,18 @@ Default guidance: **start with `thread`; switch to `worktree` only when you obse
 ### Routing and Captures Reference
 
 - Routing: `on_yes` (all succeeded), `on_partial` (mixed), `on_no` (all failed)
-- Captures: `${captured.<state_name>.results}` contains `all_captures` (per-worker `captured` dicts)
-- Timeouts: `timeout_seconds` caps each worker individually; timed-out workers are aggregated under the configured `fail_mode` (`collect` or `fail_fast`)
+- Captures: `${captured.<state_name>.results}` is a list of dicts in **original item order** (one entry per item; slot `i` is item `i` regardless of which worker finished first). Each entry has:
+  - `item` — original item string from the `items:` list
+  - `item_index` — stable slot index (0-based)
+  - `verdict` — `"yes"` (worker succeeded) or `"no"` (worker failed/timed out/cancelled)
+  - `terminated_by` — one of `"terminal"`, `"error"`, `"timeout"`, `"signal"`, `"max_iterations"`, `"handoff"`, `"cancelled"`
+  - `captures` — the worker's own `FSMExecutor.captured` dict at exit (empty on early failure)
+  - `error` — short single-line failure message when `verdict != "yes"`, else `null`
+- Common downstream patterns:
+  - Filter successes: `${captured.<state>.results[*].verdict}` to count "yes" entries
+  - Pull a specific worker's output: `${captured.<state>.results[0].captures.my_field}`
+  - Inspect failures: `${captured.<state>.results[*].error}` (entries with `verdict == "no"` have a non-null error)
+- Timeouts: `timeout_seconds` caps each worker individually; timed-out workers are aggregated under the configured `fail_mode` (`collect` or `fail_fast`) and recorded with `terminated_by: "timeout"`
 
 ## Dependencies
 

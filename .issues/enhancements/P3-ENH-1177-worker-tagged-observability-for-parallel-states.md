@@ -29,7 +29,7 @@ There is no way to answer: "which worker processed issue FEAT-1042?" or "what st
 ## Expected Behavior
 
 Every event emitted from inside a parallel worker carries:
-- `worker_index: int` — 0-based position in `items`
+- `worker_index: int` — 0-based position in `items`; same value as `ParallelItemResult.item_index` in FEAT-1075's structured result (the runner already knows this per worker — passing it into the event wrapper is the same integer)
 - `worker_label: str | None` — the item value itself when it's a string (e.g., the issue ID "FEAT-1042"), truncated to a reasonable length; None when the item is a complex object
 - `parallel_state: str` — the name of the parent parallel state (e.g., `"fan_out"`)
 

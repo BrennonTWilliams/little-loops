@@ -6,6 +6,8 @@ depends_on: [FEAT-1075, FEAT-1076, FEAT-1174]
 
 # ENH-1165: Signal Handler Cannot Reach Parallel Worker Threads
 
+> **Partially superseded by FEAT-1076.** 2026-04-20: Option B (`ThreadPoolExecutor.shutdown(wait=False, cancel_futures=True)` in `try/finally`) was folded into FEAT-1076 as an acceptance criterion ("Signal cancellation — folded from ENH-1165 Option B"). Option A — full per-worker cancellation via a shared `threading.Event` checked between worker state transitions — remains deferred as a post-v1 resilience follow-up. Re-promote to the active queue only if Option B proves insufficient in production.
+
 ## Summary
 
 `_helpers.py`'s signal handler kills subprocess via `FSMExecutor._current_process`, but `ParallelRunner`'s `ThreadPoolExecutor` worker threads are unreachable via this mechanism. Ctrl-C or SIGTERM during parallel execution leaves workers running to completion with no cancellation.
