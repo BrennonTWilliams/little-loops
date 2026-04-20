@@ -106,7 +106,7 @@ Event persistence (JSONL output, analysis tools) naturally inherits the new fiel
 
 ## Impact
 
-- **Priority**: P3 — Observability/debuggability; not a correctness blocker, but the first real debugging session on a parallel fan-out will make this feel critical
+- **Priority**: P2 — Promoted from P3 on 2026-04-20 during parallel-family review. Rationale: minimum observability is not optional for a concurrent feature. FEAT-1081 adds a per-worker label in the live CLI display (the v1 floor for log-tail debuggability), but structured per-worker event tagging — the part needed by programmatic consumers and durable logs — belongs in the v1 ship. Callback consumers of 4×-interleaved streams with no worker attribution will call any production incident in a parallel loop "unshippable" unless this ships alongside.
 - **Effort**: Small-to-Medium — schema field addition + wrapper + renderer updates + schema regen
 - **Risk**: Low — Additive event fields; non-parallel callers unaffected
 - **Breaking Change**: No — fields are optional; consumers that ignore them continue to work
@@ -119,7 +119,8 @@ Event persistence (JSONL output, analysis tools) naturally inherits the new fiel
 
 ## Session Log
 - `parallel-fsm-review` - 2026-04-18T00:00:00Z - spawned during parallel feature review discussion
+- `parallel-family-review` - 2026-04-20T00:00:00Z - promoted from P3 to P2. Minimum observability is not optional for a concurrent feature; FEAT-1081 supplies the CLI-display floor, but structured event tagging for programmatic consumers must ship alongside v1. Referenced as a v1 limitation callout in FEAT-1075 "Event callback worker-tagging" and in FEAT-1084 / ENH-1186 (v1 scope).
 
 ---
 
-**Open** | Created: 2026-04-18 | Priority: P3
+**Open** | Created: 2026-04-18 | Priority: P2 (promoted from P3 on 2026-04-20)

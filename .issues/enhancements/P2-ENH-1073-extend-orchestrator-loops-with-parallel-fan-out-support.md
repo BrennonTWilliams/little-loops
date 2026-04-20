@@ -6,6 +6,10 @@ depends_on: [FEAT-1074, FEAT-1075, FEAT-1076]
 
 # ENH-1073: Extend Orchestrator Loops with Optional Parallel Fan-Out
 
+## v1 Scope Reference
+
+This issue depends on the full parallel-state v1 contract. Before authoring orchestrator fan-out YAML, read **P2-ENH-1186** (parallel-state v1 scope & limitations) — the single source of truth for what v1 parallel states do and do NOT do (Ctrl-C latency, no per-worker retries, no resource-limit enforcement, thread-mode write unsafety, nested-parallel ban, etc.). Several orchestrator-specific concerns (wave boundaries across long-running workers, cumulative worker budget under `ll-parallel` / `ll-sprint --parallel`) surface specifically because of those v1 limitations.
+
 ## Summary
 
 Extend the 6 queue-based orchestrator loops to support optional wave-based concurrent fan-out using the `parallel:` state type (FEAT-1072), while preserving sequential queue execution as the default fallback. When `max_workers: 1` or unset, loops behave exactly as today. When `max_workers > 1`, each loop fans out its current generation of items in parallel, collects children or results, then fans out the next generation until the queue is empty.
@@ -171,7 +175,7 @@ For each loop, the extension follows a consistent pattern:
 
 ## Impact
 
-- **Priority**: P3 — High value but blocked on FEAT-1072; no user-visible benefit until the primitive ships
+- **Priority**: P2 — User-visible umbrella feature; blocks on FEAT-1074–1076 but should not be prioritized below its own plumbing (re-prioritized 2026-04-20 during parallel-FSM issue-set review)
 - **Effort**: Medium — Each loop follows the same restructuring template; `recursive-refine` is the hardest; others are mechanical
 - **Risk**: Low — YAML-only changes to loop configs; FSM engine is unchanged; rollback is trivial (revert YAML files)
 - **Breaking Change**: No — same loop names and interfaces; behavioral change is faster execution, not different outcomes
@@ -195,4 +199,4 @@ Given this issue touches 6 orchestrator loops and has non-trivial branching betw
 
 ---
 
-**Open** | Created: 2026-04-12 | Priority: P3
+**Open** | Created: 2026-04-12 | Priority: P2

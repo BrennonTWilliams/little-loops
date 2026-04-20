@@ -179,6 +179,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `config-schema.json` validates `ll-config.json` files with `loops.glyphs.parallel`
 - All existing tests pass; `test_to_dict_returns_all_keys` updated assertion passes
 
+## Outer-CLI awareness (ll-auto, ll-parallel, ll-sprint)
+
+The three orchestrator CLIs each invoke FSM loops through `PersistentExecutor.run()`. When a loop containing a `parallel:` state runs under one of these CLIs, the outer scheduler's concurrency must NOT compose with the inner `parallel:` state's `max_workers` — that would multiply worker counts and blow out thread/worktree limits silently.
+
+Decision and contract (documented here; enforced by this issue's wiring):
+
+- **`ll-auto`** — runs issues sequentially by design. A `parallel:` state inside the loop fans out normally using its own `max_workers`. No composition concern. **No code change needed**, but add an inline comment in `ll-auto`'s main loop explaining that the inner parallel state is free to use its full `max_workers` budget.
+- **`ll-parallel`** — runs N issues in N parallel worktrees, each running the full loop. If the loop contains `parallel:` state with `max_workers=4`, the system could spawn `N * 4` threads. This issue adds a **soft-cap warning** emitted once per `ll-parallel` run when the loop definition contains any `parallel:` state: `WARNING: loop 'X' contains parallel state(s); ll-parallel concurrency (N) multiplies inner parallel concurrency (M). Cumulative worker budget: N*M=<product>. Consider reducing inner max_workers or running under ll-auto.` No hard limit in v1 — authors are responsible. Tracked as a hard-limit candidate under ENH-1176 (resource limits).
+- **`ll-sprint`** — runs a curated ordered list of issues, typically sequentially (unless `--parallel` is passed, in which case it delegates to `ll-parallel` behavior). Apply the same soft-cap warning as `ll-parallel` when `--parallel` is in effect.
+
+### Files that must be touched to deliver the warning
+
+- `scripts/little_loops/cli/ll_auto.py` — comment only
+- `scripts/little_loops/cli/ll_parallel.py` — scan loaded FSMLoop for any `state.parallel is not None`; emit warning once before fan-out
+- `scripts/little_loops/cli/ll_sprint.py` — same scan when `--parallel` is active
+
+### Modules that MUST NOT be touched in this issue
+
+- `scripts/little_loops/fsm/executor.py` — parallel dispatch is FEAT-1076's territory
+- `scripts/little_loops/fsm/parallel_runner.py` — FEAT-1075's territory
+- `scripts/little_loops/parallel/worker_pool.py` — keep the ll-parallel worker pool unaware of FSM parallel states; the warning is at the CLI layer by design
+
+### Outer-CLI awareness acceptance criteria
+
+- Loading a loop with any `parallel:` state under `ll-parallel` emits exactly one WARNING to stderr naming the cumulative worker budget
+- Same under `ll-sprint --parallel`; no warning under `ll-sprint` without `--parallel`
+- No warning under `ll-auto` (sequential by design); comment present in the CLI module explaining why
+- A test in `test_ll_parallel.py` (new) and `test_ll_sprint.py` (extend) asserts the warning fires exactly once per run and includes the computed `N*M` product
+
 ## Impact
 
 - **Priority**: P2

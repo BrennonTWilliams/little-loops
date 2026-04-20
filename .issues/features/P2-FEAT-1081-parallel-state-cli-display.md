@@ -196,6 +196,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `ll-loop info --verbose <loop-with-parallel>` shows parallel state details (items, loop, workers, isolation, fail_mode)
 - `_PARALLEL_BADGE == "\u2225"` test assertion passes
 - All existing and new `TestGetStateBadge` and `TestCmdShow` tests pass
+- **Per-worker label in live run display (v1 observability minimum)**: during a parallel state's execution, each worker's state transitions include an item-identifying label — format `[<state_name>#<item_index>:<item_truncated_to_24_chars>]` prepended to the worker's state log lines. Example: `[fan_out#2:issue-42-refine...] entering state resolve`. This is the v1 floor for making a log tail of a parallel run debuggable; full per-worker event-tagging is tracked in **P2-ENH-1177** (worker-tagged observability)
+- A test in `test_ll_loop_display.py` (`test_parallel_worker_label_in_live_display`) asserts the label format is present on each worker's emitted state-enter line when a parallel state runs
 
 ## Impact
 

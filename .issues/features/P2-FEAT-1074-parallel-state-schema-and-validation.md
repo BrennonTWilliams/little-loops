@@ -8,6 +8,15 @@ outcome_confidence: 86
 
 # FEAT-1074: Parallel State Schema and Validation
 
+## Blockers & Folded Criteria
+
+**MUST land in this PR, not as follow-ups:**
+
+- **ENH-1166 — review-loop V-series check rows** (folded 2026-04-20). Three new V-series rows for `parallel`+`action`, `parallel`+`loop`, `parallel`+`next` mutual exclusions must appear in `skills/review-loop/reference.md`; add `parallel:` to the State Type quick-reference table if present. See Acceptance Criteria "V-series check table updated (folded from ENH-1166)". Do NOT defer to a later issue — `/ll:review-loop` diverges from runtime validation otherwise.
+- **`_validate_state_routing` no-transition guard fix** is a hard prerequisite for FEAT-1076. A valid `parallel:` state currently triggers the "no transition defined" error because the guard at `validation.py:271` has no `has_parallel` exemption. Ship the `has_parallel = state.parallel is not None` guard addition in this PR alongside the dataclass — FEAT-1076 cannot merge without it.
+
+**Cross-reference**: v1 scope and explicit post-v1 "won't do" list lives in **P3-ENH-1186** (parallel-state v1 scope & limitations).
+
 ## Summary
 
 Add `ParallelStateConfig` dataclass to `schema.py`, extend `StateConfig` with a `parallel:` field, update `fsm-loop-schema.json`, and add mutual exclusion validation rules to `validation.py`.
@@ -205,6 +214,17 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 - `fail_mode: "invalid"` fails validation
 - `fsm-loop-schema.json` reflects all constraints
 - **V-series check table updated (folded from ENH-1166)**: `skills/review-loop/reference.md:21-38` V-series check table has three new rows covering `parallel`+`action`, `parallel`+`loop`, `parallel`+`next` mutual exclusions at ERROR severity, each with an invalid-YAML example. If a "State type quick reference" table exists in the same file, `parallel:` is added alongside `action:`, `loop:`, and `shell:` entries. This closes the gap between runtime validation (added by this issue) and `/ll:review-loop` authoring-time guidance.
+
+## Tests (owned by this issue)
+
+Moved from FEAT-1077 (2026-04-20) to break the circular dependency where FEAT-1077 gated on FEAT-1075 but FEAT-1076 needed schema tests passing before it could merge. Unit tests for the schema now land with this issue:
+
+- **`test_fsm_schema.py::TestParallelStateConfig`** — round-trip `to_dict()`/`from_dict()`, defaults applied on minimal construction, `StateConfig` serializes/omits `parallel` key correctly
+- **`test_fsm_schema.py::TestParallelMutualExclusion`** — follows `test_loop_and_action_mutual_exclusion:1722` pattern; covers `parallel`+`action`, `parallel`+`loop`, `parallel`+`next`, `max_workers: 0`, `isolation: "invalid"`, `fail_mode: "invalid"`
+- **`test_fsm_validation.py`** — one test asserting a `parallel:` state with routing does NOT trigger the no-transition guard (the guard at `validation.py:271` gains `and not has_parallel` in this issue)
+- **`test_fsm_schema_fuzz.py`** — add `parallel` block to `malformed_state_config` hypothesis strategy (insertion point: after line 174, before the `unexpected_*` block)
+
+`test_fsm_schema.py:636` `TestFSMValidation` may assert specific error counts — review for regressions after adding new mutual-exclusion rules.
 
 ## Implementation Notes
 

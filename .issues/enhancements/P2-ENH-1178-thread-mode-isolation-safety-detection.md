@@ -82,7 +82,7 @@ Add an optional `thread_safety_assertion: Literal["read_only"] | None = None` fi
 
 ## Impact
 
-- **Priority**: P3 — UX/safety improvement; v1 parallel ships with a documented convention, but first incident of silent data loss in a thread-mode loop will make this P2
+- **Priority**: P2 — Promoted from P3 on 2026-04-20 during parallel-family review. Rationale: `isolation: thread` is the DEFAULT, and a sub-loop with file-writing actions is a plausible first use (the very first `parallel:` an author writes may well call a loop that runs `Edit`/`Write`/`Bash` with redirection). Silent data loss as the default failure mode on a brand-new feature is exactly the "first-incident" class of bug we should not ship. A validation-time heuristic warning is cheap; catching this at loop-parse time is far better than discovering it via corrupted files in production.
 - **Effort**: Small — Heuristic scan is ~30 lines; validation wiring minimal; schema field addition trivial
 - **Risk**: Low — Warnings only; no behavior change to runtime; false positives can be silenced with the assertion field
 - **Breaking Change**: No — additive warnings; existing loops not using `parallel:` unaffected
@@ -95,7 +95,8 @@ Add an optional `thread_safety_assertion: Literal["read_only"] | None = None` fi
 
 ## Session Log
 - `parallel-fsm-review` - 2026-04-18T00:00:00Z - spawned during parallel feature review discussion
+- `parallel-family-review` - 2026-04-20T00:00:00Z - promoted from P3 to P2. `thread` isolation is the default; silent data loss on the default-mode first use is a ship-blocker class of foot-gun. Validation-time heuristic is cheap and must land in v1. Cross-referenced from FEAT-1084 "v1 Limitations" and from ENH-1186 (v1 scope doc).
 
 ---
 
-**Open** | Created: 2026-04-18 | Priority: P3
+**Open** | Created: 2026-04-18 | Priority: P2 (promoted from P3 on 2026-04-20)

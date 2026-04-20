@@ -8,6 +8,18 @@ outcome_confidence: 78
 
 # FEAT-1075: FSM ParallelRunner Module
 
+## Blockers & Folded Criteria
+
+**v1 contracts — must land in this PR:**
+
+- **Structured error shape**: `ParallelItemResult.error` is a `ParallelItemError` dataclass, not a bare string. Enables retry-transient classification later without a schema break (see Proposed Solution below).
+- **Thread-safety contract**: the runner MUST isolate per-worker access to known singletons (config, persistence checkpoint writer, session JSONL writer). See "Thread-safety contract" subsection below.
+
+**v1 known limitations (documented, tracked elsewhere):**
+
+- Worker tagging in the parent `event_callback` stream is NOT done in v1 — tracked in **P2-ENH-1177** (promoted from P3, 2026-04-20). FEAT-1081 adds a minimum per-worker display label so log tails are readable; full observability story ships in ENH-1177.
+- `context_passthrough: bool` is binary-only in v1. Finer-grained filtering (include/exclude keys, mask secrets) is tracked under **ENH-1186** (v1 scope doc) as a post-v1 enhancement candidate.
+
 ## Summary
 
 Create `scripts/little_loops/fsm/parallel_runner.py` — the `ParallelRunner` class that fans out N sub-loop executions in either thread or worktree isolation mode and returns a `ParallelResult`.
@@ -37,13 +49,25 @@ Decomposed from FEAT-1072: Add `parallel:` State Type to FSM for Concurrent Sub-
 
 ```python
 @dataclass
+class ParallelItemError:
+    """Structured error for failed parallel workers.
+
+    `kind` drives downstream retry/classification decisions without requiring
+    string parsing. Keep the enum narrow; add new values only when a downstream
+    state genuinely needs to distinguish.
+    """
+    kind: str                   # "timeout" | "exception" | "verdict_failure" | "cancelled"
+    message: str                # short, single-line human-readable summary
+    exc_type: str | None = None # qualified exception class name (e.g., "TimeoutError"); None for verdict_failure
+
+@dataclass
 class ParallelItemResult:
     item: str                   # original item string from items[item_index]
     item_index: int             # slot in original items list (stable; not completion order)
     verdict: str                # "yes" (reached terminal "done") | "no" (failed) | "partial" (reserved)
     terminated_by: str          # "terminal" | "error" | "timeout" | "signal" | "max_iterations" | "handoff"
     captures: dict              # child FSMExecutor.captured at exit (may be {} on early failure)
-    error: str | None = None    # short human-readable message when verdict != "yes"; None on success
+    error: ParallelItemError | None = None  # structured error when verdict != "yes"; None on success
 
 @dataclass
 class ParallelResult:
@@ -111,6 +135,26 @@ The contract is:
 - The parent's `self.captured` dict is untouched by fan-out. After `runner.run()` returns, `FSMExecutor._execute_parallel_state()` writes a single aggregate entry (`self.captured[state_name] = {"results": [...]}`) — that is the only mutation of parent state from parallel execution.
 
 **Cost rationale:** `copy.deepcopy` is O(total context size). In practice captures are small flat dicts (strings, ints, small lists of IDs) and the per-worker cost is microseconds. If profiling ever shows deepcopy as a real cost (e.g., orchestrator loops passing multi-megabyte contexts), revisit — but don't optimize speculatively. The mental-model win ("your snapshot is yours, do what you want with it") eliminates a whole class of silent-corruption bugs and is worth paying for.
+
+### Thread-safety contract (singletons outside `parent_context`)
+
+Per-worker context deepcopy covers `captured`, but the runner also MUST NOT corrupt module-level / process-global state shared by workers. Concrete contract:
+
+- **Config loader** (`BRConfig` / `.ll/ll-config.json` / `ll-config.toml`): resolved once in the main thread BEFORE `runner.run()` is called; workers receive a frozen/read-only snapshot via their `FSMExecutor` construction. No worker invokes the config-loading path. If a worker needs config, it reads from its snapshot — never from the disk cache.
+- **Checkpoint persistence** (`PersistentExecutor._save_state()`): each worker's `PersistentExecutor` (if used) writes to a **worker-scoped** checkpoint path — never the parent loop's checkpoint file. The parent's checkpoint is written only from the main thread, after `runner.run()` returns. The actual file-layout contract for per-worker checkpoint paths is specified in **FEAT-1174**. This issue just guarantees the parent file is untouched from worker threads.
+- **Session JSONL logging** (`get_current_session_jsonl()`): writes are line-delimited JSONL and rely on OS-level atomic append-writes of single `\n`-terminated records up to PIPE_BUF. Workers MUST write one-line-per-event only and MUST NOT buffer multi-line records. No shared Python-level file handle is passed between threads; each worker opens its own handle in append mode.
+- **Module-level caches** (e.g., loop-fragment caches, schema validator singletons): read-only post-init. The runner MUST verify during implementation that no cache performs lazy write-on-read; if one does, pre-warm it in the main thread before fan-out.
+
+A dedicated test class `TestParallelRunnerSingletonSafety` in `test_parallel_runner.py` (added by FEAT-1077) exercises each of these. See FEAT-1077 Acceptance Criteria for the specific tests.
+
+### Event callback worker-tagging (v1 limitation)
+
+Workers' child `FSMExecutor` instances each emit their own event stream to the **same** `event_callback` the parent was constructed with. In v1, these streams MERGE with no per-worker tag — a dashboard consumer sees 4× events from 4 workers with no way to attribute them to a specific item or worker-id.
+
+Consequence for this issue:
+- The runner MUST propagate `self.event_callback` to child executors as-is (no per-worker wrapping at runtime) to preserve the v1 contract. Adding a tagging wrapper is explicitly **out of scope** here.
+- Document this in the module docstring so extension authors don't depend on per-worker attribution.
+- Full story: **P2-ENH-1177** (worker-tagged observability). FEAT-1081 ships the CLI display minimum (per-worker label in `ll-loop info --verbose` output) so log tails are debuggable even before ENH-1177 lands.
 
 ## Files to Create/Modify
 
@@ -287,8 +331,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Concurrent workers may read or mutate their per-worker `parent_context` copy without affecting siblings or the parent: a test spawns N workers that each mutate nested structures in their copy and asserts no cross-worker divergence and no mutation of the parent's captured dict (belongs in FEAT-1077 as `test_parallel_runner_context_passthrough_is_deep_copy_per_worker`)
 - Per-worker timeout: when `timeout_seconds` is set, a worker exceeding it records `ParallelItemResult(verdict="no", terminated_by="timeout", error="worker exceeded timeout_seconds=N")` and is aggregated under `fail_mode`; `timeout_seconds=None` disables the timeout
 - Verdict derivation: all `verdict=="yes"` → aggregate `"yes"`; all non-`"yes"` → aggregate `"no"`; mixed → `"partial"`
-- Each failed `ParallelItemResult` carries an `error` string (short, single-line) derived from the child `ExecutionResult` (e.g., `"terminated_by=error, final_state=failed"` or exception message for runner-level failures)
+- Each failed `ParallelItemResult` carries a `ParallelItemError` with `kind` ∈ `{"timeout", "exception", "verdict_failure", "cancelled"}`, a short single-line `message`, and `exc_type` (qualified exception class name when applicable, else `None`). Classification rules: child `ExecutionResult.terminated_by == "timeout"` → `kind="timeout"`; a worker-level Python exception → `kind="exception"` with `exc_type` set; child terminated normally but not at `done` → `kind="verdict_failure"`; cancelled in `fail_fast` → `kind="cancelled"`
+- `ParallelItemError` is serialized as a plain dict (`{"kind": ..., "message": ..., "exc_type": ...}`) when stored into `self.captured[state_name].results[i].error` by FEAT-1076 — downstream states read `${captured.<state>.results[i].error.kind}` without any string parsing
+- Thread-safety contract honored: a `TestParallelRunnerSingletonSafety` test (scaffolding owned by FEAT-1077; audit-driven test methods contributed by ENH-1185) asserts the parent's config snapshot, checkpoint file, and session JSONL file are not written from worker threads
 - Module importable standalone without executor dependency
+
+## Tests (owned by this issue)
+
+Moved from FEAT-1077 (2026-04-20) to break the circular dependency where FEAT-1077 gated on FEAT-1075 but FEAT-1076 needed runner tests passing before it could merge. Unit tests for the runner now land with this issue:
+
+- **`scripts/tests/test_parallel_runner.py` — mocked-executor unit suite:**
+  - Thread mode: captures collected, verdict derived correctly
+  - Thread mode `fail_fast`: remaining futures cancelled on first failure
+  - Worktree mode: mock worktree setup/teardown, merge-back called
+  - `context_passthrough: true` passes parent context to each worker
+  - `test_parallel_runner_context_passthrough_is_deep_copy_per_worker` — deep-copy contract (thread-safety invariant): N≥4 workers mutate nested structures; assert no sibling bleed and parent captured dict is byte-for-byte unchanged (identity check on nested containers)
+  - `test_parallel_runner_preserves_item_order_under_async_completion` — ordering guarantee: 4 items with durations `[3.0, 1.0, 2.0, 0.5]`s, assert `result.all_results[i].item == items[i]` regardless of completion order
+  - `timeout_seconds`: worker exceeding timeout records `ParallelItemResult(verdict="no", terminated_by="timeout", …)`; `timeout_seconds=None` means no timeout
+  - Edge: 0 items → `ParallelResult(all_results=[], verdict="yes")` with empty `.succeeded`/`.failed`
+  - Edge: 1 item fails of 1 → `result.verdict == "no"`, `result.failed[0].error` non-empty
+- **`ParallelItemError` classification tests** — one test per `kind` value (`timeout`, `exception`, `verdict_failure`, `cancelled`) asserting both `kind` and `exc_type` are set correctly
+
+Integration-level real-threading tests (`TestParallelRunnerRealThreading`), singleton-safety scaffolding (`TestParallelRunnerSingletonSafety`), and the end-to-end loop tests remain with FEAT-1077.
 
 ## Related / See Also
 

@@ -9,6 +9,10 @@ outcome_confidence: 85
 
 # FEAT-1084: Parallel State Loop Usage Documentation
 
+## Ship Companion
+
+This issue ships in the **same release** as FEAT-1076. Docs MUST land in the same tag as the `parallel:` state dispatch — shipping code without these docs leaves users without a usage reference, and shipping docs without code references a feature that does not yet exist. If FEAT-1076 slips, this issue slips with it; do not merge docs ahead of code.
+
 ## Summary
 
 Update `docs/guides/LOOPS_GUIDE.md`, `scripts/little_loops/loops/README.md`, and `docs/generalized-fsm-loop.md` to document the `parallel:` state type with YAML examples, table rows, and a dedicated fan-out section.
@@ -127,9 +131,25 @@ Default guidance: **start with `thread`; switch to `worktree` only when you obse
   - Inspect failures: `${captured.<state>.results[*].error}` (entries with `verdict == "no"` have a non-null error)
 - Timeouts: `timeout_seconds` caps each worker individually; timed-out workers are aggregated under the configured `fail_mode` (`collect` or `fail_fast`) and recorded with `terminated_by: "timeout"`
 
+## v1 Limitations (must appear verbatim in LOOPS_GUIDE.md and generalized-fsm-loop.md)
+
+Set user expectations explicitly. Add a `### v1 Limitations` subsection at the end of the new "Parallel Fan-Out" section in both `docs/guides/LOOPS_GUIDE.md` and `docs/generalized-fsm-loop.md`. Include each of these bullets verbatim:
+
+- **Ctrl-C latency**: running workers finish their current state before the thread pool shuts down. For long states (minutes+), `Ctrl-C` is not immediate. Full per-worker cancellation is planned for a future release.
+- **No per-worker retries in v1**: `fail_mode` supports `collect` (let all workers finish, aggregate results) and `fail_fast` (cancel remaining on first failure). Retry-transient and skip-permanent modes are not yet available. Author-level retry: route `on_partial`/`on_no` back to the parallel state for a full re-run.
+- **No resource-limit enforcement in v1**: `max_workers` is honored, but there is no hard cap on the total number of `items` fanned out and no enforced cumulative-timeout budget. Accidental 10k-item fan-outs are your responsibility to prevent. Soft warnings only when running under `ll-parallel` or `ll-sprint --parallel`.
+- **`context_passthrough: bool` is binary-only**: pass everything or nothing. Finer-grained include/exclude filtering and secret-masking are not available.
+- **Worker events merge into the parent event stream with no worker tag**: callback consumers see all workers' events interleaved. Live CLI display carries a per-worker label (FEAT-1081); programmatic callback tagging is planned (ENH-1177).
+- **Thread-mode is the default and does not validate sub-loop safety**: `isolation: thread` is fast but shares the process. Sub-loops that write the same files concurrently in thread mode can corrupt state. Validation of sub-loop safety is planned (ENH-1178); until then, set `isolation: worktree` when sub-loops write files.
+- **Nested `parallel:` states are forbidden**: a sub-loop invoked by a `parallel:` state cannot itself contain a `parallel:` state. Decompose or flatten.
+- **`ll-loop simulate` runs parallel states sequentially**: simulation does not spawn real threads or worktrees; it exercises the same code path serially so routing and captures are identical.
+
+Cross-reference the consolidated v1 scope and follow-ups issue: **P3-ENH-1186** (parallel-state v1 scope & limitations) — that issue is the single source of truth for "what's out of scope in v1."
+
 ## Dependencies
 
 - FEAT-1074 (schema) and FEAT-1076 (runner) should be complete for exact field semantics; write against specified interface if not yet merged
+- **Hard ship-coupling to FEAT-1076** — see Ship Companion section above
 
 ## Acceptance Criteria
 

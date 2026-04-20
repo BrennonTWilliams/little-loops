@@ -9,6 +9,12 @@ outcome_confidence: 85
 
 # FEAT-1086: Parallel State — Architecture and Contributing Docs
 
+## Ship Companion
+
+This issue ships in the **same release** as FEAT-1076. Architecture docs referencing a dispatch path that doesn't yet exist are worse than no docs. If FEAT-1076 slips, this issue slips with it.
+
+Add **one additional paragraph** in the new `## FSM Loop Mode (ll-loop)` section covering the extension-author contract: interceptors registered via `extension.py:wire_extensions()` are **skipped** on the parallel dispatch early-return path (same as `_execute_sub_loop`). Third-party extensions must not assume `before_state`/`after_state` interceptors fire for every state. See FEAT-1076 "Known Limitations / Follow-ups" for the canonical statement.
+
 ## Summary
 
 Update `docs/ARCHITECTURE.md` with a new `## FSM Loop Mode (ll-loop)` section documenting the `parallel:` state type, and update `CONTRIBUTING.md` to add `parallel_runner.py` to the `fsm/` directory tree.

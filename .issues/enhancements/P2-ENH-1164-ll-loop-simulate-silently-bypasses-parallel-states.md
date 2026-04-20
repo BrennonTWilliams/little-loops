@@ -6,7 +6,7 @@ depends_on: [FEAT-1075, FEAT-1076]
 
 # ENH-1164: `ll-loop simulate` Silently Bypasses Parallel States
 
-> **Superseded by FEAT-1076.** 2026-04-20: the simulation-mode guard described here was folded into FEAT-1076 as an acceptance criterion ("Simulation-mode guard — folded from ENH-1164"). This file is retained in `.issues/deferred/` for the rationale in §29-33 (why raising `NotImplementedError` was rejected in favor of a sequential dry-run). Do not re-implement; the work ships with FEAT-1076.
+> **Status: active — acceptance criteria folded into FEAT-1076.** Un-deferred 2026-04-20 during parallel-FSM issue-set review: this issue was in `.issues/deferred/`, but backlog tooling (`ll-auto`, `ll-parallel`, `find_issues`) excludes deferred files, so a folded-into-another-issue note did not survive in the active backlog. This file is retained in `.issues/enhancements/` as a tracking artifact and to own its tests (simulation dry-run aggregate shape; no-warning-no-error behavior; event stream parity). The simulation-mode guard itself is an acceptance criterion of FEAT-1076 (see FEAT-1076 "Blockers & Folded Criteria" and "Implementer checklist"). **Action on ship**: when FEAT-1076 merges, move this file to `.issues/completed/` and add a Session Log entry pointing at the FEAT-1076 PR. Do NOT re-implement the guard; only own its tests.
 
 ## Summary
 

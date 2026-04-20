@@ -72,7 +72,7 @@ Document and test:
 
 ## Impact
 
-- **Priority**: P3 — Hardening; v1 parallel ships usable without these for normal-scale fan-outs. First production incident with an oversized items list will make this a P2.
+- **Priority**: P2 — Promoted from P3 on 2026-04-20 during parallel-family review. Rationale: accidental oversized fan-outs (thousands of items from a misresolved `${captured...}` expression or a liberal `items:` glob) are too easy to trip into, and the blast radius (host CPU saturation, unbounded subprocess spawn, runaway worktree creation) is large enough that shipping v1 without guardrails is a foot-gun we'd regret the first incident. Must land alongside the parallel-state v1 feature set.
 - **Effort**: Small-to-Medium — Schema fields + runner guards + tests; cumulative-timeout path is the trickiest
 - **Risk**: Low — Hard limits are additive with conservative defaults; removing them or raising them is a config change
 - **Breaking Change**: No — default `max_items: 1000` is above any realistic existing use; if anyone is running >1000-item fan-outs today (unlikely; parallel is new), they can override explicitly
@@ -85,7 +85,8 @@ Document and test:
 
 ## Session Log
 - `parallel-fsm-review` - 2026-04-18T00:00:00Z - spawned during parallel feature review discussion
+- `parallel-family-review` - 2026-04-20T00:00:00Z - promoted from P3 to P2. Rationale recorded in Impact section: oversized fan-outs are a real foot-gun (misresolved context vars, liberal globs) with a blast radius that warrants v1 guardrails rather than post-incident hardening. Cross-referenced from FEAT-1080 CLI-awareness warning and from ENH-1186 v1 scope doc.
 
 ---
 
-**Open** | Created: 2026-04-18 | Priority: P3
+**Open** | Created: 2026-04-18 | Priority: P2 (promoted from P3 on 2026-04-20)

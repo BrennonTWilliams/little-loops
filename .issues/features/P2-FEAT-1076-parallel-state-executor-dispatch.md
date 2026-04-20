@@ -8,6 +8,25 @@ outcome_confidence: 86
 
 # FEAT-1076: Parallel State Executor Dispatch
 
+## Blockers & Folded Criteria
+
+**v1 SHIP-BLOCKERS — MUST land in this PR, not as follow-ups:**
+
+These were deferred issues that have been folded into this issue's acceptance criteria (2026-04-20). Shipping `_execute_parallel_state()` without them is a regression vs. sequential loops — this is the "correctness-complete" bar for v1. See also the Ship Companions section for the companion issues (FEAT-1174, FEAT-1184) that must land in the same release.
+
+- **ENH-1164 — simulation-mode guard**: when `self.action_runner` is a `SimulationActionRunner`, `_execute_parallel_state()` runs items **sequentially** through the simulation runner rather than invoking `ParallelRunner`. No real threads, no worktrees, no subprocesses. Emitted shape identical: `self.captured[state_name] = {"results": [...]}` so `on_yes`/`on_partial`/`on_no` routing is unchanged. Raising `NotImplementedError` is explicitly rejected — `ll-loop simulate` must work on loops containing `parallel:` states.
+- **ENH-1165 Option B — Ctrl-C-driven pool shutdown**: `_execute_parallel_state()` wraps `runner.run()` in `try/finally`. On `KeyboardInterrupt` (or any signal-driven exception), it calls `executor.shutdown(wait=False, cancel_futures=True)` on the underlying `ThreadPoolExecutor` before re-raising. Pending (not-yet-started) workers are cancelled immediately.
+
+**Option B does NOT stop in-flight workers mid-state** — they complete their current state before the pool shuts down. For a worker running a 20-minute state, Ctrl-C can take ~20 minutes to actually stop. This is a regression vs. sequential-loop Ctrl-C behavior (which kills via SIGTERM immediately through the subprocess signal handler). Full per-worker cancellation via a shared `threading.Event` checked between state transitions — Option A — remains deferred post-v1 (`.issues/enhancements/P2-ENH-1165-...`). Document the Ctrl-C latency prominently in `docs/generalized-fsm-loop.md` when FEAT-1084 lands.
+
+**Implementer checklist — do NOT merge without each of these present:**
+
+1. [ ] `isinstance(self.action_runner, SimulationActionRunner)` branch at top of `_execute_parallel_state()` with sequential fallback
+2. [ ] Sequential fallback produces `self.captured[state_name] = {"results": [...]}` with identical shape to real parallel execution (same `ParallelItemResult`-as-dict entries)
+3. [ ] `try/finally` around `runner.run()` with `executor.shutdown(wait=False, cancel_futures=True)` in the exception path
+4. [ ] A test in FEAT-1077 asserts that `ll-loop simulate` on a loop containing `parallel:` does not spawn real threads (check via `threading.active_count()` before/after) and does not invoke real sub-loop commands
+5. [ ] A test in FEAT-1077 asserts `KeyboardInterrupt` during a parallel run cancels pending futures (count of worker bodies that started < total items)
+
 ## Summary
 
 Add `_execute_parallel_state()` to `executor.py` and wire the dispatch at `_execute_state()`. Decide and document the scope lock architecture for parallel states.
@@ -169,19 +188,67 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - **Unresolved-context-variable pre-scan does not cover `state.parallel.items`** — `cli/loop/run.py:107-115` pre-scans `state.action` for unresolved `{{ }}` context variables but not `state.parallel.items`. An `items:` field referencing `{{ captured.X.Y }}` that fails to resolve at runtime will split on an empty string or on literal-brace text and fan out zero (or garbage) workers with no early warning. Tracked as **ENH-1173** (`.issues/enhancements/P3-ENH-1173-extend-unresolved-context-variable-pre-scan-to-cover-parallel-items.md`).
 
+- **Interceptors are skipped on the parallel dispatch early-return path** — `FSMExecutor._interceptors` (registered by `extension.py:wire_extensions()`) do not fire around `_execute_parallel_state()`. This is intentional and mirrors the existing `_execute_sub_loop` early-return behavior, but it is a silent behavior change for extension authors who wire interceptors expecting them to fire for every state. Document in `_execute_parallel_state()` docstring AND surface in FEAT-1086 (architecture/contributing docs) so third-party extensions are built with this in mind.
+
+- **Ctrl-C latency** (Option B only): running workers finish their current state before the pool shuts down. For a worker running a long state, Ctrl-C can take minutes to actually stop. Full per-worker cancellation (Option A) is deferred to post-v1.
+
+- **Signal-handler unreachability of worker threads** — `cli/loop/_helpers.py:56-66` signal handler reaches `FSMExecutor._current_process` to kill the active subprocess; `ParallelRunner` worker threads each have their own `FSMExecutor` instance unknown to the parent signal handler. Partially mitigated by Option B pool shutdown above, but a worker's currently-running subprocess survives until it completes or hits its own timeout. Document this in `docs/generalized-fsm-loop.md`. Full fix tracked in deferred **ENH-1165** Option A.
+
+## Scope Note
+
+**This issue folds ENH-1164 and ENH-1165 (Option B).** Both are tracked as separate active issues (`.issues/enhancements/P2-ENH-1164-…`, `.issues/enhancements/P2-ENH-1165-…`) for traceability and to own their tests; their *behavioral* acceptance criteria land here. The acceptance criteria below are split into three explicit code paths — **(a) Simulation**, **(b) Real execution**, **(c) Cancellation** — because folding ENH-1164/1165 introduces two additional code paths that each have their own test matrix. Do not review this issue as a single-path dispatch.
+
+**This issue also relies on the cleanup ownership contract defined in FEAT-1184**: the dispatcher loop in `_execute_parallel_state()` (here) owns all branch ref-modifying git operations under `GitLock`; worker threads from `ParallelRunner` (FEAT-1075) MUST NOT issue `git branch -D`, `git merge`, or any other ref-modifying git command. Re-read FEAT-1184 before implementing to avoid re-introducing the worker-thread branch-op race condition.
+
 ## Acceptance Criteria
 
-- `parallel:` key in a state YAML triggers concurrent sub-loop fan-out via `_execute_parallel_state()`
-- `on_yes` routes when all workers reached terminal `done`; `on_partial` when mixed; `on_no` when all failed
-- Worker captures accessible as `${captured.<state_name>.results[i]}`
-- `context_passthrough: true` passes parent captured dict to each worker
-- `max_workers` limits concurrency; excess items queue and execute as workers finish
-- `fail_mode: collect` continues all workers even if some fail
-- `fail_mode: fail_fast` cancels remaining on first failure
-- Existing loops using `loop:` (sequential sub-loop delegation) are unaffected
-- Scope lock behavior is documented in code comments
-- **Simulation-mode guard (folded from ENH-1164)**: when `self.action_runner` is a `SimulationActionRunner`, `_execute_parallel_state()` runs items sequentially through the simulation runner instead of invoking `ParallelRunner` — no real threads, no worktrees, no subprocess execution. The resulting `self.captured[state_name] = {"results": [...]}` shape is identical to real execution so downstream `on_yes`/`on_partial`/`on_no` routing is unchanged. Raising `NotImplementedError` is explicitly rejected; see ENH-1164 §29-33 for rationale.
-- **Signal cancellation (folded from ENH-1165 Option B)**: `_execute_parallel_state()` wraps the `runner.run()` call in `try/finally`; on `KeyboardInterrupt` (or any signal-driven exception) it calls `executor.shutdown(wait=False, cancel_futures=True)` on the underlying `ThreadPoolExecutor` before re-raising. Pending (not-yet-started) workers are cancelled; running workers finish their current state before exiting. Full per-worker `threading.Event` cancellation (Option A) is deferred to a post-v1 follow-up.
+### (a) Simulation path (folded from ENH-1164)
+
+- When `self.action_runner` is a `SimulationActionRunner`, `_execute_parallel_state()` runs items **sequentially** through the simulation runner — no real threads, no worktrees, no subprocess execution.
+- The resulting `self.captured[state_name] = {"results": [...]}` shape is identical to real execution so downstream `on_yes`/`on_partial`/`on_no` routing is unchanged.
+- Raising `NotImplementedError` is explicitly rejected; see ENH-1164 §29-33 for rationale.
+- **Test**: `ll-loop simulate` on a loop containing `parallel:` does NOT spawn real threads (verified via `threading.active_count()` before/after) and does NOT invoke real sub-loop commands (verified via `SimulationActionRunner` call count or equivalent).
+
+### (b) Real-execution path
+
+- `parallel:` key in a state YAML triggers concurrent sub-loop fan-out via `_execute_parallel_state()`.
+- `on_yes` routes when all workers reached terminal `yes`; `on_partial` when mixed; `on_no` when all failed.
+- Worker captures accessible as `${captured.<state_name>.results[i]}`.
+- `context_passthrough: true` passes parent captured dict to each worker (deep-copied by the runner per FEAT-1075).
+- `max_workers` limits concurrency; excess items queue and execute as workers finish.
+- `fail_mode: collect` continues all workers even if some fail.
+- `fail_mode: fail_fast` cancels remaining on first failure.
+- Existing loops using `loop:` (sequential sub-loop delegation) are unaffected.
+- Scope lock behavior is documented in code comments.
+- **Cleanup ownership (FEAT-1184 contract)**: the dispatcher loop (this issue) owns all branch ref-modifying git operations under `GitLock`; worker threads perform zero ref-modifying git ops. A test asserts this by instrumenting `subprocess.run` / the git helper with `threading.get_ident()` and failing if any ref-modifying op fires off the main thread.
+
+### (c) Cancellation path (folded from ENH-1165 Option B)
+
+- `_execute_parallel_state()` wraps the `runner.run()` call in `try/finally`; on `KeyboardInterrupt` (or any signal-driven exception) it calls `executor.shutdown(wait=False, cancel_futures=True)` on the underlying `ThreadPoolExecutor` before re-raising.
+- Pending (not-yet-started) workers are cancelled; running workers finish their current state before exiting. **Ctrl-C latency** (running worker's current-state duration) is a documented v1 limitation (see ENH-1186).
+- Full per-worker `threading.Event` cancellation (Option A) is deferred; it remains the open scope of ENH-1165 post-v1.
+- **Test**: `KeyboardInterrupt` raised during a parallel run cancels pending futures (count of worker bodies that started `<` total items).
+
+## Tests (owned by this issue)
+
+Moved from FEAT-1077 (2026-04-20). The dispatcher's three explicit code paths — simulation, real-execution, cancellation — each have their own test matrix. Each maps to a path in the split Acceptance Criteria above.
+
+**`scripts/tests/test_fsm_executor.py::TestParallelExecution`** (new class, mirrors `TestSubLoopExecution:3472` pattern; write child YAML to `tmp_path / ".loops"`, pass `loops_dir=loops_dir` to `FSMExecutor`):
+
+- **Simulation path (AC block a, folded ENH-1164):**
+  - `test_parallel_state_simulation_runs_sequentially` — `SimulationActionRunner` in use; assert `threading.active_count()` unchanged; assert sequential item order in the capture trace
+  - `test_parallel_state_simulation_captures_shape_matches_real` — identical `{"results": [...]}` shape to the real-execution path
+  - `test_parallel_state_simulation_does_not_raise_notimplementederror` — regression gate against the rejected `NotImplementedError` approach
+- **Real-execution path (AC block b):**
+  - `test_parallel_state_dispatches` — state with `parallel:` config calls `_execute_parallel_state()`
+  - `test_parallel_state_captures_merged` — captures stored at `self.captured[state_name]["results"]`
+  - `test_parallel_state_routes_on_yes`, `_on_partial`, `_on_no` — route correctness for each verdict
+  - `test_parallel_state_branch_ops_never_on_worker_thread` — cleanup-ownership contract (FEAT-1184): wrap the git helper / `subprocess.run` with a shim that records `threading.get_ident()`; assert any git ref-modification fires on the main thread only
+- **Cancellation path (AC block c, folded ENH-1165 Option B):**
+  - `test_parallel_state_keyboardinterrupt_cancels_pending_futures` — raise `KeyboardInterrupt` mid-run; assert worker-bodies-started counter < total items
+  - `test_parallel_state_keyboardinterrupt_propagates` — assert the exception re-raises after `executor.shutdown(...)` is called
+
+Integration/end-to-end loop tests (`test_parallel_state_end_to_end` with `on_yes`/`on_partial`/`on_no` variants) remain with FEAT-1077.
 
 ## Implementation Notes
 
@@ -263,7 +330,7 @@ Together these define "v1 parallel ship" as a correctness-complete unit. The two
 ### Follow-up issues (not blockers)
 
 Tracked for post-v1; do not gate this issue on them:
-- **ENH-1165 Option A** — Full per-worker cancellation via shared `threading.Event` checked between worker state transitions (deferred in `.issues/deferred/P2-ENH-1165-...`)
+- **ENH-1165 Option A** — Full per-worker cancellation via shared `threading.Event` checked between worker state transitions (tracked in `.issues/enhancements/P2-ENH-1165-...`; Option A scope remains post-v1)
 - **ENH-1175** — Worker retry policy (`retry_on_failure`, `retry_backoff_seconds`) — cleanup half split out to FEAT-1184; retry remains P3
 - **ENH-1176** — Parallel state resource limits (max items, cumulative timeout, worktree warnings)
 - **ENH-1177** — Worker-tagged observability (per-worker event tags in logs)

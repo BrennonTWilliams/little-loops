@@ -9,6 +9,12 @@ outcome_confidence: 85
 
 # FEAT-1085: Parallel State Create-Loop Skill Documentation
 
+## Ship Companion
+
+This issue ships in the **same release** as FEAT-1076. Do not merge the skill docs ahead of the parallel dispatch code — `/ll:create-loop` must not reference a state type that doesn't work at runtime. If FEAT-1076 slips, this issue slips with it.
+
+Cross-reference the v1 "won't do" list in **P3-ENH-1186** from the new `## Parallel Fan-Out` section added to `skills/create-loop/loop-types.md`, so anyone following the skill reaches the consolidated scope doc.
+
 ## Summary
 
 Update `skills/create-loop/reference.md`, `skills/create-loop/loop-types.md`, `skills/create-loop/SKILL.md`, and `skills/create-loop/templates.md` to document the `parallel:` state type as a peer concurrent fan-out mechanism.

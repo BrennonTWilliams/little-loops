@@ -8,9 +8,32 @@ outcome_confidence: 93
 
 # FEAT-1077: Parallel State Tests
 
+## Rescope (2026-04-20)
+
+This issue was originally "write all tests for parallel" but that created a circular dependency: FEAT-1076 cannot merge without passing tests for its folded-in ENH-1164 (simulation) and ENH-1165 (cancellation) criteria, yet those tests were owned here, which blocked on FEAT-1075. To break the cycle, **unit tests now live with the code they test** and this issue owns only the integration suite.
+
+**Unit-test ownership moved to core FEATs:**
+
+| Test scope | New owner | Notes |
+|---|---|---|
+| Schema round-trip (`TestParallelStateConfig`), mutual exclusion (`TestParallelMutualExclusion`), validation no-transition guard, fuzz `parallel` key | **FEAT-1074** | Block FEAT-1074 on these tests passing |
+| `ParallelRunner` unit tests (thread mode, worktree, fail modes, deep-copy contract, ordering guarantee, timeout, edges 0/1 item) | **FEAT-1075** | Includes the mocked-executor fast suite |
+| Dispatcher tests: simulation path (folded ENH-1164), real-execution path, cancellation path (folded ENH-1165 Option B) | **FEAT-1076** | All three code paths from FEAT-1076's split acceptance criteria |
+
+**This issue retains ownership of:**
+
+1. **End-to-end integration tests** — real `FSMExecutor.run()` + real `ParallelRunner` + toy sub-loops, across the three routing variants (`on_yes`/`on_partial`/`on_no`).
+2. **`TestParallelRunnerRealThreading`** — 4 real-thread tests that exercise OS-level scheduling (deep-copy under real threads, max_workers enforcement, fail_fast cancellation under real futures, timeout-one-while-others-complete). MUST run in default CI (not gated behind `slow`).
+3. **`TestParallelRunnerSingletonSafety`** — 4 tests asserting workers do not write to parent checkpoint, mutate module-level caches, reload config, or corrupt session JSONL. **Scaffolding owned here**; ENH-1185 contributes the audit step that enumerates which singletons need coverage and may add test methods into this class.
+4. **`items_hash` resume-warning test** (`test_items_hash_mismatch_warning_is_prominent`) — folded from FEAT-1174 tightening.
+5. **Display badge test** — `TestStateBadges` extension (depends on FEAT-1078 / FEAT-1081).
+6. **Fixture YAML** — `scripts/tests/fixtures/fsm/parallel-loop.yaml`.
+
+The sections below retain the original detailed inventory of tests; treat them as *where each test now lives*, not as a to-do list owned exclusively by this issue.
+
 ## Summary
 
-Write all tests for the `parallel:` state type: executor dispatch, schema validation, validation rules, `ParallelRunner` unit tests, fixture YAML, fuzz coverage extension, and display badge test.
+Write the **integration-level** tests for the `parallel:` state type: end-to-end FSM execution with real fan-out, real-threading concurrency safety nets, singleton-safety scaffolding, resume-warning test, fixture YAML, and display badge test. Unit-level tests are owned by FEAT-1074/1075/1076 per the Rescope section above.
 
 ## Parent Issue
 
@@ -83,6 +106,21 @@ Most `test_parallel_runner.py` tests mock `FSMExecutor` for speed and determinis
 - **`test_real_threads_timeout_one_while_others_complete`** — 4 workers, `timeout_seconds=1`, worker 2 sleeps 5 seconds. Assert worker 2 is recorded as timed-out, workers 0/1/3 complete normally, overall verdict is `"partial"`. Catches interaction bugs between timeout and aggregation.
 
 These tests MUST use `time.sleep` deliberately in worker bodies (not `time.monotonic` polling) so that actual thread scheduling is exercised. They may be slightly slower than the mocked suite (target < 5s total); tag with `@pytest.mark.integration` if they push overall test time up noticeably (note: `integration` is already registered per `pyproject.toml:106`, so no new marker needed).
+
+**CI discipline — REQUIRED**: `TestParallelRunnerRealThreading` MUST run in the **default** `python -m pytest scripts/tests/` invocation used by CI. It MUST NOT be gated behind `@pytest.mark.slow` (or any marker that is excluded by default), and it MUST NOT be behind an opt-in env var. Tagging with `@pytest.mark.integration` is permitted (that marker is collected by default), but the class must NOT be skipped unless the whole suite is running under `-m "not integration"`. Rationale: OS-scheduling races only surface under real threads; if this class doesn't run on every PR, thread bugs escape review and ship silently.
+
+### Singleton thread-safety tests (new — class `TestParallelRunnerSingletonSafety` in `test_parallel_runner.py`)
+
+These cover the thread-safety contract added to FEAT-1075. All four use real `ThreadPoolExecutor` (no mocks) with ≥4 workers and light real workloads:
+
+- **`test_parent_checkpoint_file_not_written_from_worker_threads`** — instrument `PersistentExecutor._save_state()` with a `threading.get_ident()` check; spawn 4 workers and assert every call came from the main thread's TID. Regression gate for "parent checkpoint stays main-thread-only."
+- **`test_worker_session_jsonl_writes_are_one_line_atomic`** — 4 workers each write 50 events into session JSONL files; after the run, `json.loads()` each line and assert every line parses cleanly (no interleaved or truncated records). Proves single-line atomic-append discipline.
+- **`test_config_snapshot_is_read_only_from_worker_threads`** — mock `BRConfig.load()` to record thread IDs that call it; spawn 4 workers and assert load-call TID is only the main thread's. Workers must read from their snapshot, not reload.
+- **`test_module_level_caches_not_lazily_written_from_workers`** — for each module-level cache the runner depends on (fragment cache, validator cache), assert that the cache's size is identical before and after `runner.run()` was called from workers with a pre-warmed cache; any cache growth from a worker thread fails the test.
+
+### `items_hash` resume warning test (new — folded from FEAT-1174 tightening)
+
+- **`test_items_hash_mismatch_warning_is_prominent`** — suspend a parallel state mid-run, mutate the `items` source on disk, resume. Assert the mismatch log line appears at `WARNING` level (not `DEBUG`), contains both the pre-suspend and post-resume hash values, names the resume action (`"full re-run of parallel state <state>"`), and appears in the summary printed by `ll-loop resume` at exit. Regression gate for "silent re-run" footgun.
 
 ### Existing test files to extend
 
@@ -259,6 +297,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `test_fsm_fragments.py` + `test_builtin_loops.py` — all 33 built-in loops still pass validation
 - `parallel-loop.yaml` fixture round-trips without validation errors
 - Fuzz test includes `parallel` key in malformed strategy
+- `TestParallelRunnerRealThreading` class runs in default CI (no `@pytest.mark.slow` gating); all four tests pass on every PR
+- `TestParallelRunnerSingletonSafety` class (four tests) asserts no config, checkpoint, session JSONL, or module-cache writes originate from worker threads
+- `test_items_hash_mismatch_warning_is_prominent` asserts the mismatch warning is WARN-level (not DEBUG), contains both hashes, and is echoed in the resume-summary output
 
 ## API/Interface
 

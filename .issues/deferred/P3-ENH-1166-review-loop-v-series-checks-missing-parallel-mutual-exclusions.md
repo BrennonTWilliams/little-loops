@@ -6,7 +6,9 @@ depends_on: [FEAT-1074]
 
 # ENH-1166: `review-loop` V-Series Check Table Missing Parallel Mutual-Exclusion Entries
 
-> **Superseded by FEAT-1074.** 2026-04-20: the V-series table update was folded into FEAT-1074 as an acceptance criterion and into its Files-to-Modify list and Implementation Steps. Do not re-implement; the work ships with FEAT-1074.
+> **FOLDED into FEAT-1074 — not a separate work item.** 2026-04-20: the V-series table update is an acceptance criterion of FEAT-1074 (see FEAT-1074 "Blockers & Folded Criteria"). **Action on ship**: when FEAT-1074 merges, move this file to `.issues/completed/` and add a Session Log entry pointing at the FEAT-1074 PR. Do NOT re-open, do NOT re-implement.
+>
+> **Release blocker for parallel v1** (flagged 2026-04-20): without the V-series check-table entries, `/ll:review-loop` silently passes loops that violate the `parallel:` mutual-exclusion rules (parallel+action, parallel+loop, parallel+next). Authoring-time guidance must land together with runtime validation (FEAT-1074). This issue remains P3 (it's a docs/table update, not a feature) and stays in `deferred/` (work happens inside FEAT-1074) — but it MUST NOT fall off the release checklist when FEAT-1074 ships.
 
 ## Summary
 

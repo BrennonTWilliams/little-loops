@@ -6,7 +6,7 @@ depends_on: [FEAT-1075, FEAT-1076, FEAT-1174]
 
 # ENH-1165: Signal Handler Cannot Reach Parallel Worker Threads
 
-> **Partially superseded by FEAT-1076.** 2026-04-20: Option B (`ThreadPoolExecutor.shutdown(wait=False, cancel_futures=True)` in `try/finally`) was folded into FEAT-1076 as an acceptance criterion ("Signal cancellation — folded from ENH-1165 Option B"). Option A — full per-worker cancellation via a shared `threading.Event` checked between worker state transitions — remains deferred as a post-v1 resilience follow-up. Re-promote to the active queue only if Option B proves insufficient in production.
+> **Status: active — Option B acceptance criteria folded into FEAT-1076; Option A is the outstanding work for this issue post-v1.** Un-deferred 2026-04-20 during parallel-FSM issue-set review: this issue was in `.issues/deferred/`, but backlog tooling (`ll-auto`, `ll-parallel`, `find_issues`) excludes deferred files, so a folded-into-another-issue note did not survive in the active backlog. Option B (`ThreadPoolExecutor.shutdown(wait=False, cancel_futures=True)` in `try/finally`) is an acceptance criterion of FEAT-1076 (see FEAT-1076 "Blockers & Folded Criteria") and this file owns its tests. Option A (per-worker `threading.Event` checked between FSM state transitions for in-flight cancellation) remains outstanding and is the post-v1 scope of this issue. **Action on ship**: when FEAT-1076 merges, update the top note to reflect that Option B is done; the remaining Option A work keeps this issue open.
 
 ## Summary
 

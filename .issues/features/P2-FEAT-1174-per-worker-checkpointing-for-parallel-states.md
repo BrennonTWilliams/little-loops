@@ -69,8 +69,33 @@ When `FSMExecutor` is a `PersistentExecutor` and is executing a parallel state, 
 
 On resume, before calling `ParallelRunner.run()`, `FSMExecutor._execute_parallel_state()` checks `parallel_progress[state_name]`:
 - If present and `items_hash` matches: build a filtered items list (only items not in `completed`), pass it to `ParallelRunner` with a starting `item_index` offset so captures land at the right positions
-- If `items_hash` differs: log a warning and re-run from scratch (safer than running against stale progress)
+- If `items_hash` differs: log a **WARNING-level** message and re-run the full parallel state from scratch (see "items_hash mismatch is a surprise" note below)
 - If absent: normal fresh execution
+
+### items_hash mismatch is a surprise — make it loud
+
+A silent "we quietly re-ran everything because your inputs changed between suspend and resume" is a footgun. The log line MUST:
+
+1. Be emitted at `logging.WARNING` level (not DEBUG, not INFO).
+2. Name both hash values — the hash at suspend time (from the checkpoint) and the hash at resume time (computed from current items). Example:
+   ```
+   WARNING: parallel state 'fan_out' items_hash mismatch on resume.
+     suspend-time hash: a3f2c1b5...
+     resume-time hash:  7e4d9a02...
+     action: full re-run of parallel state 'fan_out' — N prior completions discarded
+   ```
+3. Name the specific action taken (`full re-run of parallel state '<state>' — N prior completions discarded`) so the operator can decide whether to abort instead.
+4. Be echoed in the end-of-run summary printed by `ll-loop resume` — not only during state execution — so an operator who resumes in the background and checks later still sees it.
+
+### Worker-to-parent checkpoint separation (thread-safety contract)
+
+The parent loop's checkpoint file and each worker's internal state MUST NOT race:
+
+- Workers do NOT write to the parent loop's checkpoint file. `on_worker_complete` is invoked in the worker thread but only enqueues the result; a single main-thread serializer dequeues and writes to the parent checkpoint under a Python-level lock. Use `queue.Queue` + a daemon writer thread pattern OR `threading.Lock` around the write — whichever is simpler to test.
+- Each worker's own checkpoint (if the worker's sub-loop is itself a `PersistentExecutor`) MUST be written to a worker-scoped path, not the parent's. Proposed path: `<run-dir>/workers/<state>-<item_index>.json`. The parent's checkpoint at `<run-dir>/<run-id>.json` is written exclusively by the main thread.
+- A test `test_parent_checkpoint_not_written_from_worker_thread` instruments `_save_state()` with `threading.get_ident()` and asserts only the main thread writes the parent file. This aligns with FEAT-1075's thread-safety contract and FEAT-1077's `TestParallelRunnerSingletonSafety` suite.
+
+Failure mode to test: if two workers complete at nearly the same instant, the single-writer serializer must append both results to `parallel_progress[state].completed` without data loss and without one overwriting the other's entry. Covered by `test_concurrent_worker_completions_all_persist`.
 
 After `ParallelRunner.run()` returns, merge the resumed results with the previously-completed results (by `item_index`) to produce the final `all_captures` in item order, then clear `parallel_progress[state_name]` and write the final `{"results": [...]}` capture as today.
 
@@ -88,9 +113,11 @@ After `ParallelRunner.run()` returns, merge the resumed results with the previou
 ## Acceptance Criteria
 
 - A parallel state interrupted mid-fan-out (simulated by SIGTERM partway through) resumes without re-running completed workers
-- `items_hash` mismatch on resume produces a warning and falls back to full re-run
+- `items_hash` mismatch on resume produces a **WARNING-level** log line naming both hashes and the action taken, AND the same line appears in the end-of-run summary printed by `ll-loop resume`
 - `parallel_progress` entry is cleared from the checkpoint after the parallel state completes
-- Tests cover: interrupt at 50% completion + clean resume; `items_hash` mismatch path; multiple parallel states in one loop resume independently
+- Tests cover: interrupt at 50% completion + clean resume; `items_hash` mismatch path (including WARN-level assertion and resume-summary assertion); multiple parallel states in one loop resume independently
+- `test_parent_checkpoint_not_written_from_worker_thread` asserts the parent's checkpoint file is written exclusively from the main thread during fan-out (single-writer serializer + main-thread dispatch)
+- `test_concurrent_worker_completions_all_persist` asserts two near-simultaneous worker completions both land in `parallel_progress[state].completed` with no data loss
 - Existing non-parallel `PersistentExecutor` behavior is unchanged (no `parallel_progress` entries written when no parallel state is active)
 
 ## Impact
