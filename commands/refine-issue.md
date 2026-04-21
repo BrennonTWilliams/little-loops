@@ -262,6 +262,20 @@ For each **FILLABLE** gap, update the issue with research findings.
 - If a Proposed Solution section exists but is vague, add a subsection with concrete implementation guidance based on similar patterns found
 - If no Proposed Solution exists, add one based on how similar changes were made elsewhere
 
+**Option-Count Detection (Auto Mode only)** — after writing to Proposed Solution:
+
+Count distinct implementation options deposited. Detect by any of these patterns in the deposited content:
+- Numbered approaches: top-level items `1. ...`, `2. ...` each describing a distinct approach
+- Headed options: `### Option A`, `### Option B`, `### Option C` (etc.)
+- Bold options: `**Option A**`, `**Option B**`, `**Option 1**`, `**Option 2**` (etc.)
+
+Then update `decision_needed` in the issue's YAML frontmatter using the Edit tool (inline `---` block replacement, following `skills/confidence-check/SKILL.md:398-446`):
+- If option count >= 2: set `decision_needed: true`
+- If option count < 2: set `decision_needed: false` (or remove if absent — prevents stale `true` from a prior pass)
+
+**Idempotency**: skip the write if `decision_needed` already has the same value (follow `skills/format-issue/SKILL.md:163-175`).
+**Dry-run guard**: skip the frontmatter write in `--dry-run` mode; report what would have been set in the DRY RUN PREVIEW block.
+
 **Implementation Steps** — make concrete with real file references:
 ```markdown
 ## Implementation Steps
@@ -428,6 +442,7 @@ ISSUE REFINED: [ISSUE-ID]
 
 ## FILE STATUS
 - [Modified | Not modified (--dry-run)]
+- decision_needed: [true | false | not set | skipped (--dry-run)] [Auto mode only]
 
 ## NEXT STEPS
 - Run `/ll:wire-issue [ID]` to add integration wiring (callers, entry points, test hooks)

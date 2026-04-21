@@ -182,6 +182,8 @@ Refine issue files with codebase-driven research to fill knowledge gaps needed f
 - `issue_id` (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
 - `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview)
 
+**Frontmatter write-back**: After detecting 2+ implementation options deposited into `Proposed Solution` in `--auto` mode, the command sets `decision_needed: true` in the issue's YAML frontmatter. If fewer than 2 options are deposited, the flag is cleared to `false` (or left absent if never set). This is skipped in `--dry-run` mode.
+
 ### `/ll:wire-issue`
 Post-refinement wiring pass that completes an issue's **Integration Map** — the structured record of every file that must change when the issue is implemented. Where `/ll:refine-issue` fills in the _what_ and _why_, `wire-issue` traces the _where_: every caller, importer, config entry, doc section, test file, and side-effect file that the implementation will touch.
 
