@@ -1,3 +1,5 @@
+> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
+
 ---
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review

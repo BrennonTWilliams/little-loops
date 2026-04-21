@@ -1,3 +1,5 @@
+> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
+
 ---
 id: FEAT-1216
 priority: P2
