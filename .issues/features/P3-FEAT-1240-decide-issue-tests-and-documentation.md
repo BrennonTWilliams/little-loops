@@ -1,8 +1,14 @@
 ---
 id: FEAT-1240
 priority: P3
-size: Medium
+size: Very Large
 parent: FEAT-1236
+confidence_score: 100
+outcome_confidence: 61
+score_complexity: 0
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1240: Tests and documentation for decide-issue
@@ -114,6 +120,86 @@ Add test case: conditional decide-issue invocation when `decision_needed=True`.
 - `docs/reference/API.md` — new field
 - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — new pipeline step
 
+## Integration Map
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config/automation.py:53` — defines `ParallelAutomationConfig.decide_command` field; already consistent, no change needed
+- `scripts/little_loops/config/core.py` — aggregates `ParallelAutomationConfig`; already consistent
+- `scripts/little_loops/parallel/orchestrator.py` — imports `WorkerPool` and `IssueInfo`; handles `DECIDING` state; `test_orchestrator.py` has zero `decision_needed` tests (confirmed gap)
+- `scripts/little_loops/skill_expander.py` — expands `{{config.decide_command}}` placeholders in skill content
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+#### Already-Implemented (Verify Only)
+
+Research found these test classes/tests **already exist** from FEAT-1238/FEAT-1239 implementation — verify each before re-adding:
+
+- `TestIssueInfoDecisionNeeded` at `scripts/tests/test_issue_parser.py:1477-1605` — full class with 8 tests (default None, False, True, to_dict, from_dict missing, from_dict False, parse_file True, parse_file absent)
+- `decide_command` assertions at `scripts/tests/test_parallel_types.py:724,829-853,980` — `test_default_values` includes `decide_command` field; `TestGetDecideCommand` at :829 tests default/custom prefix/custom template; `test_from_dict_defaults_for_missing_fields` and `test_roundtrip_serialization` include `decide_command`
+- `TestWorkerPoolDecisionNeededGate` at `scripts/tests/test_worker_pool.py:2213` — tests "invoked when True" and "skipped when None"
+- `TestDecisionNeededGate` at `scripts/tests/test_issue_manager.py:2569` — tests `process_issue_inplace()` decision gate
+
+#### Files to Create
+- `scripts/tests/test_decide_issue_skill.py` — confirmed **does not exist**; primary deliverable
+  - Target: `skills/decide-issue/SKILL.md` (9-phase structure: flag parsing :53-75, option extraction :98-128, pattern-finder spawn :134-163, scoring :169-198, annotation format `> **Selected:**` :204-238, `decision_needed: false` update :242-266, `ll-issues append-log` :272-286)
+  - Follow: `scripts/tests/test_refine_issue_command.py:1-121` — module-level `Path` constants, `content.index()` for section boundaries, slice assertions
+
+#### Files to Modify
+- `scripts/tests/test_frontmatter.py:180-279` — verify `TestUpdateFrontmatter` lacks `decision_needed: False` test; `bool` subclasses `int` so `{"decision_needed": False}` satisfies `dict[str, str | int]` type signature at `frontmatter.py:106`
+- `scripts/tests/test_orchestrator.py` — verify conditional decide-issue test exists; orchestrator delegates to `WorkerPool._process_issue()` indirectly via `worker_pool.submit()` at `orchestrator.py:792,830` — no direct `decision_needed` check in orchestrator
+- `docs/ARCHITECTURE.md`, `docs/reference/COMMANDS.md`, `docs/reference/CONFIGURATION.md:301-302,342`, `docs/reference/API.md:570`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:182-190`
+
+#### Files Outside Known List — Also Need Updating
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `README.md:89` — `"26 skills"` must become `"27 skills"` (`ll-verify-docs` will fail otherwise); also add `/ll:decide-issue` row to Issue Refinement table (~line 108-124) and Skills table (~line 210-237)
+- `CONTRIBUTING.md:125` — `"26 skill definitions"` must become `"27 skill definitions"`; also update `skills/` directory tree (~line 125-149) to list `decide-issue/`
+- `skills/issue-workflow/SKILL.md:69-81` — Refinement Phase command list omits `decide-issue` between `refine-issue` and `wire-issue`
+- `CHANGELOG.md` — no entry for `decide-issue` skill (FEAT-1238/1239 changes); add a user-facing entry in the current release section (do NOT use `[Unreleased]`)
+- `.claude/CLAUDE.md` — Issue Refinement skills list omits `decide-issue`^; add between `refine-issue` and `wire-issue`
+- `docs/reference/ISSUE_TEMPLATE.md:887` — `decision_needed` frontmatter row documents the setter (`refine-issue`) but not the consumer; mention `/ll:decide-issue` as the consuming command
+
+#### Key Source Files
+- `skills/decide-issue/SKILL.md` — full 9-phase implementation, used as doc-wiring test target
+- `scripts/little_loops/issue_parser.py:247-248` — `decision_needed: bool | None = None` after `testable`
+- `scripts/little_loops/frontmatter.py:106` — `update_frontmatter(content: str, updates: dict[str, str | int]) -> str`
+- `scripts/little_loops/parallel/types.py:331,388` — `decide_command` field and `get_decide_command()` method
+- `scripts/little_loops/parallel/worker_pool.py:373-382` — decision gate: `if issue.decision_needed is True` → calls `_run_claude_command` with decide cmd
+- `scripts/little_loops/issue_manager.py:563-577` — `process_issue_inplace()` decide-issue step between Phase 1 (ready) and Phase 2 (manage)
+
+#### Similar Patterns
+- `scripts/tests/test_refine_issue_command.py:1-121` — exact template for new skill test file
+- `scripts/tests/test_issue_parser.py:1346-1475` — `TestIssueInfoTestable` as field-test template
+- `scripts/tests/test_parallel_types.py:777-853` — `test_get_ready_command` as template for `test_get_decide_command`
+
+## Implementation Steps
+
+1. **Create `scripts/tests/test_decide_issue_skill.py`**: Define `SKILL_FILE = PROJECT_ROOT / "skills" / "decide-issue" / "SKILL.md"`; assert all 7 Acceptance Criteria items using `content.index()` section boundaries following `test_refine_issue_command.py:18-82` pattern
+2. **Verify `test_frontmatter.py`**: Check `TestUpdateFrontmatter` at :180-279 for `decision_needed: False` test; if absent, add one using `update_frontmatter(content, {"decision_needed": False})` and assert `"decision_needed: false"` in result (YAML lowercases bool)
+3. **Verify `test_orchestrator.py`**: Check for decide-issue conditional invocation test; if absent, add a test that verifies a `decision_needed=True` issue routes through the worker pool correctly
+4. **Update `docs/ARCHITECTURE.md`**: Insert decide-issue between refine-issue and wire-issue in pipeline diagram
+5. **Update `docs/reference/COMMANDS.md`**: Add `/ll:decide-issue` entry following existing skill entry format
+6. **Update `docs/reference/CONFIGURATION.md:301-302`**: Add `decide_command` row to parallel command templates table; add `decision_needed` gate description near :342 mirroring `confidence_gate.enabled`
+7. **Update `docs/reference/API.md:570`**: Add `decision_needed: bool | None = None` to `IssueInfo` code block after `testable`
+8. **Update `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:182-190`**: Add decide-issue step between refine-issue and wire-issue in refinement pipeline numbered list
+9. **Run tests**: `python -m pytest scripts/tests/test_decide_issue_skill.py scripts/tests/test_frontmatter.py scripts/tests/test_orchestrator.py -v --tb=short`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. **Update `README.md`**: Change `"26 skills"` → `"27 skills"` (~line 89); add `/ll:decide-issue` row to Issue Refinement table (~line 108-124) and to Skills table (~line 210-237) — `ll-verify-docs` will fail if count is not updated
+11. **Update `CONTRIBUTING.md`**: Change `"26 skill definitions"` → `"27 skill definitions"` (~line 125); add `decide-issue/` to the `skills/` directory tree (~line 125-149)
+12. **Update `skills/issue-workflow/SKILL.md:69-81`**: Add `decide-issue` to Refinement Phase command list between `refine-issue` and `wire-issue`
+13. **Update `CHANGELOG.md`**: Add user-facing entry for `/ll:decide-issue` skill in the current release section (do NOT use `[Unreleased]`; promote to a concrete `## [X.Y.Z]` version block)
+14. **Update `.claude/CLAUDE.md`**: Add `decide-issue`^ to the Issue Refinement skills list between `refine-issue` and `wire-issue`
+15. **Update `docs/reference/ISSUE_TEMPLATE.md:887`**: Extend the `decision_needed` frontmatter row to mention `/ll:decide-issue` as the consuming command (alongside the existing mention of `refine-issue` as the setter)
+
 ## Impact
 
 - **Priority**: P3
@@ -128,3 +214,9 @@ Add test case: conditional decide-issue invocation when `decision_needed=True`.
 ---
 
 **Open** | Created: 2026-04-21 | Priority: P3
+
+
+## Session Log
+- `/ll:wire-issue` - 2026-04-21T22:31:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1fe3f6c6-5218-469a-85e0-c99d45f7980b.jsonl`
+- `/ll:refine-issue` - 2026-04-21T22:27:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/334dbc9e-19a8-43a9-bcb6-3b35525856ba.jsonl`
+- `/ll:confidence-check` - 2026-04-21T22:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ea157c8-aee5-47f5-af69-3a6e8572e83e.jsonl`
