@@ -1,5 +1,6 @@
 ---
 captured_at: "2026-04-21T21:41:58Z"
+completed_at: "2026-04-21T23:04:53Z"
 discovered_date: "2026-04-21"
 discovered_by: capture-issue
 confidence_score: 100
@@ -182,7 +183,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — corrected step-level details from codebase analysis:_
 
-- **Step 1**: No changes to `issue_parser.py` needed — `IssueInfo.blocked_by` (`issue_parser.py:234`) and `IssueInfo.blocks` (`issue_parser.py:235`) already exist and are populated from `## Blocked By` / `## Blocks` markdown sections via `_parse_section_items()` (`issue_parser.py:558-594`). `parent`/`sibling` fields are out of scope for v1.
+- **Step 1**: No changes to `issue_parser.py` needed — `IssueInfo.blocked_by` (`issue_parser.py:234`) and `IssueInfo.blocks` (`issue_parser.py:235`) already exist and are populated from `## Blocked By` / `## Blocks` markdown sections via `_parse_section_items()` (`issue_parser.py:572-608`). `parent`/`sibling` fields are out of scope for v1.
 - **Step 2**: `DependencyGraph.from_issues(issues)` (`dependency_graph.py:52-110`) builds the full adjacency structure from `IssueInfo.blocked_by` lists. For connected-component extraction, implement BFS over `graph.blocked_by` and `graph.blocks` dicts in `clusters.py` — `DependencyGraph` has no `get_connected_components()` method but the data structures are sufficient.
 - **Step 3**: Use `_draw_box(grid, row, col, width, height, content)` (`layout.py:557-657`) as the box primitive. Allocate a `list[list[str]]` character grid, place issue boxes, draw directional arrow characters + `colorize()`d labels between them. Apply ANSI codes from the edge color table using `colorize()` from `cli/output.py:95`.
 - **Step 5**: Import `cmd_clusters` lazily inside `main_issues()` at the top block (`__init__.py:17-30`). Add `cl = subs.add_parser("clusters", ...)` + `cl.set_defaults(command="clusters")` after the `impact-effort` subparser (~line 278). Add dispatch `if args.command == "clusters": return cmd_clusters(config, args)` after line ~446.
@@ -239,10 +240,10 @@ _Added by `/ll:refine-issue` — precise file:line references from codebase anal
 #### Key Files to Read Before Implementing
 - `scripts/little_loops/cli/issues/__init__.py:17-30` — lazy import block; add `cmd_clusters` import here
 - `scripts/little_loops/cli/issues/__init__.py:89` — `subs = parser.add_subparsers(dest="command")`; add clusters parser after line ~278
-- `scripts/little_loops/cli/issues/__init__.py:406-447` — flat dispatch chain; add `clusters` case here
+- `scripts/little_loops/cli/issues/__init__.py:419-447` — flat dispatch chain; add `clusters` case here
 - `scripts/little_loops/dependency_graph.py:32-110` — `DependencyGraph` dataclass + `from_issues()` class method; `.blocked_by` and `.blocks` are `dict[str, set[str]]`
 - `scripts/little_loops/issue_parser.py:234-235` — `IssueInfo.blocked_by: list[str]` and `IssueInfo.blocks: list[str]` (already parsed; no changes needed)
-- `scripts/little_loops/issue_parser.py:665-750` — `find_issues(config, type_prefixes)` returns sorted `list[IssueInfo]`
+- `scripts/little_loops/issue_parser.py:679-750` — `find_issues(config, type_prefixes)` returns sorted `list[IssueInfo]`
 - `scripts/little_loops/cli/loop/layout.py:557-657` — `_draw_box(grid, row, col, width, height, content, ...)` — reusable box primitive, no FSM coupling
 - `scripts/little_loops/cli/output.py:16` — `terminal_width(default=80) -> int`
 - `scripts/little_loops/cli/output.py:95` — `colorize(text, code) -> str`; guards on `_USE_COLOR`
@@ -277,7 +278,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 10. Update `README.md:405–447` — add `ll-issues clusters` invocation examples in the `### ll-issues` section
 11. Update `docs/reference/API.md` — add `clusters` to the ll-issues subcommand list
 
+## Resolution
+
+Implemented `ll-issues clusters` as a new subcommand in `scripts/little_loops/cli/issues/clusters.py`. Key changes:
+
+- **`clusters.py`**: BFS connected-component extraction, topological sort per cluster (cycle fallback), box diagram rendering via `_draw_box` from `cli/loop/layout.py`, ANSI-colored edge labels, `--include-orphans`, `--min-connections`, `--json` flags
+- **`__init__.py`**: import, epilog entry, subparser (`clusters`/`cl` alias), dispatch
+- **Tests**: 12 new tests in `TestIssuesCLIClusters` covering box rendering, empty state, no-relationships, JSON schema, JSON suppresses diagram, no-ANSI, multiple clusters, sort order, orphans, min-connections, summary line, short flag
+- **Docs**: `docs/reference/API.md`, `commands/help.md`, `README.md` updated
+
+All 5126 tests pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-21T23:04:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-21T22:53:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6922353d-eb89-4086-927b-1df9aa85f4c8.jsonl`
 - `/ll:confidence-check` - 2026-04-21T22:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/85f1d22e-4c76-41d4-914d-62974c14c745.jsonl`
 - `/ll:wire-issue` - 2026-04-21T22:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f6c47d4-9358-40a4-adfa-83e69673bf40.jsonl`
 - `/ll:refine-issue` - 2026-04-21T21:57:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7deeead-3f29-447a-aac8-b84769c43188.jsonl`
@@ -287,4 +301,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-04-21 | Priority: P3
+**Completed** | Created: 2026-04-21 | Completed: 2026-04-21 | Priority: P3

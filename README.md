@@ -437,6 +437,10 @@ ll-issues refine-status --type BUG            # Filter to bugs only
 ll-issues refine-status --format json         # JSONL output for scripting
 ll-issues refine-status FEAT-873             # Single-issue view
 ll-issues refine-status FEAT-873 --json      # Single issue as JSON object
+ll-issues clusters                           # Visualize dependency clusters as box diagrams
+ll-issues clusters --json                    # JSON array of cluster objects
+ll-issues clusters --include-orphans         # Include isolated issues with no relationships
+ll-issues clusters --min-connections 2       # Only clusters where a node has ≥2 connections
 ll-issues next-action                         # Next refinement action needed (for FSM loop use)
 ll-issues next-issue                          # Highest-confidence issue ID (for FSM loop use)
 ll-issues next-issues                         # All active issues in ranked order (alias: nxs)

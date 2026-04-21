@@ -2984,6 +2984,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `next-issue` | Single highest-confidence issue ID (alias: `nx`) |
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
 | `append-log` | Append a session log entry to an issue file |
+| `clusters` | Visualize issue dependency clusters as box diagrams (`--include-orphans`, `--min-connections N`, `--json`) |
 
 #### next-issue
 

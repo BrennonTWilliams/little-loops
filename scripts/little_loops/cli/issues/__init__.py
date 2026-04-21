@@ -15,6 +15,7 @@ def main_issues() -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.append_log import cmd_append_log
+    from little_loops.cli.issues.clusters import cmd_clusters
     from little_loops.cli.issues.count_cmd import cmd_count
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
@@ -50,6 +51,7 @@ Sub-commands:
   next-action    Print the next refinement action for the highest-priority active issue
   next-issue     Print the issue ID ranked highest by outcome confidence and readiness
   next-issues    Print all active issues in ranked order (alias: nxs)
+  clusters       Visualize issue dependency clusters as box diagrams
   skip           Deprioritize an issue by bumping its priority prefix
 
 Examples:
@@ -83,6 +85,10 @@ Examples:
   %(prog)s nxs --path
   %(prog)s skip FEAT-955
   %(prog)s skip BUG-042 --priority P4 --reason "retry after CI fix"
+  %(prog)s clusters
+  %(prog)s clusters --json
+  %(prog)s clusters --include-orphans
+  %(prog)s clusters --min-connections 2
 """,
     )
 
@@ -277,6 +283,30 @@ Examples:
     ie.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
     add_config_arg(ie)
 
+    cl = subs.add_parser(
+        "clusters",
+        aliases=["cl"],
+        help="Visualize issue dependency clusters as box diagrams",
+    )
+    cl.set_defaults(command="clusters")
+    cl.add_argument(
+        "--include-orphans",
+        action="store_true",
+        default=False,
+        dest="include_orphans",
+        help="Include 1-issue clusters (isolated issues with no relationships)",
+    )
+    cl.add_argument(
+        "--min-connections",
+        type=int,
+        default=0,
+        metavar="N",
+        dest="min_connections",
+        help="Only show clusters where at least one issue has N or more connections",
+    )
+    cl.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
+    add_config_arg(cl)
+
     refine_s = subs.add_parser(
         "refine-status",
         aliases=["rs"],
@@ -432,6 +462,8 @@ Examples:
         return cmd_path(config, args)
     if args.command == "impact-effort":
         return cmd_impact_effort(config, args)
+    if args.command == "clusters":
+        return cmd_clusters(config, args)
     if args.command == "refine-status":
         return cmd_refine_status(config, args)
     if args.command == "append-log":
