@@ -2,6 +2,12 @@
 captured_at: "2026-04-21T20:38:05Z"
 discovered_date: "2026-04-21"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1237: Update /ll:refine-issue --auto to set decision_needed frontmatter flag
@@ -51,14 +57,35 @@ Running `/ll:refine-issue --auto` on an issue where research finds 2+ implementa
 - `scripts/little_loops/auto.py` — will read `decision_needed` flag (in FEAT-1236)
 - `scripts/little_loops/parallel_runner.py` — will read `decision_needed` flag (in FEAT-1236)
 
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/cli/auto.py` — correct path for ll-auto entry point (issue path above is `auto.py` without `cli/` prefix); currently reads `IssueInfo` via `IssueParser.parse_file()` but does not yet branch on `decision_needed`
+- `scripts/little_loops/cli/parallel.py` — correct path for ll-parallel entry point (issue has `parallel_runner.py`); see also `scripts/little_loops/parallel/orchestrator.py:1184` for frontmatter write-back context
+- `scripts/little_loops/issue_parser.py:201-250` — `IssueInfo` dataclass; does not yet have a `decision_needed` field; FEAT-1236 will need to add `decision_needed: bool | None` here and parse it in `parse_file()` at line 359 (out of scope for ENH-1237 per Scope Boundaries, flagged for FEAT-1236)
+- `docs/reference/ISSUE_TEMPLATE.md:869-895` — frontmatter fields reference table; `decision_needed` is already documented as `bool`
+
 ### Similar Patterns
-- `commands/capture-issue.md` — `testable: false` inference pattern: detect signal, conditionally write frontmatter field
+- `skills/capture-issue/SKILL.md:236-241` — `testable: false` inference block: detect signal keyword count ≥ 2, conditionally write frontmatter field (note: issue originally cited `commands/capture-issue.md`; actual implementation is in the skill file)
+- `skills/format-issue/SKILL.md:163-175` — same `testable: false` pattern as a post-loop step with idempotency guard (skip write if field already present with any value)
+- `commands/ready-issue.md:230` — same pattern in auto-correction; produces `[content_fix]` CORRECTIONS_MADE entry when flag is written
+- `skills/confidence-check/SKILL.md:398-446` — Phase 4 write-back: replaces entire `---` block after computing scores; handles both existing-frontmatter and no-frontmatter cases — follow for the Edit-tool inline approach
+- `scripts/little_loops/frontmatter.py:106-129` — `update_frontmatter(content, updates)` Python utility: merges `updates` dict into existing `---` block or creates one; not directly callable from command markdown, but the Edit-tool approach mirrors its merge behavior
 
 ### Tests
-- TBD — add test fixture: issue with 2+ options in Proposed Solution; assert `decision_needed: true` in output
+- `scripts/tests/test_refine_issue_command.py` — new file to create; assert `decision_needed: true` in frontmatter when Proposed Solution has 2+ options; assert flag absent (or `false`) for single-option case
+- Model after: `scripts/tests/test_issue_size_review_skill.py:1-67` — structural `commands/refine-issue.md` text assertions (section-scoped, field-key checks, CHECK_MODE guard analog)
+- Model after: `scripts/tests/test_confidence_check_skill.py:1-54` — no-`AskUserQuestion` guard pattern for auto-mode paths
+- Related: `scripts/tests/test_frontmatter.py:180-282` — `TestUpdateFrontmatter` unit tests covering `update_frontmatter()` for the inline `---` block edit approach
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_refine_issue_command.py` — also include a doc-wiring assertion that `decision_needed` appears in `docs/reference/ISSUE_TEMPLATE.md`; follow `test_feat1172_doc_wiring.py:20-38` pattern (backtick-wrapped field name search: `assert "\`decision_needed\`" in content`)
 
 ### Documentation
 - `commands/refine-issue.md` — Step 8 output report section
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/ISSUE_TEMPLATE.md:869-886` — frontmatter fields table; `decision_needed` field must be ADDED here (currently absent from the table — verified by wiring pass; the Dependent Files entry above incorrectly states it's "already documented as `bool`")
+- `docs/reference/COMMANDS.md:178-183` — `/ll:refine-issue` command entry; add "Frontmatter write-back" note for `--auto` mode documenting `decision_needed` side effect (follow the `issue-size-review` pattern at line 249 which reads: "Frontmatter write-back: After assessing each issue, the skill writes `size: <label>`")
 
 ### Configuration
 - N/A
@@ -69,6 +96,23 @@ Running `/ll:refine-issue --auto` on an issue where research finds 2+ implementa
 2. Add frontmatter update logic: set `decision_needed: true` if count >= 2, clear if count < 2
 3. Update Step 8 output report to include `decision_needed` status line
 4. Add example showing flag behavior to the Examples section of the command
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Add `decision_needed` row to `docs/reference/ISSUE_TEMPLATE.md` frontmatter fields table — field is currently absent (correct the existing integration map note that incorrectly claims it's "already documented as `bool`")
+6. Update `docs/reference/COMMANDS.md:178-183` — add "Frontmatter write-back" note for `--auto` mode: "After detecting 2+ options deposited into Proposed Solution, sets `decision_needed: true` in issue frontmatter" (follow `issue-size-review` pattern at line 249)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Insert option-count detection logic directly after the Proposed Solution enrichment block at `commands/refine-issue.md:262-265`
+- Option patterns to detect in deposited Proposed Solution content: `### Option A/B/C` (section headers), `**Option A`/`**Option B` (bold inline — most common in real issues; see `.issues/completed/P2-BUG-546-typeerror-mixed-naive-aware-timestamps-crashes-compute-boundaries.md:60-91`), numbered list `1.`/`2.` (as specified in the issue's own Proposed Solution)
+- The FILE STATUS block in Step 8 to extend is at `commands/refine-issue.md:428-430` — currently two lines (`## FILE STATUS` + one bullet)
+- For the frontmatter write: follow the `skills/confidence-check/SKILL.md:398-446` approach — use the Edit tool to replace the `---` block inline; handle both existing-frontmatter and no-frontmatter cases
+- Idempotency: follow `skills/format-issue/SKILL.md:163-175` — skip write if field already set to the same value; always explicitly clear to `false` (or remove) when count < 2 to prevent stale `true` from a prior pass
 
 ## Impact
 
@@ -86,6 +130,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `pipeline`, `refine-issue`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-21T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adcfed5f-e3a2-4e93-8315-ec9f052d880a.jsonl`
+- `/ll:wire-issue` - 2026-04-21T21:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f6ce20b-9702-4231-a275-2b8d62b7bb5b.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:00:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/284a2edd-5323-45eb-a303-182bf4de36f8.jsonl`
 
 - `/ll:capture-issue` - 2026-04-21T20:38:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c8873df-f234-41f4-a242-d1cae3dc0002.jsonl`
 
