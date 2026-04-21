@@ -1,5 +1,6 @@
 ---
 captured_at: "2026-04-21T21:48:57Z"
+completed_at: "2026-04-21T22:50:17Z"
 discovered_date: "2026-04-21"
 discovered_by: capture-issue
 confidence_score: 100
@@ -15,6 +16,10 @@ score_change_surface: 25
 ## Summary
 
 The `/ll:issue-size-review` skill's Phase 4 decomposition guidance is too vague, allowing splits along artifact type lines (code | tests | docs) instead of capability lines. This causes child issues like "tests and documentation for X" that have no standalone value and can't ship independently. The fix is to add a concrete "independently shippable" test as the governing decomposition principle and a hard constraint against splitting tests/docs from the code they cover.
+
+## Current Behavior
+
+The skill's Phase 4 decomposition guidance allows splits along artifact type lines (code | tests | docs) instead of capability lines. The governing criterion "can be implemented independently" is vague enough that it permits child issues like "tests and documentation for X" that have no standalone value and cannot produce a meaningful PR on their own.
 
 ## Motivation
 
@@ -98,6 +103,13 @@ _Added by `/ll:refine-issue` — exact locations confirmed via codebase analysis
 2. Edit Good Decomposition: replace "independently implementable" with "independently shippable — each can produce a PR with tests for its own changes"
 3. Edit Avoid list: add the tests/docs child antipattern
 
+## Scope Boundaries
+
+- **In scope**: Three targeted text edits to `skills/issue-size-review/SKILL.md` — Phase 4 criteria, Good Decomposition, and Avoid sections
+- **Out of scope**: Changes to Python pipeline or automation scripts; behavioral changes to issue processing logic
+- **Out of scope**: Updates to dependent skills (`confidence-check`, `wire-issue`, `issue-workflow`) — their callouts are read-only references that remain accurate after this change
+- **Out of scope**: The optional consistency update to `docs/reference/COMMANDS.md:249` (flagged in Integration Map but not required for this issue)
+
 ## Impact
 
 - **Priority**: P3
@@ -112,10 +124,19 @@ _No documents linked._
 
 `enhancement`, `skill`, `decomposition`, `issue-management`
 
+## Resolution
+
+Three targeted edits to `skills/issue-size-review/SKILL.md`:
+1. Phase 4 criteria: replaced "Can be implemented independently" with "independently shippable" and added artifact-type split constraint
+2. Good Decomposition: replaced "independently implementable" with "independently shippable"
+3. Avoid list: added antipattern for tests/docs child issues for newly-introduced behavior
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-21T22:49:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/703b1905-bd69-4468-8591-1bb37d335db4.jsonl`
 - `/ll:confidence-check` - 2026-04-21T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
 - `/ll:refine-issue` - 2026-04-21T21:53:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4eb56bac-9901-4808-9ce3-1ce85ecc5f08.jsonl`
 - `/ll:capture-issue` - 2026-04-21T21:48:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5c6e7c1-6ecf-4c7a-8c50-e42175af1abf.jsonl`
+- `/ll:manage-issue` - 2026-04-21T22:50:17Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/703b1905-bd69-4468-8591-1bb37d335db4.jsonl`
 
 ---
 

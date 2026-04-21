@@ -184,9 +184,11 @@ For each candidate issue:
 
 2. Propose 2-N focused child issues where each:
    - Has a clear, single responsibility
-   - Can be implemented independently
+   - Is "independently shippable" — could produce its own PR with tests for whatever it introduces
    - Has testable completion criteria
    - Inherits appropriate priority and type
+
+   **Never split by artifact type**: tests and docs for a child's new behavior belong in that child, not in a dedicated tests/docs child. The only exception: a test-only or doc-only issue for *already-shipped* code.
 
 3. Draft child issue structure:
    ```markdown
@@ -393,7 +395,7 @@ Uses project configuration from `.ll/ll-config.json`:
 ### Good Decomposition
 
 - Each child issue has **one clear goal**
-- Children are **independently implementable** (no blocking dependencies between them)
+- Children are **independently shippable** — each can produce a PR with tests for its own changes
 - Children have **similar size** (avoid 1 large + 2 tiny)
 - Children **preserve context** from parent (link back, include relevant details)
 
@@ -403,6 +405,7 @@ Uses project configuration from `.ll/ll-config.json`:
 - Splitting tightly-coupled concerns that should stay together
 - Losing context when decomposing (always reference parent)
 - Creating circular dependencies between children
+- Splitting tests or documentation into a dedicated child issue for newly-introduced behavior (they belong with the implementation)
 
 ## Integration
 
