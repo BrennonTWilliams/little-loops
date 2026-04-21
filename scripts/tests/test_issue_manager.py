@@ -2564,3 +2564,97 @@ class TestAutoManagerModelDetection:
             manager._process_issue(issue)
 
         assert any("model: claude-sonnet-4-6" in msg for msg in info_log)
+
+
+class TestDecisionNeededGate:
+    """Tests for conditional decide-issue invocation when decision_needed=True."""
+
+    @pytest.fixture
+    def mock_config(self, temp_project_dir: Path) -> BRConfig:
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.idle_timeout_seconds = 0
+        config.automation.max_continuations = 3
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    @pytest.fixture
+    def issue_with_decision(self, temp_project_dir: Path) -> IssueInfo:
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P1-BUG-900-decision-needed.md"
+        issue_file.write_text("# BUG-900: Decision Needed\n\n## Summary\nTest")
+        return IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-900",
+            title="Decision Needed",
+            decision_needed=True,
+        )
+
+    @pytest.fixture
+    def issue_without_decision(self, temp_project_dir: Path) -> IssueInfo:
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P1-BUG-901-no-decision.md"
+        issue_file.write_text("# BUG-901: No Decision\n\n## Summary\nTest")
+        return IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-901",
+            title="No Decision",
+            decision_needed=None,
+        )
+
+    def test_decide_issue_invoked_when_decision_needed(
+        self, mock_config: BRConfig, issue_with_decision: IssueInfo
+    ) -> None:
+        """decide-issue is called when decision_needed=True after ready-issue."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+        fail_result = MagicMock(returncode=1, stdout="", stderr="")
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=fail_result) as mock_cmd:
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
+                    mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                    with patch(
+                        "little_loops.issue_manager.verify_issue_completed", return_value=True
+                    ):
+                        process_issue_inplace(issue_with_decision, mock_config, mock_logger)
+
+        # run_claude_command called twice: once for ready-issue, once for decide-issue
+        assert mock_cmd.call_count == 2
+        all_cmds = [str(call.args[0]) for call in mock_cmd.call_args_list]
+        assert any("decide-issue" in cmd for cmd in all_cmds)
+
+    def test_decide_issue_skipped_when_decision_not_needed(
+        self, mock_config: BRConfig, issue_without_decision: IssueInfo
+    ) -> None:
+        """decide-issue is NOT called when decision_needed is None."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+        fail_result = MagicMock(returncode=1, stdout="", stderr="")
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=fail_result) as mock_cmd:
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
+                    mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                    with patch(
+                        "little_loops.issue_manager.verify_issue_completed", return_value=True
+                    ):
+                        process_issue_inplace(issue_without_decision, mock_config, mock_logger)
+
+        # run_claude_command called only once (ready-issue), not for decide-issue
+        assert mock_cmd.call_count == 1
+        all_cmds = [str(call.args[0]) for call in mock_cmd.call_args_list]
+        assert not any("decide-issue" in cmd for cmd in all_cmds)

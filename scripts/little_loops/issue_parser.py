@@ -245,6 +245,7 @@ class IssueInfo:
     score_change_surface: int | None = None
     size: str | None = None
     testable: bool | None = None
+    decision_needed: bool | None = None
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
     labels: list[str] = field(default_factory=list)
@@ -280,6 +281,7 @@ class IssueInfo:
             "score_change_surface": self.score_change_surface,
             "size": self.size,
             "testable": self.testable,
+            "decision_needed": self.decision_needed,
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
             "labels": self.labels,
@@ -308,6 +310,7 @@ class IssueInfo:
             score_change_surface=data.get("score_change_surface"),
             size=data.get("size"),
             testable=data.get("testable"),
+            decision_needed=data.get("decision_needed"),
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
             labels=data.get("labels", []),
@@ -408,6 +411,16 @@ class IssueParser:
         else:
             testable_value = testable_raw
 
+        decision_needed_raw = frontmatter.get("decision_needed")
+        if isinstance(decision_needed_raw, str):
+            decision_needed_value: bool | None = (
+                decision_needed_raw.lower() == "true"
+                if decision_needed_raw.lower() in ("true", "false")
+                else None
+            )
+        else:
+            decision_needed_value = decision_needed_raw
+
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
         blocked_by = self._parse_blocked_by(content)
@@ -439,6 +452,7 @@ class IssueParser:
             score_change_surface=score_change_surface,
             size=size,
             testable=testable_value,
+            decision_needed=decision_needed_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
         )

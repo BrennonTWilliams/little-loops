@@ -1474,6 +1474,137 @@ class TestIssueInfoTestable:
         assert info.testable is None
 
 
+class TestIssueInfoDecisionNeeded:
+    """Tests for IssueInfo.decision_needed field."""
+
+    def test_decision_needed_default_none(self) -> None:
+        """Test decision_needed defaults to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+        )
+        assert info.decision_needed is None
+
+    def test_decision_needed_false(self) -> None:
+        """Test decision_needed can be set to False."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+            decision_needed=False,
+        )
+        assert info.decision_needed is False
+
+    def test_decision_needed_true(self) -> None:
+        """Test decision_needed can be set to True."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+            decision_needed=True,
+        )
+        assert info.decision_needed is True
+
+    def test_decision_needed_in_to_dict(self) -> None:
+        """Test decision_needed appears in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1239",
+            title="Test",
+            decision_needed=True,
+        )
+        data = info.to_dict()
+        assert data["decision_needed"] is True
+
+    def test_decision_needed_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None when decision_needed key is absent."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1239",
+            "title": "Test Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.decision_needed is None
+
+    def test_decision_needed_from_dict_false(self) -> None:
+        """Test from_dict restores decision_needed=False."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1239",
+            "title": "Test Issue",
+            "decision_needed": False,
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.decision_needed is False
+
+    def test_parse_file_decision_needed_true(self, tmp_path: Path) -> None:
+        """Integration: parse_file reads decision_needed: true from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "features"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P3-FEAT-1239-decide-needed.md"
+        issue_file.write_text("---\ndecision_needed: true\n---\n# FEAT-1239: Decide Needed\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.decision_needed is True
+
+    def test_parse_file_decision_needed_absent(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields decision_needed=None when frontmatter key absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "features"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P3-FEAT-1238-normal.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# FEAT-1238: Normal\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.decision_needed is None
+
+
 class TestIssueInfoSize:
     """Tests for IssueInfo.size field."""
 

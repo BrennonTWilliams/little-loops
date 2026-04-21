@@ -2,6 +2,12 @@
 captured_at: "2026-04-21T21:48:57Z"
 discovered_date: "2026-04-21"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1242: Improve issue-size-review decomposition to use "independently shippable" principle
@@ -57,6 +63,28 @@ With:
 
 - `skills/issue-size-review/SKILL.md` — three targeted edits (Phase 4 criteria, Avoid list, Good Decomposition)
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — exact locations confirmed via codebase analysis:_
+
+### Files to Modify
+- `skills/issue-size-review/SKILL.md:187` — exact current text: `- Can be implemented independently`
+- `skills/issue-size-review/SKILL.md:396` — exact current text: `- Children are **independently implementable** (no blocking dependencies between them)`
+- `skills/issue-size-review/SKILL.md:401-406` — 4-item "Avoid" section; none of the existing bullets covers artifact-type splits
+
+### Dependent Files (no changes needed)
+- `skills/confidence-check/SKILL.md:563-565` — escalation callout to `/ll:issue-size-review`
+- `skills/wire-issue/SKILL.md:441-443` — next-steps callout to `/ll:issue-size-review`
+- `skills/issue-workflow/SKILL.md:81-82` — cross-reference callout
+
+### Optional Consistency Update
+- `docs/reference/COMMANDS.md:249` — mentions "independent scopes" for child issues; could align with new "independently shippable" language (not required for this issue)
+
+### Tests
+- No test file exists for this skill; guidance-only change, no new tests needed
+
 ## Acceptance Criteria
 
 - Phase 4 child issue criteria uses "independently shippable" language and includes the artifact-type constraint
@@ -85,6 +113,8 @@ _No documents linked._
 `enhancement`, `skill`, `decomposition`, `issue-management`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-21T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:53:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4eb56bac-9901-4808-9ce3-1ce85ecc5f08.jsonl`
 - `/ll:capture-issue` - 2026-04-21T21:48:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5c6e7c1-6ecf-4c7a-8c50-e42175af1abf.jsonl`
 
 ---

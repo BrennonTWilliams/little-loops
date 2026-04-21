@@ -154,6 +154,32 @@ See [templates.md](templates.md) for the full Enhanced Plan Template structure.
 
 ---
 
+## Phase 2.3: Decision Gate
+
+**Skip this phase if**: Action is `verify` or `plan`, or `--quick` flag is set.
+
+Check the issue's `decision_needed` frontmatter field before proceeding to implementation:
+
+```
+READ decision_needed from issue YAML frontmatter
+
+IF decision_needed is true:
+  IF --force-implement flag is set:
+    WARN: "⚠ Decision gate: decision_needed=true. Proceeding due to --force-implement."
+    PROCEED to Phase 2.5
+  ELSE:
+    HALT with message:
+    "✗ Decision gate: this issue has competing implementation options that require a decision.
+     Run /ll:decide-issue [ISSUE_ID] to select an approach, then re-run manage-issue.
+     Use --force-implement to bypass this gate."
+    STOP (do not proceed to Phase 3)
+
+ELSE (decision_needed is absent or false):
+  PROCEED silently to Phase 2.5
+```
+
+---
+
 ## Phase 2.5: Confidence Gate Check
 
 **Skip this phase if**: Action is `verify` or `plan`, `--quick` flag is set, or `config.commands.confidence_gate.enabled` is `false` (default).

@@ -2,6 +2,12 @@
 captured_at: "2026-04-21T21:41:58Z"
 discovered_date: "2026-04-21"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1241: ll-issues clusters Subcommand with Box Diagram Visualization
@@ -22,9 +28,16 @@ connected groups at once" view.
 ## Expected Behavior
 
 `ll-issues clusters` outputs box diagrams to the CLI, one per cluster. Each diagram
-shows issues as nodes with labeled edges for relationship type (blocks, parent, sibling,
-etc.). Clusters are sorted by issue count descending — the biggest cluster appears first,
-the smallest (e.g., 2-issue pairs) last.
+shows issues as nodes with labeled, color-coded edges for relationship type (blocks,
+parent, sibling, etc.). Each cluster is preceded by a header label showing its issue
+count (e.g., `── Cluster 1 (8 issues) ──`). Clusters are sorted by issue count
+descending — the biggest cluster appears first, the smallest (e.g., 2-issue pairs) last.
+
+With `--json`, no diagrams are rendered; instead the full cluster graph is emitted as
+structured JSON (one array of cluster objects, each containing issue IDs and edges).
+
+With `--min-connections N`, only clusters where at least one issue has N or more
+connections (degree ≥ N) are included in the output.
 
 ## Motivation
 
@@ -49,9 +62,13 @@ highest-leverage area and begin sequencing implementation order from the diagram
 - [ ] Renders each cluster as a box diagram using the existing box diagram system
 - [ ] Clusters are output in descending order by issue count (largest first)
 - [ ] Each box shows: issue ID, priority, and title (truncated to terminal width)
-- [ ] Each edge shows: relationship type label (e.g., `blocks`, `parent`, `sibling`)
+- [ ] Each edge is labeled with the relationship type (`blocks`, `parent`, `sibling`, etc.)
+- [ ] Each edge is color-coded by relationship type using ANSI colors (consistent mapping, e.g. `blocks` = red, `parent` = blue, `sibling` = cyan)
+- [ ] Each cluster is preceded by a header line showing its index and issue count (e.g., `── Cluster 1 (8 issues) ──`)
 - [ ] 1-issue clusters (orphans) are omitted by default; a `--include-orphans` flag includes them
-- [ ] Outputs a summary line: `N clusters, M issues total` at the end
+- [ ] `--min-connections N` filters to only clusters where at least one node has degree ≥ N
+- [ ] `--json` suppresses all diagram output and emits a JSON array of cluster objects; each object has `cluster_index`, `issue_count`, `issues` (list of issue IDs + metadata), and `edges` (list of `{from, to, relationship}` objects)
+- [ ] Outputs a summary line: `N clusters, M issues total` at the end (suppressed under `--json`)
 - [ ] Handles the case where no relationships exist (prints friendly message)
 
 ## API/Interface
@@ -59,22 +76,49 @@ highest-leverage area and begin sequencing implementation order from the diagram
 ```python
 # scripts/little_loops/cli/issues/clusters.py
 
-def cmd_clusters(args: argparse.Namespace, base_dir: Path) -> int:
+def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
     """Render issue relationship clusters as box diagrams.
 
     Args:
-        args: Parsed CLI args (include_orphans: bool, min_size: int)
-        base_dir: Root issues directory
+        config: Project configuration (provides issue directories and CLI settings)
+        args: Parsed CLI args (include_orphans: bool, min_connections: int, json: bool)
 
     Returns:
-        Exit code
+        Exit code (0 = success)
     """
 ```
 
 ```
 # CLI usage
-ll-issues clusters [--include-orphans] [--min-size N]
+ll-issues clusters [--include-orphans] [--min-connections N] [--json]
 ```
+
+### JSON output schema
+
+```json
+[
+  {
+    "cluster_index": 1,
+    "issue_count": 8,
+    "issues": [
+      {"id": "FEAT-1001", "priority": "P2", "title": "Add auth middleware"}
+    ],
+    "edges": [
+      {"from": "FEAT-1001", "to": "FEAT-1002", "relationship": "blocks"}
+    ]
+  }
+]
+```
+
+### Edge color mapping (ANSI)
+
+| Relationship | Color  |
+|-------------|--------|
+| `blocks`    | Red    |
+| `blocked_by`| Yellow |
+| `parent`    | Blue   |
+| `sibling`   | Cyan   |
+| other       | White  |
 
 ## Proposed Solution
 
@@ -87,25 +131,62 @@ ll-issues clusters [--include-orphans] [--min-size N]
 2. **Cluster extraction**: Run BFS/union-find over the adjacency graph to extract
    connected components. Sort by size descending.
 
-3. **Box diagram rendering**: For each cluster, render issues as labeled boxes and
-   relationships as edges. Adapt the FSM box diagram engine in
-   `scripts/little_loops/cli/loop/layout.py` — the layout logic handles box sizing,
-   edge routing, and terminal width; wrap it for issue nodes instead of FSM states.
+3. **Box diagram rendering**: For each cluster, render a header label (`── Cluster N (K
+   issues) ──`), then issues as labeled boxes and relationships as color-coded, labeled
+   edges. Use `_draw_box` from `layout.py` as the box primitive; implement a lightweight
+   cluster-specific layout in `clusters.py` using **topological column layout**: assign
+   each node a column by BFS depth from source nodes (nodes with no blockers = column 0,
+   issues they block = column 1, etc.); stack same-depth nodes vertically; draw arrows
+   left-to-right between columns. For clusters containing a cycle (detected during BFS),
+   fall back to a **vertical stack layout** (all boxes in one column, edge labels as
+   right-margin annotations) and emit a `⚠ cycle detected` warning line before the
+   diagram. Apply a consistent ANSI color per relationship type at render time via
+   `colorize()` from `cli/output.py`; fall back gracefully when the terminal does not
+   support color.
 
-4. **CLI integration**: Register `clusters` in `main_issues()` in
+4. **JSON mode**: When `--json` is passed, skip all rendering and instead serialize the
+   cluster list to stdout as a JSON array following the schema defined in API/Interface.
+   Useful for piping into `jq` or downstream tooling.
+
+5. **CLI integration**: Register `clusters` in `main_issues()` in
    `scripts/little_loops/cli/issues/__init__.py` following the same pattern as
    `cmd_sequence`, `cmd_impact_effort`, etc.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`analysis.py` is not the right module for graph traversal**: `dependency_mapper/analysis.py` handles file-path overlap proposals. Use `DependencyGraph.from_issues()` (`dependency_graph.py:52`) instead — it already builds the `blocked_by`/`blocks` adjacency dicts needed for cluster extraction.
+- **`blocked_by`/`blocks` are parsed from markdown sections** (`## Blocked By`, `## Blocks`), not YAML frontmatter. They are already in `IssueInfo.blocked_by` and `IssueInfo.blocks` (`issue_parser.py:234-235`) — no changes to `issue_parser.py` needed for v1.
+- **`parent`/`sibling` are out of scope for v1**: These fields don't exist in `IssueInfo`. Capture a separate issue to add them (suggested: run `/ll:issue-size-review`). This feature is scoped to `blocked_by`/`blocks` relationships only.
+- **Box diagram renderer**: Use `_draw_box(grid, row, col, width, height, content)` at `layout.py:557` as the box primitive (allocates a `list[list[str]]` character grid, draws unicode box characters). Write a lightweight cluster-specific layout in `clusters.py` — do not call `_render_fsm_diagram()` (`layout.py:1439`) or `_render_layered_diagram()` (`layout.py:665`); both are FSM-coupled and accept FSM-typed params. `colorize()` and `terminal_width()` from `cli/output.py` are fully reusable.
+- **JSON pattern**: Check `args.json` before text rendering, call `print_json()` from `cli/output.py:102`, return `0` immediately. Matches pattern in `sequence.py:45-61`.
+- **`configure_output(config.cli)` is already called** in `main_issues()` before dispatch — subcommand does not need to call it.
+- **Heavy imports are deferred**: All imports (`find_issues`, `DependencyGraph`, etc.) go inside the `cmd_clusters` function body, not at module level — matches all other subcommands (`__init__.py:17-30` pattern).
 
 ## Implementation Steps
 
 1. Add `blocked_by` / `blocks` / `parent` / `sibling` frontmatter parsing to
    `scripts/little_loops/issue_parser.py` (if not already present)
 2. Build adjacency graph + BFS cluster extraction in
-   `scripts/little_loops/cli/issues/clusters.py`
+   `scripts/little_loops/cli/issues/clusters.py`; apply `--min-connections` filter before
+   rendering
 3. Implement cluster box diagram renderer (adapting loop layout or building a lightweight
-   node-edge box renderer)
-4. Register `clusters` subcommand in `__init__.py`
-5. Write tests: graph construction, cluster sorting, edge label rendering, empty-state
+   node-edge box renderer); include cluster header label and ANSI color-coded edges
+4. Implement `--json` serialization path (no diagram output, structured JSON to stdout)
+5. Register `clusters` subcommand in `__init__.py`
+6. Write tests: graph construction, cluster sorting, edge label/color rendering,
+   `--min-connections` filtering, `--json` output schema, empty-state
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — corrected step-level details from codebase analysis:_
+
+- **Step 1**: No changes to `issue_parser.py` needed — `IssueInfo.blocked_by` (`issue_parser.py:234`) and `IssueInfo.blocks` (`issue_parser.py:235`) already exist and are populated from `## Blocked By` / `## Blocks` markdown sections via `_parse_section_items()` (`issue_parser.py:558-594`). `parent`/`sibling` fields are out of scope for v1.
+- **Step 2**: `DependencyGraph.from_issues(issues)` (`dependency_graph.py:52-110`) builds the full adjacency structure from `IssueInfo.blocked_by` lists. For connected-component extraction, implement BFS over `graph.blocked_by` and `graph.blocks` dicts in `clusters.py` — `DependencyGraph` has no `get_connected_components()` method but the data structures are sufficient.
+- **Step 3**: Use `_draw_box(grid, row, col, width, height, content)` (`layout.py:557-657`) as the box primitive. Allocate a `list[list[str]]` character grid, place issue boxes, draw directional arrow characters + `colorize()`d labels between them. Apply ANSI codes from the edge color table using `colorize()` from `cli/output.py:95`.
+- **Step 5**: Import `cmd_clusters` lazily inside `main_issues()` at the top block (`__init__.py:17-30`). Add `cl = subs.add_parser("clusters", ...)` + `cl.set_defaults(command="clusters")` after the `impact-effort` subparser (~line 278). Add dispatch `if args.command == "clusters": return cmd_clusters(config, args)` after line ~446.
+- **Step 6**: Tests go in `scripts/tests/test_issues_cli.py` as a new class `TestIssuesCLIClusters` — no new file. Pattern: `patch.object(sys, 'argv', ["ll-issues", "clusters", "--config", str(temp_project_dir)])` + `main_issues()`. JSON tests call `json.loads(captured.out)`. ANSI suppression tests patch `little_loops.cli.output._USE_COLOR = False`.
 
 ## Integration Map
 
@@ -117,19 +198,59 @@ ll-issues clusters [--include-orphans] [--min-size N]
 - `scripts/little_loops/cli/issues/__init__.py` — central dispatch
 - Any CLI integration test that enumerates subcommands
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py:29` — re-exports `main_issues` and lists it in `__all__`; `pyproject.toml:61` points the `ll-issues` entry point here (no changes needed — informational)
+
 ### Similar Patterns
 - `scripts/little_loops/cli/issues/sequence.py` — subcommand structure to mirror
 - `scripts/little_loops/dependency_mapper/formatting.py` — `format_text_graph` for reference
 - `scripts/little_loops/cli/loop/layout.py` — box diagram layout engine to adapt
 
 ### Tests
-- `scripts/tests/test_ll_issues_clusters.py` — new test file
+- `scripts/tests/test_issues_cli.py` — add class `TestIssuesCLIClusters` (existing test file; no new file per project pattern)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issues_cli.py` — needs `issues_dir_with_deps` fixture: existing `issues_dir` fixture writes no dependency frontmatter; must write `blocked_by`/`blocks` YAML for multi-cluster tests
+- Tests to write in `TestIssuesCLIClusters` (follow `TestIssuesCLIImpactEffort` at `test_issues_cli.py:726–755`):
+  - `test_clusters_renders_box_diagram` — assert box-drawing chars (`┌`, `┐`, `│`) appear in output
+  - `test_clusters_empty_project` — assert friendly message + return code 0
+  - `test_clusters_json_output` — `json.loads(captured.out)`, assert `cluster_index`, `issue_count`, `issues`, `edges` keys
+  - `test_clusters_json_suppresses_box_diagram` — assert box chars absent under `--json`
+  - `test_clusters_no_ansi_when_no_color` — patch `output_mod._USE_COLOR = False`, assert `"\033["` absent
+  - `test_clusters_with_dependency_links` — use `issues_dir_with_deps`, assert multiple cluster header lines render
+- Pattern: `patch.object(sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)])` + `from little_loops.cli import main_issues` inside `with` block + `capsys.readouterr()`
+- No existing test will break — confirmed no test enumerates the `ll-issues` subcommand list
 
 ### Documentation
 - `docs/reference/API.md` — add `clusters` to ll-issues subcommand list
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.claude/CLAUDE.md:115` — add `clusters` to the ll-issues inline subcommand parenthetical in the CLI Tools section
+- `commands/help.md:228` — add `clusters` to the `ll-issues` line in the hardcoded CLI TOOLS block
+- `README.md:405–447` — add `ll-issues clusters [--include-orphans] [--min-connections N] [--json]` example invocations in the `### ll-issues` section
+
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — precise file:line references from codebase analysis:_
+
+#### Key Files to Read Before Implementing
+- `scripts/little_loops/cli/issues/__init__.py:17-30` — lazy import block; add `cmd_clusters` import here
+- `scripts/little_loops/cli/issues/__init__.py:89` — `subs = parser.add_subparsers(dest="command")`; add clusters parser after line ~278
+- `scripts/little_loops/cli/issues/__init__.py:406-447` — flat dispatch chain; add `clusters` case here
+- `scripts/little_loops/dependency_graph.py:32-110` — `DependencyGraph` dataclass + `from_issues()` class method; `.blocked_by` and `.blocks` are `dict[str, set[str]]`
+- `scripts/little_loops/issue_parser.py:234-235` — `IssueInfo.blocked_by: list[str]` and `IssueInfo.blocks: list[str]` (already parsed; no changes needed)
+- `scripts/little_loops/issue_parser.py:665-750` — `find_issues(config, type_prefixes)` returns sorted `list[IssueInfo]`
+- `scripts/little_loops/cli/loop/layout.py:557-657` — `_draw_box(grid, row, col, width, height, content, ...)` — reusable box primitive, no FSM coupling
+- `scripts/little_loops/cli/output.py:16` — `terminal_width(default=80) -> int`
+- `scripts/little_loops/cli/output.py:95` — `colorize(text, code) -> str`; guards on `_USE_COLOR`
+- `scripts/little_loops/cli/output.py:102` — `print_json(data) -> None`
+- `scripts/little_loops/cli/output.py:31-49` — `PRIORITY_COLOR` and `TYPE_COLOR` dicts
+
+#### Existing Subcommand Reference Implementation
+- `scripts/little_loops/cli/issues/sequence.py:1-79` — nearest pattern; imports `DependencyGraph`, handles `--json` before text rendering, uses `try/except ValueError` for cycle detection, returns 0 on empty
 
 ## Impact
 
@@ -144,9 +265,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Labels
 
-`feature`, `ll-issues`, `visualization`, `box-diagram`, `captured`
+`feature`, `ll-issues`, `visualization`, `box-diagram`, `refined`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `scripts/little_loops/cli/issues/__init__.py:39–85` epilog — add `clusters` to the `Sub-commands:` list and a usage example to the `Examples:` section (specific callout within Step 5)
+8. Update `.claude/CLAUDE.md:115` — add `clusters` to the ll-issues subcommand parenthetical in the CLI Tools section
+9. Update `commands/help.md:228` — add `clusters` to the `ll-issues` line in the hardcoded CLI TOOLS block
+10. Update `README.md:405–447` — add `ll-issues clusters` invocation examples in the `### ll-issues` section
+11. Update `docs/reference/API.md` — add `clusters` to the ll-issues subcommand list
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-21T22:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/85f1d22e-4c76-41d4-914d-62974c14c745.jsonl`
+- `/ll:wire-issue` - 2026-04-21T22:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f6c47d4-9358-40a4-adfa-83e69673bf40.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:57:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7deeead-3f29-447a-aac8-b84769c43188.jsonl`
 - `/ll:capture-issue` - 2026-04-21T21:41:58Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17ef1d96-3e92-4f16-8219-a62e2307b979.jsonl`
 
 ---

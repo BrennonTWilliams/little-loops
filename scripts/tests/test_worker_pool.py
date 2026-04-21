@@ -2208,3 +2208,84 @@ class TestRunWithContinuation:
         # Should signal failure when handoff has no prompt file
         assert result.returncode == 1
         assert "Handoff detected but no continuation prompt found" in result.stderr
+
+
+class TestWorkerPoolDecisionNeededGate:
+    """Tests for conditional decide-issue invocation when decision_needed=True."""
+
+    def test_decide_issue_invoked_when_decision_needed(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_process_issue() calls decide-issue when issue.decision_needed=True."""
+        ready_output = "## VERDICT: **READY**"
+        manage_output = "Issue resolved"
+
+        issue = MagicMock()
+        issue.issue_id = "FEAT-999"
+        issue.issue_type = "features"
+        issue.path = Path(".issues/features/P3-FEAT-999-decide.md")
+        issue.decision_needed = True
+
+        commands_called: list[str] = []
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            commands_called.append(cmd)
+            if len(commands_called) == 1:
+                return subprocess.CompletedProcess([], 0, ready_output, "")
+            return subprocess.CompletedProcess([], 0, manage_output, "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    with patch.object(worker_pool, "_get_changed_files", return_value=["src/fix.py"]):
+                        with patch.object(worker_pool, "_detect_main_repo_leaks", return_value=[]):
+                            with patch.object(
+                                worker_pool, "_update_branch_base", return_value=(True, "")
+                            ):
+                                worker_pool._process_issue(issue)
+
+        # decide-issue command should be among the calls (after ready-issue, before manage-issue)
+        assert len(commands_called) >= 3
+        assert any("decide-issue" in cmd for cmd in commands_called)
+
+    def test_decide_issue_skipped_when_decision_not_needed(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_process_issue() does NOT call decide-issue when decision_needed is None."""
+        ready_output = "## VERDICT: **READY**"
+        manage_output = "Issue resolved"
+
+        issue = MagicMock()
+        issue.issue_id = "FEAT-998"
+        issue.issue_type = "features"
+        issue.path = Path(".issues/features/P3-FEAT-998-no-decide.md")
+        issue.decision_needed = None
+
+        commands_called: list[str] = []
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            commands_called.append(cmd)
+            if len(commands_called) == 1:
+                return subprocess.CompletedProcess([], 0, ready_output, "")
+            return subprocess.CompletedProcess([], 0, manage_output, "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    with patch.object(worker_pool, "_get_changed_files", return_value=["src/fix.py"]):
+                        with patch.object(worker_pool, "_detect_main_repo_leaks", return_value=[]):
+                            with patch.object(
+                                worker_pool, "_update_branch_base", return_value=(True, "")
+                            ):
+                                worker_pool._process_issue(issue)
+
+        # decide-issue command should NOT be called
+        assert not any("decide-issue" in cmd for cmd in commands_called)

@@ -559,6 +559,23 @@ def process_issue_inplace(
             logger.info(f"Would run: /ll:ready-issue {info.issue_id}")
     issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)
 
+    # Decision gate: invoke decide-issue when the issue requires a decision
+    if info.decision_needed is True and not dry_run:
+        logger.info(f"Decision gate: {info.issue_id} has decision_needed=True, invoking decide-issue...")
+        _decide_slash = f"/ll:decide-issue {info.issue_id} --auto"
+        _decide_cmd = expand_skill("decide-issue", [info.issue_id, "--auto"], config) or _decide_slash
+        decide_result = run_claude_command(
+            _decide_cmd,
+            logger,
+            timeout=config.automation.timeout_seconds,
+            stream_output=config.automation.stream_output,
+            idle_timeout=config.automation.idle_timeout_seconds,
+            on_model_detected=on_model_detected,
+            preview_full=preview_full,
+        )
+        if decide_result.returncode != 0:
+            logger.warning("decide-issue command failed, continuing to implementation anyway...")
+
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
     action = config.get_category_action(info.issue_type)
     logger.info(f"Phase 2: Implementing {info.issue_id}...")

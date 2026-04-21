@@ -299,6 +299,11 @@
           "description": "Template for manage-issue command (supports {{issue_type}}, {{action}}, {{issue_id}})",
           "default": "manage-issue {{issue_type}} {{action}} {{issue_id}}"
         },
+        "decide_command": {
+          "type": "string",
+          "description": "Command template for the decide-issue step. {{issue_id}} is substituted at runtime.",
+          "default": "decide-issue {{issue_id}}"
+        },
         "worktree_copy_files": {
           "type": "array",
           "description": "Additional files to copy from main repo to worktrees (relative paths). Includes .claude/settings.local.json by default because it carries Claude Code auth tokens required in each worktree. Note: .claude/ directory is always copied automatically.",

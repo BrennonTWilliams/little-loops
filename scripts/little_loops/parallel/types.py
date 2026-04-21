@@ -328,6 +328,7 @@ class ParallelConfig:
     command_prefix: str = "/ll:"
     ready_command: str = "ready-issue {{issue_id}}"
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
+    decide_command: str = "decide-issue {{issue_id}}"
     # Issue ID filters
     only_ids: set[str] | None = None
     skip_ids: set[str] | None = None
@@ -384,6 +385,18 @@ class ParallelConfig:
         )
         return f"{self.command_prefix}{cmd}"
 
+    def get_decide_command(self, issue_id: str) -> str:
+        """Build the decide-issue command string.
+
+        Args:
+            issue_id: Issue identifier
+
+        Returns:
+            Complete command string
+        """
+        cmd = self.decide_command.replace("{{issue_id}}", issue_id)
+        return f"{self.command_prefix}{cmd}"
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -404,6 +417,7 @@ class ParallelConfig:
             "command_prefix": self.command_prefix,
             "ready_command": self.ready_command,
             "manage_command": self.manage_command,
+            "decide_command": self.decide_command,
             "only_ids": list(self.only_ids) if self.only_ids else None,
             "skip_ids": list(self.skip_ids) if self.skip_ids else None,
             "type_prefixes": list(self.type_prefixes) if self.type_prefixes else None,
@@ -444,6 +458,7 @@ class ParallelConfig:
             manage_command=data.get(
                 "manage_command", "manage-issue {{issue_type}} {{action}} {{issue_id}}"
             ),
+            decide_command=data.get("decide_command", "decide-issue {{issue_id}}"),
             only_ids=set(only_ids_data) if only_ids_data else None,
             skip_ids=set(skip_ids_data) if skip_ids_data else None,
             type_prefixes=set(type_prefixes_data) if type_prefixes_data else None,

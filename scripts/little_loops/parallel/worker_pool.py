@@ -369,6 +369,18 @@ class WorkerPool:
             # Update stage for progress tracking (ENH-262)
             self.set_worker_stage(issue.issue_id, WorkerStage.IMPLEMENTING)
 
+            # Decision gate: invoke decide-issue when the issue requires a decision
+            if issue.decision_needed is True:
+                decide_cmd = self.parallel_config.get_decide_command(issue.issue_id)
+                decide_result = self._run_claude_command(
+                    decide_cmd, worktree_path, issue_id=issue.issue_id
+                )
+                if decide_result.returncode != 0:
+                    self.logger.warning(
+                        f"[{issue.issue_id}] decide-issue command failed, "
+                        "continuing to implementation anyway..."
+                    )
+
             # Step 4: Get action from BRConfig
             action = self.br_config.get_category_action(issue.issue_type)
 
