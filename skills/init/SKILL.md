@@ -427,6 +427,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
    - Remove any existing `Write(.ll/ll-continue-prompt.md)` entry from `permissions.allow` (idempotency)
    - Append the canonical allow entries:
      ```json
+     "Bash(ll-action:*)",
      "Bash(ll-issues:*)",
      "Bash(ll-auto:*)",
      "Bash(ll-parallel:*)",
@@ -486,6 +487,7 @@ If user opted in:
 
    ## little-loops CLI Commands
 
+   - `ll-action` - Invoke ll skills as one-shot commands with JSON-structured output
    - `ll-auto` - Process all backlog issues sequentially in priority order
    - `ll-parallel` - Process issues concurrently using isolated git worktrees
    - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
@@ -512,6 +514,7 @@ If user opted in:
 
    ## little-loops CLI Commands
 
+   - `ll-action` - Invoke ll skills as one-shot commands with JSON-structured output
    - `ll-auto` - Process all backlog issues sequentially in priority order
    - `ll-parallel` - Process issues concurrently using isolated git worktrees
    - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering

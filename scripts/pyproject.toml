@@ -46,6 +46,7 @@ Repository = "https://github.com/BrennonTWilliams/little-loops"
 "Bug Tracker" = "https://github.com/BrennonTWilliams/little-loops/issues"
 
 [project.scripts]
+ll-action = "little_loops.cli:main_action"
 ll-auto = "little_loops.cli:main_auto"
 ll-parallel = "little_loops.cli:main_parallel"
 ll-messages = "little_loops.cli:main_messages"

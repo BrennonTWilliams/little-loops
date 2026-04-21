@@ -50,12 +50,12 @@ class TestInitSkillWiring:
 
 
 class TestConfigureAreasWiring:
-    """skills/configure/areas.md must show 14 CLI tools including ll-create-extension."""
+    """skills/configure/areas.md must show 15 CLI tools including ll-create-extension and ll-action."""
 
-    def test_count_updated_to_14(self) -> None:
+    def test_count_updated_to_15(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 14" in content, (
-            "skills/configure/areas.md must show 'Authorize all 14' ll- CLI tools"
+        assert "Authorize all 15" in content, (
+            "skills/configure/areas.md must show 'Authorize all 15' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -74,10 +74,10 @@ class TestFeat1045DocUpdates:
             "README.md must have an ll-create-extension section in the CLI Tools block"
         )
 
-    def test_readme_tool_count_is_15(self) -> None:
+    def test_readme_tool_count_is_16(self) -> None:
         content = README.read_text()
-        assert "15 CLI tools" in content, (
-            "README.md must say '15 CLI tools' (incremented from 14 after ll-generate-schemas landed)"
+        assert "16 CLI tools" in content, (
+            "README.md must say '16 CLI tools' (incremented from 15 after ll-action landed)"
         )
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
@@ -172,3 +172,51 @@ class TestEnh1093UndocumentedCliEntryPoints:
         assert "mcp-call" in content, (
             "CONTRIBUTING.md must document mcp-call as a developer debug utility (ENH-1093)"
         )
+
+
+class TestFeat1229LlActionWiring:
+    """FEAT-1229: ll-action must be wired into all documentation and manifest files."""
+
+    def test_help_md_lists_ll_action(self) -> None:
+        content = HELP_MD.read_text()
+        assert "ll-action" in content, "commands/help.md must list ll-action in the CLI TOOLS block"
+
+    def test_cli_reference_has_ll_action_section(self) -> None:
+        content = CLI_REFERENCE.read_text()
+        assert "ll-action" in content, "docs/reference/CLI.md must have an ll-action section"
+
+    def test_readme_has_ll_action_section(self) -> None:
+        content = README.read_text()
+        assert "ll-action" in content, "README.md must have an ll-action section in CLI Tools"
+
+    def test_readme_tool_count_is_16(self) -> None:
+        content = README.read_text()
+        assert "16 CLI tools" in content, "README.md must say '16 CLI tools' after ll-action was added"
+
+    def test_configure_areas_count_is_15(self) -> None:
+        content = CONFIGURE_AREAS.read_text()
+        assert "Authorize all 15" in content, (
+            "skills/configure/areas.md must show 'Authorize all 15' ll- CLI tools"
+        )
+
+    def test_configure_areas_lists_ll_action(self) -> None:
+        content = CONFIGURE_AREAS.read_text()
+        assert "ll-action" in content, "skills/configure/areas.md must enumerate ll-action in the tool list"
+
+    def test_init_skill_has_ll_action_bash_permission(self) -> None:
+        content = INIT_SKILL.read_text()
+        assert '"Bash(ll-action:*)"' in content, (
+            'skills/init/SKILL.md must include "Bash(ll-action:*)" in the permissions block'
+        )
+
+    def test_init_skill_boilerplate_has_ll_action(self) -> None:
+        content = INIT_SKILL.read_text()
+        count = content.count("ll-action")
+        assert count >= 3, (
+            f"skills/init/SKILL.md must mention ll-action at least 3 times "
+            f"(permissions + 2 CLAUDE.md boilerplate blocks); found {count}"
+        )
+
+    def test_contributing_md_has_action_py(self) -> None:
+        content = CONTRIBUTING_MD.read_text()
+        assert "action.py" in content, "CONTRIBUTING.md must include action.py in the cli/ directory tree"

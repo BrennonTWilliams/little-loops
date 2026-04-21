@@ -182,6 +182,7 @@ little-loops/
     └── little_loops/     # Main package
         ├── cli/                 # CLI entry points
         │   ├── __init__.py
+        │   ├── action.py        # ll-action one-shot skill invocation CLI
         │   ├── auto.py
         │   ├── create_extension.py  # ll-create-extension scaffold CLI
         │   ├── docs.py

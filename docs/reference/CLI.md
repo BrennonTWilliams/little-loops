@@ -29,6 +29,66 @@ These flags appear across multiple tools:
 
 ---
 
+## Skill Invocation
+
+### ll-action
+
+Thin CLI wrapper for invoking ll skills as one-shot commands with JSON-structured output. Useful for dashboard integrations, shell scripts, and cron jobs that need a single skill result without running a full FSM loop.
+
+**Subcommands:**
+
+#### `invoke`
+
+Invokes a skill and streams output as newline-delimited JSON (NDJSON) events by default.
+
+| Flag | Description |
+|------|-------------|
+| `skill` | Skill name (e.g. `refine-issue`, `confidence-check`) |
+| `--args ARG [ARG ...]` | Arguments to pass to the skill |
+| `--timeout SECONDS` | Timeout in seconds (default: 300) |
+| `--output FORMAT` | `stream-json` (default) or `json` |
+
+**stream-json event shapes:**
+```json
+{"event":"action_start","ts":"...","skill":"refine-issue","args":["ENH-353"]}
+{"event":"action_output","ts":"...","line":"Analyzing ENH-353..."}
+{"event":"action_complete","ts":"...","exit_code":0,"duration_ms":45230}
+```
+
+**json output shape (`--output json`):**
+```json
+{"exit_code":0,"duration_ms":45230,"output":"...","error":null}
+```
+
+#### `capabilities`
+
+Probes Claude availability and returns supported skill names. Does not invoke Claude.
+
+```json
+{"available":true,"version":"1.0.3","supported_skills":["refine-issue","confidence-check",...]}
+```
+
+#### `list`
+
+Returns all skills with names and descriptions from the plugin manifest. Does not invoke Claude.
+
+```json
+[{"name":"refine-issue","description":"..."},...]
+```
+
+**Exit codes:** `0` = success, `1` = error, `124` = timeout
+
+**Examples:**
+```bash
+ll-action invoke refine-issue --args P2-ENH-1229
+ll-action invoke confidence-check --args FEAT-042 --timeout 120
+ll-action invoke refine-issue --args P2-ENH-1229 --output json
+ll-action capabilities
+ll-action list
+```
+
+---
+
 ## Issue Processing
 
 ### ll-auto

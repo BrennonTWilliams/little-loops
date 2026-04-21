@@ -87,7 +87,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **26 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **15 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
+- **16 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
 - **42 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
 
@@ -252,6 +252,19 @@ pip install -e "./scripts[dev]"
 ```
 
 </details>
+
+### ll-action
+
+Invoke any ll skill as a one-shot command with JSON-structured output. Supports streaming NDJSON events (for dashboard SSE) or a single JSON object (for scripting):
+
+```bash
+ll-action invoke refine-issue --args P2-ENH-1229         # stream NDJSON events
+ll-action invoke confidence-check --args FEAT-042 --output json  # single JSON result
+ll-action capabilities                                    # check Claude availability + skill list
+ll-action list                                            # list all skills with descriptions
+```
+
+Run `ll-action --help` for all options.
 
 ### ll-auto
 

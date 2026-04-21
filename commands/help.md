@@ -215,6 +215,7 @@ SESSION & CONFIG
 
 CLI TOOLS (pip install little-loops)
 ------------------------------------
+ll-action         Invoke ll skills as one-shot commands with JSON-structured output
 ll-auto           Process all backlog issues sequentially in priority order
 ll-parallel       Process issues concurrently using isolated git worktrees
 ll-sprint         Define and execute curated issue sets with dependency-aware ordering

@@ -1,5 +1,6 @@
 ---
 captured_at: "2026-04-21T16:19:58Z"
+completed_at: "2026-04-21T17:16:34Z"
 discovered_date: "2026-04-21"
 discovered_by: capture-issue
 confidence_score: 100
@@ -105,7 +106,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **`run_claude_command()` output pre-processing** (`subprocess_utils.py:190-212`): The function internally parses Claude's stream-json format. The `stream_callback` receives **already-extracted text** — it extracts `text` blocks from `assistant` events, skips `system`/`tool_use`/`result` events entirely, and falls through non-JSON lines as raw text. The `invoke` subcommand's `action_output` event wrapping therefore just wraps each `stream_callback` line; it does not need to parse JSON itself.
 
-**`plugin.json` skills is a directory pointer, not a flat list** (`.claude-plugin/plugin.json:21`): The manifest stores `"skills": ["./skills"]` — a relative path to the `skills/` directory at the project root. There is no inline skill list with names/descriptions. The `list` and `capabilities` subcommands must enumerate `skills/*/SKILL.md` files to discover skills. Each skill's **name = directory name** (e.g., `refine-issue`, `confidence-check`). The **description** comes from the YAML frontmatter `description` field in `SKILL.md`. There is no `name` key in the frontmatter — only `description`, `model`, and `allowed-tools`. No existing Python code in `scripts/little_loops/` reads `plugin.json` at runtime; path resolution should use `skill_expander._find_plugin_root()` (`skill_expander.py:22-30`) which respects `CLAUDE_PLUGIN_ROOT` env var and resolves to repo root; skills dir = `plugin_root / "skills"`.
+**`plugin.json` skills is a directory pointer, not a flat list** (`.claude-plugin/plugin.json:20`): The manifest stores `"skills": ["./skills"]` — a relative path to the `skills/` directory at the project root. There is no inline skill list with names/descriptions. The `list` and `capabilities` subcommands must enumerate `skills/*/SKILL.md` files to discover skills. Each skill's **name = directory name** (e.g., `refine-issue`, `confidence-check`). The **description** comes from the YAML frontmatter `description` field in `SKILL.md`. There is no `name` key in the frontmatter — only `description`, `model`, and `allowed-tools`. No existing Python code in `scripts/little_loops/` reads `plugin.json` at runtime; path resolution should use `skill_expander._find_plugin_root()` (`skill_expander.py:22-30`) which respects `CLAUDE_PLUGIN_ROOT` env var and resolves to repo root; skills dir = `plugin_root / "skills"`.
 
 **`print_json()` utility** (`cli/output.py:102-104`): For `--output json` mode, use `print_json(data)` from `little_loops.cli.output` rather than raw `print(json.dumps(..., indent=2))`. Already used throughout `ll-issues` subcommands.
 
@@ -126,7 +127,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/subprocess_utils.py:62` — `run_claude_command()` called by `invoke`; `stream_callback` receives pre-extracted text lines (assistant events only)
-- `.claude-plugin/plugin.json:21` — `"skills": ["./skills"]` directory pointer; enumerate `skills/*/SKILL.md` for skill names/descriptions
+- `.claude-plugin/plugin.json:20` — `"skills": ["./skills"]` directory pointer; enumerate `skills/*/SKILL.md` for skill names/descriptions
 - `skills/*/SKILL.md` — YAML frontmatter with `description` field; directory name = skill name
 
 ### Similar Patterns
@@ -258,12 +259,23 @@ def main_action() -> None:
 
 ## Status
 
-**Status**: Open
+**Status**: Completed
 **Assignee**: Unassigned
+
+## Resolution
+
+Implemented `ll-action` as `scripts/little_loops/cli/action.py` with three subcommands:
+- `invoke`: calls `run_claude_command()` and wraps output as NDJSON `action_start`/`action_output`/`action_complete` events (stream-json mode) or collects into a single JSON object (json mode)
+- `capabilities`: probes `claude` availability via `shutil.which` + `subprocess.run(["claude", "--version"])`, enumerates `skills/*/SKILL.md` for skill names
+- `list`: enumerates `skills/*/SKILL.md` and parses YAML frontmatter descriptions
+
+Registered `ll-action = "little_loops.cli:main_action"` in `pyproject.toml`. All acceptance criteria met; 57 tests pass including full wiring suite.
 
 ---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-21T17:16:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
+- `/ll:ready-issue` - 2026-04-21T17:05:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de0addfd-b5f2-407c-a851-0927b44fecc6.jsonl`
 - `/ll:confidence-check` - 2026-04-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/822c48e1-ef44-4af9-8758-ad90ec148023.jsonl`
 - `/ll:wire-issue` - 2026-04-21T16:47:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa148307-a740-4cfb-a0a0-18cc0f7967a8.jsonl`
 - `/ll:refine-issue` - 2026-04-21T16:34:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24aea90c-410b-44e1-8768-f887bdf017e4.jsonl`
