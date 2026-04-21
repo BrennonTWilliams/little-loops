@@ -1339,8 +1339,7 @@ class TestAutodevLoop:
         """recheck_after_size_review.on_no (scores fail) must route to dequeue_next."""
         state = data["states"].get("recheck_after_size_review", {})
         assert state.get("on_no") == "dequeue_next", (
-            f"recheck_after_size_review.on_no should be 'dequeue_next', "
-            f"got {state.get('on_no')!r}"
+            f"recheck_after_size_review.on_no should be 'dequeue_next', got {state.get('on_no')!r}"
         )
 
     def test_recheck_after_size_review_clears_autodev_inflight(self, data: dict) -> None:

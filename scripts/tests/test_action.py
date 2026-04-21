@@ -25,7 +25,9 @@ from little_loops.cli.action import (
 # =============================================================================
 
 
-def _make_completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess:
+def _make_completed(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
@@ -43,7 +45,9 @@ def _make_namespace(**kwargs: Any) -> Any:
 class TestReadSkillDescription:
     def test_extracts_description(self, tmp_path: Path) -> None:
         skill_md = tmp_path / "SKILL.md"
-        skill_md.write_text('---\ndescription: "Refine an issue with codebase context"\nmodel: sonnet\n---\n# Content')
+        skill_md.write_text(
+            '---\ndescription: "Refine an issue with codebase context"\nmodel: sonnet\n---\n# Content'
+        )
         assert _read_skill_description(skill_md) == "Refine an issue with codebase context"
 
     def test_handles_unquoted_description(self, tmp_path: Path) -> None:
@@ -74,7 +78,10 @@ class TestReadSkillDescription:
 class TestLoadSkills:
     def test_discovers_skills_from_plugin_root(self, tmp_path: Path) -> None:
         skills_dir = tmp_path / "skills"
-        for skill_name, desc in [("refine-issue", "Refine"), ("confidence-check", "Check confidence")]:
+        for skill_name, desc in [
+            ("refine-issue", "Refine"),
+            ("confidence-check", "Check confidence"),
+        ]:
             skill_dir = skills_dir / skill_name
             skill_dir.mkdir(parents=True)
             (skill_dir / "SKILL.md").write_text(f"---\ndescription: {desc}\n---\n")
@@ -111,9 +118,13 @@ class TestLoadSkills:
 
 class TestCmdInvokeStreamJson:
     def test_emits_action_start_and_complete(self, capsys: pytest.CaptureFixture) -> None:
-        args = _make_namespace(skill="refine-issue", args=["P2-ENH-1229"], timeout=300, output="stream-json")
+        args = _make_namespace(
+            skill="refine-issue", args=["P2-ENH-1229"], timeout=300, output="stream-json"
+        )
 
-        with patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)):
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ):
             result = cmd_invoke(args)
 
         assert result == 0
@@ -144,18 +155,26 @@ class TestCmdInvokeStreamJson:
         assert output_events[1]["line"] == "line two"
 
     def test_forwards_timeout_to_run_claude_command(self) -> None:
-        args = _make_namespace(skill="confidence-check", args=["FEAT-042"], timeout=120, output="stream-json")
+        args = _make_namespace(
+            skill="confidence-check", args=["FEAT-042"], timeout=120, output="stream-json"
+        )
 
-        with patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)) as mock_run:
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ) as mock_run:
             cmd_invoke(args)
 
         call_kwargs = mock_run.call_args
         assert call_kwargs.kwargs["timeout"] == 120
 
     def test_command_includes_skill_and_args(self) -> None:
-        args = _make_namespace(skill="refine-issue", args=["P2", "ENH-100"], timeout=300, output="stream-json")
+        args = _make_namespace(
+            skill="refine-issue", args=["P2", "ENH-100"], timeout=300, output="stream-json"
+        )
 
-        with patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)) as mock_run:
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ) as mock_run:
             cmd_invoke(args)
 
         command = mock_run.call_args.kwargs["command"]
@@ -164,7 +183,9 @@ class TestCmdInvokeStreamJson:
     def test_command_no_args(self) -> None:
         args = _make_namespace(skill="refine-issue", args=[], timeout=300, output="stream-json")
 
-        with patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)) as mock_run:
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ) as mock_run:
             cmd_invoke(args)
 
         command = mock_run.call_args.kwargs["command"]
@@ -173,7 +194,10 @@ class TestCmdInvokeStreamJson:
     def test_timeout_returns_exit_code_124(self, capsys: pytest.CaptureFixture) -> None:
         args = _make_namespace(skill="refine-issue", args=[], timeout=1, output="stream-json")
 
-        with patch("little_loops.subprocess_utils.run_claude_command", side_effect=subprocess.TimeoutExpired("claude", 1)):
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command",
+            side_effect=subprocess.TimeoutExpired("claude", 1),
+        ):
             result = cmd_invoke(args)
 
         assert result == 124
@@ -184,7 +208,9 @@ class TestCmdInvokeStreamJson:
     def test_nonzero_exit_code_propagated(self, capsys: pytest.CaptureFixture) -> None:
         args = _make_namespace(skill="refine-issue", args=[], timeout=300, output="stream-json")
 
-        with patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(1)):
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(1)
+        ):
             result = cmd_invoke(args)
 
         assert result == 1
@@ -200,7 +226,9 @@ class TestCmdInvokeStreamJson:
 
 class TestCmdInvokeJsonMode:
     def test_returns_single_json_object(self, capsys: pytest.CaptureFixture) -> None:
-        args = _make_namespace(skill="refine-issue", args=["P2-ENH-1229"], timeout=300, output="json")
+        args = _make_namespace(
+            skill="refine-issue", args=["P2-ENH-1229"], timeout=300, output="json"
+        )
 
         def fake_run(command, timeout, stream_callback, **kwargs):
             stream_callback("output line 1", False)
@@ -234,7 +262,10 @@ class TestCmdInvokeJsonMode:
     def test_timeout_json_mode(self, capsys: pytest.CaptureFixture) -> None:
         args = _make_namespace(skill="refine-issue", args=[], timeout=1, output="json")
 
-        with patch("little_loops.subprocess_utils.run_claude_command", side_effect=subprocess.TimeoutExpired("claude", 1)):
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command",
+            side_effect=subprocess.TimeoutExpired("claude", 1),
+        ):
             result = cmd_invoke(args)
 
         assert result == 124
@@ -248,7 +279,9 @@ class TestCmdInvokeJsonMode:
 
 
 class TestCmdCapabilities:
-    def test_returns_available_when_claude_found(self, capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
+    def test_returns_available_when_claude_found(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
         args = _make_namespace(output="json")
 
         mock_version = MagicMock()
@@ -269,7 +302,9 @@ class TestCmdCapabilities:
         assert output["version"] == "claude 1.0.3"
         assert isinstance(output["supported_skills"], list)
 
-    def test_returns_unavailable_when_claude_not_found(self, capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
+    def test_returns_unavailable_when_claude_not_found(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
         args = _make_namespace(output="json")
         (tmp_path / "skills").mkdir()
 
@@ -283,7 +318,9 @@ class TestCmdCapabilities:
         output = json.loads(capsys.readouterr().out)
         assert output["available"] is False
 
-    def test_includes_skill_names_in_supported_skills(self, capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
+    def test_includes_skill_names_in_supported_skills(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
         args = _make_namespace(output="json")
         skills_dir = tmp_path / "skills"
         for name in ["refine-issue", "confidence-check"]:
@@ -311,7 +348,10 @@ class TestCmdCapabilities:
 
         with (
             patch("little_loops.cli.action.shutil.which", return_value="/usr/bin/claude"),
-            patch("little_loops.cli.action.subprocess.run", side_effect=subprocess.TimeoutExpired("claude", 10)),
+            patch(
+                "little_loops.cli.action.subprocess.run",
+                side_effect=subprocess.TimeoutExpired("claude", 10),
+            ),
             patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
             result = cmd_capabilities(args)
@@ -340,7 +380,9 @@ class TestCmdList:
         output = json.loads(capsys.readouterr().out)
         assert output == [{"name": "my-skill", "description": "My skill"}]
 
-    def test_returns_empty_list_when_no_skills(self, capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
+    def test_returns_empty_list_when_no_skills(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
         args = _make_namespace(output="json")
         (tmp_path / "skills").mkdir()
 
@@ -360,8 +402,12 @@ class TestCmdList:
 class TestMainAction:
     def test_invoke_subcommand_dispatch(self) -> None:
         with (
-            patch.object(sys, "argv", ["ll-action", "invoke", "refine-issue", "--args", "P2-ENH-1229"]),
-            patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)),
+            patch.object(
+                sys, "argv", ["ll-action", "invoke", "refine-issue", "--args", "P2-ENH-1229"]
+            ),
+            patch(
+                "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+            ),
         ):
             result = main_action()
 
@@ -405,8 +451,12 @@ class TestMainAction:
 
     def test_invoke_with_timeout_flag(self) -> None:
         with (
-            patch.object(sys, "argv", ["ll-action", "invoke", "confidence-check", "--timeout", "60"]),
-            patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)) as mock_run,
+            patch.object(
+                sys, "argv", ["ll-action", "invoke", "confidence-check", "--timeout", "60"]
+            ),
+            patch(
+                "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+            ) as mock_run,
         ):
             main_action()
 
@@ -415,7 +465,9 @@ class TestMainAction:
     def test_invoke_json_output_flag(self, capsys: pytest.CaptureFixture) -> None:
         with (
             patch.object(sys, "argv", ["ll-action", "invoke", "refine-issue", "--output", "json"]),
-            patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)),
+            patch(
+                "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+            ),
         ):
             main_action()
 

@@ -191,7 +191,9 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_16(self) -> None:
         content = README.read_text()
-        assert "16 CLI tools" in content, "README.md must say '16 CLI tools' after ll-action was added"
+        assert "16 CLI tools" in content, (
+            "README.md must say '16 CLI tools' after ll-action was added"
+        )
 
     def test_configure_areas_count_is_15(self) -> None:
         content = CONFIGURE_AREAS.read_text()
@@ -201,7 +203,9 @@ class TestFeat1229LlActionWiring:
 
     def test_configure_areas_lists_ll_action(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "ll-action" in content, "skills/configure/areas.md must enumerate ll-action in the tool list"
+        assert "ll-action" in content, (
+            "skills/configure/areas.md must enumerate ll-action in the tool list"
+        )
 
     def test_init_skill_has_ll_action_bash_permission(self) -> None:
         content = INIT_SKILL.read_text()
@@ -219,4 +223,6 @@ class TestFeat1229LlActionWiring:
 
     def test_contributing_md_has_action_py(self) -> None:
         content = CONTRIBUTING_MD.read_text()
-        assert "action.py" in content, "CONTRIBUTING.md must include action.py in the cli/ directory tree"
+        assert "action.py" in content, (
+            "CONTRIBUTING.md must include action.py in the cli/ directory tree"
+        )

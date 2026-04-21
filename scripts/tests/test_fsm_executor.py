@@ -2149,9 +2149,7 @@ class TestTimeoutHandling:
             return result
 
         with patch("little_loops.fsm.executor.time.time", side_effect=mock_time):
-            executor = FSMExecutor(
-                fsm, event_callback=events.append, action_runner=mock_runner
-            )
+            executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
             result = executor.run()
 
         # Timeout is honored (loop ends with timeout termination)
@@ -2162,12 +2160,11 @@ class TestTimeoutHandling:
         assert "copy_flag.sh" in mock_runner.calls
         # state_enter for the flushed state appears BEFORE loop_complete
         state_enter_copy = [
-            i for i, e in enumerate(events)
+            i
+            for i, e in enumerate(events)
             if e["event"] == "state_enter" and e["state"] == "copy_flag"
         ]
-        loop_complete_idx = next(
-            i for i, e in enumerate(events) if e["event"] == "loop_complete"
-        )
+        loop_complete_idx = next(i for i, e in enumerate(events) if e["event"] == "loop_complete")
         assert state_enter_copy, "state_enter for flushed state was not emitted"
         assert state_enter_copy[0] < loop_complete_idx
 
