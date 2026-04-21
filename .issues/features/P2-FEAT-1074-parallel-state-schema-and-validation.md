@@ -2,8 +2,13 @@
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
 parent_issue: FEAT-1072
-confidence_score: 100
-outcome_confidence: 86
+confidence_score: 90
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
+size: Very Large
 ---
 
 # FEAT-1074: Parallel State Schema and Validation
@@ -13,7 +18,7 @@ outcome_confidence: 86
 **MUST land in this PR, not as follow-ups:**
 
 - **ENH-1166 — review-loop V-series check rows** (folded 2026-04-20). Three new V-series rows for `parallel`+`action`, `parallel`+`loop`, `parallel`+`next` mutual exclusions must appear in `skills/review-loop/reference.md`; add `parallel:` to the State Type quick-reference table if present. See Acceptance Criteria "V-series check table updated (folded from ENH-1166)". Do NOT defer to a later issue — `/ll:review-loop` diverges from runtime validation otherwise.
-- **`_validate_state_routing` no-transition guard fix** is a hard prerequisite for FEAT-1076. A valid `parallel:` state currently triggers the "no transition defined" error because the guard at `validation.py:271` has no `has_parallel` exemption. Ship the `has_parallel = state.parallel is not None` guard addition in this PR alongside the dataclass — FEAT-1076 cannot merge without it.
+- **`_validate_state_routing` no-transition guard fix** is a hard prerequisite for FEAT-1076. A valid `parallel:` state currently triggers the "no transition defined" error because the guard at `validation.py:271` has no `has_parallel` exemption (current condition: `if not has_shorthand and not has_route and not has_next and not has_terminal and not has_loop`). Ship the `has_parallel = state.parallel is not None` guard addition in this PR alongside the dataclass — FEAT-1076 cannot merge without it.
 
 **Cross-reference**: v1 scope and explicit post-v1 "won't do" list lives in **P3-ENH-1186** (parallel-state v1 scope & limitations).
 
@@ -31,9 +36,9 @@ No `ParallelStateConfig` dataclass exists in `schema.py`. States with a `paralle
 
 ## Expected Behavior
 
-- `ParallelStateConfig` dataclass exists in `schema.py` with 7 fields and correct round-trip serialization (`to_dict` / `from_dict`)
+- `ParallelStateConfig` dataclass exists in `schema.py` with 9 fields and correct round-trip serialization (`to_dict` / `from_dict`)
 - `StateConfig.parallel` deserializes correctly — `None` when absent, `ParallelStateConfig` when present
-- `"parallel"` is in `KNOWN_TOP_LEVEL_KEYS` — no unknown-key warnings on loops using `parallel:` states
+- `parallel` is present in `stateConfig.properties` in `fsm-loop-schema.json` — no IDE/lint "additional property" errors on loops using `parallel:` states (NOTE: `KNOWN_TOP_LEVEL_KEYS` is not involved; see Implementation Notes CORRECTION)
 - Mutual exclusion rules in `validation.py` reject `parallel:` + `action:`, `parallel:` + `loop:`, `parallel:` + `next:` with clear error messages
 - `isolation` defaults to `"thread"` (fast, read-safe); `"worktree"` is opt-in for sub-loops that write files concurrently
 - `timeout_seconds` provides an optional per-worker timeout; `None` means no timeout
@@ -44,7 +49,7 @@ No `ParallelStateConfig` dataclass exists in `schema.py`. States with a `paralle
 This feature would:
 - Provide the data model and validation backbone required by FEAT-1072 (parallel FSM state type) — downstream modules (FEAT-1075 parallel runner, FEAT-1076 executor dispatch) depend on `ParallelStateConfig` existing in `schema.py`
 - Ensure schema correctness at parse time: mutual exclusion rules catch malformed loop configs (e.g., `parallel:` + `action:`) with clear errors before execution
-- Maintain backward compatibility: adding `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` ensures existing loops continue to pass validation without spurious unknown-key warnings
+- Maintain backward compatibility: additive-only changes to `fsm-loop-schema.json` (new `parallel` object under `stateConfig.properties`) ensure existing loops continue to pass validation without spurious "additional property" errors
 
 ## Use Case
 
@@ -64,7 +69,7 @@ Decomposed from FEAT-1072: Add `parallel:` State Type to FSM for Concurrent Sub-
 
 ### schema.py
 
-Add `ParallelStateConfig` dataclass following the `LoopConfigOverrides` pattern at `schema.py:419`:
+Add `ParallelStateConfig` dataclass following the `LoopConfigOverrides` pattern at `schema.py:459` (`to_dict` at `:477`, `from_dict` at `:498`):
 
 ```python
 @dataclass
@@ -87,11 +92,12 @@ class ParallelStateConfig:
         ...
 ```
 
-Add `parallel: ParallelStateConfig | None = None` to `StateConfig`. Follow the `loop` field pattern in `to_dict()` (skip if None, lines ~316) and `from_dict()` (use `data.get("parallel")`, lines ~288–338).
+Add `parallel: ParallelStateConfig | None = None` to `StateConfig` (place after `loop` field at `schema.py:251`). Follow the `loop` field pattern in `to_dict()` (skip if None; `StateConfig.to_dict` spans `schema.py:257–316`) and `from_dict()` (use `data.get("parallel")`; `StateConfig.from_dict` spans `schema.py:319–375`).
 
 ### validation.py
 
-- Add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` frozenset at `validation.py:77–99`
+- Add mutual exclusion + range/enum checks in `_validate_state_action()` at `validation.py:195–227` (alongside existing `loop`/`action` check at `:217–225`)
+- NOTE: despite earlier drafts, do NOT add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` at `:77–99` — that frozenset is for YAML document-root keys only (`name`, `states`, `context`, etc.); state-level key filtering is handled by `additionalProperties: false` in the JSON Schema (`fsm-loop-schema.json:320`) and by `data.get()` in `StateConfig.from_dict()` (which silently ignores unknown state-level keys)
 - Add mutual exclusion checks: `parallel` + `action`, `parallel` + `loop`, `parallel` + `next`
 - Add range validation: `max_workers >= 1`; `timeout_seconds is None or timeout_seconds >= 1`; `max_items >= 1`; `max_total_seconds is None or max_total_seconds >= 1`
 - Add cross-field check: if both `max_total_seconds` and `timeout_seconds` are set, emit a WARN (not ERROR) when `max_total_seconds <= max_workers * timeout_seconds`, since the cumulative cap would be dominated by per-worker timeouts and effectively unreachable (see ENH-1176 rationale)
@@ -132,27 +138,27 @@ parallel: ParallelStateConfig | None = None
 
 ## Implementation Steps
 
-1. Add `ParallelStateConfig` dataclass to `schema.py` following the `LoopConfigOverrides` pattern at `schema.py:419` — implement `to_dict()` and `from_dict()` using the same guard/cast idioms
-2. Extend `StateConfig` with `parallel: ParallelStateConfig | None = None`; update `to_dict()` to skip if None (follow `loop` field pattern at ~line 316) and `from_dict()` to hydrate via `ParallelStateConfig.from_dict()` when key present
-3. Update `validation.py`: add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` (lines 77–99); add mutual exclusion checks (`parallel` + `action`, `parallel` + `loop`, `parallel` + `next`); add `max_workers >= 1`, `timeout_seconds is None or timeout_seconds >= 1`, `max_items >= 1`, `max_total_seconds is None or max_total_seconds >= 1`, enum checks for `isolation` and `fail_mode`; add WARN when both `max_total_seconds` and `timeout_seconds` are set and `max_total_seconds <= max_workers * timeout_seconds`
+1. Add `ParallelStateConfig` dataclass to `schema.py` following the `LoopConfigOverrides` pattern at `schema.py:459` — implement `to_dict()` (model after `:477`) and `from_dict()` (model after `:498`) using the same guard/cast idioms
+2. Extend `StateConfig` with `parallel: ParallelStateConfig | None = None` (place after `loop` at `schema.py:251`); update `to_dict()` to skip if None (follow `evaluate`/`route` pattern at `schema.py:267–270`) and `from_dict()` to hydrate via `ParallelStateConfig.from_dict()` when key present (follow hydration block at `schema.py:321–327`)
+3. Update `validation.py`: add mutual exclusion checks in `_validate_state_action()` at `:195–227` (`parallel` + `action`, `parallel` + `loop`, `parallel` + `next`); add `max_workers >= 1`, `timeout_seconds is None or timeout_seconds >= 1`, `max_items >= 1`, `max_total_seconds is None or max_total_seconds >= 1`, enum checks for `isolation` and `fail_mode`; add WARN when both `max_total_seconds` and `timeout_seconds` are set and `max_total_seconds <= max_workers * timeout_seconds`. Do NOT add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` — that frozenset is for YAML document-root keys; state-level unknown keys are silently ignored via `data.get()` in `from_dict()`
 4. Update `fsm-loop-schema.json`: add `parallel:` as a valid state-level key with sub-field types and constraints matching `ParallelStateConfig`
-5. Fix `_validate_state_routing` no-transition guard in `validation.py:271` — add `has_parallel = state.parallel is not None` to the guard condition so valid `parallel:` states are not falsely flagged as having "no transition defined" (model after the existing `has_loop` exemption at the same line; test with `test_parallel_state_no_transition_not_flagged`)
-6. Run `test_fsm_schema.py`, `test_fsm_schema_fuzz.py`, `test_fsm_validation.py`, `test_fsm_fragments.py`, and `test_builtin_loops.py` to verify no regressions from the new mutual-exclusion rules
+5. Fix `_validate_state_routing` no-transition guard in `validation.py:271` — add `has_parallel = state.parallel is not None` to the guard condition (current guard: `if not has_shorthand and not has_route and not has_next and not has_terminal and not has_loop`) so valid `parallel:` states are not falsely flagged as having "no transition defined" (model after the existing `has_loop` exemption at `:269`; test with `test_parallel_state_no_transition_not_flagged`)
+6. Run `test_fsm_schema.py`, `test_fsm_schema_fuzz.py`, `test_fsm_validation.py`, `test_fsm_fragments.py`, `test_builtin_loops.py`, `test_review_loop.py`, `test_outer_loop_eval.py`, and `test_ll_loop_commands.py` to verify no regressions from the new mutual-exclusion rules and the `_validate_state_routing` fix (the last three were identified by wiring analysis as exercising `validate_fsm` against all built-in loops and existing CLI fixtures)
 7. Update `skills/review-loop/reference.md` V-series check table with three new rows (`parallel`+`action`, `parallel`+`loop`, `parallel`+`next` → ERROR) using the next available V-series IDs; add `parallel:` to State Type quick-reference table if one exists (folded from ENH-1166)
 
 ## Files to Modify
 
-- `scripts/little_loops/fsm/schema.py` — Add `ParallelStateConfig`, extend `StateConfig` (follow `to_dict`/`from_dict` pattern at lines ~288–338)
-- `scripts/little_loops/fsm/validation.py` — Add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` (lines 77–99); add mutual exclusion and value-range checks
+- `scripts/little_loops/fsm/schema.py` — Add `ParallelStateConfig`, extend `StateConfig` (follow `to_dict`/`from_dict` pattern at `:257–316` and `:319–375`)
+- `scripts/little_loops/fsm/validation.py` — Add mutual exclusion and value-range checks in `_validate_state_action()` at `:195–227` (see CORRECTION note — do NOT add `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` at `:77–99`; that frozenset covers top-level YAML keys only)
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — Add `parallel:` object schema
 - `skills/review-loop/reference.md` — Add three V-series rows for parallel mutual exclusions; add `parallel:` to State Type quick-reference if present (folded from ENH-1166)
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/schema.py` — Add `ParallelStateConfig` dataclass (flat structure — simpler than `LoopConfigOverrides`); extend `StateConfig` with `parallel: ParallelStateConfig | None = None` field placed after the `loop` field (~line 233); update `to_dict()` (~line 275) and `from_dict()` (~line 315)
-- `scripts/little_loops/fsm/validation.py` — Add mutual exclusion + range/enum checks in `_validate_state_action()` (~line 225 area); see correction note in Implementation Notes about `KNOWN_TOP_LEVEL_KEYS`
-- `scripts/little_loops/fsm/fsm-loop-schema.json` — Add `parallel` to `stateConfig.properties` (currently `additionalProperties: false` at line 292 will reject any loop file using `parallel:` states without this addition)
+- `scripts/little_loops/fsm/schema.py` — Add `ParallelStateConfig` dataclass (flat structure — simpler than `LoopConfigOverrides`); extend `StateConfig` with `parallel: ParallelStateConfig | None = None` field placed after the `loop` field at `:251`; update `to_dict()` at `:257–316` and `from_dict()` at `:319–375`
+- `scripts/little_loops/fsm/validation.py` — Add mutual exclusion + range/enum checks in `_validate_state_action()` at `:195–227`; see correction note in Implementation Notes about `KNOWN_TOP_LEVEL_KEYS`
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — Add `parallel` to `stateConfig.properties` (currently `additionalProperties: false` at `:320` will reject any loop file using `parallel:` states without this addition)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — imports `StateConfig` and `LoopConfigOverrides`; dispatcher for FEAT-1076 will add `parallel` handling here
@@ -166,33 +172,44 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/info.py:556-563` — `_print_state_overview_table` Type column has no `parallel` branch (FEAT-1078 scope)
 - `scripts/little_loops/cli/loop/run.py:107-115` — context variable pre-scan checks `state.action` but not `state.parallel.items`; `{{ issue_list }}`-style expressions in `items` won't be caught. Tracked as **ENH-1173** (see `.issues/enhancements/P3-ENH-1173-extend-unresolved-context-variable-pre-scan-to-cover-parallel-items.md`) — follow-up after FEAT-1074 lands.
 
+_Wiring pass added by `/ll:wire-issue` (2026-04-20 pass):_
+- `scripts/little_loops/cli/loop/_helpers.py` — imports `load_and_validate` inline; used by CLI dispatch layer. No code changes needed for FEAT-1074 but must pass regression run.
+- `scripts/little_loops/cli/loop/config_cmds.py` — imports `load_and_validate` inline for the `validate` subcommand. No code changes needed for FEAT-1074 but must pass regression run.
+
 ### Similar Patterns (Exact Code References)
-- `schema.py:438-481` — `LoopConfigOverrides.to_dict/from_dict`: shows skip-if-None pattern, but uses nested dict remapping; **`ParallelStateConfig` is flat so skip the nesting complexity**
-- `schema.py:246-248` — `StateConfig.to_dict()` for `evaluate`/`route` nested dataclass fields: `if self.evaluate is not None: result["evaluate"] = self.evaluate.to_dict()` — use this exact pattern for `parallel`
-- `schema.py:290-296` — `StateConfig.from_dict()` for nested dataclass hydration: `parallel = None; if "parallel" in data: parallel = ParallelStateConfig.from_dict(data["parallel"])` — use this exact pattern
-- `schema.py:555-558` — `FSMLoop.to_dict()` double-guard pattern (check non-None AND non-empty dict before writing); not needed for `ParallelStateConfig` since it always has required fields
-- `validation.py:217-225` — existing `loop`/`action` mutual exclusion: `if state.loop is not None and state.action is not None: errors.append(ValidationError(message="'loop' and 'action' are mutually exclusive — ...", path=f"{path}"))`
-- `validation.py:281-301` — range validation pattern: `f"'max_retries' must be >= 1, got {state.max_retries}"` — follow for `max_workers` check
-- `test_fsm_schema.py:1722-1757` — `test_loop_and_action_mutual_exclusion`: shows ERROR-level mutual exclusion test pattern using `str(e)` and `any()`
-- `test_fsm_schema.py:1693-1720` — loop field triplet: `test_to_dict_includes_loop_when_set`, `test_to_dict_excludes_loop_when_none`, `test_from_dict_with_loop`, `test_from_dict_without_loop` — model parallel field tests after these
+- `schema.py:477-520` — `LoopConfigOverrides.to_dict/from_dict`: shows skip-if-None pattern, but uses nested dict remapping; **`ParallelStateConfig` is flat so skip the nesting complexity**
+- `schema.py:267-270` — `StateConfig.to_dict()` for `evaluate`/`route` nested dataclass fields: `if self.evaluate is not None: result["evaluate"] = self.evaluate.to_dict()` — use this exact pattern for `parallel`
+- `schema.py:321-327` — `StateConfig.from_dict()` for nested dataclass hydration: `parallel = None; if "parallel" in data: parallel = ParallelStateConfig.from_dict(data["parallel"])` — use this exact pattern
+- `schema.py:590-597` — `FSMLoop.to_dict()` double-guard pattern (check non-None AND non-empty dict before writing); not needed for `ParallelStateConfig` since it always has required fields
+- `validation.py:217-225` — existing `loop`/`action` mutual exclusion: `"'loop' and 'action' are mutually exclusive — a sub-loop state cannot also have an action"` (path = `f"{path}"`, i.e., `states.<state_name>`)
+- `validation.py:295-301` — range validation pattern: `f"'max_retries' must be >= 1, got {state.max_retries}"` — follow for `max_workers` check
+- `test_fsm_schema.py:1866` — `test_loop_and_action_mutual_exclusion`: shows ERROR-level mutual exclusion test pattern using `str(e)` and `any()`
+- `test_fsm_schema.py:1837, 1844, 1851, 1859` — loop field quartet: `test_to_dict_includes_loop_when_set` (:1837), `test_to_dict_excludes_loop_when_none` (:1844), `test_from_dict_with_loop` (:1851), `test_from_dict_without_loop` (:1859) — model parallel field tests after these
 
 ### Tests
-- `scripts/tests/test_fsm_schema.py` — primary test file; `TestFSMValidation` at line 636 (15 methods, none assert total error counts — safe to add new validation rules)
+- `scripts/tests/test_fsm_schema.py` — primary test file; `TestFSMValidation` at `:780` (15 methods, none assert total error counts — safe to add new validation rules)
 - `scripts/tests/test_fsm_validation.py` — **separate validation-specific test file** not mentioned in the issue; new parallel mutual exclusion tests may fit here instead of `test_fsm_schema.py`
 - `scripts/tests/test_fsm_fragments.py` — calls `validate_fsm` across built-in loops; new rules must not reject existing loops
 - `scripts/tests/test_builtin_loops.py` — same concern; all 33+ built-in loops must continue to pass
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_schema_fuzz.py` — `TestStateConfigFuzz` exercises `StateConfig.from_dict()` with random inputs; include in regression run alongside `test_fsm_schema.py` to catch unexpected `parallel` field interactions
-- New tests to write (add `TestParallelStateConfig` class to `test_fsm_schema.py` following `TestLoopConfigOverrides` at line 1760):
-  - `test_parallel_state_no_transition_not_flagged` — **critical**: verifies a valid `parallel:` state does NOT trigger the "no transition defined" error after the `_validate_state_routing` fix (model after `test_sub_loop_state_no_transition_error` at `test_fsm_schema.py:1740`)
-  - `test_parallel_and_action_mutual_exclusion` — parallel + action → ERROR with both words in message (model after `test_loop_and_action_mutual_exclusion` at `test_fsm_schema.py:1722`)
+
+_Wiring pass added by `/ll:wire-issue` (2026-04-20 pass):_
+- `scripts/tests/test_review_loop.py` — **include in regression run**: parametrizes `validate_fsm` over all `loops/*.yaml` built-in loops; if the `_validate_state_routing` fix changes what errors are emitted for any existing loop, this will surface it
+- `scripts/tests/test_outer_loop_eval.py` — **include in regression run**: calls `load_and_validate` + `validate_fsm` against `outer-loop-eval.yaml` specifically
+- `scripts/tests/test_ll_loop_commands.py` — **include in regression run**: 8 inline `load_and_validate` calls exercising the CLI `validate` subcommand end-to-end; may expose fixture-level regressions if new validation rules fire on existing test YAML
+
+- New tests to write (add `TestParallelStateConfig` class to `test_fsm_schema.py` following `TestLoopConfigOverrides` at `:1904`):
+  - `test_parallel_state_no_transition_not_flagged` — **critical**: verifies a valid `parallel:` state does NOT trigger the "no transition defined" error after the `_validate_state_routing` fix (model after `test_sub_loop_state_no_transition_error` at `test_fsm_schema.py:1884`)
+  - `test_parallel_and_action_mutual_exclusion` — parallel + action → ERROR with both words in message (model after `test_loop_and_action_mutual_exclusion` at `test_fsm_schema.py:1866`)
   - `test_parallel_and_loop_mutual_exclusion` — parallel + loop → ERROR
   - `test_parallel_and_next_mutual_exclusion` — parallel + next → ERROR
-  - `test_to_dict_includes_parallel_when_set` / `test_to_dict_excludes_parallel_when_none` — assert `"parallel" not in d` when `parallel=None` (model after `test_to_dict_excludes_loop_when_none` at line 1700)
+  - `test_to_dict_includes_parallel_when_set` / `test_to_dict_excludes_parallel_when_none` — assert `"parallel" not in d` when `parallel=None` (model after `test_to_dict_excludes_loop_when_none` at `:1844`)
   - `test_from_dict_with_parallel` / `test_from_dict_without_parallel`
   - `test_parallel_state_config_roundtrip` — `ParallelStateConfig.from_dict(original.to_dict())` lossless for all 6 fields
   - Enum/range validation: `max_workers=0` → ERROR; `isolation="invalid"` → ERROR; `fail_mode="invalid"` → ERROR
+  - `test_fsm_loop_schema_contains_parallel` — load `fsm-loop-schema.json` as JSON, assert `"parallel"` in `stateConfig.properties`; no existing test validates schema structural correctness (follow `test_config_schema.py` pattern: load JSON, assert structural keys)
 
 ### Documentation
 
@@ -204,7 +221,7 @@ _Wiring pass added by `/ll:wire-issue`:_ (out of scope for FEAT-1074 — address
 - `skills/review-loop/reference.md:21-38` — V-series check table; new parallel mutual-exclusion checks (V-series IDs) not yet listed
 
 ### Configuration / Schema
-- `scripts/little_loops/fsm/fsm-loop-schema.json` — `stateConfig` definition at line 175; `additionalProperties: false` at line 292; `patternProperties` for `^on_` at lines 286-291
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — `stateConfig` definition at `:175`; `additionalProperties: false` at `:320`; `patternProperties` for `^on_` at `:314–319`
 
 ## Acceptance Criteria
 
@@ -232,14 +249,14 @@ Moved from FEAT-1077 (2026-04-20) to break the circular dependency where FEAT-10
 - **`test_fsm_schema.py::TestParallelStateConfig`** — round-trip `to_dict()`/`from_dict()`, defaults applied on minimal construction, `StateConfig` serializes/omits `parallel` key correctly
 - **`test_fsm_schema.py::TestParallelMutualExclusion`** — follows `test_loop_and_action_mutual_exclusion:1722` pattern; covers `parallel`+`action`, `parallel`+`loop`, `parallel`+`next`, `max_workers: 0`, `max_items: 0`, `max_total_seconds: 0`, `isolation: "invalid"`, `fail_mode: "invalid"`, and the cumulative-cap-dominated-by-per-worker-timeout WARN
 - **`test_fsm_validation.py`** — one test asserting a `parallel:` state with routing does NOT trigger the no-transition guard (the guard at `validation.py:271` gains `and not has_parallel` in this issue)
-- **`test_fsm_schema_fuzz.py`** — add `parallel` block to `malformed_state_config` hypothesis strategy (insertion point: after line 174, before the `unexpected_*` block)
+- **`test_fsm_schema_fuzz.py`** — add `parallel` block to `malformed_state_config` hypothesis strategy (defined at `:134`); insertion point is inside the body, before the `# Add unexpected fields` block at `:175`
 
 `test_fsm_schema.py:636` `TestFSMValidation` may assert specific error counts — review for regressions after adding new mutual-exclusion rules.
 
 ## Implementation Notes
 
-- Follow `LoopConfigOverrides.to_dict()` / `from_dict()` at `schema.py:419` as the serialization template
-- `test_fsm_schema.py:636` `TestFSMValidation` may assert specific error counts — review for regressions after adding new mutual-exclusion rules
+- Follow `LoopConfigOverrides.to_dict()` / `from_dict()` at `schema.py:459` as the serialization template
+- `test_fsm_schema.py:780` `TestFSMValidation` may assert specific error counts — review for regressions after adding new mutual-exclusion rules
 - `test_fsm_fragments.py` + `test_builtin_loops.py` call `validate_fsm` across all 33 built-in loops — new rules must not reject existing loops
 
 ### Why `isolation` defaults to `"thread"` (not `"worktree"`)
@@ -261,7 +278,9 @@ Authors who need worktree isolation set `isolation: "worktree"` explicitly; ther
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-**CORRECTION — `KNOWN_TOP_LEVEL_KEYS` is wrong target**: `KNOWN_TOP_LEVEL_KEYS` at `validation.py:77` holds top-level YAML keys (`name`, `states`, `context`, etc.). The `parallel:` key lives inside a state config (`states.my_state.parallel`), NOT at the top level. Adding `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` has no effect on state-level validation. The actual fix for IDE unknown-key warnings is adding `parallel` to `stateConfig.properties` in `fsm-loop-schema.json` (where `additionalProperties: false` at line 292 enforces the constraint). Drop the `KNOWN_TOP_LEVEL_KEYS` step from Implementation Steps 3.
+_Re-verified 2026-04-20: all line-number references in this issue updated to match current file state (extensive drift since 2026-04-12 refinement — `schema.py` grew ~40 lines, `test_fsm_schema.py` grew ~144 lines, `fsm-loop-schema.json` grew ~28 lines in `stateConfig`)._
+
+**CORRECTION — `KNOWN_TOP_LEVEL_KEYS` is wrong target**: `KNOWN_TOP_LEVEL_KEYS` at `validation.py:77` holds top-level YAML keys (`name`, `states`, `context`, etc. — 18 keys total, confirmed 2026-04-20). The `parallel:` key lives inside a state config (`states.my_state.parallel`), NOT at the top level. Adding `"parallel"` to `KNOWN_TOP_LEVEL_KEYS` has no effect on state-level validation. Further confirmed 2026-04-20: there is no state-level unknown-key frozenset check at all — unknown state-level keys are silently ignored because `StateConfig.from_dict()` uses `data.get("key")` for every field. The actual fix for IDE unknown-key warnings is adding `parallel` to `stateConfig.properties` in `fsm-loop-schema.json` (where `additionalProperties: false` at `:320` enforces the constraint). Drop the `KNOWN_TOP_LEVEL_KEYS` step from Implementation Steps 3.
 
 **`TestFSMValidation` does NOT assert total error counts**: Research confirmed all 15 test methods use `any("substring" in e.message for e in errors)` or `len(filtered_list) == 0` patterns — adding new parallel mutual-exclusion rules will not break any existing error count assertions.
 
@@ -302,13 +321,13 @@ def from_dict(cls, data: dict[str, Any]) -> "ParallelStateConfig":
     )
 ```
 
-**Exact StateConfig extension pattern** (follow `evaluate`/`route` at `schema.py:246-248`, `290-296`):
+**Exact StateConfig extension pattern** (follow `evaluate`/`route` at `schema.py:267-270`, `:321-327`):
 ```python
-# In StateConfig.to_dict() (~line 275, after loop field):
+# In StateConfig.to_dict() (insert near the evaluate/route skip-if-None guards at :267-270):
 if self.parallel is not None:
     result["parallel"] = self.parallel.to_dict()
 
-# In StateConfig.from_dict() (~line 290, before the cls(...) call):
+# In StateConfig.from_dict() (insert near the evaluate/route hydration block at :321-327, before the cls(...) call):
 parallel = None
 if "parallel" in data:
     parallel = ParallelStateConfig.from_dict(data["parallel"])
@@ -337,7 +356,7 @@ f"'isolation' must be one of {{'worktree', 'thread'}}, got {repr(state.parallel.
 f"'fail_mode' must be one of {{'collect', 'fail_fast'}}, got {repr(state.parallel.fail_mode)}"
 ```
 
-**`fsm-loop-schema.json` parallel property structure** (add to `stateConfig.properties` before `additionalProperties: false` at line 292):
+**`fsm-loop-schema.json` parallel property structure** (add to `stateConfig.properties` before `additionalProperties: false` at `:320`):
 ```json
 "parallel": {
   "type": "object",
@@ -358,7 +377,7 @@ f"'fail_mode' must be one of {{'collect', 'fail_fast'}}, got {repr(state.paralle
 }
 ```
 
-**Test file for mutual exclusion tests**: `test_fsm_validation.py` is a dedicated validation test file (not listed in the issue). New parallel mutual exclusion tests belong there (or in `TestFSMValidation` at `test_fsm_schema.py:636`). Follow the `test_loop_and_action_mutual_exclusion` pattern at `test_fsm_schema.py:1722`: build an `FSMLoop` with conflicting fields, call `validate_fsm(fsm)`, assert `any("parallel" in m and "action" in m for m in [str(e) for e in errors])`.
+**Test file for mutual exclusion tests**: `test_fsm_validation.py` is a dedicated validation test file (not listed in the issue). New parallel mutual exclusion tests belong there (or in `TestFSMValidation` at `test_fsm_schema.py:780`). Follow the `test_loop_and_action_mutual_exclusion` pattern at `test_fsm_schema.py:1866`: build an `FSMLoop` with conflicting fields, call `validate_fsm(fsm)`, assert `any("parallel" in m and "action" in m for m in [str(e) for e in errors])`.
 
 ## Impact
 
@@ -374,6 +393,9 @@ f"'fail_mode' must be one of {{'collect', 'fail_fast'}}, got {repr(state.paralle
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc3e3d8e-1c7e-467c-8219-ec0095654dc3.jsonl`
+- `/ll:wire-issue` - 2026-04-21T01:13:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b0e731e-20eb-4f30-a674-0a436f2d8692.jsonl`
+- `/ll:refine-issue` - 2026-04-21T01:07:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cdc2857-a6c9-41f4-9e21-dba00a1cd48c.jsonl`
 - `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dde26ebe-176b-4ecd-907d-cdda6cf9667d.jsonl`
 - `/ll:wire-issue` - 2026-04-12T21:23:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ac6a699-fe93-4fc5-bb86-1ef76e8c42f2.jsonl`
 - `/ll:refine-issue` - 2026-04-12T21:16:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deffc1f6-3d06-45f7-8667-df4243e14b0f.jsonl`

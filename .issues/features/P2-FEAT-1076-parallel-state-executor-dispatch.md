@@ -2,8 +2,13 @@
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
 parent_issue: FEAT-1072
-confidence_score: 75
-outcome_confidence: 86
+confidence_score: 80
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 18
+size: Very Large
 ---
 
 # FEAT-1076: Parallel State Executor Dispatch
@@ -134,11 +139,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 7. Verify interceptor behavior — check where the `_interceptors` loop runs inside `_execute_state()` relative to the `if state.loop:` early-return; if interceptors are skipped for sub-loop states (expected), parallel dispatch is consistent — document this behavior in `_execute_parallel_state()` comments
 8. Add comment in `_execute_parallel_state()` noting that `SimulationActionRunner` is bypassed when `ParallelRunner` is invoked (see `cli/loop/testing.py:185`) — simulation mode does not support parallel states
 9. Confirm `fsm/__init__.py` — lazy import of `ParallelRunner` inside method body means no `__init__.py` update is required; verify after FEAT-1075 is merged
+10. Coordinate `validation.py` updates with FEAT-1074 implementer — two rules required when `StateConfig.parallel` lands: (a) add `has_parallel` flag to the "no transition" guard in `_validate_state_transitions()` at lines 266–277; (b) add `parallel`/`action` and `parallel`/`loop` mutual exclusion to `_validate_state_action()` at lines 217–226. If FEAT-1074 doesn't include these, add them here.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/fsm/executor.py` — Add `_execute_parallel_state()`, `_route_parallel()`, insert dispatch at `_execute_state()` after `if state.loop is not None:` block
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation.py` — Two rules must be added alongside FEAT-1074 landing: (1) `has_parallel = state.parallel is not None` flag in the "no transition" guard at `_validate_state_transitions()` lines 266–277 so states with only `parallel:` and no routing are caught; (2) `parallel`/`action` and `parallel`/`loop` mutual exclusion in `_validate_state_action()` at lines 217–226, mirroring the existing `loop`/`action` check. Coordinate with FEAT-1074 implementer — these changes are blocked on `StateConfig.parallel` existing.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/run.py` — Uses `FSMExecutor` transparently; no changes expected but verify scope lock architecture holds
@@ -164,12 +173,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_loop_execution.py:95` — `TestEndToEndExecution` exercises `_execute_state()` through `PersistentExecutor.run()`; run as a regression gate after implementing the dispatch insertion
 - **`TestParallelExecution` must cover** (mirrors `TestSubLoopExecution` method set at `test_fsm_executor.py:3475–3792`): all-workers-succeed → `on_yes`; mixed results → `on_partial`; all-workers-fail → `on_no`; missing child loop with `on_error` set; missing child loop without `on_error`; `context_passthrough=True` stores results in `self.captured[state_name]`; `max_workers` limiting; `fail_mode: collect` vs `fail_mode: fail_fast`
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_loop_commands.py:2845` — imports `FSMExecutor` directly; run as regression gate after dispatch insertion to catch any import-path breakage
+- `scripts/tests/test_extension.py` — interceptor wiring tests; verify `before_route`/`after_route` hooks are not accidentally fired for the parallel early-return path (interceptors skip parallel states the same way they skip `loop:` states)
+- `scripts/tests/test_interceptor_extension.py` — extension interceptor tests; parallel dispatch skips `_interceptors` loop same as sub-loop; run as regression gate
+- `scripts/tests/test_fsm_executor.py::TestRateLimitCircuitIntegration:test_sub_loop_inherits_parent_circuit` (line 5305–5324) — verifies that the `circuit` breaker is propagated from parent executor to child sub-loop workers; `ParallelRunner` (FEAT-1075) must similarly propagate `circuit` to worker child executors — verify this is covered in the `TestParallelExecution` matrix or add a dedicated `test_parallel_state_inherits_parent_circuit` test
+
 ### Documentation
 - N/A — internal implementation; no public-facing docs changes
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `skills/create-loop/loop-types.md:978–1014` — documents `loop:` sub-loop state type; no `parallel:` entry exists; users cannot discover the new state type from this skill (FEAT-1078 scope)
 - `skills/create-loop/reference.md:686–713` — documents `loop` field mutual exclusions; `parallel` field and `on_yes`/`on_partial`/`on_no` routing semantics are absent (FEAT-1078 scope)
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `docs/generalized-fsm-loop.md:236–312` — schema definition block lists all state fields; `loop:` is absent and `parallel:` will also be absent; `docs/generalized-fsm-loop.md:1397–1414` — execution engine flow section describes only action-based dispatch, not sub-loop or parallel early-return paths (FEAT-1078 scope)
+- `docs/guides/LOOPS_GUIDE.md:1865–1914` — "Composable Sub-Loops" section documents only `loop:` fan-out; `parallel:` concurrent fan-out analog is absent; natural extension point for documenting the new state type (FEAT-1078 scope)
 
 ### Display Files (Out of Scope — Known Gaps)
 
@@ -178,7 +197,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/info.py:548–576` — `_print_state_overview_table()` Type column falls through to `—` for states with no `action`, `action_type`, `next`, or `loop`; parallel states show no type — track as a separate display issue
 
 ### Configuration
-- N/A
+- N/A (executor changes require no config key additions)
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `config-schema.json:751–774` — `loops.glyphs` object uses `additionalProperties: false`; the six allowed glyph keys do not include `parallel`; when display code gains a `parallel` state badge branch (deferred display issue), a `parallel` key entry must be added here or schema validation will reject user attempts to configure it
 
 ## Dependencies
 
@@ -309,6 +331,48 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
           raise
   ```
 
+_Re-refined 2026-04-20 (/ll:refine-issue pass 3) — codebase line numbers re-verified against HEAD:_
+
+- **Stale line numbers across the issue body** (verified 2026-04-20; all references to pre-FEAT-1074 revisions of executor.py/persistence.py are off). Use these current numbers when implementing:
+  - `_execute_sub_loop()` — defined at `executor.py:366` (issue says 318)
+  - `_execute_state()` dispatch — `if state.loop is not None:` block spans **lines 445–451**; blank line at 452; `# Handle unconditional transition` comment at 453; `if state.next:` at **line 454** (issue says "after 402, before 405"). **Correct insertion point: after line 451, before line 453** (the blank line 452 sits between).
+  - `_route()` — defined at `executor.py:786` (issue says 713)
+  - `_route()` shorthand routing block — **lines 820–829** (issue says 747–753). Handles `"yes"` → `on_yes`, `"no"` → `on_no`, `"error"` → `on_error`, `"partial"` → `on_partial`, `"blocked"` → `on_blocked`. Note: the `state.route:` table branch at lines 809–817 runs first; if a full route table is present, shorthand is never reached.
+  - `persistence.py:_save_state()` — defined at **line 436** (issue says 418). It builds `LoopState` with `captured=self._executor.captured` at line 448. `LoopState.to_dict()` at lines 114–138 serializes `captured` verbatim as `data["captured"] = self.captured` at line 120. JSON round-trip of `{"results": [...]}` with JSON-primitive entries is fully supported; `from_dict()` at line 171 restores via `data.get("captured", {})` without coercion. **No persistence.py changes required**, verified.
+  - `_build_context()` — `executor.py:892–908`. `_execute_state()` builds `ctx = self._build_context()` at **line 442** before any dispatch. Read this to confirm what `ctx` carries at parallel-dispatch time.
+
+- **`_execute_sub_loop()` does NOT call `self._route()`** — confirmed at `executor.py:419–430`. It uses direct `interpolate(state.on_yes, ctx)` / `interpolate(state.on_no, ctx)` / `interpolate(state.on_error, ctx)` calls because the verdict is structurally derived from `child_result.terminated_by` + `child_result.final_state` (strings like `"terminal"` / `"error"` / `"max_iterations"`), not from a `"yes"`/`"no"`/`"partial"` evaluator verdict. **Parallel dispatch is different**: `ParallelResult.verdict` is already `"yes"` / `"partial"` / `"no"` (per FEAT-1075), so calling `self._route(state, result.verdict, ctx)` is correct and idiomatic here even though sub-loop does not. The prior refinement note recommending `_route()` remains correct — this finding explains why the two dispatchers legitimately diverge in routing style.
+
+- **`SimulationActionRunner` class location** — defined at `scripts/little_loops/fsm/runners.py:174`, not `cli/loop/testing.py:185`. The cli path is where it's *constructed* at simulate-time (which is what the wiring section correctly documents); the class itself lives in `fsm/runners.py`. Use `from little_loops.fsm.runners import SimulationActionRunner` for the `isinstance()` guard at the top of `_execute_parallel_state()`.
+
+- **`InterpolationContext` fields** (`fsm/interpolation.py:37`): dataclass with `context`, `captured`, `prev`, `result`, `state_name`, `iteration`, `loop_name`, `started_at`, `elapsed_ms`. This is what `ctx` carries into `_execute_parallel_state(state, ctx)`.
+
+- **`FSMExecutor.__init__` signature** (`executor.py:120–205`) — takes `fsm`, `event_callback=None`, `action_runner=None`, `signal_detector=None`, `handoff_handler=None`, `loops_dir=None`, `circuit=None`. `self.action_runner` is set at line 143 via `action_runner or DefaultActionRunner()`. When workers construct child executors for parallel fan-out, the `ParallelRunner` (FEAT-1075) is responsible for propagating `action_runner`, `loops_dir`, `circuit`; `_execute_parallel_state()` itself just passes `state.parallel` config and does not construct executors directly.
+
+- **`self.current_state` is safe to read** at parallel-dispatch time — set in constructor at `executor.py:150` (`self.current_state = fsm.initial`), updated at lines 344–345 at end of each iteration (`self.current_state = resolved_next`), and in maintain-mode at line 271. By the time `_execute_state()` runs, `self.current_state` is the name of the state being executed. `self.captured[self.current_state] = {"results": [...]}` is safe.
+
+- **Dispatch-block prerequisite files — current HEAD status** (verified 2026-04-20):
+  - `StateConfig.parallel` field — **absent** from `schema.py:179–255`. `StateConfig` has `loop: str | None = None` at line 251 but no `parallel` field. FEAT-1074 has not landed; do not start implementation before it merges.
+  - `ParallelRunner` class — **absent** from the codebase (no `class ParallelRunner` anywhere in `scripts/`). Module `fsm/parallel_runner.py` does not exist. `fsm/concurrency.py` exists and hosts `LockManager` / `ScopeLock` but not `ParallelRunner`. FEAT-1075 has not landed.
+
+- **Test patterns needing to be invented (no precedent in repo)** — call out in test-writing plan so implementer doesn't waste time searching for an existing shim:
+  - **`threading.active_count()` assertion pattern** for "simulation path spawns no real threads": zero uses in `scripts/tests/`. Closest analogue is `MockActionRunner().calls == []` from `test_fsm_executor.py:3876–3896` (`test_sub_loop_without_action_runs_child`). Model the simulation test on that pattern AND add a `threading.active_count()` before/after delta check.
+  - **`threading.get_ident()` shim for "branch ops never on worker thread"** (FEAT-1184 contract): zero uses of `threading.get_ident`, `thread_ident`, or any worker-thread-id recording pattern in `scripts/tests/`. This is a new test-infra pattern — write a `subprocess.run` wrapper (patched via `patch("little_loops.fsm.executor.subprocess.run", ...)`, mirroring the existing patch-path convention at `test_fsm_executor.py:1790` and `test_ll_loop_state.py:382–388`) that records `threading.get_ident()` on each call. Main-thread id is captured at test start; assert any git ref-modifying invocation's recorded ident equals the main-thread id.
+  - **`KeyboardInterrupt` mid-executor patterns** exist elsewhere (`test_orchestrator.py:990` uses `patch.object(orchestrator, "_setup_signal_handlers", side_effect=KeyboardInterrupt)`; `test_sprint.py:716` uses `monkeypatch.setattr` to replace a collaborator with a raising function). Use the `patch.object(..., side_effect=KeyboardInterrupt)` shape for the cancellation test — point it at `ParallelRunner.run` (the lazy-imported target) so the interrupt fires inside `runner.run()` and the surrounding `try/finally` in `_execute_parallel_state()` is exercised.
+
+- **`_execute_sub_loop()` lazy-import exact lines** (for the `_execute_parallel_state()` docstring template): `from little_loops.cli.loop._helpers import resolve_loop_path` and `from little_loops.fsm.validation import load_and_validate` at `executor.py:376–377`. The parallel equivalent is `from little_loops.fsm.parallel_runner import ParallelRunner` (FEAT-1075's module path) plus `from little_loops.fsm.runners import SimulationActionRunner` for the isinstance guard.
+
+- **`_route()` call shape** — live example at `executor.py:535`: `next_state = self._route(state, verdict, ctx)`. This is the only production call site; all other verdict→state routing in the codebase flows through `_route()` at this line. `_execute_parallel_state()` becomes the second production call site.
+
+_Re-verified 2026-04-20 (/ll:refine-issue pass 4) — drift found vs. pass 3; correct these when implementing:_
+
+- **`TestSubLoopExecution` moved**: now at `scripts/tests/test_fsm_executor.py:3634` (pass 3 said `:3473`). Class spans lines **3634–3956** (ends just before `class TestRouteContext` at 3957). Model `TestParallelExecution` after this class at its current location.
+- **`validation.py` — function name correction**: the "no transition" guard described above lives in `_validate_state_routing()`, **not** `_validate_state_transitions()`. The lines are 266–278 (pass 3 said 266–277; off by one on the end). `has_loop` flag is set at line 269. Coordinate the `has_parallel` addition with this correct function name.
+- **`config-schema.json` glyphs key range**: `"glyphs"` object spans lines **760–772** (pass 3 said 751–774, which was actually the outer `loops` object range). The outer `loops` object opens at 751 and closes at 774; `additionalProperties: false` on the inner `glyphs` object is at line 771. When the deferred `parallel` badge key is added, insert it inside the 760–772 block.
+- **`skills/create-loop/loop-types.md` section shift**: "Sub-Loop Composition" section now starts at line **985** (pass 3 said 978) and runs to line **1019** (pass 3 said 1014). Lines 978–982 are still inside the prior example's YAML fence. FEAT-1078 should target 985–1019.
+- **Re-verified clean (no drift)**: executor.py line refs (`_execute_sub_loop` at 366, `if state.loop` block 445–454, `_route` at 786, shorthand 820–829, `_build_context` 892–908 called at 442), persistence.py line refs (`_save_state` at 436, `captured=...` at 448, `LoopState.to_dict` 114–138), cli/loop file ranges (`layout.py:118–133`, `info.py:548–576`, `_helpers.py:56–66`), `validation.py` mutual exclusion at 217–226, docs refs (`docs/generalized-fsm-loop.md:236–312` and `:1397–1414`, `LOOPS_GUIDE.md:1865–1914`, `skills/create-loop/reference.md:686–713`), `test_sub_loop_inherits_parent_circuit` at 5305–5324, `SimulationActionRunner` at `fsm/runners.py:174`.
+- **Prerequisite status re-confirmed**: `StateConfig.parallel` still absent from `schema.py`; `scripts/little_loops/fsm/parallel_runner.py` does not exist; no `class ParallelRunner` anywhere in the codebase. FEAT-1074 and FEAT-1075 remain unmerged — do not start implementation yet.
+
 ## Impact
 
 - **Priority**: P2 — Core dispatch wiring for FEAT-1072; blocked by FEAT-1074 and FEAT-1075 completing first
@@ -344,17 +408,22 @@ Tracked for post-v1; do not gate this issue on them:
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-04-12_
+_Updated by `/ll:confidence-check` on 2026-04-20 (supersedes 2026-04-12 entry)_
 
 **Readiness Score**: 80/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+**Outcome Confidence**: 83/100 → HIGH CONFIDENCE
 
 ### Concerns
-- **Unresolved dependencies**: FEAT-1074 (`StateConfig.parallel` schema) and FEAT-1075 (`ParallelRunner`) are both still Open — implementation cannot begin until both are merged.
-- **Verdict values mismatch**: Issue Summary says `done/partial/failed`; Research Findings correct this to `yes/partial/no` per FEAT-1075 spec. Implementation must use corrected values.
-- **Routing design choice resolved**: Call `self._route(state, result.verdict, ctx)` directly — `_route()` at line 713 already handles `"yes"/"partial"/"no"`. No `_route_parallel()` method needed. Implementation Step 2 is eliminated.
+- **Blocking dependencies not satisfied**: FEAT-1074 (`StateConfig.parallel`) and FEAT-1075 (`ParallelRunner`) are both confirmed absent from codebase (re-verified 2026-04-20). Do not start implementation until both merge.
+- **FEAT-1184 must be read before implementing**: The cleanup ownership contract (worker threads must not issue ref-modifying git ops) governs the FEAT-1184 acceptance criterion test. Re-read that issue before writing the `threading.get_ident()` shim.
+- **Novel test infrastructure**: The `threading.get_ident()` shim (branch-ops-on-main-thread test) and `KeyboardInterrupt` mid-executor pattern are both new to this test suite — no existing pattern to copy. Budget extra time for writing these test helpers.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12e33204-56d1-4038-8776-e8d9f2442372.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:01:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1dc90cc-dac3-4e0d-a30f-b9e27f7e7775.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cfaa5a5-e8e0-47d0-9b89-97fd288b03e9.jsonl`
+- `/ll:wire-issue` - 2026-04-21T01:55:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58b40d30-15bb-4829-b285-cf0821b85a5d.jsonl`
+- `/ll:refine-issue` - 2026-04-21T01:48:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c9b58d3-a24a-4a89-ae5d-ef6671209818.jsonl`
 - `/ll:refine-issue` - 2026-04-12T22:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d78494ba-e368-4d92-ac07-474ca60ddbb1.jsonl`
 - `/ll:wire-issue` - 2026-04-12T22:00:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbab3ea7-aba1-4f99-878c-4df082545c74.jsonl`
 - `/ll:refine-issue` - 2026-04-12T21:53:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6227012-241e-4253-adf1-d540b03b8c94.jsonl`

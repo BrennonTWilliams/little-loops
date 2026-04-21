@@ -2,8 +2,13 @@
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
 parent_issue: FEAT-1072
-confidence_score: 90
-outcome_confidence: 93
+confidence_score: 80
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
+size: Very Large
 ---
 
 # FEAT-1077: Parallel State Tests
@@ -124,7 +129,7 @@ These cover the thread-safety contract added to FEAT-1075. All four use real `Th
 
 ### Existing test files to extend
 
-**test_fsm_executor.py** — Add parallel state dispatch tests to `TestSubLoopExecution` class at line 3472:
+**test_fsm_executor.py** — Add parallel state dispatch tests to `TestSubLoopExecution` class at line 3634:
 
 - `test_parallel_state_dispatches()` — state with `parallel:` config calls `_execute_parallel_state()`
 - `test_parallel_state_captures_merged()` — captures stored at `self.captured[state_name]["results"]`
@@ -136,7 +141,7 @@ These cover the thread-safety contract added to FEAT-1075. All four use real `Th
 - `from_dict()` with only required fields (defaults applied)
 - `StateConfig` with `parallel:` serializes `parallel` key; without, key absent
 
-**test_fsm_schema.py** (not `test_fsm_validation.py`) — Add mutual exclusion cases as a new class `TestParallelMutualExclusion`, following the existing `test_loop_and_action_mutual_exclusion` pattern at `test_fsm_schema.py:1722`:
+**test_fsm_schema.py** (not `test_fsm_validation.py`) — Add mutual exclusion cases as a new class `TestParallelMutualExclusion`, following the existing `test_loop_and_action_mutual_exclusion` pattern at `test_fsm_schema.py:1866`:
 
 - `parallel` + `action` → validation error
 - `parallel` + `loop` → validation error
@@ -145,7 +150,7 @@ These cover the thread-safety contract added to FEAT-1075. All four use real `Th
 - `isolation: "invalid"` → validation error
 - `fail_mode: "invalid"` → validation error
 
-**test_fsm_validation.py** — `test_fsm_validation.py:18` only has `TestExtraRoutesReachability`; mutual exclusion tests don't belong here. Add one test that a `parallel:` state with routing does NOT trigger the no-transition guard (the guard at `validation.py:271` gains `and not has_parallel` as part of FEAT-1074).
+**test_fsm_validation.py** — `test_fsm_validation.py:18` has `TestExtraRoutesReachability`; line 69 has `TestRateLimitFieldValidation`. Mutual exclusion tests don't belong here. Add one test that a `parallel:` state with routing does NOT trigger the no-transition guard (the guard at `validation.py:271` gains `and not has_parallel` as part of FEAT-1074).
 
 ### New fixture: scripts/tests/fixtures/fsm/parallel-loop.yaml
 
@@ -171,18 +176,19 @@ states:
 
 ### Fuzz and display tests
 
-**test_fsm_schema_fuzz.py:134** — Add `parallel` key to `malformed_state_config` hypothesis strategy so `StateConfig.from_dict()` fuzz coverage includes malformed `parallel:` inputs.
+**test_fsm_schema_fuzz.py:135** — Add `parallel` key to `malformed_state_config` hypothesis strategy so `StateConfig.from_dict()` fuzz coverage includes malformed `parallel:` inputs. Insert after the `route` block (ends at `:174`), before the `# Add unexpected fields` block at `:175`.
 
-**test_ll_loop_display.py:TestStateBadges** — Add test for `parallel:` state badge modeled after `test_get_state_badge_sub_loop` at line 2255.
+**test_ll_loop_display.py:TestStateBadges** (line 2353) — Add test for `parallel:` state badge modeled after `test_get_state_badge_sub_loop` at line 2383.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/tests/test_fsm_executor.py` — Add `TestParallelExecution` class (new class, not extending `TestSubLoopExecution`) modeled after `TestSubLoopExecution:3472`
+- `scripts/tests/test_fsm_executor.py` — Add `TestParallelExecution` class (new class, not extending `TestSubLoopExecution`) modeled after `TestSubLoopExecution:3634`
 - `scripts/tests/test_fsm_schema.py` — Add `TestParallelStateConfig` and `TestParallelMutualExclusion` classes
 - `scripts/tests/test_fsm_validation.py` — Add one test that `parallel:` state doesn't trigger no-transition guard
-- `scripts/tests/test_fsm_schema_fuzz.py` — Add `parallel` to `malformed_state_config` strategy at line 134 (after line 174, before the `unexpected_*` block)
-- `scripts/tests/test_ll_loop_display.py` — Add parallel badge test to `TestStateBadges:2225` (requires `_PARALLEL_BADGE` from FEAT-1078)
+- `scripts/tests/test_fsm_schema_fuzz.py` — Add `parallel` to `malformed_state_config` strategy at line 135 (after line 174, before `# Add unexpected fields` at line 175)
+- `scripts/tests/test_ll_loop_display.py` — Add parallel badge test to `TestStateBadges:2353` (requires `_PARALLEL_BADGE` from FEAT-1078)
+- `scripts/tests/test_ll_loop_execution.py` — Add `test_parallel_state_end_to_end` inside `TestEndToEndExecution` class (append at end of class; class ends at line 560, `TestLLMFlags` begins at 562); write `parallel:` loop YAML inline to `tmp_path / ".loops"`, run `main_loop()` with `monkeypatch.chdir(tmp_path)`, assert `on_yes`/`on_partial`/`on_no` routes; uses real `FSMExecutor.run()` without mocking `ParallelRunner` [wiring pass added by `/ll:wire-issue`]
 
 ### Files to Create
 - `scripts/tests/test_parallel_runner.py` — New unit tests for `ParallelRunner` (flat in `scripts/tests/`, no subdirectory)
@@ -193,36 +199,39 @@ states:
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/parallel_runner.py` — Implementation under test (FEAT-1075; does not exist yet)
-- `scripts/little_loops/fsm/executor.py:383` — `_execute_parallel_state()` under test (FEAT-1076; dispatch inserts after `executor.py:402`)
-- `scripts/little_loops/fsm/schema.py:180` — `ParallelStateConfig`, `StateConfig` under test (FEAT-1074; `parallel` field added after `schema.py:233`)
+- `scripts/little_loops/fsm/executor.py` — `_execute_parallel_state()` under test (FEAT-1076; proposed insertion near existing `_execute_sub_loop` at `executor.py:366` / `_execute_state` at `executor.py:432`). Pre-refinement anchors `:383` / `:402` have drifted due to rate-limit circuit additions.
+- `scripts/little_loops/fsm/schema.py:180` — `ParallelStateConfig`, `StateConfig` under test (FEAT-1074; `parallel` field added after the existing `StateConfig` field block around `schema.py:233`)
 - `scripts/little_loops/fsm/validation.py:271` — No-transition guard; gains `and not has_parallel` (FEAT-1074); one validation test covers this
-- `scripts/little_loops/cli/loop/layout.py` — Must export `_PARALLEL_BADGE` constant (FEAT-1078) before badge test compiles
+- `scripts/little_loops/cli/loop/layout.py:109` — `_SUB_LOOP_BADGE` defined here; must add `_PARALLEL_BADGE` constant (FEAT-1078) before badge test compiles. **Verified 2026-04-20**: despite FEAT-1078 being in `.issues/completed/`, `_PARALLEL_BADGE` does not yet exist in `layout.py` — the badge test step remains gated and cannot compile until this constant is added.
 
 ### Similar Patterns
-- `scripts/tests/test_fsm_executor.py:3472` — `TestSubLoopExecution` — Model `TestParallelExecution` after this class; use write-YAML-to-`tmp_path / ".loops"` pattern, `FSMExecutor(parent_fsm, loops_dir=loops_dir)`, assert `result.final_state` and `executor.captured`
-- `scripts/tests/test_fsm_schema.py:1722` — `test_loop_and_action_mutual_exclusion` — Template for `TestParallelMutualExclusion`; constructs `FSMLoop` inline, calls `validate_fsm()`, asserts on error message strings
-- `scripts/tests/test_ll_loop_display.py:2255` — `test_get_state_badge_sub_loop` — Template for parallel badge test; constructs `StateConfig(parallel=...)` inline, asserts `_get_state_badge(state) == _PARALLEL_BADGE`
-- `scripts/tests/test_fsm_schema_fuzz.py:174` — End of `route` block in `malformed_state_config`; add `parallel` block after this line, before `unexpected_*` block at line 175
-- `scripts/tests/test_fsm_schema.py:1673` — `TestSubLoopStateConfig` — Round-trip pattern for `TestParallelStateConfig`; tests `to_dict()` includes/excludes fields, `from_dict()` applies defaults
+- `scripts/tests/test_fsm_executor.py:3634` — `TestSubLoopExecution` — Model `TestParallelExecution` after this class; use write-YAML-to-`tmp_path / ".loops"` pattern, `FSMExecutor(parent_fsm, loops_dir=loops_dir)`, assert `result.final_state` and `executor.captured`
+- `scripts/tests/test_fsm_schema.py:1866` — `test_loop_and_action_mutual_exclusion` — Template for `TestParallelMutualExclusion`; constructs `FSMLoop` inline, calls `validate_fsm()`, asserts on error message strings
+- `scripts/tests/test_ll_loop_display.py:2383` — `test_get_state_badge_sub_loop` — Template for parallel badge test; constructs `StateConfig(parallel=...)` inline, asserts `_get_state_badge(state) == _PARALLEL_BADGE`
+- `scripts/tests/test_fsm_schema_fuzz.py:174` — End of `route` block in `malformed_state_config` (strategy defined at `:135`); add `parallel` block after this line, before `# Add unexpected fields` block at line 175
+- `scripts/tests/test_fsm_schema.py:1817` — `TestSubLoopStateConfig` — Round-trip pattern for `TestParallelStateConfig`; tests `to_dict()` includes/excludes fields, `from_dict()` applies defaults
+- `scripts/little_loops/fsm/executor.py:417–423` — Worker success condition pattern in `_execute_sub_loop`: `child_result.terminated_by == "terminal" and child_result.final_state == "done"` — same test the parallel runner per-worker success check must mirror
 
 ### Tests
 - N/A — This issue IS the test implementation
 
 ### Regression Surfaces
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_fsm_schema.py:636` (`TestFSMValidation`) — `len(error_list) == 0` assertions on minimal valid FSMs; `ParallelStateConfig` added to `StateConfig` must not emit validation errors for non-parallel loops
-- `scripts/tests/test_ll_loop_display.py:2260–2263` — sub-loop badge precedence assertions (`loop > action_type`); the position where FEAT-1078 inserts the `parallel:` check in `_get_state_badge()` must not break these existing priority tests
-- `scripts/tests/test_ll_loop_display.py:2328–2334` — `loop > route` badge priority assertions; same concern as above
+_Wiring pass added by `/ll:wire-issue` (line refs refreshed 2026-04-20):_
+- `scripts/tests/test_fsm_schema.py:780` (`TestFSMValidation`) — `len(error_list) == 0` assertions on minimal valid FSMs; `ParallelStateConfig` added to `StateConfig` must not emit validation errors for non-parallel loops
+- `scripts/tests/test_ll_loop_display.py:2388–2391` (`test_sub_loop_badge_takes_precedence_over_action_type`) — sub-loop badge precedence assertions (`loop > action_type`); the position where FEAT-1078 inserts the `parallel:` check in `_get_state_badge()` must not break this existing priority test
+- `scripts/tests/test_ll_loop_display.py:2455–2461` (`test_route_badge_lower_priority_than_sub_loop`) — `loop > route` badge priority assertions; same concern as above
 
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/TESTING.md:115` — hardcodes `"FSM YAML fixtures (8 files)"`; will become stale when `parallel-loop.yaml` is added (current count is 9, new count will be 10); not enforced by `ll-verify-docs` (doc_counts.py only tracks commands/agents/skills). Update the count after the fixture is created.
 
 ### Configuration
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/pyproject.toml:106` — `--strict-markers` is active; any `@pytest.mark.*` decoration on new test methods must be pre-registered in `[tool.pytest.ini_options].markers` (currently declared: `integration`, `slow`). Do not introduce new markers.
-- `scripts/pyproject.toml:133` — `fail_under = 80` coverage gate; new implementation files (`parallel_runner.py`, executor dispatch path, schema `parallel` field, layout badge) count against coverage. New tests must exercise those paths to keep the gate green.
+_Wiring pass added by `/ll:wire-issue` (line refs refreshed 2026-04-20):_
+- `scripts/pyproject.toml:107` — `--strict-markers` is active (verified at line 107, not 106); any `@pytest.mark.*` decoration on new test methods must be pre-registered in `[tool.pytest.ini_options].markers` at `:113` (currently declared: `integration`, `slow`). Do not introduce new markers.
+- `scripts/pyproject.toml:134` — `fail_under = 80` coverage gate; new implementation files (`parallel_runner.py`, executor dispatch path, schema `parallel` field, layout badge) count against coverage. New tests must exercise those paths to keep the gate green.
 
 ## Implementation Steps
 
@@ -233,7 +242,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 5. Create `scripts/tests/fixtures/fsm/parallel-loop.yaml` and add an explicit test method to `test_fsm_schema.py:TestLoadAndValidate` that references `fsm_fixtures / "parallel-loop.yaml"` by name — no auto-discovery occurs for files in `fixtures/fsm/`; the fixture must be explicitly named in a test method
 6. Add `parallel` malformed key to `malformed_state_config` strategy in `test_fsm_schema_fuzz.py` after line 174 (before `unexpected_*` block)
 7. Add parallel badge test to `test_ll_loop_display.py:TestStateBadges` — requires FEAT-1078 to export `_PARALLEL_BADGE`; implement this step last
-8. Run full test suite: `python -m pytest scripts/tests/test_parallel_runner.py scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_schema.py scripts/tests/test_fsm_validation.py scripts/tests/test_ll_loop_display.py -x`
+8. Add `test_parallel_state_end_to_end` to `TestEndToEndExecution` class in `test_ll_loop_execution.py` (append at end of class; class ends at line 560, `TestLLMFlags` begins at 562); write a `parallel:` loop YAML inline to `tmp_path / ".loops"`, run via `main_loop()` with `monkeypatch.chdir(tmp_path)`, cover all three routes (`on_yes`/`on_partial`/`on_no`); uses real `FSMExecutor.run()` without mocking `ParallelRunner` [added by `/ll:wire-issue`]
+9. Run full test suite: `python -m pytest scripts/tests/test_parallel_runner.py scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_schema.py scripts/tests/test_fsm_validation.py scripts/tests/test_ll_loop_display.py scripts/tests/test_ll_loop_execution.py -x`
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -259,14 +269,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **ParallelRunner.run() signature**: `run(items: list[str], loop_name: str, config: ParallelStateConfig, parent_context: dict | None = None) -> ParallelResult`
-- **Worker success condition**: `child_result.terminated_by == "terminal" and child_result.final_state == "done"` (mirrors `_execute_sub_loop()` at `executor.py:354–361`)
+- **Worker success condition**: `child_result.terminated_by == "terminal" and child_result.final_state == "done"` (mirrors `_execute_sub_loop()` at `executor.py:417–423`)
 - **Captures storage**: `self.captured[self.current_state] = {"results": [<ParallelItemResult-as-dict>, ...]}` — each entry has `item`, `item_index`, `verdict`, `terminated_by`, `captures`, `error` (see FEAT-1076 dispatch code)
-- **Routing**: `_route()` at `executor.py:713–762` already handles `"yes"/"partial"/"no"` at lines 747–753 — `_execute_parallel_state()` calls `self._route(state, result.verdict, ctx)` directly
-- **`test_fsm_validation.py` scope**: File currently has only 67 lines with one class (`TestExtraRoutesReachability`). Mutual exclusion tests go in `test_fsm_schema.py` (where `test_loop_and_action_mutual_exclusion:1722` lives). The single validation test added here is for the no-transition guard at `validation.py:271`.
-- **`_PARALLEL_BADGE` gate**: Badge test imports `_PARALLEL_BADGE` from `little_loops.cli.loop.layout` — this constant does not exist until FEAT-1078. Implement badge test last and guard with a skip if not yet available.
+- **Routing**: `_route()` at `executor.py:786–836` already handles `"yes"/"partial"/"no"` at lines 820–830 — `_execute_parallel_state()` calls `self._route(state, result.verdict, ctx)` directly
+- **`test_fsm_validation.py` scope**: File is now 266 lines with two classes (`TestExtraRoutesReachability:18`, `TestRateLimitFieldValidation:69`). Mutual exclusion tests still go in `test_fsm_schema.py` (where `test_loop_and_action_mutual_exclusion:1866` lives). The single validation test added here is for the no-transition guard at `validation.py:271`.
+- **`_PARALLEL_BADGE` gate**: Badge test imports `_PARALLEL_BADGE` from `little_loops.cli.loop.layout` — this constant does not exist until FEAT-1078. `_SUB_LOOP_BADGE` is defined at `layout.py:109` for reference. Implement badge test last and guard with a skip if not yet available.
 - **`test_parallel_types.py`**: Already exists at `scripts/tests/test_parallel_types.py`; review its contents before writing `test_parallel_runner.py` to avoid duplicating `ParallelResult` field assertions. Confirmed: it covers `little_loops.parallel.types` (the ll-parallel orchestrator layer), NOT `little_loops.fsm` types — no duplication risk with `ParallelStateConfig` or FSM `ParallelResult`.
-- **`fsm_fixtures` fixture**: Defined at `test_fsm_schema.py:34` as `Path(__file__).parent / "fixtures" / "fsm"`. The parallel-loop.yaml test method in `TestLoadAndValidate:1397` must accept `fsm_fixtures: Path` as a parameter and follow the `test_load_valid_yaml()` pattern at line 1400 (e.g., `fixture_path = fsm_fixtures / "parallel-loop.yaml"`).
-- **Fuzz block code pattern**: The `parallel` block to insert in `malformed_state_config` after line 173 (end of `route` block), before line 175 (`# Add unexpected fields`):
+- **`fsm_fixtures` fixture**: Defined at `test_fsm_schema.py:33` as `Path(__file__).parent / "fixtures" / "fsm"`. The parallel-loop.yaml test method in `TestLoadAndValidate:1541` must accept `fsm_fixtures: Path` as a parameter and follow the `test_load_valid_yaml()` pattern (e.g., `fixture_path = fsm_fixtures / "parallel-loop.yaml"`).
+- **Fuzz block code pattern**: The `parallel` block to insert in `malformed_state_config` (strategy at `test_fsm_schema_fuzz.py:135`) after the `route` block ending at `:174`, before line 175 (`# Add unexpected fields`):
   ```python
   # Add parallel config
   if draw(st.booleans()):
@@ -318,12 +328,60 @@ N/A - No public API changes (test files only)
 
 ---
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-20_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 85/100 → HIGH CONFIDENCE
+
+### Concerns
+- **Blocking dependency gap**: FEAT-1074, FEAT-1075, and FEAT-1076 are all still open (features/ not completed/). `ParallelRunner`, `ParallelStateConfig`, `StateConfig.parallel`, and `_execute_parallel_state()` don't exist — any attempt to run the new tests will produce `ImportError` or `AttributeError`. Implementation order must be 1074 → 1075 → 1076 → 1077.
+- **FEAT-1078 anomaly (verified 2026-04-20)**: although FEAT-1078 is filed under `.issues/completed/`, `_PARALLEL_BADGE` is **not** present in `scripts/little_loops/cli/loop/layout.py` — only `_SUB_LOOP_BADGE` (line 109) exists. The earlier confidence-check claim that the badge test was unblocked is incorrect. The badge test step must either (a) wait for `_PARALLEL_BADGE` to actually land, (b) add the constant as part of this issue, or (c) be deferred to a follow-up. Treat the badge step as still gated.
+
+---
+
 ## Session Log
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa52965-8df7-4476-a2af-96e098002a6a.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:22:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44c14e5a-4278-4377-8d15-bde5c92f7b4b.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd52fa57-9703-45ce-81ef-323e54add01d.jsonl`
+- `/ll:wire-issue` - 2026-04-21T02:16:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68123ceb-d691-4c92-a1ba-bff0b179367e.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:11:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b558b47-c898-4962-9944-ec3045e3607e.jsonl`
 - `/ll:confidence-check` - 2026-04-12T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9da6eb97-069e-44c5-91dc-b06213bbdb44.jsonl`
 - `/ll:refine-issue` - 2026-04-12T22:32:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1a0289e-787a-444b-9e0f-8948f014d350.jsonl`
 - `/ll:wire-issue` - 2026-04-12T22:26:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40ba99b1-af2b-4221-bf0c-5829fac63188.jsonl`
 - `/ll:refine-issue` - 2026-04-12T22:21:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0de4a6f-059b-48e7-a248-7017de5869a3.jsonl`
 - `/ll:format-issue` - 2026-04-12T22:13:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a3bd623-b6f1-4633-9128-0ace3241e1e4.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-20
+- **Reason**: Issue too large for single session (score 11/11)
+
+### Decomposed Into
+- FEAT-1199: Parallel Runner Unit Tests (test_parallel_runner.py)
+- FEAT-1200: Parallel State Schema, Validation, and Fuzz Tests
+- FEAT-1201: Parallel State Executor, Integration, and Display Tests
+
+---
+
+## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-21T02:27:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa52965-8df7-4476-a2af-96e098002a6a.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:22:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44c14e5a-4278-4377-8d15-bde5c92f7b4b.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd52fa57-9703-45ce-81ef-323e54add01d.jsonl`
+- `/ll:wire-issue` - 2026-04-21T02:16:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68123ceb-d691-4c92-a1ba-bff0b179367e.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:11:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b558b47-c898-4962-9944-ec3045e3607e.jsonl`
+- `/ll:confidence-check` - 2026-04-12T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9da6eb97-069e-44c5-91dc-b06213bbdb44.jsonl`
+- `/ll:refine-issue` - 2026-04-12T22:32:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1a0289e-787a-444b-9e0f-8948f014d350.jsonl`
+- `/ll:wire-issue` - 2026-04-12T22:26:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40ba99b1-af2b-4221-bf0c-5829fac63188.jsonl`
+- `/ll:refine-issue` - 2026-04-12T22:21:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0de4a6f-059b-48e7-a248-7017de5869a3.jsonl`
+- `/ll:format-issue` - 2026-04-12T22:13:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a3bd623-b6f1-4623-9128-0ace3241e1e4.jsonl`
 - `/ll:issue-size-review` - 2026-04-12T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
 
 ---
