@@ -2072,7 +2072,10 @@ class TestTimeoutHandling:
         assert loop_complete["terminated_by"] == "timeout"
 
     def test_loop_timeout_preserves_state(self) -> None:
-        """Loop timeout returns correct final_state and iterations."""
+        """Loop timeout returns correct final_state. BUG-1226: when the pending
+        state is a shell action, it is flushed before the timeout is honored —
+        so final_state still names the flushed state and its action runs.
+        """
         fsm = FSMLoop(
             name="test",
             initial="step1",
@@ -2086,10 +2089,11 @@ class TestTimeoutHandling:
         mock_runner.always_return(exit_code=0)
 
         start_time = 1000.0
-        # Timeout check happens BEFORE each iteration starts
+        # Timeout check happens BEFORE each iteration starts.
         # - start_time_ms = first call
         # - iteration 1: check timeout (ok), execute step1, route to step2
-        # - iteration 2: check timeout (exceeds), return timeout
+        # - iteration 2: check timeout (exceeds) → BUG-1226 flush runs step2.sh
+        #   then _finish("timeout").
         time_values = [
             start_time,  # run() start (start_time_ms)
             start_time,  # first timeout check (ok)
@@ -2107,10 +2111,128 @@ class TestTimeoutHandling:
             result = executor.run()
 
         assert result.terminated_by == "timeout"
-        # One iteration completes (step1 -> step2), then timeout before step2 can execute
-        assert result.iterations == 1
-        # Current state is step2 (routed there after step1 completed)
+        # final_state still names the flushed state (single-step flush does not route)
         assert result.final_state == "step2"
+        # Flush executed step2's action before honoring timeout
+        assert "step2.sh" in mock_runner.calls
+
+    def test_loop_timeout_flushes_pending_shell_state(self) -> None:
+        """BUG-1226: when timeout fires between `route` and `state_enter` and the
+        pending state is a shell action, the executor flushes that one state
+        before honoring the timeout. Produces the side effect (e.g. copying a
+        handshake flag) that would otherwise be lost.
+        """
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            timeout=5,
+            states={
+                "step1": StateConfig(action="step1.sh", next="copy_flag"),
+                "copy_flag": StateConfig(action="copy_flag.sh", next="step1"),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        start_time = 1000.0
+        time_values = [
+            start_time,  # run() start (start_time_ms)
+            start_time,  # iteration 1 timeout check (ok)
+            start_time + 6.0,  # iteration 2 timeout check (exceeds)
+        ]
+        call_count = [0]
+
+        def mock_time() -> float:
+            result = time_values[min(call_count[0], len(time_values) - 1)]
+            call_count[0] += 1
+            return result
+
+        with patch("little_loops.fsm.executor.time.time", side_effect=mock_time):
+            executor = FSMExecutor(
+                fsm, event_callback=events.append, action_runner=mock_runner
+            )
+            result = executor.run()
+
+        # Timeout is honored (loop ends with timeout termination)
+        assert result.terminated_by == "timeout"
+        # final_state is the flushed state — single-step flush does not route
+        assert result.final_state == "copy_flag"
+        # Flushed action ran (side effect produced)
+        assert "copy_flag.sh" in mock_runner.calls
+        # state_enter for the flushed state appears BEFORE loop_complete
+        state_enter_copy = [
+            i for i, e in enumerate(events)
+            if e["event"] == "state_enter" and e["state"] == "copy_flag"
+        ]
+        loop_complete_idx = next(
+            i for i, e in enumerate(events) if e["event"] == "loop_complete"
+        )
+        assert state_enter_copy, "state_enter for flushed state was not emitted"
+        assert state_enter_copy[0] < loop_complete_idx
+
+    def test_loop_timeout_does_not_flush_slash_command_state(self) -> None:
+        """BUG-1226: flush is bounded to shell actions. Slash commands and
+        sub-loops could take minutes; flushing them would violate the timeout
+        budget. When pending state is a slash_command, no flush.
+        """
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            timeout=5,
+            states={
+                "step1": StateConfig(action="step1.sh", next="slash_step"),
+                "slash_step": StateConfig(
+                    action="/ll:some-command",
+                    action_type="slash_command",
+                    next="step1",
+                ),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        start_time = 1000.0
+        time_values = [start_time, start_time, start_time + 6.0]
+        call_count = [0]
+
+        def mock_time() -> float:
+            result = time_values[min(call_count[0], len(time_values) - 1)]
+            call_count[0] += 1
+            return result
+
+        with patch("little_loops.fsm.executor.time.time", side_effect=mock_time):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.terminated_by == "timeout"
+        assert result.final_state == "slash_step"
+        # Slash command must NOT have been flushed
+        assert "/ll:some-command" not in mock_runner.calls
+
+    def test_loop_timeout_does_not_flush_before_first_route(self) -> None:
+        """BUG-1226: flush is gated on `_just_routed`. When timeout fires at
+        the very first iteration check (before any route has been emitted),
+        there is no pending state to flush."""
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            timeout=1,
+            states={
+                "step1": StateConfig(action="step1.sh", next="step2"),
+                "step2": StateConfig(action="step2.sh", next="step1"),
+            },
+        )
+        mock_runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        # Force timeout at the first iteration check — no route has happened yet.
+        executor.elapsed_offset_ms = 999_999_999
+        result = executor.run()
+
+        assert result.terminated_by == "timeout"
+        assert result.final_state == "step1"
+        # Neither action ran (no state was entered or flushed)
+        assert mock_runner.calls == []
 
 
 class TestSignalHandling:

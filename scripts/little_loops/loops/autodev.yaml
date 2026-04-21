@@ -39,6 +39,7 @@ states:
       printf '' > .loops/tmp/autodev-passed.txt
       printf '' > .loops/tmp/autodev-skipped.txt
       rm -f .loops/tmp/autodev-broke-down
+      rm -f .loops/tmp/autodev-inflight
       echo "${context.input}" | tr ',' '\n' \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v '^[[:space:]]*$' \
@@ -63,6 +64,11 @@ states:
       CURRENT=$(head -1 .loops/tmp/autodev-queue.txt)
       tail -n +2 .loops/tmp/autodev-queue.txt > .loops/tmp/autodev-queue.tmp
       mv .loops/tmp/autodev-queue.tmp .loops/tmp/autodev-queue.txt
+
+      # BUG-1226: record the in-flight issue so `done` can surface it if the
+      # loop terminates before this issue reaches a clean resolution
+      # (enqueue_or_skip / enqueue_children / next dequeue_next overwrite).
+      printf '%s' "$CURRENT" > .loops/tmp/autodev-inflight
 
       rm -f .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
       (ll-issues list --json | python3 -c "
@@ -228,6 +234,9 @@ states:
       fi
       CHILD_COUNT=$(wc -l < .loops/tmp/autodev-new-children.txt | tr -d ' ')
       echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
+      # BUG-1226: parent is resolved (decomposed); clear the in-flight flag
+      # so `done` does not warn about it.
+      rm -f .loops/tmp/autodev-inflight
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -372,12 +381,19 @@ states:
         echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
         echo "Skipped: ${captured.input.output} (no further decomposition possible)"
       fi
+      # BUG-1226: parent is resolved (either decomposed by size-review or
+      # skipped); clear the in-flight flag so `done` does not warn about it.
+      rm -f .loops/tmp/autodev-inflight
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
 
   done:
     # Emit a structured summary of passed and skipped issues for this run.
+    # BUG-1226: also surface any still-in-flight issue recorded by dequeue_next,
+    # so if the loop reaches `done` with a stale autodev-inflight (e.g. the
+    # executor flushed copy_broke_down but the wall-clock timeout fired before
+    # resolution completed), the user knows which issue needs re-queueing.
     action: |
       PASSED_IDS=$(cat .loops/tmp/autodev-passed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
@@ -390,9 +406,14 @@ states:
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
+      INFLIGHT=$(cat .loops/tmp/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
+
       printf '\n=== Autodev Summary ===\n\n'
       printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
       printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
+      if [ -n "$INFLIGHT" ]; then
+        printf 'WARNING: in-flight issue not resolved: %s (re-queue to retry)\n' "$INFLIGHT"
+      fi
       printf '\n'
     action_type: shell
     terminal: true

@@ -345,7 +345,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `final_state` | `str` | Name of the state where execution ended |
+| `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
 | `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), or the terminal state name |
 

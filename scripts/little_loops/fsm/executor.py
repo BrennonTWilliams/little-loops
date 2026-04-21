@@ -178,6 +178,11 @@ class FSMExecutor:
         # State entered in the previous iteration (None on first iteration or after resume).
         self._prev_state: str | None = None
 
+        # BUG-1226: true between emitting a `route` event and entering the
+        # target state. Gates the "flush one pending shell state on timeout"
+        # behavior so we only flush when there is actually a pending state.
+        self._just_routed: bool = False
+
         # Per-state rate-limit retry tracking (parallel to _retry_counts).
         # _rate_limit_retries[state_name] = dict-of-record:
         #   {
@@ -237,6 +242,23 @@ class FSMExecutor:
                 if self.fsm.timeout:
                     elapsed = _now_ms() - self.start_time_ms + self.elapsed_offset_ms
                     if elapsed > self.fsm.timeout * 1000:
+                        # BUG-1226: if timeout fires in the race window between
+                        # a `route` event and `state_enter`, flush one pending
+                        # shell-action state before honoring the timeout so its
+                        # side effect (e.g. copying a handshake flag) is not
+                        # silently lost. Bounded to shell actions — slash
+                        # commands and sub-loops would violate the timeout
+                        # budget. Single-step: no cascade.
+                        if self._just_routed:
+                            pending = self.fsm.states.get(self.current_state)
+                            if (
+                                pending is not None
+                                and not pending.terminal
+                                and pending.loop is None
+                                and pending.action is not None
+                                and self._action_mode(pending) == "shell"
+                            ):
+                                self._flush_pending_shell_state(pending)
                         return self._finish("timeout")
 
                 # Get current state config
@@ -269,6 +291,7 @@ class FSMExecutor:
                         )
                         self._prev_state = self.current_state
                         self.current_state = maintain_target
+                        self._just_routed = True
                         continue
                     return self._finish("terminal")
 
@@ -300,6 +323,7 @@ class FSMExecutor:
                         continue
 
                 self.iteration += 1
+                self._just_routed = False
                 self._emit(
                     "state_enter",
                     {
@@ -343,6 +367,7 @@ class FSMExecutor:
 
                 self._prev_state = self.current_state
                 self.current_state = resolved_next
+                self._just_routed = True
 
                 # Interruptible backoff sleep between iterations
                 if self.fsm.backoff and self.fsm.backoff > 0:
@@ -847,6 +872,33 @@ class FSMExecutor:
         if route == "$current":
             return self.current_state
         return interpolate(route, ctx)
+
+    def _flush_pending_shell_state(self, state: StateConfig) -> None:
+        """Execute a pending shell-action state's action before honoring a
+        wall-clock timeout. BUG-1226: closes the narrow race between emitting
+        a `route` event and `state_enter` so handshake states (e.g. autodev's
+        ``copy_broke_down``) do not silently drop their side effect when the
+        timeout fires in that window. Single-step: we run the action but do
+        not follow its routing — ``final_state`` stays as the flushed state.
+        """
+        assert state.action is not None  # guarded by caller
+        self.iteration += 1
+        self._just_routed = False
+        self._emit(
+            "state_enter",
+            {
+                "state": self.current_state,
+                "iteration": self.iteration,
+                "flushed": True,
+            },
+        )
+        ctx = self._build_context()
+        try:
+            self._run_action(state.action, state, ctx)
+        except Exception:
+            # Deliberately swallow — the timeout is being honored regardless
+            # of whether the flushed action succeeded.
+            pass
 
     def _action_mode(self, state: StateConfig) -> str:
         """Return execution mode for the state: 'prompt', 'shell', or 'mcp_tool'."""

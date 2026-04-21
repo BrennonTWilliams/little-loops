@@ -1241,6 +1241,57 @@ class TestAutodevLoop:
         state = data["states"].get("refine_current", {})
         assert state.get("context_passthrough") is True
 
+    # BUG-1226: autodev-inflight handshake covers timeouts outside the
+    # executor flush race window (Part 1). dequeue_next records the in-flight
+    # issue ID; enqueue_or_skip and enqueue_children clear it on resolution;
+    # init resets it at loop start; done surfaces it when non-empty so the
+    # user knows which issue to re-queue.
+
+    def test_init_resets_autodev_inflight(self, data: dict) -> None:
+        """init must reset .loops/tmp/autodev-inflight alongside autodev-broke-down."""
+        init = data["states"].get("init", {})
+        action = init.get("action", "")
+        assert "autodev-inflight" in action, (
+            "init must reset autodev-inflight to clear stale handshake state "
+            "from previous runs (BUG-1226)"
+        )
+
+    def test_dequeue_next_writes_autodev_inflight(self, data: dict) -> None:
+        """dequeue_next must record the popped issue ID in autodev-inflight."""
+        state = data["states"].get("dequeue_next", {})
+        action = state.get("action", "")
+        assert "autodev-inflight" in action, (
+            "dequeue_next must write the dequeued issue ID to autodev-inflight "
+            "so the loop can surface mid-flight issues on timeout (BUG-1226)"
+        )
+
+    def test_enqueue_or_skip_clears_autodev_inflight(self, data: dict) -> None:
+        """enqueue_or_skip must clear autodev-inflight on successful resolution."""
+        state = data["states"].get("enqueue_or_skip", {})
+        action = state.get("action", "")
+        assert "autodev-inflight" in action, (
+            "enqueue_or_skip resolves the current issue (either decomposed or "
+            "skipped) and must clear autodev-inflight (BUG-1226)"
+        )
+
+    def test_enqueue_children_clears_autodev_inflight(self, data: dict) -> None:
+        """enqueue_children must clear autodev-inflight after decomposition."""
+        state = data["states"].get("enqueue_children", {})
+        action = state.get("action", "")
+        assert "autodev-inflight" in action, (
+            "enqueue_children resolves the current issue by decomposition and "
+            "must clear autodev-inflight (BUG-1226)"
+        )
+
+    def test_done_surfaces_autodev_inflight_warning(self, data: dict) -> None:
+        """done must read autodev-inflight and emit a warning when non-empty."""
+        state = data["states"].get("done", {})
+        action = state.get("action", "")
+        assert "autodev-inflight" in action, (
+            "done must read autodev-inflight so the user knows which issue "
+            "was in-flight at loop termination (BUG-1226)"
+        )
+
 
 class TestRecursiveRefineLoop:
     """Structural tests for the recursive-refine FSM loop."""

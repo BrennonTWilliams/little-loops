@@ -241,7 +241,15 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         "Loop Complete",
         "Emitted when an FSM loop finishes execution.",
         {
-            "final_state": _str("Name of the terminal state reached"),
+            "final_state": _str(
+                "Name of the state at termination. Usually the last state entered; "
+                "when terminated_by='timeout' this may be a state that was routed to "
+                "but never entered — with one exception: if that pending state is a "
+                "shell action, the executor flushes it (emits state_enter with "
+                "flushed=true and runs its action) before honoring the timeout, so "
+                "state_enter for final_state is always emitted before loop_complete "
+                "(BUG-1226)."
+            ),
             "iterations": _int("Total number of iterations executed"),
             "terminated_by": _str(
                 "What caused loop termination (e.g. terminal_state, max_iterations)"
