@@ -63,6 +63,13 @@ As the issue count grows and workflows become more automated (ll-auto, ll-parall
 
 **Auto-generation triggers**: post-`manage-issue` completion hook and pre-implementation confidence check.
 
+**Skill-level active capture**: Three pipeline skills write `decision` entries as a side effect of their normal work — no manual step required:
+- `/ll:decide-issue` — after selecting an implementation option, appends a `decision` entry containing the chosen option, scoring rationale, and `alternatives_rejected` (the other scored options). This turns every automated option selection into a structured, queryable record.
+- `/ll:tradeoff-review-issues` — after completing a tradeoff analysis, appends a `decision` entry capturing the conclusion and tradeoffs evaluated.
+- `/ll:go-no-go` — after rendering a verdict, appends a `decision` entry with the go/no-go result, rationale, and any blocking concerns that were resolved.
+
+All three integrations are gated on graceful degradation: if `.ll/decisions.yaml` does not exist and `decisions.enabled` is falsy, the write is silently skipped — the skill's primary output is unchanged.
+
 ## Integration Map
 
 ### Files to Modify
@@ -80,6 +87,11 @@ As the issue count grows and workflows become more automated (ll-auto, ll-parall
 - `commands/verify-issues.md` — add query step to surface rule violations and suppress false positives via `exception` entries (current violation categories at lines 67-80)
 - `skills/format-issue/SKILL.md` — add decisions log query step; Proposed Solution explicitly lists format-issue alongside ready-issue and verify-issues as a log reader
 - `config-schema.json` — add `decisions` object schema (`enabled`, `log_path`, `auto_generate`) matching `DecisionsConfig` fields
+
+**Skill-level decision capture (write to decisions.yaml as a side effect):**
+- `skills/decide-issue/SKILL.md` — after Phase 6 (annotation), if `decisions.yaml` exists (graceful degradation), append a `decision` entry: `issue` = current issue file, `rule` = selected option title, `rationale` = Decision Rationale text, `alternatives_rejected` = comma-separated list of unselected options with their scores; follow the `update_frontmatter()` write pattern at `scripts/little_loops/frontmatter.py:106` for file I/O
+- `commands/tradeoff-review-issues.md` — after the final tradeoff table is produced, if `decisions.yaml` exists, append a `decision` entry: `issue` = the issue analyzed, `rule` = recommendation text, `rationale` = key tradeoff narrative, `alternatives_rejected` = losing options
+- `skills/go-no-go/SKILL.md` — after the verdict is rendered, if `decisions.yaml` exists, append a `decision` entry: `issue` = the issue evaluated, `rule` = "Go" or "No-Go", `rationale` = blocking or approving criteria met, `enforcement: advisory`
 
 **Optional (extend if auto-generation hook is implemented):**
 - `hooks/scripts/issue-completion-log.sh` — detect manage-issue completion to trigger `generate --from=completed`; currently the only viable hook-level trigger for post-implementation auto-generation (see Step 7)
@@ -142,11 +154,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 3. **Core CRUD** — implement `load_decisions()`, `save_decisions()`, `add_entry()`, `list_entries(type, category, label)`, `resolve_active()` (supersedes-aware) in `scripts/little_loops/decisions.py`
 4. **CLI subcommand** — create `scripts/little_loops/cli/issues/decisions.py` with `cmd_decisions(config, args)`; register `decisions` subparser in `scripts/little_loops/cli/issues/__init__.py:80` following existing subcommand pattern; supports `list`, `add`, `generate`, `sync` sub-sub-commands
 5. **Sync to ll.local.md** — implement `sync_to_local_md(project_root)` in `scripts/little_loops/decisions.py`; writes `## Active Rules` section; extend `hooks/scripts/session-start.sh` (after line 97) to also output the body of `ll.local.md` so `## Active Rules` surfaces in Claude's context at session start
-6. **capture-issue integration** — update `skills/capture-issue/SKILL.md` to optionally log a `decision` entry when the user makes a notable architectural choice
-7. **Auto-generation from completed issues** — add `generate_from_completed(config)` to `decisions.py` using `scan_completed_issues()` from `scripts/little_loops/issue_history/parsing.py:263`; the hook system has no per-command event (only `PostToolUse`/`Bash` and `Stop`) so auto-triggering from manage-issue requires detecting manage-issue invocation in the `issue-completion-log.sh` hook OR exposing this as a manual `ll-issues decisions generate --from=completed` command
-8. **Validation integration** — update `commands/ready-issue.md` and `commands/verify-issues.md` to query decisions log: check active `required` rules, surface violations, suppress false positives where `exception` entry with matching `rule_ref` exists; also update `skills/format-issue/SKILL.md` (listed in Proposed Solution alongside these two)
-9. **Tests** — write `scripts/tests/test_decisions.py` (CRUD, exception suppression, supersedes resolution) and `scripts/tests/test_cli_decisions.py` (CLI via `patch.object(sys, "argv")`); use `temp_project_dir` fixture from `conftest.py:56`
-10. **Docs** — update `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md` Key Directories and CLI Tools sections
+6. **Skill-level decision capture bridges** — update three skills to append `decision` entries as a side effect:
+   - `skills/decide-issue/SKILL.md`: after Phase 6 annotation, call `ll-issues decisions add --type=decision --issue=$FILE --rule="<chosen option title>" --rationale="<Decision Rationale text>" --alternatives-rejected="<other options + scores>"` (or equivalent Python call); guard with `[ -f .ll/decisions.yaml ]` or `decisions.enabled` check
+   - `commands/tradeoff-review-issues.md`: after final output, append `decision` entry with recommendation text and tradeoff narrative
+   - `skills/go-no-go/SKILL.md`: after verdict, append `decision` entry with Go/No-Go result and rationale
+7. **capture-issue integration** — update `skills/capture-issue/SKILL.md` to optionally log a `decision` entry when the user makes a notable architectural choice
+8. **Auto-generation from completed issues** — add `generate_from_completed(config)` to `decisions.py` using `scan_completed_issues()` from `scripts/little_loops/issue_history/parsing.py:263`; the hook system has no per-command event (only `PostToolUse`/`Bash` and `Stop`) so auto-triggering from manage-issue requires detecting manage-issue invocation in the `issue-completion-log.sh` hook OR exposing this as a manual `ll-issues decisions generate --from=completed` command
+9. **Validation integration** — update `commands/ready-issue.md` and `commands/verify-issues.md` to query decisions log: check active `required` rules, surface violations, suppress false positives where `exception` entry with matching `rule_ref` exists; also update `skills/format-issue/SKILL.md` (listed in Proposed Solution alongside these two)
+10. **Tests** — write `scripts/tests/test_decisions.py` (CRUD, exception suppression, supersedes resolution) and `scripts/tests/test_cli_decisions.py` (CLI via `patch.object(sys, "argv")`); use `temp_project_dir` fixture from `conftest.py:56`
+11. **Docs** — update `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md` Key Directories and CLI Tools sections
 
 ## Use Case
 
@@ -170,6 +186,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] Auto-generation from completed issues is triggered post-implementation
 - [ ] Auto-generation from active issues is available as a pre-implementation step
 - [ ] `verify-issues` and/or `ready-issue` can query the log, surface violations, and suppress false positives where a matching `exception` entry exists
+- [ ] `/ll:decide-issue` appends a `decision` entry to `.ll/decisions.yaml` after selecting an option; entry includes `rule` (chosen option), `rationale` (scoring summary), and `alternatives_rejected` (other options with scores); silently skipped if `decisions.yaml` does not exist
+- [ ] `/ll:tradeoff-review-issues` appends a `decision` entry after completing analysis; silently skipped if `decisions.yaml` does not exist
+- [ ] `/ll:go-no-go` appends a `decision` entry after rendering a verdict; silently skipped if `decisions.yaml` does not exist
 - [ ] `ll-decisions sync` writes active `required` rules to `## Active Rules` in `.ll/ll.local.md`
 - [ ] Automated validation, review, and refactoring passes can read the log
 - [ ] Tests cover CRUD, auto-generation, exception suppression, and supersedes resolution
