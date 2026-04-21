@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.86.0] - 2026-04-21
+
+### Added
+
+- **ll-action Thin CLI Wrapper** — New `ll-action` CLI entry point wraps the Claude Code skill invocation interface, enabling shell scripts and external tools to trigger any `/ll:*` skill directly (FEAT-1229)
+- **Parallel State FSM API Exports and Config Wiring** — FSM parallel-state API exported from `little_loops` package; parallel config wiring hooked into `BRConfig` loader (FEAT-1080)
+- **Parallel State Core API Exports and Config Wiring** — Core parallel-state types and orchestrator API surface exported for downstream consumers (FEAT-1227)
+- **Parallel State Tests** — Full test coverage for parallel-state FSM logic including unit, integration, and edge cases (FEAT-1077)
+- **Parallel Runner Unit Tests** — Comprehensive unit test suite for `ll-parallel` runner covering queue, worker, and lifecycle paths (FEAT-1199)
+- **Parallel State Schema, Validation, and Fuzz Tests** — Schema validation and property-based fuzz tests for parallel-state event types (FEAT-1200)
+- **Parallel State Executor, Integration, and Display Tests** — End-to-end integration and display-layer tests for parallel state executor (FEAT-1201)
+- **Real-Threading Concurrency Tests** — `TestParallelRunnerRealThreading` test class verifies race-condition safety under actual OS threads (FEAT-1203)
+- **Parallel Glyph Config** — `ll-loop --parallel` glyph is now configurable via `LoopsGlyphsConfig` in `.ll/ll-config.json`
+
+### Fixed
+
+- **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
+- **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
+
+[1.86.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.85.0...v1.86.0
+
 ## [1.85.0] - 2026-04-19
 
 ### Added
