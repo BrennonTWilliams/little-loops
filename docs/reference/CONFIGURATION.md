@@ -470,6 +470,7 @@ FSM loop settings:
 | `glyphs.mcp_tool` | `⚡` | Badge glyph for `mcp_tool` action states |
 | `glyphs.sub_loop` | `↳⟳` | Badge glyph for `sub_loop` action states |
 | `glyphs.route` | `⑃` | Badge glyph for `route` action states |
+| `glyphs.parallel` | `∥` | Badge glyph for `parallel` action states |
 
 Override individual glyphs to customize how FSM box diagrams render state type badges:
 

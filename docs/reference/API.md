@@ -570,6 +570,7 @@ class IssueInfo:
     testable: bool | None = None           # False = skip TDD phase; None = treat as testable
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts
+    labels: list[str] = []                 # Labels from ## Labels section
 ```
 
 #### Properties

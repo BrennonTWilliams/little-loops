@@ -488,7 +488,7 @@ List active issues with optional filters.
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
 | `--flat` | Output flat list for scripting |
-| `--json` / `-j` | Output as JSON array |
+| `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, and `labels` |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
 | `--config` | Path to project root |
 
