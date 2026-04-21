@@ -338,8 +338,9 @@ states:
   enqueue_or_skip:
     # After explicit size-review: diff IDs against the pre-size-review
     # baseline. If children found: prepend to queue depth-first; mark parent
-    # as skipped; move parent to .issues/completed/. If none: mark parent as
-    # skipped (no further decomposition is possible).
+    # as skipped; move parent to .issues/completed/. If none: route to
+    # recheck_after_size_review so a score check can decide whether to
+    # implement or skip (BUG-1230).
     action: |
       ll-issues list --json | python3 -c "
       import json, sys
@@ -377,15 +378,64 @@ states:
         fi
         CHILD_COUNT=$(wc -l < .loops/tmp/autodev-new-children.txt | tr -d ' ')
         echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
+        # BUG-1226: parent resolved by decomposition; clear in-flight flag.
+        rm -f .loops/tmp/autodev-inflight
+        exit 0
       else
-        echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
-        echo "Skipped: ${captured.input.output} (no further decomposition possible)"
+        # No children: let recheck_after_size_review decide whether to implement or skip.
+        exit 1
       fi
-      # BUG-1226: parent is resolved (either decomposed by size-review or
-      # skipped); clear the in-flight flag so `done` does not warn about it.
-      rm -f .loops/tmp/autodev-inflight
-    action_type: shell
-    next: dequeue_next
+    fragment: shell_exit
+    on_yes: dequeue_next
+    on_no: recheck_after_size_review
+    on_error: dequeue_next
+
+  recheck_after_size_review:
+    # BUG-1230: size-review declined to decompose the issue (leaf-sized or
+    # effort genuinely small). Perform a final score check before deciding to
+    # skip. Mirrors recheck_scores exactly; on pass routes to implement_current
+    # so ready leaf issues are not silently dropped.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+      from pathlib import Path
+
+      issue_id = '${captured.input.output}'
+
+      p = Path('.ll/ll-config.json')
+      cg = {}
+      if p.exists():
+          try:
+              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+          except Exception:
+              pass
+      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
+      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          Path('.loops/tmp/autodev-inflight').unlink(missing_ok=True)
+          sys.exit(1)
+
+      passed = (int(d.get('confidence') or 0) >= readiness
+                and int(d.get('outcome') or 0) >= outcome)
+      if passed:
+          with open('.loops/tmp/autodev-passed.txt', 'a') as f:
+              f.write(issue_id + '\n')
+      else:
+          with open('.loops/tmp/autodev-skipped.txt', 'a') as f:
+              f.write(issue_id + '\n')
+          Path('.loops/tmp/autodev-inflight').unlink(missing_ok=True)
+      sys.exit(0 if passed else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: implement_current
+    on_no: dequeue_next
     on_error: dequeue_next
 
   done:

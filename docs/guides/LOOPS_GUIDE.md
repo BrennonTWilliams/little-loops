@@ -452,12 +452,16 @@ init → dequeue_next → [queue empty?]
                                                ├─ YES → enqueue_or_skip → dequeue_next
                                                └─ NO  → recheck_scores → [passed now?]
                                                           ├─ YES → implement_current → dequeue_next
-                                                          └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
+                                                          └─ NO  → run_size_review → enqueue_or_skip → [children found?]
+                                                                                                          ├─ YES → dequeue_next
+                                                                                                          └─ NO  → recheck_after_size_review → [passed now?]
+                                                                                                                      ├─ YES → implement_current → dequeue_next
+                                                                                                                      └─ NO  → dequeue_next
 ```
 
 **Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Both `refine_current` (sub-loop) and `implement_current` (shell `ll-auto`) use the `with_rate_limit_handling` fragment (3 retries, 30s base backoff); `refine_current` on rate-limit exhaustion dequeues and continues, while `implement_current` on exhaustion terminates the loop via `done`. The broke-down handshake flag (written by `refine-to-ready-issue` to `.loops/tmp/recursive-refine-broke-down`) is copied after each sub-loop return into `.loops/tmp/autodev-broke-down`, so the rest of autodev's state machine reads only the `autodev-*` namespace. This interleaved design also means partial forward progress is preserved if the run is interrupted — any leaves that already passed refinement have already been implemented.
 
-**In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `.loops/tmp/autodev-inflight`; `enqueue_or_skip` and `enqueue_children` clear it on resolution; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
+**In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `.loops/tmp/autodev-inflight`; `enqueue_or_skip` clears it in the children-found branch; `recheck_after_size_review` clears it on the skip path (BUG-1230); `enqueue_children` clears it after decomposition; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 

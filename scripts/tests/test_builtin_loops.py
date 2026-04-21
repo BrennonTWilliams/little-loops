@@ -1037,6 +1037,7 @@ class TestAutodevLoop:
             "recheck_scores",
             "run_size_review",
             "enqueue_or_skip",
+            "recheck_after_size_review",
             "implement_current",
             "done",
         }
@@ -1265,13 +1266,35 @@ class TestAutodevLoop:
             "so the loop can surface mid-flight issues on timeout (BUG-1226)"
         )
 
+    def test_enqueue_or_skip_uses_shell_exit_fragment(self, data: dict) -> None:
+        """enqueue_or_skip must use shell_exit fragment for conditional routing (BUG-1230)."""
+        state = data["states"].get("enqueue_or_skip", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"enqueue_or_skip.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_enqueue_or_skip_on_yes_routes_to_dequeue_next(self, data: dict) -> None:
+        """enqueue_or_skip.on_yes (children found) must route to dequeue_next."""
+        state = data["states"].get("enqueue_or_skip", {})
+        assert state.get("on_yes") == "dequeue_next", (
+            f"enqueue_or_skip.on_yes should be 'dequeue_next', got {state.get('on_yes')!r}"
+        )
+
+    def test_enqueue_or_skip_on_no_routes_to_recheck_after_size_review(self, data: dict) -> None:
+        """enqueue_or_skip.on_no (no children) must route to recheck_after_size_review (BUG-1230)."""
+        state = data["states"].get("enqueue_or_skip", {})
+        assert state.get("on_no") == "recheck_after_size_review", (
+            f"enqueue_or_skip.on_no should be 'recheck_after_size_review', got {state.get('on_no')!r}"
+        )
+
     def test_enqueue_or_skip_clears_autodev_inflight(self, data: dict) -> None:
-        """enqueue_or_skip must clear autodev-inflight on successful resolution."""
+        """enqueue_or_skip must clear autodev-inflight in the children-found branch (BUG-1226/1230).
+        The skip-path inflight clear moved to recheck_after_size_review (BUG-1230)."""
         state = data["states"].get("enqueue_or_skip", {})
         action = state.get("action", "")
         assert "autodev-inflight" in action, (
-            "enqueue_or_skip resolves the current issue (either decomposed or "
-            "skipped) and must clear autodev-inflight (BUG-1226)"
+            "enqueue_or_skip must clear autodev-inflight in the children-found branch (BUG-1226); "
+            "the skip-path clear is handled by recheck_after_size_review (BUG-1230)"
         )
 
     def test_enqueue_children_clears_autodev_inflight(self, data: dict) -> None:
@@ -1290,6 +1313,43 @@ class TestAutodevLoop:
         assert "autodev-inflight" in action, (
             "done must read autodev-inflight so the user knows which issue "
             "was in-flight at loop termination (BUG-1226)"
+        )
+
+    # BUG-1230: recheck_after_size_review — score check after size-review
+    # declines to decompose. Routes to implement_current on pass so leaf-sized
+    # ready issues are not silently skipped.
+
+    def test_recheck_after_size_review_uses_shell_exit_fragment(self, data: dict) -> None:
+        """recheck_after_size_review must use shell_exit fragment."""
+        state = data["states"].get("recheck_after_size_review", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"recheck_after_size_review.fragment should be 'shell_exit', "
+            f"got {state.get('fragment')!r}"
+        )
+
+    def test_recheck_after_size_review_on_yes_routes_to_implement_current(self, data: dict) -> None:
+        """recheck_after_size_review.on_yes (scores pass) must route to implement_current."""
+        state = data["states"].get("recheck_after_size_review", {})
+        assert state.get("on_yes") == "implement_current", (
+            f"recheck_after_size_review.on_yes should be 'implement_current', "
+            f"got {state.get('on_yes')!r}"
+        )
+
+    def test_recheck_after_size_review_on_no_routes_to_dequeue_next(self, data: dict) -> None:
+        """recheck_after_size_review.on_no (scores fail) must route to dequeue_next."""
+        state = data["states"].get("recheck_after_size_review", {})
+        assert state.get("on_no") == "dequeue_next", (
+            f"recheck_after_size_review.on_no should be 'dequeue_next', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_recheck_after_size_review_clears_autodev_inflight(self, data: dict) -> None:
+        """recheck_after_size_review must clear autodev-inflight on the skip path."""
+        state = data["states"].get("recheck_after_size_review", {})
+        action = state.get("action", "")
+        assert "autodev-inflight" in action, (
+            "recheck_after_size_review must clear autodev-inflight when scores fail "
+            "so done does not warn about a stale in-flight entry (BUG-1230)"
         )
 
 
