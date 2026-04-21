@@ -36,7 +36,8 @@
   },
   "commands": {
     "confidence_gate": {
-      "enabled": true
+      "enabled": true,
+      "readiness_threshold": 85
     },
     "tdd_mode": true
   },
