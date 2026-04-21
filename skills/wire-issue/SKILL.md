@@ -440,6 +440,7 @@ WIRE ISSUE: {{ISSUE_ID}}
 - Run `/ll:ready-issue {{ISSUE_ID}}` to validate the enriched issue
 - Run `/ll:manage-issue` to implement
 - If `/ll:confidence-check` or `/ll:ready-issue` still fail after this wiring pass (and 2+ prior refinement passes), run `/ll:issue-size-review {{ISSUE_ID}}` — a persistent readiness gap after wiring often signals the issue is too large or ambiguously scoped, not just under-researched
+- Note: if `decision_needed: true` is still set, run `/ll:decide-issue {{ISSUE_ID}}` before wiring to select the implementation approach
 
 ================================================================================
 ```
@@ -451,10 +452,10 @@ WIRE ISSUE: {{ISSUE_ID}}
 ### Pipeline Position
 
 ```
-/ll:capture-issue → /ll:format-issue → /ll:refine-issue → /ll:wire-issue → /ll:ready-issue → /ll:manage-issue
+/ll:capture-issue → /ll:format-issue → /ll:refine-issue → /ll:decide-issue → /ll:wire-issue → /ll:ready-issue → /ll:manage-issue
 ```
 
-- **Before**: `/ll:refine-issue` — fills knowledge gaps (root cause, patterns, behavior)
+- **Before**: `/ll:decide-issue` — selects among competing options if `decision_needed: true` was set
 - **After**: `/ll:ready-issue` or `/ll:confidence-check` — validates the now-complete issue
 
 ### When to Use vs. Related Commands

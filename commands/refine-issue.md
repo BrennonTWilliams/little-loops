@@ -445,6 +445,7 @@ ISSUE REFINED: [ISSUE-ID]
 - decision_needed: [true | false | not set | skipped (--dry-run)] [Auto mode only]
 
 ## NEXT STEPS
+- If `decision_needed: true` was set (2+ options deposited): run `/ll:decide-issue [ID]` to select the best option before wiring
 - Run `/ll:wire-issue [ID]` to add integration wiring (callers, entry points, test hooks)
 - Run `/ll:ready-issue [ID]` to validate the enriched issue
 - Run `/ll:manage-issue` to implement
@@ -475,7 +476,7 @@ ISSUE REFINED: [ISSUE-ID]
 ### Pipeline Position
 
 ```
-/ll:capture-issue → /ll:format-issue → /ll:refine-issue → /ll:verify-issues → /ll:ready-issue → /ll:manage-issue
+/ll:capture-issue → /ll:format-issue → /ll:refine-issue → /ll:decide-issue → /ll:wire-issue → /ll:ready-issue → /ll:manage-issue
 ```
 
 - **Before**: `/ll:format-issue` — ensures structural template compliance
