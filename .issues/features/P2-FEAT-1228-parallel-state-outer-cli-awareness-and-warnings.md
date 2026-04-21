@@ -2,8 +2,8 @@
 discovered_date: "2026-04-21"
 discovered_by: issue-size-review
 parent_issue: FEAT-1080
-size: Medium
-confidence_score: 78
+size: Very Large
+confidence_score: 93
 outcome_confidence: 56
 score_complexity: 10
 score_test_coverage: 18
@@ -206,22 +206,98 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-04-21_
+_Updated by `/ll:confidence-check` on 2026-04-21_
 
-**Readiness Score**: 78/100 → PROCEED WITH CAUTION
+**Readiness Score**: 93/100 → PROCEED
 **Outcome Confidence**: 56/100 → LOW
 
-### Concerns
-- FEAT-1074 is an unresolved hard blocker: `StateConfig` has no `.parallel` attribute today — the proposed `state.parallel is not None` scan will raise `AttributeError`. Workaround: scan raw YAML via `load_loop_with_spec` instead of relying on the typed dataclass field.
-- Warning mechanism explicitly unresolved: `warnings.warn()` (proposed) vs `print("⚠ ...", file=sys.stderr)` (codebase convention). Must be decided before writing tests — different assertion patterns (`pytest.warns()` vs `capsys.readouterr().err`).
-- Broad test blast radius: adding `load_loop()` to `main_parallel()` will break 10+ existing tests in `test_cli.py` and `test_sprint_integration.py` with `FileNotFoundError`; all need `load_loop` mock updates.
-
 ### Outcome Risk Factors
-- FEAT-1074 workaround via raw YAML is fragile: YAML key names must match exactly and `max_workers` is parsed manually; silent drift risk if FEAT-1074 later changes the schema shape.
-- `ll-sprint` dispatch condition is inverted (`len(wave) == 1 or is_contention_subwave` → skip orchestrator); getting the warning condition correct without a `--parallel` flag is a subtle correctness risk.
-- Recommend updating `test_cli.py` mock scaffolding as a standalone commit before adding warning logic to reduce risk of tangled failures.
+- **Test blast radius**: Adding `load_loop_with_spec` to `main_parallel()` and sprint dispatch will break 10+ tests across `test_cli.py:495–568`, `:1601–1724` and `test_sprint_integration.py:267–480`, `:553–1803` with `FileNotFoundError`. Plan mock scaffolding as the first commit before warning logic.
+- **Raw YAML fragility**: The FEAT-1074 workaround reads `s.get("parallel").get("max_workers", 1)` from raw spec — silent drift risk if FEAT-1074 later changes the YAML key shape. Low risk for now; revisit when FEAT-1074 lands.
+- **Sprint dispatch condition**: No `--parallel` flag exists; the warning condition is "wave dispatched to orchestrator" (before `create_parallel_config` at run.py:397). Getting this condition inverted (`len(wave) == 1 or is_contention_subwave` = skip) is a subtle correctness risk worth double-checking.
+
+## Design Decisions (Resolved by `/ll:refine-issue`)
+
+_These open questions from prior passes are resolved based on codebase research:_
+
+### 1. Warning mechanism: `print("⚠ ...", file=sys.stderr)` recommended
+
+The existing codebase convention (`config_cmds.py:27`) uses `print(f"  ⚠ {w}")` to **stdout** with no `file=` argument. `warnings.warn` is completely absent from `scripts/little_loops/`.
+
+**Recommendation**: use `print(f"⚠ ...", file=sys.stderr)` (explicit stderr) to distinguish runtime warnings from normal CLI output. Tests assert via `capsys.readouterr().err`. If stdout consistency is preferred, use `print(f"⚠ ...")` and assert via `.out` (matches `test_ll_loop_commands.py:75–107`). **Pick one approach and apply it consistently across `parallel.py` and `sprint/run.py`.**
+
+### 2. FEAT-1074 workaround: scan raw YAML spec via `load_loop_with_spec`
+
+`StateConfig` (confirmed at `fsm/schema.py:180–316`) has **no `.parallel` attribute today**.
+
+Use `load_loop_with_spec` (`_helpers.py:131`) which returns `(FSMLoop, dict[str, Any])`. Scan the raw spec dict:
+
+```python
+from little_loops.cli.loop._helpers import load_loop_with_spec
+
+_fsm, spec = load_loop_with_spec(args.loop, config.get_loops_dir(), logger)
+parallel_states = [
+    s for s in spec.get("states", {}).values()
+    if s.get("parallel") is not None
+]
+if parallel_states:
+    m = max(s["parallel"].get("max_workers", 1) for s in parallel_states)
+    n = parallel_config.max_workers  # resolved int, never None
+    print(
+        f"⚠ loop '{args.loop}' contains parallel state(s); ll-parallel concurrency ({n}) "
+        f"multiplies inner parallel concurrency ({m}). "
+        f"Cumulative worker budget: {n}*{m}={n*m}. "
+        f"Consider reducing inner max_workers or running under ll-auto.",
+        file=sys.stderr,
+    )
+```
+
+`parallel_config.max_workers` is **always a resolved int** after `create_parallel_config` (`config/core.py:302–303`: `max_workers or self._parallel.base.max_workers`). Never read `args.workers` directly — it may be `None`.
+
+### 3. Exact insertion points (confirmed)
+
+- **`parallel.py`**: insert warning block after line 213 (close of `create_parallel_config`), before line 229 (`ParallelOrchestrator` construction).
+- **`sprint/run.py`**: insert warning block after line 397 (close of `create_parallel_config`), before line 404 (`ParallelOrchestrator` construction).
+- **`auto.py`**: insert inline comment before line 90 (before `manager = AutoManager(...)`):
+  ```python
+  # ll-auto processes issues sequentially — inner parallel: states use their own
+  # max_workers budget without multiplying outer concurrency.
+  ```
+
+### 4. `load_loop_with_spec` signature (confirmed at `_helpers.py:131`)
+
+```python
+def load_loop_with_spec(
+    name_or_path: str, loops_dir: Path, logger: Logger
+) -> tuple[FSMLoop, dict[str, Any]]:
+```
+
+Mock pattern for updated existing tests:
+
+```python
+# Suppress warning in pre-existing parallel tests — empty spec = no parallel states
+patch("little_loops.cli.parallel.load_loop_with_spec", return_value=(MagicMock(), {}))
+
+# Sprint equivalent (monkeypatch style used in test_sprint_integration.py)
+monkeypatch.setattr("little_loops.cli.sprint.run.load_loop_with_spec", lambda *a, **k: (MagicMock(), {}))
+```
+
+For new warning-assertion tests, use a spec with a parallel state:
+```python
+mock_spec = {"states": {"scan_issues": {"parallel": {"max_workers": 4}}}}
+patch("little_loops.cli.parallel.load_loop_with_spec", return_value=(MagicMock(), mock_spec))
+```
+
+### 5. Test patterns to follow
+
+- **Loop YAML fixture**: write to `tmp_path / ".loops" / "test-loop.yaml"` via triple-quoted string (pattern: `test_ll_loop_state.py:212–224`)
+- **Warning assertion**: `capsys.readouterr().err` and assert `"⚠" in captured.err` and the `"N*M="` product string
+- **`TestMainParallelIntegration` mock update** (`test_cli.py:495–568`, `1601–1724`): add `patch("little_loops.cli.parallel.load_loop_with_spec", return_value=(MagicMock(), {}))` to the existing `with (...)` block in each test
+- **Sprint mock update** (`test_sprint_integration.py:267–480`, `553–1803`): add `monkeypatch.setattr("little_loops.cli.sprint.run.load_loop_with_spec", lambda *a, **k: (MagicMock(), {}))` alongside the existing `ParallelOrchestrator` setattr
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644812c0-533a-4e26-96b6-038b38467391.jsonl`
+- `/ll:refine-issue` - 2026-04-21T16:26:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/444f6307-f957-4298-afd7-8110637a61ba.jsonl`
 - `/ll:wire-issue` - 2026-04-21T16:19:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5e62948-0099-497f-bfc8-c00efc10983d.jsonl`
 - `/ll:refine-issue` - 2026-04-21T16:11:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7a2ae01-e999-4e1d-b35a-80cc743b6a7d.jsonl`
 - `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c25b41ad-2e86-4d04-bea4-6daf251405e7.jsonl`
