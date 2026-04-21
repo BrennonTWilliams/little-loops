@@ -78,3 +78,18 @@ class TestConfigSchema:
         assert rl_props["long_wait_ladder"]["default"] == [300, 900, 1800, 3600]
         assert rl_props["circuit_breaker_enabled"]["default"] is True
         assert rl_props["circuit_breaker_path"]["default"] == ".loops/tmp/rate-limit-circuit.json"
+
+    def test_loops_glyphs_parallel_in_schema(self) -> None:
+        """loops.glyphs.parallel must be declared so ll-config.json can set it.
+
+        The `loops.glyphs` block has additionalProperties: false, so configs
+        that set loops.glyphs.parallel will be rejected unless the property is
+        declared here alongside the other glyph keys.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        glyph_props = data["properties"]["loops"]["properties"]["glyphs"]["properties"]
+        assert "parallel" in glyph_props, (
+            "loops.glyphs.parallel is not declared; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        assert glyph_props["parallel"]["type"] == "string"

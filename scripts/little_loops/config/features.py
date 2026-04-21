@@ -263,6 +263,7 @@ class LoopsGlyphsConfig:
     mcp_tool: str = "\u26a1"  # ⚡
     sub_loop: str = "\u21b3\u27f3"  # ↳⟳
     route: str = "\u2443"  # ⑃
+    parallel: str = "\u2225"  # ∥
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopsGlyphsConfig:
@@ -274,6 +275,7 @@ class LoopsGlyphsConfig:
             mcp_tool=data.get("mcp_tool", "\u26a1"),
             sub_loop=data.get("sub_loop", "\u21b3\u27f3"),
             route=data.get("route", "\u2443"),
+            parallel=data.get("parallel", "\u2225"),
         )
 
     def to_dict(self) -> dict[str, str]:
@@ -285,6 +287,7 @@ class LoopsGlyphsConfig:
             "mcp_tool": self.mcp_tool,
             "sub_loop": self.sub_loop,
             "route": self.route,
+            "parallel": self.parallel,
         }
 
 

@@ -766,7 +766,8 @@
             "shell":         { "type": "string", "default": "\u276f_",          "description": "Badge for shell states (default: \u276f_)" },
             "mcp_tool":      { "type": "string", "default": "\u26a1",           "description": "Badge for mcp_tool states (default: \u26a1)" },
             "sub_loop":      { "type": "string", "default": "\u21b3\u27f3",     "description": "Badge for sub-loop states (default: \u21b3\u27f3)" },
-            "route":         { "type": "string", "default": "\u2443",           "description": "Badge for route states (default: \u2443)" }
+            "route":         { "type": "string", "default": "\u2443",           "description": "Badge for route states (default: \u2443)" },
+            "parallel":      { "type": "string", "default": "\u2225",           "description": "Badge for parallel states (default: \u2225)" }
           },
           "additionalProperties": false
         }

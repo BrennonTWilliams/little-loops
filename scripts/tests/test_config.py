@@ -1515,17 +1515,24 @@ class TestLoopsGlyphsConfig:
         assert config.mcp_tool == "\u26a1"
         assert config.sub_loop == "\u21b3\u27f3"
         assert config.route == "\u2443"
+        assert config.parallel == "\u2225"
 
     def test_from_dict_empty(self) -> None:
         config = LoopsGlyphsConfig.from_dict({})
         assert config.prompt == "\u2726"
         assert config.sub_loop == "\u21b3\u27f3"
+        assert config.parallel == "\u2225"
 
     def test_from_dict_partial_override(self) -> None:
         config = LoopsGlyphsConfig.from_dict({"prompt": "P", "shell": "S"})
         assert config.prompt == "P"
         assert config.shell == "S"
         assert config.mcp_tool == "\u26a1"  # default unchanged
+
+    def test_from_dict_parallel_override(self) -> None:
+        config = LoopsGlyphsConfig.from_dict({"parallel": "P"})
+        assert config.parallel == "P"
+        assert config.route == "\u2443"  # default unchanged
 
     def test_to_dict_returns_all_keys(self) -> None:
         config = LoopsGlyphsConfig()
@@ -1537,9 +1544,11 @@ class TestLoopsGlyphsConfig:
             "mcp_tool",
             "sub_loop",
             "route",
+            "parallel",
         }
         assert d["prompt"] == "\u2726"
         assert d["route"] == "\u2443"
+        assert d["parallel"] == "\u2225"
 
     def test_loops_config_has_glyphs_field(self) -> None:
         config = LoopsConfig()
@@ -1560,14 +1569,19 @@ class TestBRConfigLoopsGlyphs:
         config = BRConfig(temp_project_dir)
         assert config.loops.glyphs.prompt == "\u2726"
         assert config.loops.glyphs.route == "\u2443"
+        assert config.loops.glyphs.parallel == "\u2225"
 
     def test_loops_glyphs_override_from_config(self, temp_project_dir: Path) -> None:
         """Custom loops.glyphs values are loaded from config file."""
-        sample_config: dict[str, Any] = {"loops": {"glyphs": {"prompt": "P", "mcp_tool": "M"}}}
+        sample_config: dict[str, Any] = {
+            "loops": {"glyphs": {"prompt": "P", "mcp_tool": "M", "parallel": "Q"}}
+        }
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
         assert config.loops.glyphs.prompt == "P"
         assert config.loops.glyphs.mcp_tool == "M"
+        assert config.loops.glyphs.parallel == "Q"
         assert config.loops.glyphs.shell == "\u276f_"  # default unchanged
+        assert config.loops.glyphs.route == "\u2443"  # default unchanged
