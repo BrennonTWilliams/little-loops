@@ -184,9 +184,10 @@ Refinement transforms raw captures into implementation-ready issues. The steps r
 2. prioritize-issues   ← set P0-P5 prefix
 3. format-issue        ← promote to v2.0 template
 4. refine-issue        ← research codebase, fill gaps
-5. wire-issue          ← complete integration map (callers, config, docs, tests)
-6. verify-issues       ← test claims against actual code
-7. tradeoff-review-issues ← prune low-value issues
+5. decide-issue        ← resolve competing options (only if decision_needed: true)
+6. wire-issue          ← complete integration map (callers, config, docs, tests)
+7. verify-issues       ← test claims against actual code
+8. tradeoff-review-issues ← prune low-value issues
 ```
 
 > **When to skip steps:** `normalize` and `prioritize` are safe to run on every issue.

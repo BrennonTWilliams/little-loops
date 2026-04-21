@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`/ll:decide-issue` Skill** — New skill resolves competing implementation options by spawning parallel `codebase-pattern-finder` agents per option, scoring each across Consistency/Simplicity/Testability/Risk dimensions, annotating the winner inline with `> **Selected:**`, and clearing `decision_needed: false` in issue frontmatter. Integrates with `ll-auto`/`ll-parallel` via the `decide_command` config template; triggered automatically when `decision_needed: true`. (FEAT-1238, FEAT-1239, FEAT-1240)
 - **ll-action Thin CLI Wrapper** — New `ll-action` CLI entry point wraps the Claude Code skill invocation interface, enabling shell scripts and external tools to trigger any `/ll:*` skill directly (FEAT-1229)
 - **Parallel State FSM API Exports and Config Wiring** — FSM parallel-state API exported from `little_loops` package; parallel config wiring hooked into `BRConfig` loader (FEAT-1080)
 - **Parallel State Core API Exports and Config Wiring** — Core parallel-state types and orchestrator API surface exported for downstream consumers (FEAT-1227)

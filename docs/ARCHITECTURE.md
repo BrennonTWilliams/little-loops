@@ -645,6 +645,8 @@ stateDiagram-v2
     Validating --> NotReady: NOT_READY verdict
     Validating --> ShouldClose: CLOSE verdict
 
+    Ready --> Deciding: decision_needed: true
+    Deciding --> Ready: /ll:decide-issue
     Ready --> InProgress: /ll:manage-issue
     InProgress --> Verifying: Implementation done
     Verifying --> Completed: Tests pass

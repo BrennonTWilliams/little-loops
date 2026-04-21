@@ -86,7 +86,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
-- **26 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
+- **27 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 - **16 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
 - **42 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
@@ -114,6 +114,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:align-issues <category>` | Validate issues against key documents |
 | `/ll:format-issue [id]` | Format issue files to align with template v2.0 structure |
 | `/ll:refine-issue [id]` | Refine issue with codebase-driven research |
+| `/ll:decide-issue [id]` | Resolve competing implementation options using codebase evidence |
 | `/ll:verify-issues` | Verify issues against codebase |
 | `/ll:tradeoff-review-issues` | Evaluate issues for utility vs complexity |
 | `/ll:ready-issue [id]` | Validate issue for implementation |
@@ -233,6 +234,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `configure`^ | Session & Config | Interactively configure specific areas in ll-config.json |
 | `update`^ | Session & Config | Update little-loops plugin and package (consumer-first) |
 | `go-no-go`^ | Planning & Implementation | Adversarial GO/NO-GO verdict via pro/con debate agents |
+| `decide-issue`^ | Issue Refinement | Resolve competing implementation options via codebase evidence scoring |
 | `wire-issue`^ | Issue Refinement | Complete integration point wiring for refined issues |
 | `audit-issue-conflicts`^     | Issue Refinement           | Scan open issues for conflicting requirements and architectural decisions |
 

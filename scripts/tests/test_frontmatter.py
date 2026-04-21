@@ -279,3 +279,19 @@ title: 'value: with colon'
         result = update_frontmatter(content, updates)
 
         assert "value: with colon" in result
+
+    def test_update_decision_needed_bool_false(self) -> None:
+        """bool False is accepted (bool subclasses int) and serialized as YAML 'false'."""
+        content = """---
+id: FEAT-1240
+decision_needed: true
+---
+
+# Title
+"""
+        # bool subclasses int, so False satisfies dict[str, str | int]
+        updates: dict[str, str | int] = {"decision_needed": False}
+        result = update_frontmatter(content, updates)
+
+        assert "decision_needed: false" in result
+        assert result.count("decision_needed") == 1

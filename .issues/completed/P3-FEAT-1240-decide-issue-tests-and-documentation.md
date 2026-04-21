@@ -9,6 +9,7 @@ score_complexity: 0
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: 2026-04-21T22:43:52Z
 ---
 
 # FEAT-1240: Tests and documentation for decide-issue
@@ -24,6 +25,22 @@ Decomposed from FEAT-1236: Add /ll:decide-issue skill to resolve multiple implem
 ## Depends On
 
 FEAT-1238 (skill must exist for doc-wiring tests), FEAT-1239 (Python changes must exist for integration tests)
+
+## Use Case
+
+A developer modifies the decide-issue skill or its pipeline integration and needs confidence that the change is correct. Without tests, regressions are invisible until manual inspection. Documentation gaps mean the skill doesn't appear in refinement pipeline guides, leaving users unaware it exists.
+
+## Current Behavior
+
+- `scripts/tests/test_decide_issue_skill.py` does not exist — the decide-issue skill has no doc-wiring test coverage
+- `test_frontmatter.py` and `test_orchestrator.py` lack `decision_needed`-related test cases
+- Documentation files omit decide-issue from pipeline diagrams, command references, and configuration tables
+
+## Expected Behavior
+
+- `test_decide_issue_skill.py` exists with assertions covering all 7 structural elements of `SKILL.md`
+- All test files cover `decision_needed` gating logic with full branch coverage
+- All five documentation files list decide-issue in the appropriate pipeline stage and reference tables
 
 ## Acceptance Criteria
 
@@ -213,10 +230,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
-**Open** | Created: 2026-04-21 | Priority: P3
+**Completed** | Created: 2026-04-21 | Priority: P3
 
+## Resolution
+
+Implemented all acceptance criteria:
+
+- Created `scripts/tests/test_decide_issue_skill.py` with 27 doc-wiring assertions across 8 test classes covering all 7 structural elements of `skills/decide-issue/SKILL.md`
+- Added `test_update_decision_needed_bool_false` to `test_frontmatter.py::TestUpdateFrontmatter` confirming bool False (subclasses int) serializes as YAML `false`
+- Added `TestDecisionNeededRouting` to `test_orchestrator.py` with 2 tests verifying decision_needed issues are dispatched to `_process_parallel` without orchestrator-level blocking
+- Updated 11 documentation files: `docs/ARCHITECTURE.md` (Deciding state), `docs/reference/COMMANDS.md` (new entry), `docs/reference/API.md` (decision_needed field), `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` (step 5), `README.md` (skill count 26→27, two table rows), `CONTRIBUTING.md` (skill count + directory tree), `skills/issue-workflow/SKILL.md` (refinement phase), `CHANGELOG.md` (1.86.0 entry), `docs/reference/ISSUE_TEMPLATE.md` (decision_needed row)
+- `.claude/CLAUDE.md` update blocked by file permissions — requires manual addition of `decide-issue`^ to Issue Refinement list
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-21T22:36:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43a10134-e6ab-43e1-ac5c-a1f561db0cd0.jsonl`
 - `/ll:wire-issue` - 2026-04-21T22:31:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1fe3f6c6-5218-469a-85e0-c99d45f7980b.jsonl`
 - `/ll:refine-issue` - 2026-04-21T22:27:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/334dbc9e-19a8-43a9-bcb6-3b35525856ba.jsonl`
 - `/ll:confidence-check` - 2026-04-21T22:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ea157c8-aee5-47f5-af69-3a6e8572e83e.jsonl`
+- `/ll:manage-issue` - 2026-04-21T22:43:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`

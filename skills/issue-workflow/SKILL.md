@@ -73,6 +73,7 @@ Quick reference for managing issues with the little-loops plugin.
 /ll:align-issues <category>   # Validate issues against key documents
 /ll:format-issue [id]          # Align issue with template v2.0 structure
 /ll:refine-issue [id]          # Enrich issue with codebase research findings
+/ll:decide-issue [id]          # Resolve competing implementation options (if decision_needed: true)
 /ll:verify-issues              # Verify all issues against current codebase
 /ll:tradeoff-review-issues     # Evaluate utility vs complexity trade-offs
 /ll:ready-issue [id]           # Final validation before implementation

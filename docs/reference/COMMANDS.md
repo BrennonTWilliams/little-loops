@@ -184,6 +184,17 @@ Refine issue files with codebase-driven research to fill knowledge gaps needed f
 
 **Frontmatter write-back**: After detecting 2+ implementation options deposited into `Proposed Solution` in `--auto` mode, the command sets `decision_needed: true` in the issue's YAML frontmatter. If fewer than 2 options are deposited, the flag is cleared to `false` (or left absent if never set). This is skipped in `--dry-run` mode.
 
+### `/ll:decide-issue`
+Resolve multi-option implementation decisions by gathering codebase evidence for each option and selecting the best fit. Where `/ll:refine-issue --auto` deposits competing approaches and sets `decision_needed: true`, this skill closes the loop — scoring every option and annotating the winner directly in the issue file.
+
+**Arguments:**
+- `issue_id` (required): Issue ID to decide on (e.g., FEAT-948, ENH-277)
+- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview decision without writing)
+
+**When to run**: After `/ll:refine-issue --auto` sets `decision_needed: true` in the issue frontmatter. Automated pipelines (`ll-auto`, `ll-parallel`) invoke this step automatically via the `decide_command` config template.
+
+**Frontmatter write-back**: Sets `decision_needed: false` after annotating the winning option. Idempotent — skips annotation write if a `### Decision Rationale` section already exists.
+
 ### `/ll:wire-issue`
 Post-refinement wiring pass that completes an issue's **Integration Map** — the structured record of every file that must change when the issue is implemented. Where `/ll:refine-issue` fills in the _what_ and _why_, `wire-issue` traces the _where_: every caller, importer, config entry, doc section, test file, and side-effect file that the implementation will touch.
 

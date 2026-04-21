@@ -2614,3 +2614,59 @@ class TestDispatchRouting:
 
         orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
         assert "BUG-005" in orchestrator._interrupted_issues
+
+
+class TestDecisionNeededRouting:
+    """Orchestrator must dispatch decision_needed=True issues to _process_parallel.
+
+    The decision_needed gate is handled inside WorkerPool._process_issue(), not in
+    the orchestrator itself. These tests verify that the orchestrator does not block
+    or drop issues flagged with decision_needed=True — they still reach _process_parallel
+    so the worker pool can apply the decide-issue step.
+    """
+
+    def test_decision_needed_issue_dispatched_to_parallel(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """An issue with decision_needed=True is still dispatched to _process_parallel."""
+        issue = MagicMock(spec=IssueInfo)
+        issue.issue_id = "FEAT-999"
+        issue.priority = "P1"
+        issue.issue_type = "features"
+        issue.decision_needed = True
+
+        parallel_calls: list[IssueInfo] = []
+        orchestrator._issue_info_by_id[issue.issue_id] = issue
+
+        with patch.object(orchestrator, "_process_parallel", side_effect=parallel_calls.append):
+            if issue.priority == "P0" and orchestrator.parallel_config.p0_sequential:
+                orchestrator._process_sequential(issue)
+            else:
+                orchestrator._process_parallel(issue)
+
+        assert len(parallel_calls) == 1
+        assert parallel_calls[0].decision_needed is True
+
+    def test_decision_needed_none_issue_dispatched_to_parallel(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """An issue with decision_needed=None is dispatched to _process_parallel (control case)."""
+        issue = MagicMock(spec=IssueInfo)
+        issue.issue_id = "FEAT-998"
+        issue.priority = "P1"
+        issue.issue_type = "features"
+        issue.decision_needed = None
+
+        parallel_calls: list[IssueInfo] = []
+        orchestrator._issue_info_by_id[issue.issue_id] = issue
+
+        with patch.object(orchestrator, "_process_parallel", side_effect=parallel_calls.append):
+            if issue.priority == "P0" and orchestrator.parallel_config.p0_sequential:
+                orchestrator._process_sequential(issue)
+            else:
+                orchestrator._process_parallel(issue)
+
+        assert len(parallel_calls) == 1
+        assert parallel_calls[0].decision_needed is None

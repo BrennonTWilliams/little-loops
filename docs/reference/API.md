@@ -568,6 +568,7 @@ class IssueInfo:
     score_change_surface: int | None = None # Outcome criterion D – Change Surface (0-25) from /ll:confidence-check
     size: str | None = None               # Issue size from /ll:issue-size-review (Small, Medium, Large, Very Large)
     testable: bool | None = None           # False = skip TDD phase; None = treat as testable
+    decision_needed: bool | None = None    # Set to true by /ll:refine-issue when 2+ options detected; cleared by /ll:decide-issue
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts
     labels: list[str] = []                 # Labels from ## Labels section
