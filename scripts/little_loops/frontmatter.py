@@ -64,6 +64,10 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
                 logger.warning("Unsupported YAML block scalar in frontmatter: %r", line)
                 result[key] = None
                 continue
+            if value.startswith("[") and value.endswith("]"):
+                inner = value[1:-1].strip()
+                result[key] = [item.strip() for item in inner.split(",")] if inner else []
+                continue
             if value.lower() in ("null", "~", ""):
                 if value == "":
                     result[key] = []

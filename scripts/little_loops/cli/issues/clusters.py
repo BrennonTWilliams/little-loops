@@ -187,6 +187,7 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
     """
     from little_loops.cli.output import terminal_width
     from little_loops.dependency_graph import DependencyGraph
+    from little_loops.dependency_mapper.operations import gather_all_issue_ids
     from little_loops.issue_parser import find_issues
 
     issues = find_issues(config)
@@ -194,7 +195,9 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
         print("No active issues found.")
         return 0
 
-    graph = DependencyGraph.from_issues(issues)
+    issues_dir = config.project_root / config.issues.base_dir
+    all_known_ids = gather_all_issue_ids(issues_dir, config=config)
+    graph = DependencyGraph.from_issues(issues, all_known_ids=all_known_ids)
     all_ids = set(graph.issues.keys())
     components = _get_connected_components(graph, all_ids)
 
