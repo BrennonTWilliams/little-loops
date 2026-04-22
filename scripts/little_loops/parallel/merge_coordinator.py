@@ -1203,6 +1203,11 @@ class MergeCoordinator:
 
         # Remove worktree
         self._git_lock.run(
+            ["worktree", "unlock", str(worktree_path)],
+            cwd=self.repo_path,
+            timeout=10,
+        )
+        self._git_lock.run(
             ["worktree", "remove", "--force", str(worktree_path)],
             cwd=self.repo_path,
             timeout=30,

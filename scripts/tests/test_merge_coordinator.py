@@ -2776,6 +2776,37 @@ class TestCleanupWorktreeFallback:
             temp_git_repo / ".worktrees" / "nonexistent", "parallel/ghost"
         )
 
+    def test_cleanup_unlock_before_remove(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+        tmp_path: Path,
+    ) -> None:
+        """unlock must be called before remove --force in _cleanup_worktree."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        worktree_path = tmp_path / "test-worktree"
+        worktree_path.mkdir()
+
+        git_commands_run: list[list[str]] = []
+
+        def mock_git_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            git_commands_run.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        with patch.object(coordinator._git_lock, "run", side_effect=mock_git_run):
+            coordinator._cleanup_worktree(worktree_path, "parallel/test-branch")
+
+        calls = git_commands_run
+        unlock_idx = next(i for i, c in enumerate(calls) if c[:3] == ["worktree", "unlock", str(worktree_path)])
+        remove_idx = next(i for i, c in enumerate(calls) if c[:2] == ["worktree", "remove"])
+        assert unlock_idx < remove_idx
+
 
 class TestMergeLoopExceptionHandling:
     """Tests for _merge_loop queue exception handling (BUG-424)."""
