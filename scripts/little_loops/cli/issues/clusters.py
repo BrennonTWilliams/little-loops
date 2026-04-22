@@ -144,20 +144,20 @@ def _render_cluster_diagram(
         _draw_box(grid, row, _BOX_MARGIN, box_width, _BOX_HEIGHT, content, False, "0")
         box_start[issue_id] = row
 
-    # Annotate gap rows with arrow characters and colored edge labels
+    # Annotate gap rows with arrow characters and colored edge labels.
+    # Only draw connectors when a real edge exists between consecutive nodes.
     arrow_labels: dict[int, str] = {}
     for i in range(n - 1):
         a_id = ordered_ids[i]
         b_id = ordered_ids[i + 1]
         gap_row = box_start[a_id] + _BOX_HEIGHT
 
-        if gap_row < grid_h:
-            grid[gap_row][center_col] = "│"
-        if gap_row + 1 < grid_h:
-            grid[gap_row + 1][center_col] = "▼"
-
         rel = edge_map.get((a_id, b_id)) or edge_map.get((b_id, a_id))
         if rel:
+            if gap_row < grid_h:
+                grid[gap_row][center_col] = "│"
+            if gap_row + 1 < grid_h:
+                grid[gap_row + 1][center_col] = "▼"
             color = EDGE_COLOR.get(rel, "37")
             arrow_labels[gap_row] = colorize(f" {rel}", color)
 
