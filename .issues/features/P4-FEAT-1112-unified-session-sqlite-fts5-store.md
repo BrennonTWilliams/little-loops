@@ -6,6 +6,7 @@ status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
 related: [FEAT-1113, ENH-1114]
+blocked_by: [FEAT-1002]
 ---
 
 # FEAT-1112: Unified Session Store (SQLite + FTS5)
@@ -69,4 +70,5 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`

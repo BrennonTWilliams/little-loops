@@ -2,10 +2,10 @@
 id: FEAT-1156
 type: FEAT
 priority: P3
-status: wont_do
+status: open
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
-blocked_by: [FEAT-1112]
+blocked_by: [FEAT-1112, FEAT-1116]
 parent: FEAT-1113
 related: [ENH-152, ENH-495, FEAT-150, FEAT-1157, FEAT-1158]
 ---
@@ -85,3 +85,13 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 - Docs/config updates: FEAT-1158
 - Depends on: FEAT-1112 (fallback available without it)
 - Consumers of `ll-continue-prompt.md`: `commands/resume.md:28-42`, `scripts/little_loops/subprocess_utils.py:31-58`, `hooks/scripts/context-monitor.sh:334-348`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-1116 (hook-intent abstraction layer) is migrating PreCompact hooks from `hooks/scripts/` shell scripts to Python core handlers with thin per-host adapters. This issue adds a new shell script in the legacy layer FEAT-1116 is retiring. Implement `precompact-handoff.sh` as specified here for the MVP, but scope it to be replaced by — or restructured as — the Python core handler + Claude Code adapter pattern once FEAT-1116's PreCompact migration scaffolding is in place.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`

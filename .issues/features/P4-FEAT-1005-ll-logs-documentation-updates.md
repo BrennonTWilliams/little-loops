@@ -49,9 +49,7 @@ FEAT-1002 must be implemented first (`ll-logs` must exist to document it accurat
 
 ## Implementation Steps
 
-1. **Update `CLAUDE.md`** — add `ll-logs` to CLI Tools section (after `ll-gitignore` entry)
-
-2. **Update `docs/reference/CLI.md`** — add `### ll-logs` section after `### ll-gitignore` section (~line 881, before `### ll-verify-docs`); include flag table with `discover`, `extract`, and `tail` subcommands and their flags (`--project`, `--all`, `--cmd`, `--loop`)
+1. **Update `docs/reference/CLI.md`** — add `### ll-logs` section after `### ll-gitignore` section (~line 881, before `### ll-verify-docs`); include flag table with `discover`, `extract`, and `tail` subcommands and their flags (`--project`, `--all`, `--cmd`, `--loop`)
 
 2b. **Update `docs/reference/CLI.md` Common Flags table** (lines 15-28) — add `ll-logs` to the "Used by" column for three existing flag rows:
    - `--dry-run` row: append `, ll-logs`
@@ -116,7 +114,6 @@ FEAT-1002 must be implemented first (`ll-logs` must exist to document it accurat
 ## Integration Map
 
 ### Files to Modify
-- `CLAUDE.md` — CLI Tools section
 - `docs/reference/CLI.md` — add `### ll-logs` section with flag table (after line 881); also update Common Flags table (lines 15-28) "Used by" column for `--dry-run`, `--quiet`, `--config`
 - `docs/reference/API.md` — add command reference
 - `docs/ARCHITECTURE.md` — add `├── logs.py` to cli/ directory tree (~line 180)
@@ -201,6 +198,10 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 - **Risk**: Very low - additive docs changes
 - **Breaking Change**: No
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `.claude/CLAUDE.md` CLI Tools update belongs exclusively to **FEAT-1006** (wiring/permissions scope), not this issue. FEAT-1005 owns only user-facing documentation under `docs/` and root-level docs (`README.md`, `CONTRIBUTING.md`). This avoids two issues both writing the same CLAUDE.md entry.
+
 ## Labels
 
 `feature`, `documentation`, `cli`
@@ -217,6 +218,7 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:wire-issue` - 2026-04-08T22:15:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7442f9bc-9ee0-4418-bdc5-0a1d97abfe36.jsonl`

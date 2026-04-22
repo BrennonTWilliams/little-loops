@@ -2,10 +2,10 @@
 id: FEAT-1157
 type: FEAT
 priority: P3
-status: wont_do
+status: open
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
-blocked_by: [FEAT-1156]
+blocked_by: [FEAT-1112, FEAT-1156]
 parent: FEAT-1113
 related: [FEAT-1156, FEAT-1158]
 ---

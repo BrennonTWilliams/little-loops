@@ -426,6 +426,15 @@ class IssueParser:
         blocked_by = self._parse_blocked_by(content)
         blocks = self._parse_blocks(content)
 
+        # Also read blocked_by/blocks from frontmatter (newer issue format)
+        for fm_key, target in (("blocked_by", blocked_by), ("blocks", blocks)):
+            fm_val = frontmatter.get(fm_key)
+            if fm_val:
+                ids = [fm_val] if isinstance(fm_val, str) else list(fm_val)
+                for id_ in ids:
+                    if id_ not in target:
+                        target.append(id_)
+
         # Parse session commands from ## Session Log section
         from little_loops.session_log import count_session_commands, parse_session_log
 

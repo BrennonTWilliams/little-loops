@@ -5,6 +5,7 @@ priority: P5
 status: open
 discovered_date: 2026-04-05
 discovered_by: capture-issue
+blocked_by: [FEAT-959, FEAT-960, FEAT-962]
 ---
 
 # FEAT-957: Add OpenAI Codex CLI Plugin Compatibility
@@ -183,7 +184,9 @@ _No documents linked._
 
 ## Blocked By
 
-- FEAT-960
+- FEAT-959 (must complete OpenCode Python path abstraction before extending `find_config()` for Codex)
+- FEAT-960 (must complete OpenCode shell hooks / `LL_STATE_DIR` abstraction before adding Codex support)
+- FEAT-962 (must complete `ll:init --opencode` flag before adding `--codex` flag to the same block)
 
 ## Labels
 
@@ -196,6 +199,7 @@ _No documents linked._
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
@@ -212,3 +216,5 @@ _No documents linked._
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue establishes the plugin-compatibility pattern that FEAT-992 (Pi) will reuse. Extract a reusable config-directory-resolution abstraction in `scripts/little_loops/config/core.py` and `hooks/scripts/lib/common.sh` that accepts an ordered list of candidate config dirs (`.claude/`, `.codex/`, `.opencode/`, `.pi/`, ...), so FEAT-992 can reuse the mechanism instead of patching the same functions again.
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `codex-plugin/` scaffold step (Step 2) must be gated on completing the Codex CLI SDK runtime research (Step 1). If Codex uses a different JS runtime than the Bun/TypeScript approach established by FEAT-961 for the OpenCode plugin, document the divergence explicitly here and in FEAT-961 before creating the plugin directory, so multi-runtime JS tooling decisions are made deliberately rather than discovered mid-implementation.

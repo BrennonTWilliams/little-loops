@@ -95,16 +95,7 @@ def main_logs() -> int:
 
 3. **Verify**: `ll-logs discover` runs without error
 
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-4. Update `commands/help.md` — append `ll-logs` entry to the CLI TOOLS block (two-column format matching existing entries)
-5. Update `skills/configure/areas.md:793` — increment "all ll- commands" count and append `ll-logs` to the enumerated list
-6. Update `README.md:90` — increment `13 CLI tools` to `14 CLI tools`; add `### ll-logs` section after `### ll-gitignore`
-7. Update `docs/ARCHITECTURE.md:175-184` — add `├── logs.py` with comment to the `cli/` directory tree
-8. Update `CONTRIBUTING.md:183-194` — add `logs.py` to the `cli/` directory listing
-9. Update `docs/reference/API.md` — add `ll-logs` entry in the CLI tools reference section
+_Wiring Phase steps (commands/help.md, skills/configure/areas.md, README.md, docs/ARCHITECTURE.md, CONTRIBUTING.md, docs/reference/API.md) are owned by FEAT-1005 and FEAT-1006 — do not duplicate them here._
 
 ## Integration Map
 
@@ -114,8 +105,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Files to Modify
 - `scripts/little_loops/cli/__init__.py:20-56` — add `main_logs` import and `__all__` entry
 - `scripts/pyproject.toml:48-63` — add `ll-logs` entry point
-- `commands/help.md` — append `ll-logs` entry to the CLI TOOLS block [Wiring: registration]
-- `skills/configure/areas.md:793` — increment tool count and append `ll-logs` to the enumerated authorization list [Wiring: registration]
 
 ### Similar Patterns
 - `scripts/little_loops/user_messages.py:354` — `get_project_folder(cwd)`: encodes CWD path to `~/.claude/projects/<encoded>`
@@ -210,6 +199,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - FEAT-1006
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
@@ -230,3 +220,5 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue implements **Phase 1** — a standalone JSONL extractor reading from `~/.claude/projects/`. A follow-up refactor will migrate the internals to query FEAT-1112's unified SQLite + FTS5 store once that lands, keeping the `ll-logs` CLI interface stable. Do not block on FEAT-1112; build the Phase 1 tool now and refactor later.
+
+**Note** (added by `/ll:audit-issue-conflicts`): Scope for this issue is strictly the Python module and entry-point registration (`logs.py`, `cli/__init__.py`, `pyproject.toml`). Documentation file updates (README.md, docs/ARCHITECTURE.md, docs/reference/CLI.md, docs/reference/API.md, CONTRIBUTING.md) belong to **FEAT-1005**. Skills/commands wiring (`commands/help.md`, `skills/configure/areas.md`) belongs to **FEAT-1006**.

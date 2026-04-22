@@ -5,7 +5,7 @@ priority: P3
 status: open
 discovered_date: 2026-04-18
 discovered_by: capture-issue
-blocked_by: [FEAT-1112]
+blocked_by: [FEAT-1112, FEAT-1116, FEAT-1156, FEAT-1157, FEAT-1158]
 related: [FEAT-1112, FEAT-1113]
 ---
 
@@ -140,11 +140,26 @@ Three-component architecture following context-mode's model, adapted for the lit
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Three conflicts resolved by the blocking dependencies added above:
+
+1. **precompact-handoff.sh ownership** (conflict with FEAT-1156): Do NOT implement `hooks/scripts/precompact-handoff.sh` as a new file in this issue. FEAT-1156 owns and delivers that script. Remove it from this issue's "New Files" list; FEAT-1159 should consume the script from FEAT-1156's deliverable, not re-implement it. FEAT-1159's Component 2 scope should be scoped to the *integration wiring* of the existing script (e.g., reading from the event log produced by Component 1).
+
+2. **TestPrecompactHandoff ownership** (conflict with FEAT-1157): Do NOT create a `TestPrecompactHandoff` class in `test_hooks_integration.py` as part of this issue. FEAT-1157 owns that class. FEAT-1159's test scope is `TestSessionCapture` and `TestSessionStartInject` only.
+
+3. **Docs/config overlap** (conflict with FEAT-1158): `docs/guides/SESSION_HANDOFF.md`, `docs/ARCHITECTURE.md`, and any `config-schema.json` additions for the PreCompact hook belong to FEAT-1158's docs phase. FEAT-1159's documentation step should build on FEAT-1158's existing edits and add only the session-capture–specific sections, not re-edit the same PreCompact trigger documentation.
+
+4. **Hook architecture** (conflict with FEAT-1116): All three new hook scripts (`session-capture.sh`, `precompact-handoff.sh`, `session-start-inject.sh`) are proposed as shell scripts in `hooks/scripts/` using `lib/common.sh`. FEAT-1116 is migrating this layer to Python core handlers with per-host adapters. Implement the shell-script MVP as described for unblocked delivery, but plan a follow-up issue to migrate to the FEAT-1116 adapter pattern once its PreCompact and SessionStart scaffolding is available.
+
 ## Labels
 
 `feature`, `hooks`, `session-management`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:capture-issue` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa52965-8df7-4476-a2af-96e098002a6a.jsonl`
 
