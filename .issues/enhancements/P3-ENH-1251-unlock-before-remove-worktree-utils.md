@@ -52,7 +52,7 @@ Run the test suite first and update only tests that actually fail:
 
 - `scripts/tests/test_cli_loop_worktree.py:281-306` — `git_lock.run` patch with `"remove" in args` filter; `unlock` args don't match this filter, so assertions likely pass unchanged
 - `scripts/tests/test_cli_loop_worktree.py:409-450` — `WorkerPool._cleanup_worktree()` backward-compat tests; check call-count assertions
-- `scripts/tests/test_worker_pool.py:722-778` — `TestSetupAndCleanupWorktree`; filters on `"remove" in c` and `"branch" in c and "-D" in c`; unlock call doesn't match
+- `scripts/tests/test_worker_pool.py:722-778` — `TestWorkerPoolWorktreeManagement` (not `TestSetupAndCleanupWorktree` as previously noted); filters on `"remove" in c` and `"branch" in c and "-D" in c`; unlock call doesn't match
 
 ### New Tests to Write
 
@@ -192,6 +192,7 @@ def test_remove_proceeds_when_unlock_fails(self, tmp_path: Path) -> None:
 `parallel`, `worktree`, `reliability`, `cleanup`, `testing`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-22T19:23:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
 - `/ll:wire-issue` - 2026-04-22T16:10:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3f74547-c9d2-42f1-92b3-69f67200920d.jsonl`
 - `/ll:refine-issue` - 2026-04-22T16:04:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44820dc9-a5a0-4cb5-b513-13d37140c707.jsonl`
 - `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`

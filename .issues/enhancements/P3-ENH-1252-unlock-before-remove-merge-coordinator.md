@@ -5,7 +5,7 @@ parent_issue: ENH-1247
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
 size: Small
-decision_needed: true
+decision_needed: false
 confidence_score: 98
 outcome_confidence: 93
 score_complexity: 25
@@ -34,17 +34,24 @@ Decomposed from ENH-1247: Stranded Lock File Hardening + Breaking Test Updates
 
 ## Proposed Solution
 
-At `merge_coordinator.py:1194-1221` (`_cleanup_worktree()`), either:
+**Decision: inline unlock** (delegation to `worktree_utils.cleanup_worktree()` was considered and rejected — see Decision Notes below).
 
-**(Preferred) Delegate to worktree_utils.cleanup_worktree()**:
-Add `import little_loops.worktree_utils` and refactor to call `worktree_utils.cleanup_worktree()`. Note: `branch_name` is already a parameter here; `worktree_utils.cleanup_worktree()` (signature: `cleanup_worktree(worktree_path, repo_path, logger, git_lock, delete_branch=True)`) derives the branch via `git rev-parse --abbrev-ref HEAD` run inside the worktree — **this is a risk**: if the worktree directory has already been removed from disk when branch deletion runs, `rev-parse` fails and the branch name becomes `None`, silently skipping branch deletion. The `parallel/` guard in `_cleanup_worktree` (which ensures only `parallel/` branches are deleted) is also absent from the utility. All required call-site parameters are available (`self.repo_path`, `self.logger`, `self._git_lock`), but these divergences require careful handling.
+At `merge_coordinator.py:1194-1221` (`_cleanup_worktree()`), insert before line 1205:
 
-**(Alternative) Inline unlock**:
-Insert before line 1205:
 ```python
 self._git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=self.repo_path, timeout=10)
 ```
+
 Discard return value — `GitLock.run()` never raises `CalledProcessError` (uses `subprocess.run` without `check=True`).
+
+### Decision Notes
+
+Delegation to `worktree_utils.cleanup_worktree()` was rejected for two reasons:
+
+1. **Safety regression**: The utility lacks the `parallel/` branch guard present in `MergeCoordinator._cleanup_worktree()`, which could cause non-`parallel/` branches to be deleted.
+2. **Silent branch-deletion failure**: The utility derives branch name via `git rev-parse --abbrev-ref HEAD` inside the worktree. If the worktree directory is already gone when branch deletion runs, `rev-parse` fails and the branch is silently skipped — unlike the current approach which passes `branch_name` as a parameter. This is a real race condition in cleanup paths.
+
+The goal is narrowly to add unlock before remove; delegation would change behavior in two ways unrelated to the fix.
 
 ### New Test to Write
 
@@ -114,18 +121,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Implementation Steps
 
 1. Open `merge_coordinator.py`, locate `_cleanup_worktree()` around line 1205.
-2. Choose delegation vs. inline unlock (preferred: delegation if signature adaptation is straightforward).
-3. Implement the chosen approach; discard return value.
-4. Write the new sequence test in `test_merge_coordinator.py`.
-5. Run `python -m pytest scripts/tests/test_merge_coordinator.py -v`.
+2. Insert `self._git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=self.repo_path, timeout=10)` before the `remove --force` call; discard return value.
+3. Write the new sequence test in `test_merge_coordinator.py`.
+4. Run `python -m pytest scripts/tests/test_merge_coordinator.py -v`.
+5. Confirm `TestProcessMergeStashIntegration.test_stash_popped_on_success` (`test_merge_coordinator.py:661`) still passes — it exercises `_cleanup_worktree` on the real success path with no `_git_lock.run` mocking.
 6. Run full regression: `python -m pytest scripts/tests/ -v --tb=short`.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-7. If delegation approach (option a) is chosen, update `test_merge_coordinator.py:2775` — the direct call `coordinator._cleanup_worktree(path, "parallel/ghost")` must be adapted if the `branch_name` parameter is removed from the signature.
-8. Confirm `TestProcessMergeStashIntegration.test_stash_popped_on_success` (`test_merge_coordinator.py:661`) still passes after implementation — it exercises `_cleanup_worktree` on the real success path with no `_git_lock.run` mocking.
 
 ## Acceptance Criteria
 

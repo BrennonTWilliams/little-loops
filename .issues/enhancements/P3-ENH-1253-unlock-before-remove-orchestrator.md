@@ -18,7 +18,7 @@ score_change_surface: 25
 
 ## Summary
 
-Add `git worktree unlock` before `git worktree remove --force` in `orchestrator._cleanup_orphaned_worktrees()` (line 275). Update `test_orchestrator.py` assertions that may break due to the new call.
+Add `git worktree unlock` before `git worktree remove --force` in `orchestrator._cleanup_orphaned_worktrees()` (line 273). Update `test_orchestrator.py` assertions that may break due to the new call.
 
 ## Parent Issue
 
@@ -26,7 +26,7 @@ Decomposed from ENH-1247: Stranded Lock File Hardening + Breaking Test Updates
 
 ## Current Behavior
 
-`orchestrator._cleanup_orphaned_worktrees()` at line 275 calls `git worktree remove --force` without a preceding unlock. The existing broad `except Exception as e: logger.warning(...)` at line 301 wraps the remove, but a stranded lock file causes remove to fail on older git before the exception suppresses it.
+`orchestrator._cleanup_orphaned_worktrees()` at line 273 calls `git worktree remove --force` without a preceding unlock. The existing broad `except Exception as e: logger.warning(...)` at line 299 wraps the remove, but a stranded lock file causes remove to fail on older git before the exception suppresses it.
 
 ## Expected Behavior
 
@@ -34,7 +34,7 @@ Decomposed from ENH-1247: Stranded Lock File Hardening + Breaking Test Updates
 
 ## Proposed Solution
 
-At `orchestrator.py:275`, insert before the existing `remove --force` call:
+At `orchestrator.py:273`, insert before the existing `remove --force` call (line 275 is the `cwd=` arg, not the call start):
 
 ```python
 self._git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=self.repo_path, timeout=10)
@@ -74,7 +74,7 @@ assert call_order.index("unlock") < call_order.index("remove")
 
 ## Files to Modify
 
-- `scripts/little_loops/parallel/orchestrator.py:275` — add `self._git_lock.run(["worktree", "unlock", ...], ...)` before `remove --force`
+- `scripts/little_loops/parallel/orchestrator.py:273` — add `self._git_lock.run(["worktree", "unlock", ...], ...)` before `remove --force`
 - `scripts/tests/test_orchestrator.py:350-444` — update only assertions that actually fail
 
 ## Integration Map
@@ -97,12 +97,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Key References
 
 - `scripts/little_loops/parallel/git_lock.py:81-108` — `GitLock.run()` never raises `CalledProcessError`; non-zero exit codes are returned as `CompletedProcess`, not raised; only `subprocess.TimeoutExpired` or `RuntimeError` can propagate
-- `scripts/little_loops/parallel/orchestrator.py:273-302` — `try:` is line 273, `except Exception as e:` is line 301; the broad handler wraps both the new unlock and the existing remove call
+- `scripts/little_loops/parallel/orchestrator.py:271-299` — `try:` is line 271, `except Exception as e:` is line 299; the broad handler wraps both the new unlock and the existing remove call
 - `scripts/little_loops/parallel/merge_coordinator.py:1194-1221` — `_cleanup_worktree()` is the structurally closest sibling; ENH-1252 adds unlock there with identical argument format
 
 ## Implementation Steps
 
-1. Open `orchestrator.py`, locate `_cleanup_orphaned_worktrees()` around line 275.
+1. Open `orchestrator.py`, locate `_cleanup_orphaned_worktrees()` around line 271 (the `try:` block).
 2. Insert `self._git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=self.repo_path, timeout=10)` before the `remove --force` call.
 3. Run `python -m pytest scripts/tests/test_orchestrator.py -v`.
 4. Update only assertions that actually fail.
@@ -119,6 +119,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `parallel`, `worktree`, `reliability`, `cleanup`, `testing`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-22T19:23:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
 - `/ll:wire-issue` - 2026-04-22T16:31:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a35c25d-86e0-4d3c-b6dd-aef15be8bbd8.jsonl`
 - `/ll:refine-issue` - 2026-04-22T16:25:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01c6c26c-1c26-4390-9e46-9fc453943199.jsonl`
 - `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
