@@ -1,7 +1,7 @@
 ---
 discovered_date: 2026-04-07
 discovered_by: split-from-ENH-494
-blocked_by: [ENH-1092]
+blocked_by: [ENH-494]
 ---
 
 # ENH-977: Add `ll-verify-skills` CLI Lint Command
@@ -82,10 +82,6 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 - **Effort**: Low — Pure addition; follows a well-established pattern
 - **Risk**: Low — New tool, no changes to existing behavior
 - **Breaking Change**: No
-
-## Blocked By
-
-- ENH-494 — 500-line convention must be established before writing a lint check for it
 
 ## Labels
 
