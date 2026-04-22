@@ -11,6 +11,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: '2026-04-22T20:11:55Z'
 ---
 
 # ENH-1130: Documentation and Path Updates for Scratch-Pad Hook
@@ -18,6 +19,18 @@ score_change_surface: 25
 ## Summary
 
 Update all documentation and inline references for the scratch-pad enforcement feature: correct `/tmp/ll-scratch/` → `.loops/tmp/scratch/` everywhere, update CLAUDE.md to describe automatic enforcement, document new `scratch_pad` config properties in CONFIGURATION.md and ARCHITECTURE.md. Independent of ENH-1128/ENH-1129 — can be done in any order.
+
+## Current Behavior
+
+- `.claude/CLAUDE.md:122-130` (`## Automation: Scratch Pad`) still instructs Claude to write scratch files to `/tmp/ll-scratch/`, the path that BUG-817 migrated away from. Live misdirection at session-start time.
+- `docs/guides/LOOPS_GUIDE.md:569` CLI override example shows `--context scratch_dir=/tmp/ll-scratch`, also the old path.
+- `docs/reference/CONFIGURATION.md:162-165` JSON example block shows only 2 of 6 `scratch_pad` keys (`enabled`, `threshold_lines`), making the other four keys (`automation_contexts_only`, `tail_lines`, `command_allowlist`, `file_extension_filters`) undiscoverable from the example.
+
+## Expected Behavior
+
+- `.claude/CLAUDE.md:122-130` references `.loops/tmp/scratch/` as the active scratch path, notes the `scratch-pad-redirect` PreToolUse hook auto-enforces when `scratch_pad.enabled: true`, and points at the `scratch_pad` config keys.
+- `docs/guides/LOOPS_GUIDE.md:569` CLI override example shows `--context scratch_dir=.loops/tmp` (the FSM default per `context-health-monitor.yaml`).
+- `docs/reference/CONFIGURATION.md:162-165` JSON example block includes all 6 `scratch_pad` keys with their schema defaults.
 
 ## Parent Issue
 
@@ -36,15 +49,15 @@ BUG-817 migrated the active scratch path to `.loops/tmp/scratch/` but CLAUDE.md 
   - Remove prose instructions the hook now enforces
 - `docs/reference/CONFIGURATION.md:155,474-481` updated with the four new `scratch_pad` properties (`automation_contexts_only`, `tail_lines`, `command_allowlist`, `file_extension_filters`) and their defaults
 - `docs/ARCHITECTURE.md:90-95` (hook scripts directory listing) gains `scratch-pad-redirect.sh` entry
-- `docs/guides/LOOPS_GUIDE.md:556` — correct `/tmp/ll-scratch` → `.loops/tmp/scratch` in `scratch_dir` CLI override example
+- `docs/guides/LOOPS_GUIDE.md:569` — correct `/tmp/ll-scratch` → `.loops/tmp` in `scratch_dir` CLI override example (FSM default is `.loops/tmp`, not `.loops/tmp/scratch`)
 - After editing CLAUDE.md, run `python -m pytest scripts/tests/test_create_extension_wiring.py -v` to confirm `"ll-create-extension"` and `"ll-generate-schemas"` string assertions still pass (low-risk but verify; test reads CLAUDE.md at `scripts/tests/test_create_extension_wiring.py:83-87,162-166`)
 
 ## Files to Modify
 
 - `.claude/CLAUDE.md:122-130`
-- `docs/reference/CONFIGURATION.md:155,474-481`
-- `docs/ARCHITECTURE.md:90-95`
-- `docs/guides/LOOPS_GUIDE.md:556`
+- `docs/reference/CONFIGURATION.md:162-165`
+- `docs/guides/LOOPS_GUIDE.md:569`
+- `docs/ARCHITECTURE.md:90-95` — already satisfied; do not modify
 
 ## Integration Map
 
@@ -99,8 +112,51 @@ _Added by `/ll:go-no-go` on 2026-04-22_ — **NO-GO (REFINE)**
 ### Rationale
 The issue contains at least one demonstrably incorrect acceptance criterion: AC4 specifies correcting `scratch_dir=/tmp/ll-scratch` to `scratch_dir=.loops/tmp/scratch`, but `context-health-monitor.yaml:10` confirms the actual FSM default is `scratch_dir: .loops/tmp`. Changing the example to `.loops/tmp/scratch` would introduce a semantic error — the monitor watches all loop output files under `.loops/tmp/`, not just the hook's subdirectory. Additionally, AC3 and AC2's prose table are already satisfied by prior commits, meaning the issue has not been audited against current codebase state. The CLAUDE.md correction (AC1) is real and valid, but implementing the issue as written bundles a valid fix with a wrong one.
 
+## Scope Boundaries
+
+- Only updating documentation and inline reference strings — no code logic changes.
+- `docs/ARCHITECTURE.md` (AC3) and `docs/reference/CONFIGURATION.md` prose table (AC2) are explicitly out of scope — already satisfied by prior commits `61a2cd66` and `d50560d0`.
+- No changes to hook scripts or config schema.
+
+## Impact
+
+- **Priority**: P3 — Live documentation misdirection; not breaking but causes confusion in automation sessions
+- **Effort**: Small — Three targeted text edits plus a new wiring test file
+- **Risk**: Low — Documentation-only; no runtime behavior changes; verified by wiring test
+- **Breaking Change**: No
+
+## Labels
+
+`documentation`, `enhancement`, `scratch-pad`
+
+## Status
+
+**Open** | Created: 2026-04-22 | Priority: P3
+
 ## Session Log
+- `ll-auto` - 2026-04-22T20:11:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b845b2b2-cee1-4d01-8790-c3b7599dd1ce.jsonl`
+- `/ll:ready-issue` - 2026-04-22T20:09:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44738150-1e95-485b-b9de-efb28cd3a773.jsonl`
 - `/ll:wire-issue` - 2026-04-22T20:00:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11e2d49e-b581-4771-8622-7d23334f2839.jsonl`
 - `/ll:refine-issue` - 2026-04-22T19:57:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d97b3fc-442b-4215-a0e1-e7e88115a06e.jsonl`
 - `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
 - `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d6ff545-eb89-4060-969d-7b25e3f9974e.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-04-22
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

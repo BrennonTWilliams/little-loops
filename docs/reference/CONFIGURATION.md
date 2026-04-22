@@ -161,7 +161,11 @@ For interactive editing, use `/ll:configure`.
 
   "scratch_pad": {
     "enabled": false,
-    "threshold_lines": 200
+    "threshold_lines": 200,
+    "automation_contexts_only": true,
+    "tail_lines": 20,
+    "command_allowlist": ["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"],
+    "file_extension_filters": [".log", ".txt", ".json", ".md", ".py", ".ts", ".tsx", ".js"]
   },
 
   "dependency_mapping": {

@@ -566,7 +566,7 @@ ll-loop run context-health-monitor
 # Lower threshold for aggressive compaction
 ll-loop run context-health-monitor \
   --context scratch_size_kb_warn=200 \
-  --context scratch_dir=/tmp/ll-scratch
+  --context scratch_dir=.loops/tmp
 ```
 
 **FSM flow**:
