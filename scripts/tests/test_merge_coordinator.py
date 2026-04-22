@@ -2803,7 +2803,9 @@ class TestCleanupWorktreeFallback:
             coordinator._cleanup_worktree(worktree_path, "parallel/test-branch")
 
         calls = git_commands_run
-        unlock_idx = next(i for i, c in enumerate(calls) if c[:3] == ["worktree", "unlock", str(worktree_path)])
+        unlock_idx = next(
+            i for i, c in enumerate(calls) if c[:3] == ["worktree", "unlock", str(worktree_path)]
+        )
         remove_idx = next(i for i, c in enumerate(calls) if c[:2] == ["worktree", "remove"])
         assert unlock_idx < remove_idx
 

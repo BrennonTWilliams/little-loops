@@ -2648,7 +2648,9 @@ class TestDecisionNeededGate:
         mock_logger = MagicMock()
         fail_result = MagicMock(returncode=1, stdout="", stderr="")
 
-        with patch("little_loops.issue_manager.run_claude_command", return_value=fail_result) as mock_cmd:
+        with patch(
+            "little_loops.issue_manager.run_claude_command", return_value=fail_result
+        ) as mock_cmd:
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
                     mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -2671,7 +2673,9 @@ class TestDecisionNeededGate:
         mock_logger = MagicMock()
         fail_result = MagicMock(returncode=1, stdout="", stderr="")
 
-        with patch("little_loops.issue_manager.run_claude_command", return_value=fail_result) as mock_cmd:
+        with patch(
+            "little_loops.issue_manager.run_claude_command", return_value=fail_result
+        ) as mock_cmd:
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
                     mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")

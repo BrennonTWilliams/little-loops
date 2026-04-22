@@ -1362,8 +1362,7 @@ class TestAutodevLoop:
         """recheck_scores.on_yes (scores pass) must route to decide_current."""
         state = data["states"].get("recheck_scores", {})
         assert state.get("on_yes") == "decide_current", (
-            f"recheck_scores.on_yes should be 'decide_current', "
-            f"got {state.get('on_yes')!r}"
+            f"recheck_scores.on_yes should be 'decide_current', got {state.get('on_yes')!r}"
         )
 
     def test_decide_current_uses_shell_exit_fragment(self, data: dict) -> None:

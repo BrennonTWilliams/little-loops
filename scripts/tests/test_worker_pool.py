@@ -2241,7 +2241,9 @@ class TestWorkerPoolDecisionNeededGate:
         with patch.object(worker_pool, "_setup_worktree"):
             with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
                 with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
-                    with patch.object(worker_pool, "_get_changed_files", return_value=["src/fix.py"]):
+                    with patch.object(
+                        worker_pool, "_get_changed_files", return_value=["src/fix.py"]
+                    ):
                         with patch.object(worker_pool, "_detect_main_repo_leaks", return_value=[]):
                             with patch.object(
                                 worker_pool, "_update_branch_base", return_value=(True, "")
@@ -2280,7 +2282,9 @@ class TestWorkerPoolDecisionNeededGate:
         with patch.object(worker_pool, "_setup_worktree"):
             with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
                 with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
-                    with patch.object(worker_pool, "_get_changed_files", return_value=["src/fix.py"]):
+                    with patch.object(
+                        worker_pool, "_get_changed_files", return_value=["src/fix.py"]
+                    ):
                         with patch.object(worker_pool, "_detect_main_repo_leaks", return_value=[]):
                             with patch.object(
                                 worker_pool, "_update_branch_base", return_value=(True, "")

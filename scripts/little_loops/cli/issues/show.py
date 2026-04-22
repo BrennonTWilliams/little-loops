@@ -245,7 +245,9 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "fmt": fmt,
         "captured_at": str(captured_at) if captured_at is not None else None,
         "completed_at": str(completed_at) if completed_at is not None else None,
-        "decision_needed": str(decision_needed_raw).lower() if decision_needed_raw is not None else None,
+        "decision_needed": str(decision_needed_raw).lower()
+        if decision_needed_raw is not None
+        else None,
     }
 
 

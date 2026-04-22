@@ -1788,10 +1788,7 @@ class TestIssuesCLIShow:
 
         features_dir = temp_project_dir / ".issues" / "features"
         (features_dir / "P2-FEAT-503-decision-needed.md").write_text(
-            "---\n"
-            "decision_needed: true\n"
-            "---\n"
-            "# FEAT-503: Decision needed issue\n"
+            "---\ndecision_needed: true\n---\n# FEAT-503: Decision needed issue\n"
         )
 
         with patch.object(
@@ -2989,12 +2986,10 @@ def issues_dir_multi_root(temp_project_dir: Path) -> Path:
     (issues_base / "deferred").mkdir(parents=True)
 
     (bugs_dir / "P1-BUG-010-root-a.md").write_text(
-        "# BUG-010: Root A\n\n## Summary\nFirst independent root.\n\n"
-        "## Blocks\n- BUG-012\n"
+        "# BUG-010: Root A\n\n## Summary\nFirst independent root.\n\n## Blocks\n- BUG-012\n"
     )
     (bugs_dir / "P1-BUG-011-root-b.md").write_text(
-        "# BUG-011: Root B\n\n## Summary\nSecond independent root.\n\n"
-        "## Blocks\n- BUG-012\n"
+        "# BUG-011: Root B\n\n## Summary\nSecond independent root.\n\n## Blocks\n- BUG-012\n"
     )
     (bugs_dir / "P2-BUG-012-shared-child.md").write_text(
         "# BUG-012: Shared child\n\n## Summary\nBlocked by both roots.\n\n"
@@ -3017,8 +3012,7 @@ def issues_dir_with_deps(temp_project_dir: Path) -> Path:
 
     # Cluster A (3 issues): BUG-001 → BUG-002 → BUG-003
     (bugs_dir / "P0-BUG-001-critical-crash.md").write_text(
-        "# BUG-001: Critical crash on startup\n\n## Summary\nApp crashes.\n\n"
-        "## Blocks\n- BUG-002\n"
+        "# BUG-001: Critical crash on startup\n\n## Summary\nApp crashes.\n\n## Blocks\n- BUG-002\n"
     )
     (bugs_dir / "P1-BUG-002-slow-query.md").write_text(
         "# BUG-002: Slow database query\n\n## Summary\nSlow.\n\n"
@@ -3031,12 +3025,10 @@ def issues_dir_with_deps(temp_project_dir: Path) -> Path:
 
     # Cluster B (2 issues): FEAT-001 → FEAT-002
     (features_dir / "P1-FEAT-001-dark-mode.md").write_text(
-        "# FEAT-001: Add dark mode\n\n## Summary\nDark theme.\n\n"
-        "## Blocks\n- FEAT-002\n"
+        "# FEAT-001: Add dark mode\n\n## Summary\nDark theme.\n\n## Blocks\n- FEAT-002\n"
     )
     (features_dir / "P2-FEAT-002-export-csv.md").write_text(
-        "# FEAT-002: Export to CSV\n\n## Summary\nCSV export.\n\n"
-        "## Blocked By\n- FEAT-001\n"
+        "# FEAT-002: Export to CSV\n\n## Summary\nCSV export.\n\n## Blocked By\n- FEAT-001\n"
     )
 
     # Orphan (isolated): BUG-004 — no relationships
@@ -3275,7 +3267,14 @@ class TestIssuesCLIClusters:
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "clusters", "--include-orphans", "--json", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "clusters",
+                "--include-orphans",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli import main_issues
 

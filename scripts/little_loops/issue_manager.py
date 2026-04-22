@@ -561,9 +561,13 @@ def process_issue_inplace(
 
     # Decision gate: invoke decide-issue when the issue requires a decision
     if info.decision_needed is True and not dry_run:
-        logger.info(f"Decision gate: {info.issue_id} has decision_needed=True, invoking decide-issue...")
+        logger.info(
+            f"Decision gate: {info.issue_id} has decision_needed=True, invoking decide-issue..."
+        )
         _decide_slash = f"/ll:decide-issue {info.issue_id} --auto"
-        _decide_cmd = expand_skill("decide-issue", [info.issue_id, "--auto"], config) or _decide_slash
+        _decide_cmd = (
+            expand_skill("decide-issue", [info.issue_id, "--auto"], config) or _decide_slash
+        )
         decide_result = run_claude_command(
             _decide_cmd,
             logger,

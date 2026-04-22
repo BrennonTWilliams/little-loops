@@ -15,21 +15,19 @@ if TYPE_CHECKING:
 
 # ANSI color codes per relationship type
 EDGE_COLOR: dict[str, str] = {
-    "blocks": "31",      # red
+    "blocks": "31",  # red
     "blocked_by": "33",  # yellow
-    "parent": "34",      # blue
-    "sibling": "36",     # cyan
+    "parent": "34",  # blue
+    "sibling": "36",  # cyan
 }
 
-_BOX_HEIGHT = 4    # top border + 2 content lines + bottom border
-_GAP_HEIGHT = 2    # rows between boxes for arrow drawing
-_BOX_MARGIN = 2    # left-margin column offset
+_BOX_HEIGHT = 4  # top border + 2 content lines + bottom border
+_GAP_HEIGHT = 2  # rows between boxes for arrow drawing
+_BOX_MARGIN = 2  # left-margin column offset
 _MAX_BOX_WIDTH = 60
 
 
-def _get_connected_components(
-    graph: DependencyGraph, all_ids: set[str]
-) -> list[list[str]]:
+def _get_connected_components(graph: DependencyGraph, all_ids: set[str]) -> list[list[str]]:
     """BFS over undirected dependency graph to find connected components.
 
     Returns components sorted by size descending.
@@ -49,9 +47,8 @@ def _get_connected_components(
             visited.add(current)
             component.append(current)
             neighbors = (
-                (graph.blocked_by.get(current, set()) | graph.blocks.get(current, set()))
-                & all_ids
-            )
+                graph.blocked_by.get(current, set()) | graph.blocks.get(current, set())
+            ) & all_ids
             for neighbor in sorted(neighbors):
                 if neighbor not in visited:
                     queue.append(neighbor)
@@ -70,7 +67,7 @@ def _topo_sort_cluster(
     order after the acyclic prefix so the caller always gets a full list.
     """
     cluster_set = set(cluster_ids)
-    in_degree: dict[str, int] = {id_: 0 for id_ in cluster_ids}
+    in_degree: dict[str, int] = dict.fromkeys(cluster_ids, 0)
     adj: dict[str, list[str]] = {id_: [] for id_ in cluster_ids}
 
     for id_ in cluster_ids:
@@ -78,9 +75,7 @@ def _topo_sort_cluster(
             in_degree[id_] += 1
             adj[dep].append(id_)
 
-    queue: deque[str] = deque(
-        sorted(id_ for id_, deg in in_degree.items() if deg == 0)
-    )
+    queue: deque[str] = deque(sorted(id_ for id_, deg in in_degree.items() if deg == 0))
     result: list[str] = []
 
     while queue:
@@ -99,9 +94,7 @@ def _topo_sort_cluster(
     return result, has_cycle
 
 
-def _cluster_edges(
-    cluster_ids: set[str], graph: DependencyGraph
-) -> list[tuple[str, str, str]]:
+def _cluster_edges(cluster_ids: set[str], graph: DependencyGraph) -> list[tuple[str, str, str]]:
     """Return directed edges within a cluster as (from_id, to_id, relationship)."""
     edges: list[tuple[str, str, str]] = []
     for id_ in sorted(cluster_ids):
@@ -210,8 +203,7 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
 
         def _max_degree(comp: list[str]) -> int:
             return max(
-                len(graph.blocked_by.get(id_, set()) | graph.blocks.get(id_, set()))
-                for id_ in comp
+                len(graph.blocked_by.get(id_, set()) | graph.blocks.get(id_, set())) for id_ in comp
             )
 
         components = [c for c in components if _max_degree(c) >= min_conn]
@@ -242,9 +234,7 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
                         }
                         for id_ in sorted(comp)
                     ],
-                    "edges": [
-                        {"from": f, "to": t, "relationship": r} for f, t, r in edges
-                    ],
+                    "edges": [{"from": f, "to": t, "relationship": r} for f, t, r in edges],
                 }
             )
         print_json(output)

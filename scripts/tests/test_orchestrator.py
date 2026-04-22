@@ -592,7 +592,6 @@ class TestOrphanedWorktreeCleanup:
 
         assert call_order.index("unlock") < call_order.index("remove")
 
-
     def test_prunes_ghost_worktree_refs(self) -> None:
         """Detects and prunes .git/worktrees/<name>/ entries whose on-disk path is gone."""
         import shutil

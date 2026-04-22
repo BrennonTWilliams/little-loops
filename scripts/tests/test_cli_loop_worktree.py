@@ -14,6 +14,8 @@ from little_loops.parallel.git_lock import GitLock
 from little_loops.worktree_utils import cleanup_worktree, setup_worktree
 
 if TYPE_CHECKING:
+    import argparse
+
     from little_loops.parallel.worker_pool import WorkerPool
 
 # ---------------------------------------------------------------------------
@@ -539,9 +541,7 @@ class TestBranchNameGeneration:
 class TestCmdRunWorktree:
     """Integration tests for the cmd_run(worktree=True) code path (ENH-1254)."""
 
-    def _make_args(self, **kwargs: object) -> "argparse.Namespace":
-        import argparse
-
+    def _make_args(self, **kwargs: object) -> argparse.Namespace:
         defaults = {
             "input": None,
             "context": [],

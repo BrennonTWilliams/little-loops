@@ -39,18 +39,14 @@ class TestFlagParsing:
         phase1_start = content.index("Phase 1: Parse Arguments")
         phase2_start = content.index("Phase 2: Locate Issue File")
         phase1_text = content[phase1_start:phase2_start]
-        assert "--auto" in phase1_text, (
-            "Phase 1 must document the --auto flag"
-        )
+        assert "--auto" in phase1_text, "Phase 1 must document the --auto flag"
 
     def test_dry_run_flag_documented(self) -> None:
         content = SKILL_FILE.read_text()
         phase1_start = content.index("Phase 1: Parse Arguments")
         phase2_start = content.index("Phase 2: Locate Issue File")
         phase1_text = content[phase1_start:phase2_start]
-        assert "--dry-run" in phase1_text, (
-            "Phase 1 must document the --dry-run flag"
-        )
+        assert "--dry-run" in phase1_text, "Phase 1 must document the --dry-run flag"
 
 
 class TestOptionExtractionPatterns:
@@ -67,27 +63,21 @@ class TestOptionExtractionPatterns:
         phase3_start = content.index("Phase 3: Extract Options")
         phase4_start = content.index("Phase 4: Gather Codebase Evidence")
         phase3_text = content[phase3_start:phase4_start]
-        assert "Pattern 1" in phase3_text, (
-            "Phase 3 must document Pattern 1 (section headers)"
-        )
+        assert "Pattern 1" in phase3_text, "Phase 3 must document Pattern 1 (section headers)"
 
     def test_pattern_2_bold_labels_documented(self) -> None:
         content = SKILL_FILE.read_text()
         phase3_start = content.index("Phase 3: Extract Options")
         phase4_start = content.index("Phase 4: Gather Codebase Evidence")
         phase3_text = content[phase3_start:phase4_start]
-        assert "Pattern 2" in phase3_text, (
-            "Phase 3 must document Pattern 2 (bold labels)"
-        )
+        assert "Pattern 2" in phase3_text, "Phase 3 must document Pattern 2 (bold labels)"
 
     def test_pattern_3_numbered_items_documented(self) -> None:
         content = SKILL_FILE.read_text()
         phase3_start = content.index("Phase 3: Extract Options")
         phase4_start = content.index("Phase 4: Gather Codebase Evidence")
         phase3_text = content[phase3_start:phase4_start]
-        assert "Pattern 3" in phase3_text, (
-            "Phase 3 must document Pattern 3 (numbered items)"
-        )
+        assert "Pattern 3" in phase3_text, "Phase 3 must document Pattern 3 (numbered items)"
 
 
 class TestCodebasePatternFinderSpawn:
@@ -141,9 +131,7 @@ class TestScoringCriteria:
         phase5_start = content.index("Phase 5: Score Each Option")
         phase6_start = content.index("Phase 6: Prepare Annotation")
         phase5_text = content[phase5_start:phase6_start]
-        assert "Simplicity" in phase5_text, (
-            "Phase 5 must document the Simplicity scoring dimension"
-        )
+        assert "Simplicity" in phase5_text, "Phase 5 must document the Simplicity scoring dimension"
 
     def test_testability_dimension_documented(self) -> None:
         content = SKILL_FILE.read_text()
@@ -159,9 +147,7 @@ class TestScoringCriteria:
         phase5_start = content.index("Phase 5: Score Each Option")
         phase6_start = content.index("Phase 6: Prepare Annotation")
         phase5_text = content[phase5_start:phase6_start]
-        assert "Risk" in phase5_text, (
-            "Phase 5 must document the Risk scoring dimension"
-        )
+        assert "Risk" in phase5_text, "Phase 5 must document the Risk scoring dimension"
 
 
 class TestSelectedAnnotationFormat:
