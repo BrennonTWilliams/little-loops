@@ -145,6 +145,113 @@ revert_and_log:
   next: write_trajectory
 ```
 
+**Corrections from codebase validation (Pass 2)**
+
+_Added by `/ll:refine-issue` — correcting three errors in the prior `gate` YAML snippet:_
+
+1. `stall_window: 3` — not a field in `EvaluateConfig` (`schema.py:56-80`); would be silently ignored
+2. `source:` — not a valid evaluator field; score must be extracted via the state's shell `action:`
+3. `on_target/on_progress/on_stall` — invalid routing keys; must use a `route:` table
+
+Correct `gate` shape (stop on first stall; `route.stall → revert_and_log`):
+
+```yaml
+gate:
+  action_type: shell
+  action: |
+    echo "${captured.benchmark_score.output}" | tail -1 | tr -d '[:space:]'
+  evaluate:
+    type: convergence
+    direction: maximize
+    previous: "${captured.prev_score.output}"
+  route:
+    target: commit_and_log
+    progress: commit_and_log
+    stall: revert_and_log
+    error: revert_and_log
+```
+
+**`previous:` wiring requires a `capture_prev` state**
+
+Without an explicit `previous:` field, the `convergence` evaluator receives `previous=None` on every iteration and always emits `progress` (never `stall`). A dedicated shell state captures the current score as `prev_score` at the end of each cycle, so the next cycle's `gate` has the prior value:
+
+```yaml
+capture_prev:
+  action_type: shell
+  action: "echo '${captured.benchmark_score.output}' | tail -1 | tr -d '[:space:]'"
+  capture: prev_score
+  next: propose
+```
+
+Loop graph with `capture_prev`:
+```
+propose → apply → score → gate → commit_and_log → capture_prev → propose
+                               → revert_and_log → capture_prev → propose
+                               → (done on first stall via revert_and_log → capture_prev → propose → stall again → done)
+```
+
+Wait — with "stop on first stall" the `gate` routes `stall → revert_and_log`, then `revert_and_log` must route to a terminal `done` (or back to `propose` if a separate stall counter is used). The simplest terminal: `revert_and_log` writes the trajectory entry then transitions to `done`.
+
+**Resumability: `load_directive` checkpoint pattern**
+
+The FSM framework restores `current_state` on resume, not best state (`persistence.py:504-558`). `LoopState` has no `best_score` field. To satisfy the "resume at best-score HEAD" acceptance criterion, `load_directive` must read the trajectory on startup and check out the best-scoring accepted commit:
+
+```yaml
+load_directive:
+  action_type: shell
+  action: |
+    TRAJ=.loops/tmp/harness-optimize-trajectory.jsonl
+    if [ -f "$TRAJ" ]; then
+      BEST=$(jq -r 'select(.accepted==true) | .commit_sha' "$TRAJ" | tail -1)
+      [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}
+    fi
+  capture: directive
+  next: baseline_score
+```
+
+The `commit_and_log` state must record the commit SHA. After `git commit`, capture it:
+```yaml
+commit_and_log:
+  action_type: shell
+  action: |
+    git add ${context.targets}
+    git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}"
+    git rev-parse HEAD
+  capture: last_commit
+  next: write_trajectory
+```
+Then `write_trajectory` includes `${captured.last_commit.output}` as `commit_sha` in the JSONL line.
+
+**`propose` state — concrete prompt template (single state with failure context)**
+
+Conditions on target contents, baseline, and last benchmark output (failure diagnosis inline):
+
+```yaml
+propose:
+  action_type: prompt
+  timeout: 300
+  action: |
+    Read the target file(s): ${context.targets}
+    Baseline score: ${captured.baseline.output}
+    Last benchmark output: ${captured.benchmark_score.output}
+
+    Propose ONE targeted edit to improve the benchmark score.
+    Output the complete revised file contents only —
+    no preamble, no explanation, no markdown fences.
+  capture: candidate
+  on_blocked: done
+  next: apply
+```
+
+**Multi-target invocation**
+
+Pass space-separated paths in a single `--context` value; shell word-splitting handles expansion in `action:` strings:
+```
+ll-loop run harness-optimize \
+  --context "targets=skills/foo/SKILL.md skills/bar/SKILL.md" \
+  --context tasks_dir=./benchmarks/foo
+```
+
 ## Implementation Steps
 
 ### Codebase Research Findings
@@ -161,9 +268,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `apply` → prompt state writing the proposed edit to `${context.targets}`
    - `score` → uses `fragment: run_benchmark`
    - `gate` → uses `convergence` evaluator with `direction: maximize` on `${captured.benchmark_score.output}` (see `agent-eval-improve.yaml:64-77`)
-   - `commit_and_log` → shell: `git add ${context.targets} && git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}"`; then append trajectory JSONL
-   - `revert_and_log` → shell: `git restore ${context.targets}`; then append trajectory JSONL
-   - Loop `gate` back to `propose` until `max_iterations` or plateau budget
+   - `commit_and_log` → shell: `git add ${context.targets} && git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}" && git rev-parse HEAD`; capture result as `last_commit`; then transition to `write_trajectory`
+   - `revert_and_log` → shell: `git restore ${context.targets}`; then transition to `write_trajectory`
+   - `write_trajectory` → prompt or shell appending one JSONL line to `.loops/tmp/harness-optimize-trajectory.jsonl` with fields: `iter`, `proposed_file`, `score`, `accepted`, `commit_sha` (`${captured.last_commit.output}` for accepted, empty for rejected); then transition to `done` (stop on first stall) or `capture_prev` (if using retry-counter budget)
+   - `capture_prev` → shell: `echo '${captured.benchmark_score.output}' | tail -1 | tr -d '[:space:]'`; `capture: prev_score`; `next: propose` — needed to wire `previous:` in `gate`'s `convergence` evaluator
+   - **Gate stops on first stall**: `gate` `route.stall → revert_and_log → write_trajectory → done`; `max_iterations` is the hard budget ceiling
 
 3. **Trajectory JSONL**: In `commit_and_log` and `revert_and_log`, instruct LLM (or shell) to append one JSON line to `.loops/tmp/harness-optimize-trajectory.jsonl` with fields: `iter`, `proposed_file`, `score`, `accepted`, `commit_sha` (model after `dataset-curation.yaml:103`)
 
@@ -237,7 +346,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py:36-44` — `test_all_validate_as_valid_fsm` picks up `harness-optimize.yaml` automatically; any YAML structural defect breaks this test first [Agent 3 finding]
-- `scripts/tests/test_harness_optimize.py` — structural tests: follow `test_outer_loop_eval.py:1-154` pattern (`TestHarnessOptimizeFile` + `TestHarnessOptimizeStates` classes, `REQUIRED_STATES` set, `load_and_validate` + `validate_fsm` calls); add assertions for `trajectory.jsonl` JSONL write path and `git restore` called with scoped targets — both are gaps with no existing test infrastructure [Agent 3 finding]
+- `scripts/tests/test_harness_optimize.py` — structural tests: follow `test_outer_loop_eval.py:1-154` pattern (`TestHarnessOptimizeFile` + `TestHarnessOptimizeStates` classes, `REQUIRED_STATES` set, `load_and_validate` + `validate_fsm` calls); assert `trajectory.jsonl` write path, `git restore` with scoped `context.targets`, `capture_prev` state has `capture: prev_score`, and `gate` evaluate block has `previous:` field — all gaps without existing test infra [Agent 3 + Pass 2 finding]
 - `scripts/tests/test_fsm_fragments.py:522-662` — model for `lib/benchmark.yaml` fragment description test (follow `TestCommonYamlNewFragments` pattern to verify `run_benchmark` fragment has `description` field) [Agent 3 finding]
 
 ### Documentation
@@ -272,6 +381,8 @@ Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a h
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/338c071f-3b53-4a00-b600-f0c19c9a42ba.jsonl`
+- `/ll:refine-issue` - 2026-04-22T01:33:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdc49cbb-e9c2-4adc-a9db-bbbc98cdb724.jsonl`
 - `/ll:ready-issue` - 2026-04-21T23:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c3c7599-51fd-4437-8dcc-1843715b82b7.jsonl`
 - `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca7bea0a-41dc-42cd-8f16-e1a5bb35f04b.jsonl`
 - `/ll:wire-issue` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
