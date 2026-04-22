@@ -264,49 +264,100 @@ class ParallelOrchestrator:
                     continue
                 orphaned.append(item)
 
-        if not orphaned:
+        if orphaned:
+            self.logger.info(f"Cleaning up {len(orphaned)} orphaned worktree(s) from previous run")
+
+            for worktree_path in orphaned:
+                try:
+                    # Try git worktree remove first
+                    self._git_lock.run(
+                        ["worktree", "remove", "--force", str(worktree_path)],
+                        cwd=self.repo_path,
+                        timeout=30,
+                    )
+
+                    # If git worktree remove failed, force delete the directory
+                    if worktree_path.exists():
+                        shutil.rmtree(worktree_path, ignore_errors=True)
+
+                    # Try to delete the associated branch using the actual branch name
+                    branch_result = subprocess.run(
+                        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                        cwd=worktree_path,
+                        capture_output=True,
+                        text=True,
+                    )
+                    branch_name = (
+                        branch_result.stdout.strip() if branch_result.returncode == 0 else None
+                    )
+                    if branch_name and branch_name.startswith("parallel/"):
+                        self._git_lock.run(
+                            ["branch", "-D", branch_name],
+                            cwd=self.repo_path,
+                            timeout=10,
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Failed to clean up {worktree_path.name}: {e}")
+
+            # Also prune git worktree references
+            self._git_lock.run(
+                ["worktree", "prune"],
+                cwd=self.repo_path,
+                timeout=30,
+            )
+
+        self._prune_ghost_worktree_refs()
+
+    def _prune_ghost_worktree_refs(self) -> None:
+        """Prune git worktree metadata entries whose on-disk path no longer exists.
+
+        Handles the SIGKILL race where a worker directory was deleted before
+        git worktree prune ran, leaving .git/worktrees/<name>/ intact.  The
+        next git worktree add for the same path would then fail with "already exists".
+        """
+        try:
+            result = self._git_lock.run(
+                ["worktree", "list", "--porcelain"],
+                cwd=self.repo_path,
+                timeout=30,
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to list worktrees for ghost ref scan: {e}")
             return
 
-        self.logger.info(f"Cleaning up {len(orphaned)} orphaned worktree(s) from previous run")
+        ghost_names: list[str] = []
+        current: dict[str, str] = {}
+        for line in result.stdout.splitlines():
+            if not line:
+                if current:
+                    path_str = current.get("worktree", "")
+                    name = Path(path_str).name
+                    if name.startswith("worker-") and path_str and not Path(path_str).exists():
+                        ghost_names.append(name)
+                    current = {}
+                continue
+            key, _, value = line.partition(" ")
+            current[key] = value
+        if current:
+            path_str = current.get("worktree", "")
+            name = Path(path_str).name
+            if name.startswith("worker-") and path_str and not Path(path_str).exists():
+                ghost_names.append(name)
 
-        for worktree_path in orphaned:
-            try:
-                # Try git worktree remove first
-                self._git_lock.run(
-                    ["worktree", "remove", "--force", str(worktree_path)],
-                    cwd=self.repo_path,
-                    timeout=30,
-                )
+        if not ghost_names:
+            return
 
-                # If git worktree remove failed, force delete the directory
-                if worktree_path.exists():
-                    shutil.rmtree(worktree_path, ignore_errors=True)
+        for name in ghost_names:
+            self.logger.info(f"Pruned ghost ref: {name}")
 
-                # Try to delete the associated branch using the actual branch name
-                branch_result = subprocess.run(
-                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                    cwd=worktree_path,
-                    capture_output=True,
-                    text=True,
-                )
-                branch_name = (
-                    branch_result.stdout.strip() if branch_result.returncode == 0 else None
-                )
-                if branch_name and branch_name.startswith("parallel/"):
-                    self._git_lock.run(
-                        ["branch", "-D", branch_name],
-                        cwd=self.repo_path,
-                        timeout=10,
-                    )
-            except Exception as e:
-                self.logger.warning(f"Failed to clean up {worktree_path.name}: {e}")
-
-        # Also prune git worktree references
-        self._git_lock.run(
-            ["worktree", "prune"],
-            cwd=self.repo_path,
-            timeout=30,
-        )
+        try:
+            self._git_lock.run(
+                ["worktree", "prune"],
+                cwd=self.repo_path,
+                timeout=30,
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to prune ghost worktree refs: {e}")
 
     def _inspect_worktree(self, worktree_path: Path) -> PendingWorktreeInfo | None:
         """Inspect a worktree to determine its status.

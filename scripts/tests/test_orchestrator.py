@@ -363,6 +363,9 @@ class TestOrphanedWorktreeCleanup:
         def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
             result = MagicMock()
             result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
             return result
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
@@ -381,6 +384,16 @@ class TestOrphanedWorktreeCleanup:
         worktree_base = temp_repo_with_config / ".worktrees"
         other_dir = worktree_base / "other-directory"
         other_dir.mkdir()
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
 
         orchestrator._cleanup_orphaned_worktrees()
 
@@ -403,6 +416,9 @@ class TestOrphanedWorktreeCleanup:
         def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
             result = MagicMock()
             result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
             return result
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
@@ -431,6 +447,9 @@ class TestOrphanedWorktreeCleanup:
                 removed.append(str(cwd))
             result = MagicMock()
             result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
             return result
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
@@ -460,6 +479,9 @@ class TestOrphanedWorktreeCleanup:
                 deleted_branches.append(args[2])
             result = MagicMock()
             result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
             return result
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
@@ -490,6 +512,9 @@ class TestOrphanedWorktreeCleanup:
                 deleted_branches.append(args[2])
             result = MagicMock()
             result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
             return result
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
@@ -520,6 +545,9 @@ class TestOrphanedWorktreeCleanup:
                 deleted_branches.append(args[2])
             result = MagicMock()
             result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
             return result
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
@@ -532,6 +560,101 @@ class TestOrphanedWorktreeCleanup:
             orchestrator._cleanup_orphaned_worktrees()
 
         assert deleted_branches == [], "branch -D should not be called for non-parallel branches"
+
+
+    def test_prunes_ghost_worktree_refs(self) -> None:
+        """Detects and prunes .git/worktrees/<name>/ entries whose on-disk path is gone."""
+        import shutil
+        import subprocess as sp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+
+            # Set up a real git repo
+            sp.run(["git", "init"], cwd=repo_path, capture_output=True, check=True)
+            sp.run(
+                ["git", "config", "user.email", "test@example.com"],
+                cwd=repo_path,
+                capture_output=True,
+            )
+            sp.run(
+                ["git", "config", "user.name", "Test User"],
+                cwd=repo_path,
+                capture_output=True,
+            )
+            (repo_path / "test.txt").write_text("initial content")
+            sp.run(["git", "add", "."], cwd=repo_path, capture_output=True)
+            sp.run(
+                ["git", "commit", "-m", "initial commit"],
+                cwd=repo_path,
+                capture_output=True,
+            )
+
+            # Set up LL config layout
+            ll_dir = repo_path / ".ll"
+            ll_dir.mkdir()
+            config = {
+                "project": {"name": "test", "src_dir": "src/"},
+                "issues": {
+                    "base_dir": ".issues",
+                    "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                    "completed_dir": "completed",
+                },
+            }
+            (ll_dir / "ll-config.json").write_text(json.dumps(config))
+            (repo_path / ".issues" / "bugs").mkdir(parents=True)
+            (repo_path / ".issues" / "completed").mkdir(parents=True)
+            worktree_base = repo_path / ".worktrees"
+            worktree_base.mkdir()
+
+            # Create a real git worktree
+            wt_name = "worker-bug-001-20260101-120000"
+            wt_path = worktree_base / wt_name
+            sp.run(
+                ["git", "worktree", "add", str(wt_path), "-b", "parallel/bug-001-20260101-120000"],
+                cwd=repo_path,
+                capture_output=True,
+                check=True,
+            )
+
+            git_wt_dir = repo_path / ".git" / "worktrees" / wt_name
+            assert git_wt_dir.exists(), "worktree metadata should exist before simulated SIGKILL"
+
+            # Simulate SIGKILL: delete the directory without running git worktree prune
+            shutil.rmtree(wt_path)
+            assert not wt_path.exists(), "worktree directory should be gone"
+            assert git_wt_dir.exists(), "ghost ref should still be present in .git/worktrees/"
+
+            # Create orchestrator pointing to the real git repo
+            br_config = BRConfig(repo_path)
+            parallel_config = ParallelConfig(
+                max_workers=2,
+                p0_sequential=True,
+                worktree_base=Path(".worktrees"),
+                state_file=Path(".parallel-manage-state.json"),
+                timeout_per_issue=1800,
+                max_merge_retries=2,
+                stream_subprocess_output=False,
+                command_prefix="/ll:",
+                ready_command="ready-issue {{issue_id}}",
+                manage_command="manage-issue {{issue_type}} {{action}} {{issue_id}}",
+            )
+
+            with (
+                patch("little_loops.parallel.orchestrator.WorkerPool"),
+                patch("little_loops.parallel.orchestrator.MergeCoordinator"),
+                patch("little_loops.parallel.orchestrator.IssuePriorityQueue"),
+            ):
+                orch = ParallelOrchestrator(
+                    parallel_config=parallel_config,
+                    br_config=br_config,
+                    repo_path=repo_path,
+                    verbose=False,
+                )
+
+            orch._cleanup_orphaned_worktrees()
+
+            assert not git_wt_dir.exists(), "ghost ref should be pruned by startup scan"
 
 
 class TestCheckPendingWorktrees:

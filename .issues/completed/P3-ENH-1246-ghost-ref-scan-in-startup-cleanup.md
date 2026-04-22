@@ -11,6 +11,8 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+captured_at: 2026-04-22T00:00:00Z
+completed_at: 2026-04-22T18:49:46Z
 ---
 
 # ENH-1246: Extend Startup Scan to Detect Ghost Git Worktree Refs
@@ -30,6 +32,11 @@ Decomposed from ENH-1197: Harden Worktree Cleanup Against SIGKILL Mid-Teardown
 ## Expected Behavior
 
 After the existing `.worktrees/worker-*` scan, the startup function also iterates `.git/worktrees/` and for each entry whose `gitdir` path no longer exists on disk, runs `git worktree prune` to clear the ghost metadata. Emits an INFO log line for each ghost ref pruned.
+
+## Scope Boundaries
+
+- **In scope**: Pruning ghost refs for `worker-`-prefixed worktrees whose on-disk path no longer exists
+- **Out of scope**: Pruning user-created worktrees (only `worker-` prefix targeted); changing behavior of the existing `.worktrees/worker-*` filesystem scan; adding expiry-based pruning or scheduled cleanup beyond startup
 
 ## Proposed Solution
 
@@ -146,6 +153,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 8. **Verify existing tests still pass**: `python -m pytest scripts/tests/test_orchestrator.py scripts/tests/test_cli_e2e.py -v`
 
+## Impact
+
+- **Priority**: P3 - Low-to-medium; ghost refs cause intermittent `git worktree add` failures under SIGKILL races, affecting reliability but not blocking normal usage
+- **Effort**: Medium - New code path required (porcelain parser + ghost scan helper), plus updating 8 existing mocks in tests
+- **Risk**: Low - Additive-only change; new unconditional block runs after existing cleanup; only prunes entries where the on-disk path is confirmed absent
+- **Breaking Change**: No
+
 ## Acceptance Criteria
 
 - Ghost ref (`directory gone, .git/worktrees/<name>/ present`) is detected and pruned at startup
@@ -157,12 +171,42 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `parallel`, `worktree`, `reliability`, `cleanup`
 
+## Verification Notes
+
+_Verified by `/ll:verify-issues` on 2026-04-22_
+
+**Verdict: VALID** — All file paths, line numbers, and code snippets match the current codebase exactly.
+
+- `_cleanup_orphaned_worktrees()` at `orchestrator.py:234-309`: exact match
+- Early return `if not orphaned: return` at lines 267-269: exact match
+- `git worktree prune` call at lines 304-309: exact match
+- All 8 `TestOrphanedWorktreeCleanup` tests at lines 337, 350, 375, 389, 414, 446, 476, 506: all present, none have `worktree list --porcelain` arm (wire-issue warning still accurate)
+- Fixtures `temp_repo_with_config` (test_orchestrator.py:50-88) and `temp_git_repo` (test_merge_coordinator.py:20-54): exact match
+- Supporting patterns in `merge_coordinator.py:151-173`, `git_lock.py:81-108`, `subprocess_utils.py:117-126`: all exact
+- Dependencies: ENH-1197 (completed), FEAT-1075 and ENH-1176 (both in deferred — exist)
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-22T18:44:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b42c4ba0-d0fb-45e7-9def-c052cefea186.jsonl`
+- `/ll:verify-issues` - 2026-04-22T18:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e9d8eb5-75c9-4f58-8e0b-5a6dde9c4d79.jsonl`
+- `/ll:verify-issues` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de9895d8-main.jsonl`
 - `/ll:wire-issue` - 2026-04-22T15:40:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11a69005-bbc9-42b5-9c31-9852ea32b61f.jsonl`
 - `/ll:refine-issue` - 2026-04-22T15:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf01894b-39d7-4244-9afd-b44c404b5bb6.jsonl`
 - `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
 - `/ll:confidence-check` - 2026-04-22T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a6a0be4-419d-4e4d-a4a1-d8fe6c62cf21.jsonl`
 
+- `/ll:manage-issue` - 2026-04-22T18:49:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
 ---
 
-**Open** | Created: 2026-04-22 | Priority: P3
+## Resolution
+
+**Status**: Completed
+
+**Changes made**:
+- `scripts/little_loops/parallel/orchestrator.py`: Restructured `_cleanup_orphaned_worktrees()` to replace `if not orphaned: return` with `if orphaned:` block, allowing unconditional fall-through to new `_prune_ghost_worktree_refs()` helper
+- `_prune_ghost_worktree_refs()`: New method that parses `git worktree list --porcelain`, filters to `worker-`-prefixed entries whose path no longer exists on disk, logs each ghost ref found, and calls `git worktree prune` once to clear them
+- `scripts/tests/test_orchestrator.py`: Updated all 7 existing mock functions in `TestOrphanedWorktreeCleanup` with `worktree list --porcelain` arm returning `stdout = ""`; added `test_prunes_ghost_worktree_refs` integration test using a real git repo that creates a worktree, deletes its directory, and asserts the ghost ref is pruned at startup
+
+**Verification**: 126 tests pass, ruff lint clean
+
+**Closed** | Completed: 2026-04-22 | Priority: P3
