@@ -12,6 +12,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: 2026-04-22T20:27:41Z
 ---
 
 # ENH-1254: worktree-health.yaml Grep Fix + cmd_run(worktree=True) Integration Test
@@ -166,7 +167,15 @@ ORPHANED=$(git worktree list --porcelain 2>/dev/null | grep -c "^worktree.*ll-wo
 
 `loop`, `worktree`, `reliability`, `cleanup`, `test`
 
+## Resolution
+
+Fixed `worktree-health.yaml:14` by replacing the broken `grep -c "^worktree.*ll-worktree"` with `git worktree list --porcelain | tail -n +2 | wc -l` to correctly count non-main worktrees. Added `TestCmdRunWorktree` integration test class to `test_cli_loop_worktree.py` covering the `worktree=True` code path in `run.py:201-243`. Added `TestWorktreeHealthLoop` to `test_builtin_loops.py` asserting the fixed grep pattern is present and the broken one is absent.
+
+All 279 tests in `test_cli_loop_worktree.py` and `test_builtin_loops.py` pass.
+
 ## Session Log
+- `/ll:manage-issue enh fix ENH-1254` - 2026-04-22T20:27:41Z
+- `/ll:ready-issue` - 2026-04-22T20:22:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21fe4b82-7e78-43be-96c8-169403280da0.jsonl`
 - `/ll:wire-issue` - 2026-04-22T16:59:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f322d82-007d-436b-91a4-e8fd47be4ac7.jsonl`
 - `/ll:refine-issue` - 2026-04-22T16:53:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46ebe1e5-629b-43e5-ab61-64f4014d103c.jsonl`
 - `/ll:issue-size-review` - 2026-04-22T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`

@@ -534,3 +534,106 @@ class TestBranchNameGeneration:
         branch = f"{ts}-{safe_name}"
 
         assert re.match(r"^\d{8}-\d{6}-my-loop$", branch)
+
+
+class TestCmdRunWorktree:
+    """Integration tests for the cmd_run(worktree=True) code path (ENH-1254)."""
+
+    def _make_args(self, **kwargs: object) -> "argparse.Namespace":
+        import argparse
+
+        defaults = {
+            "input": None,
+            "context": [],
+            "max_iterations": None,
+            "delay": None,
+            "no_llm": False,
+            "llm_model": None,
+            "dry_run": False,
+            "background": False,
+            "foreground_internal": False,
+            "quiet": False,
+            "verbose": False,
+            "show_diagrams": False,
+            "clear": False,
+            "queue": False,
+            "handoff_threshold": None,
+            "worktree": True,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def _make_loop(self, tmp_path: Path) -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_worktree_atexit_registration(self, tmp_path: Path) -> None:
+        """cmd_run(worktree=True) registers atexit cleanup handlers including _cleanup_worktree_on_exit."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args()
+        logger = Logger(use_color=False)
+
+        registered: list = []
+        with (
+            patch("little_loops.config.BRConfig") as mock_cfg,
+            patch("little_loops.worktree_utils.setup_worktree", return_value=None),
+            patch("little_loops.cli.loop.run.os.chdir"),
+            patch("little_loops.cli.loop.run.atexit.register", side_effect=registered.append),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+        ):
+            mock_cfg.return_value.get_worktree_base.return_value = tmp_path / ".worktrees"
+            mock_cfg.return_value.parallel.worktree_copy_files = []
+            mock_cfg.return_value.cli.colors.fsm_edge_labels.to_dict.return_value = {}
+            mock_cfg.return_value.cli.colors.fsm_active_state = None
+            mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
+            mock_cfg.return_value.commands.rate_limits.circuit_breaker_enabled = False
+            mock_cfg.return_value.extensions = []
+
+            result = cmd_run("test-loop", args, loops_dir, logger)
+
+        assert result == 0
+        # At least _cleanup_pid (line 145) and _cleanup_worktree_on_exit (line 240)
+        assert len(registered) >= 2
+
+    def test_worktree_path_name_format(self, tmp_path: Path) -> None:
+        """cmd_run(worktree=True) creates a worktree path with timestamp-loop-name format."""
+        import re
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args()
+        logger = Logger(use_color=False)
+
+        chdir_calls: list = []
+        with (
+            patch("little_loops.config.BRConfig") as mock_cfg,
+            patch("little_loops.worktree_utils.setup_worktree", return_value=None),
+            patch("little_loops.cli.loop.run.os.chdir", side_effect=chdir_calls.append),
+            patch("little_loops.cli.loop.run.atexit.register"),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+        ):
+            mock_cfg.return_value.get_worktree_base.return_value = tmp_path / ".worktrees"
+            mock_cfg.return_value.parallel.worktree_copy_files = []
+            mock_cfg.return_value.cli.colors.fsm_edge_labels.to_dict.return_value = {}
+            mock_cfg.return_value.cli.colors.fsm_active_state = None
+            mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
+            mock_cfg.return_value.commands.rate_limits.circuit_breaker_enabled = False
+            mock_cfg.return_value.extensions = []
+
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        assert chdir_calls, "os.chdir must be called for worktree=True"
+        worktree_path = Path(chdir_calls[-1])
+        assert re.match(r"^\d{8}-\d{6}-test-loop$", worktree_path.name), (
+            f"Worktree path name {worktree_path.name!r} must match "
+            r"^\d{8}-\d{6}-test-loop$"
+        )

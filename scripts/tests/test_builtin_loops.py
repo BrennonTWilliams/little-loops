@@ -2166,3 +2166,37 @@ class TestSvgTextgradLoop:
         assert "weighted average" in action.lower(), (
             "score.action must use weighted average pass condition to match the 2× weight documentation"
         )
+
+
+class TestWorktreeHealthLoop:
+    """Structural tests for the worktree-health FSM loop (ENH-1254)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "worktree-health.yaml"
+
+    def _collect_action_text(self, data: dict) -> list[str]:
+        """Recursively collect all action strings from an FSM data dict."""
+        texts: list[str] = []
+        for state_data in data.get("states", {}).values():
+            action = state_data.get("action", "")
+            if isinstance(action, str):
+                texts.append(action)
+        return texts
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_uses_porcelain_worktree_list(self, data: dict) -> None:
+        """check_worktrees action must use git worktree list --porcelain."""
+        combined = "\n".join(self._collect_action_text(data))
+        assert "git worktree list --porcelain" in combined, (
+            "worktree-health.yaml must use 'git worktree list --porcelain' to count orphans"
+        )
+
+    def test_does_not_grep_for_ll_worktree(self, data: dict) -> None:
+        """check_worktrees action must not grep for 'll-worktree' (broken pattern)."""
+        combined = "\n".join(self._collect_action_text(data))
+        assert "ll-worktree" not in combined, (
+            "worktree-health.yaml must not grep for 'll-worktree'; it matches no worktree names"
+        )

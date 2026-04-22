@@ -11,7 +11,7 @@ backoff: 300
 states:
   check_worktrees:
     action: |
-      ORPHANED=$(git worktree list --porcelain 2>/dev/null | grep -c "^worktree.*ll-worktree" || echo 0)
+      ORPHANED=$(git worktree list --porcelain 2>/dev/null | grep "^worktree " | tail -n +2 | wc -l | tr -d ' ' || echo 0)
       echo "$ORPHANED"
     action_type: shell
     capture: worktree_count
