@@ -426,14 +426,27 @@ class IssueParser:
         blocked_by = self._parse_blocked_by(content)
         blocks = self._parse_blocks(content)
 
-        # Also read blocked_by/blocks from frontmatter (newer issue format)
-        for fm_key, target in (("blocked_by", blocked_by), ("blocks", blocks)):
+        # Also read blocked_by/blocks from frontmatter (newer canonical format).
+        # When both sources provide values and they differ, prefer frontmatter and warn
+        # so stale body sections are surfaced rather than silently merged.
+        for fm_key, body_ids in (("blocked_by", blocked_by), ("blocks", blocks)):
             fm_val = frontmatter.get(fm_key)
-            if fm_val:
-                ids = [fm_val] if isinstance(fm_val, str) else list(fm_val)
-                for id_ in ids:
-                    if id_ not in target:
-                        target.append(id_)
+            if not fm_val:
+                continue
+            fm_ids = [fm_val] if isinstance(fm_val, str) else list(fm_val)
+            if body_ids and set(fm_ids) != set(body_ids):
+                logger.warning(
+                    "%s: frontmatter %s %s conflicts with body section %s; "
+                    "preferring frontmatter — update or remove the stale body section",
+                    issue_path.name,
+                    fm_key,
+                    fm_ids,
+                    body_ids,
+                )
+                body_ids.clear()
+                body_ids.extend(fm_ids)
+            elif not body_ids:
+                body_ids.extend(fm_ids)
 
         # Parse session commands from ## Session Log section
         from little_loops.session_log import count_session_commands, parse_session_log
