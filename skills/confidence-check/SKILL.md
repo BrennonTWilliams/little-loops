@@ -560,7 +560,9 @@ OUTCOME CONFIDENCE: XX/100 → [HIGH CONFIDENCE | MODERATE | LOW | VERY LOW]
 - [Gap 2: what's missing and how to fix]
 
 ### Escalation (if readiness score < 70 after 2+ prior refinement passes)
-- Run `/ll:issue-size-review [ISSUE_ID]` — a persistent low readiness score after multiple refinement passes often signals the issue is too large or ambiguously scoped, not just under-researched
+
+- **Unresolved options (score_ambiguity ≤ 10)**: Run `/ll:decide-issue [ISSUE_ID]` — competing implementation options are blocking readiness; selecting one clears the ambiguity.
+- **Issue too large (score_ambiguity > 10)**: Run `/ll:issue-size-review [ISSUE_ID]` — a persistent broad readiness gap after multiple refinement passes often signals the issue needs decomposition rather than more research.
 
 ### Outcome Risk Factors (if outcome confidence < 60)
 - [Risk 1: what may cause implementation difficulty]

@@ -371,16 +371,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Blocked By
 
-- FEAT-1119: benchmark adapter fragment — the `score` state imports `lib/benchmark.yaml` which FEAT-1119 must deliver
+- FEAT-1244: benchmark fragment core FSM fragment — delivers `lib/benchmark.yaml` which the `score` state imports (FEAT-1119 was decomposed into FEAT-1244 + FEAT-1245; `lib/benchmark.yaml` does not yet exist)
 
 ## Dependencies
 
-Blocked by: FEAT-1119 (benchmark adapter fragment) — this loop's `score` state depends on it.
+Blocked by: FEAT-1244 (benchmark fragment — core FSM fragment & scorer registration) — delivers `lib/benchmark.yaml` that this loop's `score` state depends on. (FEAT-1119 was decomposed; work split into FEAT-1244 + FEAT-1245.)
 
 Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a hard blocker.
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-22T02:14:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed16b00-515e-4758-a2d9-74c23897b796.jsonl`
+- `/ll:ready-issue` - 2026-04-22T01:59:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ce1718d-d54e-4865-8898-1a6b65a7f382.jsonl`
 - `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/338c071f-3b53-4a00-b600-f0c19c9a42ba.jsonl`
 - `/ll:refine-issue` - 2026-04-22T01:33:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdc49cbb-e9c2-4adc-a9db-bbbc98cdb724.jsonl`
 - `/ll:ready-issue` - 2026-04-21T23:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c3c7599-51fd-4437-8dcc-1843715b82b7.jsonl`
