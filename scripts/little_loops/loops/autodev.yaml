@@ -164,15 +164,15 @@ states:
 
   implement_current:
     # Interleaved implementation: as soon as a leaf passes refinement, run
-    # ll-auto --only against it. Returns to dequeue_next to process the next
-    # queued issue (which may be a sibling, a prepended child, or the next
-    # top-level input). Rate-limit exhaustion terminates the loop to match
-    # the old implement_issue behavior.
-    fragment: with_rate_limit_handling
+    # ll-auto --only against it. Exit 0 (on_yes) → dequeue_next for next
+    # queued issue. Exit 1 (on_no) → decision gate blocked; still advance to
+    # dequeue_next so the queue drains normally. Fatal error → done.
+    fragment: shell_exit
     action: "ll-auto --only ${captured.input.output}"
     action_type: shell
-    on_rate_limit_exhausted: done
-    next: dequeue_next
+    on_yes: dequeue_next
+    on_no: dequeue_next
+    on_error: done
 
   detect_children:
     # Diff current issue IDs against the pre-refinement baseline to find any

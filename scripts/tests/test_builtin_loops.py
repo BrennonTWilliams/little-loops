@@ -1111,15 +1111,10 @@ class TestAutodevLoop:
         assert "on_success" in state
         assert "on_failure" in state
 
-    def test_implement_current_uses_rate_limit_fragment(self, data: dict) -> None:
-        """implement_current must use with_rate_limit_handling fragment."""
+    def test_implement_current_uses_shell_exit_fragment(self, data: dict) -> None:
+        """implement_current must use shell_exit fragment for exit-code-aware routing."""
         state = data["states"].get("implement_current", {})
-        assert state.get("fragment") == "with_rate_limit_handling"
-
-    def test_implement_current_on_rate_limit_exhausted_is_done(self, data: dict) -> None:
-        """implement_current must route to done when rate-limit retries are exhausted."""
-        state = data["states"].get("implement_current", {})
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("fragment") == "shell_exit"
 
     def test_implement_current_runs_ll_auto_only(self, data: dict) -> None:
         """implement_current must invoke ll-auto --only against the captured input."""
@@ -1129,9 +1124,19 @@ class TestAutodevLoop:
         assert "${captured.input.output}" in action
 
     def test_implement_current_routes_back_to_dequeue_next(self, data: dict) -> None:
-        """After implementing, return to dequeue_next for the next queued issue."""
+        """After implementing (exit 0), return to dequeue_next for the next queued issue."""
         state = data["states"].get("implement_current", {})
-        assert state.get("next") == "dequeue_next"
+        assert state.get("on_yes") == "dequeue_next"
+
+    def test_implement_current_on_no_routes_to_dequeue_next(self, data: dict) -> None:
+        """On gate-blocked exit (exit 1), still advance to dequeue_next."""
+        state = data["states"].get("implement_current", {})
+        assert state.get("on_no") == "dequeue_next"
+
+    def test_implement_current_on_error_routes_to_done(self, data: dict) -> None:
+        """On fatal error, terminate the loop via done."""
+        state = data["states"].get("implement_current", {})
+        assert state.get("on_error") == "done"
 
     def test_check_passed_on_yes_routes_to_implement_current(self, data: dict) -> None:
         """On threshold pass, interleave: implement the issue immediately."""

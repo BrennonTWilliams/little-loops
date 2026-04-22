@@ -915,7 +915,7 @@ class AutoManager:
         """Run the automation loop.
 
         Returns:
-            Exit code (0 = success)
+            Exit code: 0 = success or empty queue, 1 = all issues gate-blocked when --only used
         """
         run_start_time = time.time()
         self.logger.info("Starting automated issue management...")
@@ -938,6 +938,7 @@ class AutoManager:
             # Fresh start
             self.state_manager._state = ProcessingState(timestamp=_iso_now())
 
+        attempted_count = 0
         try:
             while not self._shutdown_requested:
                 if self.max_issues > 0 and self.processed_count >= self.max_issues:
@@ -949,6 +950,7 @@ class AutoManager:
                     self.logger.success("No more issues to process!")
                     break
 
+                attempted_count += 1
                 success = self._process_issue(info)
                 if success:
                     self.processed_count += 1
@@ -963,6 +965,8 @@ class AutoManager:
 
         self._log_timing_summary(run_start_time)
         self.logger.success(f"Processed {self.processed_count} issue(s)")
+        if self.only_ids and attempted_count > 0 and self.processed_count == 0:
+            return 1
         return 0
 
     def _log_timing_summary(self, run_start_time: float) -> None:

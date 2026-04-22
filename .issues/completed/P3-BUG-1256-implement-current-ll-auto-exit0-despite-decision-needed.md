@@ -2,6 +2,7 @@
 id: BUG-1256
 priority: P3
 captured_at: "2026-04-22T17:02:49Z"
+completed_at: "2026-04-22T17:25:18Z"
 discovered_date: "2026-04-22"
 discovered_by: capture-issue
 source_loop: autodev
@@ -37,6 +38,15 @@ Observed in run `2026-04-22T000300-autodev`. The `ll-auto` output preview contai
 ## Expected Behavior
 
 `ll-auto --only` exits non-zero when the decision gate blocks implementation, so `implement_current` can detect and handle the skip. The issue must not silently vanish from the queue when implementation is blocked.
+
+## Steps to Reproduce
+
+1. Create an issue with `decision_needed: true` in its frontmatter (e.g., `ENH-1243`)
+2. Run the `autodev` loop (`ll-loop run autodev`) with that issue in the queue
+3. Observe: `implement_current` invokes `ll-auto --only ENH-1243`
+4. Observe: `ll-auto` prints `✗ Decision gate: this issue has competing implementation options` and `Processed 0 issue(s)`, then **exits 0**
+5. Observe: `implement_current` routes unconditionally to `dequeue_next` as if implementation succeeded
+6. Observe: the issue is not implemented, not moved to `completed/`, and the autodev loop reports no warning
 
 ## Root Cause
 
@@ -129,20 +139,37 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `ll-auto --only <ID>` where `<ID>` has `decision_needed: true` exits non-zero
-- [ ] `implement_current` detects the non-zero exit and does NOT silently route to `dequeue_next` as if successful
-- [ ] The in-flight issue is surfaced (written to a needs-decision list or re-queued)
-- [ ] Test added to `TestAutodevLoop` covering this scenario
+- [x] `ll-auto --only <ID>` where `<ID>` has `decision_needed: true` exits non-zero
+- [x] `implement_current` detects the non-zero exit and does NOT silently route to `dequeue_next` as if successful
+- [x] The in-flight issue is surfaced (written to a needs-decision list or re-queued)
+- [x] Test added to `TestAutodevLoop` covering this scenario
+
+## Impact
+
+- **Priority**: P3 — Silent skip is a real data-loss risk in automation, but affects only `autodev` users and only when `decision_needed: true` is set; no user-facing regression
+- **Effort**: Small — Two focused changes: conditional exit code in `AutoManager.run()` and YAML fragment swap in `autodev.yaml`; no new abstractions
+- **Risk**: Low — Exit code change is purely additive (activates only when `--only` used and 0 issues processed); YAML change swaps one well-tested fragment for another
+- **Breaking Change**: No
 
 ## Labels
 
 `bug`, `autodev`, `ll-auto`, `decision-gate`, `silent-skip`
 
+## Resolution
+
+Fixed via two targeted changes:
+1. `AutoManager.run()` now exits 1 when `--only` was specified and all attempted issues were gate-blocked (processed 0 out of N attempted).
+2. `implement_current` in `autodev.yaml` swapped from `fragment: with_rate_limit_handling` + `next: dequeue_next` to `fragment: shell_exit` + `on_yes/on_no/on_error` routing, so exit-1 from `ll-auto --only` is now detected.
+
+Tests updated in `test_builtin_loops.py::TestAutodevLoop` (renamed/updated 3 existing tests, added 2 new route assertions) and `test_issue_manager.py::TestAutoManagerRun` (new `test_run_returns_one_when_only_ids_all_gate_blocked` test).
+
 ## Status
 
-**Open** | Created: 2026-04-22 | Priority: P3
+**Completed** | Created: 2026-04-22 | Completed: 2026-04-22 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-22T17:25:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/760f9065-07e1-407f-9611-0c6c74f6fbbc.jsonl`
+- `/ll:ready-issue` - 2026-04-22T17:21:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/760f9065-07e1-407f-9611-0c6c74f6fbbc.jsonl`
 - `/ll:confidence-check` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9e46c0e-46b7-4c8e-9b0a-761f95124db5.jsonl`
 - `/ll:wire-issue` - 2026-04-22T17:17:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b436e4f-c8d6-4c0f-8dc6-dc3de837f393.jsonl`
 - `/ll:refine-issue` - 2026-04-22T17:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/924d8707-3ffc-4c54-9da8-327388aec773.jsonl`

@@ -2047,6 +2047,32 @@ class TestAutoManagerRun:
         # Should only process BUG-003 via numeric-only match
         mock_process.assert_called_once()
 
+    def test_run_returns_one_when_only_ids_all_gate_blocked(self, full_project: Path) -> None:
+        """run() exits 1 when --only was used and every issue was gate-blocked (processed 0)."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-004-needs-decision.md").write_text(
+            "---\ndecision_needed: true\n---\n# BUG-004: Needs Decision\n\n## Summary\nBlocked"
+        )
+
+        config = BRConfig(full_project)
+
+        with patch("little_loops.issue_manager.process_issue_inplace") as mock_process:
+            # Simulate gate-blocked: process_issue_inplace returns failure
+            mock_process.return_value = MagicMock(
+                success=False,
+                duration=0.1,
+                issue_id="BUG-004",
+                corrections=[],
+            )
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                manager = AutoManager(config, dry_run=False, only_ids={"BUG-004"})
+                result = manager.run()
+
+        assert result == 1
+
 
 class TestSignalHandler:
     """Tests for graceful shutdown signal handling (ENH-207)."""
