@@ -33,6 +33,14 @@ This is the gap autoagent fills with its `agent.py` + `program.md` core loop. li
 - Score trajectory persists to `.ll/runs/harness-optimize/<run-id>/trajectory.jsonl` so runs are resumable to best state, not last state.
 - Reuses existing primitives: `apo-feedback-refinement.yaml` mutation pattern, `lib/benchmark.yaml` for scoring, worktree isolation for crash safety.
 
+## Impact
+
+Enables score-gated self-improvement on harness artifacts (skills, commands, CLAUDE.md) — the single capability that sets autoagent apart from little-loops today. Power users can run unattended overnight optimization runs that materially improve the prompts they ship, closing the gap between little-loops and dedicated APO tools.
+
+## Labels
+
+feature, loops, fsm, automation, optimization, apo
+
 ## Motivation
 
 This feature would:
@@ -198,7 +206,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Files to Modify
 - `scripts/tests/test_builtin_loops.py` — add `"harness-optimize"` to `test_expected_loops_exist()` expected set (line ~60)
-- `docs/reference/loops.md` — add loop entry per acceptance criteria
+- `docs/reference/loops.md` — CREATE (does not exist yet); add loop entry per acceptance criteria
 - `scripts/little_loops/loops/README.md` — add entry to built-in loops catalog
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -233,7 +241,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_fragments.py:522-662` — model for `lib/benchmark.yaml` fragment description test (follow `TestCommonYamlNewFragments` pattern to verify `run_benchmark` fragment has `description` field) [Agent 3 finding]
 
 ### Documentation
-- `docs/reference/loops.md` — document the loop per acceptance criteria
+- `docs/reference/loops.md` — CREATE (does not exist yet); document the loop per acceptance criteria
 - `scripts/little_loops/loops/README.md` — add entry to built-in loops catalog
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -252,6 +260,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] Docs: `docs/reference/loops.md` documents the loop; `/ll:help` includes it
 - [ ] No regression: existing `apo-*` loops still pass
 
+## Blocked By
+
+- FEAT-1119: benchmark adapter fragment — the `score` state imports `lib/benchmark.yaml` which FEAT-1119 must deliver
+
 ## Dependencies
 
 Blocked by: FEAT-1119 (benchmark adapter fragment) — this loop's `score` state depends on it.
@@ -260,6 +272,7 @@ Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a h
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-21T23:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c3c7599-51fd-4437-8dcc-1843715b82b7.jsonl`
 - `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca7bea0a-41dc-42cd-8f16-e1a5bb35f04b.jsonl`
 - `/ll:wire-issue` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-04-21T23:15:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17a43e35-c912-41c4-b189-d47f33dc1242.jsonl`
