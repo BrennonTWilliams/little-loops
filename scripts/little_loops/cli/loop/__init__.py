@@ -123,7 +123,7 @@ Examples:
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    run_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
+    run_parser.add_argument("--quiet", "--qt", action="store_true", help="Suppress progress output")
     run_parser.add_argument(
         "--verbose",
         "-v",
@@ -141,7 +141,7 @@ Examples:
         help="Clear terminal before each iteration (useful with --show-diagrams); uses the alternate screen buffer when combined with --show-diagrams to avoid scrollback contamination",
     )
     run_parser.add_argument(
-        "--queue", action="store_true", help="Wait for conflicting loops to finish"
+        "--queue", "-q", action="store_true", help="Wait for conflicting loops to finish"
     )
     run_parser.add_argument(
         "--context",
