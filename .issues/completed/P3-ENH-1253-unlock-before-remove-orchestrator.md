@@ -3,6 +3,7 @@ id: ENH-1253
 priority: P3
 parent_issue: ENH-1247
 discovered_date: "2026-04-22"
+completed_at: 2026-04-22T19:39:02Z
 discovered_by: issue-size-review
 size: Small
 decision_needed: false
@@ -40,7 +41,7 @@ At `orchestrator.py:273`, insert before the existing `remove --force` call (line
 self._git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=self.repo_path, timeout=10)
 ```
 
-The existing `except Exception as e: self.logger.warning(...)` at line 301 already wraps this section and will swallow any unlock errors.
+The existing `except Exception as e: self.logger.warning(...)` at line 299 already wraps this section and will swallow any unlock errors.
 
 ### Test Updates
 
@@ -108,17 +109,37 @@ _Wiring pass added by `/ll:wire-issue`:_
 4. Update only assertions that actually fail.
 5. Run full regression: `python -m pytest scripts/tests/ -v --tb=short`.
 
+## Scope Boundaries
+
+- **In scope**: `orchestrator._cleanup_orphaned_worktrees()` in `orchestrator.py` and the corresponding test class in `test_orchestrator.py`
+- **Out of scope**: `worktree_utils.cleanup_worktree()` (ENH-1251, completed), `merge_coordinator._cleanup_worktree()` (ENH-1252, completed), any other cleanup paths
+
 ## Acceptance Criteria
 
 - `git worktree unlock` is called before `git worktree remove --force` in `orchestrator._cleanup_orphaned_worktrees()`
 - Unlock errors are suppressed by the existing `except Exception` block
 - Previously-passing orchestrator tests pass after any needed assertion updates
 
+## Impact
+
+- **Priority**: P3 — reliability fix for a cleanup edge case; not on the hot path for normal operation
+- **Effort**: Small — single-line insertion inside an existing `try/except`, plus test additions following the established sibling pattern (ENH-1251/1252)
+- **Risk**: Low — new unlock call is inside the existing broad `except Exception` block; any unlock error is silently suppressed
+- **Breaking Change**: No
+
 ## Labels
 
 `parallel`, `worktree`, `reliability`, `cleanup`, `testing`
 
+## Resolution
+
+- Added `self._git_lock.run(["worktree", "unlock", ...], cwd=self.repo_path, timeout=10)` before `remove --force` in `orchestrator._cleanup_orphaned_worktrees()` at line 271.
+- Added `test_unlock_called_before_remove` ordering test to `TestOrphanedWorktreeCleanup` in `test_orchestrator.py`.
+- All existing orchestrator tests continued to pass unchanged (unlock/remove filter `args[:2]` is distinct).
+- Full regression: 5142 passed, 0 failures.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-04-22T19:35:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a859f5cc-f7cb-4667-9421-95d38ae68112.jsonl`
 - `/ll:verify-issues` - 2026-04-22T19:23:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
 - `/ll:wire-issue` - 2026-04-22T16:31:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a35c25d-86e0-4d3c-b6dd-aef15be8bbd8.jsonl`
 - `/ll:refine-issue` - 2026-04-22T16:25:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01c6c26c-1c26-4390-9e46-9fc453943199.jsonl`

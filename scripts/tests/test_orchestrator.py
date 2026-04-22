@@ -561,6 +561,37 @@ class TestOrphanedWorktreeCleanup:
 
         assert deleted_branches == [], "branch -D should not be called for non-parallel branches"
 
+    def test_unlock_called_before_remove(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Verifies unlock is called before remove --force (ENH-1253)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-stale"
+        stale_dir.mkdir()
+        (stale_dir / ".ll-session-99999").write_text("99999")
+
+        call_order: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["worktree", "unlock"]:
+                call_order.append("unlock")
+            elif args[:2] == ["worktree", "remove"]:
+                call_order.append("remove")
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert call_order.index("unlock") < call_order.index("remove")
+
 
     def test_prunes_ghost_worktree_refs(self) -> None:
         """Detects and prunes .git/worktrees/<name>/ entries whose on-disk path is gone."""

@@ -269,6 +269,11 @@ class ParallelOrchestrator:
 
             for worktree_path in orphaned:
                 try:
+                    self._git_lock.run(
+                        ["worktree", "unlock", str(worktree_path)],
+                        cwd=self.repo_path,
+                        timeout=10,
+                    )
                     # Try git worktree remove first
                     self._git_lock.run(
                         ["worktree", "remove", "--force", str(worktree_path)],
