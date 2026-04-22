@@ -3,6 +3,7 @@ id: ENH-1251
 priority: P3
 parent_issue: ENH-1247
 discovered_date: "2026-04-22"
+completed_at: 2026-04-22T19:28:52Z
 discovered_by: issue-size-review
 size: Small
 decision_needed: false
@@ -180,6 +181,20 @@ def test_remove_proceeds_when_unlock_fails(self, tmp_path: Path) -> None:
 5. Write the two new tests (ordering, error-suppression).
 6. Run full regression: `python -m pytest scripts/tests/ -v --tb=short`.
 
+## Impact
+
+- **Priority**: P3 - Low urgency; affects reliability only on older git versions where `--force` may not override a lock file
+- **Effort**: Small - single `git_lock.run` insertion at one call site; test updates are mechanical
+- **Risk**: Low - `git worktree unlock` silently fails (non-zero return discarded) when the worktree isn't locked; no change to happy path behavior
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+Out of scope:
+- `MergeCoordinator._cleanup_worktree()` — separate standalone implementation, does not delegate to `worktree_utils.cleanup_worktree()`; not modified here
+- Changing git version compatibility requirements or minimum version
+- Adding retry logic or additional error handling beyond silent discard of unlock return value
+
 ## Acceptance Criteria
 
 - `git worktree unlock` is called before `git worktree remove --force` in `worktree_utils.cleanup_worktree()`
@@ -192,12 +207,31 @@ def test_remove_proceeds_when_unlock_fails(self, tmp_path: Path) -> None:
 `parallel`, `worktree`, `reliability`, `cleanup`, `testing`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-22T19:25:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93a73918-267f-4ec5-beda-c629b853d4cc.jsonl`
 - `/ll:verify-issues` - 2026-04-22T19:23:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
 - `/ll:wire-issue` - 2026-04-22T16:10:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3f74547-c9d2-42f1-92b3-69f67200920d.jsonl`
 - `/ll:refine-issue` - 2026-04-22T16:04:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44820dc9-a5a0-4cb5-b513-13d37140c707.jsonl`
 - `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
 - `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c75b766d-4937-42d9-a12a-3613998a9d55.jsonl`
 
+## Resolution
+
+**Status**: Completed  
+**Completed**: 2026-04-22T19:28:52Z
+
+### Changes Made
+
+- `scripts/little_loops/worktree_utils.py:131` — Added `git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=repo_path, timeout=10)` immediately before `remove --force`. Return value discarded (non-zero silently ignored).
+- `scripts/tests/test_cli_loop_worktree.py` — Added two new tests in `TestCleanupWorktree`:
+  - `test_unlock_called_before_remove` — asserts unlock precedes remove in call order
+  - `test_remove_proceeds_when_unlock_fails` — asserts remove still fires when unlock returns non-zero
+- No existing test assertions required updates (all unlock calls pass through existing filters unchanged).
+
+### Verification
+
+- 5140 passed, 5 skipped across full test suite
+- All acceptance criteria met
+
 ---
 
-**Open** | Created: 2026-04-22 | Priority: P3
+**Completed** | Created: 2026-04-22 | Priority: P3

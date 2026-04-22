@@ -128,6 +128,7 @@ def cleanup_worktree(
         )
         branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
 
+    git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=repo_path, timeout=10)
     git_lock.run(
         ["worktree", "remove", "--force", str(worktree_path)],
         cwd=repo_path,

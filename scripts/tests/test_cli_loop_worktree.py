@@ -366,6 +366,63 @@ class TestCleanupWorktree:
 
         assert not branch_cmds
 
+    def test_unlock_called_before_remove(self, tmp_path: Path) -> None:
+        """cleanup_worktree() calls 'git worktree unlock' before 'git worktree remove'."""
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        git_lock = _make_git_lock()
+        call_order: list[str] = []
+
+        def _mock_run(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["worktree", "unlock"]:
+                call_order.append("unlock")
+            elif args[:2] == ["worktree", "remove"]:
+                call_order.append("remove")
+            return _ok()
+
+        with patch.object(git_lock, "run", side_effect=_mock_run):
+            with patch("subprocess.run", return_value=_ok()):
+                cleanup_worktree(
+                    worktree_path=wt,
+                    repo_path=repo,
+                    logger=MagicMock(),
+                    git_lock=git_lock,
+                    delete_branch=False,
+                )
+
+        assert "unlock" in call_order and "remove" in call_order
+        assert call_order.index("unlock") < call_order.index("remove")
+
+    def test_remove_proceeds_when_unlock_fails(self, tmp_path: Path) -> None:
+        """cleanup_worktree() still calls 'git worktree remove' when unlock returns non-zero."""
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        git_lock = _make_git_lock()
+        remove_calls: list[list[str]] = []
+
+        def _mock_run(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["worktree", "unlock"]:
+                return subprocess.CompletedProcess(args, 1, "", "fatal: worktree is not locked")
+            if "remove" in args:
+                remove_calls.append(args)
+            return _ok()
+
+        with patch.object(git_lock, "run", side_effect=_mock_run):
+            with patch("subprocess.run", return_value=_ok()):
+                cleanup_worktree(
+                    worktree_path=wt,
+                    repo_path=repo,
+                    logger=MagicMock(),
+                    git_lock=git_lock,
+                    delete_branch=False,
+                )
+
+        assert remove_calls, "'git worktree remove' must run even when unlock returns non-zero"
+
 
 # ---------------------------------------------------------------------------
 # WorkerPool refactor: _cleanup_worktree still preserves parallel/ guard
