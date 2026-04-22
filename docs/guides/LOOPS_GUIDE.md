@@ -9,6 +9,7 @@
 - [Walkthrough: Creating and Running a Loop](#walkthrough-creating-and-running-a-loop)
 - [Built-in Loops](#built-in-loops)
 - [Beyond the Basics](#beyond-the-basics)
+- [Background Mode](#background-mode)
 - [Prompt Optimization Loops (APO)](#prompt-optimization-loops-apo)
 - [Harness Loops](#harness-loops)
 - [CLI Quick Reference](#cli-quick-reference)
@@ -1181,6 +1182,102 @@ scope:
 ```
 
 If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead.
+
+## Background Mode
+
+The `-b` / `--background` flag detaches a loop from the terminal so it runs as an independent daemon process. The parent command returns immediately (exit 0) and the loop continues in a new process group, surviving terminal close.
+
+### When to use it
+
+| Situation | Recommendation |
+|-----------|---------------|
+| Loop runs for minutes or hours and you need your terminal back | `--background` |
+| Running multiple non-overlapping loops concurrently | `--background` each one |
+| Unattended execution (CI/CD, scheduled jobs, post-handoff restart) | `--background` |
+| Short loop you want to watch live | Foreground (default) |
+| Loop that blocks on scope conflict and you want to wait interactively | Foreground + `--queue` |
+
+### Starting a background loop
+
+```bash
+ll-loop run my-scan --background
+# or shorthand
+ll-loop my-scan -b
+```
+
+Output:
+
+```
+Loop my-scan started in background (PID: 12345)
+  Log:    .loops/.running/my-scan.log
+  Status: ll-loop status my-scan
+  Stop:   ll-loop stop my-scan
+```
+
+### Monitoring progress
+
+```bash
+# Check whether the process is alive and what state the loop is in
+ll-loop status my-scan
+
+# Stream live output
+tail -f .loops/.running/my-scan.log
+```
+
+All stdout and stderr from the background process are written to `.loops/.running/<loop-name>.log`. The PID is stored in `.loops/.running/<loop-name>.pid` and used by `status` and `stop` to detect liveness and send signals.
+
+### Stopping a background loop
+
+```bash
+ll-loop stop my-scan
+```
+
+The first signal (`SIGTERM`) triggers a graceful shutdown — the loop finishes its current action and exits cleanly. A second `SIGTERM` (or sending `SIGKILL` manually) forces immediate exit.
+
+### Combining `--background` with `--queue`
+
+```bash
+ll-loop my-scan --background --queue
+```
+
+**Important:** `--background` causes the *parent* to return immediately. Queue waiting happens inside the detached child process. The parent does not block or report whether the child is queued — use `ll-loop status my-scan` or `tail -f .loops/.running/my-scan.log` to check.
+
+### Running multiple loops concurrently
+
+Loops with non-overlapping scopes can run at the same time:
+
+```bash
+ll-loop fix-types --background   # claims src/
+ll-loop run-docs --background    # claims docs/ — starts immediately, no conflict
+ll-loop list --running           # shows both
+```
+
+Loops with overlapping scopes conflict. Add `--queue` so the second waits for the first:
+
+```bash
+ll-loop refactor-api --background --queue
+```
+
+### `maintain: true` vs `--background`
+
+These are orthogonal — they control different things:
+
+| Setting | What it controls |
+|---------|-----------------|
+| `maintain: true` (YAML) | Loop *restarts itself* after reaching a terminal state — inner restart logic |
+| `--background` (CLI flag) | Loop *process detaches* from the terminal — outer execution mode |
+
+You can combine them: a `maintain: true` loop running with `--background` is a long-lived daemon that auto-restarts and never occupies a terminal.
+
+### Resuming a background loop
+
+If a background loop paused due to a context handoff (`on_handoff: pause`), resume it as a background process:
+
+```bash
+ll-loop resume my-scan --background
+```
+
+The resumed loop inherits the saved state (current FSM state, iteration count, captured variables) and runs detached, writing output to the same log file.
 
 ## Prompt Optimization Loops (APO)
 
