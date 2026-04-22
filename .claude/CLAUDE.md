@@ -123,7 +123,7 @@ Install: `pip install -e "./scripts[dev]"`
 
 When running in automation contexts (ll-auto, ll-parallel, ll-sprint), use scratch pad files to keep large tool outputs out of conversation context:
 
-- **Before reading a file**, check its size: `wc -l <path>`. If > 200 lines, use `Bash "mkdir -p /tmp/ll-scratch && cat <path> > /tmp/ll-scratch/<descriptive-name>.txt && echo 'Saved N lines to /tmp/ll-scratch/<descriptive-name>.txt'"` instead of the Read tool.
-- **For test/lint runs**, pipe output to scratch and tail the summary: `Bash "python -m pytest ... > /tmp/ll-scratch/test-results.txt 2>&1; tail -20 /tmp/ll-scratch/test-results.txt"`.
+- **Before reading a file**, check its size: `wc -l <path>`. If > 200 lines, use `Bash "mkdir -p .loops/tmp/scratch/ && cat <path> > .loops/tmp/scratch/<descriptive-name>.txt && echo 'Saved N lines to .loops/tmp/scratch/<descriptive-name>.txt'"` instead of the Read tool.
+- **For test/lint runs**, pipe output to scratch and tail the summary: `Bash "python -m pytest ... > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt"`.
 - **Reference scratch paths** when reasoning about file contents. Use `Read` on the scratch file only when you need specific content later.
 - Small outputs (< 200 lines) should still be inlined normally.
