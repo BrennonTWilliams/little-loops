@@ -86,8 +86,18 @@ if [ "$MODE" = "dry-run" ]; then
     echo "Would remove the following worktrees:"
     echo "$WORKTREES" | while read -r w; do
         if [ -n "$w" ]; then
-            BRANCH_NAME="parallel/$(basename "$w" | sed 's/^worker-//')"
-            echo "  - Worktree: $w"
+            WORKTREE_NAME=$(basename "$w")
+            BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
+            MARKER=$(ls "${w}/.ll-session-"* 2>/dev/null | head -1)
+            if [ -n "$MARKER" ]; then
+                PID=$(basename "$MARKER" | sed 's/^\.ll-session-//')
+                if kill -0 "$PID" 2>/dev/null; then
+                    echo "  - Worktree: $w  [SKIP - live ${PID}]"
+                    echo "    Branch: $BRANCH_NAME"
+                    continue
+                fi
+            fi
+            echo "  - Worktree: $w  [REMOVE]"
             echo "    Branch: $BRANCH_NAME"
         fi
     done
@@ -110,6 +120,17 @@ if [ "$MODE" = "run" ]; then
         if [ -n "$w" ] && [ -d "$w" ]; then
             WORKTREE_NAME=$(basename "$w")
             BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
+
+            # Liveness check: skip worktrees owned by a running process
+            MARKER=$(ls "${w}/.ll-session-"* 2>/dev/null | head -1)
+            if [ -n "$MARKER" ]; then
+                PID=$(basename "$MARKER" | sed 's/^\.ll-session-//')
+                if kill -0 "$PID" 2>/dev/null; then
+                    echo "Skipping ${WORKTREE_NAME}: worker process ${PID} is alive"
+                    echo ""
+                    continue
+                fi
+            fi
 
             echo "Removing: $WORKTREE_NAME"
 
