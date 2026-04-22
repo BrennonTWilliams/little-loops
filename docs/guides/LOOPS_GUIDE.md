@@ -1876,7 +1876,8 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `--llm-model <model>` | Override the LLM model for evaluation |
 | `-n <N>` | Override `max_iterations` |
 | `--queue` | Wait for conflicting scoped loops instead of erroring |
-| `-q` / `--quiet` | Suppress progress output |
+| `-q` / `--queue` | Wait for conflicting scoped loops instead of erroring (shorthand for `--queue`) |
+| `--quiet` | Suppress progress output |
 | `-v` / `--verbose` | Stream all action output live; default shows a short response head preview |
 | `-b` / `--background` | Run as a background daemon |
 | `--show-diagrams` | Display FSM box diagram with active state highlighted after each step |

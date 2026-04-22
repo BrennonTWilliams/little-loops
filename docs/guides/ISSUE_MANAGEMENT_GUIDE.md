@@ -339,6 +339,15 @@ Complementary to `ready-issue`, this skill evaluates implementation readiness fr
 
 Both scores are persisted to the issue's frontmatter as `confidence_score` and `outcome_confidence`. Use these during sprint planning to sequence high-confidence issues first.
 
+#### Escalation after low readiness scores
+
+When readiness score stays below 70 after 2+ refinement passes, `confidence-check` branches on `score_ambiguity` (Criterion C — 0–25):
+
+- **`score_ambiguity ≤ 10`** — competing implementation options are unresolved. Run `/ll:decide-issue` to select one option and clear `decision_needed: true`.
+- **`score_ambiguity > 10`** — the issue is too large or under-researched. Run `/ll:issue-size-review` to decompose it into independently-shippable pieces.
+
+This replaces the old behavior of always routing to `/ll:issue-size-review` regardless of cause. (ENH-1250)
+
 ### Size Review & Decomposition
 
 ```
@@ -349,6 +358,18 @@ Both scores are persisted to the issue's frontmatter as `confidence_score` and `
 Reviews active issues for scope. Issues estimated at more than one session's work (typically >4 hours or >~200 LOC) are flagged for decomposition. The skill proposes how to split them: identifying a core issue and N satellite issues that can each be implemented independently.
 
 **Flags:** `--auto` — non-interactive mode for FSM loop automation. Auto-decomposes only issues scoring >=8. `--sprint <name>` — scope to issues in the named sprint only.
+
+#### Decomposition principle: independently shippable
+
+When splitting an issue, each child must be **independently shippable** — it produces a meaningful PR on its own. The governing test: "can this child be merged without its siblings and still be useful?"
+
+The key constraint: **do not split tests and docs from the code they cover**. A child issue called "tests and documentation for X" that depends on a sibling to implement X cannot ship independently and will leave main temporarily broken. Instead, split along *capability seams*: each child implements a complete vertical slice of behavior including its own tests.
+
+Examples:
+- **Good split**: `FEAT-A: parse YAML frontmatter with inline arrays` + `FEAT-B: prefer frontmatter blocked_by over body sections` — each is testable and mergeable independently.
+- **Bad split**: `FEAT-A: wire decide-issue pipeline` + `FEAT-B: tests and docs for decide-issue` — FEAT-B has no standalone value and leaves FEAT-A untested until FEAT-B merges.
+
+(ENH-1242)
 
 Decomposed issues reference each other via the `blocked_by` field. Implementing in dependency order prevents integration conflicts.
 

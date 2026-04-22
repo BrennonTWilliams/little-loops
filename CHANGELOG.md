@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`ll-issues clusters` Subcommand** — Visualizes issue dependency clusters as box diagrams. Supports `--include-orphans` (include isolated issues), `--min-connections N` (filter small clusters), and `--json` (machine-readable output). Useful for understanding which issues form tightly coupled implementation groups before sprint planning.
+- **`autodev` `decide_current` Gate** — The `autodev` loop now checks `decision_needed: true` after refinement and routes to a new `decide_current` state before implementation. This invokes `/ll:decide-issue` to resolve competing options inline, preventing implementation with an unresolved multi-option solution. (ENH-1243)
+- **PID Liveness Check in `cleanup-worktrees`** — The `/ll:cleanup-worktrees` command now probes `.ll-session-<pid>` files before removing each worktree directory, preventing accidental removal of worktrees owned by an active `ll-parallel` run. (ENH-1249)
+- **Benchmark Adapter Fragment (`lib/benchmark.yaml`)** — New reusable FSM loop fragment that accepts a benchmark spec (task directory + scorer command) and returns a numeric score. Harbor-format compatible so public `tasks/` sets work out of the box. Hooks into `outer-loop-eval.yaml` and `agent-eval-improve.yaml` as a pluggable scoring step. (FEAT-1119)
+
+### Fixed
+
+- **`ll-auto` Exits 0 on Decision Gate Block** — When `ll-auto --only <ISSUE_ID>` encounters `decision_needed: true`, it now exits non-zero so the `autodev` loop correctly detects the gate block instead of silently recording the issue as processed. (BUG-1256)
+- **Issue Parser Ignored Frontmatter `blocked_by`/`blocks` Fields** — The issue parser now reads `blocked_by` and `blocks` from YAML frontmatter as the authoritative source, falling back to `## Blocked By` / `## Blocks` body sections. Conflicts between the two sources emit a warning. This fix corrects dependency graphs in `ll-issues clusters` and `ll-sprint`. (BUG-1257)
+- **Frontmatter Parser Dropped Inline YAML Arrays** — `frontmatter.py` now parses inline array syntax (`blocked_by: [ID1, ID2]`) correctly instead of storing the entire bracket string as a scalar. (BUG-1258)
+- **`ll-issues clusters` Inflated Cluster via Conflicting `blocked_by` Sources** — When an issue had conflicting `blocked_by` data in frontmatter vs. body sections, both were merged, creating spurious edges. The parser now prefers frontmatter and warns on conflict, eliminating false cluster bridges. (BUG-1259)
+- **`worktree-health` Loop Always Reported 0 Orphans** — Fixed broken grep pattern in `worktree-health.yaml` that matched no actual worktree names, and extended orphan scan to cover `ll-loop --worktree` worktrees (which use `<timestamp>-<safe-name>` naming, not `worker-*`). (ENH-1248, ENH-1254)
+
+### Changed
+
+- **`ll-loop -q` Shorthand Reassigned to `--queue`** — The `-q` flag now maps to `--queue` (wait for conflicting scoped loops) instead of `--quiet`. Use `--quiet` explicitly to suppress progress output.
+- **`/ll:confidence-check` Two-Branch Escalation** — When readiness score stays below 70 after 2+ refinement passes, escalation now branches on `score_ambiguity`: ≤ 10 routes to `/ll:decide-issue` (competing options unresolved); > 10 routes to `/ll:issue-size-review` (issue too large). Previously always routed to size review regardless of cause. (ENH-1250)
+- **`/ll:issue-size-review` Independently-Shippable Decomposition Principle** — Phase 4 decomposition guidance now enforces splitting along capability seams, not artifact type lines. The governing test: each child must produce a meaningful PR on its own. Hard constraint added against separating tests/docs from the code they cover. (ENH-1242)
+- **Worktree Unlock Hardening** — `worktree_utils.cleanup_worktree()`, `merge_coordinator._cleanup_worktree()`, and `orchestrator._cleanup_orphaned_worktrees()` now run `git worktree unlock` before `git worktree remove --force` to prevent cleanup failures when a SIGKILL stranded a lock file. (ENH-1247, ENH-1251, ENH-1252, ENH-1253)
+- **Ghost Ref Startup Scan** — `ll-parallel` orchestrator startup scan now iterates `.git/worktrees/` and prunes ghost metadata entries whose on-disk worktree path no longer exists, preventing "already exists" failures on the next `git worktree add`. (ENH-1246)
+- **Scratch-Pad Docs and Path Updates** — Documentation and inline references updated to reflect the correct scratch-pad path (`.loops/tmp/scratch/` instead of `/tmp/ll-scratch/`); CLAUDE.md and CONFIGURATION.md updated to describe automatic enforcement via the `scratch_pad` config block. (ENH-1130)
+
 ### Planned
 
 - Windows compatibility testing
