@@ -445,17 +445,23 @@ init → dequeue_next → [queue empty?]
          ├─ YES → done
          └─ NO  → refine_current (sub-loop: refine-to-ready-issue)
                     → copy_broke_down → check_passed → [thresholds met?]
-                         ├─ YES → implement_current (ll-auto --only) → dequeue_next
+                         ├─ YES → decide_current → [decision_needed?]
+                         │                            ├─ YES → run_decide (/ll:decide-issue --auto) → implement_current (ll-auto --only) → dequeue_next
+                         │                            └─ NO  → implement_current (ll-auto --only) → dequeue_next
                          └─ NO  → detect_children → [children found?]
                                     ├─ YES → enqueue_children (prepend depth-first) → dequeue_next
                                     └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
                                                ├─ YES → enqueue_or_skip → dequeue_next
                                                └─ NO  → recheck_scores → [passed now?]
-                                                          ├─ YES → implement_current → dequeue_next
+                                                          ├─ YES → decide_current → [decision_needed?]
+                                                          │                            ├─ YES → run_decide → implement_current → dequeue_next
+                                                          │                            └─ NO  → implement_current → dequeue_next
                                                           └─ NO  → run_size_review → enqueue_or_skip → [children found?]
                                                                                                           ├─ YES → dequeue_next
                                                                                                           └─ NO  → recheck_after_size_review → [passed now?]
-                                                                                                                      ├─ YES → implement_current → dequeue_next
+                                                                                                                      ├─ YES → decide_current → [decision_needed?]
+                                                                                                                      │                            ├─ YES → run_decide → implement_current → dequeue_next
+                                                                                                                      │                            └─ NO  → implement_current → dequeue_next
                                                                                                                       └─ NO  → dequeue_next
 ```
 

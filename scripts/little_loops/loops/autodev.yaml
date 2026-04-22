@@ -158,9 +158,45 @@ states:
       sys.exit(0 if passed else 1)
       PYEOF
     fragment: shell_exit
-    on_yes: implement_current
+    on_yes: decide_current
     on_no: detect_children
     on_error: detect_children
+
+  decide_current:
+    # Check if the issue requires a decision before implementation. Reads
+    # decision_needed from ll-issues show --json; if true, runs /ll:decide-issue
+    # to resolve competing options before handing off to ll-auto.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+
+      issue_id = '${captured.input.output}'
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      sys.exit(0 if d.get('decision_needed') == 'true' else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: run_decide
+    on_no: implement_current
+
+  run_decide:
+    # Run /ll:decide-issue to select a winning implementation option and clear
+    # the decision_needed flag. on_error falls through to implement_current so
+    # a decide failure is no worse than the previous behavior.
+    fragment: with_rate_limit_handling
+    action: "/ll:decide-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    next: implement_current
+    on_error: implement_current
+    on_rate_limit_exhausted: done
 
   implement_current:
     # Interleaved implementation: as soon as a leaf passes refinement, run
@@ -318,7 +354,7 @@ states:
       sys.exit(0 if passed else 1)
       PYEOF
     fragment: shell_exit
-    on_yes: implement_current
+    on_yes: decide_current
     on_no: run_size_review
     on_error: run_size_review
 
@@ -434,7 +470,7 @@ states:
       sys.exit(0 if passed else 1)
       PYEOF
     fragment: shell_exit
-    on_yes: implement_current
+    on_yes: decide_current
     on_no: dequeue_next
     on_error: dequeue_next
 

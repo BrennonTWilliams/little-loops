@@ -1775,6 +1775,39 @@ class TestIssuesCLIShow:
         assert data.get("score_ambiguity") == "21"
         assert data.get("score_change_surface") == "19"
 
+    def test_show_json_includes_decision_needed(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output includes decision_needed key with lowercase string value."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-503-decision-needed.md").write_text(
+            "---\n"
+            "decision_needed: true\n"
+            "---\n"
+            "# FEAT-503: Decision needed issue\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "FEAT-503", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data.get("decision_needed") == "true"
+
     def test_show_displays_captured_at(
         self,
         temp_project_dir: Path,

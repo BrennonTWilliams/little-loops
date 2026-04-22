@@ -1038,6 +1038,8 @@ class TestAutodevLoop:
             "run_size_review",
             "enqueue_or_skip",
             "recheck_after_size_review",
+            "decide_current",
+            "run_decide",
             "implement_current",
             "done",
         }
@@ -1138,10 +1140,10 @@ class TestAutodevLoop:
         state = data["states"].get("implement_current", {})
         assert state.get("on_error") == "done"
 
-    def test_check_passed_on_yes_routes_to_implement_current(self, data: dict) -> None:
-        """On threshold pass, interleave: implement the issue immediately."""
+    def test_check_passed_on_yes_routes_to_decide_current(self, data: dict) -> None:
+        """On threshold pass, check decision_needed before implementation."""
         state = data["states"].get("check_passed", {})
-        assert state.get("on_yes") == "implement_current"
+        assert state.get("on_yes") == "decide_current"
 
     def test_check_passed_on_no_routes_to_detect_children(self, data: dict) -> None:
         """On threshold fail, detect children just like recursive-refine does."""
@@ -1332,11 +1334,11 @@ class TestAutodevLoop:
             f"got {state.get('fragment')!r}"
         )
 
-    def test_recheck_after_size_review_on_yes_routes_to_implement_current(self, data: dict) -> None:
-        """recheck_after_size_review.on_yes (scores pass) must route to implement_current."""
+    def test_recheck_after_size_review_on_yes_routes_to_decide_current(self, data: dict) -> None:
+        """recheck_after_size_review.on_yes (scores pass) must route to decide_current."""
         state = data["states"].get("recheck_after_size_review", {})
-        assert state.get("on_yes") == "implement_current", (
-            f"recheck_after_size_review.on_yes should be 'implement_current', "
+        assert state.get("on_yes") == "decide_current", (
+            f"recheck_after_size_review.on_yes should be 'decide_current', "
             f"got {state.get('on_yes')!r}"
         )
 
@@ -1355,6 +1357,55 @@ class TestAutodevLoop:
             "recheck_after_size_review must clear autodev-inflight when scores fail "
             "so done does not warn about a stale in-flight entry (BUG-1230)"
         )
+
+    def test_recheck_scores_on_yes_routes_to_decide_current(self, data: dict) -> None:
+        """recheck_scores.on_yes (scores pass) must route to decide_current."""
+        state = data["states"].get("recheck_scores", {})
+        assert state.get("on_yes") == "decide_current", (
+            f"recheck_scores.on_yes should be 'decide_current', "
+            f"got {state.get('on_yes')!r}"
+        )
+
+    def test_decide_current_uses_shell_exit_fragment(self, data: dict) -> None:
+        """decide_current must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("decide_current", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"decide_current.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_decide_current_on_yes_routes_to_run_decide(self, data: dict) -> None:
+        """decide_current.on_yes (decision_needed=true) must route to run_decide."""
+        state = data["states"].get("decide_current", {})
+        assert state.get("on_yes") == "run_decide", (
+            f"decide_current.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        )
+
+    def test_decide_current_on_no_routes_to_implement_current(self, data: dict) -> None:
+        """decide_current.on_no (no decision needed) must route to implement_current."""
+        state = data["states"].get("decide_current", {})
+        assert state.get("on_no") == "implement_current", (
+            f"decide_current.on_no should be 'implement_current', got {state.get('on_no')!r}"
+        )
+
+    def test_run_decide_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
+        """run_decide must use with_rate_limit_handling fragment."""
+        state = data["states"].get("run_decide", {})
+        assert state.get("fragment") == "with_rate_limit_handling"
+
+    def test_run_decide_next_routes_to_implement_current(self, data: dict) -> None:
+        """run_decide.next (on success) must route to implement_current."""
+        state = data["states"].get("run_decide", {})
+        assert state.get("next") == "implement_current"
+
+    def test_run_decide_on_error_routes_to_implement_current(self, data: dict) -> None:
+        """run_decide.on_error must fall through to implement_current (degraded mode)."""
+        state = data["states"].get("run_decide", {})
+        assert state.get("on_error") == "implement_current"
+
+    def test_run_decide_on_rate_limit_exhausted_routes_to_done(self, data: dict) -> None:
+        """run_decide.on_rate_limit_exhausted must terminate the loop."""
+        state = data["states"].get("run_decide", {})
+        assert state.get("on_rate_limit_exhausted") == "done"
 
 
 class TestRecursiveRefineLoop:

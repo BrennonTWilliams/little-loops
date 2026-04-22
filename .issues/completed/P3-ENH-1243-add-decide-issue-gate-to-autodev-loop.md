@@ -5,9 +5,10 @@ priority: P3
 title: "Add decide-issue conditional gate to autodev loop"
 status: backlog
 captured_at: "2026-04-21T23:34:57Z"
+completed_at: "2026-04-22T18:37:15Z"
 discovered_date: "2026-04-21"
 discovered_by: capture-issue
-decision_needed: true
+decision_needed: false
 confidence_score: 95
 outcome_confidence: 86
 score_complexity: 18
@@ -116,11 +117,31 @@ Follows the file-based flag pattern used by `check_broke_down` (`autodev.yaml:25
 requires no changes outside `autodev.yaml`.
 
 **Option B — Extend `ll-issues show --json` to expose `decision_needed`:**
+> **Selected:** Option B — autodev.yaml already uses `ll-issues show --json` for issue metadata (3 call sites); Option B aligns `decide_current` with that pattern. Option A introduces inline YAML frontmatter parsing with no loop-YAML precedent.
 
 Modify `show.py:_parse_card_fields()` (line 101) to extract and include `decision_needed` from
 frontmatter — consistent with how `issue_manager.py:562–578` and `scripts/little_loops/parallel/worker_pool.py:372–383` already
 handle this field. This enables the original proposed shell script verbatim and makes the field
 available to any future shell-based tooling, but adds scope beyond `autodev.yaml` alone.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-04-22.
+
+**Selected**: Option B — Extend `ll-issues show --json` to expose `decision_needed`
+
+**Reasoning**: `autodev.yaml` already calls `ll-issues show <id> --json` via Python subprocess three times (lines 144–145, 304–305, 415–416) — this is the established pattern for reading issue metadata in loop YAML files. Option B makes `decide_current` use that same pattern, while Option A would introduce inline YAML frontmatter parsing with no precedent in any loop YAML file. Option B requires exactly two new lines in `_parse_card_fields()` following the identical `frontmatter.get("field")` + return-dict pattern already used 10+ times in that function, whereas Option A adds a new data-access approach that diverges from the file's conventions without reducing scope.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (file read) | 1/3 | 1/3 | 2/3 | 2/3 | 6/12 |
+| Option B (show --json) | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+
+**Key evidence**:
+- **Option A**: `ll-issues path` has zero call sites in any loop YAML file; the claimed `check_broke_down` model reads a temp numeric flag, not YAML frontmatter; inline `yaml.safe_load` is a new loop-YAML pattern
+- **Option B**: `_parse_card_fields()` already uses `frontmatter.get()` + string coercion 10+ times; `IssueInfo.to_dict()` already serializes `decision_needed` (`issue_parser.py:284`); exact test pattern exists at `test_issues_cli.py:1737–1776`
 
 ## Integration Map
 
@@ -167,11 +188,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_builtin_loops.py:1136–1139` — `test_check_passed_on_yes_routes_to_implement_current` asserts `on_yes == "implement_current"`; **will break** — rename and update assertion to `"decide_current"`
-- `scripts/tests/test_builtin_loops.py:1330–1336` — `test_recheck_after_size_review_on_yes_routes_to_implement_current` asserts `on_yes == "implement_current"`; **will break** — rename and update assertion to `"decide_current"`
-- `scripts/tests/test_builtin_loops.py` (`TestAutodevLoop`) — `recheck_scores.on_yes` routing has **no test** in `TestAutodevLoop` (only `TestRecursiveRefineLoop` at line 1355 tests `recursive-refine.yaml`'s copy of that state); add a new method asserting `recheck_scores.on_yes == "decide_current"` — follow the `test_recheck_after_size_review_on_yes_*` pattern at line 1322
-- `scripts/tests/test_builtin_loops.py` (`TestAutodevLoop`) — new test methods needed for `decide_current`: assert `fragment == "shell_exit"`, `on_yes == "run_decide"`, `on_no == "implement_current"` — mirror `test_recheck_after_size_review_uses_shell_exit_fragment` pattern at line 1322
-- `scripts/tests/test_builtin_loops.py` (`TestAutodevLoop`) — new test methods needed for `run_decide`: assert `fragment == "with_rate_limit_handling"`, `next == "implement_current"`, `on_error == "implement_current"`, `on_rate_limit_exhausted == "done"` — mirror `TestRecursiveRefineLoop.test_run_size_review_uses_auto_flag` pattern at line 1452
+- `scripts/tests/test_builtin_loops.py:1141–1144` — `test_check_passed_on_yes_routes_to_implement_current` asserts `on_yes == "implement_current"`; **will break** — rename and update assertion to `"decide_current"`
+- `scripts/tests/test_builtin_loops.py:1335–1341` — `test_recheck_after_size_review_on_yes_routes_to_implement_current` asserts `on_yes == "implement_current"`; **will break** — rename and update assertion to `"decide_current"`
+- `scripts/tests/test_builtin_loops.py` (`TestAutodevLoop`) — `recheck_scores.on_yes` routing has **no test** in `TestAutodevLoop` (only `TestRecursiveRefineLoop` at line 1360 tests `recursive-refine.yaml`'s copy of that state); add a new method asserting `recheck_scores.on_yes == "decide_current"` — follow the `test_recheck_after_size_review_on_yes_*` pattern at line 1327
+- `scripts/tests/test_builtin_loops.py` (`TestAutodevLoop`) — new test methods needed for `decide_current`: assert `fragment == "shell_exit"`, `on_yes == "run_decide"`, `on_no == "implement_current"` — mirror `test_recheck_after_size_review_uses_shell_exit_fragment` pattern at line 1327
+- `scripts/tests/test_builtin_loops.py` (`TestAutodevLoop`) — new test methods needed for `run_decide`: assert `fragment == "with_rate_limit_handling"`, `next == "implement_current"`, `on_error == "implement_current"`, `on_rate_limit_exhausted == "done"` — mirror `TestRecursiveRefineLoop.test_run_size_review_uses_auto_flag` pattern at line 1457
 
 ### Documentation
 
@@ -201,7 +222,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-6. Fix two breaking test methods in `scripts/tests/test_builtin_loops.py:TestAutodevLoop` — rename `test_check_passed_on_yes_routes_to_implement_current` (line 1136) and `test_recheck_after_size_review_on_yes_routes_to_implement_current` (line 1330); update their `on_yes` assertions from `"implement_current"` to `"decide_current"`
+6. Fix two breaking test methods in `scripts/tests/test_builtin_loops.py:TestAutodevLoop` — rename `test_check_passed_on_yes_routes_to_implement_current` (line 1141) and `test_recheck_after_size_review_on_yes_routes_to_implement_current` (line 1335); update their `on_yes` assertions from `"implement_current"` to `"decide_current"`
 7. Add missing `recheck_scores.on_yes` routing test to `TestAutodevLoop` — assert `recheck_scores.on_yes == "decide_current"` (currently untested in `TestAutodevLoop`; `TestRecursiveRefineLoop` tests only the `recursive-refine.yaml` copy of this state)
 8. Update `docs/guides/LOOPS_GUIDE.md:447–460` — revise the autodev FSM flow diagram to show `YES → decide_current → [decision_needed?] → run_decide / implement_current` on each of the three score-pass branches
 
@@ -238,9 +259,22 @@ loop, autodev, decide-issue, issue-pipeline
 
 - [ ] Backlog
 - [ ] In Progress
-- [ ] Complete
+- [x] Complete
+
+## Resolution
+
+Implemented Option B (extend `ll-issues show --json`):
+- `show.py:_parse_card_fields()` — added `decision_needed` extraction and lowercase string serialization
+- `autodev.yaml` — added `decide_current` and `run_decide` states; updated `on_yes` in `check_passed`, `recheck_scores`, `recheck_after_size_review` to route through `decide_current`
+- `test_builtin_loops.py:TestAutodevLoop` — added 9 new test methods, renamed 2 to reflect `decide_current` routing; added both new states to `test_required_states_exist`
+- `test_issues_cli.py` — added `test_show_json_includes_decision_needed`
+- `docs/guides/LOOPS_GUIDE.md` — updated FSM flow diagram to show `decide_current → run_decide` gate on all three score-pass branches
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-22T18:37:15Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:ready-issue` - 2026-04-22T18:30:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d1afef0-2ad2-480b-929e-eecd285e5996.jsonl`
+- `/ll:decide-issue` - 2026-04-22T18:26:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10304d65-395d-4a6f-91a9-4ef370cc19b9.jsonl`
+- `/ll:ready-issue` - 2026-04-22T18:18:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71ae5b90-f0ea-4333-8a81-7db60405635f.jsonl`
 - `/ll:verify-issues` - 2026-04-22T18:13:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b72ccf9-bc3b-4af0-a50e-d3ff002c1428.jsonl`
 - `/ll:ready-issue` - 2026-04-22T00:19:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24f9e1a8-4114-4c8d-aaaf-ac1ea1c113cf.jsonl`
 - `/ll:confidence-check` - 2026-04-21T23:34:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/478870ac-71bc-41d2-80b3-aa270a1b9eb5.jsonl`
