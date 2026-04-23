@@ -6,6 +6,7 @@ status: backlog
 title: "ll-logs: tail subcommand for live loop session streaming"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
+completed_at: 2026-04-23T21:07:40Z
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 97
@@ -209,6 +210,7 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 - ~~**FEAT-1269 artifacts missing**: FEAT-1269 is in `.issues/completed/` but `scripts/little_loops/cli/logs.py` does not exist and `main_logs` is not registered in `pyproject.toml`. The completed file still reads `status: backlog`. FEAT-1270 cannot add a `tail` subparser to a file that doesn't exist — verify FEAT-1269 was actually implemented before proceeding.~~ **RESOLVED** (2026-04-23): `scripts/little_loops/cli/logs.py` exists with `discover` subcommand implemented; `ll-logs = "little_loops.cli:main_logs"` is registered in `pyproject.toml`. Dependency satisfied — FEAT-1270 is unblocked.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-23T21:02:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4624911d-eb78-419d-b2d3-4d0250252718.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab6a7ae5-8378-48e7-a8ed-89a936671ad3.jsonl`
 - `/ll:refine-issue` - 2026-04-23T20:56:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a21ca7a-517c-4dd8-bde5-60ff72516da7.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e99e13eb-7a4b-4f4e-bb27-a602348fe421.jsonl`
@@ -219,6 +221,14 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 
 ---
 
+## Resolution
+
+- Added `_cmd_tail(args, loops_dir)` handler to `scripts/little_loops/cli/logs.py`
+- Added `tail` subparser with `--loop NAME` argument to `_build_parser()`
+- Dispatch wired in `main_logs()` via `BRConfig` to resolve `loops_dir`
+- Reuses `_format_history_event` from `cli/loop/info.py` for human-readable output
+- `TestTail` class added to `scripts/tests/test_ll_logs.py` (4 tests, all pass)
+
 ## Status
 
-**Open** | Created: 2026-04-23 | Priority: P4
+**Completed** | Created: 2026-04-23 | Priority: P4

@@ -5,9 +5,16 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import sys
+import time
 from pathlib import Path
 
+from little_loops.cli.loop.info import (  # private symbol: cross-module coupling; verify signature on upgrade
+    _format_history_event,
+)
 from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.config import BRConfig
 from little_loops.logger import Logger
 
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
@@ -108,6 +115,38 @@ def discover_all_projects(logger: Logger) -> list[Path]:
     return sorted(results)
 
 
+def _cmd_tail(args: argparse.Namespace, loops_dir: Path) -> int:
+    """Stream live events from an active loop session."""
+    events_file = loops_dir / ".running" / f"{args.loop}.events.jsonl"
+
+    if not events_file.exists():
+        print(f"No active session for loop '{args.loop}'", file=sys.stderr)
+        return 1
+
+    width = shutil.get_terminal_size().columns
+    try:
+        with open(events_file, encoding="utf-8") as f:
+            f.seek(0, 2)
+            while True:
+                line = f.readline()
+                if line:
+                    line = line.strip()
+                    if line:
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        formatted = _format_history_event(event, verbose=False, width=width)
+                        if formatted is not None:
+                            print(formatted)
+                else:
+                    time.sleep(0.1)
+    except KeyboardInterrupt:
+        return 0
+
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for ll-logs."""
     parser = argparse.ArgumentParser(
@@ -116,7 +155,8 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s discover    # List all projects with ll activity
+  %(prog)s discover              # List all projects with ll activity
+  %(prog)s tail --loop <name>   # Stream live events from an active loop session
 """,
     )
 
@@ -125,6 +165,12 @@ Examples:
         "discover",
         help="List all Claude projects with ll activity (one path per line, sorted)",
     )
+
+    tail_parser = subparsers.add_parser(
+        "tail",
+        help="Stream live events from an active loop session",
+    )
+    tail_parser.add_argument("--loop", required=True, metavar="NAME", help="Loop name to tail")
 
     return parser
 
@@ -155,5 +201,10 @@ def main_logs() -> int:
         for path in projects:
             print(path)
         return 0
+
+    if args.command == "tail":
+        config = BRConfig(Path.cwd())
+        loops_dir = Path(config.loops.loops_dir)
+        return _cmd_tail(args, loops_dir)
 
     return 1

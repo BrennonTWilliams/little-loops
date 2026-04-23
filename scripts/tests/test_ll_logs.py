@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from little_loops.cli.logs import _parse_args, main_logs
+from little_loops.cli.logs import _cmd_tail, _parse_args, main_logs
 
 
 class TestArgumentParsing:
@@ -271,6 +272,13 @@ class TestDiscover:
         captured = capsys.readouterr()
         assert captured.out.strip() == ""
 
+    def test_tail_subcommand_args(self) -> None:
+        """tail subcommand sets command to 'tail' and captures --loop."""
+        with patch("sys.argv", ["ll-logs", "tail", "--loop", "myloop"]):
+            args = _parse_args()
+        assert args.command == "tail"
+        assert args.loop == "myloop"
+
     def test_discover_ignores_agent_jsonl_files(self, capsys) -> None:
         """discover skips agent-*.jsonl files when scanning for ll activity."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -310,3 +318,80 @@ class TestDiscover:
         captured = capsys.readouterr()
         lines = [line.strip() for line in captured.out.strip().splitlines()]
         assert str(project_path) not in lines
+
+
+class TestTail:
+    """Integration tests for the tail subcommand."""
+
+    def _mock_open_with_readline(self, side_effects: list) -> MagicMock:
+        """Return a patched open() context manager whose readline yields side_effects."""
+        mock_file = MagicMock()
+        mock_file.readline.side_effect = side_effects
+        mock_ctx = MagicMock()
+        mock_ctx.__enter__ = MagicMock(return_value=mock_file)
+        mock_ctx.__exit__ = MagicMock(return_value=False)
+        return mock_ctx
+
+    def test_missing_session_returns_1(self, capsys) -> None:
+        """tail returns 1 and prints error when no active session file exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loops_dir = Path(tmpdir) / ".loops"
+            loops_dir.mkdir()
+
+            args = argparse.Namespace(loop="nonexistent")
+            result = _cmd_tail(args, loops_dir)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "nonexistent" in captured.err
+
+    def test_tail_streams_events_and_exits_on_interrupt(self, capsys) -> None:
+        """tail prints formatted events and exits 0 on KeyboardInterrupt via readline."""
+        event = {"ts": "2026-04-23T10:00:00", "event": "loop_start", "loop": "myloop"}
+        line = json.dumps(event) + "\n"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loops_dir = Path(tmpdir) / ".loops"
+            running_dir = loops_dir / ".running"
+            running_dir.mkdir(parents=True)
+            (running_dir / "myloop.events.jsonl").write_text("")
+
+            args = argparse.Namespace(loop="myloop")
+            mock_ctx = self._mock_open_with_readline([line, KeyboardInterrupt()])
+            with patch("builtins.open", return_value=mock_ctx):
+                result = _cmd_tail(args, loops_dir)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "myloop" in captured.out
+
+    def test_tail_keyboard_interrupt_on_sleep_exits_0(self) -> None:
+        """tail exits with 0 when KeyboardInterrupt occurs during sleep (no events)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loops_dir = Path(tmpdir) / ".loops"
+            running_dir = loops_dir / ".running"
+            running_dir.mkdir(parents=True)
+            (running_dir / "myloop.events.jsonl").write_text("")
+
+            args = argparse.Namespace(loop="myloop")
+            with patch("little_loops.cli.logs.time.sleep", side_effect=KeyboardInterrupt):
+                result = _cmd_tail(args, loops_dir)
+
+        assert result == 0
+
+    def test_tail_skips_malformed_json(self, capsys) -> None:
+        """tail skips lines that are not valid JSON without crashing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loops_dir = Path(tmpdir) / ".loops"
+            running_dir = loops_dir / ".running"
+            running_dir.mkdir(parents=True)
+            (running_dir / "myloop.events.jsonl").write_text("")
+
+            args = argparse.Namespace(loop="myloop")
+            mock_ctx = self._mock_open_with_readline(["not-valid-json\n", KeyboardInterrupt()])
+            with patch("builtins.open", return_value=mock_ctx):
+                result = _cmd_tail(args, loops_dir)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out == ""
