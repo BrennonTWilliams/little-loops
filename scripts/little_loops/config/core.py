@@ -429,6 +429,7 @@ class BRConfig:
             },
             "loops": {
                 "loops_dir": self._loops.loops_dir,
+                "queue_wait_timeout_seconds": self._loops.queue_wait_timeout_seconds,
                 "glyphs": self._loops.glyphs.to_dict(),
             },
             "sync": {

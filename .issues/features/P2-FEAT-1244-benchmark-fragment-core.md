@@ -2,13 +2,13 @@
 id: FEAT-1244
 priority: P2
 parent: FEAT-1119
-decision_needed: true
+decision_needed: false
 size: Large
-confidence_score: 80
-outcome_confidence: 36
+confidence_score: 100
+outcome_confidence: 61
 score_complexity: 0
-score_test_coverage: 18
-score_ambiguity: 0
+score_test_coverage: 25
+score_ambiguity: 18
 score_change_surface: 18
 ---
 
@@ -40,6 +40,7 @@ No loop-level benchmark adapter exists. Each eval loop reinvents scoring via cus
 **Resolve Option A vs B before implementation** (run `/ll:decide-issue FEAT-1244`):
 
 **Option A: Add `harbor_scorer` as a core evaluator type**
+> **Selected:** Option A — establishes `harbor_scorer` as a first-class evaluator type using the same four-file pattern followed by all 8 existing evaluators.
 - Add `evaluate_harbor_scorer()` to `scripts/little_loops/fsm/evaluators.py` alongside other leaf evaluator functions
 - Add `elif eval_type == "harbor_scorer":` branch in `evaluate()` at `evaluators.py:699`
 - Add `"harbor_scorer"` entry to `EVALUATOR_REQUIRED_FIELDS` dict at `scripts/little_loops/fsm/validation.py:62-71`
@@ -70,6 +71,25 @@ True differences between options:
 **Contributed evaluator callable signature**: The extension's `provided_evaluators()` must return `{"harbor_scorer": callable}` where callable matches `Evaluator = Callable[[EvaluateConfig, str, int, InterpolationContext], EvaluationResult]`. The executor passes `(state.evaluate, eval_input_str, exit_code, ctx)` at `executor.py:781-785`.
 
 **Harbor format**: No existing Harbor format definition found in the codebase. The fixture format must be defined as part of this issue's implementation. A minimal Harbor-format task directory likely needs at minimum a task specification file and an expected output; the exact structure is an UNKNOWN gap — the implementer must define it.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-04-23.
+
+**Selected**: Option A — Add `harbor_scorer` as a core evaluator type
+
+**Reasoning**: Option A is the established pattern for all 8 existing evaluator types — the most recently added type (`mcp_result`) is a direct structural template requiring identical four-file changes. Option B's primary selling point (avoiding `evaluators.py` modification) does not materialize: `validation.py` and `schema.py` must be modified under either option since `_validate_evaluator()` runs before `wire_extensions()` at load time. Option B additionally requires a new `HarborScorerExtension` class with no production precedent, adding complexity with no compensating benefit.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (core evaluator type) | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| Option B (extension mechanism) | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
+
+**Key evidence**:
+- Option A: `evaluate_mcp_result` (`evaluators.py:468-525`) is a direct structural template; the elif dispatch chain at `evaluators.py:699-836` and `EVALUATOR_REQUIRED_FIELDS` at `validation.py:62-71` have absorbed 8 types using this exact pattern.
+- Option B: `_validate_evaluator()` at `validation.py:116-125` rejects unknown types with ERROR severity at loop-load time — before `wire_extensions()` is called at `run.py:257` — meaning `validation.py` and `schema.py` still require modification, eliminating Option B's core advantage.
 
 ## Integration Map
 
@@ -121,14 +141,55 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/lib/cli.yaml` — Fragment with `${context.*}` interpolation
 - `scripts/tests/test_fsm_fragments.py` — Fragment test patterns: Shape B (tmp_path lib write), Shape D (`load_and_validate` integration)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`evaluate_harbor_scorer()` function specification** — direct template is `evaluate_mcp_result` at `evaluators.py:468-525`:
+- Signature: `def evaluate_harbor_scorer(output: str, exit_code: int) -> EvaluationResult:`
+- Reads no fields from `EvaluateConfig` — inputs arrive from dispatcher as positional args (same pattern as `mcp_result`)
+- elif dispatch to add at `evaluators.py:833` (immediately after `elif eval_type == "mcp_result":` block): `elif eval_type == "harbor_scorer": return evaluate_harbor_scorer(output=output, exit_code=exit_code)`
+- **Verdict logic (decided — exit-code based)**: `exit_code != 0 → verdict="no"`; `exit_code == 0` but stdout not parseable as float → `verdict="error"`; `exit_code == 0` and stdout parses as float → `verdict="yes"` with `details={"score": score, "exit_code": 0}`. No `threshold` field needed; `EVALUATOR_REQUIRED_FIELDS["harbor_scorer"] = []` (empty, same as `mcp_result`). Scorer determines pass/fail via its own exit code; the evaluator only interprets the result.
+
+**`EVALUATOR_REQUIRED_FIELDS["harbor_scorer"]`**: Should be `[]` (empty list) following `"mcp_result": []` at `validation.py:70`. Add as 9th entry: `"harbor_scorer": [],`. Only add field names if the evaluator reads fields from `EvaluateConfig` (e.g., `"threshold"`).
+
+**`__init__.py` export — correction**: `evaluate_mcp_result` and `evaluate_diff_stall` are NOT exported from `fsm/__init__.py` — the import block at lines 77-88 exports only 5 named evaluators (`evaluate_convergence`, `evaluate_exit_code`, `evaluate_llm_structured`, `evaluate_output_contains`, `evaluate_output_json`, `evaluate_output_numeric`). **Do NOT add `evaluate_harbor_scorer` to `__init__.py`** — follow the `mcp_result` precedent. The step in "Files to Modify" (`__init__.py:73-142`) is incorrect; skip it.
+
+**`_EVALUATE_TYPE_DISPLAY` in `info.py:611-619`**: Dict has only 7 entries; `mcp_result` and `diff_stall` are both absent. The fallback at line 623 returns the raw string for missing keys. Adding `"harbor_scorer"` is optional — without it, display renders as `"harbor_scorer"` which is acceptable.
+
+**`benchmark.yaml` fragment structure (decided — single fragment)** — follow `numeric_gate` pattern (`common.yaml:64-72`); one `run_benchmark` fragment that deep-merges into a single consuming state:
+```yaml
+description: Benchmark runner fragment library
+fragments:
+  run_benchmark:
+    description: |
+      Run a Harbor-format benchmark task directory.
+      Caller must supply: action (scorer command), on_yes, on_no.
+      Caller may supply: capture: benchmark_score.
+      Scorer stdout must be valid JSON: {"score": float, "per_task": [...], "run_id": "..."}.
+      Multi-field access via ${captured.benchmark_score.output} parsed as JSON.
+    action_type: shell
+    evaluate:
+      type: harbor_scorer
+    # NOTE: capture_fields does NOT exist in StateConfig; use capture: + JSON stdout instead.
+    # Three-fragment design (load_tasks/run_tasks/aggregate) was considered and rejected.
+```
+
+**Test pattern exact locations** (confirmed via codebase analysis):
+- Shape B (`_write_lib` + `resolve_fragments`): `test_fsm_fragments.py:300-515` — write lib YAML to `tmp_path / "lib"`, build raw dict inline, call `resolve_fragments(raw, tmp_path)`, assert `state["action_type"]` and `state["evaluate"]["type"]`
+- Shape D (`load_and_validate`): `test_fsm_fragments.py:670-741` — write full `.yaml` to `tmp_path`, call `load_and_validate(loop_yaml)` → `(fsm, warnings)`, assert `fsm.states["run"].action_type` and `fsm.states["run"].evaluate.type`
+- Dispatch test template: `test_fsm_evaluators.py:1201-1214` (`test_dispatch_mcp_result`) — `EvaluateConfig(type="harbor_scorer")`, call `evaluate(config, output, exit_code, ctx)`, assert `result.verdict`
+- Schema required-field test template: `test_fsm_schema.py:1733-1744` (`test_mcp_result_evaluator_type_is_valid`) — for `harbor_scorer` with no required fields: assert `EvaluateConfig(type="harbor_scorer").type == "harbor_scorer"` and round-trip via `to_dict()`/`from_dict()`
+- Fuzz list: `test_fsm_schema_fuzz.py:44-51` — add `"harbor_scorer"` to `valid_types` list
+
 ## Implementation Steps
 
-1. Define Harbor task fixture format (each task = a directory with at minimum a task spec file and expected result file; document the structure in `fixtures/harbor/README.md`); create `scripts/tests/fixtures/harbor/` with 3 minimal task directories
-2. Create `scripts/little_loops/loops/lib/benchmark.yaml` with a `run_benchmark` fragment; each fragment is a single-state construct (deep-merged into a caller state); choose between: (a) one `run_benchmark` fragment whose shell action runs all phases inline, or (b) three named fragments `load_tasks`/`run_tasks`/`aggregate` that consumers compose; use `action_type: shell`, `capture: benchmark_score`; model after `lib/common.yaml:14-72`
-3. Resolve Option A vs B; implement accordingly — note both options require updating `validation.py:EVALUATOR_REQUIRED_FIELDS` and `schema.py:EvaluateConfig.type Literal`; Option A also adds `evaluators.py` leaf function + elif; Option B adds an extension class
-4. Write `scripts/tests/test_benchmark_fragment.py` covering: task enumeration, scorer dispatch, aggregation (mean, median, pass-rate), missing-tasks-dir error; follow Shape B (`_write_lib` + `resolve_fragments`, `test_fsm_fragments.py:300-515`) and Shape D (`load_and_validate` integration, `test_fsm_fragments.py:670-741`) patterns
-5. If Option A: update `schema.py`, `validation.py`, `evaluators.py`, `__init__.py`, `info.py`, `test_fsm_schema_fuzz.py`, `test_fsm_schema.py`
-6. Update fragment library docs: `README.md`, `LOOPS_GUIDE.md`, `AUDIT_REPORT.md`, `CLI.md`; if Option A: `docs/generalized-fsm-loop.md`
+1. Create Harbor-format fixture directory `scripts/tests/fixtures/harbor/` with 3 task directories (`task_01/`, `task_02/`, `task_03/`), each containing `task.md` (task instructions in markdown) and `expected.json` (`{"score": float, "criteria": [str]}`); document the format in `fixtures/harbor/README.md`
+2. Create `scripts/little_loops/loops/lib/benchmark.yaml` with a single `run_benchmark` fragment following the `numeric_gate` model (`lib/common.yaml:64-72`): two runtime fields — `action_type: shell` and `evaluate.type: harbor_scorer`; caller supplies `action`, `on_yes`, `on_no`, and optionally `capture: benchmark_score` (scorer stdout must be JSON: `{"score": float, "per_task": [...], "run_id": "..."}`)
+3. Implement `evaluate_harbor_scorer(output: str, exit_code: int) -> EvaluationResult` in `evaluators.py` after `evaluate_mcp_result` at line 525 — verdict: `exit_code != 0 → "no"`; stdout not parseable as float → `"error"`; exit 0 + parseable float → `"yes"` with `details={"score": score, "exit_code": 0}`; add elif branch at `evaluators.py:833`; update `validation.py` (`"harbor_scorer": []`), `schema.py` (Literal); **skip `__init__.py`** (follows `mcp_result` precedent — not exported)
+4. Write `scripts/tests/test_benchmark_fragment.py` covering: fragment resolution (Shape B: `_write_lib` + `resolve_fragments`, `test_fsm_fragments.py:300-515`), load-and-validate integration (Shape D: `test_fsm_fragments.py:670-741`), scorer dispatch (exit-code verdict: 0→"yes", non-0→"no"), JSON output parsing, missing-tasks-dir error
+5. Update evaluator-related files: `schema.py` (Literal), `validation.py` (`"harbor_scorer": []`), `evaluators.py` (function + elif), `test_fsm_schema_fuzz.py` (valid_types), `test_fsm_schema.py` (`test_harbor_scorer_*`), `test_fsm_evaluators.py` (`test_dispatch_harbor_scorer`), `test_fsm_validation.py`; skip `__init__.py` and optionally skip `info.py`
+6. Update fragment library docs: `loops/README.md`, `LOOPS_GUIDE.md`, `AUDIT_REPORT.md`, `CLI.md`; add `harbor_scorer` subsection to `docs/generalized-fsm-loop.md:455` and inline comment at `docs/generalized-fsm-loop.md:246-248`
 7. Run `python -m pytest scripts/tests/ > /tmp/ll-scratch/test-results.txt 2>&1; tail -20 /tmp/ll-scratch/test-results.txt`
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -142,6 +203,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 12. Update `scripts/tests/test_fsm_fragments.py::TestBuiltinLoopMigration` — add any consuming loop YAML (or `benchmark.yaml` itself if it has an evaluate block) to `migration_targets` at lines 880-891 once the fragment ships
 13. Update `docs/reference/API.md:3877-3884` — add `harbor_scorer` to `EvaluateConfig` type listing (Option A only)
 14. Update `scripts/tests/test_ll_loop_display.py` — add assertion for `harbor_scorer` display name in `_EVALUATE_TYPE_DISPLAY` after `info.py` is updated
+
+### Implementation Research Findings
+
+_Added by `/ll:refine-issue` — clarifications from codebase analysis:_
+
+- **Step 3 (stale)**: "Resolve Option A vs B" is resolved — Option A is selected. Implement directly: add `evaluate_harbor_scorer()` function after `evaluate_mcp_result` at `evaluators.py:525`, add elif branch at `evaluators.py:833`, update the three core files (`schema.py`, `validation.py`, `evaluators.py`).
+- **Step 5 (correction)**: Remove `__init__.py` from the modification list — `evaluate_mcp_result` is NOT in `__init__.py` exports; `evaluate_harbor_scorer` should not be added either. All other files in step 5 still apply.
+- **Step 5 (clarification)**: `_EVALUATE_TYPE_DISPLAY` update in `info.py` is optional — `mcp_result` and `diff_stall` are both absent from the dict and render via fallback. Only add if a human-readable display name is desired.
+- **Steps 1-3 resolved (2026-04-23)**: Harbor fixture format = `task.md` + `expected.json` per task dir. Fragment design = single `run_benchmark` fragment. Verdict logic = exit-code based. `capture_fields` does not exist in the codebase — use `capture: benchmark_score` with JSON-encoded scorer stdout.
 
 ## Acceptance Criteria
 
@@ -157,6 +227,10 @@ Blocks: FEAT-1245 (loop integration) — that issue wires this fragment into exi
 Blocks: FEAT-1120 (harness-optimize loop) — needs this fragment as its scoring step.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-23T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b35255f7-b6b6-46d3-af77-efb623ea0ed7.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:39:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2e64653-610d-4248-b1f2-429ccbd66f0c.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:21:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/469627b2-baca-42d7-992d-8bdee85ebf48.jsonl`
+- `/ll:decide-issue` - 2026-04-23T15:04:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07e9009f-4f75-414d-9885-0866e07cd4e6.jsonl`
 - `/ll:wire-issue` - 2026-04-21T23:54:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da57548e-ff8e-44e0-a3f7-da5dfbdd9e89.jsonl`
 - `/ll:refine-issue` - 2026-04-21T23:48:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8d696c9-774d-426c-af80-044a2fdce014.jsonl`
 - `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acc1b9ba-37ad-4355-95fb-ff7907feebf3.jsonl`

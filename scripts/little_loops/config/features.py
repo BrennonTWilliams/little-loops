@@ -296,6 +296,7 @@ class LoopsConfig:
     """FSM loop configuration."""
 
     loops_dir: str = ".loops"
+    queue_wait_timeout_seconds: int = 3600
     glyphs: LoopsGlyphsConfig = field(default_factory=LoopsGlyphsConfig)
 
     @classmethod
@@ -303,6 +304,7 @@ class LoopsConfig:
         """Create LoopsConfig from dictionary."""
         return cls(
             loops_dir=data.get("loops_dir", ".loops"),
+            queue_wait_timeout_seconds=data.get("queue_wait_timeout_seconds", 3600),
             glyphs=LoopsGlyphsConfig.from_dict(data.get("glyphs", {})),
         )
 

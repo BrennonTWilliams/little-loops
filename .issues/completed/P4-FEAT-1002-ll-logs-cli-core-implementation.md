@@ -6,8 +6,13 @@ status: backlog
 title: Implement ll-logs CLI core tool (logs.py + entry point)
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
-confidence_score: 90
+confidence_score: 93
 outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 25
+size: Very Large
 ---
 
 # FEAT-1002: Implement ll-logs CLI core tool (logs.py + entry point)
@@ -89,9 +94,10 @@ def main_logs() -> int:
    - Use `Logger(verbose=args.verbose)` from `scripts/little_loops/logger.py:17`; use `add_config_arg()`, `add_dry_run_arg()`, `add_quiet_arg()` from `cli_args.py` where appropriate
 
 2. **Register entry point** (AFTER logs.py exists — do not reverse order):
-   - Add `from little_loops.cli.logs import main_logs` to `cli/__init__.py:20-36`
-   - Add `"main_logs"` to `__all__` at `cli/__init__.py:38-56`
-   - Add `ll-logs = "little_loops.cli:main_logs"` to `pyproject.toml:48-63`
+   - Add `from little_loops.cli.logs import main_logs` to `cli/__init__.py` after line 29 (after `main_issues`, before `main_loop`)
+   - Add `"main_logs"` to `__all__` at `cli/__init__.py` after line 51 (after `"main_issues"`, before `"main_loop"` at line 52)
+   - Update module docstring in `cli/__init__.py:1-20` — add `- ll-logs: Discover and extract ll-relevant JSONL entries from ~/.claude/projects/` after `- ll-history:` at line 11 [_Wiring pass added by `/ll:wire-issue`:_ docstring lists all CLI tools]
+   - Add `ll-logs = "little_loops.cli:main_logs"` to `pyproject.toml` after line 65 (after `ll-generate-schemas`, before `mcp-call` at line 66)
 
 3. **Verify**: `ll-logs discover` runs without error
 
@@ -103,8 +109,8 @@ _Wiring Phase steps (commands/help.md, skills/configure/areas.md, README.md, doc
 - `scripts/little_loops/cli/logs.py` — new CLI tool
 
 ### Files to Modify
-- `scripts/little_loops/cli/__init__.py:20-56` — add `main_logs` import and `__all__` entry
-- `scripts/pyproject.toml:48-63` — add `ll-logs` entry point
+- `scripts/little_loops/cli/__init__.py:22-62` — add `main_logs` import after line 29 (after `main_issues` at line 29, before `main_loop` at line 30); add `"main_logs"` to `__all__` after line 51 (after `"main_issues"`, before `"main_loop"` at line 52)
+- `scripts/pyproject.toml:48-66` — add `ll-logs` entry point after line 65 (after `ll-generate-schemas`, before `mcp-call`)
 
 ### Similar Patterns
 - `scripts/little_loops/user_messages.py:354` — `get_project_folder(cwd)`: encodes CWD path to `~/.claude/projects/<encoded>`
@@ -158,7 +164,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   - `add_config_arg(parser)` — line 35; adds `--config`/`-C` with `type=Path`; call on **top-level parser** (not per-subparser), as done in `history.py:183`
   - `add_quiet_arg(parser)` — line 167; adds `--quiet`/`-q` with `action="store_true"`
 - **Logger constructor**: `Logger(verbose=True, use_color=None, colors=None)` at `logger.py:38`. Instantiate as `Logger(verbose=args.verbose)` where `--verbose`/`-v` is `store_true` (pattern from `messages.py:133`).
-- **Agent session exclusion in `user_messages.py`**: `extract_user_messages()` at line 411 uses an `include_agent_sessions` bool parameter (default `False`) to filter out `agent-*.jsonl` files — alternative to the manual `startswith("agent-")` guard in `session_log.py:78`.
+- **Agent session exclusion in `user_messages.py`**: `extract_user_messages()` at line **383** uses an `include_agent_sessions` bool parameter (default **`True`**) to filter out `agent-*.jsonl` files — pass `include_agent_sessions=False` when calling from `ll-logs` to exclude agent sessions. Alternative to the manual `startswith("agent-")` guard in `session_log.py:78`.
 - **`history.py` subcommand dispatch pattern**: `if not args.command: parser.print_help(); return 1` then `if args.command == "discover": ...` etc. All domain imports deferred inside function body.
 - **pyproject.toml format confirmed** (lines 48–63): all entries use `ll-<name> = "little_loops.cli:main_<name>"` targeting the `cli/__init__.py` re-export layer (not the module directly).
 
@@ -183,14 +189,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — `ll-generate-schemas` was added to the codebase after this issue was refined, shifting key line references:
+**Verdict**: NEEDS_UPDATE — line references have shifted again since 2026-04-11 verification:
 
-- `scripts/pyproject.toml`: `ll-generate-schemas` now at line 62; `mcp-call` shifted to line **63** (not 62 as stated). Add `ll-logs` entry after `ll-generate-schemas` at line 62.
-- `scripts/little_loops/cli/__init__.py`: now imports `main_generate_schemas` from `cli.schemas` (line 29) and includes it in `__all__`. The import block ends at line 36 and `__all__` at 56 (confirmed). Alphabetical insertion point for `main_logs`: after `from little_loops.cli.issues import main_issues` (between `issues` and `loop`).
+- `scripts/pyproject.toml`: `ll-generate-schemas` is at line **65**; `mcp-call` at line **66**. Add `ll-logs` entry after line 65.
+- `scripts/little_loops/cli/__init__.py`: import block now runs lines **22–40** (`main_issues` at line 29, `main_loop` at line 30); `__all__` runs lines **42–62** (`"main_issues"` at line 51, `"main_loop"` at line 52). Insertion points updated in Integration Map and Implementation Steps above.
+- `extract_user_messages()` is at line **383** (not 411); `include_agent_sessions` defaults to **`True`** (not `False` — corrected in Codebase Research Findings above).
 - Core feature not yet implemented — `logs.py` does not exist ✓
-- All other claims about reusable helpers accurate (user_messages.py:374, session_log.py:62, cli_args.py functions)
+- All other claims about reusable helpers accurate (user_messages.py:354, session_log.py:62-78, cli_args.py functions, logger.py:38)
 
-— Verified 2026-04-11
+— Verified 2026-04-23
 
 ## Blocks
 
@@ -199,6 +206,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - FEAT-1006
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-23T15:07:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36817284-b23d-4550-8ba1-417e527e53d0.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/805898c9-4041-42ee-8ea0-81feb007ae6a.jsonl`
+- `/ll:wire-issue` - 2026-04-23T15:03:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2dc4a6c5-a3b6-4598-9b86-f22d77a16b91.jsonl`
+- `/ll:refine-issue` - 2026-04-23T14:56:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c99b0371-cdc4-467a-bb5b-5bee8860da5e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
@@ -208,12 +219,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `/ll:refine-issue` - 2026-04-08T21:29:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91b646f5-8dba-4b71-a137-52289ce2376f.jsonl`
 - `/ll:format-issue` - 2026-04-08T21:25:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5ce561f-0842-4a37-9ea8-b3dd59ec9887.jsonl`
 - `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4567c5b-d32d-41b7-b9a6-b02cb4590a4e.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36817284-b23d-4550-8ba1-417e527e53d0.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-23
+- **Reason**: Issue too large for single session (score: 11/11 — Very Large)
+
+### Decomposed Into
+- FEAT-1269: ll-logs: discover + extract subcommands and entry-point registration
+- FEAT-1270: ll-logs: tail subcommand for live loop session streaming
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P4
+**Decomposed** | Created: 2026-04-08 | Priority: P4
 
 ---
 

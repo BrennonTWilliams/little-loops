@@ -762,6 +762,12 @@
           "description": "Directory for loop definitions and runtime state",
           "default": ".loops"
         },
+        "queue_wait_timeout_seconds": {
+          "type": "integer",
+          "description": "Seconds to wait for a conflicting scope lock to be released when --queue is used.",
+          "default": 3600,
+          "minimum": 1
+        },
         "glyphs": {
           "type": "object",
           "description": "Override unicode badge glyphs shown in FSM box diagrams. Omitted keys use built-in defaults.",

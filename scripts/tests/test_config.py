@@ -533,6 +533,28 @@ class TestSprintsConfig:
         assert config.default_max_workers == 2
 
 
+class TestLoopsConfig:
+    """Tests for LoopsConfig dataclass."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating LoopsConfig with all fields."""
+        data = {
+            "loops_dir": "custom-loops/",
+            "queue_wait_timeout_seconds": 7200,
+        }
+        config = LoopsConfig.from_dict(data)
+
+        assert config.loops_dir == "custom-loops/"
+        assert config.queue_wait_timeout_seconds == 7200
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating LoopsConfig with default values."""
+        config = LoopsConfig.from_dict({})
+
+        assert config.loops_dir == ".loops"
+        assert config.queue_wait_timeout_seconds == 3600
+
+
 class TestBRConfig:
     """Tests for the main BRConfig class."""
 
@@ -687,6 +709,7 @@ class TestBRConfig:
         assert result["issues"]["base_dir"] == ".issues"
         assert result["automation"]["timeout_seconds"] == 1800
         assert result["parallel"]["max_workers"] == 3
+        assert "queue_wait_timeout_seconds" in result["loops"]
 
         # Should be JSON serializable
         json.dumps(result)

@@ -278,7 +278,15 @@ git worktree prune
      }
    }
    ```
-3. Use CLI flag: `ll-auto --timeout 7200`
+3. For loop queue waiting (`ll-loop run --queue`):
+   ```json
+   {
+     "loops": {
+       "queue_wait_timeout_seconds": 7200
+     }
+   }
+   ```
+4. Use CLI flag: `ll-auto --timeout 7200`
 
 ### Permission denied errors
 

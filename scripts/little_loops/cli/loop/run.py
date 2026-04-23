@@ -175,7 +175,7 @@ def cmd_run(
             atexit.register(_cleanup_queue_entry)
 
             logger.info(f"Waiting for conflicting loop '{conflict.loop_name}' to finish...")
-            if not lock_manager.wait_for_scope(scope, timeout=3600):
+            if not lock_manager.wait_for_scope(scope, timeout=_config.loops.queue_wait_timeout_seconds):
                 _cleanup_queue_entry()
                 logger.error("Timeout waiting for scope to become available")
                 return 1

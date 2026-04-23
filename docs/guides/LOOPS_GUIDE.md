@@ -1181,7 +1181,7 @@ scope:
   - "tests/"
 ```
 
-If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead.
+If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead. The maximum wait is controlled by `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default: 3600 s). Increase it for long-running overnight loops; decrease it for fail-fast CI environments.
 
 ## Background Mode
 
@@ -1240,7 +1240,7 @@ The first signal (`SIGTERM`) triggers a graceful shutdown — the loop finishes 
 ll-loop my-scan --background --queue
 ```
 
-**Important:** `--background` causes the *parent* to return immediately. Queue waiting happens inside the detached child process. The parent does not block or report whether the child is queued — use `ll-loop status my-scan` or `tail -f .loops/.running/my-scan.log` to check.
+**Important:** `--background` causes the *parent* to return immediately. Queue waiting happens inside the detached child process. The parent does not block or report whether the child is queued — use `ll-loop status my-scan` or `tail -f .loops/.running/my-scan.log` to check. The same `loops.queue_wait_timeout_seconds` config value applies; the background child exits with code 1 if the timeout is reached.
 
 ### Running multiple loops concurrently
 
