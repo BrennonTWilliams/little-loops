@@ -3282,13 +3282,12 @@ def main_logs() -> int
 
 Entry point for `ll-logs` command. Discover, extract, and tail Claude Code session logs for ll-loop and ll-commands.
 
-**Returns:** Exit code
+**Returns:** 0 on success, 1 when no subcommand given or on error
 
-**CLI Arguments:**
-- `-v, --verbose` - Verbose progress output
-- `--config` - Path to project root (default: current directory)
-- `-n, --dry-run` - Preview without modifying files
-- `-q, --quiet` - Suppress non-essential output
+**Subcommands:**
+- `discover` — List all Claude projects with ll activity (no flags)
+- `extract` — Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl`; requires `--project DIR` or `--all`; optional `--cmd TOOL` to filter by CLI tool
+- `tail` — Stream live events from an active loop session; requires `--loop NAME`
 
 ---
 

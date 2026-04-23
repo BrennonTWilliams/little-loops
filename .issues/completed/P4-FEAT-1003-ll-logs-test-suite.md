@@ -6,8 +6,12 @@ status: backlog
 title: Write test suite for ll-logs CLI tool
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
-confidence_score: 78
-outcome_confidence: 97
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 blocked_by: [FEAT-1002]
 ---
 
@@ -177,6 +181,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 — Verified 2026-04-23
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2629262d-100c-4568-937b-f0222c72cc9a.jsonl`
+- `/ll:refine-issue` - 2026-04-23T23:42:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a448203-1f18-4719-b734-0d383a79cd83.jsonl`
 - `/ll:verify-issues` - 2026-04-23T23:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`

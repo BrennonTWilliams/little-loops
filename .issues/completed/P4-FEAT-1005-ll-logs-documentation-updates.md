@@ -6,8 +6,12 @@ status: backlog
 title: Documentation file updates for ll-logs
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
-confidence_score: 84
-outcome_confidence: 86
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 25
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 testable: false
 blocked_by: [FEAT-1002]
 ---
@@ -111,6 +115,14 @@ FEAT-1002 must be implemented first (`ll-logs` must exist to document it accurat
 
 6. **Update `CONTRIBUTING.md:183-194`** — add `├── logs.py` to the `cli/` directory tree listing (parallel to the `docs/ARCHITECTURE.md` tree update in step 4)
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_Corrections identified by wiring analysis:_
+
+- **Step 2b: DO NOT execute** — `_build_parser()` in `scripts/little_loops/cli/logs.py:297-347` registers no `--dry-run`, `--quiet`, or `--config` flags on the root parser or any subparser. Adding `ll-logs` to the Common Flags table would document flags that do not exist in the as-built implementation.
+- **Step 3 is a REPLACEMENT, not an addition** — `docs/reference/API.md:3277-3292` already has `### main_logs`; the `**CLI Arguments:**` block at lines 3287-3291 lists four non-existent global flags. Replace those four bullet lines with the subcommands format from Codebase Research Findings (see below).
+- **Optional test** — `scripts/tests/test_ll_logs_wiring.py` does not test `docs/reference/API.md` content. Follow the `test_enh1138_doc_wiring.py` pattern to add a `TestApiReferenceWiring` class that pins the corrected subcommand docs.
+
 ## Integration Map
 
 ### Files to Modify
@@ -129,6 +141,9 @@ FEAT-1002 must be implemented first (`ll-logs` must exist to document it accurat
 
 ### Tests
 - N/A — documentation-only changes require no test file updates
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_logs_wiring.py` — existing wiring tests cover `commands/help.md`, `skills/init/SKILL.md`, and `skills/configure/areas.md` but do **not** test `docs/reference/API.md` content. Optional: add `TestApiReferenceWiring` class (following `test_enh1138_doc_wiring.py` pattern) to pin the corrected subcommand docs after the API.md fix.
 
 ### Documentation
 - These ARE the documentation files being changed (see Files to Modify above)
@@ -183,6 +198,39 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 ### One-line description (use consistently across all files)
 `ll-logs` — Discover, extract, and tail Claude Code session logs for ll-loop and ll-commands
 
+### Codebase Research Findings (2026-04-23 refinement pass)
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**CONTRIBUTING.md: already done**
+- `CONTRIBUTING.md:192` — `├── logs.py` is ALREADY PRESENT between `history.py` and `messages.py`. Implementation step 6 is complete; no edit needed.
+
+**docs/reference/API.md: exists but content is inaccurate**
+- `docs/reference/API.md:3277-3292` — `### main_logs` section EXISTS, but it lists four top-level CLI arguments (`-v/--verbose`, `--config`, `-n/--dry-run`, `-q/--quiet`) that are NOT registered in the actual `_build_parser()` at `scripts/little_loops/cli/logs.py:297-347`. The real implementation has only the three subcommands below with no shared global flags.
+- The entry must be **replaced** (not a new insertion). Correct replacement content:
+
+```markdown
+### main_logs
+
+```python
+def main_logs() -> int
+```
+
+Entry point for `ll-logs` command. Discover, extract, and tail Claude Code session logs for ll-loop and ll-commands.
+
+**Returns:** 0 on success, 1 when no subcommand given or on error
+
+**Subcommands:**
+- `discover` — List all Claude projects with ll activity (no flags)
+- `extract` — Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl`; requires `--project DIR` or `--all`; optional `--cmd TOOL` to filter by CLI tool
+- `tail` — Stream live events from an active loop session; requires `--loop NAME`
+
+---
+```
+
+**Verification notes correction**
+The Verification Notes section (lines 211-225) states "Still missing ✗" for both API.md and CONTRIBUTING.md, but both are present in the codebase as of the `fdf2c2f4` commit. The notes were written after that commit and are inaccurate. Actual remaining work is solely the API.md content fix described above.
+
 ## Acceptance Criteria
 
 - [ ] `ll-logs` appears in `CLAUDE.md` CLI Tools section
@@ -224,7 +272,15 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 
 — Verified 2026-04-23
 
+_Wiring pass correction (2026-04-23):_
+The "Still missing ✗" claims above are **inaccurate** as of commit `fdf2c2f4`:
+- `CONTRIBUTING.md:192` — `├── logs.py` IS present (between `history.py` and `messages.py`) ✓
+- `docs/reference/API.md:3277` — `### main_logs` IS present, but `**CLI Arguments:**` block (lines 3287-3291) lists four global flags (`-v/--verbose`, `--config`, `-n/--dry-run`, `-q/--quiet`) that do not exist in the actual parser. **Action needed**: Replace those four bullet lines with subcommands format — do not add a new section.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-04-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab8d94a1-ea7c-4a30-9041-a8059b1d8041.jsonl`
+- `/ll:wire-issue` - 2026-04-23T23:52:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a730208-4b84-4f23-9d7c-2df0dba38a12.jsonl`
+- `/ll:refine-issue` - 2026-04-23T23:48:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb0ab28e-5acd-4a08-a244-c1cea97bb0c2.jsonl`
 - `/ll:verify-issues` - 2026-04-23T23:33:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:verify-issues` - 2026-04-23T23:07:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
