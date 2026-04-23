@@ -263,6 +263,7 @@ The three architectural forks originally flagged have been decided and are now d
 3. OpenCode adapter ships shell-out first; sidecar is a measured follow-up
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-23T00:14:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c0e0697-1da9-403b-82a7-6eb401f63ad3.jsonl`
 - `/ll:refine-issue` - 2026-04-15T22:47:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42380a24-4141-40a0-985b-e93647a4e8dc.jsonl`
 - `/ll:wire-issue` - 2026-04-15T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42380a24-4141-40a0-985b-e93647a4e8dc.jsonl`
 - `/ll:confidence-check` - 2026-04-15T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42380a24-4141-40a0-985b-e93647a4e8dc.jsonl`
