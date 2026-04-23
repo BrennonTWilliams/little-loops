@@ -2,18 +2,20 @@
 id: FEAT-1274
 type: FEAT
 priority: P4
-status: backlog
+status: completed
 title: "ll-logs: generate logs/index.md after extraction"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
 parent_issue: FEAT-1272
-confidence_score: 80
+confidence_score: 95
 outcome_confidence: 93
 score_complexity: 25
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+captured_at: 2026-04-23T00:00:00Z
+completed_at: 2026-04-23T22:01:09Z
 ---
 
 # FEAT-1274: ll-logs: generate logs/index.md after extraction
@@ -73,18 +75,19 @@ No `logs/index.md` is generated after extraction.
      - `"\n".join(lines)` with blank lines surrounding block
    - No existing CLI-layer `index.md` generator — write fresh
 
-2. **Call `generate_index()`** from the `extract` subcommand dispatch block (after JSONL files written)
+2. **Call `generate_index()`** from `_cmd_extract()` at `logs.py:207` — insert just before the `return 0`, after the per-project JSONL write loop ends (`logs.py:199-205`); pass `Path.cwd() / "logs"` as `logs_dir` (consistent with `out_base` construction at `logs.py:199`)
 
-3. **Tests** — add to `class TestExtract` in `scripts/tests/test_ll_logs.py`:
-   - Verify `logs/index.md` is created after extraction
+3. **Tests** — extend `class TestExtract` in `scripts/tests/test_ll_logs.py` (lines 453-689):
+   - Use `_make_project_dir()` helper at lines 456-492 to set up the `logs/<slug>/` fixture
+   - Verify `logs/index.md` is created after `extract --all` or `extract --project`
    - Verify markdown table contains expected project name, JSONL count, and date range
-   - Test with empty `logs/` dir (edge case)
+   - Test with empty `logs/` dir (edge case — should produce empty or stub index)
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/logs.py` — add `generate_index()` and call it from `extract` dispatch
-  - **Note**: this file does not exist yet; it is created by FEAT-1271. Implement FEAT-1271 → FEAT-1273 → FEAT-1274 in order.
+- `scripts/little_loops/cli/logs.py` — add `generate_index()` and call it before `return 0` at line 207 in `_cmd_extract()` (lines 151-207)
+  - File exists (331 lines); FEAT-1271 and FEAT-1273 are already implemented and registered
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/logs.py` (extract subcommand dispatch) — calls `generate_index()` after JSONL write; no external callers since this is a new internal helper
@@ -94,9 +97,8 @@ No `logs/index.md` is generated after extraction.
 - `scripts/little_loops/issue_history/formatting.py:565-595` — second markdown table example
 
 ### Tests
-- `scripts/tests/test_ll_logs.py` — add `TestGenerateIndex` or extend `TestExtract`
-  - **Note**: this file does not exist yet; it is created by FEAT-1271.
-  - `_write_jsonl` helper pattern: `scripts/tests/test_user_messages.py:109-113` (instance method — define it on `TestExtract`, not as a standalone function)
+- `scripts/tests/test_ll_logs.py` — extend `TestExtract` (lines 453-689) with generate_index test cases
+  - File exists (689 lines); use `_make_project_dir()` helper at lines 456-492 (not `_write_jsonl` — that pattern is in `test_user_messages.py:109-113`, but `TestExtract` already has the right helper for `logs/<slug>/` structure)
 - Optionally add `TestMainLogsIntegration` to `scripts/tests/test_cli.py:2590+` — use `TestMainHistoryCoverage` (lines 2590-2698 in that file) as the structural template; it's a closer match than `test_issue_history_cli.py:71-137` [Agent 3 finding]
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -132,6 +134,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Write output file** (`scripts/little_loops/cli/history.py:272-275`):
 - `output_path.parent.mkdir(parents=True, exist_ok=True)` then `output_path.write_text(content, encoding="utf-8")`
+
+### Codebase Research Findings (pass 2)
+
+_Added by `/ll:refine-issue` pass 2 — based on codebase analysis of the now-implemented `logs.py`:_
+
+**Exact call site**: `_cmd_extract()` ends at `logs.py:207` (`return 0`) after writing all JSONL output at lines 199-205. `generate_index()` goes between those — receive `logs_dir = Path.cwd() / "logs"` (matches `out_base = Path.cwd() / "logs" / slug` at line 199).
+
+**`slug` derivation** (`logs.py:170`): `slug = cwd_path.resolve().name` — the last component of the decoded project path. Each `logs/<slug>/` subdir name is this value.
+
+**Agent-file exclusion confirmed in `logs.py` itself** — two sites mirror `session_log.py:78`:
+- `logs.py:76` — inside `_has_ll_activity()`
+- `logs.py:173` — inside `_cmd_extract()` when collecting per-project JSONL files
+
+Use the same filter when `generate_index()` collects JSONL under each slug subdir.
+
+**`TestExtract._make_project_dir()` at lines 456-492** — builds the full `~/.claude/projects/<encoded>/session.jsonl` fixture *and* patches both `pathlib.Path.home` and `little_loops.cli.logs.Path.cwd`. Tests for `generate_index()` should extend `TestExtract` and reuse this helper directly; the helper writes records with `sessionId` and any fields you inject (including `timestamp`).
+
+**Registration confirmed**: `cli/__init__.py:31` imports `main_logs`; `pyproject.toml:64` registers `ll-logs = "little_loops.cli:main_logs"`. The wiring note about registration being pending is stale.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -179,7 +199,12 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 - **FEAT-1271 is backlog**: `scripts/little_loops/cli/logs.py` and `scripts/tests/test_ll_logs.py` do not exist yet — both are created by FEAT-1271. This issue cannot be implemented until FEAT-1271 is done.
 - **FEAT-1273 is backlog**: The `extract` subcommand dispatch block (where `generate_index()` is called) is implemented by FEAT-1273. FEAT-1274 extends that block — required sequencing: FEAT-1271 → FEAT-1273 → FEAT-1274.
 
+_Updated 2026-04-23 (`/ll:refine-issue` pass 2)_: Both concerns are resolved. `logs.py` exists (331 lines), `test_ll_logs.py` exists (689 lines), and `ll-logs` is registered in `cli/__init__.py:31` and `pyproject.toml:64`. This issue is unblocked and ready for implementation.
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-23T22:01:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce3fdce1-b748-424c-9a92-653033dd133f.jsonl`
+- `/ll:ready-issue` - 2026-04-23T21:56:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/816bb8d3-6bdf-4745-a786-f7fbcc55fb91.jsonl`
+- `/ll:refine-issue` - 2026-04-23T21:46:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e46e8afa-f342-484a-a4ee-c3ede25dc01f.jsonl`
 - `/ll:format-issue` - 2026-04-23T21:04:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30650d70-0663-4ee5-a9e8-3cd0089e06c9.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
 - `/ll:wire-issue` - 2026-04-23T16:30:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
@@ -188,6 +213,19 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 
 ---
 
+## Resolution
+
+**Completed** 2026-04-23
+
+Added `generate_index(logs_dir: Path) -> None` to `scripts/little_loops/cli/logs.py`:
+- Iterates sorted subdirs of `logs_dir`, collects non-agent-prefixed JSONL files
+- Stream-parses records with error handling to extract `timestamp` fields
+- Writes `logs/index.md` with a markdown table (project, sessions, date range)
+- Edge case: empty or non-existent `logs_dir` produces a stub index with "No projects extracted yet."
+- Called from `_cmd_extract()` before `return 0` with `Path.cwd() / "logs"`
+
+Three new tests added to `TestExtract` in `scripts/tests/test_ll_logs.py` — all 29 tests pass.
+
 ## Status
 
-**Open** | Created: 2026-04-23 | Priority: P4
+**Completed** | Created: 2026-04-23 | Completed: 2026-04-23 | Priority: P4

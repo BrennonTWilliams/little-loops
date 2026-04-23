@@ -148,6 +148,60 @@ def _cmd_matches(record: dict, cmd: str) -> bool:
     return False
 
 
+def generate_index(logs_dir: Path) -> None:
+    """Generate logs/index.md summarising extracted projects."""
+    rows = []
+
+    if logs_dir.exists():
+        for subdir in sorted(logs_dir.iterdir()):
+            if not subdir.is_dir():
+                continue
+
+            jsonl_files = [f for f in subdir.glob("*.jsonl") if not f.name.startswith("agent-")]
+            if not jsonl_files:
+                continue
+
+            timestamps: list[str] = []
+            for jsonl_file in jsonl_files:
+                try:
+                    with open(jsonl_file, encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                record = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            ts = record.get("timestamp")
+                            if ts:
+                                timestamps.append(ts)
+                except OSError:
+                    continue
+
+            if timestamps:
+                earliest = min(timestamps)[:10]
+                latest = max(timestamps)[:10]
+                date_range = f"{earliest} – {latest}" if earliest != latest else earliest
+            else:
+                date_range = ""
+
+            rows.append((subdir.name, len(jsonl_files), date_range))
+
+    lines = ["# Logs Index", ""]
+    if rows:
+        lines.append("| Project | Sessions | Date Range |")
+        lines.append("|---------|----------|------------|")
+        for name, count, date_range in rows:
+            lines.append(f"| {name} | {count} | {date_range} |")
+    else:
+        lines.append("*No projects extracted yet.*")
+    lines.append("")
+
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    (logs_dir / "index.md").write_text("\n".join(lines), encoding="utf-8")
+
+
 def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
     """Extract ll-relevant JSONL records to logs/<slug>/<session-id>.jsonl."""
     if args.project:
@@ -204,6 +258,7 @@ def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
                 for record in records:
                     f.write(json.dumps(record) + "\n")
 
+    generate_index(Path.cwd() / "logs")
     return 0
 
 

@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from little_loops.cli.logs import _cmd_tail, _is_ll_relevant, _parse_args, main_logs
+from little_loops.cli.logs import _cmd_tail, _is_ll_relevant, _parse_args, generate_index, main_logs
 
 
 class TestArgumentParsing:
@@ -637,6 +637,93 @@ class TestExtract:
             assert result == 0
             logs_dir = output_cwd / "logs"
             assert not logs_dir.exists() or not any(logs_dir.rglob("*.jsonl"))
+
+    def test_extract_generates_index_md(self) -> None:
+        """extract --project writes logs/index.md after JSONL extraction."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            session_id = "abc-index"
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [self._ll_queue_record(session_id)],
+                session_id=session_id,
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            index_file = output_cwd / "logs" / "index.md"
+            assert index_file.exists(), "logs/index.md should be created after extract"
+            content = index_file.read_text()
+            assert "# Logs Index" in content
+
+    def test_extract_index_md_table_contents(self) -> None:
+        """logs/index.md table contains project slug, session count, and date range."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            session_a = "sess-1"
+            session_b = "sess-2"
+            records = [
+                {**self._ll_queue_record(session_a), "timestamp": "2026-01-01T10:00:00Z"},
+                {**self._ll_queue_record(session_b), "timestamp": "2026-04-23T12:00:00Z"},
+            ]
+            project_path = self._make_project_dir(
+                claude_projects, home, "myproject", records
+            )
+            slug = project_path.name
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            content = (output_cwd / "logs" / "index.md").read_text()
+            assert slug in content
+            assert "| 2 |" in content
+            assert "2026-01-01" in content
+            assert "2026-04-23" in content
+
+    def test_extract_all_no_activity_creates_stub_index(self) -> None:
+        """extract --all with no ll-activity still creates a stub logs/index.md."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            index_file = output_cwd / "logs" / "index.md"
+            assert index_file.exists(), "logs/index.md should be created even with no projects"
+            content = index_file.read_text()
+            assert "# Logs Index" in content
 
     def test_extract_project_not_found_returns_1(self) -> None:
         """extract --project with no matching claude folder returns 1."""
