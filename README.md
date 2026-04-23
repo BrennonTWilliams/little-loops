@@ -355,6 +355,20 @@ ll-messages --since 2026-01-01   # Messages since date
 
 Run `ll-messages --help` for all options.
 
+### ll-logs
+
+Discover and extract ll-relevant JSONL entries from Claude Code session logs:
+
+```bash
+ll-logs discover                          # List all projects with ll activity
+ll-logs tail --loop <name>               # Stream live events from an active loop session
+ll-logs extract --all                    # Extract all projects to logs/
+ll-logs extract --project /path          # Extract one project to logs/<slug>/
+ll-logs extract --all --cmd ll-history   # Filter to ll-history invocations
+```
+
+Run `ll-logs --help` for all options.
+
 ### ll-sync
 
 Sync local `.issues/` files with GitHub Issues:

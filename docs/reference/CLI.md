@@ -992,6 +992,45 @@ ll-messages --skill refine-issue --examples-format --context-window 5 --stdout
 
 ---
 
+### ll-logs
+
+Discover and extract ll-relevant JSONL entries from Claude Code session logs. Also generates `logs/index.md` after extraction.
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `discover` | List all Claude projects with ll activity (one path per line, sorted) |
+| `tail` | Stream live events from an active loop session |
+| `extract` | Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl` |
+
+**`tail` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--loop NAME` | Loop name to tail (required) |
+
+**`extract` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--all` | Extract all projects with ll activity |
+| `--project DIR` | Working directory of the target project |
+| `--cmd TOOL` | Filter to records containing this ll- tool name (e.g. `ll-history`) |
+
+`--all` and `--project` are mutually exclusive.
+
+**Examples:**
+```bash
+ll-logs discover                          # List all projects with ll activity
+ll-logs tail --loop my-loop              # Stream live events from an active loop session
+ll-logs extract --all                    # Extract all projects to logs/
+ll-logs extract --project /path/to/proj  # Extract one project to logs/<slug>/
+ll-logs extract --all --cmd ll-history   # Filter to ll-history invocations
+```
+
+---
+
 ### ll-gitignore
 
 Suggest and apply `.gitignore` patterns based on untracked files.
