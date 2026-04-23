@@ -87,4 +87,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-04-14 | Priority: P3
+**Won't Do** | Created: 2026-04-14 | Closed: 2026-04-23 | Priority: P3
+
+## Closure Note
+
+Closed as won't do — this behavior is already implemented. The `refine-issue` command already surfaces `wire-issue` as a next step.

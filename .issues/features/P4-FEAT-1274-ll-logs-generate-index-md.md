@@ -8,6 +8,12 @@ discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
 parent_issue: FEAT-1272
+confidence_score: 80
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1274: ll-logs: generate logs/index.md after extraction
@@ -61,6 +67,7 @@ No `logs/index.md` is generated after extraction.
 
 ### Files to Modify
 - `scripts/little_loops/cli/logs.py` — add `generate_index()` and call it from `extract` dispatch
+  - **Note**: this file does not exist yet; it is created by FEAT-1271. Implement FEAT-1271 → FEAT-1273 → FEAT-1274 in order.
 
 ### Similar Patterns
 - `scripts/little_loops/issue_history/doc_synthesis.py:301-315` — canonical markdown table pattern (header row → `|---|` separator → f-string data rows → `"\n".join(lines)`)
@@ -68,11 +75,46 @@ No `logs/index.md` is generated after extraction.
 
 ### Tests
 - `scripts/tests/test_ll_logs.py` — add `TestGenerateIndex` or extend `TestExtract`
-- Optionally add `TestMainLogsIntegration` to `scripts/tests/test_cli.py:2590+` following `test_issue_history_cli.py:71-137` pattern
+  - **Note**: this file does not exist yet; it is created by FEAT-1271.
+  - `_write_jsonl` helper pattern: `scripts/tests/test_user_messages.py:109-113` (instance method — define it on `TestExtract`, not as a standalone function)
+- Optionally add `TestMainLogsIntegration` to `scripts/tests/test_cli.py:2590+` — use `TestMainHistoryCoverage` (lines 2590-2698 in that file) as the structural template; it's a closer match than `test_issue_history_cli.py:71-137` [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_create_extension_wiring.py:77, 192` — `test_readme_tool_count_is_16` asserts `"16 CLI tools"` in `README.md`; will break when `ll-logs` is registered (count becomes 17) — update in FEAT-1271/FEAT-1005 scope [Agent 3 finding]
+- `scripts/tests/test_create_extension_wiring.py:198` — `test_configure_areas_count_is_15` asserts `"Authorize all 15"` in `skills/configure/areas.md`; same cascading break — update in FEAT-1006 scope [Agent 3 finding]
 
 ### Documentation
 (*All tracked in FEAT-1004/FEAT-1005 — not in scope here*)
 - `.claude/CLAUDE.md`, `commands/help.md`, `README.md`, `docs/reference/CLI.md`, `docs/reference/API.md`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**JSONL reading — stream-parse with error handling** (`scripts/little_loops/user_messages.py:436-454`):
+- Outer `try/except OSError: continue` wraps each file; inner `try/except json.JSONDecodeError: continue` inside the line loop
+- Call `line.strip()` before the empty-line guard
+- Access timestamp via `record.get("timestamp")`; session id via `record.get("sessionId", "")`
+
+**Agent-file exclusion when globbing JSONL** (`scripts/little_loops/session_log.py:78`):
+- `[f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]`
+- Apply this filter when collecting JSONL files under each project slug subdir
+
+**Directory iteration pattern** (`scripts/little_loops/parallel/orchestrator.py:247-248`):
+- `for item in logs_dir.iterdir(): if item.is_dir(): ...`
+- Each subdir name is the project slug; no sorted() required unless deterministic output matters
+
+**`setdefault` grouping** (`scripts/little_loops/doc_counts.py:258-261`):
+- Only needed if per-session bucketing is required for deduplication; for date-range calculation a simple `min`/`max` over all timestamps in the subdir suffices
+
+**Write output file** (`scripts/little_loops/cli/history.py:272-275`):
+- `output_path.parent.mkdir(parents=True, exist_ok=True)` then `output_path.write_text(content, encoding="utf-8")`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+4. When ll-logs registration is complete (FEAT-1271), update `scripts/tests/test_create_extension_wiring.py` — change `"16 CLI tools"` → `"17 CLI tools"` (lines 77, 192) and `"Authorize all 15"` → `"Authorize all 16"` (line 198)
 
 ## Acceptance Criteria
 
@@ -90,7 +132,21 @@ No `logs/index.md` is generated after extraction.
 
 ---
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-23_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 93/100 → HIGH CONFIDENCE
+
+### Concerns
+- **FEAT-1271 is backlog**: `scripts/little_loops/cli/logs.py` and `scripts/tests/test_ll_logs.py` do not exist yet — both are created by FEAT-1271. This issue cannot be implemented until FEAT-1271 is done.
+- **FEAT-1273 is backlog**: The `extract` subcommand dispatch block (where `generate_index()` is called) is implemented by FEAT-1273. FEAT-1274 extends that block — required sequencing: FEAT-1271 → FEAT-1273 → FEAT-1274.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
+- `/ll:wire-issue` - 2026-04-23T16:30:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
+- `/ll:refine-issue` - 2026-04-23T16:26:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1447f80b-a52b-410a-bd33-db465a58f851.jsonl`
 - `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
 
 ---

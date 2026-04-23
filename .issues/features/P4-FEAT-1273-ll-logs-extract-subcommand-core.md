@@ -8,6 +8,13 @@ discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
 parent_issue: FEAT-1272
+confidence_score: 80
+outcome_confidence: 75
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 22
+score_change_surface: 25
+size: Very Large
 ---
 
 # FEAT-1273: ll-logs: extract subcommand core (--project, --all, --cmd)
@@ -111,13 +118,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/little_loops/user_messages.py:673` — session ID in raw records is `record.get("sessionId", "")` — needed to derive output path `logs/<slug>/<session-id>.jsonl`; group records by session ID into a `dict[str, list[dict]]` before writing
-- `scripts/little_loops/user_messages.py:436-452` — JSONL stream-parsing spans lines 436-452; the `except OSError: continue` wrapping the entire per-file block is at lines 452-454 — must be included, not just the inner JSON loop
+- `scripts/little_loops/user_messages.py:671` — session ID in raw records is `record.get("sessionId", "")` — needed to derive output path `logs/<slug>/<session-id>.jsonl`; group records by session ID into a `dict[str, list[dict]]` before writing
+- `scripts/little_loops/user_messages.py:436-454` — JSONL stream-parsing spans lines 436-454; the `except OSError: continue` wrapping the entire per-file block is at lines 452-454 — must be included, not just the inner JSON loop
 - `scripts/little_loops/cli/messages.py:154-157` — "project not found" error uses `logger.error()` not `print()`: `logger.error(f"No Claude project folder found for: {cwd}")` + `logger.error(f"Expected: ~/.claude/projects/{str(cwd).replace('/', '-')}")` → return 1
-- `scripts/little_loops/session_log.py:62` — agent-file exclusion pattern (`if not f.name.startswith("agent-")`) confirmed in production use here
+- `scripts/little_loops/session_log.py:78` — agent-file exclusion filter (`[f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]`) confirmed in production use here; line 62 is the enclosing function definition start (`get_current_session_jsonl`)
 - `discover_all_projects()` fallback: if FEAT-1271 does not expose this helper, use `(Path.home() / ".claude" / "projects").iterdir()` directly (pattern from FEAT-1272:60)
-- `scripts/tests/test_user_messages.py:103-113` — `_write_jsonl` is an instance method on `TestExtractUserMessages`; `TestExtract` must define its own equivalent
+- `scripts/tests/test_user_messages.py:109-113` — `_write_jsonl` is an instance method on `TestExtractUserMessages` (starts at 109, not 103); `TestExtract` must define its own equivalent
 - `scripts/tests/test_issue_history_cli.py:71-137` — pattern for `TestMainLogsIntegration` in `scripts/tests/test_cli.py` (FEAT-1272 wiring phase item 6 — add after `TestExtract` passes)
+- `scripts/little_loops/doc_counts.py:258-261` — `setdefault` grouping idiom to use when bucketing raw records by `sessionId`: `buckets.setdefault(session_id, []).append(record)` — no equivalent helper exists; implement inline
 
 #### `--project` flag: path vs slug semantics
 
@@ -147,7 +155,26 @@ This mirrors the `--cwd` pattern in `scripts/little_loops/cli/messages.py:75-157
 
 ---
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-23_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Concerns
+- **Blocking dependency unresolved**: FEAT-1271 (`logs.py` with `main_logs()` + argparse skeleton) is still `status: backlog`. `logs.py` does not exist — confirmed via filesystem check. FEAT-1273 adds the `extract` subcommand to that file and cannot begin until FEAT-1271 ships.
+- **No test baseline**: `test_ll_logs.py` is created by FEAT-1271. Validate FEAT-1271 tests pass before writing `TestExtract`.
+
+### Outcome Risk Factors
+- **Test coverage gap**: No pre-existing coverage for `logs.py`; failures in edge cases won't surface until `TestExtract` is written. Issue specifies test patterns well — risk is execution discipline, not design.
+
+---
+
 ## Session Log
+- `/ll:refine-issue` - 2026-04-23T16:18:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07a47fb6-8632-4877-9913-24ec54282745.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b076981b-7d7b-4b64-a1a3-5ed38628c25c.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7c42afa-de19-4417-8d4e-005c53340f64.jsonl`
 - `/ll:wire-issue` - 2026-04-23T16:12:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d97b518-78c3-49c4-8549-7ccd67634795.jsonl`
 - `/ll:refine-issue` - 2026-04-23T16:07:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1bc36a2-7234-434a-b02e-6f5019b6400b.jsonl`
 - `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
