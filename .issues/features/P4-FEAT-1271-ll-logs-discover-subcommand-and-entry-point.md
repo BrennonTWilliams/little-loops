@@ -10,10 +10,10 @@ decision_needed: false
 parent_issue: FEAT-1269
 size: Very Large
 confidence_score: 100
-outcome_confidence: 54
+outcome_confidence: 61
 score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 0
 ---
 
@@ -47,8 +47,9 @@ ll-logs            # Prints help, exits 1
    - Add argparse with `discover` subcommand following pattern in `cli/history.py:12`
    - Use `Logger(verbose=args.verbose)` from `logger.py:17`; use `add_config_arg()`, `add_quiet_arg()` from `cli_args.py` where appropriate
    - **⚠ Correction from codebase research**: All existing CLI modules use `configure_output()` + `Logger(use_color=use_color_enabled())`, NOT `Logger(verbose=args.verbose)`. Pattern confirmed in `cli/history.py:8-9,197`, `cli/deps.py:8,209-210`, `cli/docs.py:8,78`. Required imports: `from little_loops.cli.output import configure_output, use_color_enabled`. Call `configure_output()` at the top of `main_logs()`, then instantiate `Logger(use_color=use_color_enabled())`. If quiet mode is needed, use `verbose=not args.quiet` with `add_quiet_arg()`.
-   - **⚠ queue-operation records**: The `queue-operation` record type is not currently filtered or used anywhere in `user_messages.py` or other codebase modules. Implementer must inspect actual JSONL files to determine the schema before implementing criterion (a). The `type: "user"` + `<command-name>/ll:` detection (criterion b) is confirmed at `user_messages.py:771`.
+   - **queue-operation records** (schema confirmed 2026-04-23): Only `enqueue` records with `content` starting with `"/ll:"` indicate ll activity — `dequeue`/`remove`/`popAll` have no `content` field. Detection: `record.get("type") == "queue-operation" and record.get("operation") == "enqueue" and str(record.get("content","")).startswith("/ll:")`. Commands seen across real data: `/ll:manage-issue`, `/ll:ready-issue`, `/ll:refine-issue`, `/ll:wire-issue`, `/ll:confidence-check`, `/ll:commit`, `/ll:handoff`, etc. (11 distinct commands). These records appear only in worktree/worker project folders, so `discover` must scan all project folders. The `type: "user"` + `<command-name>/ll:` detection (criterion b) is confirmed at `user_messages.py:771`.
    - `main_logs()` return type must be `-> int:` — return `0` for success, `1` for errors, `1` when no subcommand given with `parser.print_help()`
+   - **Output format for `discover`**: print one decoded absolute path per line to stdout, sorted alphabetically. Decode encoded dir names via `.replace("-", "/")` (inverse of `user_messages.py:371`). For any decoded path that does not exist on disk, emit `logger.warning(f"Decoded path does not exist: {path}")` and skip it (handles hyphen-collision edge case). No header, no table, no color — output is scriptable.
 
 2. **Register entry point** (AFTER `logs.py` exists — do not reverse order):
    - Add `from little_loops.cli.logs import main_logs` to `cli/__init__.py` after line 29 (after `main_issues`, before `main_loop`)
@@ -107,6 +108,14 @@ Documentation and skills registration updates are tracked in **FEAT-1004** (`.is
 - `scripts/little_loops/cli/history.py:8-9,197` — `configure_output, use_color_enabled` imports + `Logger(use_color=use_color_enabled())` pattern
 - `scripts/little_loops/cli/history.py:12` — `main_history()`: multi-subcommand argparse with `add_config_arg(parser)` at root level
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — confirmed line numbers from direct read (2026-04-23):_
+
+- `scripts/little_loops/session_log.py:62` — that line is the **function definition** of `get_current_session_jsonl()`; the actual glob+filter pattern is at **line 78**: `[f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]` — exclusion is a `.startswith("agent-")` list-comprehension filter, not a separate glob
+- `scripts/little_loops/cli/history.py:14` — `main_history()` definition (issue refs line 12; confirmed 14); subparsers created at line 51; no-subcommand guard at lines 187–191
+- `scripts/little_loops/cli/output.py:48` — `configure_output(config: CliConfig | None = None)` — `config` arg is **optional**; for `main_logs()` where no `BRConfig` is needed, call `configure_output()` with no args (defaults to TTY + `NO_COLOR` detection)
+
 ### Tests
 - `scripts/tests/test_ll_logs.py` — new test file
   - `class TestArgumentParsing` — argparse unit tests via `_parse_args()` helper, no filesystem
@@ -121,7 +130,7 @@ Test pattern guidance:
 
 ## Acceptance Criteria
 
-- [ ] `ll-logs discover` lists all Claude projects with ll activity
+- [ ] `ll-logs discover` prints one decoded absolute path per line (sorted) for each Claude project with ll activity; exits 0 even if no projects found; emits `logger.warning()` for any decoded path that does not exist on disk (hyphen-collision edge case)
 - [ ] `ll-logs` (no subcommand) prints help and exits 1
 - [ ] Entry point registered; `ll-logs` available after `pip install -e ./scripts`
 - [ ] `TestArgumentParsing` and `TestDiscover` test classes pass
@@ -142,17 +151,56 @@ Test pattern guidance:
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-04-23_
+_Added by `/ll:confidence-check` on 2026-04-23 (revised 2026-04-23)_
 
 **Readiness Score**: 100/100 → PROCEED
-**Outcome Confidence**: 54/100 → LOW
+**Outcome Confidence**: 54/100 → LOW (corrected from 72; prior `outcome_confidence` frontmatter was inconsistent with stored per-dimension scores 18+18+18+0=54)
 
 ### Outcome Risk Factors
-- **Wide blast radius on cli/__init__.py**: 20+ test files fail at collection time if `__init__.py` breaks. Follow the sequencing guard strictly (`python -c "from little_loops.cli.logs import main_logs"` before touching `cli/__init__.py`).
-- **queue-operation schema is unverified**: The JSONL schema is unknown and requires runtime file inspection before implementing ll-relevance criterion (a). Plan a short investigation step upfront; criterion (a) can be deferred to FEAT-1272 without blocking the discover subcommand.
-- **New module has no pre-existing tests**: Test coverage is built during this issue. If tests are skipped or deferred, failures in `discover_all_projects()` will go undetected until integration.
+- **cli/__init__.py cascade risk**: 20+ test files fail at *collection time* if `__init__.py` breaks. Follow the sequencing guard strictly (`python -c "from little_loops.cli.logs import main_logs"` before touching `cli/__init__.py`).
+- **queue-operation schema — RESOLVED** (investigated 2026-04-23): Schema confirmed via runtime inspection. `enqueue` + `/ll:` prefix detection is implementable as written.
+- **New module has no pre-existing tests**: `test_ll_logs.py` built during this issue. If `TestArgumentParsing`/`TestDiscover` are skipped, `discover_all_projects()` path-decoding bugs go undetected until FEAT-1272/1270 integration.
+- **discover output format — RESOLVED**: One decoded absolute path per line, sorted, to stdout; `logger.warning()` for non-existent decoded paths. Specified in Implementation Steps and Acceptance Criteria.
+
+### queue-operation Schema (Investigated 2026-04-23)
+
+**Full record structure:**
+
+```json
+// enqueue — has content field
+{"type": "queue-operation", "operation": "enqueue", "timestamp": "...", "sessionId": "...", "content": "..."}
+
+// dequeue, remove, popAll — no content field
+{"type": "queue-operation", "operation": "dequeue", "timestamp": "...", "sessionId": "..."}
+```
+
+**Operations observed** (across ~19,847 total records): `enqueue` (9,774), `dequeue` (9,213), `remove` (622), `popAll` (5), plus 233 records missing the `operation` key (malformed/truncated).
+
+**Content field patterns for `enqueue`:**
+- `"/ll:<command> [args]"` — direct ll command enqueue (e.g. `/ll:ready-issue FEAT-220`, `/ll:manage-issue features implement FEAT-193`)
+- `"<task-notification>...</task-notification>"` — background task completion notification
+- Other strings (user prompts, etc.)
+
+**Detecting ll-relevance via criterion (a):**
+
+```python
+def is_ll_relevant_queue_op(record: dict) -> bool:
+    return (
+        record.get("type") == "queue-operation"
+        and record.get("operation") == "enqueue"
+        and isinstance(record.get("content"), str)
+        and record["content"].startswith("/ll:")
+    )
+```
+
+Only `enqueue` records with `content` starting with `/ll:` indicate ll activity. `dequeue`, `remove`, and `popAll` have no `content` field.
+
+**Key finding**: `queue-operation` records appear only in JSONL files under worktree/worker project folders (e.g. `-Users-…-worktrees-worker-*`), not in the main project folder. The `discover` subcommand must iterate across *all* project folders (not just the current one) to catch these.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42248e1e-57b2-46b9-b309-6400d9dce735.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/633190e4-6411-4813-8acd-58cafc8b3394.jsonl`
+- `/ll:refine-issue` - 2026-04-23T20:27:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c12e9ac9-558a-4d95-b9cb-bbcf05d2e8f8.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de8ffde5-dc2f-4352-8703-9f41f72514a5.jsonl`
 - `/ll:wire-issue` - 2026-04-23T15:32:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de8ffde5-dc2f-4352-8703-9f41f72514a5.jsonl`
 - `/ll:refine-issue` - 2026-04-23T15:26:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fde7109f-3979-4ed7-a527-cc1fc3edcffb.jsonl`
