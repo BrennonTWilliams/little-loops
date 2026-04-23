@@ -184,9 +184,7 @@ _No documents linked._
 
 ## Blocked By
 
-- FEAT-959 (must complete OpenCode Python path abstraction before extending `find_config()` for Codex)
-- FEAT-960 (must complete OpenCode shell hooks / `LL_STATE_DIR` abstraction before adding Codex support)
-- FEAT-962 (must complete `ll:init --opencode` flag before adding `--codex` flag to the same block)
+- FEAT-1116 (hook-intent abstraction layer for multi-host support must land before Codex plugin wiring can be added)
 
 ## Labels
 
