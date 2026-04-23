@@ -9,6 +9,7 @@ Provides command-line interfaces for automated issue management:
 - ll-workflows: Identify multi-step workflow patterns from user message history
 - ll-messages: Extract user messages from Claude Code logs
 - ll-history: Completed issue statistics and analysis
+- ll-logs: Discover and extract ll-relevant JSONL entries from ~/.claude/projects/
 - ll-deps: Cross-issue dependency discovery and validation
 - ll-sync: GitHub Issues sync
 - ll-verify-docs: Documentation count verification
@@ -27,6 +28,7 @@ from little_loops.cli.docs import main_check_links, main_verify_docs
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.history import main_history
 from little_loops.cli.issues import main_issues
+from little_loops.cli.logs import main_logs
 from little_loops.cli.loop import main_loop
 from little_loops.cli.messages import main_messages
 from little_loops.cli.parallel import main_parallel
@@ -48,6 +50,7 @@ __all__ = [
     "main_generate_schemas",  # internal: dev tooling
     "main_gitignore",
     "main_history",
+    "main_logs",
     "main_issues",
     "main_loop",
     "main_messages",

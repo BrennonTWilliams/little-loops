@@ -2,7 +2,7 @@
 id: FEAT-1271
 type: FEAT
 priority: P4
-status: backlog
+status: completed
 title: "ll-logs: discover subcommand and entry-point registration"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
@@ -15,6 +15,8 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 0
+captured_at: 2026-04-23T00:00:00Z
+completed_at: 2026-04-23T20:48:10Z
 ---
 
 # FEAT-1271: ll-logs: discover subcommand and entry-point registration
@@ -206,6 +208,7 @@ Only `enqueue` records with `content` starting with `/ll:` indicate ll activity.
 **Key finding**: `queue-operation` records appear only in JSONL files under worktree/worker project folders (e.g. `-Users-…-worktrees-worker-*`), not in the main project folder. The `discover` subcommand must iterate across *all* project folders (not just the current one) to catch these.
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-23T20:48:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91ca2041-f6d7-42db-87e7-ed4feb5fe3d6.jsonl`
 - `/ll:ready-issue` - 2026-04-23T20:39:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e6fcf12-648c-435c-aad9-6d0077b45ffe.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42248e1e-57b2-46b9-b309-6400d9dce735.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/633190e4-6411-4813-8acd-58cafc8b3394.jsonl`
@@ -214,9 +217,20 @@ Only `enqueue` records with `content` starting with `/ll:` indicate ll activity.
 - `/ll:wire-issue` - 2026-04-23T15:32:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de8ffde5-dc2f-4352-8703-9f41f72514a5.jsonl`
 - `/ll:refine-issue` - 2026-04-23T15:26:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fde7109f-3979-4ed7-a527-cc1fc3edcffb.jsonl`
 - `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:manage-issue` - 2026-04-23T20:48:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e6fcf12-648c-435c-aad9-6d0077b45ffe.jsonl`
 
 ---
 
+## Resolution
+
+- Created `scripts/little_loops/cli/logs.py` with `main_logs()` entry point and `discover` subcommand
+- `discover_all_projects()` iterates `~/.claude/projects/`, decodes dir names back to paths via `.replace("-", "/")`, scans non-agent JSONL files for ll activity, and prints sorted paths
+- `_is_ll_relevant()` detects (a) `queue-operation` enqueue with `/ll:` content and (b) `type: user` records with `<command-name>/ll:` pattern
+- Registered `main_logs` in `cli/__init__.py` and `ll-logs` entry point in `pyproject.toml`
+- Created `scripts/tests/test_ll_logs.py` (11 tests: `TestArgumentParsing`, `TestDiscover`) using TDD
+- Added `TestMainLogsIntegration` to `scripts/tests/test_cli.py`
+- All 157 affected tests pass; lint and type checks clean
+
 ## Status
 
-**Open** | Created: 2026-04-23 | Priority: P4
+**Completed** | Created: 2026-04-23 | Completed: 2026-04-23 | Priority: P4

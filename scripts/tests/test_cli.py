@@ -2835,3 +2835,73 @@ Completed
             result = main_history()
 
         assert result == 1
+
+
+class TestMainLogsIntegration:
+    """Coverage tests for main_logs entry point."""
+
+    def test_no_subcommand_returns_1(self) -> None:
+        """ll-logs with no subcommand returns 1."""
+        from little_loops.cli import main_logs
+
+        with patch.object(sys, "argv", ["ll-logs"]):
+            result = main_logs()
+
+        assert result == 1
+
+    def test_discover_returns_0(self) -> None:
+        """ll-logs discover returns 0 on success."""
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            with (
+                patch.object(sys, "argv", ["ll-logs", "discover"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
+    def test_discover_finds_ll_project(self, capsys) -> None:
+        """ll-logs discover outputs paths for projects with ll activity."""
+        import json
+
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = home / "workdir"
+            project_path.mkdir()
+            encoded = str(project_path).replace("/", "-")
+            proj_dir = claude_projects / encoded
+            proj_dir.mkdir()
+            jsonl_file = proj_dir / "session.jsonl"
+            jsonl_file.write_text(
+                json.dumps(
+                    {
+                        "type": "queue-operation",
+                        "operation": "enqueue",
+                        "content": "/ll:manage-issue bug fix",
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "sessionId": "abc",
+                    }
+                )
+                + "\n"
+            )
+
+            with (
+                patch.object(sys, "argv", ["ll-logs", "discover"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert str(project_path) in captured.out
