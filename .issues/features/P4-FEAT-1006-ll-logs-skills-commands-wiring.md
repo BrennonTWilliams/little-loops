@@ -144,17 +144,28 @@ N/A - No public API changes. Configuration-only updates to command and skill mar
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — `ll-gitignore` was added to the codebase after this issue was written. Multiple counts and line references are now stale:
+**Verdict**: NEEDS_UPDATE — Core wiring still not done. `.claude/CLAUDE.md` was updated externally but all other targets remain. Additional tools (`ll-create-extension`, `ll-generate-schemas`) shipped after previous verification, so all line refs and counts are stale again:
 
-- `skills/configure/areas.md:793` now reads "Authorize all **13** ll- CLI tools" (includes `ll-gitignore`); count must go **13→14** (not 12→13)
-- `commands/help.md` now has 13 CLI entries ending at `ll-gitignore` (line 230) — the "pre-existing gap" was fixed; insert `ll-logs` after line 230
-- `skills/init/SKILL.md`: `"Bash(ll-gitignore:*)"` already present at line 442; insert `"Bash(ll-logs:*)"` after that (not after `ll-check-links` at 441)
-- `skills/init/SKILL.md` boilerplate blocks: `ll-gitignore` is at line 523 (file-exists) and 547 (create-new) — one line later than stated; insert `ll-logs` after those
-- `skills/configure/areas.md:793` enumerated list now ends with `ll-gitignore`; append `ll-logs` after it, and update "Authorize all 13" → "Authorize all 14"
+**Done externally ✓**
+- `.claude/CLAUDE.md:109` — `ll-logs` bullet present ✓
 
-— Verified 2026-04-11
+**Still missing ✗**
+- `commands/help.md:233` — last entry is `ll-generate-schemas` (line 233); insert `ll-logs` after it
+- `skills/init/SKILL.md:444` — permissions block ends with `"Bash(ll-create-extension:*)"` (line 444); insert `"Bash(ll-logs:*)"` after line 444
+- `skills/init/SKILL.md:504-505` — boilerplate file-exists block ends with `ll-create-extension` (504) and `ll-generate-schemas` (505); insert `ll-logs` bullet after line 505
+- `skills/init/SKILL.md:531-532` — boilerplate create-new block ends with `ll-create-extension` (531) and `ll-generate-schemas` (532); insert `ll-logs` bullet after line 532
+- `skills/configure/areas.md:823` — now reads "Authorize all **15** ll- CLI tools" ending with `ll-create-extension`; append `ll-logs` after it, update count **15→16**
+- `scripts/tests/test_ll_logs_wiring.py` — does not exist; create following `test_update_skill.py` pattern
+
+**Corrected description text (unchanged from original):**
+- `commands/help.md`: `ll-logs           Discover and extract ll-relevant log entries from Claude project logs`
+- `skills/init/SKILL.md` boilerplate: `- \`ll-logs\` - Discover and extract ll-relevant log entries from Claude project logs`
+
+— Verified 2026-04-23
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-23T23:33:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
+- `/ll:verify-issues` - 2026-04-23T23:07:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`

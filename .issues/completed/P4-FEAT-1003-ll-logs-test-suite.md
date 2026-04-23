@@ -166,16 +166,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-**Verdict**: VALID — Both blockers confirmed active:
+**Verdict**: RESOLVED — All acceptance criteria met:
 
-- ENH-753 (rename confidence-check skill) is still open in `.issues/enhancements/` ✓
-- FEAT-1002 (`logs.py`) is not implemented — `scripts/little_loops/cli/logs.py` does not exist ✓
-- `scripts/tests/test_ll_logs.py` does not exist ✓
-- Patch targets (`get_project_folder`, `Path.home`) and fixture patterns remain accurate
+- `scripts/little_loops/cli/logs.py` EXISTS (FEAT-1002 completed and in `.issues/completed/`) ✓
+- `scripts/tests/test_ll_logs.py` EXISTS ✓
+- `main_logs` wired in `scripts/little_loops/cli/__init__.py` (lines 31 + 53) ✓
+- `python -m pytest scripts/tests/test_ll_logs.py -v` → **29 passed** ✓
+- `test_ll_logs_wiring.py` absent but that is FEAT-1006 scope, not this issue
 
-— Verified 2026-04-11
+— Verified 2026-04-23
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-23T23:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:wire-issue` - 2026-04-08T21:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36ed4d98-082d-4fb8-b061-42af2b5aa85b.jsonl`

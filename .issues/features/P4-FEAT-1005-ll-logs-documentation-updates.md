@@ -208,16 +208,25 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 
 ## Verification Notes
 
-**Verdict**: VALID — Blocked by FEAT-1002 (not yet implemented). All prerequisite conditions confirmed:
+**Verdict**: NEEDS_UPDATE — FEAT-1002 shipped; most doc updates are done but two items remain:
 
-- `scripts/little_loops/cli/logs.py` does not exist ✓
-- `README.md:90` still reads "13 CLI tools" ✓ (note: `ll-generate-schemas` was added to pyproject.toml but not yet to README or help.md, so count remains 13 from a docs perspective)
-- `docs/reference/CLI.md` still has no `### ll-logs` section ✓
-- Insertion point reference (`### ll-gitignore` ending at line 879) may have shifted slightly — verify before implementing
+**Done ✓**
+- `docs/reference/CLI.md:995` — `### ll-logs` section with subcommand and flag table ✓
+- `README.md:358` — `### ll-logs` section added ✓; count now reads "16 CLI tools" (includes ll-logs) ✓
+- `docs/ARCHITECTURE.md:217` — `├── logs.py` in cli/ tree ✓
+- `.claude/CLAUDE.md:109` — `ll-logs` in CLI Tools section ✓ (FEAT-1006 scope, but already done)
 
-— Verified 2026-04-11
+**Still missing ✗**
+- `docs/reference/API.md` — NO `### main_logs` entry (still absent; add after `### main_check_links`)
+- `CONTRIBUTING.md` — NO `├── logs.py` in cli/ directory tree (~lines 182-194)
+
+**Action needed**: Implement the two missing items above.
+
+— Verified 2026-04-23
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-23T23:33:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
+- `/ll:verify-issues` - 2026-04-23T23:07:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
