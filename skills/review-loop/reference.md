@@ -432,6 +432,75 @@ For each non-terminal state that has no outbound transitions (`on_yes`, `on_no`,
 
 ---
 
+## Semantic Flow Checks (SR — goal alignment and semantic coherence)
+
+These checks are run during Step 2c (Semantic Flow Review sub-step). They evaluate whether the FSM's states and transitions make semantic sense relative to the loop's declared purpose — questions a structural linter cannot answer. All are performed by LLM reasoning over the parsed YAML, not by the validator.
+
+| Check ID | Description | Severity |
+|----------|-------------|----------|
+| SR-1 | Happy-path goal alignment — happy path does not plausibly achieve declared purpose | Warning |
+| SR-2 | State name vs. action coherence — name implies gate/check but action is broad analysis (or vice versa) | Suggestion |
+| SR-3 | Semantically backwards transition — `on_yes` routes to an earlier happy-path state | Warning |
+| SR-4 | Goal coverage gap — declared goal names an activity with no corresponding state | Warning |
+
+---
+
+### SR-1: Happy-Path Goal Alignment
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Never
+
+Trace `on_yes`/`next` from `initial` to terminal (the happy path). Compare the names and action texts of states along that path to the loop's declared `description:`. If the path does not plausibly accomplish the declared purpose — for example, state names and actions describe unrelated work, or the path terminates before the goal is met — this signals that the FSM's main flow has drifted from its stated intent.
+
+Skip if `description:` is absent or too generic (fewer than 5 words).
+
+**Finding**: `Warning: (loop): Happy path (<path>) does not appear to accomplish the declared goal: "<description>". State names and actions along the path do not relate to the key activities described.`
+
+---
+
+### SR-2: State Name vs. Action Coherence
+
+**Severity**: Suggestion
+**Breaking**: false
+**When to auto-apply**: Never
+
+For each state on or adjacent to the happy path: compare the state name to its action text. Flag a mismatch if:
+- The name implies a narrow gate or decision (`check_*`, `verify_*`, `validate_*`) but the action is broad, open-ended analysis (more than ~15 words with no clear criterion for "done"); or
+- The name implies active, multi-step work but the action is a simple yes/no decision with a specific criterion.
+
+A well-designed state should have a name that accurately reflects what its action does.
+
+**Finding**: `Suggestion: states.<name>: State name implies <gate/analysis> but action text describes <analysis/gate>. Consider renaming the state or refocusing its action to reduce ambiguity.`
+
+---
+
+### SR-3: Semantically Backwards Transition
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Never
+
+For each non-terminal state in the loop: if its `on_yes` transition routes to a state that appears *earlier* in the happy path (i.e., success routes backward to a previous step), this is almost always a logic error. A "yes" outcome should signal progress and route forward; backward routing on success typically means the transition condition is inverted or the routing targets are swapped.
+
+**Finding**: `Warning: states.<name>: on_yes routes to '<target>', which precedes '<name>' in the happy path. A success outcome routing backward is likely a logic error — on_yes should route forward toward the terminal state.`
+
+---
+
+### SR-4: Goal Coverage Gap
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Never
+
+Extract 2–4 key activity phrases from the declared `description:` (e.g., "commit changes", "run tests", "send notification"). For each distinct named activity (verb + object): check whether any state's name or action text corresponds to that activity. If a named activity has no corresponding state, the FSM cannot fulfill its declared goal.
+
+Skip if `description:` is absent or too generic (fewer than 5 words). Skip individual activities if they are implicit side effects rather than explicit steps (e.g., "until done", "as needed").
+
+**Finding**: `Warning: (loop): Goal mentions "<activity>" but no state appears to perform this action. The FSM may not fully accomplish its declared purpose.`
+
+---
+
 ## Findings Display Format
 
 ```
@@ -453,12 +522,16 @@ States: N states  |  Initial: <initial-state>  |  Max iterations: <N>
 | 3 | QC-1  | max_iterations | Value 200 is suspiciously high (>100) |
 | 4 | FA-1  | states.evaluate | Spin risk — on_error and on_partial both loop back |
 | 5 | FA-2  | (loop)   | No explicit failure terminal state |
+| 6 | SR-1  | (loop)   | Happy path does not accomplish declared goal |
+| 7 | SR-3  | states.verify | on_yes routes backward to an earlier happy-path state |
+| 8 | SR-4  | (loop)   | Goal mentions "commit and push" but no state covers this |
 
 ### Suggestions (N)
 | # | Check | Location | Issue |
 |---|-------|----------|-------|
 | 1 | QC-3  | states.fix | action_type absent; action looks like a natural-language prompt |
 | 2 | QC-6  | on_handoff | max_iterations=50 but on_handoff not set explicitly |
+| 3 | SR-2  | states.check_done | State name implies gate but action is broad open-ended analysis |
 
 ### FSM Flow Review: <loop-name>
 
@@ -469,9 +542,25 @@ States: N states  |  Initial: <initial-state>  |  Max iterations: <N>
   - <specific strength>
 
   **Issues to consider**
-  1. <Plain-English description of FA-N finding with concrete actionable suggestion>
+  1. <Plain-English description of FA-N or SR-N finding with concrete actionable suggestion>
   2. <Next finding if any>
-  (or "No significant logic issues found." if no FA-* findings)
+  (or "No significant logic issues found." if no FA-* or SR-* findings)
+
+### Semantic Flow Review: <loop-name>
+
+  **Loop goal**: "<declared description or (no description provided)>"
+  **Happy path**: <state-1> → <state-2> → ... → <terminal>
+    <✓ or ⚠> <one-line assessment of whether path achieves the declared goal>
+
+  **State analysis**:
+    <For each state on the happy path:>
+    <✓ or ⚠> `<name>` — <brief assessment of name/action coherence>
+
+  **Transition analysis**:
+    <For each significant routing decision:>
+    <✓ or ⚠> <transition description> — <semantic assessment>
+
+  **Goal alignment**: <one-sentence overall verdict>
 ```
 
 ---

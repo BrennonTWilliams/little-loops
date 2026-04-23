@@ -1,0 +1,20 @@
+name: semantic-valid-aligned
+description: "Fix type errors until all type checks pass"
+initial: check_types
+states:
+  check_types:
+    action: "mypy scripts/little_loops/ --strict"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: fix_errors
+    on_error: done
+  fix_errors:
+    action: "Read the mypy output and fix the type errors in the reported files"
+    action_type: prompt
+    on_yes: check_types
+    on_no: done
+    on_error: done
+  done:
+    terminal: true

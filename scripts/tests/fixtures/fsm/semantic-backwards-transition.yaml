@@ -1,0 +1,22 @@
+name: semantic-backwards-transition
+description: "Analyze issues, verify completeness, and finalize"
+initial: analyze
+states:
+  analyze:
+    action: "Read the issue and gather codebase context to populate incomplete fields"
+    action_type: prompt
+    on_yes: verify
+    on_no: done
+    on_error: done
+  verify:
+    action: "Check that all required sections of the issue are filled in"
+    action_type: prompt
+    on_yes: analyze
+    on_no: finalize
+    on_error: done
+  finalize:
+    action: "Write the completion summary and close the issue"
+    action_type: prompt
+    next: done
+  done:
+    terminal: true

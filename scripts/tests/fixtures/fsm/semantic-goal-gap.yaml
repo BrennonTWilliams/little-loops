@@ -1,0 +1,20 @@
+name: semantic-goal-gap
+description: "Fix code issues, run tests, and commit and push changes"
+initial: fix_issue
+states:
+  fix_issue:
+    action: "Read the error output and edit the source files to fix the reported issues"
+    action_type: prompt
+    on_yes: run_tests
+    on_no: fix_issue
+    on_error: done
+  run_tests:
+    action: "python -m pytest scripts/tests/ -v"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: fix_issue
+    on_error: done
+  done:
+    terminal: true

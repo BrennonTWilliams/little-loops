@@ -1,0 +1,22 @@
+name: semantic-goal-mismatch
+description: "Fix all lint errors until the codebase is clean"
+initial: analyze_issue
+states:
+  analyze_issue:
+    action: "Read the issue file and identify which sections need to be filled in or clarified"
+    action_type: prompt
+    on_yes: refine_fields
+    on_no: done
+    on_error: done
+  refine_fields:
+    action: "Update the issue file with codebase research findings for the incomplete sections"
+    action_type: prompt
+    on_yes: finalize_issue
+    on_no: analyze_issue
+    on_error: done
+  finalize_issue:
+    action: "Write the final summary and mark the issue as refined"
+    action_type: prompt
+    next: done
+  done:
+    terminal: true

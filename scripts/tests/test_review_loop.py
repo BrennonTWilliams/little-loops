@@ -745,6 +745,225 @@ class TestReplaceablePromptStateDetection:
         # → dry-run would include this in the Suggestions table section
 
 
+class TestReviewLoopSemanticChecks:
+    """Tests for SR-* semantic flow review check logic (SR-1 through SR-4).
+
+    Since the semantic checks are performed by LLM reasoning over the parsed YAML
+    (not Python code), we test the structural conditions that each check relies on
+    and validate that the fixture files have the expected properties.
+    """
+
+    GATE_STATE_PREFIXES = ("check_", "verify_", "validate_")
+
+    def _load_fixture(self, name: str) -> dict:
+        path = FIXTURES_DIR / name
+        assert path.exists(), f"Fixture not found: {path}"
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    def _happy_path(self, spec: dict) -> list[str]:
+        """Trace on_yes/next from initial to terminal, returning ordered state names."""
+        states = spec.get("states", {})
+        current = spec.get("initial")
+        path: list[str] = []
+        seen: set[str] = set()
+        while current and current not in seen:
+            path.append(current)
+            seen.add(current)
+            state = states.get(current, {})
+            if state.get("terminal"):
+                break
+            current = state.get("on_yes") or state.get("next")
+        return path
+
+    # ---- SR-1: Happy-Path Goal Alignment ----
+
+    def test_sr1_mismatch_fixture_has_description(self) -> None:
+        """SR-1: semantic-goal-mismatch fixture has a description field."""
+        spec = self._load_fixture("semantic-goal-mismatch.yaml")
+        assert "description" in spec
+
+    def test_sr1_mismatch_happy_path_unrelated_to_goal(self) -> None:
+        """SR-1: happy path state names don't relate to the declared lint-fix goal."""
+        spec = self._load_fixture("semantic-goal-mismatch.yaml")
+        path = self._happy_path(spec)
+        goal = spec.get("description", "").lower()
+        path_text = " ".join(path).lower()
+        assert "lint" in goal
+        assert "lint" not in path_text  # → skill should flag SR-1
+
+    def test_sr1_valid_aligned_fixture_path_matches_goal(self) -> None:
+        """SR-1: valid-aligned fixture happy path relates to the declared goal."""
+        spec = self._load_fixture("semantic-valid-aligned.yaml")
+        path = self._happy_path(spec)
+        goal = spec.get("description", "").lower()
+        assert len(path) >= 2
+        path_words = set(" ".join(path).lower().replace("_", " ").split())
+        goal_words = {w for w in goal.split() if len(w) > 3}
+        # At least one goal word should be a substring of (or contain) a path word
+        has_overlap = any(gw in pw or pw in gw for gw in goal_words for pw in path_words)
+        assert has_overlap  # → skill should NOT flag SR-1
+
+    def test_sr1_skipped_when_no_description(self) -> None:
+        """SR-1: check is skipped when description is absent."""
+        spec = {
+            "name": "no-desc",
+            "initial": "start",
+            "states": {"start": {"action": "do something", "next": "done"}, "done": {"terminal": True}},
+        }
+        has_description = "description" in spec
+        assert not has_description  # → skill should skip SR-1
+
+    def test_sr1_skipped_when_description_too_generic(self) -> None:
+        """SR-1: description with fewer than 5 words is too generic to evaluate."""
+        description = "Process items"
+        assert len(description.split()) < 5  # → skill should skip SR-1
+
+    # ---- SR-2: State Name vs. Action Coherence ----
+
+    def test_sr2_incoherent_state_has_gate_name(self) -> None:
+        """SR-2: semantic-incoherent-state fixture has a gate-prefixed state name."""
+        spec = self._load_fixture("semantic-incoherent-state.yaml")
+        states = spec.get("states", {})
+        gate_states = [n for n in states if any(n.startswith(p) for p in self.GATE_STATE_PREFIXES)]
+        assert gate_states
+
+    def test_sr2_incoherent_state_action_is_broad(self) -> None:
+        """SR-2: the gate-named state has a broad action (>15 words) — mismatch with name."""
+        spec = self._load_fixture("semantic-incoherent-state.yaml")
+        states = spec.get("states", {})
+        gate_name = next(n for n in states if any(n.startswith(p) for p in self.GATE_STATE_PREFIXES))
+        action = states[gate_name].get("action", "")
+        assert len(action.split()) > 15  # → skill should flag SR-2
+
+    def test_sr2_valid_aligned_gate_states_have_narrow_actions(self) -> None:
+        """SR-2: valid-aligned fixture gate-named states have short, targeted actions."""
+        spec = self._load_fixture("semantic-valid-aligned.yaml")
+        states = spec.get("states", {})
+        for name, state in states.items():
+            if any(name.startswith(p) for p in self.GATE_STATE_PREFIXES):
+                action = state.get("action", "")
+                assert len(action.split()) <= 15  # → skill should NOT flag SR-2
+
+    def test_sr2_inline_gate_name_broad_action(self) -> None:
+        """SR-2: inline spec — check_* name with broad analysis action triggers SR-2."""
+        state_spec = {
+            "action": "Analyze the repository in full detail and produce a comprehensive report of all potential issues found across every file",
+            "action_type": "prompt",
+            "on_yes": "done",
+            "on_no": "done",
+        }
+        name = "check_quality"
+        has_gate_prefix = any(name.startswith(p) for p in self.GATE_STATE_PREFIXES)
+        action_is_broad = len(state_spec["action"].split()) > 15
+        assert has_gate_prefix and action_is_broad  # → skill should flag SR-2
+
+    def test_sr2_inline_gate_name_narrow_action_no_flag(self) -> None:
+        """SR-2: inline spec — check_* name with short targeted action does not trigger SR-2."""
+        state_spec = {
+            "action": "python -m mypy scripts/ --strict",
+            "action_type": "shell",
+            "on_yes": "done",
+            "on_no": "fix",
+        }
+        name = "check_types"
+        has_gate_prefix = any(name.startswith(p) for p in self.GATE_STATE_PREFIXES)
+        action_is_broad = len(state_spec["action"].split()) > 15
+        assert has_gate_prefix and not action_is_broad  # → skill should NOT flag SR-2
+
+    # ---- SR-3: Semantically Backwards Transition ----
+
+    def test_sr3_backwards_transition_fixture_has_on_yes_backward(self) -> None:
+        """SR-3: semantic-backwards-transition fixture has on_yes routing to an earlier state."""
+        spec = self._load_fixture("semantic-backwards-transition.yaml")
+        path = self._happy_path(spec)
+        states = spec.get("states", {})
+        backward_found = any(
+            states.get(name, {}).get("on_yes") in path[:i]
+            for i, name in enumerate(path)
+        )
+        assert backward_found  # → skill should flag SR-3
+
+    def test_sr3_valid_aligned_no_backward_transition(self) -> None:
+        """SR-3: valid-aligned fixture has no on_yes routing backward."""
+        spec = self._load_fixture("semantic-valid-aligned.yaml")
+        path = self._happy_path(spec)
+        states = spec.get("states", {})
+        for i, name in enumerate(path):
+            on_yes = states.get(name, {}).get("on_yes")
+            assert on_yes not in path[:i], (
+                f"State '{name}' has on_yes → '{on_yes}' which is backward in happy path"
+            )  # → skill should NOT flag SR-3
+
+    def test_sr3_inline_backward_on_yes(self) -> None:
+        """SR-3: inline spec — on_yes routes to earlier state triggers SR-3."""
+        happy_path = ["analyze", "verify", "finalize", "done"]
+        state_spec = {"on_yes": "analyze"}  # success routes backward to index 0
+        on_yes_target = state_spec["on_yes"]
+        current_index = happy_path.index("verify")
+        target_index = happy_path.index(on_yes_target)
+        assert target_index < current_index  # → skill should flag SR-3
+
+    def test_sr3_inline_forward_on_yes_no_flag(self) -> None:
+        """SR-3: inline spec — on_yes routes forward → no SR-3 flag."""
+        happy_path = ["check_types", "fix_errors", "done"]
+        state_spec = {"on_yes": "done"}  # success routes forward to terminal
+        on_yes_target = state_spec["on_yes"]
+        current_index = happy_path.index("check_types")
+        target_index = happy_path.index(on_yes_target)
+        assert target_index > current_index  # → skill should NOT flag SR-3
+
+    # ---- SR-4: Goal Coverage Gap ----
+
+    def test_sr4_goal_gap_fixture_has_uncovered_activity(self) -> None:
+        """SR-4: semantic-goal-gap fixture mentions commit/push in goal but no state covers it."""
+        spec = self._load_fixture("semantic-goal-gap.yaml")
+        goal = spec.get("description", "").lower()
+        states = spec.get("states", {})
+        all_state_text = (
+            " ".join(states.keys()) + " " + " ".join(s.get("action", "") for s in states.values())
+        ).lower()
+        assert "commit" in goal or "push" in goal
+        assert "commit" not in all_state_text and "push" not in all_state_text
+        # → skill should flag SR-4
+
+    def test_sr4_valid_aligned_covers_goal_activities(self) -> None:
+        """SR-4: valid-aligned fixture has states covering all key goal activities."""
+        spec = self._load_fixture("semantic-valid-aligned.yaml")
+        states = spec.get("states", {})
+        state_names_text = " ".join(states.keys()).replace("_", " ")
+        # Goal is "Fix type errors until all type checks pass"
+        # States should cover "check" (check_types) and "fix" (fix_errors)
+        assert any("check" in name or "fix" in name for name in states)
+        # Both key activities present in state names
+        assert "check" in state_names_text
+        assert "fix" in state_names_text  # → skill should NOT flag SR-4
+
+    def test_sr4_skipped_when_description_absent(self) -> None:
+        """SR-4: check is skipped when loop has no description."""
+        spec = {"name": "no-desc", "initial": "start", "states": {}}
+        assert "description" not in spec  # → skill should skip SR-4
+
+    def test_sr4_skipped_when_description_too_short(self) -> None:
+        """SR-4: description with fewer than 5 words is skipped."""
+        description = "Run checks"
+        assert len(description.split()) < 5  # → skill should skip SR-4
+
+    # ---- Findings schema ----
+
+    def test_sr_finding_schema_matches_existing_checks(self) -> None:
+        """SR-* findings use the same { check_id, severity, location, message } schema."""
+        for check_id, severity, location in [
+            ("SR-1", "Warning", "(loop)"),
+            ("SR-2", "Suggestion", "states.check_done"),
+            ("SR-3", "Warning", "states.verify"),
+            ("SR-4", "Warning", "(loop)"),
+        ]:
+            finding = {"check_id": check_id, "severity": severity, "location": location, "message": "x"}
+            assert finding["severity"] in ("Error", "Warning", "Suggestion")
+            assert "check_id" in finding and "location" in finding and "message" in finding
+
+
 class TestReviewLoopDryRun:
     """Verify that --dry-run mode stops after displaying findings.
 

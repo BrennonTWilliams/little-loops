@@ -234,11 +234,27 @@ Compose two lists:
 - `on_handoff: spawn` is appropriate for long-running loops
 - Happy path directly matches the declared purpose
 
-**Issues to consider**: List any FA-* findings in plain English with actionable suggestions. If no FA-* findings exist, write `"No significant logic issues found."`
+**Issues to consider**: List any FA-* and SR-* findings in plain English with actionable suggestions. If no FA-* or SR-* findings exist, write `"No significant logic issues found."`
 
-### 2c-3: Output FSM Flow Review
+### 2c-3: Semantic Flow Review Checks
 
-After Step 3 displays the findings table and before Step 4, output this block:
+Using the FSM mental model built before QC-8 and the declared intent from 2c-1, perform semantic analysis. Produce SR-* findings using the same `{ check_id, severity, location, message }` schema as other findings. Reuse the already-traced happy path.
+
+**SR-1: Happy-Path Goal Alignment**
+Trace `on_yes`/`next` from `initial` to terminal (already computed for QC-12). Compare the names and action texts of states along this path to the declared goal. If the path does not plausibly accomplish the declared purpose (e.g., state names and actions describe unrelated work, or the path terminates before the goal is met), add a Warning finding at path `(loop)` with check_id `SR-1`. Skip if `description:` is absent or fewer than 5 words.
+
+**SR-2: State Name vs. Action Coherence**
+For each state on or adjacent to the happy path: compare the state name to its action text. If the name implies a narrow gate (`check_*`, `verify_*`, `validate_*`) but the action is broad, open-ended analysis (more than ~15 words with no specific criterion), or the name implies active multi-step work but the action is a simple yes/no decision — add a Suggestion finding at path `states.<name>` with check_id `SR-2`.
+
+**SR-3: Semantically Backwards Transition**
+For each non-terminal state: if its `on_yes` transition routes to a state that appears earlier in the happy path (success routing backward), add a Warning finding at path `states.<name>` with check_id `SR-3`. A success outcome routing backward is almost always a logic error.
+
+**SR-4: Goal Coverage Gap**
+Extract 2–4 key activity phrases from the declared goal (skip if goal is absent or fewer than 5 words). For each distinct named activity (verb + object, e.g., "commit changes", "run tests"): if no state's name or action text corresponds to it, add a Warning finding at path `(loop)` with check_id `SR-4`.
+
+### 2c-4: Output FSM Flow Review
+
+After Step 3 displays the findings table and before Step 4, output both blocks:
 
 ```
 ### FSM Flow Review: <loop-name>
@@ -251,9 +267,25 @@ After Step 3 displays the findings table and before Step 4, output this block:
   ...
 
   **Issues to consider**
-  <N>. <plain-English description of FA-N finding with concrete suggestion>
+  <N>. <plain-English description of FA-N or SR-N finding with concrete suggestion>
   ...
-  (or "No significant logic issues found." if no FA-* findings)
+  (or "No significant logic issues found." if no FA-* or SR-* findings)
+
+### Semantic Flow Review: <loop-name>
+
+  **Loop goal**: "<declared description or (no description provided)>"
+  **Happy path**: <state-1> → <state-2> → ... → <terminal>
+    <✓ or ⚠> <one-line assessment of whether path achieves the declared goal>
+
+  **State analysis**:
+    <For each state on the happy path:>
+    <✓ or ⚠> `<name>` — <brief assessment of name/action coherence>
+
+  **Transition analysis**:
+    <For each significant routing decision:>
+    <✓ or ⚠> <transition description> — <semantic assessment>
+
+  **Goal alignment**: <one-sentence overall verdict>
 ```
 
 ---
@@ -287,10 +319,10 @@ States: <N> states  |  Initial: <initial>  |  Max iterations: <N>
 If there are zero findings in a severity group, omit that group's section entirely. If all three groups are empty, output:
 
 ```
-No V-* or QC-* findings.
+No V-*, QC-*, or SR-* findings.
 ```
 
-**Then always output the FSM Flow Review narrative block from Step 2c-3.** This block is required even when all findings counts are zero — it may surface FA-* findings and always includes the narrative summary.
+**Then always output the FSM Flow Review and Semantic Flow Review blocks from Step 2c-4.** These blocks are required even when all findings counts are zero — they may surface FA-* and SR-* findings and always include the narrative summary.
 
 If `--dry-run` flag was given: stop here. Output:
 
@@ -386,7 +418,7 @@ Original file restored. Please review the proposed changes manually.
 ```
 ## Review Complete: <loop-name>
 
-Findings:    <N> error(s), <N> warning(s), <N> suggestion(s)  (includes V-*, QC-*, and FA-* checks)
+Findings:    <N> error(s), <N> warning(s), <N> suggestion(s)  (includes V-*, QC-*, FA-*, and SR-* checks)
 Fixes applied:  <N> of <M> proposed
 Skipped:     <N>
 
