@@ -22,6 +22,13 @@ score_change_surface: 25
 
 After `ll-logs extract` (FEAT-1273) writes JSONL files to `logs/`, generate a `logs/index.md` markdown table summarising each project: name, JSONL count, and date range derived from `timestamp` fields.
 
+## Motivation
+
+After `ll-logs extract`, JSONL files are written to `logs/<slug>/` directories but there is no at-a-glance summary of what was extracted. Users must manually `ls` and inspect files to understand which projects were captured and their activity span. A generated `logs/index.md`:
+- Provides immediate visibility into extracted projects, session counts, and date ranges
+- Eliminates manual directory inspection after extraction
+- Small additive change (~20-30 LOC) with high discoverability value
+
 ## Parent Issue
 Decomposed from FEAT-1272: ll-logs: extract subcommand and logs/index.md generation
 
@@ -44,6 +51,16 @@ No `logs/index.md` is generated after extraction.
 | little-loops | 5 | 2026-01-01 – 2026-04-23 |
 | my-other-project | 2 | 2026-03-10 – 2026-04-20 |
 ```
+
+## Use Case
+
+**Who**: Developer running `ll-logs extract` on their Claude Code project
+
+**Context**: After extracting conversation logs into `logs/<slug>/` JSONL files, they want a quick summary of what was captured without manually inspecting directories
+
+**Goal**: See which projects were extracted, how many sessions each has, and the date range of activity
+
+**Outcome**: `logs/index.md` is created automatically — a markdown table with project name, JSONL count, and date range
 
 ## Implementation Steps
 
@@ -69,6 +86,9 @@ No `logs/index.md` is generated after extraction.
 - `scripts/little_loops/cli/logs.py` — add `generate_index()` and call it from `extract` dispatch
   - **Note**: this file does not exist yet; it is created by FEAT-1271. Implement FEAT-1271 → FEAT-1273 → FEAT-1274 in order.
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/logs.py` (extract subcommand dispatch) — calls `generate_index()` after JSONL write; no external callers since this is a new internal helper
+
 ### Similar Patterns
 - `scripts/little_loops/issue_history/doc_synthesis.py:301-315` — canonical markdown table pattern (header row → `|---|` separator → f-string data rows → `"\n".join(lines)`)
 - `scripts/little_loops/issue_history/formatting.py:565-595` — second markdown table example
@@ -86,6 +106,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 (*All tracked in FEAT-1004/FEAT-1005 — not in scope here*)
 - `.claude/CLAUDE.md`, `commands/help.md`, `README.md`, `docs/reference/CLI.md`, `docs/reference/API.md`
+
+### Configuration
+- N/A — no configuration files affected
 
 ### Codebase Research Findings
 
@@ -123,12 +146,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] Edge case: empty `logs/` directory produces an empty or stub index
 - [ ] Tests pass
 
+## API/Interface
+
+```python
+def generate_index(logs_dir: Path) -> None:
+    """Generate logs/index.md summarising extracted projects."""
+```
+
+Internal helper function called from the `extract` subcommand dispatch — no public API changes.
+
 ## Impact
 
 - **Priority**: P4 - utility tooling
 - **Effort**: Small — ~20-30 LOC + tests
 - **Risk**: Low — additive; standalone helper function
 - **Breaking Change**: No
+
+## Labels
+
+`feature`, `cli`, `ll-logs`, `captured`
 
 ---
 
@@ -144,6 +180,7 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 - **FEAT-1273 is backlog**: The `extract` subcommand dispatch block (where `generate_index()` is called) is implemented by FEAT-1273. FEAT-1274 extends that block — required sequencing: FEAT-1271 → FEAT-1273 → FEAT-1274.
 
 ## Session Log
+- `/ll:format-issue` - 2026-04-23T21:04:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30650d70-0663-4ee5-a9e8-3cd0089e06c9.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
 - `/ll:wire-issue` - 2026-04-23T16:30:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
 - `/ll:refine-issue` - 2026-04-23T16:26:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1447f80b-a52b-410a-bd33-db465a58f851.jsonl`

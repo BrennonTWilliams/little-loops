@@ -8,11 +8,11 @@ discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
 parent_issue: FEAT-1272
-confidence_score: 80
-outcome_confidence: 75
-score_complexity: 18
-score_test_coverage: 10
-score_ambiguity: 22
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 25
 size: Very Large
 ---
@@ -22,6 +22,16 @@ size: Very Large
 ## Summary
 
 Add the `extract` subcommand to `scripts/little_loops/cli/logs.py` (created in FEAT-1271). Implements `--project`, `--all`, and `--cmd` flags, and writes filtered JSONL to `logs/<project-slug>/<session-id>.jsonl`.
+
+## Use Case
+
+**Who**: Developer using the `ll-logs` CLI after automation runs
+
+**Context**: After `ll-sprint` or `ll-auto` executes a set of issues, they want to review which ll- commands were invoked during implementation — for debugging, metrics, or audit purposes.
+
+**Goal**: Extract filtered JSONL session records for a specific project (or all projects) into a structured directory, optionally filtered to a specific ll- tool name.
+
+**Outcome**: Populated `logs/<project-slug>/<session-id>.jsonl` files containing only ll-relevant records, ready for downstream analysis by `ll-workflows` or `ll-history`.
 
 ## Parent Issue
 Decomposed from FEAT-1272: ll-logs: extract subcommand and logs/index.md generation
@@ -50,21 +60,25 @@ logs/
     ...
 ```
 
+## Motivation
+
+The `extract` subcommand enables structured log retrieval for ll- command activity:
+- **Auditability**: Currently no way to extract filtered ll- command records from Claude Code session files into a queryable format; this closes that gap for automation runs (`ll-auto`, `ll-sprint`, `ll-parallel`)
+- **Foundation for downstream tools**: Provides the data layer consumed by `ll-workflows` (pattern detection) and `ll-history` (topic-filtered analysis)
+- **Decomposed scope**: Extracted from FEAT-1272 specifically to keep the extract logic independently testable and shippable
+
 ## Implementation Steps
 
 1. **Add `extract` subcommand to `logs.py`**:
-   - Add `extract` parser to existing `add_subparsers` with `--project`, `--all`, `--cmd` flags
-   - Implement extraction logic:
-     - Reuse `get_project_folder()` from `user_messages.py:354` for single-project lookup; null-check: `if folder is None: print("Error: project not found"); return 1`
-     - For `--all`: iterate using `discover_all_projects()` helper from FEAT-1271
-     - Stream-parse JSONL directly (NOT `extract_user_messages()` — that returns `UserMessage` objects; raw dicts needed): `open(jsonl_file, encoding="utf-8")` → strip line → skip blank/JSONDecodeError → `json.loads(line)` (see `user_messages.py:437-450`); `OSError` caught at line 452
-     - Detect ll-relevance via:
-       - (a) `record.get("type") == "queue-operation" and record.get("operation") == "enqueue" and "/ll:" in record.get("content", "")`
-       - (b) `type: "user"` records matching `re.compile(r"<command-name>/ll:[^<]+</command-name>")`
-       - (c) `type: "assistant"` Bash tool-use blocks with `ll-` invocations
-     - Write filtered records to `logs/<project-slug>/<session-id>.jsonl` as `json.dumps(record) + "\n"` per line
-     - `--cmd <tool>`: additional filter for specific ll- tool name in Bash tool-use blocks
-   - Agent file exclusion: `[f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]`
+   - **Extend `_is_ll_relevant()` (`logs.py:23`) with type (c)** — add assistant Bash tool_use detection (see Codebase Research Findings below for exact code). Do this first; `discover` will also benefit.
+   - Add `extract` parser to `_build_parser()` (`logs.py:150`) with `--project`/`--all` as a required mutually-exclusive group and `--cmd` as an optional filter; also update the epilog to include extract examples.
+   - Implement `_cmd_extract()`:
+     - For `--project`: call `get_project_folder(cwd_path)` (already imported from `user_messages`); use `logger.error()` on None (see `messages.py:154-157`)
+     - For `--all`: call `discover_all_projects(logger)` (`logs.py:81`) — returns decoded absolute paths; convert each to its project folder via `get_project_folder(path)`
+     - JSONL scanning loop: mirror `_has_ll_activity()` (`logs.py:58-78`) — `glob("*.jsonl")` → skip `agent-*` → open/stream → `json.loads` → `_is_ll_relevant()` → `OSError: continue`
+     - Group records by `record.get("sessionId", "")` using `buckets.setdefault(session_id, []).append(record)` (no helper; implement inline)
+     - Apply `--cmd` secondary filter if set: keep only records where the Bash tool_use input contains the cmd string
+     - Write each session bucket to `Path.cwd() / "logs" / slug / f"{session_id}.jsonl"` as `json.dumps(record) + "\n"` per line; `slug = cwd_path.resolve().name`
 
 2. **Multi-subcommand argparse pattern**: follow `scripts/little_loops/cli/history.py:35-281` — `add_subparsers(dest="command")`, root-level `add_config_arg(parser)`, `if not args.command: parser.print_help(); return 1`, dispatch chain returns `0`/`1`
 
@@ -75,10 +89,10 @@ logs/
 4. Confirm `scripts/little_loops/cli/__init__.py` has `main_logs` import and `__all__` entry (FEAT-1271)
 5. Confirm `scripts/pyproject.toml` has `ll-logs` entry point registered (FEAT-1271)
 6. Add `TestExtract` to `scripts/tests/test_ll_logs.py`:
-   - `patch("little_loops.cli.logs.get_project_folder", return_value=tmp_path)` for single-project
-   - `patch("pathlib.Path.home", return_value=tmp_path)` for multi-project
-   - Use `_write_jsonl(path, records)` helper pattern from `test_user_messages.py:109` (instance method on `TestExtractUserMessages`)
-   - Verify `logs/<slug>/<session>.jsonl` written correctly
+   - Define `_make_project_dir(self, claude_projects, home, subpath, records)` following `TestDiscover._make_project_dir()` (`test_ll_logs.py:33-64`) — same signature and structure
+   - Patch `Path.cwd()` to a tmpdir so `Path.cwd() / "logs" / slug / session.jsonl` is resolvable
+   - `patch("pathlib.Path.home", return_value=home)` for multi-project (`--all`)
+   - Verify `(tmpdir / "logs" / slug / f"{session_id}.jsonl")` exists with correct JSONL lines after `main_logs()` returns 0
 
 _Wiring pass added by `/ll:wire-issue`:_
 
@@ -122,7 +136,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/user_messages.py:436-454` — JSONL stream-parsing spans lines 436-454; the `except OSError: continue` wrapping the entire per-file block is at lines 452-454 — must be included, not just the inner JSON loop
 - `scripts/little_loops/cli/messages.py:154-157` — "project not found" error uses `logger.error()` not `print()`: `logger.error(f"No Claude project folder found for: {cwd}")` + `logger.error(f"Expected: ~/.claude/projects/{str(cwd).replace('/', '-')}")` → return 1
 - `scripts/little_loops/session_log.py:78` — agent-file exclusion filter (`[f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]`) confirmed in production use here; line 62 is the enclosing function definition start (`get_current_session_jsonl`)
-- `discover_all_projects()` fallback: if FEAT-1271 does not expose this helper, use `(Path.home() / ".claude" / "projects").iterdir()` directly (pattern from FEAT-1272:60)
+- `discover_all_projects()` — **now exists at `logs.py:81`** (FEAT-1271 shipped); call directly, no fallback needed. Signature: `discover_all_projects(logger: Logger) -> list[Path]` (returns decoded absolute paths, not claude project dirs).
 - `scripts/tests/test_user_messages.py:109-113` — `_write_jsonl` is an instance method on `TestExtractUserMessages` (starts at 109, not 103); `TestExtract` must define its own equivalent
 - `scripts/tests/test_issue_history_cli.py:71-137` — pattern for `TestMainLogsIntegration` in `scripts/tests/test_cli.py` (FEAT-1272 wiring phase item 6 — add after `TestExtract` passes)
 - `scripts/little_loops/doc_counts.py:258-261` — `setdefault` grouping idiom to use when bucketing raw records by `sessionId`: `buckets.setdefault(session_id, []).append(record)` — no equivalent helper exists; implement inline
@@ -138,6 +152,48 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Command: `ll-logs extract --project /Users/brennon/AIProjects/brenentech/little-loops`
 
 This mirrors the `--cwd` pattern in `scripts/little_loops/cli/messages.py:75-157`.
+
+#### Post-FEAT-1271 state: what `logs.py` already provides
+
+_Added by `/ll:refine-issue` (second pass) — reflects current `logs.py` state:_
+
+- **`_is_ll_relevant(record)` at `logs.py:23`** — already implements types (a) and (b). For type (c) (assistant Bash tool-use with ll- commands), **extend this function** rather than re-implementing detection inline. Type (c) structure from `user_messages.py:573-594`:
+  ```python
+  if record_type == "assistant":
+      message = record.get("message", {})
+      content = message.get("content", [])
+      if isinstance(content, list):
+          for block in content:
+              if (isinstance(block, dict)
+                      and block.get("type") == "tool_use"
+                      and block.get("name") == "Bash"):
+                  cmd = block.get("input", {}).get("command", "")
+                  if re.search(r'\bll-\w+', cmd):
+                      return True
+  ```
+  Adding type (c) to `_is_ll_relevant()` also improves `discover` (projects where the assistant ran ll- tools will now be surfaced).
+
+- **`_has_ll_activity()` at `logs.py:58-78`** — demonstrates the exact per-project JSONL scanning pattern extract needs. Extract's inner loop should mirror this: `glob("*.jsonl")` → skip `agent-*` → open/stream → strip/skip-blank → `json.loads` → catch `json.JSONDecodeError` → call `_is_ll_relevant()` → catch `OSError: continue` at file level.
+
+- **`--cmd` filter helper**: After collecting ll-relevant records, apply a secondary filter. Implement inline or as `_cmd_matches(record: dict, cmd: str) -> bool` — check Bash tool_use blocks: `block["input"]["command"]` contains the tool name (e.g. `"ll-history"` in `"ll-history --project ..."`). Use `cmd in block.get("input", {}).get("command", "")`.
+
+- **`--project` / `--all` mutual exclusion**: Use `argparse.add_mutually_exclusive_group(required=True)` on the extract subparser so exactly one of `--project` or `--all` is required:
+  ```python
+  group = extract_parser.add_mutually_exclusive_group(required=True)
+  group.add_argument("--project", type=Path, ...)
+  group.add_argument("--all", action="store_true", ...)
+  ```
+
+- **Output directory anchoring**: No `logs_dir` config key exists in `BRConfig`. Output `logs/<slug>/<session-id>.jsonl` is relative to `Path.cwd()` at call time. Use `out_dir = Path.cwd() / "logs" / slug` for both `--project` and each project in `--all`.
+
+- **`_build_parser()` epilog** (`logs.py:155-161`) — currently only shows `discover` and `tail` examples. Add:
+  ```
+  %(prog)s extract --all             # Extract all projects to logs/
+  %(prog)s extract --project /path  # Extract one project to logs/<slug>/
+  %(prog)s extract --all --cmd ll-history  # Filter to ll-history invocations
+  ```
+
+- **TestExtract setup**: `TestDiscover._make_project_dir()` (`test_ll_logs.py:33-64`) is the closest helper pattern. `TestExtract` should define its own `_make_project_dir()` (same signature) and additionally patch `Path.cwd()` to a tmpdir so output files go to `<tmpdir>/logs/<slug>/`. Verify `(tmpdir / "logs" / slug / session_id).with_suffix(".jsonl")` exists with correct JSONL content.
 
 ## Acceptance Criteria
 
@@ -169,9 +225,16 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 ### Outcome Risk Factors
 - **Test coverage gap**: No pre-existing coverage for `logs.py`; failures in edge cases won't surface until `TestExtract` is written. Issue specifies test patterns well — risk is execution discipline, not design.
 
+## Labels
+
+`cli`, `feature`, `backlog`
+
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2ac7f45-a691-4f7e-820a-9a5dce6ec5b2.jsonl`
+- `/ll:refine-issue` - 2026-04-23T21:12:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3202701a-3983-4304-a685-f583cfb8bd22.jsonl`
+- `/ll:format-issue` - 2026-04-23T21:03:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e421608d-71ec-42e1-8580-6044c8db9f3a.jsonl`
 - `/ll:refine-issue` - 2026-04-23T16:18:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07a47fb6-8632-4877-9913-24ec54282745.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b076981b-7d7b-4b64-a1a3-5ed38628c25c.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7c42afa-de19-4417-8d4e-005c53340f64.jsonl`
