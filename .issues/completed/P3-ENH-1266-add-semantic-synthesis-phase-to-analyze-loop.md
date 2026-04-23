@@ -8,6 +8,7 @@ score_complexity: 18
 score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 25
+size: Very Large
 ---
 
 # ENH-1266: Add Semantic Synthesis Phase to analyze-loop
@@ -174,3 +175,16 @@ _Added by `/ll:confidence-check` on 2026-04-22_
 - `/ll:wire-issue` - 2026-04-23T02:55:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34b2a3db-64aa-4f52-bbd4-f3e57c5951b3.jsonl`
 - `/ll:refine-issue` - 2026-04-23T02:50:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01fb4149-472d-477c-8d93-22e5e1d76b00.jsonl`
 - `/ll:capture-issue` - 2026-04-23T01:19:11Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac265e54-5386-49fe-bf5b-6e6f9305772d.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-22
+- **Reason**: Issue too large for single session (score: 11/11); core SKILL.md implementation already shipped
+
+### Decomposed Into
+- ENH-1267: Test Coverage for analyze-loop Step 3b Semantic Synthesis
+- ENH-1268: Docs and Real-Run Validation for analyze-loop Semantic Synthesis

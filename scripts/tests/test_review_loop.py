@@ -809,7 +809,10 @@ class TestReviewLoopSemanticChecks:
         spec = {
             "name": "no-desc",
             "initial": "start",
-            "states": {"start": {"action": "do something", "next": "done"}, "done": {"terminal": True}},
+            "states": {
+                "start": {"action": "do something", "next": "done"},
+                "done": {"terminal": True},
+            },
         }
         has_description = "description" in spec
         assert not has_description  # → skill should skip SR-1
@@ -832,7 +835,9 @@ class TestReviewLoopSemanticChecks:
         """SR-2: the gate-named state has a broad action (>15 words) — mismatch with name."""
         spec = self._load_fixture("semantic-incoherent-state.yaml")
         states = spec.get("states", {})
-        gate_name = next(n for n in states if any(n.startswith(p) for p in self.GATE_STATE_PREFIXES))
+        gate_name = next(
+            n for n in states if any(n.startswith(p) for p in self.GATE_STATE_PREFIXES)
+        )
         action = states[gate_name].get("action", "")
         assert len(action.split()) > 15  # → skill should flag SR-2
 
@@ -879,8 +884,7 @@ class TestReviewLoopSemanticChecks:
         path = self._happy_path(spec)
         states = spec.get("states", {})
         backward_found = any(
-            states.get(name, {}).get("on_yes") in path[:i]
-            for i, name in enumerate(path)
+            states.get(name, {}).get("on_yes") in path[:i] for i, name in enumerate(path)
         )
         assert backward_found  # → skill should flag SR-3
 
@@ -959,7 +963,12 @@ class TestReviewLoopSemanticChecks:
             ("SR-3", "Warning", "states.verify"),
             ("SR-4", "Warning", "(loop)"),
         ]:
-            finding = {"check_id": check_id, "severity": severity, "location": location, "message": "x"}
+            finding = {
+                "check_id": check_id,
+                "severity": severity,
+                "location": location,
+                "message": "x",
+            }
             assert finding["severity"] in ("Error", "Warning", "Suggestion")
             assert "check_id" in finding and "location" in finding and "message" in finding
 
