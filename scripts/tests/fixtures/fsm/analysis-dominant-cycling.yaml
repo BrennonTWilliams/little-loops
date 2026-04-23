@@ -1,0 +1,14 @@
+name: analysis-dominant-cycling
+description: "Check build status until the build passes"
+initial: check_build
+states:
+  check_build:
+    action: "ci_status.sh"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: check_build
+    on_error: check_build
+  done:
+    terminal: true

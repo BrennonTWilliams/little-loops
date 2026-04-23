@@ -112,7 +112,7 @@ pytest scripts/tests/test_issue_parser_properties.py -v
 scripts/tests/
 ├── conftest.py                 # Shared pytest fixtures
 ├── fixtures/                   # Test fixture data
-│   ├── fsm/                   # FSM YAML fixtures (8 files)
+│   ├── fsm/                   # FSM YAML fixtures (17 files)
 │   └── issues/                # Issue markdown fixtures (18 files)
 ├── test_*.py                   # Unit tests (50+ modules)
 ├── test_*_integration.py       # Integration tests

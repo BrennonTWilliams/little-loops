@@ -1,0 +1,16 @@
+name: analysis-completed-misaligned
+description: "Deploy the application to the production cluster"
+initial: check_lint
+states:
+  check_lint:
+    action: "Run linting checks on all modified source files"
+    action_type: prompt
+    on_yes: finalize
+    on_no: check_lint
+    on_error: check_lint
+  finalize:
+    action: "Record completion and update the deployment log"
+    action_type: prompt
+    next: done
+  done:
+    terminal: true

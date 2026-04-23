@@ -1,0 +1,20 @@
+name: analysis-multi-signal
+description: "Process data items until all are validated and stored"
+initial: process_item
+states:
+  process_item:
+    action: "Read the next item from the queue and prepare it for validation"
+    action_type: prompt
+    on_yes: validate_output
+    on_no: process_item
+    on_error: process_item
+  validate_output:
+    action: "validate_output.sh"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: process_item
+    on_error: process_item
+  done:
+    terminal: true

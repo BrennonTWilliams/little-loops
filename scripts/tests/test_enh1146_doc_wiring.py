@@ -41,6 +41,11 @@ class TestAnalyzeLoopSkillWiring:
             "skills/analyze-loop/SKILL.md event payload table must include rate_limit_waiting row"
         )
 
+    def test_semantic_synthesis_heading_present(self) -> None:
+        assert "Step 3b" in ANALYZE_LOOP.read_text(), (
+            "skills/analyze-loop/SKILL.md must contain the 'Step 3b' semantic synthesis heading"
+        )
+
 
 class TestApiReferenceWiring:
     def test_rate_limit_max_wait_seconds_present(self) -> None:
