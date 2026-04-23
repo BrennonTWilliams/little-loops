@@ -128,6 +128,10 @@ Test pattern guidance:
 - `test_ll_logs.py` should model `scripts/tests/test_cli_sync.py` — top-level import from sub-module (`from little_loops.cli.logs import main_logs`), `patch("sys.argv", [...])` context manager, `result == 0` / `result == 1` assertions
 - `TestMainLogsIntegration` in `test_cli.py` should be added after `TestMainHistoryCoverage` (line ~2590); use deferred `from little_loops.cli import main_logs` inside test body with `patch.object(sys, "argv", [...])` pattern (matches `TestMainHistoryCoverage` style at line 2683+)
 
+## Use Case
+
+A developer wants to know which Claude projects have ll activity. They run `ll-logs discover` and get a sorted list of absolute project paths printed to stdout — one per line — so they can pipe the output to other tools or scripts. Projects without ll activity are silently omitted; non-existent decoded paths emit a warning and are skipped.
+
 ## Acceptance Criteria
 
 - [ ] `ll-logs discover` prints one decoded absolute path per line (sorted) for each Claude project with ll activity; exits 0 even if no projects found; emits `logger.warning()` for any decoded path that does not exist on disk (hyphen-collision edge case)
@@ -141,6 +145,10 @@ Test pattern guidance:
 - **Effort**: Small-Medium — new CLI module, ~80-120 LOC + tests
 - **Risk**: Low — new file; entry-point registration is 3 lines with sequencing guard
 - **Breaking Change**: No
+
+## Labels
+
+`cli`, `tooling`, `feature`, `ll-logs`
 
 ## Blocks
 
@@ -198,6 +206,7 @@ Only `enqueue` records with `content` starting with `/ll:` indicate ll activity.
 **Key finding**: `queue-operation` records appear only in JSONL files under worktree/worker project folders (e.g. `-Users-…-worktrees-worker-*`), not in the main project folder. The `discover` subcommand must iterate across *all* project folders (not just the current one) to catch these.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-23T20:39:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e6fcf12-648c-435c-aad9-6d0077b45ffe.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42248e1e-57b2-46b9-b309-6400d9dce735.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/633190e4-6411-4813-8acd-58cafc8b3394.jsonl`
 - `/ll:refine-issue` - 2026-04-23T20:27:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c12e9ac9-558a-4d95-b9cb-bbcf05d2e8f8.jsonl`
