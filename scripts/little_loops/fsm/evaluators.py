@@ -556,7 +556,10 @@ def evaluate_harbor_scorer(output: str, exit_code: int) -> EvaluationResult:
     except (ValueError, AttributeError):
         return EvaluationResult(
             verdict="error",
-            details={"exit_code": exit_code, "error": f"Scorer stdout is not a float: {output[:200]}"},
+            details={
+                "exit_code": exit_code,
+                "error": f"Scorer stdout is not a float: {output[:200]}",
+            },
         )
 
     return EvaluationResult(

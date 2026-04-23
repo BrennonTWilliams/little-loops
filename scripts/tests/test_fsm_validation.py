@@ -265,6 +265,7 @@ class TestRateLimitFieldValidation:
         rate_errors = [e for e in errors if "rate_limit" in e.message.lower()]
         assert rate_errors == []
 
+
 class TestHarborScorerEvaluatorValidation:
     """Validate that harbor_scorer is accepted by _validate_evaluator."""
 

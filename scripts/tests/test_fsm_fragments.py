@@ -1035,13 +1035,17 @@ class TestBenchmarkYamlFragments:
     def _load_benchmark_yaml() -> dict:
         import yaml
 
-        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "benchmark.yaml"
+        lib_path = (
+            Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "benchmark.yaml"
+        )
         with open(lib_path) as f:
             return yaml.safe_load(f)
 
     def test_run_benchmark_defined(self) -> None:
         data = self._load_benchmark_yaml()
-        assert "run_benchmark" in data["fragments"], "run_benchmark fragment missing from lib/benchmark.yaml"
+        assert "run_benchmark" in data["fragments"], (
+            "run_benchmark fragment missing from lib/benchmark.yaml"
+        )
 
     def test_run_benchmark_has_shell_action_type(self) -> None:
         data = self._load_benchmark_yaml()

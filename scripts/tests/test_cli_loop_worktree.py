@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -14,8 +15,6 @@ from little_loops.parallel.git_lock import GitLock
 from little_loops.worktree_utils import cleanup_worktree, setup_worktree
 
 if TYPE_CHECKING:
-    import argparse
-
     from little_loops.parallel.worker_pool import WorkerPool
 
 # ---------------------------------------------------------------------------

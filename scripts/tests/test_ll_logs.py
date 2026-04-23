@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from little_loops.cli.logs import _cmd_tail, _is_ll_relevant, _parse_args, generate_index, main_logs
+from little_loops.cli.logs import _cmd_tail, _is_ll_relevant, _parse_args, main_logs
 
 
 class TestArgumentParsing:
@@ -197,9 +197,7 @@ class TestDiscover:
                         "type": "user",
                         "message": {
                             "role": "user",
-                            "content": (
-                                "<command-name>/ll:manage-issue</command-name>\nbug fix"
-                            ),
+                            "content": ("<command-name>/ll:manage-issue</command-name>\nbug fix"),
                         },
                         "timestamp": "2026-01-01T00:00:00Z",
                         "sessionId": "abc123",
@@ -684,9 +682,7 @@ class TestExtract:
                 {**self._ll_queue_record(session_a), "timestamp": "2026-01-01T10:00:00Z"},
                 {**self._ll_queue_record(session_b), "timestamp": "2026-04-23T12:00:00Z"},
             ]
-            project_path = self._make_project_dir(
-                claude_projects, home, "myproject", records
-            )
+            project_path = self._make_project_dir(claude_projects, home, "myproject", records)
             slug = project_path.name
 
             with (
