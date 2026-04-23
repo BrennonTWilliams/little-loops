@@ -2,7 +2,7 @@
 id: FEAT-1159
 type: FEAT
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-04-18
 discovered_by: capture-issue
 blocked_by: [FEAT-1112, FEAT-1116, FEAT-1156, FEAT-1157, FEAT-1158]
@@ -165,4 +165,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-04-18 | Priority: P3
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-22
+- **Reason**: Issue too large; three components decomposed into focused child issues
+
+### Decomposed Into
+
+- FEAT-1262: Session Event Capture Hook (`session-capture.sh`) — Component 1 (PostToolUse event log)
+- FEAT-1263: SessionStart Context Injector (`session-start-inject.sh`) — Component 3 (authoritative injection)
+- FEAT-1264: PreCompact Handoff — Event Log Integration — Component 2 wiring (enhances FEAT-1156 to read from FEAT-1262's event log)
+
+FEAT-1156/1157/1158 (children of FEAT-1113) remain the active delivery for the basic precompact snapshot. FEAT-1262/1263/1264 extend that foundation with continuous capture and authoritative injection.
+
+**Deferred** | Created: 2026-04-18 | Priority: P3
