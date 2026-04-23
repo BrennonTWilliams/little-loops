@@ -527,6 +527,22 @@ Analyze loop execution history to synthesize actionable issues from failure patt
 - Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
 - `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
 
+**Output format:** Each run begins with an Execution Summary preamble before the numbered signal list:
+
+```
+### Execution Summary
+
+**Loop goal**: "<loop description or (no description provided)>"
+**Observed path**: <state_1> (×N₁) → <state_2> (×N₂) → ... [terminal | in-progress]
+**Goal alignment**: <one-sentence assessment, or "Insufficient description to assess alignment.">
+
+**Cross-signal note**: <adjacent states, signal types, and shared root-cause candidate>
+(omitted when no co-occurring adjacent signals are found)
+
+**Pattern note**: <sub-threshold behavioral observation>
+(omitted when no sub-threshold patterns are detected)
+```
+
 **Usage:**
 ```bash
 # Auto-select most recent interrupted loop
@@ -661,7 +677,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `create-eval-from-issues`^ | Generate eval harness YAML from issue IDs |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
-| `analyze-loop`^ | Analyze loop execution history and synthesize issues from failure patterns |
+| `analyze-loop`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from failure signals |
 | `cleanup-loops`^ | Find and clean stuck or stale loop processes |
 | `rename-loop`^ | Rename a loop and update all references |
 | `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |
