@@ -32,6 +32,23 @@ ll-logs tail --loop <name>   # Live tail active loop sessions matching <name>
 
 Streams new JSONL lines as they are written to the active session file, similar to `tail -f`.
 
+## Motivation
+
+Adding `tail` to `ll-logs` enables real-time loop observability:
+- **Developer visibility**: See what a running loop is doing without waiting for completion or manually polling the JSONL file.
+- **Debugging aid**: Live output makes it easy to catch early failures or unexpected behavior in long-running loops.
+- **Completes the `ll-logs` toolset**: Pairs `discover`/`extract` (historical queries) with live tailing for a complete log interaction model.
+
+## Use Case
+
+**Who**: Developer running active ll-loop sessions who wants to monitor progress in real time.
+
+**Context**: `ll-loop run <name>` is executing a long-running automation. The developer wants to see what the loop is doing — without waiting for it to finish or manually opening the JSONL file.
+
+**Goal**: Tail the active loop's session JSONL file live, seeing new records as they are written.
+
+**Outcome**: `ll-logs tail --loop <name>` streams formatted output as the loop runs and exits cleanly on Ctrl-C.
+
 ## API/Interface
 
 ```bash
@@ -71,6 +88,18 @@ The subcommand:
 - **Agent subdir structure**: Some projects have UUID subdirs under `~/.claude/projects/<encoded>/` with `subagents/agent-*.jsonl`. Top-level `glob("*.jsonl")` covers non-agent files only.
 - **Loop session detection**: `queue-operation` records containing `ll-loop run <name>` identify the loop's session
 
+### Dependent Files (Callers/Importers)
+- N/A — `logs.py` is a CLI entry point, not imported by other modules
+
+### Tests
+- `scripts/tests/test_ll_logs.py` — add `TestTail` class (see Files to Modify)
+
+### Documentation
+- N/A — no user-facing docs reference `ll-logs tail`
+
+### Configuration
+- N/A
+
 ## Acceptance Criteria
 
 - [ ] `ll-logs tail --loop <name>` streams live JSONL entries from an active loop session
@@ -92,6 +121,7 @@ The subcommand:
 ---
 
 ## Session Log
+- `/ll:format-issue` - 2026-04-23T20:02:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c47a923b-b9ae-4547-9ded-e6860b7798af.jsonl`
 - `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36817284-b23d-4550-8ba1-417e527e53d0.jsonl`
 
 ---
