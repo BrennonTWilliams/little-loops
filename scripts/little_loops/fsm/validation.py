@@ -68,6 +68,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "diff_stall": [],
     "llm_structured": [],
     "mcp_result": [],
+    "harbor_scorer": [],
 }
 
 # Valid comparison operators

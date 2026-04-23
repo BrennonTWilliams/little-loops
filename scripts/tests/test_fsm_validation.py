@@ -6,8 +6,8 @@ support for custom on_<verdict> routing via extra_routes.
 
 from __future__ import annotations
 
-from little_loops.fsm.schema import FSMLoop, StateConfig
-from little_loops.fsm.validation import ValidationSeverity, validate_fsm
+from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
+from little_loops.fsm.validation import ValidationSeverity, _validate_evaluator, validate_fsm
 
 
 def make_state(**kwargs) -> StateConfig:
@@ -264,3 +264,19 @@ class TestRateLimitFieldValidation:
         errors = validate_fsm(fsm)
         rate_errors = [e for e in errors if "rate_limit" in e.message.lower()]
         assert rate_errors == []
+
+class TestHarborScorerEvaluatorValidation:
+    """Validate that harbor_scorer is accepted by _validate_evaluator."""
+
+    def test_harbor_scorer_valid_config_passes(self) -> None:
+        """_validate_evaluator accepts harbor_scorer with no required fields."""
+        config = EvaluateConfig(type="harbor_scorer")
+        errors = _validate_evaluator("score", config)
+        assert errors == []
+
+    def test_harbor_scorer_unknown_type_rejected(self) -> None:
+        """_validate_evaluator rejects an unrecognized evaluator type."""
+        config = EvaluateConfig(type="harbor_scorer")
+        config.type = "unknown_type_xyz"  # type: ignore[assignment]
+        errors = _validate_evaluator("score", config)
+        assert any("Unknown evaluator type" in e.message for e in errors)

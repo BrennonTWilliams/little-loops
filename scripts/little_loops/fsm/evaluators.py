@@ -12,9 +12,13 @@ Tier 1 (Deterministic - no API calls):
     output_contains: Pattern matching on stdout
     convergence: Track progress toward a target value
     diff_stall: Detect stalled iterations via git diff comparison
+    harbor_scorer: Interpret Harbor-format benchmark scorer exit code and float stdout
 
 Tier 2 (LLM-based):
     llm_structured: Use LLM with structured output for natural language evaluation
+
+Tier 3 (External process):
+    mcp_result: Parse MCP tool call response envelope
 """
 
 from __future__ import annotations
@@ -525,6 +529,42 @@ def evaluate_mcp_result(output: str, exit_code: int) -> EvaluationResult:
     )
 
 
+def evaluate_harbor_scorer(output: str, exit_code: int) -> EvaluationResult:
+    """Evaluate a Harbor-format benchmark scorer result.
+
+    The scorer is a shell command that prints a float score (0.0–1.0) to stdout
+    and exits 0 on success or non-zero on failure.
+
+    Args:
+        output: stdout from the scorer subprocess (expected: a bare float)
+        exit_code: Exit code from the scorer subprocess
+
+    Returns:
+        EvaluationResult with verdict:
+            - yes   → exit 0 and stdout parses as a float
+            - no    → exit non-zero (scorer determined failure)
+            - error → exit 0 but stdout is not parseable as a float
+    """
+    if exit_code != 0:
+        return EvaluationResult(
+            verdict="no",
+            details={"exit_code": exit_code},
+        )
+
+    try:
+        score = float(output.strip())
+    except (ValueError, AttributeError):
+        return EvaluationResult(
+            verdict="error",
+            details={"exit_code": exit_code, "error": f"Scorer stdout is not a float: {output[:200]}"},
+        )
+
+    return EvaluationResult(
+        verdict="yes",
+        details={"score": score, "exit_code": 0},
+    )
+
+
 def evaluate_llm_structured(
     output: str,
     prompt: str | None = None,
@@ -831,6 +871,9 @@ def evaluate(
 
     elif eval_type == "mcp_result":
         return evaluate_mcp_result(output=output, exit_code=exit_code)
+
+    elif eval_type == "harbor_scorer":
+        return evaluate_harbor_scorer(output=output, exit_code=exit_code)
 
     else:
         raise ValueError(f"Unknown evaluator type: {eval_type}")

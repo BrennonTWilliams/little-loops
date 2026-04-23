@@ -118,6 +118,7 @@ Built-in fragment libraries are in `lib/`:
 |---------|---------|
 | `lib/common.yaml` | Generic type-pattern fragments (`shell_exit`, `llm_gate`, `retry_counter`, `numeric_gate`) |
 | `lib/cli.yaml` | Pre-filled ll- CLI tool fragments (`ll_auto`, `ll_check_links`, `ll_issues_list`, `ll_loop_run`, etc.) |
+| `lib/benchmark.yaml` | Harbor-format benchmark runner fragment (`run_benchmark`) with `harbor_scorer` evaluator |
 
 Import a library in any loop:
 

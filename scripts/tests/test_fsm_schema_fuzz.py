@@ -48,6 +48,7 @@ def malformed_evaluate_config(draw: st.DrawFn) -> dict:
         "output_contains",
         "convergence",
         "llm_structured",
+        "harbor_scorer",
     ]
     eval_type = draw(
         st.one_of(

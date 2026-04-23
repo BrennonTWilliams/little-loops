@@ -1212,3 +1212,25 @@ class TestMcpResultEvaluator:
         ctx = InterpolationContext()
         result = evaluate(config, "", 127, ctx)
         assert result.verdict == "not_found"
+
+    def test_dispatch_harbor_scorer_yes(self) -> None:
+        """evaluate() dispatcher routes harbor_scorer type: exit 0 + float → yes."""
+        config = EvaluateConfig(type="harbor_scorer")
+        ctx = InterpolationContext()
+        result = evaluate(config, "0.85", 0, ctx)
+        assert result.verdict == "yes"
+        assert result.details["score"] == 0.85
+
+    def test_dispatch_harbor_scorer_no(self) -> None:
+        """evaluate() dispatcher routes harbor_scorer type: non-zero exit → no."""
+        config = EvaluateConfig(type="harbor_scorer")
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 1, ctx)
+        assert result.verdict == "no"
+
+    def test_dispatch_harbor_scorer_error(self) -> None:
+        """evaluate() dispatcher routes harbor_scorer type: exit 0 + non-float → error."""
+        config = EvaluateConfig(type="harbor_scorer")
+        ctx = InterpolationContext()
+        result = evaluate(config, "not-a-float", 0, ctx)
+        assert result.verdict == "error"

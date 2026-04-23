@@ -245,7 +245,7 @@ states:                         # State definitions
     evaluate:                   # How to evaluate the action result
       type: string              # exit_code, output_numeric, output_json,
                                 # output_contains, llm_structured, convergence,
-                                # diff_stall, mcp_result
+                                # diff_stall, mcp_result, harbor_scorer
       # ... type-specific fields (see Evaluator Types)
     
     # --- Routing Layer ---
@@ -792,6 +792,43 @@ states:
       tool_error: "handle_error"
       not_found: "abort"
       timeout: "retry"
+```
+
+---
+
+### Tier 4: Benchmark Evaluator
+
+Evaluates results from Harbor-format benchmark scorer subprocesses.
+
+#### `harbor_scorer`
+
+Evaluate a Harbor-format benchmark scorer result. The scorer is a shell command that prints a bare float (0.0–1.0) to stdout and exits 0 on success. No user-configurable fields — `type: harbor_scorer` is the entire YAML config.
+
+```yaml
+evaluate:
+  type: harbor_scorer
+```
+
+| Scenario | Verdict |
+|----------|---------|
+| Exit 0 and stdout parses as float | `yes` |
+| Exit non-zero | `no` |
+| Exit 0 and stdout is not a valid float | `error` |
+
+Result details: `{ score: <float>, exit_code: 0 }` (on `yes`); `{ exit_code: <int> }` (on `no`).
+
+The `harbor_scorer` evaluator is used with the `run_benchmark` fragment from `lib/benchmark.yaml`:
+
+```yaml
+import:
+  - lib/benchmark.yaml
+
+states:
+  score:
+    fragment: run_benchmark
+    action: "my-scorer ${context.tasks_dir}"
+    on_yes: pass
+    on_no: fail
 ```
 
 ---

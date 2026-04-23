@@ -1021,3 +1021,96 @@ class TestFragmentDescriptionStripping:
             assert isinstance(frag, dict), f"Fragment '{name}' should be a dict"
             assert "description" in frag, f"Fragment '{name}' is missing a description field"
             assert frag["description"].strip(), f"Fragment '{name}' has an empty description"
+
+
+# ---------------------------------------------------------------------------
+# lib/benchmark.yaml: verify harbor_scorer fragment is present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestBenchmarkYamlFragments:
+    """Tests that run_benchmark fragment exists in the real lib/benchmark.yaml."""
+
+    @staticmethod
+    def _load_benchmark_yaml() -> dict:
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "benchmark.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_run_benchmark_defined(self) -> None:
+        data = self._load_benchmark_yaml()
+        assert "run_benchmark" in data["fragments"], "run_benchmark fragment missing from lib/benchmark.yaml"
+
+    def test_run_benchmark_has_shell_action_type(self) -> None:
+        data = self._load_benchmark_yaml()
+        assert data["fragments"]["run_benchmark"]["action_type"] == "shell"
+
+    def test_run_benchmark_has_harbor_scorer_evaluate_type(self) -> None:
+        data = self._load_benchmark_yaml()
+        assert data["fragments"]["run_benchmark"]["evaluate"]["type"] == "harbor_scorer"
+
+    def test_run_benchmark_has_description(self) -> None:
+        data = self._load_benchmark_yaml()
+        frag = data["fragments"]["run_benchmark"]
+        assert "description" in frag, "run_benchmark fragment is missing a description field"
+        assert frag["description"].strip(), "run_benchmark fragment has an empty description"
+
+    def test_run_benchmark_resolves_from_real_benchmark_yaml(self, tmp_path: Path) -> None:
+        """Full resolve_fragments integration against the real lib/benchmark.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "score",
+            "import": ["lib/benchmark.yaml"],
+            "states": {
+                "score": {
+                    "fragment": "run_benchmark",
+                    "action": "echo 0.95",
+                    "on_yes": "done",
+                    "on_no": "fail",
+                },
+                "done": {"terminal": True},
+                "fail": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["score"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "harbor_scorer"
+        assert state["action"] == "echo 0.95"
+        assert "fragment" not in state
+
+    def test_run_benchmark_load_and_validate(self, tmp_path: Path) -> None:
+        """Full load_and_validate integration: fragment resolves + harbor_scorer passes validation."""
+        import textwrap
+
+        from little_loops.fsm.validation import load_and_validate
+
+        loop_yaml = tmp_path / "benchmark-test.yaml"
+        loop_yaml.write_text(
+            textwrap.dedent(
+                """\
+                name: benchmark-test
+                initial: score
+                import:
+                  - lib/benchmark.yaml
+                states:
+                  score:
+                    fragment: run_benchmark
+                    action: "echo 0.95"
+                    on_yes: done
+                    on_no: fail
+                  done:
+                    terminal: true
+                  fail:
+                    terminal: true
+                """
+            )
+        )
+        fsm, warnings = load_and_validate(loop_yaml)
+        assert fsm is not None
+        assert fsm.states["score"].action_type == "shell"
+        assert fsm.states["score"].evaluate is not None
+        assert fsm.states["score"].evaluate.type == "harbor_scorer"

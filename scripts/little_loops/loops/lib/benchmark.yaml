@@ -1,0 +1,24 @@
+# Benchmark fragment library for little-loops.
+#
+# Import in any loop with:
+#   import:
+#     - lib/benchmark.yaml
+#
+# Then reference a fragment in a state:
+#   score:
+#     fragment: run_benchmark
+#     action: "my-scorer ${context.tasks_dir}"
+#     on_yes: pass
+#     on_no: fail
+
+fragments:
+  run_benchmark:
+    description: |
+      Run a Harbor-format benchmark task directory and evaluate by scorer exit code.
+      Caller must supply: action (scorer command that prints a float to stdout), on_yes, on_no.
+      Caller may supply: capture (to store benchmark_score), timeout, on_error.
+      Scorer contract: exit 0 + float stdout → yes; exit 0 + non-float stdout → error; exit non-zero → no.
+      Multi-field access: use capture: benchmark_score; scorer stdout must be a bare float (e.g. "0.85").
+    action_type: shell
+    evaluate:
+      type: harbor_scorer

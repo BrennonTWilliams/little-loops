@@ -10,6 +10,7 @@ score_complexity: 0
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+completed_at: 2026-04-23T16:12:30Z
 ---
 
 # FEAT-1244: Benchmark Fragment — Core FSM Fragment & Scorer Registration
@@ -34,6 +35,10 @@ No loop-level benchmark adapter exists. Each eval loop reinvents scoring via cus
 - `scorer: harbor_default` resolves to a first-party Harbor-format scorer (Option A or B)
 - Unit + integration tests in `scripts/tests/test_benchmark_fragment.py` cover: task enumeration, scorer dispatch, aggregation reducers, missing-tasks-dir error
 - All existing tests pass (no regressions)
+
+## Use Case
+
+An eval loop author wants to benchmark a set of Harbor-format task directories and route on the result (pass/fail). They import `lib/benchmark.yaml`, add a `run_benchmark` state that supplies their scorer command, and receive a `benchmark_score` in `captured` — no custom evaluator or shell scaffolding required. The same fragment can be reused across multiple eval loops (FEAT-1245, FEAT-1120) without duplicating scoring logic.
 
 ## Design Decision Required
 
@@ -213,6 +218,13 @@ _Added by `/ll:refine-issue` — clarifications from codebase analysis:_
 - **Step 5 (clarification)**: `_EVALUATE_TYPE_DISPLAY` update in `info.py` is optional — `mcp_result` and `diff_stall` are both absent from the dict and render via fallback. Only add if a human-readable display name is desired.
 - **Steps 1-3 resolved (2026-04-23)**: Harbor fixture format = `task.md` + `expected.json` per task dir. Fragment design = single `run_benchmark` fragment. Verdict logic = exit-code based. `capture_fields` does not exist in the codebase — use `capture: benchmark_score` with JSON-encoded scorer stdout.
 
+## Impact
+
+- **Priority**: P2 — Blocks FEAT-1245 (loop integration) and FEAT-1120 (harness-optimize loop); without this fragment both downstream issues cannot proceed
+- **Effort**: Large — New evaluator type across 3 core FSM files, new fragment YAML, Harbor fixture format definition, and tests spanning evaluator dispatch, fragment resolution, schema validation, and display
+- **Risk**: Medium — Modifies `evaluators.py`, `schema.py`, and `validation.py` (well-tested core files); new `harbor_scorer` type follows established `mcp_result` pattern exactly; risk is low per-file but surface is wide
+- **Breaking Change**: No — additive only; new evaluator type and new lib YAML; no changes to existing evaluator behavior
+
 ## Acceptance Criteria
 
 - [ ] `scripts/little_loops/loops/lib/benchmark.yaml` loads and validates under existing loop schema checks
@@ -226,7 +238,13 @@ _Added by `/ll:refine-issue` — clarifications from codebase analysis:_
 Blocks: FEAT-1245 (loop integration) — that issue wires this fragment into existing loops.
 Blocks: FEAT-1120 (harness-optimize loop) — needs this fragment as its scoring step.
 
+## Labels
+
+`feature`, `benchmark`, `fsm`, `evaluator`, `fragment`, `harbor`
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-23T16:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4ee2422-6ef4-4b8d-87df-99cb7d580718.jsonl`
+- `/ll:ready-issue` - 2026-04-23T16:03:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f53b5b9-ab9d-439a-9dc3-99baadda2091.jsonl`
 - `/ll:confidence-check` - 2026-04-23T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b35255f7-b6b6-46d3-af77-efb623ea0ed7.jsonl`
 - `/ll:refine-issue` - 2026-04-23T15:39:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2e64653-610d-4248-b1f2-429ccbd66f0c.jsonl`
 - `/ll:refine-issue` - 2026-04-23T15:21:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/469627b2-baca-42d7-992d-8bdee85ebf48.jsonl`
@@ -237,6 +255,28 @@ Blocks: FEAT-1120 (harness-optimize loop) — needs this fragment as its scoring
 
 ---
 
+## Resolution
+
+**Status**: Completed — 2026-04-23
+
+**Changes**:
+- Added `evaluate_harbor_scorer()` to `scripts/little_loops/fsm/evaluators.py` (after `evaluate_mcp_result`): verdict logic `exit_code != 0 → "no"`, stdout not parseable as float → `"error"`, exit 0 + float → `"yes"` with `details={"score": score, "exit_code": 0}`
+- Added `elif eval_type == "harbor_scorer"` dispatch branch in `evaluators.py`
+- Added `"harbor_scorer"` to `EvaluateConfig.type` Literal in `schema.py`
+- Added `"harbor_scorer": []` to `EVALUATOR_REQUIRED_FIELDS` in `validation.py`
+- Created `scripts/little_loops/loops/lib/benchmark.yaml` with `run_benchmark` fragment (single fragment following `numeric_gate` pattern)
+- Created `scripts/tests/fixtures/harbor/` with 3 task directories (`task.md` + `expected.json` each)
+- Created `scripts/tests/test_benchmark_fragment.py` covering evaluator verdicts, fragment resolution (Shape B), load-and-validate (Shape D), schema, and fixture sanity
+- Updated `test_fsm_evaluators.py`, `test_fsm_schema.py`, `test_fsm_validation.py`, `test_fsm_schema_fuzz.py`, `test_fsm_fragments.py` with harbor_scorer tests
+- Updated docs: `loops/README.md`, `LOOPS_GUIDE.md`, `AUDIT_REPORT.md`, `CLI.md`, `generalized-fsm-loop.md`, `API.md`
+
+**Acceptance Criteria**:
+- [x] `scripts/little_loops/loops/lib/benchmark.yaml` loads and validates under existing loop schema checks
+- [x] Unit tests cover task enumeration, scorer dispatch, aggregation reducers, missing-tasks-dir error
+- [x] Integration test: fragment against 3-task Harbor fixture asserts expected score
+- [x] `python -m pytest scripts/tests/` passes with no regressions (414 tests pass)
+- [x] Fragment library docs updated to list `lib/benchmark.yaml`
+
 ## Status
 
-Open
+Completed

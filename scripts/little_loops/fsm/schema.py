@@ -62,6 +62,7 @@ class EvaluateConfig:
         "diff_stall",
         "llm_structured",
         "mcp_result",
+        "harbor_scorer",
     ]
     operator: str | None = None
     target: int | float | str | None = None

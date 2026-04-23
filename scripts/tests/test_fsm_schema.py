@@ -1743,6 +1743,19 @@ class TestMcpToolSchema:
         restored = EvaluateConfig.from_dict(d)
         assert restored.type == "mcp_result"
 
+    def test_harbor_scorer_evaluator_type_is_valid(self) -> None:
+        """EvaluateConfig accepts type='harbor_scorer'."""
+        config = EvaluateConfig(type="harbor_scorer")
+        assert config.type == "harbor_scorer"
+
+    def test_harbor_scorer_round_trips_through_dict(self) -> None:
+        """harbor_scorer evaluator serializes and deserializes correctly."""
+        config = EvaluateConfig(type="harbor_scorer")
+        d = config.to_dict()
+        assert d["type"] == "harbor_scorer"
+        restored = EvaluateConfig.from_dict(d)
+        assert restored.type == "harbor_scorer"
+
     def test_mcp_tool_state_validation_passes(self) -> None:
         """An mcp_tool state passes validation."""
         fsm = FSMLoop(

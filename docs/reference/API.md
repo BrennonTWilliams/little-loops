@@ -3880,7 +3880,10 @@ class EvaluateConfig:
         "output_json",      # Extract and compare JSON path
         "output_contains",  # Pattern matching
         "convergence",      # Progress toward target
+        "diff_stall",       # Detect stalled iterations via git diff
         "llm_structured",   # LLM with structured output
+        "mcp_result",       # Parse MCP tool call response envelope
+        "harbor_scorer",    # Harbor-format benchmark scorer (exit code + float stdout)
     ]
     operator: str | None = None        # Comparison: eq, ne, lt, le, gt, ge
     target: int | float | str | None   # Target value
