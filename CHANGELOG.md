@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.87.0] - 2026-04-22
+
 ### Added
 
 - **`ll-issues clusters` Subcommand** — Visualizes issue dependency clusters as box diagrams. Supports `--include-orphans` (include isolated issues), `--min-connections N` (filter small clusters), and `--json` (machine-readable output). Useful for understanding which issues form tightly coupled implementation groups before sprint planning.
@@ -24,17 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`analyze-loop` Step 3b Semantic Synthesis** — Added semantic synthesis phase to `analyze-loop` Step 3b; documented Execution Summary output format; added synthesis test coverage. (ENH-1265, ENH-1266)
+- **`review-loop` SR-* Semantic Flow Checks** — Added SR-* (Semantic Review) check category to `review-loop` for semantic flow validation beyond structural checks.
 - **`ll-loop -q` Shorthand Reassigned to `--queue`** — The `-q` flag now maps to `--queue` (wait for conflicting scoped loops) instead of `--quiet`. Use `--quiet` explicitly to suppress progress output.
 - **`/ll:confidence-check` Two-Branch Escalation** — When readiness score stays below 70 after 2+ refinement passes, escalation now branches on `score_ambiguity`: ≤ 10 routes to `/ll:decide-issue` (competing options unresolved); > 10 routes to `/ll:issue-size-review` (issue too large). Previously always routed to size review regardless of cause. (ENH-1250)
 - **`/ll:issue-size-review` Independently-Shippable Decomposition Principle** — Phase 4 decomposition guidance now enforces splitting along capability seams, not artifact type lines. The governing test: each child must produce a meaningful PR on its own. Hard constraint added against separating tests/docs from the code they cover. (ENH-1242)
 - **Worktree Unlock Hardening** — `worktree_utils.cleanup_worktree()`, `merge_coordinator._cleanup_worktree()`, and `orchestrator._cleanup_orphaned_worktrees()` now run `git worktree unlock` before `git worktree remove --force` to prevent cleanup failures when a SIGKILL stranded a lock file. (ENH-1247, ENH-1251, ENH-1252, ENH-1253)
 - **Ghost Ref Startup Scan** — `ll-parallel` orchestrator startup scan now iterates `.git/worktrees/` and prunes ghost metadata entries whose on-disk worktree path no longer exists, preventing "already exists" failures on the next `git worktree add`. (ENH-1246)
 - **Scratch-Pad Docs and Path Updates** — Documentation and inline references updated to reflect the correct scratch-pad path (`.loops/tmp/scratch/` instead of `/tmp/ll-scratch/`); CLAUDE.md and CONFIGURATION.md updated to describe automatic enforcement via the `scratch_pad` config block. (ENH-1130)
-
-### Planned
-
-- Windows compatibility testing
-- Performance benchmarks for large repositories
 
 ## [1.86.0] - 2026-04-21
 
@@ -56,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
 - **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
 
+[1.87.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.86.0...v1.87.0
 [1.86.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.85.0...v1.86.0
 
 ## [1.85.0] - 2026-04-19
