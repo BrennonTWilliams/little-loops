@@ -509,6 +509,17 @@ Review an existing FSM loop configuration for quality, correctness, consistency,
 
 **Flags:** `--auto` (apply safe fixes automatically), `--dry-run` (report only, no changes)
 
+**Semantic flow checks (SR-*):** In addition to structural (V-*, QC-*) and flow (FA-*) checks, the skill performs four semantic checks against the declared loop goal:
+
+| Check | Severity | Description |
+|-------|----------|-------------|
+| SR-1 | Warning | Happy-path does not plausibly accomplish the declared goal (skipped if goal is absent or < 5 words) |
+| SR-2 | Suggestion | State name implies a narrow gate (`check_*`, `verify_*`) but action text is broad analysis, or vice versa |
+| SR-3 | Warning | `on_yes` routes backward to an earlier happy-path state (success routing backward is almost always a logic error) |
+| SR-4 | Warning | A key activity phrase from the declared goal has no corresponding state name or action text |
+
+SR-* findings are listed alongside FA-* findings in the Issues section of the output. The FSM Flow Review and Semantic Flow Review output blocks are always emitted, even when all finding counts are zero.
+
 **See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`
 
 ### `/ll:analyze-loop`

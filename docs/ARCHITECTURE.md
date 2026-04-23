@@ -206,14 +206,15 @@ little-loops/
         │   │   ├── show.py          # show subcommand
         │   │   ├── refine_status.py # refine-status subcommand
         │   │   └── append_log.py    # append-log subcommand
-        │   └── loop/
-        │       ├── __init__.py      # Entry point (main_loop) + argparse
-        │       ├── _helpers.py      # Shared utilities
-        │       ├── run.py           # run subcommand
-        │       ├── config_cmds.py   # compile, validate, install
-        │       ├── lifecycle.py     # status, stop, resume
-        │       ├── info.py          # list, history, show
-        │       └── testing.py       # ll-loop test/simulate subcommand utilities
+        │   ├── loop/
+        │   │   ├── __init__.py      # Entry point (main_loop) + argparse
+        │   │   ├── _helpers.py      # Shared utilities
+        │   │   ├── run.py           # run subcommand
+        │   │   ├── config_cmds.py   # compile, validate, install
+        │   │   ├── lifecycle.py     # status, stop, resume
+        │   │   ├── info.py          # list, history, show
+        │   │   └── testing.py       # ll-loop test/simulate subcommand utilities
+        │   └── logs.py              # ll-logs: discover/extract/tail subcommands + index generation
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration loading
         ├── state.py             # State persistence

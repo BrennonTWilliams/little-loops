@@ -106,6 +106,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
 - `ll-loop` - Execute FSM-based automation loops
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
+- `ll-logs` - Discover, extract, and tail Claude Code session logs (`discover` / `extract` / `tail` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs
 - `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
 - `ll-deps` - Cross-issue dependency analysis and validation
