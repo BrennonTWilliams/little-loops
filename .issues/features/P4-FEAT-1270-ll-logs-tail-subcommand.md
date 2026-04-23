@@ -7,11 +7,11 @@ title: "ll-logs: tail subcommand for live loop session streaming"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
-confidence_score: 80
-outcome_confidence: 93
+confidence_score: 95
+outcome_confidence: 97
 score_complexity: 25
-score_test_coverage: 18
-score_ambiguity: 25
+score_test_coverage: 25
+score_ambiguity: 22
 score_change_surface: 25
 ---
 
@@ -98,9 +98,12 @@ _Added by `/ll:refine-issue` — concrete implementation guidance:_
    - Wrap in `try/except KeyboardInterrupt: return 0`
 
 3. **Add `TestTail` to `test_ll_logs.py`** following `test_ll_loop_commands.py`:
-   - Write a temp `<name>.events.jsonl` file with fixture events; call `_cmd_tail(argparse.Namespace(loop="name"), tmp_path)` and assert via `capsys`
+   - Write a temp `<name>.events.jsonl` file with fixture events; call `_cmd_tail(argparse.Namespace(loop="name"), loops_dir)` and assert via `capsys`
    - Test missing-file path returns 1 and prints error
    - Test `KeyboardInterrupt` exits with 0 by mocking `readline` to raise after first record
+   - **Test filesystem style**: `test_ll_logs.py` uses `tempfile.TemporaryDirectory()` (not `tmp_path`) — match this pattern for TestTail
+   - **`capsys` style**: declare as plain method parameter without type annotation: `def test_...(self, capsys) -> None:`
+   - **`KeyboardInterrupt` mock**: no existing pattern in codebase; `TestTail` will be the first. Use `patch("time.sleep", side_effect=KeyboardInterrupt)` to cause the follow loop to raise after one sleep cycle, or mock `readline` with `side_effect=["line1\n", "", KeyboardInterrupt()]`
 
 4. **Verification**: `python -m pytest scripts/tests/test_ll_logs.py -v -k TestTail`
 
@@ -203,9 +206,11 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 **Outcome Confidence**: 93/100 → HIGH CONFIDENCE
 
 ### Concerns
-- **FEAT-1269 artifacts missing**: FEAT-1269 is in `.issues/completed/` but `scripts/little_loops/cli/logs.py` does not exist and `main_logs` is not registered in `pyproject.toml`. The completed file still reads `status: backlog`. FEAT-1270 cannot add a `tail` subparser to a file that doesn't exist — verify FEAT-1269 was actually implemented before proceeding.
+- ~~**FEAT-1269 artifacts missing**: FEAT-1269 is in `.issues/completed/` but `scripts/little_loops/cli/logs.py` does not exist and `main_logs` is not registered in `pyproject.toml`. The completed file still reads `status: backlog`. FEAT-1270 cannot add a `tail` subparser to a file that doesn't exist — verify FEAT-1269 was actually implemented before proceeding.~~ **RESOLVED** (2026-04-23): `scripts/little_loops/cli/logs.py` exists with `discover` subcommand implemented; `ll-logs = "little_loops.cli:main_logs"` is registered in `pyproject.toml`. Dependency satisfied — FEAT-1270 is unblocked.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab6a7ae5-8378-48e7-a8ed-89a936671ad3.jsonl`
+- `/ll:refine-issue` - 2026-04-23T20:56:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a21ca7a-517c-4dd8-bde5-60ff72516da7.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e99e13eb-7a4b-4f4e-bb27-a602348fe421.jsonl`
 - `/ll:wire-issue` - 2026-04-23T20:14:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2e7414d-e15b-4602-a8d9-40d2d0d4cfeb.jsonl`
 - `/ll:refine-issue` - 2026-04-23T20:07:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd2a44ac-a328-4dcd-9e75-55059451afac.jsonl`
