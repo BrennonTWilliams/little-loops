@@ -231,6 +231,7 @@ ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-create-extension Scaffold a new little-loops extension project
 ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
+ll-logs           Discover and extract ll-relevant log entries from Claude project logs
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]

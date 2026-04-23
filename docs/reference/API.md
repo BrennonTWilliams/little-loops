@@ -3274,6 +3274,24 @@ Entry point for `ll-check-links` command. Check markdown documentation for broke
 
 ---
 
+### main_logs
+
+```python
+def main_logs() -> int
+```
+
+Entry point for `ll-logs` command. Discover, extract, and tail Claude Code session logs for ll-loop and ll-commands.
+
+**Returns:** Exit code
+
+**CLI Arguments:**
+- `-v, --verbose` - Verbose progress output
+- `--config` - Path to project root (default: current directory)
+- `-n, --dry-run` - Preview without modifying files
+- `-q, --quiet` - Suppress non-essential output
+
+---
+
 ## little_loops.workflow_sequence
 
 Step 2 of a 3-step workflow analysis pipeline. Analyzes user message patterns to identify multi-step workflows, link related sessions, and detect workflow boundaries.
