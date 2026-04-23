@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from little_loops.cli.logs import _cmd_tail, _parse_args, main_logs
+from little_loops.cli.logs import _cmd_tail, _is_ll_relevant, _parse_args, main_logs
 
 
 class TestArgumentParsing:
@@ -395,3 +395,294 @@ class TestTail:
         assert result == 0
         captured = capsys.readouterr()
         assert captured.out == ""
+
+
+class TestIsLlRelevantAssistantBash:
+    """Tests for type (c) detection in _is_ll_relevant()."""
+
+    def _make_assistant_bash(self, command: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {"command": command},
+                    }
+                ],
+            },
+            "sessionId": "s1",
+        }
+
+    def test_assistant_bash_with_ll_command_returns_true(self) -> None:
+        """Assistant Bash tool-use calling an ll- command is ll-relevant."""
+        record = self._make_assistant_bash("ll-history --project /some/path")
+        assert _is_ll_relevant(record) is True
+
+    def test_assistant_bash_without_ll_command_returns_false(self) -> None:
+        """Assistant Bash tool-use calling a non-ll command is not ll-relevant."""
+        record = self._make_assistant_bash("git status")
+        assert _is_ll_relevant(record) is False
+
+    def test_assistant_non_bash_tool_returns_false(self) -> None:
+        """Assistant tool-use with a non-Bash tool is not ll-relevant."""
+        record = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "/some/file"}},
+                ],
+            },
+            "sessionId": "s1",
+        }
+        assert _is_ll_relevant(record) is False
+
+    def test_assistant_text_only_returns_false(self) -> None:
+        """Assistant record with only text content is not ll-relevant."""
+        record = {
+            "type": "assistant",
+            "message": {"role": "assistant", "content": "Some response text"},
+            "sessionId": "s1",
+        }
+        assert _is_ll_relevant(record) is False
+
+
+class TestExtract:
+    """Integration tests for the extract subcommand."""
+
+    def _make_project_dir(
+        self,
+        claude_projects: Path,
+        home: Path,
+        subpath: str,
+        records: list[dict],
+        session_id: str = "session-abc",
+    ) -> Path:
+        """Create a mock claude project dir with JSONL content.
+
+        Args:
+            claude_projects: The ~/.claude/projects path
+            home: The mocked home directory
+            subpath: Path relative to home (e.g. "myproject")
+            records: JSONL records to write
+            session_id: sessionId to inject into records that lack one
+
+        Returns:
+            The decoded project path (home / subpath)
+        """
+        project_path = home / subpath
+        project_path.mkdir(parents=True, exist_ok=True)
+
+        # Use .resolve() to match get_project_folder() which also calls .resolve()
+        encoded = str(project_path.resolve()).replace("/", "-")
+        proj_dir = claude_projects / encoded
+        proj_dir.mkdir(parents=True, exist_ok=True)
+
+        if records:
+            jsonl_file = proj_dir / "session.jsonl"
+            with open(jsonl_file, "w") as f:
+                for record in records:
+                    if "sessionId" not in record:
+                        record = {**record, "sessionId": session_id}
+                    f.write(json.dumps(record) + "\n")
+
+        return project_path
+
+    def _ll_queue_record(self, session_id: str = "sess-1") -> dict:
+        return {
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "content": "/ll:manage-issue bug fix",
+            "sessionId": session_id,
+        }
+
+    def _assistant_bash_record(self, command: str, session_id: str = "sess-1") -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "name": "Bash", "input": {"command": command}},
+                ],
+            },
+            "sessionId": session_id,
+        }
+
+    def test_extract_project_creates_output_file(self) -> None:
+        """extract --project writes matching records to logs/<slug>/<session>.jsonl."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            session_id = "abc-123"
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [self._ll_queue_record(session_id)],
+                session_id=session_id,
+            )
+            slug = project_path.name
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            out_file = output_cwd / "logs" / slug / f"{session_id}.jsonl"
+            assert out_file.exists(), f"Expected output file {out_file}"
+            lines = [json.loads(line) for line in out_file.read_text().splitlines()]
+            assert len(lines) == 1
+            assert lines[0]["sessionId"] == session_id
+
+    def test_extract_all_creates_output_for_each_project(self) -> None:
+        """extract --all writes files for all projects with ll activity."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            session_a = "sess-aaa"
+            session_b = "sess-bbb"
+            path_a = self._make_project_dir(
+                claude_projects, home, "proj_a", [self._ll_queue_record(session_a)], session_a
+            )
+            path_b = self._make_project_dir(
+                claude_projects, home, "proj_b", [self._ll_queue_record(session_b)], session_b
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            assert (output_cwd / "logs" / path_a.name / f"{session_a}.jsonl").exists()
+            assert (output_cwd / "logs" / path_b.name / f"{session_b}.jsonl").exists()
+
+    def test_extract_cmd_filter_keeps_matching_records(self) -> None:
+        """extract --all --cmd ll-history keeps only records with that tool."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            session_id = "sess-filter"
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record("ll-history --project /foo", session_id),
+                    self._assistant_bash_record("ll-auto --dry-run", session_id),
+                ],
+                session_id=session_id,
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all", "--cmd", "ll-history"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            out_file = output_cwd / "logs" / project_path.name / f"{session_id}.jsonl"
+            assert out_file.exists()
+            lines = [json.loads(line) for line in out_file.read_text().splitlines()]
+            assert len(lines) == 1
+            cmd = lines[0]["message"]["content"][0]["input"]["command"]
+            assert "ll-history" in cmd
+
+    def test_extract_cmd_filter_no_match_writes_no_file(self) -> None:
+        """extract --cmd with no matching records writes no output file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            session_id = "sess-nomatch"
+            self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [self._assistant_bash_record("ll-auto --dry-run", session_id)],
+                session_id=session_id,
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--all", "--cmd", "ll-history"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            logs_dir = output_cwd / "logs"
+            assert not logs_dir.exists() or not any(logs_dir.rglob("*.jsonl"))
+
+    def test_extract_project_not_found_returns_1(self) -> None:
+        """extract --project with no matching claude folder returns 1."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            home.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+            nonexistent = Path(tmpdir) / "nosuchproject"
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(nonexistent)]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+            assert result == 1
+
+    def test_extract_skips_agent_jsonl(self) -> None:
+        """extract ignores agent-*.jsonl files when scanning for ll activity."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            session_id = "agent-session"
+            project_path = home / "agentproject"
+            project_path.mkdir(parents=True)
+            encoded = str(project_path.resolve()).replace("/", "-")
+            proj_dir = claude_projects / encoded
+            proj_dir.mkdir(parents=True)
+
+            # Put ll activity only in an agent- file (should be ignored)
+            agent_file = proj_dir / "agent-session.jsonl"
+            with open(agent_file, "w") as f:
+                f.write(json.dumps(self._ll_queue_record(session_id)) + "\n")
+
+            with (
+                patch("sys.argv", ["ll-logs", "extract", "--project", str(project_path)]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            logs_dir = output_cwd / "logs"
+            assert not logs_dir.exists() or not any(logs_dir.rglob("*.jsonl"))

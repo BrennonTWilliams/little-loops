@@ -6,6 +6,7 @@ status: backlog
 title: "ll-logs: extract subcommand core (--project, --all, --cmd)"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
+completed_at: 2026-04-23T21:26:55Z
 decision_needed: false
 parent_issue: FEAT-1272
 confidence_score: 100
@@ -197,10 +198,10 @@ _Added by `/ll:refine-issue` (second pass) — reflects current `logs.py` state:
 
 ## Acceptance Criteria
 
-- [ ] `ll-logs extract --all` populates `logs/` with filtered JSONL entries
-- [ ] `ll-logs extract --project <slug>` works for a specific project
-- [ ] `ll-logs extract --cmd <tool>` filters by ll- tool name
-- [ ] `TestExtract` test class passes
+- [x] `ll-logs extract --all` populates `logs/` with filtered JSONL entries
+- [x] `ll-logs extract --project <slug>` works for a specific project
+- [x] `ll-logs extract --cmd <tool>` filters by ll- tool name
+- [x] `TestExtract` test class passes
 
 ## Impact
 
@@ -232,6 +233,7 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-23T21:17:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20acc632-e912-4343-bd87-3aa34c666161.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2ac7f45-a691-4f7e-820a-9a5dce6ec5b2.jsonl`
 - `/ll:refine-issue` - 2026-04-23T21:12:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3202701a-3983-4304-a685-f583cfb8bd22.jsonl`
 - `/ll:format-issue` - 2026-04-23T21:03:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e421608d-71ec-42e1-8580-6044c8db9f3a.jsonl`
@@ -244,6 +246,16 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 
 ---
 
+## Resolution
+
+Implemented `extract` subcommand in `scripts/little_loops/cli/logs.py`:
+- Extended `_is_ll_relevant()` with type (c): assistant Bash tool-use calling `ll-` commands
+- Added `_cmd_matches()` helper for `--cmd` secondary filter
+- Added `_cmd_extract()` implementing `--project`/`--all` scanning and JSONL output
+- Added `extract` subparser with mutually-exclusive `--project`/`--all` group and optional `--cmd`
+- Added `TestIsLlRelevantAssistantBash` (4 tests) and `TestExtract` (6 tests) to `test_ll_logs.py`
+- All 26 tests in `test_ll_logs.py` pass; no regressions in full suite
+
 ## Status
 
-**Open** | Created: 2026-04-23 | Priority: P4
+**Completed** | Created: 2026-04-23 | Completed: 2026-04-23 | Priority: P4

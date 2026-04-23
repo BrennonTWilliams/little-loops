@@ -16,6 +16,7 @@ from little_loops.cli.loop.info import (  # private symbol: cross-module couplin
 from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
+from little_loops.user_messages import get_project_folder
 
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
 
@@ -50,6 +51,21 @@ def _is_ll_relevant(record: dict) -> bool:
                 if isinstance(block, dict):
                     text = block.get("text", "")
                     if isinstance(text, str) and _COMMAND_NAME_RE.search(text):
+                        return True
+
+    # (c) assistant records: check for Bash tool-use invoking an ll- command
+    if record_type == "assistant":
+        message = record.get("message", {})
+        content = message.get("content", [])
+        if isinstance(content, list):
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and block.get("name") == "Bash"
+                ):
+                    cmd = block.get("input", {}).get("command", "")
+                    if re.search(r"\bll-\w+", cmd):
                         return True
 
     return False
@@ -115,6 +131,82 @@ def discover_all_projects(logger: Logger) -> list[Path]:
     return sorted(results)
 
 
+def _cmd_matches(record: dict, cmd: str) -> bool:
+    """Return True if record contains a Bash tool-use whose command includes cmd."""
+    message = record.get("message", {})
+    content = message.get("content", [])
+    if isinstance(content, list):
+        for block in content:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "tool_use"
+                and block.get("name") == "Bash"
+            ):
+                command = block.get("input", {}).get("command", "")
+                if cmd in command:
+                    return True
+    return False
+
+
+def _cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
+    """Extract ll-relevant JSONL records to logs/<slug>/<session-id>.jsonl."""
+    if args.project:
+        cwd_path: Path = args.project
+        project_folder = get_project_folder(cwd_path)
+        if project_folder is None:
+            logger.error(f"No Claude project folder found for: {cwd_path}")
+            logger.error(f"Expected: ~/.claude/projects/{str(cwd_path).replace('/', '-')}")
+            return 1
+        project_items = [(cwd_path, project_folder)]
+    else:
+        decoded_paths = discover_all_projects(logger)
+        project_items = []
+        for decoded_path in decoded_paths:
+            folder = get_project_folder(decoded_path)
+            if folder is not None:
+                project_items.append((decoded_path, folder))
+
+    for cwd_path, project_folder in project_items:
+        slug = cwd_path.resolve().name
+        buckets: dict[str, list[dict]] = {}
+
+        jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
+        for jsonl_file in jsonl_files:
+            try:
+                with open(jsonl_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if _is_ll_relevant(record):
+                            session_id = record.get("sessionId", "")
+                            buckets.setdefault(session_id, []).append(record)
+            except OSError:
+                continue
+
+        if args.cmd:
+            filtered: dict[str, list[dict]] = {}
+            for session_id, records in buckets.items():
+                matching = [r for r in records if _cmd_matches(r, args.cmd)]
+                if matching:
+                    filtered[session_id] = matching
+            buckets = filtered
+
+        out_base = Path.cwd() / "logs" / slug
+        for session_id, records in buckets.items():
+            out_file = out_base / f"{session_id}.jsonl"
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(out_file, "w", encoding="utf-8") as f:
+                for record in records:
+                    f.write(json.dumps(record) + "\n")
+
+    return 0
+
+
 def _cmd_tail(args: argparse.Namespace, loops_dir: Path) -> int:
     """Stream live events from an active loop session."""
     events_file = loops_dir / ".running" / f"{args.loop}.events.jsonl"
@@ -157,6 +249,9 @@ def _build_parser() -> argparse.ArgumentParser:
 Examples:
   %(prog)s discover              # List all projects with ll activity
   %(prog)s tail --loop <name>   # Stream live events from an active loop session
+  %(prog)s extract --all             # Extract all projects to logs/
+  %(prog)s extract --project /path  # Extract one project to logs/<slug>/
+  %(prog)s extract --all --cmd ll-history  # Filter to ll-history invocations
 """,
     )
 
@@ -171,6 +266,28 @@ Examples:
         help="Stream live events from an active loop session",
     )
     tail_parser.add_argument("--loop", required=True, metavar="NAME", help="Loop name to tail")
+
+    extract_parser = subparsers.add_parser(
+        "extract",
+        help="Extract ll-relevant JSONL records to logs/<slug>/<session-id>.jsonl",
+    )
+    target_group = extract_parser.add_mutually_exclusive_group(required=True)
+    target_group.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Working directory of the target project",
+    )
+    target_group.add_argument(
+        "--all",
+        action="store_true",
+        help="Extract all projects with ll activity",
+    )
+    extract_parser.add_argument(
+        "--cmd",
+        metavar="TOOL",
+        help="Filter to records containing this ll- tool name (e.g. ll-history)",
+    )
 
     return parser
 
@@ -206,5 +323,8 @@ def main_logs() -> int:
         config = BRConfig(Path.cwd())
         loops_dir = Path(config.loops.loops_dir)
         return _cmd_tail(args, loops_dir)
+
+    if args.command == "extract":
+        return _cmd_extract(args, logger)
 
     return 1
