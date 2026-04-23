@@ -179,7 +179,104 @@ Scan the event list and classify signals using the rules below. Group events by 
 ### Multiple signals on same state
 If a state triggers both an action failure and an evaluate failure BUG, emit only the action failure (higher severity signal takes priority). Emit all distinct signals from different states.
 
-If no signals are found, report: "No issue signals detected in loop history." and stop.
+Proceed to Step 3b regardless of signal count.
+
+---
+
+## Step 3b: Semantic Synthesis
+
+Using the event data and loop config loaded in Step 2 and the signals classified in Step 3, produce a holistic **Execution Summary** that contextualizes the signal list. This phase is advisory — it does not add or remove signals from Step 3.
+
+### 3b-1: Extract Loop Goal
+
+From the `ll-loop show --json` output parsed in Step 2, read the top-level `"description"` field:
+- If present and ≥ 5 words: use as the declared goal
+- If absent or shorter: use `"(no description provided)"`
+
+### 3b-2: Reconstruct Observed Execution Path
+
+From the ordered `state_enter` events:
+
+1. Build the **state visit sequence**: list of state names in encounter order (consecutive duplicates appear as separate entries)
+2. Compute **per-state visit counts**: count of `state_enter` events per unique state name
+3. Identify the **dominant state**: the state with the most `state_enter` occurrences
+4. Read `terminated_by` from the `loop_complete` event if present (`"terminal"`, `"signal"`, or `"error"`)
+5. Compute the dominant state's **iteration share**: `(dominant_state_count / total_state_enter_count) × 100`
+
+### 3b-3: Goal Alignment Assessment
+
+If a description is available (≥ 5 words):
+
+1. Extract 2–4 key activity phrases from the description (verb + object, e.g., "refine issues", "check completeness")
+2. Check whether the dominant state's name or its action text (from the state config loaded in Step 2) corresponds to a described activity
+3. If the dominant state accounts for ≥ 50% of iterations and has no clear connection to the declared goal activities: flag as a **goal alignment anomaly**
+4. If `terminated_by == "terminal"` (completed successfully) but heavy cycling occurred (total iterations > 3× the number of distinct states visited): note that completion may mask an ambiguous exit criterion
+
+### 3b-4: Cross-Signal Reasoning
+
+For each pair of states that both have classified signals from Step 3:
+
+1. Check if they are **adjacent** in the execution path: a direct `route` event exists between them, or one state immediately precedes the other in the `state_enter` sequence
+2. If adjacent with co-occurring signals, evaluate the signal types for plausible shared root causes:
+   - Action failure in state A + evaluate failure in downstream state B → output format mismatch candidate
+   - Retry flood in state A + action failure in adjacent state B → upstream dependency failure candidate
+3. Emit a **cross-signal note** for each plausible shared root cause identified
+
+### 3b-5: Sub-Threshold Pattern Detection
+
+Check for behavioral fingerprints that no single signal rule captures:
+
+1. **Dominant cycling**: dominant state accounts for ≥ 70% of total `state_enter` events AND it is not the only state visited — flag as a potential design smell (one state disproportionately consuming iterations)
+2. **Decision-state dominance**: dominant state name matches a meta-state pattern (`check_*`, `verify_*`, `evaluate_*`, `wait_*`) rather than a work state — loop may be spending most iterations in decision logic rather than productive work
+
+### 3b-6: Produce Synthesis Summary
+
+Assemble the **Execution Summary** block. This block is always produced (even when no signals were found in Step 3) and is displayed as a preamble before the signal list in Step 5.
+
+**Format**:
+
+```
+### Execution Summary
+
+**Loop goal**: "<declared description or (no description provided)>"
+**Observed path**: <state_1> (×N₁) → <state_2> (×N₂) → ... [<terminated_by or in-progress>]
+**Goal alignment**: <one-sentence assessment, or "Insufficient description to assess alignment." if no description>
+
+**Cross-signal note**: <states, their signal types, and shared root cause candidate>
+[Omit this line if no adjacent co-occurring signals were found]
+
+**Pattern note**: <sub-threshold behavioral observation>
+[Omit this line if no sub-threshold patterns were detected]
+```
+
+**Example**:
+
+```
+### Execution Summary
+
+**Loop goal**: "Refine open issues with codebase context until all sections are populated"
+**Observed path**: start → analyze_issue (×12) → check_completeness (×11) → finalize → done [terminal]
+**Goal alignment**: Partial — loop completed but `analyze_issue` re-entered 12× suggests the
+  completeness criterion in `check_completeness` is ambiguous or too strict.
+
+**Cross-signal note**: `analyze_issue` action failures (BUG) and `check_completeness`
+  evaluate failures (BUG) are adjacent in the execution path — likely share a root cause;
+  investigate whether analysis output format matches what the evaluator expects.
+```
+
+If **both** conditions are true — (a) no signals from Step 3 and (b) no anomalies from 3b-3 through 3b-5 — output the minimal summary and stop:
+
+```
+### Execution Summary
+
+**Loop goal**: <goal>
+**Observed path**: <state sequence with counts>
+**Goal alignment**: <assessment>
+
+No issue signals detected. Loop execution appears normal.
+```
+
+Otherwise proceed to Step 4.
 
 ---
 
@@ -202,11 +299,13 @@ If all signals are duplicates, report: "All <N> signals already have active issu
 
 ## Step 5: Present Proposals and Confirm
 
-Display a numbered list of proposed issues:
+Display the analysis output, always starting with the Execution Summary from Step 3b:
 
 ```
 Analyzing loop: <loop_name> (last updated: <updated_at>)
 Events analyzed: <N> events
+
+<Execution Summary block from Step 3b>
 
 Found <M> issue signal(s):
 
@@ -215,7 +314,9 @@ Found <M> issue signal(s):
   ...
 ```
 
-Then use `AskUserQuestion` to ask:
+If `M == 0` (no signals passed deduplication): output the Execution Summary and stop — do not ask for confirmation.
+
+Otherwise, use `AskUserQuestion` to ask:
 
 ```
 Create these <M> issues? [Y/n/select]
