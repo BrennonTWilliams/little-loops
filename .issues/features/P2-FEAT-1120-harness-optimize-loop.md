@@ -3,7 +3,7 @@ discovered_date: "2026-04-16"
 discovered_by: capture-issue
 source: ~/.claude/plans/review-this-open-source-cosmic-galaxy.md
 decision_needed: false
-confidence_score: 90
+confidence_score: 95
 outcome_confidence: 71
 score_complexity: 10
 score_test_coverage: 18
@@ -105,30 +105,38 @@ gate:
   on_stall: revert_and_log
 ```
 
-**`lib/benchmark.yaml` fragment contract (FEAT-1119 must implement)**
+**`lib/benchmark.yaml` fragment contract (verified — FEAT-1244 completed)**
 
-The fragment must `capture: benchmark_score` so the `gate` state reads `${captured.benchmark_score.output}`. Minimal viable shape:
+`lib/benchmark.yaml` now exists. The actual fragment shape (from codebase):
 
 ```yaml
 fragments:
   run_benchmark:
-    action: "${context.scorer} ${context.tasks_dir}"
+    description: "..."
     action_type: shell
-    capture: benchmark_score
     evaluate:
-      type: exit_code
+      type: harbor_scorer
 ```
 
-The `harness-optimize` loop declares `import: [lib/benchmark.yaml]` and uses `fragment: run_benchmark` in its `score` state.
+`harbor_scorer` routes verdicts: `yes` (exit 0 + float stdout), `no` (exit non-zero), `error` (exit 0 + non-float stdout). The fragment does **not** have a built-in `action:` or `capture:`. The caller's `score` state must supply all three:
+
+```yaml
+score:
+  fragment: run_benchmark
+  action: "${context.scorer} ${context.tasks_dir}"
+  capture: benchmark_score
+  on_yes: gate
+  on_no: revert_and_log
+  on_error: revert_and_log
+```
+
+`${captured.benchmark_score.output}` then holds the bare float string for the `gate` convergence evaluator. The `harness-optimize` loop declares `import: [lib/benchmark.yaml]` and uses this pattern in its `score` state.
 
 **Trajectory path correction**
 
-The spec says `.ll/runs/harness-optimize/<run-id>/trajectory.jsonl`. The actual FSM persistence layer writes to `.loops/.running/` (runtime) and `.loops/.history/<run-id>-harness-optimize/` (archived) — NOT `.ll/runs/`. Two implementation options for the custom trajectory:
+The spec says `.ll/runs/harness-optimize/<run-id>/trajectory.jsonl`. The actual FSM persistence layer writes to `.loops/.running/` (runtime) and `.loops/.history/<run-id>-harness-optimize/` (archived) — NOT `.ll/runs/`.
 
-1. **Use `.loops/tmp/`** (consistent with `dead-code-cleanup.yaml`, `dataset-curation.yaml`): Have the `commit_and_log` and `revert_and_log` states append to `.loops/tmp/harness-optimize-trajectory.jsonl` via a prompt action (like `dataset-curation.yaml:103`)
-2. **Honor the spec path** `.ll/runs/harness-optimize/<run-id>/trajectory.jsonl`: Requires the `baseline_score` state to `mkdir -p` the directory (shell action) and subsequent states to append — needs `${loop.started_at}` for the run-id
-
-Option 1 is lowest friction and consistent with existing patterns; Option 2 matches the spec exactly.
+**Decision**: Use `.loops/tmp/harness-optimize-trajectory.jsonl` — consistent with `dead-code-cleanup.yaml` and `dataset-curation.yaml`, lowest friction, no `mkdir -p` required. Have `commit_and_log` and `revert_and_log` append to this path via a prompt action (like `dataset-curation.yaml:103`).
 
 **`captured` namespace access**
 
@@ -143,6 +151,165 @@ revert_and_log:
   action: "git restore ${context.targets}"
   action_type: shell
   next: write_trajectory
+```
+
+**Corrections from codebase validation (Pass 3)**
+
+_Added manually — resolving 11 gaps found in design review:_
+
+**Decision: stop-on-first-stall, two trajectory states, single-file-per-iteration.**
+
+**1. `apply` state shape (was: completely unspecified)**
+
+`apply` is a prompt state that instructs the LLM to write the captured candidate to the single file it proposed:
+
+```yaml
+apply:
+  action_type: prompt
+  timeout: 120
+  action: |
+    Write the following revised contents to the file you proposed editing.
+    Replace the entire file contents exactly — no preamble, no explanation.
+
+    ${captured.candidate.output}
+
+    Confirm the file has been updated.
+  next: score
+```
+
+**2. `propose` state — single-file-per-iteration (was: implicitly multi-target)**
+
+Add "Pick ONE file" instruction so `apply` always has a single unambiguous target:
+
+```yaml
+propose:
+  action_type: prompt
+  timeout: 300
+  action: |
+    Target files available: ${context.targets}
+    Baseline score: ${captured.baseline.output}
+    Last benchmark output: ${captured.benchmark_score.output}
+
+    Pick ONE file from the target list to improve this iteration.
+    Read it, then propose ONE targeted edit to raise the benchmark score.
+    Output the complete revised file contents only —
+    no preamble, no explanation, no markdown fences.
+  capture: candidate
+  on_blocked: done
+  next: apply
+```
+
+**3. `revert_and_log` routing — stop on first stall**
+
+`revert_and_log` transitions to `write_trajectory_rejected`, which terminates. It does NOT loop back to `propose`. The loop's retry budget is `max_iterations`, not stall retries:
+
+```
+gate: stall/error → revert_and_log → write_trajectory_rejected → done
+gate: target/progress → commit_and_log → write_trajectory_accepted → capture_prev → propose
+```
+
+**4. Two `write_trajectory` states (was: single state with no accepted/rejected distinction)**
+
+```yaml
+write_trajectory_accepted:
+  action_type: shell
+  action: |
+    echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":true,"commit_sha":"${captured.last_commit.output}"}' \
+      >> .loops/tmp/harness-optimize-trajectory.jsonl
+  next: capture_prev
+
+write_trajectory_rejected:
+  action_type: shell
+  action: |
+    echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":false,"commit_sha":""}' \
+      >> .loops/tmp/harness-optimize-trajectory.jsonl
+  next: done
+```
+
+`${state.iteration}` is a valid interpolation variable (confirmed: used in `svg-textgrad.yaml:153`).
+
+**5. Full `context:` defaults block (was: only `target_score` specified)**
+
+```yaml
+context:
+  targets: ""          # required — space-separated file paths, e.g. "skills/foo/SKILL.md"
+  tasks_dir: ""        # required — path to Harbor task directory
+  scorer: ""           # required — scorer command, e.g. "./scripts/score.sh"
+  target_score: 1.0    # early-stop threshold; 1.0 means "never early-stop"
+  max_iterations: 30   # hard budget ceiling
+```
+
+`targets`, `tasks_dir`, and `scorer` have no sensible defaults and must be supplied via `--context`.
+
+**6. `baseline_score` routing (was: unspecified)**
+
+```yaml
+baseline_score:
+  fragment: run_benchmark
+  action: "${context.scorer} ${context.tasks_dir}"
+  capture: baseline
+  on_yes: init_prev
+  on_no: done
+  on_error: done
+```
+
+**7. `init_prev` state — required bootstrap (was: missing)**
+
+Without this state, the first `gate` call has `previous=None`, causing the `convergence` evaluator to always return `progress` on the first iteration — committing a score-worsening mutation. `init_prev` seeds `prev_score` with the baseline so the first gate has a correct reference:
+
+```yaml
+init_prev:
+  action_type: shell
+  action: "echo '${captured.baseline.output}' | tail -1 | tr -d '[:space:]'"
+  capture: prev_score
+  next: propose
+```
+
+Full startup sequence: `load_directive → baseline_score → init_prev → propose → …`
+
+Note: `captured.prev_score` being unset on the first gate call is safe — the executor catches `InterpolationError`/`ValueError` and falls back to `previous=None` — but `init_prev` is still needed to prevent the first-iteration always-progress bug.
+
+**8. `tolerance` on gate evaluator (was: missing)**
+
+Add `tolerance: 0.02` to prevent floating-point precision artifacts from triggering stall when score genuinely improved:
+
+```yaml
+gate:
+  action_type: shell
+  action: |
+    echo "${captured.benchmark_score.output}" | tail -1 | tr -d '[:space:]'
+  evaluate:
+    type: convergence
+    direction: maximize
+    target: "${context.target_score}"
+    previous: "${captured.prev_score.output}"
+    tolerance: 0.02
+  route:
+    target: commit_and_log
+    progress: commit_and_log
+    stall: revert_and_log
+    error: revert_and_log
+```
+
+**9. Implementation Step 1 correction (was: references undefined "FEAT-1119")**
+
+Step 1 should read: "Both blockers are already resolved — FEAT-1244 (`lib/benchmark.yaml`) and FEAT-1245 (fragment wiring) are COMPLETED. No prerequisite work needed; proceed directly to Step 2."
+
+**10. Corrected state graph**
+
+```
+load_directive
+  → baseline_score
+    → init_prev
+      → propose
+        → apply
+          → score
+            on_yes: gate
+            on_no:  revert_and_log → write_trajectory_rejected → done
+            on_error: revert_and_log → write_trajectory_rejected → done
+            gate:
+              target/progress: commit_and_log → write_trajectory_accepted → capture_prev → propose
+              stall/error:     revert_and_log → write_trajectory_rejected → done
 ```
 
 **Corrections from codebase validation (Pass 2)**
@@ -163,6 +330,7 @@ gate:
   evaluate:
     type: convergence
     direction: maximize
+    target: "${context.target_score}"
     previous: "${captured.prev_score.output}"
   route:
     target: commit_and_log
@@ -170,6 +338,8 @@ gate:
     stall: revert_and_log
     error: revert_and_log
 ```
+
+`target:` is required — `evaluators.py:832` raises `ValueError` without it. Default `target_score: 1.0` in loop `context:` so the run never stops early on "target reached" unless the user sets a lower threshold. The configurable form (`"${context.target_score}"`) lets power users supply an early-stop threshold.
 
 **`previous:` wiring requires a `capture_prev` state**
 
@@ -258,23 +428,25 @@ ll-loop run harness-optimize \
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-1. **Verify FEAT-1119 is complete** — confirm `scripts/little_loops/loops/lib/benchmark.yaml` exists and exposes `fragment: run_benchmark` with `capture: benchmark_score`; if not, implement its fragment contract first (see Proposed Solution → Codebase Research Findings above)
+1. **No prerequisites** — FEAT-1244 (`lib/benchmark.yaml`) and FEAT-1245 (fragment wiring) are both COMPLETED. `lib/benchmark.yaml` exists and `run_benchmark` is verified. Proceed directly to Step 2.
 
 2. **Create `scripts/little_loops/loops/harness-optimize.yaml`** with states following the shape in `apo-feedback-refinement.yaml`:
    - Declare `import: [lib/common.yaml, lib/benchmark.yaml]`
    - `load_directive` → reads `${context.targets}` and optional `.ll/program.md`
-   - `baseline_score` → uses `fragment: run_benchmark`; stores initial score via `capture: baseline`
-   - `propose` → LLM prompt state (copy shape from `apo-feedback-refinement.yaml:generate_candidate`), conditioned on `${context.targets}` contents and `${captured.eval_result.output}` from last rejection
-   - `apply` → prompt state writing the proposed edit to `${context.targets}`
-   - `score` → uses `fragment: run_benchmark`
-   - `gate` → uses `convergence` evaluator with `direction: maximize` on `${captured.benchmark_score.output}` (see `agent-eval-improve.yaml:64-77`)
-   - `commit_and_log` → shell: `git add ${context.targets} && git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}" && git rev-parse HEAD`; capture result as `last_commit`; then transition to `write_trajectory`
-   - `revert_and_log` → shell: `git restore ${context.targets}`; then transition to `write_trajectory`
-   - `write_trajectory` → prompt or shell appending one JSONL line to `.loops/tmp/harness-optimize-trajectory.jsonl` with fields: `iter`, `proposed_file`, `score`, `accepted`, `commit_sha` (`${captured.last_commit.output}` for accepted, empty for rejected); then transition to `done` (stop on first stall) or `capture_prev` (if using retry-counter budget)
-   - `capture_prev` → shell: `echo '${captured.benchmark_score.output}' | tail -1 | tr -d '[:space:]'`; `capture: prev_score`; `next: propose` — needed to wire `previous:` in `gate`'s `convergence` evaluator
-   - **Gate stops on first stall**: `gate` `route.stall → revert_and_log → write_trajectory → done`; `max_iterations` is the hard budget ceiling
+   - `baseline_score` → `fragment: run_benchmark`; `action: "${context.scorer} ${context.tasks_dir}"`; `capture: baseline`; `on_yes: init_prev`; `on_no: done`; `on_error: done`
+   - `init_prev` → shell: `echo '${captured.baseline.output}' | tail -1 | tr -d '[:space:]'`; `capture: prev_score`; `next: propose` — seeds `prev_score` with baseline so the first `gate` call has a correct reference (without this, `previous=None` on iteration 1 always returns `progress`, committing score-worsening mutations)
+   - `propose` → LLM prompt state; "Pick ONE file from `${context.targets}` to improve this iteration"; outputs complete revised file contents only; `capture: candidate`; `on_blocked: done`; `next: apply`
+   - `apply` → prompt state: "Write the following revised contents to the file you proposed editing. Replace the entire file contents exactly.  ${captured.candidate.output}"; `next: score`
+   - `score` → `fragment: run_benchmark`; `action: "${context.scorer} ${context.tasks_dir}"`; `capture: benchmark_score`; `on_yes: gate`; `on_no: revert_and_log`; `on_error: revert_and_log`
+   - `gate` → shell: `echo "${captured.benchmark_score.output}" | tail -1 | tr -d '[:space:]'`; `convergence` evaluator with `direction: maximize`, `target: "${context.target_score}"`, `previous: "${captured.prev_score.output}"`, `tolerance: 0.02`; `route: target/progress → commit_and_log`; `route: stall/error → revert_and_log`
+   - `commit_and_log` → shell: `git add ${context.targets} && git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}" && git rev-parse HEAD`; `capture: last_commit`; `next: write_trajectory_accepted`
+   - `revert_and_log` → shell: `git restore ${context.targets}`; `next: write_trajectory_rejected`
+   - `write_trajectory_accepted` → shell: append `{"iter":…,"score":…,"accepted":true,"commit_sha":"…"}` to `.loops/tmp/harness-optimize-trajectory.jsonl`; `next: capture_prev`
+   - `write_trajectory_rejected` → shell: append `{"iter":…,"score":…,"accepted":false,"commit_sha":""}` to `.loops/tmp/harness-optimize-trajectory.jsonl`; `next: done`
+   - `capture_prev` → shell: `echo '${captured.benchmark_score.output}' | tail -1 | tr -d '[:space:]'`; `capture: prev_score`; `next: propose`
+   - **Stop on first stall**: `gate route.stall → revert_and_log → write_trajectory_rejected → done`; `max_iterations: 30` is the hard budget ceiling
 
-3. **Trajectory JSONL**: In `commit_and_log` and `revert_and_log`, instruct LLM (or shell) to append one JSON line to `.loops/tmp/harness-optimize-trajectory.jsonl` with fields: `iter`, `proposed_file`, `score`, `accepted`, `commit_sha` (model after `dataset-curation.yaml:103`)
+3. **Trajectory JSONL**: Use two separate shell states — `write_trajectory_accepted` and `write_trajectory_rejected` — each appending one JSON line to `.loops/tmp/harness-optimize-trajectory.jsonl`. Fields: `iter` (`${state.iteration}`), `score` (`${captured.benchmark_score.output}`), `accepted` (true/false), `commit_sha` (`${captured.last_commit.output}` or `""`). See corrected YAML in Pass 3 above.
 
 4. **Update `scripts/tests/test_builtin_loops.py`**: Add `"harness-optimize"` to the `expected` set in `test_expected_loops_exist()` (~line 60)
 
@@ -371,16 +543,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Blocked By
 
-~~FEAT-1244: benchmark fragment core FSM fragment~~ — **COMPLETED** (2026-04-23 verified). `lib/benchmark.yaml` now exists. This issue is unblocked; update `blocked_by` frontmatter accordingly before implementing.
+~~FEAT-1244: benchmark fragment core FSM fragment~~ — **COMPLETED** (2026-04-23).
+~~FEAT-1245: benchmark fragment loop integration~~ — **COMPLETED** (2026-04-24).
+
+No remaining hard blockers. `lib/benchmark.yaml` exists and `run_benchmark` fragment is integrated.
 
 ## Dependencies
 
-Blocked by: FEAT-1244 (benchmark fragment — core FSM fragment & scorer registration) — delivers `lib/benchmark.yaml` that this loop's `score` state depends on. (FEAT-1119 was decomposed; work split into FEAT-1244 + FEAT-1245.)
+No hard blockers. Prior blockers resolved:
+- ~~FEAT-1244~~ (COMPLETED) — `lib/benchmark.yaml` delivered
+- ~~FEAT-1245~~ (COMPLETED) — `run_benchmark` fragment wired into outer-loop-eval and agent-eval-improve
 
 Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a hard blocker.
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `manual design review` - 2026-04-24T00:00:00 - Pass 3 corrections: `apply` state, `init_prev`, two trajectory states, `context:` defaults, `baseline_score` routing, stop-on-first-stall decision, `tolerance` on gate, Step 1 naming fix
+- `/ll:ready-issue` - 2026-04-24T19:52:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fd6b77b-30ba-416d-9b65-f83eb1c8f249.jsonl`
+- `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b62e23ea-a883-4713-8d17-abc2c3993dec.jsonl`
+- `/ll:refine-issue` - 2026-04-24T19:42:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/178c621a-952b-461d-8ff0-0d865bd6d928.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:ready-issue` - 2026-04-22T02:14:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed16b00-515e-4758-a2d9-74c23897b796.jsonl`
 - `/ll:ready-issue` - 2026-04-22T01:59:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ce1718d-d54e-4865-8898-1a6b65a7f382.jsonl`
