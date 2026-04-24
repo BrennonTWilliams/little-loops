@@ -35,7 +35,7 @@ from little_loops.work_verification import (
     verify_work_was_done,
 )
 
-__version__ = "1.87.0"
+__version__ = "1.88.0"
 __all__ = [
     "BRConfig",
     # events
