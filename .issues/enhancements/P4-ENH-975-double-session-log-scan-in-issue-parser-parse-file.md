@@ -14,7 +14,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/issue_parser.py`
-- **Line(s)**: 368–372 (at scan commit: 96d74cda)
+- **Line(s)**: 454–455 (shifted from 368–372 at scan commit 96d74cda)
 - **Anchor**: `in function IssueParser.parse_file`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/96d74cda12b892bac305b81a527c66021302df6a/scripts/little_loops/issue_parser.py#L368-L372)
 - **Code**:
@@ -117,13 +117,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-11
+**Verdict**: NEEDS_UPDATE — Verified 2026-04-23
 
-- `issue_parser.py:371-372` — `parse_session_log(content)` and `count_session_commands(content)` both called sequentially ✓
+- `issue_parser.py:454-455` — `parse_session_log(content)` and `count_session_commands(content)` both called sequentially ✓ (line numbers shifted from 368-372 at scan commit → 454-455 now)
 - No `parse_session_log_full` function in `session_log.py` ✓
 - Feature not yet implemented
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
 - `/ll:scan-codebase` - 2026-04-06T16:12:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`

@@ -79,7 +79,7 @@ All three integrations are gated on graceful degradation: if `.ll/decisions.yaml
 - `scripts/little_loops/cli/issues/decisions.py` — CLI subcommand handler for `ll-issues decisions`; follow `scripts/little_loops/cli/issues/next_id.py:11` pattern
 
 **Modify existing:**
-- `scripts/little_loops/cli/issues/__init__.py:84` — add `decisions` subparser after `subs = parser.add_subparsers(dest="command", ...)` at line 84; add dispatch `if args.command == "decisions": return cmd_decisions(config, args)` before `return 1` at line 433; same pattern as all other subcommands in this file
+- `scripts/little_loops/cli/issues/__init__.py:95` — add `decisions` subparser after `subs = parser.add_subparsers(dest="command", ...)` at line 95; add dispatch `if args.command == "decisions": return cmd_decisions(config, args)` before `return 1`; same pattern as all other subcommands in this file
 - `scripts/little_loops/config/features.py` — add `DecisionsConfig` dataclass with `enabled: bool`, `log_path: str = ".ll/decisions.yaml"`, `auto_generate: list[str]` fields; follow `IssuesConfig` at line 59
 - `scripts/little_loops/config/core.py:95` — add `self._decisions = DecisionsConfig.from_dict(...)` to `_parse_config()` and expose as `@property def decisions()`
 - `hooks/scripts/session-start.sh:76-83` — extend to output the body (non-frontmatter) of `ll.local.md` when it contains an `## Active Rules` section, so compliance rules surface in Claude's context at session start; currently the Python heredoc (`merge_local_config()`) only outputs JSON from frontmatter and discards the body (`sys.exit(0)` at line 83); fix is inside the Python heredoc: extract body via `content.split("---", 2)[2]` after the frontmatter parse, then print it before `sys.exit(0)`
@@ -152,7 +152,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 1. **Design + schema** — define `@dataclass` entry types (`RuleEntry`, `DecisionEntry`, `ExceptionEntry`) in `scripts/little_loops/decisions.py`; storage at `.ll/decisions.yaml` using `yaml.safe_load` / `yaml.dump(default_flow_style=False, sort_keys=False)` pattern from `scripts/little_loops/sprint.py:184`
 2. **Config** — add `DecisionsConfig` to `scripts/little_loops/config/features.py` (after `IssuesConfig:59`); wire into `BRConfig._parse_config()` at `scripts/little_loops/config/core.py:95`; update `config-schema.json`
 3. **Core CRUD** — implement `load_decisions()`, `save_decisions()`, `add_entry()`, `list_entries(type, category, label)`, `resolve_active()` (supersedes-aware) in `scripts/little_loops/decisions.py`
-4. **CLI subcommand** — create `scripts/little_loops/cli/issues/decisions.py` with `cmd_decisions(config, args)`; register `decisions` subparser in `scripts/little_loops/cli/issues/__init__.py:80` following existing subcommand pattern; supports `list`, `add`, `generate`, `sync` sub-sub-commands
+4. **CLI subcommand** — create `scripts/little_loops/cli/issues/decisions.py` with `cmd_decisions(config, args)`; register `decisions` subparser in `scripts/little_loops/cli/issues/__init__.py:95` following existing subcommand pattern; supports `list`, `add`, `generate`, `sync` sub-sub-commands
 5. **Sync to ll.local.md** — implement `sync_to_local_md(project_root)` in `scripts/little_loops/decisions.py`; writes `## Active Rules` section; extend `hooks/scripts/session-start.sh` (after line 97) to also output the body of `ll.local.md` so `## Active Rules` surfaces in Claude's context at session start
 6. **Skill-level decision capture bridges** — update three skills to append `decision` entries as a side effect:
    - `skills/decide-issue/SKILL.md`: after Phase 6 annotation, call `ll-issues decisions add --type=decision --issue=$FILE --rule="<chosen option title>" --rationale="<Decision Rationale text>" --alternatives-rejected="<other options + scores>"` (or equivalent Python call); guard with `[ -f .ll/decisions.yaml ]` or `decisions.enabled` check
@@ -271,17 +271,17 @@ ll-issues decisions sync                        # write active required rules to
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — One stale line reference found:
+**Verdict**: NEEDS_UPDATE — Stale line references:
 
-- `scripts/little_loops/cli/issues/__init__.py`: `add_subparsers(dest="command")` is at line **89** (not 84 as stated). The "add `decisions` subparser after `subs = parser.add_subparsers(...)` at line 84" instruction should reference line 89.
+- `scripts/little_loops/cli/issues/__init__.py`: `add_subparsers(dest="command")` is now at line **95** (was 84 in issue body, updated to 89 in prior note, now 95). Update implementation step to reference line 95.
 - `decisions.py` module does not exist — feature not implemented ✓
 - No `DecisionsConfig` in `config/features.py` ✓
-- `config/core.py:95` (`_parse_config`) confirmed at line 95 ✓
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
-— Verified 2026-04-11
+— Verified 2026-04-23
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
 - `/ll:refine-issue` - 2026-04-07T18:30:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a30dea-bcb8-4472-8595-836364d4ab19.jsonl`

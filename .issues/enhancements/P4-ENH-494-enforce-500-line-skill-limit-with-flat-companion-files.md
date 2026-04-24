@@ -71,12 +71,12 @@ _The `ll-verify-skills` CLI lint command is tracked separately in ENH-977 (block
 
 _Added by `/ll:refine-issue` — Skill line count audit (updated 2026-04-07):_
 
-**Current line counts (descending):**
+**Current line counts (descending, updated 2026-04-23):**
 ```
 711  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 211 lines
-660  skills/confidence-check/SKILL.md     ← EXCEEDS by 160 lines  (+60 since 2026-04-02)
-617  skills/init/SKILL.md                 ← EXCEEDS by 117 lines  (+33 since 2026-04-02)
-516  skills/manage-issue/SKILL.md         ← EXCEEDS by 16 lines
+655  skills/confidence-check/SKILL.md     ← EXCEEDS by 155 lines
+606  skills/init/SKILL.md                 ← EXCEEDS by 106 lines
+556  skills/manage-issue/SKILL.md         ← EXCEEDS by 56 lines
 480  skills/wire-issue/SKILL.md
 431  skills/format-issue/SKILL.md
 422  skills/go-no-go/SKILL.md
@@ -102,9 +102,9 @@ _Added by `/ll:refine-issue` — Skill line count audit (updated 2026-04-07):_
 
 **4 skills exceed 500 lines:**
 - `audit-claude-config/SKILL.md` (711L) — extract Task 3 sub-agent prompt body (`skills/audit-claude-config/SKILL.md:231–407`, ~177L) and recognized-settings-key table (`SKILL.md:261–315`, ~55L) to a companion file
-- `confidence-check/SKILL.md` (648L) — extract Phase 2 scoring criteria tables (`SKILL.md:189–385`, ~196L) and output format templates (`SKILL.md:530–615`, ~86L) to a companion file _(was 660L; dropped 12 lines as of 2026-04-11)_
-- `init/SKILL.md` (618L) — extract Display Summary template (`SKILL.md:130–201`, ~73L), CLAUDE.md content blocks (`SKILL.md:505–550`, ~46L), and Completion Message template (`SKILL.md:554–583`, ~30L) to a companion file; `interactive.md` is already extracted _(was 617L)_
-- `manage-issue/SKILL.md` (516L) — only 16 lines over; duplicated Arguments block at `SKILL.md:449–516` (~67L) is the primary target; `templates.md` already handles most overflow
+- `confidence-check/SKILL.md` (655L) — extract Phase 2 scoring criteria tables (`SKILL.md:189–385`, ~196L) and output format templates (`SKILL.md:530–615`, ~86L) to a companion file
+- `init/SKILL.md` (606L) — extract Display Summary template (`SKILL.md:130–201`, ~73L), CLAUDE.md content blocks (`SKILL.md:505–550`, ~46L), and Completion Message template (`SKILL.md:554–583`, ~30L) to a companion file; `interactive.md` is already extracted
+- `manage-issue/SKILL.md` (556L) — 56 lines over; duplicated Arguments block is the primary target; `templates.md` already handles most overflow
 
 **No companion files exist yet for the 4 oversized skills** — this PR establishes them.
 
@@ -183,6 +183,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:02:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
@@ -213,9 +214,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Verification Notes
 
-- **Date**: 2026-04-11
+- **Date**: 2026-04-23
 - **Verdict**: NEEDS_UPDATE
-- **4 skills** exceed 500 lines: `audit-claude-config/SKILL.md` = **711** (unchanged), `confidence-check/SKILL.md` = **648** (was 660, −12), `init/SKILL.md` = **618** (was 617, +1), `manage-issue/SKILL.md` = **516** (unchanged). No companion files exist for these 4 skills yet.
+- **4 skills** exceed 500 lines: `audit-claude-config/SKILL.md` = **711** (unchanged), `confidence-check/SKILL.md` = **655** (was 648, +7), `init/SKILL.md` = **606** (was 618, −12), `manage-issue/SKILL.md` = **556** (was 516, +40). No companion files exist for these 4 skills yet.
 
 ## Status
 

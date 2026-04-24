@@ -64,8 +64,19 @@ Same content with TODO markers removed after verification.
 
 `enhancement`, `documentation`, `auto-generated`
 
+## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+
 ---
 
 ## Status
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `docs/development/TROUBLESHOOTING.md:95` — `<!-- TODO: update-docs stub — ENH-1246 -->` marker confirmed ✓
+- `docs/development/TROUBLESHOOTING.md:115` — `<!-- TODO: update-docs stub — ENH-1247/1251/1252/1253 -->` marker confirmed ✓
+- Both stubs still present; review not yet completed ✓
 
 **Open** | Created: 2026-04-22 | Priority: P4

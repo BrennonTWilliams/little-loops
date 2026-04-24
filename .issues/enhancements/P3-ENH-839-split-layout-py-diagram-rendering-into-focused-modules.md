@@ -27,7 +27,7 @@ The layout functionality is organized into a `layout/` subpackage with three foc
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/layout.py`
-- **Line(s)**: 1-1617 (entire file)
+- **Line(s)**: 1-1635 (entire file)
 - **Module**: `little_loops.cli.loop.layout`
 
 ## Finding
@@ -111,16 +111,17 @@ Split into a `layout/` subpackage or three focused modules:
 
 ## Verification Notes
 
-**Verified**: 2026-04-01 | **Verdict**: NEEDS_UPDATE
+**Verified**: 2026-04-23 | **Verdict**: NEEDS_UPDATE
 
-- ✅ File `scripts/little_loops/cli/loop/layout.py` exists at **1,630 lines** (was 1,617 — grew 13 lines)
-- ✅ 3 classes confirmed: `TopologyDetector` (line 280), `LayerAssigner` (line 325), `CrossingMinimizer` (line 418)
-- ⚠️ `_render_2d_diagram` no longer exists — function was renamed/restructured. `_render_fsm_diagram` at line 1434.
-- ⚠️ **Function count**: 19 top-level defs + 3 classes
+- ✅ File `scripts/little_loops/cli/loop/layout.py` exists at **1,635 lines** (was 1,630 — grew 5 lines)
+- ✅ 3 classes confirmed: `TopologyDetector`, `LayerAssigner`, `CrossingMinimizer`
+- ✅ `_render_fsm_diagram` present (previously noted at line 1434; line numbers may have shifted)
+- ⚠️ **Function count**: 27 top-level defs + 3 classes (grew from 19)
 - ⚠️ **Integration Map incomplete**: `_helpers.py` imports `_render_fsm_diagram` from `layout` — must be updated during split
 - No `layout/` subpackage created. Enhancement not yet applied.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:04:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:02:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`

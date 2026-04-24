@@ -47,3 +47,15 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 - Inspiration: context-mode intent-driven filtering
 - Natural upgrade once FEAT-1112 session SQLite+FTS5 store lands (switch ranking backend to FTS5)
 - Pairs with ENH-1111 scratch-pad enforcement
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- No `--intent` flag in `ll-history`, `ll-deps`, or `ll-scan-codebase` ✓
+- No `scripts/little_loops/ranking.py` module ✓
+- Feature not yet implemented ✓
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

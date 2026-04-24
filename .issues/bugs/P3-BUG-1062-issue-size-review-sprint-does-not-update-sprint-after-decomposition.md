@@ -98,8 +98,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `issue-size-review`, `sprint`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:capture-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ad93ba1-3799-4f99-80ea-185dca355ffa.jsonl`
 
 ---
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `skills/issue-size-review/SKILL.md` has `--sprint` flag handling but no sprint YAML update step after decomposition ✓
+- No `git add ".sprints/${SPRINT_NAME}.yaml"` in Phase 5/6 execution block ✓
+- Bug not yet fixed ✓
 
 **Open** | Created: 2026-04-12 | Priority: P3

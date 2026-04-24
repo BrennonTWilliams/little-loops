@@ -147,6 +147,7 @@ Depends on: FEAT-1244 (benchmark fragment core) — must be merged first.
 Enables: FEAT-1120 (harness-optimize loop) — provides the scoring primitive that loop needs.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:refine-issue` - 2026-04-23T16:29:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e16f5a4-2bb7-48c1-999f-ab6d54465258.jsonl`
 - `/ll:format-issue` - 2026-04-23T16:19:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7c42afa-de19-4417-8d4e-005c53340f64.jsonl`
 - `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acc1b9ba-37ad-4355-95fb-ff7907feebf3.jsonl`
@@ -154,5 +155,14 @@ Enables: FEAT-1120 (harness-optimize loop) — provides the scoring primitive th
 ---
 
 ## Status
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `scripts/little_loops/loops/outer-loop-eval.yaml` has no `run_benchmark_opt_in` state ✓
+- `scripts/little_loops/loops/agent-eval-improve.yaml` has no opt-in benchmark state ✓
+- Dependency FEAT-1244 is **COMPLETED** — `lib/benchmark.yaml` now exists; this issue is unblocked ✓
+- Feature not yet implemented ✓
 
 **Open** | Created: 2026-04-21 | Priority: P2

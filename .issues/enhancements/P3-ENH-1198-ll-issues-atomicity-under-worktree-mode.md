@@ -86,8 +86,17 @@ In worktree mode, each worker has its own `.issues/` snapshot at worker start. C
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `parallel-family-review` - 2026-04-20T00:00:00Z - Filed as follow-up from parallel-family review. `ll-issues` under parallel worktree mode has no current coordination story.
 
 ---
+
+## Verification Notes
+
+**Verdict**: DEP_ISSUES — Verified 2026-04-23
+
+- `depends_on: [FEAT-1075]` but FEAT-1075 is in `.issues/deferred/` — the dependency is deferred, not completed. This issue is unblocked in theory (the worktree runner FEAT-1075 is not required to fix the ID allocation logic), but the integration test (`validate_catalog` with real 2-worktree fixture) cannot be written without the runner. Consider splitting: fix the fcntl lock + atomic-write changes now; defer the 2-worktree integration test until FEAT-1075 is re-activated.
+- `ll-issues next-id` has no locking — confirmed in `scripts/little_loops/cli/issues/` ✓
+- Feature not yet implemented ✓
 
 **Open** | Created: 2026-04-20 | Priority: P3

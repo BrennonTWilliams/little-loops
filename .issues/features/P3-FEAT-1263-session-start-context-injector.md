@@ -96,6 +96,15 @@ This issue owns only the injection side. It does NOT modify how `ll-continue-pro
 
 FEAT-1116 risk: `session-start-inject.sh` is a SessionStart shell script in the layer FEAT-1116 is migrating. Implement as specified for unblocked delivery; plan follow-up to migrate to the adapter pattern.
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `hooks/scripts/session-start-inject.sh` does not exist ✓
+- No `session-start-inject.sh` entry in `hooks/hooks.json` ✓
+- Blocked by FEAT-1156 (`ll-continue-prompt.md` must exist before injection) ✓
+- Feature not yet implemented ✓
+
 ## References
 
 - Parent: FEAT-1159
@@ -103,3 +112,7 @@ FEAT-1116 risk: `session-start-inject.sh` is a SessionStart shell script in the 
 - Richer input when available: FEAT-1264 (event-log-driven snapshot)
 - Hook utilities: `hooks/scripts/lib/common.sh` (`get_mtime`, `ll_config_value`, `ll_feature_enabled`)
 - Consumer compatibility: `commands/resume.md:28-42`, `scripts/little_loops/subprocess_utils.py:31-58`
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

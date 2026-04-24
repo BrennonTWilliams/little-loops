@@ -75,3 +75,17 @@ Decide whether `precompact_handoff` is opt-in (feature flag in config) or always
 
 - Depends on: FEAT-1156 (hook must exist before docs can be accurate)
 - Tests: FEAT-1157
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `docs/guides/SESSION_HANDOFF.md` has no automatic PreCompact trigger section ✓
+- `docs/ARCHITECTURE.md:85-98` does not list `precompact-handoff.sh` ✓
+- `skills/configure/areas.md:867` has no row for `precompact-handoff.sh` ✓
+- Blocked by FEAT-1156 (hook must exist before docs can be accurate) ✓
+- Feature not yet implemented ✓
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

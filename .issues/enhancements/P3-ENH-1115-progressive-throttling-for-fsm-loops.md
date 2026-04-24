@@ -53,3 +53,15 @@ Context-mode (github.com/mksglu/context-mode) applies "progressive throttling" a
 
 - Inspiration: context-mode progressive throttling on search calls
 - Builds on: recent FSM rate-limit work (`fa02a186`, `95b4fed2`, `c8ea14e9`, `8dba4536`)
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- No `throttle:` section in FSM state config schema (`scripts/little_loops/fsm/schema.py`) ✓
+- No per-state tool-call counter in FSM executor ✓
+- Feature not yet implemented ✓
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

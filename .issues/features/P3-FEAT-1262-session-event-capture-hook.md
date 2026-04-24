@@ -88,9 +88,21 @@ This issue owns only the capture side: writing `.ll/ll-session-events.jsonl`. It
 
 FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer FEAT-1116 is migrating to Python core handlers. Implement as specified here for unblocked delivery; plan a follow-up to migrate to the FEAT-1116 adapter pattern.
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `hooks/scripts/session-capture.sh` does not exist ✓
+- No PostToolUse event capture entry in `hooks/hooks.json` for session events ✓
+- Feature not yet implemented ✓
+
 ## References
 
 - Parent: FEAT-1159
 - Consumer of this output: FEAT-1264 (precompact-handoff.sh event-log integration)
 - Session store integration: FEAT-1112 (optional; JSONL fallback always available)
 - Hook utilities: `hooks/scripts/lib/common.sh` (`acquire_lock`, `release_lock`, `ll_feature_enabled`, `ll_config_value`)
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

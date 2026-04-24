@@ -371,7 +371,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Blocked By
 
-- FEAT-1244: benchmark fragment core FSM fragment — delivers `lib/benchmark.yaml` which the `score` state imports (FEAT-1119 was decomposed into FEAT-1244 + FEAT-1245; `lib/benchmark.yaml` does not yet exist)
+~~FEAT-1244: benchmark fragment core FSM fragment~~ — **COMPLETED** (2026-04-23 verified). `lib/benchmark.yaml` now exists. This issue is unblocked; update `blocked_by` frontmatter accordingly before implementing.
 
 ## Dependencies
 
@@ -381,6 +381,7 @@ Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a h
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:ready-issue` - 2026-04-22T02:14:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed16b00-515e-4758-a2d9-74c23897b796.jsonl`
 - `/ll:ready-issue` - 2026-04-22T01:59:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ce1718d-d54e-4865-8898-1a6b65a7f382.jsonl`
 - `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/338c071f-3b53-4a00-b600-f0c19c9a42ba.jsonl`
@@ -393,6 +394,14 @@ Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful on
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 
 ---
+
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — Verified 2026-04-23
+
+- `scripts/little_loops/loops/harness-optimize.yaml` does not exist ✓ (feature not yet implemented)
+- **Blocker FEAT-1244 is now COMPLETED** — `lib/benchmark.yaml` now exists; update `blocked_by` frontmatter to remove FEAT-1244 and unblock this issue
+- FEAT-1245 (loop integration) is still open and must also be implemented alongside this issue
 
 ## Status
 

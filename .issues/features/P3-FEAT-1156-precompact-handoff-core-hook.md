@@ -93,5 +93,14 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-1116 (hook-intent abstraction layer) is migrating PreCompact hooks from `hooks/scripts/` shell scripts to Python core handlers with thin per-host adapters. This issue adds a new shell script in the legacy layer FEAT-1116 is retiring. Implement `precompact-handoff.sh` as specified here for the MVP, but scope it to be replaced by — or restructured as — the Python core handler + Claude Code adapter pattern once FEAT-1116's PreCompact migration scaffolding is in place.
 
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `hooks/scripts/precompact-handoff.sh` does not exist ✓
+- `hooks/hooks.json` has no second PreCompact entry for handoff ✓
+- Feature not yet implemented ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`

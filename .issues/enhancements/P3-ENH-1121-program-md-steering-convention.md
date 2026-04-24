@@ -83,9 +83,18 @@ First consumer. `load_directive` state reads `.ll/program.md` via the CLI-provid
 Related: FEAT-1120 (harness-optimize loop) — first consumer. This enhancement is useful but not required for FEAT-1120 to ship; it can land alongside or shortly after.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 
 ---
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-23
+
+- `scripts/little_loops/cli/loop/__init__.py` has no `.ll/program.md` loading logic ✓
+- No `load_directive` state reading `program.md` in any built-in loop YAML ✓
+- Feature not yet implemented ✓
 
 ## Status
 
