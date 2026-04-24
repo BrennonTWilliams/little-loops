@@ -1,0 +1,156 @@
+"""Tests for the harness-optimize built-in loop."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import yaml
+
+from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+
+BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
+LOOP_FILE = BUILTIN_LOOPS_DIR / "harness-optimize.yaml"
+
+
+@pytest.fixture
+def loop_data() -> dict:
+    """Load the harness-optimize YAML."""
+    assert LOOP_FILE.exists(), f"harness-optimize.yaml not found at {LOOP_FILE}"
+    with open(LOOP_FILE) as f:
+        return yaml.safe_load(f)
+
+
+class TestHarnessOptimizeFile:
+    """Tests that harness-optimize.yaml exists and is structurally valid."""
+
+    def test_file_exists(self) -> None:
+        assert LOOP_FILE.exists(), f"harness-optimize.yaml not found at {LOOP_FILE}"
+
+    def test_parses_as_yaml(self, loop_data: dict) -> None:
+        assert isinstance(loop_data, dict), "root must be a mapping"
+
+    def test_validates_as_fsm(self) -> None:
+        fsm, _ = load_and_validate(LOOP_FILE)
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, f"FSM validation errors: {[str(e) for e in error_list]}"
+
+    def test_name(self, loop_data: dict) -> None:
+        assert loop_data.get("name") == "harness-optimize"
+
+    def test_initial_state(self, loop_data: dict) -> None:
+        assert loop_data.get("initial") == "load_directive"
+
+    def test_terminal_state(self, loop_data: dict) -> None:
+        states = loop_data.get("states", {})
+        assert "done" in states
+        assert states["done"].get("terminal") is True
+
+    def test_context_defaults(self, loop_data: dict) -> None:
+        context = loop_data.get("context", {})
+        assert "targets" in context, "context must have targets"
+        assert context.get("targets") == "", "targets default must be empty string"
+        assert "tasks_dir" in context, "context must have tasks_dir"
+        assert context.get("tasks_dir") == "", "tasks_dir default must be empty string"
+        assert "scorer" in context, "context must have scorer"
+        assert context.get("scorer") == "", "scorer default must be empty string"
+        assert context.get("target_score") == 1.0, "target_score default must be 1.0"
+        assert context.get("max_iterations") == 30, "max_iterations default must be 30"
+
+
+class TestHarnessOptimizeStates:
+    """Tests for required states and their structure."""
+
+    REQUIRED_STATES = {
+        "load_directive",
+        "baseline_score",
+        "init_prev",
+        "propose",
+        "apply",
+        "score",
+        "gate",
+        "commit_and_log",
+        "revert_and_log",
+        "write_trajectory_accepted",
+        "write_trajectory_rejected",
+        "capture_prev",
+        "done",
+    }
+
+    def test_has_all_required_states(self, loop_data: dict) -> None:
+        actual = set(loop_data.get("states", {}).keys())
+        missing = self.REQUIRED_STATES - actual
+        assert not missing, f"Missing required states: {missing}"
+
+    def test_baseline_score_uses_run_benchmark_fragment(self, loop_data: dict) -> None:
+        state = loop_data["states"]["baseline_score"]
+        assert state.get("fragment") == "run_benchmark"
+        assert state.get("capture") == "baseline"
+        assert "context.scorer" in state.get("action", "")
+        assert "context.tasks_dir" in state.get("action", "")
+        assert state.get("on_yes") == "init_prev"
+        assert state.get("on_no") == "done"
+        assert state.get("on_error") == "done"
+
+    def test_init_prev_captures_prev_score(self, loop_data: dict) -> None:
+        state = loop_data["states"]["init_prev"]
+        assert state.get("capture") == "prev_score"
+        assert state.get("next") == "propose"
+
+    def test_score_state_uses_run_benchmark_fragment(self, loop_data: dict) -> None:
+        state = loop_data["states"]["score"]
+        assert state.get("fragment") == "run_benchmark"
+        assert state.get("capture") == "benchmark_score"
+        assert "context.scorer" in state.get("action", "")
+        assert "context.tasks_dir" in state.get("action", "")
+        assert state.get("on_yes") == "gate"
+        assert state.get("on_no") == "revert_and_log"
+        assert state.get("on_error") == "revert_and_log"
+
+    def test_gate_has_convergence_evaluator(self, loop_data: dict) -> None:
+        evaluate = loop_data["states"]["gate"].get("evaluate", {})
+        assert evaluate.get("type") == "convergence"
+        assert evaluate.get("direction") == "maximize"
+        assert "previous" in evaluate, (
+            "gate evaluate must have previous field (prevents always-progress bug on iteration 1)"
+        )
+        assert "target" in evaluate
+        assert "tolerance" in evaluate
+
+    def test_gate_routes_correctly(self, loop_data: dict) -> None:
+        state = loop_data["states"]["gate"]
+        route = state.get("route", {})
+        assert route.get("stall") == "revert_and_log"
+        assert route.get("error") == "revert_and_log"
+        assert route.get("target") == "commit_and_log"
+        assert route.get("progress") == "commit_and_log"
+
+    def test_revert_uses_scoped_targets(self, loop_data: dict) -> None:
+        action = loop_data["states"]["revert_and_log"].get("action", "")
+        assert "context.targets" in action, (
+            "revert_and_log must scope revert to ${context.targets}, not bare 'git checkout -- .'"
+        )
+
+    def test_capture_prev_captures_prev_score(self, loop_data: dict) -> None:
+        state = loop_data["states"]["capture_prev"]
+        assert state.get("capture") == "prev_score"
+        assert state.get("next") == "propose"
+
+    def test_write_trajectory_accepted_routes_to_capture_prev(self, loop_data: dict) -> None:
+        assert loop_data["states"]["write_trajectory_accepted"].get("next") == "capture_prev"
+
+    def test_write_trajectory_rejected_routes_to_done(self, loop_data: dict) -> None:
+        assert loop_data["states"]["write_trajectory_rejected"].get("next") == "done"
+
+    def test_trajectory_path_in_accepted_state(self, loop_data: dict) -> None:
+        action = loop_data["states"]["write_trajectory_accepted"].get("action", "")
+        assert "harness-optimize-trajectory.jsonl" in action, (
+            "write_trajectory_accepted must append to harness-optimize-trajectory.jsonl"
+        )
+
+    def test_trajectory_path_in_rejected_state(self, loop_data: dict) -> None:
+        action = loop_data["states"]["write_trajectory_rejected"].get("action", "")
+        assert "harness-optimize-trajectory.jsonl" in action, (
+            "write_trajectory_rejected must append to harness-optimize-trajectory.jsonl"
+        )

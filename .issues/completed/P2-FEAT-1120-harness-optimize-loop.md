@@ -9,6 +9,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 25
+completed_at: 2026-04-24T20:46:21Z
 ---
 
 # FEAT-1120: Harness-Optimize Loop (Score-Gated Hill-Climbing on Skills/Commands/CLAUDE.md)
@@ -611,6 +612,8 @@ Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a h
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-24T20:46:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0fba88a-2c81-43e6-a5ae-62db66bcbacf.jsonl`
+- `/ll:ready-issue` - 2026-04-24T20:37:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acf4b7da-c497-4830-86b1-7e9c5a8f857f.jsonl`
 - `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00728f59-db70-4cfa-8e4f-777d3b228f0d.jsonl`
 - `/ll:refine-issue` - 2026-04-24T20:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7ed6f36-d7d3-48ef-81c1-7f05910e63b1.jsonl`
 - `manual design review` - 2026-04-24T00:00:00 - Pass 3 corrections: `apply` state, `init_prev`, two trajectory states, `context:` defaults, `baseline_score` routing, stop-on-first-stall decision, `tolerance` on gate, Step 1 naming fix
@@ -641,9 +644,13 @@ Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful on
 - `TestBenchmarkYamlFragments` at `test_fsm_fragments.py:1031-1120` already covers the fragment — no new fragment test needed
 - All design decisions verified against live codebase across 4 research passes (evaluators.py, schema.py, persistence.py, interpolation.py)
 
+## Resolution
+
+Implemented in commit. Created `scripts/little_loops/loops/harness-optimize.yaml` with the full score-gated hill-climbing state machine: `load_directive → baseline_score → init_prev → propose → apply → score → gate → commit_and_log/revert_and_log → write_trajectory_accepted/write_trajectory_rejected → capture_prev/done`. Added `scripts/tests/test_harness_optimize.py` with 19 structural tests (all passing). Updated `test_builtin_loops.py` expected set, README.md (43 FSM loops), CONTRIBUTING.md (43 YAML files), LOOPS_GUIDE.md Harness Examples table, and created `docs/reference/loops.md`.
+
 ## Status
 
-Open
+Completed
 
 ---
 

@@ -70,6 +70,7 @@ class TestBuiltinLoopFiles:
             "context-health-monitor",
             "harness-single-shot",
             "harness-multi-item",
+            "harness-optimize",
             "general-task",
             "refine-to-ready-issue",
             "agent-eval-improve",

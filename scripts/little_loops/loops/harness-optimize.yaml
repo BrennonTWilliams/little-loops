@@ -1,0 +1,137 @@
+name: harness-optimize
+category: optimization
+description: |
+  Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md).
+  Each iteration proposes an edit to a declared target file set, runs a benchmark
+  via lib/benchmark.yaml, accepts the change if score rises (or meets target),
+  and reverts otherwise. Commits accepted mutations to the current branch.
+  Trajectory persists to .loops/tmp/harness-optimize-trajectory.jsonl.
+initial: load_directive
+max_iterations: 30
+timeout: 7200
+on_handoff: spawn
+import:
+  - lib/benchmark.yaml
+
+context:
+  targets: ""         # required — space-separated file paths, e.g. "skills/foo/SKILL.md"
+  tasks_dir: ""       # required — path to Harbor task directory
+  scorer: ""          # required — scorer command, e.g. "./scripts/score.sh"
+  target_score: 1.0   # early-stop threshold; 1.0 means "never early-stop"
+  max_iterations: 30  # hard budget ceiling
+
+states:
+  load_directive:
+    action_type: shell
+    action: |
+      TRAJ=.loops/tmp/harness-optimize-trajectory.jsonl
+      if [ -f "$TRAJ" ]; then
+        BEST=$(jq -r 'select(.accepted==true) | .commit_sha' "$TRAJ" | tail -1)
+        [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}
+      fi
+      echo "ready"
+    capture: directive
+    next: baseline_score
+
+  baseline_score:
+    fragment: run_benchmark
+    action: "${context.scorer} ${context.tasks_dir}"
+    capture: baseline
+    on_yes: init_prev
+    on_no: done
+    on_error: done
+
+  init_prev:
+    action_type: shell
+    action: "echo '${captured.baseline.output}' | tail -1 | tr -d '[:space:]'"
+    capture: prev_score
+    next: propose
+
+  propose:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Target files available: ${context.targets}
+      Baseline score: ${captured.baseline.output}
+      Last benchmark output: ${captured.benchmark_score.output}
+
+      Pick ONE file from the target list to improve this iteration.
+      Read it, then propose ONE targeted edit to raise the benchmark score.
+      Output the complete revised file contents only —
+      no preamble, no explanation, no markdown fences.
+    capture: candidate
+    on_blocked: done
+    next: apply
+
+  apply:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Write the following revised contents to the file you proposed editing.
+      Replace the entire file contents exactly — no preamble, no explanation.
+
+      ${captured.candidate.output}
+
+      Confirm the file has been updated.
+    next: score
+
+  score:
+    fragment: run_benchmark
+    action: "${context.scorer} ${context.tasks_dir}"
+    capture: benchmark_score
+    on_yes: gate
+    on_no: revert_and_log
+    on_error: revert_and_log
+
+  gate:
+    action_type: shell
+    action: |
+      echo "${captured.benchmark_score.output}" | tail -1 | tr -d '[:space:]'
+    evaluate:
+      type: convergence
+      direction: maximize
+      target: "${context.target_score}"
+      previous: "${captured.prev_score.output}"
+      tolerance: 0.02
+    route:
+      target: commit_and_log
+      progress: commit_and_log
+      stall: revert_and_log
+      error: revert_and_log
+
+  commit_and_log:
+    action_type: shell
+    action: |
+      git add ${context.targets}
+      git commit -m "harness-optimize: iter ${state.iteration}, score ${captured.benchmark_score.output}"
+      git rev-parse HEAD
+    capture: last_commit
+    next: write_trajectory_accepted
+
+  revert_and_log:
+    action_type: shell
+    action: "git restore ${context.targets}"
+    next: write_trajectory_rejected
+
+  write_trajectory_accepted:
+    action_type: shell
+    action: |
+      echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":true,"commit_sha":"${captured.last_commit.output}"}' \
+        >> .loops/tmp/harness-optimize-trajectory.jsonl
+    next: capture_prev
+
+  write_trajectory_rejected:
+    action_type: shell
+    action: |
+      echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":false,"commit_sha":""}' \
+        >> .loops/tmp/harness-optimize-trajectory.jsonl
+    next: done
+
+  capture_prev:
+    action_type: shell
+    action: "echo '${captured.benchmark_score.output}' | tail -1 | tr -d '[:space:]'"
+    capture: prev_score
+    next: propose
+
+  done:
+    terminal: true
