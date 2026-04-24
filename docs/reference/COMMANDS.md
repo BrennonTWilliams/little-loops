@@ -182,16 +182,16 @@ Refine issue files with codebase-driven research to fill knowledge gaps needed f
 - `issue_id` (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
 - `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview)
 
-**Frontmatter write-back**: After detecting 2+ implementation options deposited into `Proposed Solution` in `--auto` mode, the command sets `decision_needed: true` in the issue's YAML frontmatter. If fewer than 2 options are deposited, the flag is cleared to `false` (or left absent if never set). This is skipped in `--dry-run` mode.
+**Frontmatter write-back**: After detecting 2+ implementation options deposited into `Proposed Solution` in `--auto` mode, the command sets `decision_needed: true` in the issue's YAML frontmatter. If fewer than 2 options are deposited, the flag is cleared to `false` (or left absent if never set). This is skipped in `--dry-run` mode. Note: `/ll:confidence-check` can also set `decision_needed: true` independently when it detects an unresolved decision in Outcome Risk Factors.
 
 ### `/ll:decide-issue`
-Resolve multi-option implementation decisions by gathering codebase evidence for each option and selecting the best fit. Where `/ll:refine-issue --auto` deposits competing approaches and sets `decision_needed: true`, this skill closes the loop — scoring every option and annotating the winner directly in the issue file.
+Resolve multi-option implementation decisions by gathering codebase evidence for each option and selecting the best fit. Where `/ll:refine-issue --auto` deposits competing approaches and sets `decision_needed: true` (or `/ll:confidence-check` detects an unresolved decision), this skill closes the loop — scoring every option and annotating the winner directly in the issue file.
 
 **Arguments:**
 - `issue_id` (required): Issue ID to decide on (e.g., FEAT-948, ENH-277)
 - `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview decision without writing)
 
-**When to run**: After `/ll:refine-issue --auto` sets `decision_needed: true` in the issue frontmatter. Automated pipelines (`ll-auto`, `ll-parallel`) invoke this step automatically via the `decide_command` config template.
+**When to run**: After `/ll:refine-issue --auto` or `/ll:confidence-check` sets `decision_needed: true` in the issue frontmatter. Automated pipelines (`ll-auto`, `ll-parallel`) invoke this step automatically via the `decide_command` config template.
 
 **Frontmatter write-back**: Sets `decision_needed: false` after annotating the winning option. Idempotent — skips annotation write if a `### Decision Rationale` section already exists.
 
@@ -244,6 +244,8 @@ Pre-implementation confidence check that validates readiness and estimates outco
 **Flags:** `--auto` (non-interactive), `--all` (batch all active issues), `--sprint <name>` (scope to sprint issues only), `--check` (check-only mode: run scoring without writes, print `[ID] check: score N/100` per issue, exit 1 if any fail)
 
 **Findings write-back**: When concerns, gaps, or outcome risk factors are found (and `--check` is not set), the skill automatically appends a `## Confidence Check Notes` section to the issue file and stages it with `git add` — no confirmation prompt. This fires in both interactive and `--auto` modes. If all scores are clean, no write occurs.
+
+**`decision_needed` write-back**: After writing Outcome Risk Factors, the skill scans the generated content for signal phrases ("open decision", "unresolved decision", "resolve before implementing", "decision point"). If any are found, it sets `decision_needed: true` in the issue frontmatter (idempotent; skipped in `--check` mode). This ensures the autodev loop's decision gate fires automatically for issues where `confidence-check` identified an unresolved blocking decision.
 
 ### `/ll:issue-workflow`
 Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.

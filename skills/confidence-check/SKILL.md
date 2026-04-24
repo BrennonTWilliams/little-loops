@@ -494,6 +494,26 @@ After the findings write-back step, append a session log entry to the issue file
 
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `## Status` footer.
 
+### Phase 4.6: Decision-Needed Flag
+
+**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
+
+After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an unresolved decision requiring resolution before implementation. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < 60`); if Phase 4.5 was skipped, no signal phrases will be present.
+
+**Signal phrases** (any match triggers the flag):
+- "open decision"
+- "unresolved decision"
+- "resolve before implementing"
+- "decision point"
+
+If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
+
+1. Use the Edit tool to update `decision_needed: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4)
+2. **Idempotency**: skip the write if `decision_needed` is already `true`
+3. Log to terminal output: `✓ decision_needed set to true — unresolved decision detected in Outcome Risk Factors`
+
+If no signal phrase is found, leave `decision_needed` unchanged.
+
 ### Auto Mode Behavior
 
 When `AUTO_MODE` is true:

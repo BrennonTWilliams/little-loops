@@ -343,7 +343,7 @@ Both scores are persisted to the issue's frontmatter as `confidence_score` and `
 
 When readiness score stays below 70 after 2+ refinement passes, `confidence-check` branches on `score_ambiguity` (Criterion C — 0–25):
 
-- **`score_ambiguity ≤ 10`** — competing implementation options are unresolved. Run `/ll:decide-issue` to select one option and clear `decision_needed: true`.
+- **`score_ambiguity ≤ 10`** — competing implementation options are unresolved. When `confidence-check` identifies an unresolved decision in its Outcome Risk Factors prose, it automatically sets `decision_needed: true` in the issue frontmatter (BUG-1278 fix). Automated pipelines will then invoke `/ll:decide-issue` via the decision gate; for manual runs, execute `/ll:decide-issue` directly to select one option and clear the flag.
 - **`score_ambiguity > 10`** — the issue is too large or under-researched. Run `/ll:issue-size-review` to decompose it into independently-shippable pieces.
 
 This replaces the old behavior of always routing to `/ll:issue-size-review` regardless of cause. (ENH-1250)
