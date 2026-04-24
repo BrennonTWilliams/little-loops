@@ -433,7 +433,7 @@ class IssueParser:
             fm_val = frontmatter.get(fm_key)
             if not fm_val:
                 continue
-            fm_ids = [fm_val] if isinstance(fm_val, str) else list(fm_val)
+            fm_ids = [id.strip() for id in fm_val.strip("\"'").split(",") if id.strip()] if isinstance(fm_val, str) else list(fm_val)
             if body_ids and set(fm_ids) != set(body_ids):
                 logger.warning(
                     "%s: frontmatter %s %s conflicts with body section %s; "
