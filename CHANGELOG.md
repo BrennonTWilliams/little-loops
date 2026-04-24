@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.88.0] - 2026-04-23
+
+### Added
+
+- **`ll-logs` CLI Tool** — New command-line tool for discovering, extracting, and tailing Claude Code session logs. Three subcommands: `discover` (identifies ll-relevant sessions), `extract` (writes sessions to `logs/<project-slug>/<session-id>.jsonl` with `--project`/`--all` scope and optional `--cmd` filter), and `tail` (streams live JSONL entries from an active loop session). After extraction, generates `logs/index.md` with a summary table. (FEAT-1271, FEAT-1270, FEAT-1273, FEAT-1274, FEAT-1003, FEAT-1005, FEAT-1006)
+- **Benchmark Fragment & Harbor Scorer Evaluator** — Added `harbor_scorer` as a core evaluator type. New `lib/benchmark.yaml` reusable FSM fragment accepts a benchmark spec and returns a numeric score compatible with Harbor-format public task sets. (FEAT-1244)
+
+### Changed
+
+- **Configurable Loop Queue Wait Timeout** — `queue_wait_timeout_seconds` is now configurable in the `loops` config section, replacing the hardcoded 3600s default. (ENH-1231)
+
 ## [1.87.0] - 2026-04-22
 
 ### Added
@@ -60,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
 - **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
 
+[1.88.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.87.0...v1.88.0
 [1.87.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.86.0...v1.87.0
 [1.86.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.85.0...v1.86.0
 
