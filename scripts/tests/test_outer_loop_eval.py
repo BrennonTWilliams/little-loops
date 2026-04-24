@@ -68,6 +68,7 @@ class TestOuterLoopEvalStates:
         "analyze_execution",
         "generate_report",
         "refine_analysis",
+        "run_benchmark_opt_in",
         "done",
     }
 
@@ -140,6 +141,14 @@ class TestOuterLoopEvalStates:
         state = loop_data["states"]["refine_analysis"]
         assert state.get("action_type") == "prompt"
         assert state.get("next") == "generate_report"
+
+    def test_run_benchmark_opt_in_uses_fragment(self, loop_data: dict) -> None:
+        state = loop_data["states"]["run_benchmark_opt_in"]
+        assert state.get("fragment") == "run_benchmark"
+        assert state.get("capture") == "benchmark_score"
+        assert "context.scorer" in state.get("action", "")
+        assert "context.tasks_dir" in state.get("action", "")
+        assert state.get("on_error") == "done"
 
     def test_run_sub_loop_uses_quoted_context_vars(self, loop_data: dict) -> None:
         """Shell action must quote context vars to handle empty strings safely."""

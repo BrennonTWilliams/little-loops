@@ -13,6 +13,9 @@ context:
   quality_target: 0.85
   task_suite: "evals/"
   agent_config: "agent.yaml"
+import:
+  - lib/benchmark.yaml
+
 states:
   run_eval:
     action_type: prompt
@@ -89,6 +92,14 @@ states:
     max_retries: 2
     on_retry_exhausted: failed
     next: run_eval
+  run_benchmark_opt_in:
+    fragment: run_benchmark
+    action: "${context.scorer} ${context.tasks_dir}"
+    capture: benchmark_score
+    on_yes: done
+    on_no: done
+    on_error: done
+
   done:
     terminal: true
   failed:

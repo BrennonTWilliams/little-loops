@@ -9,6 +9,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: 2026-04-24T19:07:02Z
 ---
 
 # FEAT-1245: Benchmark Fragment — Loop Integration
@@ -165,6 +166,7 @@ Depends on: FEAT-1244 (benchmark fragment core) — must be merged first.
 Enables: FEAT-1120 (harness-optimize loop) — provides the scoring primitive that loop needs.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-24T19:03:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de822c98-36ae-41a8-bc64-a71ac2da3d81.jsonl`
 - `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:wire-issue` - 2026-04-24T18:49:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e40ac57-7a53-41ed-8096-65a22b4710a4.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
@@ -174,7 +176,16 @@ Enables: FEAT-1120 (harness-optimize loop) — provides the scoring primitive th
 
 ---
 
+## Resolution
+
+- Added `import: [lib/benchmark.yaml]` to `outer-loop-eval.yaml` and `agent-eval-improve.yaml`
+- Added `run_benchmark_opt_in` state to both loops (opt-in via `context.scorer`/`context.tasks_dir`; routes all outcomes to `done`)
+- Updated `test_outer_loop_eval.py`: added `run_benchmark_opt_in` to `REQUIRED_STATES` and `test_run_benchmark_opt_in_uses_fragment` assertion
+- All 5269 tests pass; `test_builtin_loops.py::test_all_validate_as_valid_fsm` confirms fragment resolution is clean
+
 ## Status
+
+COMPLETED 2026-04-24
 
 ## Verification Notes
 
