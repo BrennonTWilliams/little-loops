@@ -6,6 +6,7 @@ status: backlog
 title: Documentation file updates for ll-logs
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
+completed_at: 2026-04-23T23:56:40Z
 confidence_score: 100
 outcome_confidence: 85
 score_complexity: 25
@@ -233,11 +234,11 @@ The Verification Notes section (lines 211-225) states "Still missing ✗" for bo
 
 ## Acceptance Criteria
 
-- [ ] `ll-logs` appears in `CLAUDE.md` CLI Tools section
-- [ ] `docs/reference/CLI.md` has a complete `### ll-logs` section with subcommand and flag table
-- [ ] `README.md` count updated to 14 CLI tools and new section added
-- [ ] `docs/reference/API.md` includes `ll-logs` command reference
-- [ ] `docs/ARCHITECTURE.md` and `CONTRIBUTING.md` cli/ trees include `├── logs.py`
+- [x] `ll-logs` appears in `CLAUDE.md` CLI Tools section
+- [x] `docs/reference/CLI.md` has a complete `### ll-logs` section with subcommand and flag table
+- [x] `README.md` count updated to 14 CLI tools and new section added
+- [x] `docs/reference/API.md` includes `ll-logs` command reference
+- [x] `docs/ARCHITECTURE.md` and `CONTRIBUTING.md` cli/ trees include `├── logs.py`
 
 ## Impact
 
@@ -278,6 +279,7 @@ The "Still missing ✗" claims above are **inaccurate** as of commit `fdf2c2f4`:
 - `docs/reference/API.md:3277` — `### main_logs` IS present, but `**CLI Arguments:**` block (lines 3287-3291) lists four global flags (`-v/--verbose`, `--config`, `-n/--dry-run`, `-q/--quiet`) that do not exist in the actual parser. **Action needed**: Replace those four bullet lines with subcommands format — do not add a new section.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-23T23:55:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/505de9cd-4ca7-4d18-8750-a5c6542f39e5.jsonl`
 - `/ll:confidence-check` - 2026-04-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab8d94a1-ea7c-4a30-9041-a8059b1d8041.jsonl`
 - `/ll:wire-issue` - 2026-04-23T23:52:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a730208-4b84-4f23-9d7c-2df0dba38a12.jsonl`
 - `/ll:refine-issue` - 2026-04-23T23:48:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb0ab28e-5acd-4a08-a244-c1cea97bb0c2.jsonl`
@@ -293,6 +295,14 @@ The "Still missing ✗" claims above are **inaccurate** as of commit `fdf2c2f4`:
 
 ---
 
+## Resolution
+
+**Completed**: 2026-04-23T23:56:40Z
+
+The only remaining work was fixing `docs/reference/API.md:3277-3292` — the `### main_logs` section existed but listed four non-existent global flags (`-v/--verbose`, `--config`, `-n/--dry-run`, `-q/--quiet`). Replaced the inaccurate `**CLI Arguments:**` block with an accurate `**Subcommands:**` block (`discover`, `extract`, `tail`) matching the actual `_build_parser()` implementation in `scripts/little_loops/cli/logs.py`.
+
+All other documentation items were already completed by commit `fdf2c2f4`.
+
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P4
+**Completed** | Created: 2026-04-08 | Completed: 2026-04-23 | Priority: P4
