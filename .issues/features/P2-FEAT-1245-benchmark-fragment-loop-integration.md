@@ -3,6 +3,12 @@ id: FEAT-1245
 priority: P2
 parent: FEAT-1119
 size: Small
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1245: Benchmark Fragment — Loop Integration
@@ -67,6 +73,11 @@ evaluate:
 ### Tests
 - `scripts/tests/test_outer_loop_eval.py` — Update `REQUIRED_STATES` set and state-structure assertions for the new opt-in state
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py:36-44` — `test_all_validate_as_valid_fsm` sweeps all built-in YAMLs including both modified files; acts as canary — will fail if `import:` block or `run_benchmark_opt_in` state is malformed [Agent 1 + Agent 3 finding]
+- `scripts/tests/test_outer_loop_eval.py` — Add new `test_run_benchmark_opt_in_uses_fragment` assertion (asserts raw YAML fields: `fragment`, `capture`, `action` contains `context.scorer`/`context.tasks_dir`, `on_error == "done"`) — pattern confirmed from `test_fsm_fragments.py:1064-1120` [Agent 3 finding]
+- `scripts/tests/test_agent_eval_improve.py` — Does not exist; `agent-eval-improve.yaml` currently only gets canary coverage (`test_builtin_loops.py`), no state-structure assertions. Creating this file is optional but recommended to prevent silent removal of the new state. Follow `TestOuterLoopEvalStates` pattern in `test_outer_loop_eval.py:61-77` [Agent 3 finding]
+
 ### Documentation
 - N/A — no user-facing docs reference these internal evaluation loop configs
 
@@ -123,6 +134,13 @@ The existing `test_validates_as_fsm` (line 33) already calls `load_and_validate(
 3. Update `scripts/tests/test_outer_loop_eval.py`: add new state to `REQUIRED_STATES` and any state-structure assertions
 4. Run `python -m pytest scripts/tests/test_outer_loop_eval.py -v > /tmp/ll-scratch/test-results.txt 2>&1; tail -20 /tmp/ll-scratch/test-results.txt`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Verify `scripts/tests/test_builtin_loops.py` passes — `test_all_validate_as_valid_fsm` is a canary that exercises fragment resolution for both modified YAMLs; run `python -m pytest scripts/tests/test_builtin_loops.py -v -k "validate_as_valid_fsm"` to confirm no resolution errors
+6. Add `test_run_benchmark_opt_in_uses_fragment` method to `test_outer_loop_eval.py` — asserts raw YAML fields (`fragment == "run_benchmark"`, `capture == "benchmark_score"`, `on_error == "done"`, `action` contains `context.scorer` and `context.tasks_dir`)
+
 ## Acceptance Criteria
 
 - [ ] `outer-loop-eval.yaml` documents opt-in `run_benchmark` block with example `context:` wiring
@@ -147,6 +165,8 @@ Depends on: FEAT-1244 (benchmark fragment core) — must be merged first.
 Enables: FEAT-1120 (harness-optimize loop) — provides the scoring primitive that loop needs.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-04-24T18:49:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e40ac57-7a53-41ed-8096-65a22b4710a4.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:refine-issue` - 2026-04-23T16:29:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e16f5a4-2bb7-48c1-999f-ab6d54465258.jsonl`
 - `/ll:format-issue` - 2026-04-23T16:19:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7c42afa-de19-4417-8d4e-005c53340f64.jsonl`
