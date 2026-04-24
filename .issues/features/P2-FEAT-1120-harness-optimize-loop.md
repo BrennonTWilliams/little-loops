@@ -3,11 +3,11 @@ discovered_date: "2026-04-16"
 discovered_by: capture-issue
 source: ~/.claude/plans/review-this-open-source-cosmic-galaxy.md
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 71
+confidence_score: 99
+outcome_confidence: 75
 score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 22
 score_change_surface: 25
 ---
 
@@ -448,9 +448,62 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 3. **Trajectory JSONL**: Use two separate shell states — `write_trajectory_accepted` and `write_trajectory_rejected` — each appending one JSON line to `.loops/tmp/harness-optimize-trajectory.jsonl`. Fields: `iter` (`${state.iteration}`), `score` (`${captured.benchmark_score.output}`), `accepted` (true/false), `commit_sha` (`${captured.last_commit.output}` or `""`). See corrected YAML in Pass 3 above.
 
-4. **Update `scripts/tests/test_builtin_loops.py`**: Add `"harness-optimize"` to the `expected` set in `test_expected_loops_exist()` (~line 60)
+4. **Update `scripts/tests/test_builtin_loops.py`**: Add `"harness-optimize"` to the `expected` set in `test_expected_loops_exist()` (lines 48-91, add before the closing `}` at line 91)
 
-5. **Add integration test** in `scripts/tests/test_harness_optimize.py`: use `monkeypatch.chdir(tmp_path)` + a mock scorer script that increments a counter file; assert score monotonically non-decreases across accepted iterations; assert rejected mutations leave `git status` clean (model after `scripts/tests/test_ll_loop_integration.py:90-113`)
+5. **Add structural test** `scripts/tests/test_harness_optimize.py` following `test_outer_loop_eval.py:1-162` exactly:
+
+```python
+LOOP_FILE = BUILTIN_LOOPS_DIR / "harness-optimize.yaml"
+
+class TestHarnessOptimizeFile:
+    def test_file_exists(self) -> None: ...
+    def test_parses_as_yaml(self, loop_data) -> None: ...
+    def test_validates_as_fsm(self) -> None: ...
+    def test_name(self, loop_data) -> None: assert loop_data.get("name") == "harness-optimize"
+    def test_initial_state(self, loop_data) -> None: assert loop_data.get("initial") == "load_directive"
+    def test_terminal_state(self, loop_data) -> None: assert states["done"].get("terminal") is True
+    def test_context_defaults(self, loop_data) -> None:
+        # targets/tasks_dir/scorer == "" (required, no defaults); target_score == 1.0; max_iterations == 30
+
+class TestHarnessOptimizeStates:
+    REQUIRED_STATES = {
+        "load_directive", "baseline_score", "init_prev", "propose", "apply",
+        "score", "gate", "commit_and_log", "revert_and_log",
+        "write_trajectory_accepted", "write_trajectory_rejected", "capture_prev", "done",
+    }
+
+    def test_has_all_required_states(self, loop_data) -> None: ...
+    def test_score_state_uses_run_benchmark_fragment(self, loop_data) -> None:
+        state = loop_data["states"]["score"]
+        assert state.get("fragment") == "run_benchmark"
+        assert state.get("capture") == "benchmark_score"
+        assert "context.scorer" in state.get("action", "")
+        assert "context.tasks_dir" in state.get("action", "")
+        assert state.get("on_yes") == "gate"
+        assert state.get("on_no") == "revert_and_log"
+        assert state.get("on_error") == "revert_and_log"
+    def test_gate_has_convergence_evaluator(self, loop_data) -> None:
+        evaluate = loop_data["states"]["gate"].get("evaluate", {})
+        assert evaluate.get("type") == "convergence"
+        assert evaluate.get("direction") == "maximize"
+        assert "previous" in evaluate  # prevents always-progress bug; must reference captured.prev_score.output
+        assert "target" in evaluate
+        assert "tolerance" in evaluate
+    def test_capture_prev_captures_prev_score(self, loop_data) -> None:
+        assert loop_data["states"]["capture_prev"].get("capture") == "prev_score"
+    def test_write_trajectory_accepted_routes_to_capture_prev(self, loop_data) -> None:
+        assert loop_data["states"]["write_trajectory_accepted"].get("next") == "capture_prev"
+    def test_write_trajectory_rejected_routes_to_done(self, loop_data) -> None:
+        assert loop_data["states"]["write_trajectory_rejected"].get("next") == "done"
+```
+
+  Note: `test_all_validate_as_valid_fsm` in `test_builtin_loops.py:36-44` also picks up `harness-optimize.yaml` automatically — structural defects break that test first.
+
+  **Confirmed from codebase (Pass 4):**
+  - Insert `"harness-optimize"` after `"harness-multi-item"` (line 72) in the `expected` set — the set uses loose alphabetical grouping, harness-* entries cluster together.
+  - Integration tests in `test_ll_loop_integration.py` use inline `write_text()` to create temporary loop YAML files — no fixture YAML files from `fixtures/fsm/` are used in integration tests.
+  - `TestBenchmarkYamlFragments` at `test_fsm_fragments.py:1031-1120` ALREADY tests the `run_benchmark` fragment (description, action_type, harbor_scorer evaluator, full resolve round-trip). No new fragment test needed for this issue.
+  - The `test_fsm_fragments.py:522-662` reference in the wiring section is the MODEL/PATTERN; the actual test that followed that model (`TestBenchmarkYamlFragments`) is already in the file.
 
 6. **Run**: `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_harness_optimize.py -v`
 
@@ -558,6 +611,8 @@ Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a h
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00728f59-db70-4cfa-8e4f-777d3b228f0d.jsonl`
+- `/ll:refine-issue` - 2026-04-24T20:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7ed6f36-d7d3-48ef-81c1-7f05910e63b1.jsonl`
 - `manual design review` - 2026-04-24T00:00:00 - Pass 3 corrections: `apply` state, `init_prev`, two trajectory states, `context:` defaults, `baseline_score` routing, stop-on-first-stall decision, `tolerance` on gate, Step 1 naming fix
 - `/ll:ready-issue` - 2026-04-24T19:52:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fd6b77b-30ba-416d-9b65-f83eb1c8f249.jsonl`
 - `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b62e23ea-a883-4713-8d17-abc2c3993dec.jsonl`
@@ -578,11 +633,13 @@ Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful on
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — Verified 2026-04-23
+**Verdict**: READY_TO_IMPLEMENT — Verified 2026-04-24
 
-- `scripts/little_loops/loops/harness-optimize.yaml` does not exist ✓ (feature not yet implemented)
-- **Blocker FEAT-1244 is now COMPLETED** — `lib/benchmark.yaml` now exists; update `blocked_by` frontmatter to remove FEAT-1244 and unblock this issue
-- FEAT-1245 (loop integration) is still open and must also be implemented alongside this issue
+- `scripts/little_loops/loops/harness-optimize.yaml` does not exist ✓ (feature not yet implemented — expected)
+- Both blockers COMPLETED: FEAT-1244 (`lib/benchmark.yaml`) and FEAT-1245 (fragment wiring into outer-loop-eval and agent-eval-improve)
+- `lib/benchmark.yaml` confirmed present at `scripts/little_loops/loops/lib/benchmark.yaml` with correct `run_benchmark` fragment
+- `TestBenchmarkYamlFragments` at `test_fsm_fragments.py:1031-1120` already covers the fragment — no new fragment test needed
+- All design decisions verified against live codebase across 4 research passes (evaluators.py, schema.py, persistence.py, interpolation.py)
 
 ## Status
 
