@@ -355,8 +355,33 @@ states:
       PYEOF
     fragment: shell_exit
     on_yes: decide_current
+    on_no: check_decision_before_size_review
+    on_error: check_decision_before_size_review
+
+  check_decision_before_size_review:
+    # Gate before size-review: if decision_needed=true, route to run_decide so
+    # an unresolved design decision is resolved before decomposition is attempted.
+    # Mirrors decide_current logic; on_no falls through to run_size_review.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+
+      issue_id = '${captured.input.output}'
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      sys.exit(0 if d.get('decision_needed') == 'true' else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: run_decide
     on_no: run_size_review
-    on_error: run_size_review
 
   run_size_review:
     # Explicitly run issue-size-review when the sub-loop did not decompose the

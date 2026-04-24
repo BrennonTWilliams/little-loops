@@ -457,7 +457,9 @@ init → dequeue_next → [queue empty?]
                                                           ├─ YES → decide_current → [decision_needed?]
                                                           │                            ├─ YES → run_decide → implement_current → dequeue_next
                                                           │                            └─ NO  → implement_current → dequeue_next
-                                                          └─ NO  → run_size_review → enqueue_or_skip → [children found?]
+                                                          └─ NO  → check_decision_before_size_review → [decision_needed?]
+                                                                                                         ├─ YES → run_decide → implement_current → dequeue_next
+                                                                                                         └─ NO  → run_size_review → enqueue_or_skip → [children found?]
                                                                                                           ├─ YES → dequeue_next
                                                                                                           └─ NO  → recheck_after_size_review → [passed now?]
                                                                                                                       ├─ YES → decide_current → [decision_needed?]

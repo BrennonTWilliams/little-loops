@@ -1036,6 +1036,7 @@ class TestAutodevLoop:
             "size_review_snap",
             "check_broke_down",
             "recheck_scores",
+            "check_decision_before_size_review",
             "run_size_review",
             "enqueue_or_skip",
             "recheck_after_size_review",
@@ -1364,6 +1365,34 @@ class TestAutodevLoop:
         state = data["states"].get("recheck_scores", {})
         assert state.get("on_yes") == "decide_current", (
             f"recheck_scores.on_yes should be 'decide_current', got {state.get('on_yes')!r}"
+        )
+
+    def test_recheck_scores_on_no_routes_to_check_decision_before_size_review(self, data: dict) -> None:
+        """recheck_scores.on_no (scores fail) must route to check_decision_before_size_review."""
+        state = data["states"].get("recheck_scores", {})
+        assert state.get("on_no") == "check_decision_before_size_review", (
+            f"recheck_scores.on_no should be 'check_decision_before_size_review', got {state.get('on_no')!r}"
+        )
+
+    def test_check_decision_before_size_review_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_decision_before_size_review must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("check_decision_before_size_review", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_decision_before_size_review.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_decision_before_size_review_on_yes_routes_to_run_decide(self, data: dict) -> None:
+        """check_decision_before_size_review.on_yes (decision_needed=true) must route to run_decide."""
+        state = data["states"].get("check_decision_before_size_review", {})
+        assert state.get("on_yes") == "run_decide", (
+            f"check_decision_before_size_review.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_decision_before_size_review_on_no_routes_to_run_size_review(self, data: dict) -> None:
+        """check_decision_before_size_review.on_no (no decision needed) must route to run_size_review."""
+        state = data["states"].get("check_decision_before_size_review", {})
+        assert state.get("on_no") == "run_size_review", (
+            f"check_decision_before_size_review.on_no should be 'run_size_review', got {state.get('on_no')!r}"
         )
 
     def test_decide_current_uses_shell_exit_fragment(self, data: dict) -> None:
