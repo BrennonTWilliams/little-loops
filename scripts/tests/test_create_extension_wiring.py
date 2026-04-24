@@ -50,12 +50,12 @@ class TestInitSkillWiring:
 
 
 class TestConfigureAreasWiring:
-    """skills/configure/areas.md must show 15 CLI tools including ll-create-extension and ll-action."""
+    """skills/configure/areas.md must show 16 CLI tools including ll-create-extension and ll-action."""
 
-    def test_count_updated_to_15(self) -> None:
+    def test_count_updated_to_16(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 15" in content, (
-            "skills/configure/areas.md must show 'Authorize all 15' ll- CLI tools"
+        assert "Authorize all 16" in content, (
+            "skills/configure/areas.md must show 'Authorize all 16' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -195,10 +195,10 @@ class TestFeat1229LlActionWiring:
             "README.md must say '16 CLI tools' after ll-action was added"
         )
 
-    def test_configure_areas_count_is_15(self) -> None:
+    def test_configure_areas_count_is_16(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 15" in content, (
-            "skills/configure/areas.md must show 'Authorize all 15' ll- CLI tools"
+        assert "Authorize all 16" in content, (
+            "skills/configure/areas.md must show 'Authorize all 16' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:

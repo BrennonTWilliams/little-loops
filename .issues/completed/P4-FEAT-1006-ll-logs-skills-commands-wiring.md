@@ -6,10 +6,16 @@ status: backlog
 title: Skills and commands wiring for ll-logs
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
-confidence_score: 95
-outcome_confidence: 78
+completed_at: 2026-04-24T00:15:05Z
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 testable: false
 blocked_by: [FEAT-1002]
+decision_needed: false
 ---
 
 # FEAT-1006: Skills and commands wiring for ll-logs
@@ -84,6 +90,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   - Assert `"ll-logs"` appears at least 2 times in `skills/init/SKILL.md` (file-exists and create-new boilerplate blocks)
   - Assert `"Authorize all 13"` present in `skills/configure/areas.md`
   - Assert `"ll-logs"` present in `skills/configure/areas.md` enumerated list [Agent 3 finding]
+- `scripts/tests/test_create_extension_wiring.py:57,200` — **BREAKING**: two assertions `"Authorize all 15"` fail against live `skills/configure/areas.md` (now reads `"Authorize all 16"`); update both to `"Authorize all 16"` [Agent 2/3 finding, 2nd wiring pass]
 
 ### Note: pre-existing gap
 `ll-gitignore` is also missing from `commands/help.md` CLI TOOLS block (12 entries, ends at `ll-check-links`) and from the `skills/configure/areas.md` enumerated list. When implementing step 1, only add `ll-logs`; do not fix the `ll-gitignore` gap (separate issue). The count `12→13` in `skills/configure/areas.md` is correct for this scope.
@@ -113,12 +120,19 @@ ll-logs           Discover and extract ll-relevant log entries from Claude proje
 - `ll-logs` - Discover and extract ll-relevant log entries from Claude project logs
 ```
 
+**Open gap confirmed by `/ll:refine-issue` codebase research (2026-04-23):**
+
+- `scripts/tests/test_create_extension_wiring.py:57` — `test_count_updated_to_15` asserts `"Authorize all 15"` — **failing** against live `skills/configure/areas.md:823` which reads `"Authorize all 16"`
+- `scripts/tests/test_create_extension_wiring.py:200` — `test_configure_areas_count_is_15` asserts `"Authorize all 15"` — same failure
+- Fix: change both assertions from `"Authorize all 15"` to `"Authorize all 16"` (the Implementation Steps Wiring Phase step 5 already documents this but it has not been applied)
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 3. Update `.claude/CLAUDE.md` — append `ll-logs` bullet to the CLI Tools section (after `ll-check-links`) to match the init boilerplate being updated in step 2
 4. Create `scripts/tests/test_ll_logs_wiring.py` — follow the pattern in `scripts/tests/test_update_skill.py`; assert that all three changed files contain the expected `ll-logs` strings after implementation
+5. Update `scripts/tests/test_create_extension_wiring.py:57,200` — change both `"Authorize all 15"` assertions to `"Authorize all 16"` to match live `skills/configure/areas.md` (currently failing) [2nd wiring pass]
 
 ## API/Interface
 
@@ -126,10 +140,11 @@ N/A - No public API changes. Configuration-only updates to command and skill mar
 
 ## Acceptance Criteria
 
-- [ ] `commands/help.md` includes `ll-logs` in CLI TOOLS block
-- [ ] `skills/init/SKILL.md` includes `"Bash(ll-logs:*)"` in permissions.allow list
-- [ ] `skills/init/SKILL.md` includes `ll-logs` in both CLAUDE.md boilerplate blocks (file-exists and create-new cases)
-- [ ] `skills/configure/areas.md` count incremented to 13 and `ll-logs` added to enumerated list
+- [x] `commands/help.md` includes `ll-logs` in CLI TOOLS block (line 234)
+- [x] `skills/init/SKILL.md` includes `"Bash(ll-logs:*)"` in permissions.allow list (line 445)
+- [x] `skills/init/SKILL.md` includes `ll-logs` in both CLAUDE.md boilerplate blocks (lines 507 and 535)
+- [x] `skills/configure/areas.md` count incremented to 16 and `ll-logs` added to enumerated list (line 823)
+- [x] `scripts/tests/test_create_extension_wiring.py:57,200` — update both `"Authorize all 15"` assertions to `"Authorize all 16"`
 
 ## Impact
 
@@ -144,26 +159,37 @@ N/A - No public API changes. Configuration-only updates to command and skill mar
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — Core wiring still not done. `.claude/CLAUDE.md` was updated externally but all other targets remain. Additional tools (`ll-create-extension`, `ll-generate-schemas`) shipped after previous verification, so all line refs and counts are stale again:
+**Verdict**: COMPLETE — All wiring targets confirmed present. All 5 tests in `scripts/tests/test_ll_logs_wiring.py` pass. `scripts/tests/test_create_extension_wiring.py:57,200` updated from `"Authorize all 15"` to `"Authorize all 16"` — all 32 tests pass.
 
-**Done externally ✓**
+**Done ✓**
 - `.claude/CLAUDE.md:109` — `ll-logs` bullet present ✓
+- `commands/help.md:234` — `ll-logs` is the last entry in the CLI TOOLS block (after `ll-generate-schemas` at line 233) ✓
+- `skills/init/SKILL.md:445` — `"Bash(ll-logs:*)"` present in permissions.allow list (after `ll-create-extension` at line 444) ✓
+- `skills/init/SKILL.md:507` — `ll-logs` present in CLAUDE.md boilerplate, file-exists case ✓
+- `skills/init/SKILL.md:535` — `ll-logs` present in CLAUDE.md boilerplate, create-new case ✓
+- `skills/configure/areas.md:823` — reads "Authorize all **16** ll- CLI tools" with `ll-logs` in enumerated list ✓
+- `scripts/tests/test_ll_logs_wiring.py` — exists with 5 passing tests ✓
 
-**Still missing ✗**
-- `commands/help.md:233` — last entry is `ll-generate-schemas` (line 233); insert `ll-logs` after it
-- `skills/init/SKILL.md:444` — permissions block ends with `"Bash(ll-create-extension:*)"` (line 444); insert `"Bash(ll-logs:*)"` after line 444
-- `skills/init/SKILL.md:504-505` — boilerplate file-exists block ends with `ll-create-extension` (504) and `ll-generate-schemas` (505); insert `ll-logs` bullet after line 505
-- `skills/init/SKILL.md:531-532` — boilerplate create-new block ends with `ll-create-extension` (531) and `ll-generate-schemas` (532); insert `ll-logs` bullet after line 532
-- `skills/configure/areas.md:823` — now reads "Authorize all **15** ll- CLI tools" ending with `ll-create-extension`; append `ll-logs` after it, update count **15→16**
-- `scripts/tests/test_ll_logs_wiring.py` — does not exist; create following `test_update_skill.py` pattern
+— Verified 2026-04-23 by `/ll:refine-issue` codebase research (all tests pass)
 
-**Corrected description text (unchanged from original):**
-- `commands/help.md`: `ll-logs           Discover and extract ll-relevant log entries from Claude project logs`
-- `skills/init/SKILL.md` boilerplate: `- \`ll-logs\` - Discover and extract ll-relevant log entries from Claude project logs`
+## Confidence Check Notes
 
-— Verified 2026-04-23
+_Added by `/ll:confidence-check` on 2026-04-23_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 93/100 → HIGH CONFIDENCE
+
+### Concerns
+- **All acceptance criteria are already met.** Every wiring target is confirmed present in the live codebase (`commands/help.md:234`, `skills/init/SKILL.md:445/507/535`, `skills/configure/areas.md:823`, `.claude/CLAUDE.md:109`) and all 5 tests in `test_ll_logs_wiring.py` pass. This issue should be **closed as complete** — running `/ll:manage-issue` would be a no-op.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-24T00:15:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:ready-issue` - 2026-04-24T00:14:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26bc635c-fa21-4263-a592-3db437ab4846.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb5cd27c-c6cc-4f26-99ad-b15acb677362.jsonl`
+- `/ll:refine-issue` - 2026-04-24T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4f046ce-3654-4647-9640-2e9307e0aab0.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe65b715-ac47-4c7c-b775-3cbe4d0d7619.jsonl`
+- `/ll:wire-issue` - 2026-04-24T00:05:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a76df55-ac5c-40a4-b9fa-99c007efb250.jsonl`
+- `/ll:refine-issue` - 2026-04-23T23:59:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0586de11-114b-44a3-8b4b-4ebbb6b9b35e.jsonl`
 - `/ll:verify-issues` - 2026-04-23T23:33:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:verify-issues` - 2026-04-23T23:07:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
@@ -178,6 +204,10 @@ N/A - No public API changes. Configuration-only updates to command and skill mar
 
 ---
 
+## Resolution
+
+All wiring targets were confirmed present from prior sessions. The only remaining work was updating `scripts/tests/test_create_extension_wiring.py:57,200` from `"Authorize all 15"` to `"Authorize all 16"` to match live `skills/configure/areas.md`. All 32 tests in the wiring suite pass.
+
 ## Status
 
-**Open** | Created: 2026-04-08 | Priority: P4
+**Completed** | Created: 2026-04-08 | Completed: 2026-04-24 | Priority: P4
