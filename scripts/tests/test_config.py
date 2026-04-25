@@ -26,6 +26,7 @@ from little_loops.config import (
     DuplicateDetectionConfig,
     GitHubSyncConfig,
     IssuesConfig,
+    LearningTestsConfig,
     LoopsConfig,
     LoopsGlyphsConfig,
     NextIssueConfig,
@@ -1608,3 +1609,36 @@ class TestBRConfigLoopsGlyphs:
         assert config.loops.glyphs.parallel == "Q"
         assert config.loops.glyphs.shell == "\u276f_"  # default unchanged
         assert config.loops.glyphs.route == "\u2443"  # default unchanged
+
+
+class TestLearningTestsConfig:
+    """Tests for LearningTestsConfig dataclass."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating LearningTestsConfig with all fields."""
+        data = {"stale_after_days": 14}
+        config = LearningTestsConfig.from_dict(data)
+        assert config.stale_after_days == 14
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating LearningTestsConfig with default values."""
+        config = LearningTestsConfig.from_dict({})
+        assert config.stale_after_days == 30
+
+
+class TestBRConfigLearningTestsIntegration:
+    """Tests for BRConfig.learning_tests integration."""
+
+    def test_learning_tests_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.learning_tests returns defaults when key is absent."""
+        config = BRConfig(temp_project_dir)
+        assert config.learning_tests.stale_after_days == 30
+
+    def test_learning_tests_override_from_config(self, temp_project_dir: Path) -> None:
+        """Custom learning_tests values are loaded from config file."""
+        sample_config: dict[str, Any] = {"learning_tests": {"stale_after_days": 7}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.learning_tests.stale_after_days == 7

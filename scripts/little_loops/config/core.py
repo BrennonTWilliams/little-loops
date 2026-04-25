@@ -20,6 +20,7 @@ from little_loops.config.automation import (
 from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
     IssuesConfig,
+    LearningTestsConfig,
     LoopsConfig,
     ScanConfig,
     SprintsConfig,
@@ -105,6 +106,9 @@ class BRConfig:
         self._scan = ScanConfig.from_dict(self._raw_config.get("scan", {}))
         self._sprints = SprintsConfig.from_dict(self._raw_config.get("sprints", {}))
         self._loops = LoopsConfig.from_dict(self._raw_config.get("loops", {}))
+        self._learning_tests = LearningTestsConfig.from_dict(
+            self._raw_config.get("learning_tests", {})
+        )
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
         self._dependency_mapping = DependencyMappingConfig.from_dict(
             self._raw_config.get("dependency_mapping", {})
@@ -153,6 +157,11 @@ class BRConfig:
     def loops(self) -> LoopsConfig:
         """Get loops configuration."""
         return self._loops
+
+    @property
+    def learning_tests(self) -> LearningTestsConfig:
+        """Get learning tests configuration."""
+        return self._learning_tests
 
     @property
     def sync(self) -> SyncConfig:
@@ -431,6 +440,9 @@ class BRConfig:
                 "loops_dir": self._loops.loops_dir,
                 "queue_wait_timeout_seconds": self._loops.queue_wait_timeout_seconds,
                 "glyphs": self._loops.glyphs.to_dict(),
+            },
+            "learning_tests": {
+                "stale_after_days": self._learning_tests.stale_after_days,
             },
             "sync": {
                 "enabled": self._sync.enabled,

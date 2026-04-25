@@ -785,6 +785,19 @@
       },
       "additionalProperties": false
     },
+    "learning_tests": {
+      "type": "object",
+      "description": "Learning test registry settings",
+      "properties": {
+        "stale_after_days": {
+          "type": "integer",
+          "description": "Number of days after which a learning test record is considered stale",
+          "default": 30,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "refine_status": {
       "type": "object",
       "description": "Display settings for the ll-issues refine-status command",

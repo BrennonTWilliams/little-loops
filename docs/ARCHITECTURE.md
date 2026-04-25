@@ -221,6 +221,7 @@ little-loops/
         ├── logger.py            # Logging utilities
         ├── logo.py              # CLI logo display
         ├── frontmatter.py       # YAML frontmatter parsing
+        ├── learning_tests.py    # Learning test registry (CRUD for .ll/learning-tests/)
         ├── doc_counts.py        # Documentation count utilities
         ├── link_checker.py      # Link validation
         ├── issue_manager.py     # Sequential automation

@@ -39,6 +39,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.logger` | Logging utilities |
 | `little_loops.logo` | CLI logo display |
 | `little_loops.frontmatter` | YAML frontmatter read/write utilities |
+| `little_loops.learning_tests` | Learning test registry — CRUD for `.ll/learning-tests/` records |
 | `little_loops.doc_counts` | Documentation count verification |
 | `little_loops.link_checker` | Link validation for markdown docs |
 | `little_loops.user_messages` | User message extraction from Claude logs |

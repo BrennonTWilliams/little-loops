@@ -93,3 +93,19 @@ class TestConfigSchema:
             "rejected by additionalProperties: false"
         )
         assert glyph_props["parallel"]["type"] == "string"
+
+    def test_learning_tests_in_schema(self) -> None:
+        """learning_tests must be declared in config-schema.json.
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing learning_tests will be rejected unless the property
+        is declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "learning_tests" in data["properties"], (
+            "learning_tests is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        lt_props = data["properties"]["learning_tests"]["properties"]
+        assert "stale_after_days" in lt_props
+        assert lt_props["stale_after_days"]["type"] == "integer"

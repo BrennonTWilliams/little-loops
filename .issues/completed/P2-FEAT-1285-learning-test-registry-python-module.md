@@ -3,11 +3,18 @@ id: FEAT-1285
 type: FEAT
 priority: P2
 captured_at: "2026-04-25T00:00:00Z"
+completed_at: "2026-04-25T19:36:39Z"
 discovered_date: "2026-04-25"
 discovered_by: issue-size-review
 parent_issue: FEAT-1282
 size: Medium
-decision_needed: true
+decision_needed: false
+confidence_score: 85
+outcome_confidence: 60
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # FEAT-1285: Learning Test Registry Python Module
@@ -73,7 +80,7 @@ def check_learning_test(target: str) -> LearnTestRecord | None: ...
 - Use `parse_frontmatter` from `scripts/little_loops/frontmatter.py:18` for deserialization
 - Use `update_frontmatter` from `scripts/little_loops/frontmatter.py:110` for writes
 - Model `LearnTestRecord` after `IssueInfo` dataclass at `scripts/little_loops/issue_parser.py:202`
-- Use `Literal["proven", "refuted", "stale"]` pattern from `scripts/little_loops/fsm/schema.py:24`
+- Use `Literal["proven", "refuted", "stale"]` pattern from `scripts/little_loops/fsm/schema.py:56`
 
 ### Codebase Research Findings
 
@@ -84,6 +91,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `parse_frontmatter` at `frontmatter.py:18` handles only flat top-level keys (strings, ints, inline lists of strings). Block sequences of dicts (the proposed `assertions` format) return `None` silently. Two competing approaches:
 
 **Option A: Extract frontmatter block and call `yaml.safe_load` directly** (recommended)
+> **Selected:** Option A — the `yaml.safe_load(fm_match.group(1))` pattern already exists verbatim in `frontmatter.py:130` and `sync.py:179`; reuses proven mechanics with no format change to the on-disk schema.
 - Extract the `---\n...\n---\n` block, strip delimiters, call `yaml.safe_load`
 - `update_frontmatter` (line 110) already does this internally for round-trips, so writes are safe
 - Consistent with how nested data survives `update_frontmatter` calls; no format change needed
@@ -115,6 +123,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/config/__init__.py` — add `LearningTestsConfig` to `__all__` (lines 32-46)
 - `scripts/little_loops/__init__.py:1-79` — add `check_learning_test` and `LearnTestRecord` to public API exports
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-04-25.
+
+**Selected**: Option A: Extract frontmatter block and call `yaml.safe_load` directly
+
+**Reasoning**: The `yaml.safe_load(fm_match.group(1))` pattern exists verbatim in two places in the codebase (`frontmatter.py:130` and `sync.py:179`), both as write-path helpers that prove the mechanism handles nested YAML correctly. Option B requires quoting the JSON value in YAML to avoid corruption by `parse_frontmatter`'s `[` branch at `frontmatter.py:67-69`, introduces JSON-in-YAML with zero codebase precedent, and diverges from the native YAML block sequence format proposed in the issue schema itself.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (yaml.safe_load) | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+| Option B (inline-JSON string) | 0/3 | 1/3 | 2/3 | 1/3 | 4/12 |
+
+**Key evidence**:
+- **Option A**: `yaml.safe_load(fm_match.group(1))` used in `frontmatter.py:130` and `sync.py:179`; `update_frontmatter` directly reusable for writes; `temp_project_dir` fixture at `conftest.py:55-62` supports tests
+- **Option B**: `parse_frontmatter`'s `[` branch at `frontmatter.py:67-69` would corrupt unquoted JSON arrays; zero JSON-in-YAML precedent; diverges from native YAML block sequence schema proposed in issue
+
 ## Files to Create/Modify
 
 - `scripts/little_loops/learning_tests.py` — **create** (new module)
@@ -131,7 +158,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/config/features.py:238` — add `LearningTestsConfig` after `SprintsConfig` (same pattern: `@dataclass`, fields with defaults, `from_dict()`)
+- `scripts/little_loops/config/features.py:239` — add `LearningTestsConfig` after `SprintsConfig` (same pattern: `@dataclass`, fields with defaults, `from_dict()`)
 - `scripts/little_loops/config/core.py:95-115` — add `self._learning_tests = LearningTestsConfig.from_dict(...)` in `_parse_config()`
 - `scripts/little_loops/config/core.py:152-155` — add `@property learning_tests` following `@property loops` pattern
 - `scripts/little_loops/config/core.py:348-476` — add `learning_tests` dict block in `to_dict()` following `sprints`/`loops` pattern
@@ -144,7 +171,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_learning_tests.py` — CRUD tests (create, read, mark-stale, list-all)
 
 ### Similar Patterns
-- `scripts/little_loops/config/features.py:238-253` — `SprintsConfig` dataclass pattern for `LearningTestsConfig`
+- `scripts/little_loops/config/features.py:239-253` — `SprintsConfig` dataclass pattern for `LearningTestsConfig`
 - `scripts/little_loops/config/core.py:152-155` — `@property loops` pattern for `@property learning_tests`
 - `scripts/tests/test_config.py:511-533` — `TestSprintsConfig` structure to follow for `TestLearningTestsConfig`
 - `scripts/tests/test_config.py:1587-1610` — `TestBRConfigLoopsGlyphs` integration pattern for `TestBRConfigLearningTestsIntegration`
@@ -211,9 +238,40 @@ None — this is the foundational layer.
 
 ---
 
-**Open** | Created: 2026-04-25 | Priority: P2
+**Completed** | Created: 2026-04-25 | Completed: 2026-04-25 | Priority: P2
 
+## Resolution
+
+All acceptance criteria met:
+
+- `write_record()` creates a valid frontmatter `.md` file in `.ll/learning-tests/`
+- `read_record()` deserializes nested `assertions` back to identical `LearnTestRecord` using `yaml.safe_load`
+- `mark_stale()` updates `status: stale` without losing other fields (delegates to `update_frontmatter`)
+- `list_records()` returns all records in the directory
+- `LearningTestsConfig` parses from `ll-config.json` with `stale_after_days=30` default
+- `config-schema.json` validates a config containing `learning_tests.stale_after_days`
+- All 28 tests pass
+
+**Files created**: `scripts/little_loops/learning_tests.py`, `scripts/tests/test_learning_tests.py`
+
+**Files modified**: `config/features.py`, `config/core.py`, `config/__init__.py`, `__init__.py`, `config-schema.json`, `test_config.py`, `test_config_schema.py`, `test_extension.py`, `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `CONTRIBUTING.md`, `docs/reference/CONFIGURATION.md`
+
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-25_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 60/100 → MODERATE
+
+### Concerns
+- **Unresolved serialization decision**: The issue has `decision_needed: true` and explicitly directs you to run `/ll:decide-issue FEAT-1285` before implementing. Option A (yaml.safe_load for nested assertions) vs Option B (inline-JSON string) affects the on-disk format, `from_dict`, and any future consumers. Starting without resolving this risks having to rewrite the core read/write path.
+- **Wide implementation breadth**: 14 files across 4+ subsystems (new module, config wiring, tests, docs). All changes are additive, but the span means you need to hold more context simultaneously — plan for methodical pass-by-pass execution rather than a single sweep.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-25T19:36:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f436c4-e846-47c8-8784-9e30750c1037.jsonl`
+- `/ll:ready-issue` - 2026-04-25T19:26:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4976a136-d8c0-4a43-bd93-2067c8e0ea33.jsonl`
+- `/ll:decide-issue` - 2026-04-25T19:23:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e01f4663-cf90-46a5-9bf2-707bcff9ccec.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e47d1ef-2bc6-4299-8018-0c5ef506b76e.jsonl`
 - `/ll:wire-issue` - 2026-04-25T19:05:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e58ad7a-a8c3-41cd-9261-6c51bd4412fc.jsonl`
 - `/ll:refine-issue` - 2026-04-25T18:59:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8327f553-dd40-49de-9353-6656cb7f6d56.jsonl`

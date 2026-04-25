@@ -490,6 +490,24 @@ Override individual glyphs to customize how FSM box diagrams render state type b
 }
 ```
 
+### `learning_tests`
+
+Learning test registry settings. Records are stored as YAML-frontmatter markdown files under `.ll/learning-tests/<slug>.md`.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `stale_after_days` | `30` | Days after which a record is considered stale and should be re-validated |
+
+Example:
+
+```json
+{
+  "learning_tests": {
+    "stale_after_days": 14
+  }
+}
+```
+
 ### `scratch_pad`
 
 Observation masking via scratch pad files to reduce context bloat in automation sessions. When `enabled: true`, the `scratch-pad-redirect` PreToolUse hook (`hooks/scripts/scratch-pad-redirect.sh`) rewrites large `Bash` outputs and large `Read` calls to a scratch file + `tail`, keeping the transcript small.

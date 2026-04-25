@@ -541,3 +541,15 @@ class TestNewProtocols:
         from little_loops import LLTestBus  # noqa: F401 — import is the test
 
         assert LLTestBus is not None
+
+    def test_smoke_import_check_learning_test(self) -> None:
+        """Importing check_learning_test from public API succeeds (no circular import)."""
+        from little_loops import check_learning_test  # noqa: F401 — import is the test
+
+        assert check_learning_test is not None
+
+    def test_smoke_import_learn_test_record(self) -> None:
+        """Importing LearnTestRecord from public API succeeds (no circular import)."""
+        from little_loops import LearnTestRecord  # noqa: F401 — import is the test
+
+        assert LearnTestRecord is not None

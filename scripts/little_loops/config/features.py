@@ -254,6 +254,20 @@ class SprintsConfig:
 
 
 @dataclass
+class LearningTestsConfig:
+    """Learning test registry configuration."""
+
+    stale_after_days: int = 30
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LearningTestsConfig:
+        """Create LearningTestsConfig from dictionary."""
+        return cls(
+            stale_after_days=data.get("stale_after_days", 30),
+        )
+
+
+@dataclass
 class LoopsGlyphsConfig:
     """Unicode badge/glyph overrides for FSM box diagram state badges."""
 

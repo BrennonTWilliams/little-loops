@@ -26,6 +26,7 @@ from little_loops.issue_lifecycle import (
     verify_issue_completed,
 )
 from little_loops.issue_manager import AutoManager
+from little_loops.learning_tests import LearnTestRecord, check_learning_test
 from little_loops.output_parsing import parse_manage_issue_output, parse_ready_issue_output
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 from little_loops.testing import LLTestBus
@@ -38,6 +39,9 @@ from little_loops.work_verification import (
 __version__ = "1.89.0"
 __all__ = [
     "BRConfig",
+    # learning_tests
+    "LearnTestRecord",
+    "check_learning_test",
     # events
     "EventBus",
     "LLEvent",
