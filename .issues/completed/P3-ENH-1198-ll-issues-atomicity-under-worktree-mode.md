@@ -99,4 +99,12 @@ In worktree mode, each worker has its own `.issues/` snapshot at worker start. C
 - `ll-issues next-id` has no locking — confirmed in `scripts/little_loops/cli/issues/` ✓
 - Feature not yet implemented ✓
 
-**Open** | Created: 2026-04-20 | Priority: P3
+**Closed: Invalid** | Created: 2026-04-20 | Closed: 2026-04-24 | Priority: P3
+
+## Closing Note
+
+Closed as invalid. The core premise — that workers need `fcntl` locking to coordinate `.issues/` mutations — is wrong. `.issues/` is git-tracked, so each worktree gets its own isolated copy, exactly like all other source files. There is no runtime concurrency hazard; there is only a merge-time naming collision when two workers both pick the same next ID from their respective snapshots. `fcntl` locking cannot prevent this because the workers operate in separate filesystem trees and are long gone by merge time. Reaching into the root repo's `.issues/` to acquire a shared lock would break worktree isolation entirely.
+
+The two genuine sub-problems are filed separately:
+- **ENH-1279** — `ll-issues validate-catalog`: post-merge duplicate ID detection
+- **ENH-1280** — `ll-issues` atomic writes via `tempfile` + `os.rename()`

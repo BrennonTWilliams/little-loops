@@ -48,11 +48,13 @@ def parse_session_log_full(content: str) -> tuple[list[str], dict[str, int]]:
     """Parse session log returning (commands_list, command_counts) in one pass."""
     commands: list[str] = []
     counts: dict[str, int] = {}
-    for section_match in _SESSION_LOG_SECTION_RE.finditer(content):
-        for cmd in _COMMAND_RE.findall(section_match.group()):
-            if cmd not in commands:
-                commands.append(cmd)
-            counts[cmd] = counts.get(cmd, 0) + 1
+    matches = list(_SESSION_LOG_SECTION_RE.finditer(content))
+    if not matches:
+        return commands, counts
+    for cmd in _COMMAND_RE.findall(matches[-1].group(1)):
+        if cmd not in commands:
+            commands.append(cmd)
+        counts[cmd] = counts.get(cmd, 0) + 1
     return commands, counts
 ```
 
@@ -123,7 +125,25 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - No `parse_session_log_full` function in `session_log.py` ✓
 - Feature not yet implemented
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-04-24_ — **NO-GO (REFINE)**
+
+**Deciding Factor**: The proposed solution in the issue file was demonstrably incorrect — it needs `matches[-1].group(1)` in the combined function, not `for section_match in finditer(content)`. The iterate-all approach would silently merge commands from fake session log headings in code blocks, directly contradicting the last-match contract tested in `test_session_log.py:212-235`. The proposed solution above has been corrected.
+
+### Key Arguments For
+- The double-scan at `issue_parser.py:456-459` is verified real — BUG-785 proved both functions must be updated in lockstep when section-finding logic changes, making this a legitimate maintenance concern
+- Scope is minimal: one new function + one call-site change, all existing callers stay intact, unusually strong test coverage (fuzz + property-based tests) provides a good safety net
+
+### Key Arguments Against
+- The original proposed `parse_session_log_full` iterated all `finditer` matches instead of `matches[-1]` — executing it produced wrong results for files with multiple `## Session Log` sections (fake commands from code-block examples leaked in)
+- Issue explicitly scoped out `show.py:207-211` and `is_formatted` (two other double-scan sites), so the clarity motivation was only half-solved; the same pattern would remain in adjacent production code after implementation
+
+### Rationale
+The redundancy is real and the fix is conceptually sound, but the proposed `parse_session_log_full` code contained two bugs: (1) iterating all regex section matches rather than using `matches[-1]`, and (2) using `.group()` instead of `.group(1)`. The iterate-all bug is tested behavior (`test_session_log.py:212-235`) and would produce silent regressions on files with multiple session log sections. The proposed solution in this issue has been corrected; it is now safe to implement.
+
 ## Session Log
+- `/ll:go-no-go` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95ce9f52-7f8a-47aa-b3b4-d4a9581c25ab.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
