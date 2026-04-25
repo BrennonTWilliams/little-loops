@@ -2342,6 +2342,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.89.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.88.0...v1.89.0
+[1.88.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.87.0...v1.88.0
+[1.87.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.86.0...v1.87.0
+[1.86.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.85.0...v1.86.0
+[1.85.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.84.0...v1.85.0
+[1.84.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.83.0...v1.84.0
+[1.83.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.82.0...v1.83.0
+[1.82.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.1...v1.82.0
+[1.81.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.81.0...v1.81.1
+[1.81.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.80.0...v1.81.0
+[1.80.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.79.0...v1.80.0
+[1.79.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.78.0...v1.79.0
+[1.78.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.77.0...v1.78.0
+[1.77.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.76.0...v1.77.0
+[1.76.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.75.0...v1.76.0
+[1.75.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.74.0...v1.75.0
+[1.74.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.73.0...v1.74.0
+[1.73.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.72.0...v1.73.0
+[1.72.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.71.0...v1.72.0
+[1.71.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.70.0...v1.71.0
+[1.70.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.69.0...v1.70.0
+[1.69.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.68.0...v1.69.0
+[1.68.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.67.2...v1.68.0
+[1.67.2]: https://github.com/BrennonTWilliams/little-loops/compare/v1.67.1...v1.67.2
+[1.67.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.67.0...v1.67.1
+[1.67.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.1...v1.67.0
+[1.66.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.66.0...v1.66.1
+[1.66.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.65.0...v1.66.0
+[1.65.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.1...v1.65.0
+[1.64.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.64.0...v1.64.1
+[1.64.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.63.0...v1.64.0
+[1.63.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.62.0...v1.63.0
+[1.62.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.1...v1.62.0
+[1.61.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.61.0...v1.61.1
+[1.61.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.60.0...v1.61.0
+[1.60.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.59.0...v1.60.0
+[1.59.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.58.0...v1.59.0
+[1.58.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.57.0...v1.58.0
+[1.57.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.56.0...v1.57.0
+[1.56.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.55.0...v1.56.0
+[1.55.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.54.0...v1.55.0
 [1.54.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.53.0...v1.54.0
 [1.53.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.52.0...v1.53.0
 [1.52.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.51.0...v1.52.0
