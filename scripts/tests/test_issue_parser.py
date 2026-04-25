@@ -1350,11 +1350,15 @@ class TestDependencyParsing:
 
         config_path = tmp_path / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True)
-        config_path.write_text(json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}}))
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P3-BUG-1276-test.md"
-        issue_file.write_text('---\nblocked_by: "ENH-419, ENH-422, ENH-423"\n---\n# BUG-1276: Test\n')
+        issue_file.write_text(
+            '---\nblocked_by: "ENH-419, ENH-422, ENH-423"\n---\n# BUG-1276: Test\n'
+        )
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)
@@ -1370,7 +1374,9 @@ class TestDependencyParsing:
 
         config_path = tmp_path / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True)
-        config_path.write_text(json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}}))
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P3-BUG-1276-blocks-test.md"
@@ -1390,7 +1396,9 @@ class TestDependencyParsing:
 
         config_path = tmp_path / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True)
-        config_path.write_text(json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}}))
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P3-BUG-1276-list-test.md"
@@ -1410,7 +1418,9 @@ class TestDependencyParsing:
 
         config_path = tmp_path / ".ll" / "ll-config.json"
         config_path.parent.mkdir(parents=True)
-        config_path.write_text(json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}}))
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P3-BUG-1276-ws-test.md"

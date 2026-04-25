@@ -21,7 +21,7 @@ class TestInitSkillWiring:
     def test_ll_logs_permission_in_allow_list(self) -> None:
         content = INIT_SKILL.read_text()
         assert '"Bash(ll-logs:*)"' in content, (
-            "skills/init/SKILL.md must include \"Bash(ll-logs:*)\" in permissions.allow list"
+            'skills/init/SKILL.md must include "Bash(ll-logs:*)" in permissions.allow list'
         )
 
     def test_ll_logs_in_boilerplate_blocks(self) -> None:
