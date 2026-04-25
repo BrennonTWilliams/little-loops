@@ -2,6 +2,12 @@
 discovered_date: "2026-04-16"
 discovered_by: capture-issue
 source: ~/.claude/plans/review-this-open-source-cosmic-galaxy.md
+confidence_score: 98
+outcome_confidence: 90
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-1121: `.ll/program.md` Steering Convention for Long-Horizon Loop Runs
@@ -50,7 +56,7 @@ This enhancement would:
 
 ## Proposed Solution
 
-### `scripts/little_loops/cli/loop.py`
+### `scripts/little_loops/cli/loop/__init__.py`
 
 - When `ll-loop run <name>` is called with no args (or with `--program-md`), check for `.ll/program.md`. If present, parse and merge into the loop's initial context.
 - Precedence: CLI args > `program.md` > loop defaults.
@@ -100,7 +106,8 @@ wall_clock: 8h
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/__init__.py` — add `--program-md` flag and heading-based parser
-- `scripts/little_loops/loops/harness-optimize.yaml` — add `load_directive` state as first consumer (coordinates with FEAT-1120)
+- `scripts/little_loops/loops/harness-optimize.yaml` — extend existing `load_directive` state to read `.ll/program.md` and populate context (state already exists as initial state; currently reads trajectory only)
+- `scripts/little_loops/cli/loop/run.py` — consume `args.program_md` in the context injection pipeline (lines 62-81): parse `.ll/program.md` and merge fields into `fsm.context` before the existing `--context KEY=VALUE` loop; `__init__.py` declares the flag but `run.py` is where context is actually applied [Wiring pass]
 
 ### Dependent Files (Callers/Importers)
 - TBD — `grep -r "ll-loop run" docs/` to find doc references needing updates
@@ -109,11 +116,16 @@ wall_clock: 8h
 - Existing context-merge and arg-parsing logic in `scripts/little_loops/cli/loop/__init__.py`
 
 ### Tests
-- `scripts/tests/cli/test_loop.py` — unit tests: file present + parsed, file absent + graceful fallback, CLI override wins
+- `scripts/tests/test_ll_loop_program_md.py` — unit tests: file present + parsed, file absent + graceful fallback, CLI override wins (note: no `scripts/tests/cli/` subdir exists; all tests live directly in `scripts/tests/`)
 
 ### Documentation
 - `docs/reference/program-md.md` — new convention doc (create from scratch)
 - `commands/help.md` — mention `program.md` for loops that support it
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md:1877-1894` — Run Flags table: add `--program-md PATH` row and precedence note vs `--context` [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md:669` — `harness-optimize` table entry: expand or cross-reference new `program.md` invocation pattern [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md:1728` — Add `harness-optimize` subsection in Harness Loops section documenting `program.md` usage and precedence chain [Agent 2 finding]
 
 ### Configuration
 - N/A — `.ll/program.md` is user-authored input, not a configuration file
@@ -122,10 +134,18 @@ wall_clock: 8h
 
 1. Add `--program-md` flag and heading-based parser to `scripts/little_loops/cli/loop/__init__.py`
 2. Implement precedence chain: CLI args > `program.md` > loop defaults in the context merge
-3. Add `load_directive` state to `scripts/little_loops/loops/harness-optimize.yaml` as first consumer (coordinates with FEAT-1120)
-4. Write `docs/reference/program-md.md` — convention, recommended sections, worked example
-5. Unit-test: file present + parsed, file absent + graceful fallback, CLI override wins
-6. Run regression suite (`python -m pytest scripts/tests/`) to confirm no existing loop regressions
+3. Extend the existing `load_directive` state in `scripts/little_loops/loops/harness-optimize.yaml` to parse `.ll/program.md` and populate `context.targets`, `context.tasks_dir`, and `context.scorer` (state already exists as the initial state; currently only reads the trajectory file). Capture the free-form Directive prose as `captured.directive.output` (currently the state echoes `"ready"`, making the capture inert).
+4. Wire `${captured.directive.output}` into the `propose` state's LLM prompt so the free-form directive is visible to the model when it selects and proposes edits. Without this, Targets/Benchmark/Budget feed context variables but the Directive prose goes nowhere.
+5. Write `docs/reference/program-md.md` — convention, recommended sections, worked example
+6. Unit-test: file present + parsed, file absent + graceful fallback, CLI override wins
+7. Run regression suite (`python -m pytest scripts/tests/`) to confirm no existing loop regressions
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `scripts/little_loops/cli/loop/run.py` (lines 62-81) — consume `args.program_md` in the context injection pipeline: parse `.ll/program.md` and merge parsed fields into `fsm.context` **before** the existing `--context KEY=VALUE` loop at line 77. This is the actual injection point; `__init__.py` only declares the flag and parser.
+9. Update `docs/guides/LOOPS_GUIDE.md` — (a) add `--program-md PATH` row to the Run Flags table (lines 1877-1894) with precedence note vs `--context`; (b) expand the `harness-optimize` table entry (line 669) with a cross-reference to `program.md`; (c) add a `harness-optimize` + `program.md` usage subsection in the Harness Loops section (around line 1728)
 
 ## Related Key Documentation
 
@@ -159,7 +179,27 @@ Related: FEAT-1120 (harness-optimize loop) — first consumer. This enhancement 
 
 `enhancement`, `captured`
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revised 2026-04-25)_
+
+**Original Deciding Factor**: The `captured.directive` output in `harness-optimize.yaml:26-34` is never consumed by any downstream state — no state references `${captured.directive.output}` — meaning the Directive section of `program.md` would be loaded and immediately discarded.
+
+**Revision**: The wiring gap is not a blocker; it is a missing implementation step. Wiring `${captured.directive.output}` into the `propose` prompt is a single-line change in the same file and is inseparable from the `program.md` parsing work. It has been added explicitly as step 4 in Implementation Steps above. The original no-go concern is now fully addressed within ENH-1121's scope — no separate prerequisite issue is needed.
+
+### Key Arguments For
+- All context-injection infrastructure already exists in `run.py:62-81` and `frontmatter.py` — implementation is ~30-50 lines with a clear insertion point in the staged context pipeline
+- FEAT-1120's completion notes explicitly named ENH-1121 as the intended next step; `load_directive` state was architecturally designed with `program.md` loading in mind
+- The wiring (`load_directive` captures real prose → `propose` prompt includes it) is contained in one file and requires no new architecture
+
+### Key Arguments Against
+- `ll-loop install harness-optimize` + editing the `context:` block is documented at `docs/guides/LOOPS_GUIDE.md:270` as the existing durable-defaults path, solving the core UX problem today without new code
+
 ## Session Log
+- `/ll:wire-issue` - 2026-04-25T17:52:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71b43b70-5185-4ea0-abcc-f27ef3f5177c.jsonl`
+- `/ll:go-no-go` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5791a1c-1f5c-4e4c-aa52-09e8dd7d510d.jsonl`
+- `/ll:ready-issue` - 2026-04-25T17:26:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/587fda44-a2b8-4c66-9daa-c634f91dbf78.jsonl`
 - `/ll:format-issue` - 2026-04-25T01:21:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4acbc6d5-2175-415e-8228-17ec102d80fe.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
