@@ -10,9 +10,9 @@ source: ~/.claude/plans/review-this-open-source-cosmic-galaxy.md
 
 Adopt a single canonical human-authored steering file — `.ll/program.md` — as the directive input for long-horizon, unattended loop runs (initially `harness-optimize`, FEAT-1120). Running `ll-loop run harness-optimize` with no args reads `.ll/program.md` and kicks off. Existing workflows are untouched; the file is optional.
 
-## Current Pain Point
+## Current Behavior
 
-Steering for long-horizon runs today is spread across `CLAUDE.md`, `.ll/ll-config.json`, issue files, and per-invocation CLI args. A user who wants to kick off an overnight harness-optimization run has no single place to write "here's what I want optimized, here's the task set, here's the budget, here are the constraints." autoagent's `program.md` is the most distinctive UX idea in that project — a single file owns the directive, so the user edits one thing and walks away.
+Steering for long-horizon loop runs is scattered across multiple surfaces: `CLAUDE.md`, `.ll/ll-config.json`, issue files, and per-invocation CLI args. There is no single file a user can edit to declare "here's what to optimize, here are the targets, here is the budget, here are the constraints." Users starting an overnight harness-optimization run must assemble configuration from multiple channels — making runs hard to set up, impossible to replay exactly, and inaccessible without memorizing the CLI flag surface.
 
 ## Motivation
 
@@ -43,6 +43,11 @@ This enhancement would:
 
 **Outcome**: The loop reads the directive, uses the declared targets/benchmark/budget, and produces an auditable trajectory keyed to a single durable input file
 
+## Scope Boundaries
+
+- **In scope**: `ll-loop run <name>` loading `.ll/program.md` when present; `harness-optimize` (FEAT-1120) as the first consumer loop; `docs/reference/program-md.md` convention documentation; optional scaffold via `ll-init` or a new `/ll:init-program` command
+- **Out of scope**: Replacing or deprecating `CLAUDE.md`, `ll-config.json`, or issue files; enforcing a strict schema on `program.md` (convention over spec — formalize only if drift shows up); migration tooling for existing CLI-arg-based invocations; non-loop commands reading `program.md`; any GUI or editor integration for the file
+
 ## Proposed Solution
 
 ### `scripts/little_loops/cli/loop.py`
@@ -60,6 +65,67 @@ First consumer. `load_directive` state reads `.ll/program.md` via the CLI-provid
 - `docs/reference/program-md.md` — the convention, recommended sections, examples
 - `/ll:help` — mention the file for relevant loops
 - Optional scaffold: `ll-init` or a new `/ll:init-program` command can seed a starter `.ll/program.md`
+
+## API/Interface
+
+```python
+# ll-loop run CLI — reads .ll/program.md by default when no conflicting args are given
+ll-loop run <name>                     # reads .ll/program.md if present
+ll-loop run <name> --program-md PATH   # explicit path override
+
+# Precedence (higher wins):
+# 1. Explicit CLI args (--directive, --targets, --benchmark, --budget)
+# 2. .ll/program.md parsed sections
+# 3. Loop YAML defaults
+```
+
+`program.md` parsed structure (heading-based, no schema enforcement):
+
+```markdown
+## Directive
+[free-form prose describing what to optimize and why]
+
+## Targets
+- path/or/glob
+
+## Benchmark
+task_dir: evals/
+scorer: pass_rate
+
+## Budget
+wall_clock: 8h
+```
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/__init__.py` — add `--program-md` flag and heading-based parser
+- `scripts/little_loops/loops/harness-optimize.yaml` — add `load_directive` state as first consumer (coordinates with FEAT-1120)
+
+### Dependent Files (Callers/Importers)
+- TBD — `grep -r "ll-loop run" docs/` to find doc references needing updates
+
+### Similar Patterns
+- Existing context-merge and arg-parsing logic in `scripts/little_loops/cli/loop/__init__.py`
+
+### Tests
+- `scripts/tests/cli/test_loop.py` — unit tests: file present + parsed, file absent + graceful fallback, CLI override wins
+
+### Documentation
+- `docs/reference/program-md.md` — new convention doc (create from scratch)
+- `commands/help.md` — mention `program.md` for loops that support it
+
+### Configuration
+- N/A — `.ll/program.md` is user-authored input, not a configuration file
+
+## Implementation Steps
+
+1. Add `--program-md` flag and heading-based parser to `scripts/little_loops/cli/loop/__init__.py`
+2. Implement precedence chain: CLI args > `program.md` > loop defaults in the context merge
+3. Add `load_directive` state to `scripts/little_loops/loops/harness-optimize.yaml` as first consumer (coordinates with FEAT-1120)
+4. Write `docs/reference/program-md.md` — convention, recommended sections, worked example
+5. Unit-test: file present + parsed, file absent + graceful fallback, CLI override wins
+6. Run regression suite (`python -m pytest scripts/tests/`) to confirm no existing loop regressions
 
 ## Related Key Documentation
 
@@ -82,7 +148,19 @@ First consumer. `load_directive` state reads `.ll/program.md` via the CLI-provid
 
 Related: FEAT-1120 (harness-optimize loop) — first consumer. This enhancement is useful but not required for FEAT-1120 to ship; it can land alongside or shortly after.
 
+## Impact
+
+- **Priority**: P3 — Usability enhancement for power users; not blocking core workflows; can land alongside or shortly after FEAT-1120
+- **Effort**: Medium — New CLI parsing logic, context merge, one new loop YAML state, and a reference doc; no schema enforcement keeps scope contained
+- **Risk**: Low — File is optional; absent file is not an error; no changes to existing loop execution paths or YAML schemas
+- **Breaking Change**: No — existing `ll-loop run` invocations with explicit CLI args are unaffected
+
+## Labels
+
+`enhancement`, `captured`
+
 ## Session Log
+- `/ll:format-issue` - 2026-04-25T01:21:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4acbc6d5-2175-415e-8228-17ec102d80fe.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 
