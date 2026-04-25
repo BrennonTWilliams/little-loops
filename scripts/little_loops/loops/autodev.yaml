@@ -159,7 +159,7 @@ states:
       PYEOF
     fragment: shell_exit
     on_yes: decide_current
-    on_no: detect_children
+    on_no: triage_outcome_failure
     on_error: detect_children
 
   decide_current:
@@ -382,6 +382,33 @@ states:
     fragment: shell_exit
     on_yes: run_decide
     on_no: run_size_review
+
+  triage_outcome_failure:
+    # Diagnose why outcome_confidence failed before routing to size-review.
+    # Low score_ambiguity (≤10) means an unresolved design decision is the
+    # bottleneck → route to run_decide. Structural bigness → detect_children
+    # (toward size-review). on_error falls back to detect_children safely.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+
+      issue_id = '${captured.input.output}'
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      sys.exit(0 if int(d.get('score_ambiguity') or 25) <= 10 else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: run_decide
+    on_no: detect_children
+    on_error: detect_children
 
   run_size_review:
     # Explicitly run issue-size-review when the sub-loop did not decompose the

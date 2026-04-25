@@ -1037,6 +1037,7 @@ class TestAutodevLoop:
             "check_broke_down",
             "recheck_scores",
             "check_decision_before_size_review",
+            "triage_outcome_failure",
             "run_size_review",
             "enqueue_or_skip",
             "recheck_after_size_review",
@@ -1147,10 +1148,10 @@ class TestAutodevLoop:
         state = data["states"].get("check_passed", {})
         assert state.get("on_yes") == "decide_current"
 
-    def test_check_passed_on_no_routes_to_detect_children(self, data: dict) -> None:
-        """On threshold fail, detect children just like recursive-refine does."""
+    def test_check_passed_on_no_routes_to_triage_outcome_failure(self, data: dict) -> None:
+        """On threshold fail, triage outcome before routing to size-review or decide."""
         state = data["states"].get("check_passed", {})
-        assert state.get("on_no") == "detect_children"
+        assert state.get("on_no") == "triage_outcome_failure"
 
     def test_enqueue_children_prepends_to_autodev_queue(self, data: dict) -> None:
         """enqueue_children must rewrite .loops/tmp/autodev-queue.txt, not recursive-refine-queue.txt."""
@@ -1399,6 +1400,34 @@ class TestAutodevLoop:
         state = data["states"].get("check_decision_before_size_review", {})
         assert state.get("on_no") == "run_size_review", (
             f"check_decision_before_size_review.on_no should be 'run_size_review', got {state.get('on_no')!r}"
+        )
+
+    def test_triage_outcome_failure_uses_shell_exit_fragment(self, data: dict) -> None:
+        """triage_outcome_failure must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("triage_outcome_failure", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"triage_outcome_failure.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_triage_outcome_failure_on_yes_routes_to_run_decide(self, data: dict) -> None:
+        """triage_outcome_failure.on_yes (low ambiguity score) must route to run_decide."""
+        state = data["states"].get("triage_outcome_failure", {})
+        assert state.get("on_yes") == "run_decide", (
+            f"triage_outcome_failure.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        )
+
+    def test_triage_outcome_failure_on_no_routes_to_detect_children(self, data: dict) -> None:
+        """triage_outcome_failure.on_no (structural bigness) must route to detect_children."""
+        state = data["states"].get("triage_outcome_failure", {})
+        assert state.get("on_no") == "detect_children", (
+            f"triage_outcome_failure.on_no should be 'detect_children', got {state.get('on_no')!r}"
+        )
+
+    def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
+        """triage_outcome_failure.on_error must fall back safely to detect_children."""
+        state = data["states"].get("triage_outcome_failure", {})
+        assert state.get("on_error") == "detect_children", (
+            f"triage_outcome_failure.on_error should be 'detect_children', got {state.get('on_error')!r}"
         )
 
     def test_decide_current_uses_shell_exit_fragment(self, data: dict) -> None:

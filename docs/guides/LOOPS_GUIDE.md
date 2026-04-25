@@ -449,23 +449,25 @@ init → dequeue_next → [queue empty?]
                          ├─ YES → decide_current → [decision_needed?]
                          │                            ├─ YES → run_decide (/ll:decide-issue --auto) → implement_current (ll-auto --only) → dequeue_next
                          │                            └─ NO  → implement_current (ll-auto --only) → dequeue_next
-                         └─ NO  → detect_children → [children found?]
-                                    ├─ YES → enqueue_children (prepend depth-first) → dequeue_next
-                                    └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
-                                               ├─ YES → enqueue_or_skip → dequeue_next
-                                               └─ NO  → recheck_scores → [passed now?]
-                                                          ├─ YES → decide_current → [decision_needed?]
-                                                          │                            ├─ YES → run_decide → implement_current → dequeue_next
-                                                          │                            └─ NO  → implement_current → dequeue_next
-                                                          └─ NO  → check_decision_before_size_review → [decision_needed?]
-                                                                                                         ├─ YES → run_decide → implement_current → dequeue_next
-                                                                                                         └─ NO  → run_size_review → enqueue_or_skip → [children found?]
-                                                                                                          ├─ YES → dequeue_next
-                                                                                                          └─ NO  → recheck_after_size_review → [passed now?]
-                                                                                                                      ├─ YES → decide_current → [decision_needed?]
-                                                                                                                      │                            ├─ YES → run_decide → implement_current → dequeue_next
-                                                                                                                      │                            └─ NO  → implement_current → dequeue_next
-                                                                                                                      └─ NO  → dequeue_next
+                         └─ NO  → triage_outcome_failure → [score_ambiguity ≤ 10?]
+                                    ├─ YES → run_decide → implement_current → dequeue_next
+                                    └─ NO/ERR → detect_children → [children found?]
+                                                   ├─ YES → enqueue_children (prepend depth-first) → dequeue_next
+                                                   └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
+                                                              ├─ YES → enqueue_or_skip → dequeue_next
+                                                              └─ NO  → recheck_scores → [passed now?]
+                                                                         ├─ YES → decide_current → [decision_needed?]
+                                                                         │                            ├─ YES → run_decide → implement_current → dequeue_next
+                                                                         │                            └─ NO  → implement_current → dequeue_next
+                                                                         └─ NO  → check_decision_before_size_review → [decision_needed?]
+                                                                                                                        ├─ YES → run_decide → implement_current → dequeue_next
+                                                                                                                        └─ NO  → run_size_review → enqueue_or_skip → [children found?]
+                                                                                                                         ├─ YES → dequeue_next
+                                                                                                                         └─ NO  → recheck_after_size_review → [passed now?]
+                                                                                                                                     ├─ YES → decide_current → [decision_needed?]
+                                                                                                                                     │                            ├─ YES → run_decide → implement_current → dequeue_next
+                                                                                                                                     │                            └─ NO  → implement_current → dequeue_next
+                                                                                                                                     └─ NO  → dequeue_next
 ```
 
 **Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Both `refine_current` (sub-loop) and `implement_current` (shell `ll-auto`) use the `with_rate_limit_handling` fragment (3 retries, 30s base backoff); `refine_current` on rate-limit exhaustion dequeues and continues, while `implement_current` on exhaustion terminates the loop via `done`. The broke-down handshake flag (written by `refine-to-ready-issue` to `.loops/tmp/recursive-refine-broke-down`) is copied after each sub-loop return into `.loops/tmp/autodev-broke-down`, so the rest of autodev's state machine reads only the `autodev-*` namespace. This interleaved design also means partial forward progress is preserved if the run is interrupted — any leaves that already passed refinement have already been implemented.
