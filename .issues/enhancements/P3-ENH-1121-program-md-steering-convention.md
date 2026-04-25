@@ -2,12 +2,13 @@
 discovered_date: "2026-04-16"
 discovered_by: capture-issue
 source: ~/.claude/plans/review-this-open-source-cosmic-galaxy.md
-confidence_score: 98
-outcome_confidence: 90
-score_complexity: 18
-score_test_coverage: 25
-score_ambiguity: 22
-score_change_surface: 25
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 18
+decision_needed: false
 ---
 
 # ENH-1121: `.ll/program.md` Steering Convention for Long-Horizon Loop Runs
@@ -110,13 +111,55 @@ wall_clock: 8h
 - `scripts/little_loops/cli/loop/run.py` — consume `args.program_md` in the context injection pipeline (lines 62-81): parse `.ll/program.md` and merge fields into `fsm.context` before the existing `--context KEY=VALUE` loop; `__init__.py` declares the flag but `run.py` is where context is actually applied [Wiring pass]
 
 ### Dependent Files (Callers/Importers)
-- TBD — `grep -r "ll-loop run" docs/` to find doc references needing updates
+
+_Wiring pass added by `/ll:wire-issue` (pass 2):_
+- `scripts/little_loops/cli/loop/_helpers.py:230-266` — `run_background()` reconstructs CLI argv per-flag (not reflectively); must explicitly forward `--program-md PATH` in the cmd list construction or background-mode invocations of `harness-optimize` silently drop `program.md` [Agent 1 + Agent 2 finding]
 
 ### Similar Patterns
 - Existing context-merge and arg-parsing logic in `scripts/little_loops/cli/loop/__init__.py`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Heading-based section extraction (the parser to model after):**
+- `scripts/little_loops/issue_history/doc_synthesis.py:104-127` — `_extract_section(content, heading)` uses `rf"^##\s+{re.escape(heading)}\s*$"` with `re.MULTILINE`, then scans forward for the next `^## ` to bound the section. Returns `""` on miss. Handles multi-word headings correctly (e.g., `## Directive`, `## Benchmark`). This is the exact pattern the `program.md` heading parser should replicate.
+- `scripts/little_loops/output_parsing.py:118-146` — `parse_sections()` is an alternative (line-scan, all sections at once, uppercase keys) but uses `\w+` regex so multi-word headings would not match. Prefer `_extract_section`'s per-heading approach.
+- `scripts/little_loops/issue_parser.py:598-634` — `_parse_section_items()` uses the identical `## heading` regex pattern with `re.IGNORECASE` added; confirms the approach.
+
+**`--program-md` flag declaration insertion point:**
+- `scripts/little_loops/cli/loop/__init__.py:147-152` — `--context action="append"` block; add `--program-md type=Path, default=None` immediately after (line 153 area), following the same inline `run_parser.add_argument(...)` pattern. The `args` namespace flows to `cmd_run` at line 368.
+- `scripts/little_loops/cli_args.py:35-43` — `add_config_arg()` helper shows the `type=Path, default=None` flag pattern if a shared helper is preferred.
+
+**Exact injection point in run.py:**
+- `scripts/little_loops/cli/loop/run.py:76-77` — insert `program.md` context merge between line 76 (end of positional input stage) and line 77 (start of `--context KEY=VALUE` loop). The `--context` loop at 77-81 is last-write-wins, so any `program.md` values it may override will be correctly superseded.
+
+**`load_directive` → `propose` wiring detail:**
+- `scripts/little_loops/loops/harness-optimize.yaml:24-34` — `load_directive` state: `action` shell script echoes `"ready"` and captures it as `captured.directive` (line 33). Needs replacing the echo with `.ll/program.md` parsing that populates `context.targets`, `context.tasks_dir`, `context.scorer`, and echoes the `## Directive` prose.
+- `scripts/little_loops/loops/harness-optimize.yaml:53-64` — `propose` state action: currently references `${context.targets}`, `${captured.baseline.output}`, `${captured.benchmark_score.output}`. Add `${captured.directive.output}` as a leading context line (e.g., `Optimization directive: ${captured.directive.output}`).
+
+**"file-if-present" utility pattern:**
+- `scripts/little_loops/subprocess_utils.py:47-59` — `read_continuation_prompt()` is the canonical pattern: `path.exists()` guard, `path.read_text()`, returns `None` on miss.
+- `scripts/little_loops/goals_parser.py:92-109` — `ProductGoals.from_file()` adds an `OSError` catch around `read_text` for robustness; follow this for `program.md` loading.
+
+**Test files to model after:**
+- `scripts/tests/test_ll_loop_parsing.py:183-199` — `--context` flag parsing tests with `_create_run_parser()` helper that builds a standalone `ArgumentParser` mirroring the real subparser. Use this pattern for `--program-md` flag tests.
+- `scripts/tests/test_goals_parser.py:136-166` — `test_from_file_missing` / `test_from_file_missing_frontmatter` patterns for file-absent + graceful fallback tests.
+- `scripts/tests/test_cli_loop_lifecycle.py:417-441` — `test_context_overrides_applied_to_fsm` patches `load_loop` returning a `MagicMock` with real `dict` for `context`, then asserts `fsm.context["key"] == value`. Follow this for program.md → context merge tests.
+- `scripts/tests/test_ll_loop_commands.py:2068-2144` — `TestCmdRunContextInjection` class for CLI-level run command context injection tests.
+
 ### Tests
 - `scripts/tests/test_ll_loop_program_md.py` — unit tests: file present + parsed, file absent + graceful fallback, CLI override wins (note: no `scripts/tests/cli/` subdir exists; all tests live directly in `scripts/tests/`)
+
+_Wiring pass added by `/ll:wire-issue` (pass 2):_
+
+Tests requiring updates when `--program-md` is added to the run subparser:
+- `scripts/tests/test_ll_loop_parsing.py:26-41` — `_create_run_parser()` standalone parser helper; add `parser.add_argument("--program-md", type=Path, default=None)` to match the real subparser [update needed]
+- `scripts/tests/test_cli_loop_lifecycle.py:683-704` and `:770-791` — two `_make_args` helpers construct `argparse.Namespace` without `program_md`; add `program_md=None` to both [update needed]
+- `scripts/tests/test_cli_loop_worktree.py:543-563` — `_make_args` helper missing `program_md=None` [update needed]
+- `scripts/tests/test_ll_loop_commands.py:2120-2135` — inline `argparse.Namespace` construction missing `program_md=None` [update needed]
+- `scripts/tests/test_harness_optimize.py:50-59` — `test_context_defaults` does not pin new YAML context keys; if a `directive: ""` key is added to the YAML `context:` block, this test won't verify it [gap — confirm coverage when implementing]
+- `scripts/tests/test_cli_loop_background.py` — no existing test asserts `--program-md` is forwarded through `run_background()`; add a forwarding test [new test needed]
 
 ### Documentation
 - `docs/reference/program-md.md` — new convention doc (create from scratch)
@@ -126,6 +169,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_GUIDE.md:1877-1894` — Run Flags table: add `--program-md PATH` row and precedence note vs `--context` [Agent 2 finding]
 - `docs/guides/LOOPS_GUIDE.md:669` — `harness-optimize` table entry: expand or cross-reference new `program.md` invocation pattern [Agent 2 finding]
 - `docs/guides/LOOPS_GUIDE.md:1728` — Add `harness-optimize` subsection in Harness Loops section documenting `program.md` usage and precedence chain [Agent 2 finding]
+
+_Wiring pass added by `/ll:wire-issue` (pass 2):_
+- `docs/reference/loops.md:17-31` — `harness-optimize` invocation examples show `--context` flag only; add `program.md` invocation pattern [update needed]
+- `docs/reference/loops.md:46` — `load_directive` state description describes pre-ENH-1121 behavior (reads trajectory only); update to reflect `program.md` reading [update needed]
+- `docs/reference/loops.md:71-73` — Resume Behavior section describes stale `load_directive` behavior that will change [update needed]
+- `docs/reference/CLI.md:296-320` — `ll-loop run` flags table (separate from LOOPS_GUIDE.md) missing `--program-md PATH` row [update needed]
 
 ### Configuration
 - N/A — `.ll/program.md` is user-authored input, not a configuration file
@@ -146,6 +195,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 8. Update `scripts/little_loops/cli/loop/run.py` (lines 62-81) — consume `args.program_md` in the context injection pipeline: parse `.ll/program.md` and merge parsed fields into `fsm.context` **before** the existing `--context KEY=VALUE` loop at line 77. This is the actual injection point; `__init__.py` only declares the flag and parser.
 9. Update `docs/guides/LOOPS_GUIDE.md` — (a) add `--program-md PATH` row to the Run Flags table (lines 1877-1894) with precedence note vs `--context`; (b) expand the `harness-optimize` table entry (line 669) with a cross-reference to `program.md`; (c) add a `harness-optimize` + `program.md` usage subsection in the Harness Loops section (around line 1728)
+10. Update `scripts/little_loops/cli/loop/_helpers.py` (lines 230-266) — add explicit `--program-md PATH` forwarding in `run_background()`'s per-flag cmd list construction. Without this, background-mode invocations silently drop `program.md` (the forwarding block is explicit per-flag, not reflective).
+11. Update test namespace helpers: add `program_md=None` to `_make_args` in `test_cli_loop_lifecycle.py` (×2, lines 683-704 and 770-791), `test_cli_loop_worktree.py` (lines 543-563), and inline `Namespace` in `test_ll_loop_commands.py` (lines 2120-2135); add `--program-md` argument to `_create_run_parser()` in `test_ll_loop_parsing.py` (lines 26-41)
+12. Add `--program-md` background forwarding test to `scripts/tests/test_cli_loop_background.py` — verify `run_background` includes `--program-md PATH` in the reconstructed argv when `args.program_md` is set
+13. Update `docs/reference/loops.md` — invocation examples (lines 17-31), `load_directive` state description (line 46), and Resume Behavior section (lines 71-73) to reflect ENH-1121 behavior
+14. Update `docs/reference/CLI.md` (lines 296-320) — add `--program-md PATH` row to the `ll-loop run` flags table (structurally parallel to LOOPS_GUIDE.md Run Flags table but a separate file)
 
 ## Related Key Documentation
 
@@ -196,6 +250,9 @@ _Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revise
 - `ll-loop install harness-optimize` + editing the `context:` block is documented at `docs/guides/LOOPS_GUIDE.md:270` as the existing durable-defaults path, solving the core UX problem today without new code
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb86effc-6421-4dbf-b1a1-86368e1d4644.jsonl`
+- `/ll:wire-issue` - 2026-04-25T18:09:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/435d237f-22dd-4664-8fe2-215738a163f3.jsonl`
+- `/ll:refine-issue` - 2026-04-25T18:02:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c63d5643-3cd6-4194-a8ec-e96b36f6f089.jsonl`
 - `/ll:verify-issues` - 2026-04-25T17:54:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/008a2f03-f9f5-4084-b150-f39e97039172.jsonl`
 - `/ll:wire-issue` - 2026-04-25T17:52:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`
 - `/ll:confidence-check` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71b43b70-5185-4ea0-abcc-f27ef3f5177c.jsonl`
