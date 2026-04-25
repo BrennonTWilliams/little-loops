@@ -699,6 +699,7 @@ class TestCmdRunHandoffThreshold:
             "clear": False,
             "queue": False,
             "handoff_threshold": handoff_threshold,
+            "program_md": None,
         }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)
@@ -786,6 +787,7 @@ class TestCmdRunYAMLConfigOverrides:
             "clear": False,
             "queue": False,
             "handoff_threshold": handoff_threshold,
+            "program_md": None,
         }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)

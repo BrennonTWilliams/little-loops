@@ -558,6 +558,7 @@ class TestCmdRunWorktree:
             "queue": False,
             "handoff_threshold": None,
             "worktree": True,
+            "program_md": None,
         }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)

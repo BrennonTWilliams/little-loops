@@ -22,6 +22,66 @@ from little_loops.cli.loop._helpers import (
 from little_loops.logger import Logger
 
 
+def _parse_program_md(path: Path) -> dict[str, str]:
+    """Parse .ll/program.md heading sections into context key-value pairs.
+
+    Sections mapped:
+      ## Directive  → directive (prose)
+      ## Targets    → targets (space-joined list items)
+      ## Benchmark  → each key: value pair injected directly
+      ## Budget     → budget (prose)
+      ## Constraints → constraints (prose)
+    """
+    if not path.exists():
+        return {}
+    try:
+        content = path.read_text()
+    except OSError:
+        return {}
+
+    def _extract(heading: str) -> str:
+        m = re.search(rf"^##\s+{re.escape(heading)}\s*$", content, re.MULTILINE | re.IGNORECASE)
+        if not m:
+            return ""
+        start = m.end()
+        nxt = re.search(r"^##\s", content[start:], re.MULTILINE)
+        return content[start : start + nxt.start()].strip() if nxt else content[start:].strip()
+
+    result: dict[str, str] = {}
+
+    directive = _extract("Directive")
+    if directive:
+        result["directive"] = directive
+
+    targets_text = _extract("Targets")
+    if targets_text:
+        items = [
+            line.lstrip("-* \t").strip()
+            for line in targets_text.splitlines()
+            if line.strip().startswith(("-", "*"))
+        ]
+        result["targets"] = " ".join(items) if items else targets_text
+
+    benchmark_text = _extract("Benchmark")
+    if benchmark_text:
+        for line in benchmark_text.splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                k, v = k.strip(), v.strip()
+                if k and v:
+                    result[k] = v
+
+    budget = _extract("Budget")
+    if budget:
+        result["budget"] = budget
+
+    constraints = _extract("Constraints")
+    if constraints:
+        result["constraints"] = constraints
+
+    return result
+
+
 def cmd_run(
     loop_name: str,
     args: argparse.Namespace,
@@ -74,6 +134,11 @@ def cmd_run(
                 fsm.context[fsm.input_key] = raw
         except (json.JSONDecodeError, ValueError):
             fsm.context[fsm.input_key] = raw
+    # Inject program.md fields before --context so --context can override
+    program_md_arg = getattr(args, "program_md", None)
+    program_md_path = program_md_arg if program_md_arg is not None else Path.cwd() / ".ll" / "program.md"
+    for key, value in _parse_program_md(program_md_path).items():
+        fsm.context[key] = value
     for kv in getattr(args, "context", None) or []:
         if "=" not in kv:
             raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")

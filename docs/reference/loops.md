@@ -14,6 +14,15 @@ Score-gated hill-climbing on harness artifacts (skills, commands, `CLAUDE.md`). 
 
 ### Invocation
 
+Via `.ll/program.md` (recommended for overnight runs):
+
+```bash
+# Populate .ll/program.md with Directive, Targets, Benchmark sections, then:
+ll-loop run harness-optimize
+```
+
+Via `--context` flags:
+
 ```bash
 ll-loop run harness-optimize \
   --context targets="skills/foo/SKILL.md" \
@@ -30,6 +39,8 @@ ll-loop run harness-optimize \
   --context scorer=./scripts/score.sh
 ```
 
+See [`.ll/program.md` convention](program-md.md) for the steering file format and precedence rules.
+
 ### Context Variables
 
 | Variable | Default | Description |
@@ -43,10 +54,10 @@ ll-loop run harness-optimize \
 ### State Graph
 
 ```
-load_directive
+load_directive  (reads .ll/program.md Directive section → captured.directive.output)
   → baseline_score (fragment: run_benchmark)
     on_yes → init_prev
-      → propose (LLM: pick one file, output full revised contents)
+      → propose (LLM: uses directive + targets to pick one file and propose an edit)
         → apply (LLM: write candidate to file)
           → score (fragment: run_benchmark)
             on_yes → gate (convergence evaluator, direction: maximize)
@@ -70,7 +81,7 @@ Each iteration appends one JSON line to `.loops/tmp/harness-optimize-trajectory.
 
 ### Resume Behavior
 
-On resume, `load_directive` reads the trajectory and checks out the best-scoring accepted commit's files before re-running the baseline. This ensures the run continues from the best known state, not the last attempted state.
+On resume, `load_directive` reads the trajectory and checks out the best-scoring accepted commit's files before re-running the baseline. It also re-reads `.ll/program.md` to capture the Directive prose, ensuring the LLM proposal step has the optimization goal available even after a handoff. The run continues from the best known state, not the last attempted state.
 
 ### Scorer Contract
 

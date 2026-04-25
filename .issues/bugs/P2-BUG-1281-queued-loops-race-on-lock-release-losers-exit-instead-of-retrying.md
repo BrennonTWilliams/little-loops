@@ -2,6 +2,13 @@
 captured_at: "2026-04-25T17:52:57Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 83
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # BUG-1281: Queued loops race on lock release — losers exit instead of retrying
@@ -86,10 +93,18 @@ Alternatively, wrap the wait-and-acquire in a loop that retries on contention ra
 
 ## Implementation Steps
 
-1. Refactor the queue wait path in `cmd_run` (`run.py:156–199`) to loop on `wait_for_scope` + `acquire` until either acquired or timed out.
-2. Track total elapsed time across all retry attempts against `queue_wait_timeout_seconds`.
-3. Add a test in `test_cli_loop_background.py` or a new `test_cli_loop_queue.py` that spawns three loops against the same scope and asserts all three complete in order.
-4. Update the queue entry's `context` to reflect "nth in queue" position if possible (dashboard improvement).
+1. In `scripts/little_loops/cli/loop/run.py:185–188`, replace the single `acquire()` call with a retry loop. Capture `start = time.time()` immediately before the loop (note: `_queue_wait_start` referenced in the Proposed Solution does not yet exist — add it here). The loop should call `wait_for_scope` followed by `acquire` until `acquired` or `time.time() - start >= queue_wait_timeout_seconds`.
+2. Track elapsed time with `start = time.time()` captured once before the retry loop; pass the remaining budget `(queue_wait_timeout_seconds - elapsed)` as the `timeout` arg to each `wait_for_scope` call to avoid consuming the full timeout on every iteration.
+3. Add tests in `scripts/tests/test_concurrency.py` (unit: N threads race after `wait_for_scope`, all eventually acquire) and `scripts/tests/test_cli_loop_background.py` or a new `test_cli_loop_queue.py` (integration: 3 loops against the same scope all complete in order). Follow the `threading.Barrier` pattern at `test_concurrency.py:333–355` for the unit test, and `patch("time.sleep")` suppression from `test_cli_loop_background.py:440–468` for integration tests.
+4. Update the queue entry's `context` to reflect "nth in queue" position if possible (dashboard improvement — optional/separate).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Review `docs/guides/LOOPS_GUIDE.md:1248` — verify "exits with code 1 if the timeout is reached" language remains accurate (it does — retry loop exhausts full budget before exiting with code 1)
+6. Review `docs/reference/CLI.md:325` — verify `_cleanup_queue_entry()` is called on all exit paths inside the new retry loop, preserving the documented cleanup contract
+7. Add test to `scripts/tests/test_concurrency.py` in `TestLockManagerRaceConditions` — N-thread race after `wait_for_scope`, all eventually acquiring; validates the post-fix guarantee that all waiters succeed
 
 ## Affected Files
 
@@ -104,17 +119,43 @@ Alternatively, wrap the wait-and-acquire in a loop that retries on contention ra
 - `scripts/little_loops/fsm/concurrency.py` (may need `wait_for_scope` signature adjustment)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references: `grep -r "wait_for_scope" scripts/`
+- `scripts/little_loops/cli/loop/run.py:156` — first `acquire(fsm.name, scope)` call (non-queued path; not affected)
+- `scripts/little_loops/cli/loop/run.py:178–180` — calls `wait_for_scope(scope, timeout=_config.loops.queue_wait_timeout_seconds)` in the queue wait path
+- `scripts/little_loops/cli/loop/run.py:185` — re-acquire after wait (the race-loser exit at lines 186–188; **the bug site**)
+- `scripts/little_loops/cli/loop/lifecycle.py` — imports from `concurrency` module (indirect dependency; not affected by fix)
+- `scripts/little_loops/fsm/persistence.py` — imports concurrency utilities (indirect dependency; not affected by fix)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/__init__.py:24` — deferred import dispatches to `cmd_run`; review if function signature changes [Agent 1 finding]
+- `scripts/little_loops/cli/loop/_helpers.py:254-255` — forwards `--queue` when spawning background child; no code change needed but queue behavior changes propagate through this spawn path [Agent 1 finding]
+- `scripts/little_loops/fsm/__init__.py:73-76` — re-exports `LockManager` and `ScopeLock` as public API; no callers use this path for `wait_for_scope` directly [Agent 1 finding]
 
 ### Similar Patterns
-- TBD - check for other single-attempt `acquire()` call sites in lock management code
+- `scripts/little_loops/parallel/git_lock.py:110–181` — `for attempt in range(max_retries + 1)` retry loop with exponential backoff; closest existing model for retry-on-contention
+- `scripts/little_loops/parallel/orchestrator.py:1052–1058` — `start = time.time()` / `while time.time() - start > timeout` timeout-bounded polling idiom
+- `scripts/little_loops/fsm/concurrency.py:221–238` — `wait_for_scope` itself uses `start = time.time()` / `while time.time() - start < timeout`; the same idiom needed in the retry loop
+- No existing `while ... acquire()` retry loop anywhere in the codebase; this fix introduces the pattern for FSM scope locks
 
 ### Tests
 - `scripts/tests/test_cli_loop_background.py` (extend with 3-loop queue scenario)
 - `scripts/tests/test_cli_loop_queue.py` (new test file for queue race behavior)
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — existing test patterns to follow:_
+
+- `scripts/tests/test_concurrency.py:333–355` — `TestLockManagerRaceConditions.test_concurrent_acquire_same_scope_only_one_wins`: uses `threading.Barrier(2)` to fire concurrent `acquire()` calls simultaneously; directly models the N-loser scenario
+- `scripts/tests/test_concurrency.py:394–409` — `TestLockManagerWait.test_wait_succeeds_when_released`: releases a lock in a background thread after 0.5 s while the main thread calls `wait_for_scope`; pattern for the "lock released mid-wait" flow
+- `scripts/tests/test_cli_loop_background.py:440–468` — uses `side_effect=[True, False]` list drain for mocked `_process_alive` and `patch("time.sleep")` suppression; useful pattern for testing retry loops without real sleeps
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_concurrency.py` — add new test in `TestLockManagerRaceConditions` (after line 355): N threads all call `wait_for_scope` then `acquire`; assert all eventually acquire (validates post-fix guarantee that all waiters succeed, not just the first) [Agent 3 finding]
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md:1189,1248` — describes `--queue` timeout behavior; review that "exits with code 1 if timeout is reached" language remains accurate after fix (the retry loop exhausts budget before exiting with code 1, so the statement stays true) [Agent 2 finding]
+- `docs/reference/CLI.md:325` — documents queue entry cleanup contract; ensure `_cleanup_queue_entry()` is called on all exit paths inside the new retry loop [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -135,5 +176,8 @@ Alternatively, wrap the wait-and-acquire in a loop that retries on contention ra
 **Open** | Created: 2026-04-25 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-04-25T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a9f32ef-6ec4-4af5-8546-284a45998af5.jsonl`
+- `/ll:wire-issue` - 2026-04-25T18:22:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54b83519-3784-4f4d-b5d2-f18d09719dba.jsonl`
+- `/ll:refine-issue` - 2026-04-25T18:17:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72c88749-3ee6-4e4b-abc5-6e087bca4831.jsonl`
 - `/ll:format-issue` - 2026-04-25T17:55:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d2c7950-d0ee-4041-bf92-0ddda25d62fa.jsonl`
 - `/ll:capture-issue` - 2026-04-25T17:52:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`

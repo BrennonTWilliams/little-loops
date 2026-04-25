@@ -25,6 +25,8 @@ class TestLoopArgumentParsing:
 
     def _create_run_parser(self) -> argparse.ArgumentParser:
         """Create parser for run subcommand tests."""
+        from pathlib import Path
+
         from little_loops.cli_args import add_handoff_threshold_arg
 
         parser = argparse.ArgumentParser(prog="ll-loop run")
@@ -37,6 +39,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--no-llm", action="store_true")
         parser.add_argument("--llm-model", type=str)
         parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
+        parser.add_argument("--program-md", type=Path, default=None)
         add_handoff_threshold_arg(parser)
         return parser
 

@@ -433,6 +433,59 @@ class TestRunBackground:
         cmd = mock_popen.call_args[0][0]
         assert "--handoff-threshold" not in cmd
 
+    def test_forwards_program_md(self, tmp_path: Path) -> None:
+        """Forwards --program-md PATH to child process when set (ENH-1121)."""
+        import argparse
+        from pathlib import Path as _Path
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        program_md_path = tmp_path / ".ll" / "program.md"
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            handoff_threshold=None,
+            program_md=program_md_path,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--program-md" in cmd
+        assert str(program_md_path) in cmd
+
+    def test_program_md_not_forwarded_when_none(self, tmp_path: Path) -> None:
+        """Does not add --program-md to child command when not set (ENH-1121)."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            handoff_threshold=None,
+            program_md=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--program-md" not in cmd
+
 
 class TestCmdStopWithPid:
     """Tests for cmd_stop with PID-based process termination."""

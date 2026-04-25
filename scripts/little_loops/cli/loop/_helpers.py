@@ -255,6 +255,9 @@ def run_background(
         cmd.append("--queue")
     for kv in getattr(args, "context", None) or []:
         cmd.extend(["--context", kv])
+    program_md = getattr(args, "program_md", None)
+    if program_md is not None:
+        cmd.extend(["--program-md", str(program_md)])
     delay = getattr(args, "delay", None)
     if delay is not None:
         cmd.extend(["--delay", str(delay)])

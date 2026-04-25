@@ -151,6 +151,13 @@ Examples:
         help="Override a context variable (can be repeated)",
     )
     run_parser.add_argument(
+        "--program-md",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Path to program.md steering file (default: .ll/program.md when present)",
+    )
+    run_parser.add_argument(
         "--builtin",
         action="store_true",
         help="Load loop from built-ins directory (bypasses project .loops/ lookup)",

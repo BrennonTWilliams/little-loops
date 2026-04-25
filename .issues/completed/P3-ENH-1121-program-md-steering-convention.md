@@ -9,6 +9,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
 decision_needed: false
+completed_at: 2026-04-25T18:30:57Z
 ---
 
 # ENH-1121: `.ll/program.md` Steering Convention for Long-Horizon Loop Runs
@@ -250,6 +251,7 @@ _Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revise
 - `ll-loop install harness-optimize` + editing the `context:` block is documented at `docs/guides/LOOPS_GUIDE.md:270` as the existing durable-defaults path, solving the core UX problem today without new code
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-25T18:14:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`
 - `/ll:confidence-check` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb86effc-6421-4dbf-b1a1-86368e1d4644.jsonl`
 - `/ll:wire-issue` - 2026-04-25T18:09:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/435d237f-22dd-4664-8fe2-215738a163f3.jsonl`
 - `/ll:refine-issue` - 2026-04-25T18:02:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c63d5643-3cd6-4194-a8ec-e96b36f6f089.jsonl`
@@ -278,4 +280,34 @@ _Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revise
 
 ## Status
 
-Open
+Completed
+
+## Resolution
+
+Implemented 2026-04-25 via `/ll:manage-issue enhancement implement ENH-1121`.
+
+### Changes made
+
+- `scripts/little_loops/cli/loop/__init__.py` — added `--program-md PATH` flag to `run` subparser
+- `scripts/little_loops/cli/loop/run.py` — added `_parse_program_md()` helper and context merge (precedence: CLI args > program.md > YAML defaults)
+- `scripts/little_loops/cli/loop/_helpers.py` — added `--program-md PATH` forwarding in `run_background()`
+- `scripts/little_loops/loops/harness-optimize.yaml` — updated `load_directive` to extract `## Directive` section with awk; wired `${captured.directive.output}` into `propose` prompt
+- `docs/reference/program-md.md` — created convention doc with section reference, precedence rules, worked example
+- `docs/guides/LOOPS_GUIDE.md` — added `--program-md` to Run Flags table; added `harness-optimize` + `program.md` subsection; expanded `harness-optimize` table entry
+- `docs/reference/loops.md` — updated invocation examples, state graph description, and Resume Behavior
+- `docs/reference/CLI.md` — added `--program-md PATH` row to `ll-loop run` flags table
+- `scripts/tests/test_ll_loop_program_md.py` — new test file (14 tests: parsing, graceful fallback, precedence, integration)
+- `scripts/tests/test_cli_loop_background.py` — added forwarding/non-forwarding tests for `--program-md`
+- Test namespace updates: added `program_md=None` to `_make_args` helpers in `test_cli_loop_lifecycle.py` (×2), `test_cli_loop_worktree.py`, `test_ll_loop_commands.py`; added `--program-md` to `_create_run_parser()` in `test_ll_loop_parsing.py`
+
+### Acceptance criteria
+
+- [x] `ll-loop run <name>` reads `.ll/program.md` when present and merges parsed fields into loop context
+- [x] CLI args override file values; absent file is not an error for loops that don't require it
+- [x] `harness-optimize` (FEAT-1120) consumes the file's Directive/Targets/Benchmark fields
+- [x] `docs/reference/program-md.md` documents the convention with a worked example
+- [x] Unit test covers: file present + parsed, file absent + graceful fallback, CLI override wins
+- [x] No regression: existing loops unaffected (5318 passed, 5 skipped)
+
+## Session Log
+- `/ll:manage-issue` - 2026-04-25T18:30:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`

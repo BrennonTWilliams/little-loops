@@ -29,7 +29,10 @@ states:
         BEST=$(jq -r 'select(.accepted==true) | .commit_sha' "$TRAJ" | tail -1)
         [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}
       fi
-      echo "ready"
+      PROG=.ll/program.md
+      if [ -f "$PROG" ]; then
+        awk 'BEGIN{s=0} /^## [Dd]irective/{s=1;next} s && /^## /{exit} s{print}' "$PROG" | sed '/^[[:space:]]*$/d'
+      fi
     capture: directive
     next: baseline_score
 
@@ -51,6 +54,8 @@ states:
     action_type: prompt
     timeout: 300
     action: |
+      Optimization directive: ${captured.directive.output}
+
       Target files available: ${context.targets}
       Baseline score: ${captured.baseline.output}
       Last benchmark output: ${captured.benchmark_score.output}

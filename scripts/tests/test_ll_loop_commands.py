@@ -2132,6 +2132,7 @@ states:
             show_diagrams=False,
             clear=False,
             queue=False,
+            program_md=None,
         )
         logger = Logger(use_color=False)
         result = cmd_run("input-loop", args, simple_loop, logger)

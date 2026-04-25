@@ -666,7 +666,7 @@ run_eval → score_results → analyze_failures
 |------|-------------|
 | `harness-single-shot` | Annotated single-shot harness example — all evaluation phases with commented-out optional gates |
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
-| `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall |
+| `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs: set Directive, Targets, and Benchmark once, then run `ll-loop run harness-optimize` with no flags. |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
@@ -1725,6 +1725,38 @@ analyze_definition → run_sub_loop → analyze_execution → generate_report
 
 ---
 
+## `harness-optimize` with `.ll/program.md`
+
+For long-horizon overnight runs, populate `.ll/program.md` once and run with no context flags:
+
+```bash
+# .ll/program.md
+## Directive
+Improve the refine-issue skill to produce more actionable integration maps.
+
+## Targets
+- skills/refine-issue/SKILL.md
+
+## Benchmark
+task_dir: evals/refine-issue
+scorer: ./scripts/score.sh
+
+## Budget
+wall_clock: 8h
+```
+
+```bash
+ll-loop run harness-optimize
+```
+
+The loop reads `.ll/program.md` automatically, injects `directive`, `targets`, `task_dir`, and `scorer` into context, and includes the Directive prose in each LLM proposal step so the model knows the optimization goal.
+
+**Precedence**: `--context KEY=VALUE` CLI flags override `.ll/program.md` values; `.ll/program.md` values override YAML defaults.
+
+See [`.ll/program.md` reference](../reference/program-md.md) for the full section reference and examples.
+
+---
+
 ## Harness Loops
 
 > **Advanced** — See [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) for the
@@ -1891,6 +1923,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard |
 | `--delay <SECONDS>` | Sleep N seconds between iterations; overrides `backoff:` from YAML |
 | `--context KEY=VALUE` | Override a context variable at runtime (repeatable) |
+| `--program-md PATH` | Load steering directive from a Markdown file (default: `.ll/program.md` when present); parsed fields are injected into loop context before `--context` overrides. See [`.ll/program.md` convention](../reference/program-md.md). |
 
 ### Simulate Scenarios
 
