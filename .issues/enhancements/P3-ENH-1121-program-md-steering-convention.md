@@ -196,6 +196,7 @@ _Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revise
 - `ll-loop install harness-optimize` + editing the `context:` block is documented at `docs/guides/LOOPS_GUIDE.md:270` as the existing durable-defaults path, solving the core UX problem today without new code
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-25T17:54:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/008a2f03-f9f5-4084-b150-f39e97039172.jsonl`
 - `/ll:wire-issue` - 2026-04-25T17:52:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`
 - `/ll:confidence-check` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71b43b70-5185-4ea0-abcc-f27ef3f5177c.jsonl`
 - `/ll:go-no-go` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5791a1c-1f5c-4e4c-aa52-09e8dd7d510d.jsonl`
@@ -208,10 +209,14 @@ _Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revise
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-23
+**Verdict**: VALID — Verified 2026-04-25
 
-- `scripts/little_loops/cli/loop/__init__.py` has no `.ll/program.md` loading logic ✓
-- No `load_directive` state reading `program.md` in any built-in loop YAML ✓
+- `scripts/little_loops/cli/loop/__init__.py` — no `--program-md` flag or `.ll/program.md` loading logic ✓
+- `scripts/little_loops/cli/loop/run.py` — context injection pipeline at lines 62-81 (for kv loop at line 77) unchanged; no `program.md` merge ✓
+- `scripts/little_loops/loops/harness-optimize.yaml` — `load_directive` state (line 24) reads trajectory only; `${captured.directive.output}` not wired into `propose` state ✓
+- `docs/reference/program-md.md` — does not exist ✓
+- `scripts/tests/test_ll_loop_program_md.py` — does not exist ✓
+- LOOPS_GUIDE.md wiring touchpoints: Run Flags table (~line 1878), harness-optimize table entry (~line 670), Harness Loops section (~line 1730) — all exist, line numbers accurate within ±3 lines ✓
 - Feature not yet implemented ✓
 
 ## Status
