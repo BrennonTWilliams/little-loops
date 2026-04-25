@@ -1,13 +1,13 @@
 ---
-id: ENH-1282
-type: ENH
+id: FEAT-1282
+type: FEAT
 priority: P2
 captured_at: "2026-04-25T18:06:01Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
 ---
 
-# ENH-1282: Learning Test Registry and ll:explore-api Skill
+# FEAT-1282: Learning Test Registry and ll:explore-api Skill
 
 ## Summary
 

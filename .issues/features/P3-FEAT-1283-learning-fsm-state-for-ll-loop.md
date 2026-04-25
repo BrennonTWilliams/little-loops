@@ -1,14 +1,14 @@
 ---
-id: ENH-1283
-type: ENH
+id: FEAT-1283
+type: FEAT
 priority: P3
 captured_at: "2026-04-25T18:06:01Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
-depends_on: [ENH-1282]
+depends_on: [FEAT-1282]
 ---
 
-# ENH-1283: `learning` FSM State for ll-loop
+# FEAT-1283: `learning` FSM State for ll-loop
 
 ## Summary
 
