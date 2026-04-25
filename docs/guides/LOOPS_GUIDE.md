@@ -646,6 +646,8 @@ run_eval → score_results → analyze_failures
 
 **Notes**: Each state has `max_retries: 2` with `on_retry_exhausted: failed`. Use `ll-loop install agent-eval-improve` to copy the YAML to `.loops/` and customize scoring logic or add domain-specific evaluation steps.
 
+**Benchmark scoring opt-in (FEAT-1245)**: `agent-eval-improve` ships with optional `run_benchmark` states from `lib/benchmark.yaml` that can replace the default LLM-scored `score_results` step with a Harbor-format scorer command. Install the loop (`ll-loop install agent-eval-improve`) and set `use_benchmark: true` with a `benchmark_scorer` context variable pointing to your scorer command to activate the numeric score path. This is useful when you have a deterministic evaluation harness (e.g., unit tests, exact-match checks) rather than LLM-graded task results.
+
 **Automatic Prompt Optimization (APO)**
 
 | Loop | Description |
@@ -1711,6 +1713,8 @@ analyze_definition → run_sub_loop → analyze_execution → generate_report
 ```
 
 **Execution failure handling**: If `loop_name` is empty, `validate_input` exits immediately with a clear error message before any analysis begins — preventing hallucinated reports. If the target loop is found but fails to start (not found after validation, crashes on launch), `outer-loop-eval` captures the error output and feeds it to `analyze_execution` as-is. The final report will still include structural findings derived from the definition analysis — making the audit useful even when the sub-loop cannot run.
+
+**Benchmark scoring opt-in (FEAT-1245)**: `outer-loop-eval` ships with optional `run_benchmark` states from `lib/benchmark.yaml`. When the `benchmark_scorer` context variable is set to a scorer command path, the loop augments its analysis with a Harbor-format score of the target loop's execution quality. This is an opt-in addition — omitting `benchmark_scorer` runs the standard definition-only + execution-trace analysis. Use `ll-loop install outer-loop-eval` to copy the YAML and configure the benchmark path.
 
 **Report sections**: The improvement report always includes these exact headings:
 - **Structural Issues** — unreachable states, undefined routes, orphaned states

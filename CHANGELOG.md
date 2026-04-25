@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.89.0] - 2026-04-24
+
+### Added
+
+- **`harness-optimize` Loop** — New built-in score-gated hill-climbing loop that iteratively improves a configured set of target files (agent definitions, skills, commands, or `CLAUDE.md`) against a benchmark. Each iteration proposes an edit, runs a benchmark via the `run_benchmark` fragment (`lib/benchmark.yaml`), accepts the change if the score rises and reverts otherwise, and commits accepted mutations to a branch. Trajectory is logged to `.loops/tmp/harness-optimize-trajectory.jsonl`. (FEAT-1120)
+- **Benchmark Fragment in `outer-loop-eval` and `agent-eval-improve`** — The `run_benchmark` fragment (`lib/benchmark.yaml`) is now wired into `outer-loop-eval.yaml` and `agent-eval-improve.yaml` as optional opt-in states, enabling score-based evaluation steps in loop analysis and agent improvement workflows. (FEAT-1245)
+
+### Fixed
+
+- **`issue_parser` Splits Comma-Separated `blocked_by`/`blocks` Strings** — When `blocked_by` or `blocks` frontmatter fields contain a comma-separated string (e.g., `"ENH-419, ENH-422"`), the parser now splits them into individual IDs. Previously the entire string was treated as a single unknown ID, producing spurious "blocked by unknown issue" warnings in `ll-issues clusters` and `ll-sprint`. (BUG-1276)
+- **`autodev` Decide Gate Missing from Confidence-Fail Path** — The `decide_current`/`run_decide` states were only reachable after both confidence thresholds passed. Issues with unresolved decisions that caused low outcome confidence now route to the decide gate before size-review, preventing incorrect decomposition. (BUG-1277)
+- **`confidence-check` Now Sets `decision_needed: true`** — When `confidence-check` identifies unresolved design decisions in its Outcome Risk Factors prose, it now writes `decision_needed: true` to the issue frontmatter. Previously the flag was never set, so the `autodev` loop's decision gate never fired for confidence-check-identified decisions. (BUG-1278)
+
 ## [1.88.0] - 2026-04-23
 
 ### Added
@@ -71,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
 - **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
 
+[1.89.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.88.0...v1.89.0
 [1.88.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.87.0...v1.88.0
 [1.87.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.86.0...v1.87.0
 [1.86.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.85.0...v1.86.0

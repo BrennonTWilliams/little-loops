@@ -6,6 +6,7 @@ status: open
 discovered_date: 2026-04-24
 discovered_by: capture-issue
 captured_at: "2026-04-24T21:18:45Z"
+completed_at: "2026-04-24T23:11:47Z"
 related: [BUG-1277]
 decision_needed: false
 confidence_score: 95
@@ -42,6 +43,13 @@ Signal phrases that should trigger the flag:
 - "resolve before implementing"
 - "decision point" (in the context of an unresolved choice)
 
+## Steps to Reproduce
+
+1. Run `/ll:confidence-check` on an issue where it identifies an unresolved design decision (e.g., one where `score_ambiguity ≤ 10` and Phase 4.5 fires, writing risk-factor prose containing "open decision", "unresolved decision", or "resolve before implementing")
+2. After the skill completes, read the issue file's YAML frontmatter
+3. Observe that `decision_needed` remains `false` despite the unresolved decision being recorded in `## Confidence Check Notes`
+4. Run the autodev loop — observe that `decide_current` sees `decision_needed == 'false'` and skips the `/ll:decide-issue` gate, proceeding directly to implementation
+
 ## Root Cause
 
 The `confidence-check` skill (`skills/confidence-check/SKILL.md`) documents how to compute readiness and outcome scores and write the risk prose, but has no instruction to update `decision_needed` in frontmatter when it surfaces a decision-class risk factor.
@@ -53,7 +61,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Phase 4** (`skills/confidence-check/SKILL.md:398-446`): updates `confidence_score`, `outcome_confidence`, `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface` via inline `---` block replacement — never touches `decision_needed`
 - **Phase 4.5** (`skills/confidence-check/SKILL.md:448-495`): appends prose to `## Confidence Check Notes` when `outcome_confidence < 60` — no frontmatter write
 - **Escalation output** (`skills/confidence-check/SKILL.md:563-566`): terminal output recommends `/ll:decide-issue` when `score_ambiguity ≤ 10` — prose only, no flag set
-- **`score_ambiguity`** (`skills/confidence-check/SKILL.md:342-355`): Criterion C (0–25); score `≤ 10` = "Fundamental approach unclear, multiple competing options unresolved" — this is the existing ambiguity signal, never connected to `decision_needed`
+- **`score_ambiguity`** (`skills/confidence-check/SKILL.md:340-355`): Criterion C (0–25); score `≤ 10` = "Fundamental approach unclear, multiple competing options unresolved" — this is the existing ambiguity signal, never connected to `decision_needed`
 
 ## Proposed Solution
 
@@ -186,7 +194,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Open** | Created: 2026-04-24 | Priority: P3
 
+## Resolution
+
+Fixed by adding **Phase 4.6: Decision-Needed Flag** to `skills/confidence-check/SKILL.md` immediately after Phase 4.5. The new phase scans the Outcome Risk Factors content written by Phase 4.5 for signal phrases ("open decision", "unresolved decision", "resolve before implementing", "decision point") and sets `decision_needed: true` in the issue frontmatter when any are found. Guards: CHECK_MODE skip, idempotency (no-op if already `true`). Documentation updated in `docs/reference/API.md`, `docs/reference/COMMANDS.md`, and `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`. Six structural tests added to `scripts/tests/test_confidence_check_skill.py`.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-24T23:11:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a59f955d-1476-46b6-86c4-9ebfbfd80b60.jsonl`
+- `/ll:ready-issue` - 2026-04-24T23:05:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8aef0887-aa9d-46f7-97dd-71ef2dc9ab95.jsonl`
 - `/ll:decide-issue` - 2026-04-24T23:02:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c07b93f-0220-43db-b622-3f5b2c40f07a.jsonl`
 - `/ll:confidence-check` - 2026-04-24T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0515c411-1a42-422d-8af5-9d3a19f5d03c.jsonl`
 - `/ll:wire-issue` - 2026-04-24T22:55:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27c8ab24-3531-40ba-b883-80ca4b272ff6.jsonl`
