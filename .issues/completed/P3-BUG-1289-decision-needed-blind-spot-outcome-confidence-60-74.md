@@ -1,5 +1,6 @@
 ---
 captured_at: "2026-04-25T19:07:05Z"
+completed_at: "2026-04-25T19:48:04Z"
 discovered_date: 2026-04-25
 discovered_by: capture-issue
 decision_needed: false
@@ -56,7 +57,7 @@ The `decision_needed` flag exists precisely to steer autodev away from size-revi
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - `skills/confidence-check/SKILL.md:455` — `"Outcome Risk Factors" (present when outcome confidence < 60)` — the hardcoded `< 60` bucket in the `HAS_FINDINGS` definition
-- `skills/confidence-check/SKILL.md:588` — `### Outcome Risk Factors (if outcome confidence < 60)` — the output format heading that confirms Phase 4.5 only writes this section at that threshold
+- `skills/confidence-check/SKILL.md:587` — `### Outcome Risk Factors (if outcome confidence < 60)` — the output format heading that confirms Phase 4.5 only writes this section at that threshold
 - `skills/confidence-check/SKILL.md:501` — `"This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., \`HAS_FINDINGS\` is true and \`outcome_confidence < 60\`)"` — the Phase 4.6 guard that structurally depends on Phase 4.5 having emitted text
 - `scripts/little_loops/loops/autodev.yaml:22–23` — `outcome_threshold: 75` in the loop `context:` block (canonical source: `commands.confidence_gate.outcome_threshold` in ll-config.json, but that key is absent from `.ll/ll-config.json`, so 75 is the effective default for the loop)
 - `scripts/little_loops/config/automation.py:101` — `outcome_threshold: int = 70` in `ConfidenceGateConfig` — the Python-layer default is **70**, not 75; the loop context default (75) is tighter
@@ -117,7 +118,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py:1550-1555` — `test_context_thresholds_defined` asserts `"outcome_threshold" in ctx` for autodev loop; safe, no change needed (key presence only, not value)
-- `scripts/tests/test_config.py:402` — `assert config.outcome_threshold == 70`; will break **only if** `ConfidenceGateConfig` Python default is changed to 75; this fix targets SKILL.md prose only — do NOT change `automation.py:101` or this test will fail
+- `scripts/tests/test_config.py:403` — `assert config.outcome_threshold == 70`; will break **only if** `ConfidenceGateConfig` Python default is changed to 75; this fix targets SKILL.md prose only — do NOT change `automation.py:101` or this test will fail
 
 ### Documentation
 - N/A — Phase 4.6 behavior not separately documented
@@ -141,7 +142,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- Step 2 target lines: `skills/confidence-check/SKILL.md:455` (bucket definition) and `:588` (output heading) — both contain the hardcoded `< 60` string; update both to `< outcome_threshold`
+- Step 2 target lines: `skills/confidence-check/SKILL.md:455` (bucket definition) and `:587` (output heading) — both contain the hardcoded `< 60` string; update both to `< outcome_threshold`
 - Step 2 notation: use `config.commands.confidence_gate.outcome_threshold` (with `default: 75`) following the `manage-issue` SKILL.md prose convention at `skills/manage-issue/SKILL.md:183–202`
 - Step 4 test file: add to `scripts/tests/test_confidence_check_skill.py` in `TestDecisionNeededFlagWriteBack` class (line 56); reuse `_phase_text()` pattern (line 59) but target Phase 4.5 instead of Phase 4.6; assert `"60"` does NOT appear as a standalone threshold and `"outcome_threshold"` DOES appear
 - Default value to use: **75** (matching autodev loop context), NOT 70 (Python/schema default is more permissive and would widen the gap slightly)
@@ -165,7 +166,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `bug`, `confidence-check`, `decision-needed`, `autodev`, `captured`
 
+## Resolution
+
+Fixed by replacing the hardcoded `outcome_confidence < 60` threshold in Phase 4.5 and Phase 4.6 of `skills/confidence-check/SKILL.md` with `config.commands.confidence_gate.outcome_threshold` (default: 75). Phase 4.6 inherits the fix automatically since it depends on Phase 4.5 having emitted Outcome Risk Factors. Added `TestPhase45OutcomeThreshold` test class with 3 new tests to `scripts/tests/test_confidence_check_skill.py` to prevent regression.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-04-25T19:48:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/108d4a10-0e89-4c33-b67d-c715cd39fd6e.jsonl`
+- `/ll:ready-issue` - 2026-04-25T19:38:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8773f369-1b55-4807-a306-62c43b644158.jsonl`
 - `/ll:decide-issue` - 2026-04-25T19:33:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4da1c7d0-ca07-471f-a273-72684f564dab.jsonl`
 - `/ll:confidence-check` - 2026-04-25T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/678ce4e2-2d4a-4e51-9c09-4bc6e9dc83cd.jsonl`
 - `/ll:wire-issue` - 2026-04-25T19:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e062038-fdf7-4d52-8f99-e3db06cb9745.jsonl`

@@ -452,7 +452,7 @@ score_change_surface: 12
 After presenting the output, determine whether there are findings to write back. Track `HAS_FINDINGS=false`; set to `true` if any of the following have content:
 - **Concerns** (present when readiness tier is PROCEED WITH CAUTION)
 - **Gaps to Address** (present when readiness score < 70)
-- **Outcome Risk Factors** (present when outcome confidence < 60)
+- **Outcome Risk Factors** (present when outcome confidence < config.commands.confidence_gate.outcome_threshold, default: 75)
 
 If `HAS_FINDINGS` is false: skip (clean bill of health — no update needed).
 
@@ -498,7 +498,7 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 
 **Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
 
-After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an unresolved decision requiring resolution before implementation. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < 60`); if Phase 4.5 was skipped, no signal phrases will be present.
+After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an unresolved decision requiring resolution before implementation. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
 
 **Signal phrases** (any match triggers the flag):
 - "open decision"
@@ -584,7 +584,7 @@ OUTCOME CONFIDENCE: XX/100 → [HIGH CONFIDENCE | MODERATE | LOW | VERY LOW]
 - **Unresolved options (score_ambiguity ≤ 10)**: Run `/ll:decide-issue [ISSUE_ID]` — competing implementation options are blocking readiness; selecting one clears the ambiguity.
 - **Issue too large (score_ambiguity > 10)**: Run `/ll:issue-size-review [ISSUE_ID]` — a persistent broad readiness gap after multiple refinement passes often signals the issue needs decomposition rather than more research.
 
-### Outcome Risk Factors (if outcome confidence < 60)
+### Outcome Risk Factors (if outcome confidence < outcome_threshold)
 - [Risk 1: what may cause implementation difficulty]
 - [Risk 2: mitigation suggestion]
 

@@ -95,3 +95,39 @@ class TestDecisionNeededFlagWriteBack:
         assert "AskUserQuestion" not in self._phase_text(), (
             "Phase 4.6 must not use AskUserQuestion — flag write-back is unconditional"
         )
+
+
+class TestPhase45OutcomeThreshold:
+    """Phase 4.5 must use configurable outcome_threshold, not hardcoded 60 (BUG-1289)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.5: Findings Write-Back")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_outcome_threshold_referenced_in_phase_4_5(self) -> None:
+        """Phase 4.5 must reference outcome_threshold, not hardcoded 60."""
+        assert "outcome_threshold" in self._phase_text(), (
+            "Phase 4.5 must reference outcome_threshold (not hardcoded 60) so the "
+            "Outcome Risk Factors trigger respects the project-configurable threshold"
+        )
+
+    def test_hardcoded_60_absent_from_outcome_risk_condition(self) -> None:
+        """The hardcoded '< 60' threshold must not appear in the Outcome Risk Factors condition."""
+        text = self._phase_text()
+        assert "outcome confidence < 60" not in text, (
+            "Phase 4.5 must not use hardcoded '< 60'; use outcome_threshold instead (BUG-1289)"
+        )
+
+    def test_phase_4_6_guard_uses_outcome_threshold(self) -> None:
+        """Phase 4.6 guard must reference outcome_threshold, not hardcoded 60."""
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.6: Decision-Needed Flag")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        phase_4_6_text = content[start:end]
+        assert "outcome_confidence < 60" not in phase_4_6_text, (
+            "Phase 4.6 guard must not use hardcoded '< 60'; use outcome_threshold instead (BUG-1289)"
+        )
