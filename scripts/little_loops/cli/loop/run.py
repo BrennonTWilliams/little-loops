@@ -7,6 +7,7 @@ import atexit
 import json
 import os
 import re
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -240,14 +241,21 @@ def cmd_run(
             atexit.register(_cleanup_queue_entry)
 
             logger.info(f"Waiting for conflicting loop '{conflict.loop_name}' to finish...")
-            if not lock_manager.wait_for_scope(
-                scope, timeout=_config.loops.queue_wait_timeout_seconds
-            ):
-                _cleanup_queue_entry()
-                logger.error("Timeout waiting for scope to become available")
-                return 1
-            # Re-acquire after waiting
-            if not lock_manager.acquire(fsm.name, scope):
+            # Retry loop: when N waiters are released simultaneously, only one wins
+            # acquire(); losers loop back and wait again rather than exiting (BUG-1281).
+            acquired = False
+            _wait_start = time.time()
+            _budget = _config.loops.queue_wait_timeout_seconds
+            while time.time() - _wait_start < _budget:
+                _remaining = _budget - (time.time() - _wait_start)
+                if not lock_manager.wait_for_scope(scope, timeout=_remaining):
+                    _cleanup_queue_entry()
+                    logger.error("Timeout waiting for scope to become available")
+                    return 1
+                if lock_manager.acquire(fsm.name, scope):
+                    acquired = True
+                    break
+            if not acquired:
                 _cleanup_queue_entry()
                 logger.error("Failed to acquire lock after waiting")
                 return 1

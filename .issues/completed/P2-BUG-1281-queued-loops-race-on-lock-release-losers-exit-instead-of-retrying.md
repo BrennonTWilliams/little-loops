@@ -1,5 +1,6 @@
 ---
 captured_at: "2026-04-25T17:52:57Z"
+completed_at: "2026-04-25T18:36:53Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
 decision_needed: false
@@ -24,7 +25,7 @@ When two or more loops are queued with `--queue` and the currently running loop 
 3. Loop A finishes and releases the lock.
 4. In the same polling tick, B and C both see `conflict is None` and both call `acquire()`.
 5. `acquire()` uses `fcntl.flock(LOCK_EX)` on `.acquire.lock`, so only one wins (no TOCTOU race).
-6. The loser returns `False` from `acquire` and hits `run.py:185–189`:
+6. The loser returns `False` from `acquire` and hits `run.py:250–253`:
    ```python
    if not lock_manager.acquire(fsm.name, scope):
        _cleanup_queue_entry()
@@ -44,7 +45,7 @@ When three or more loops are queued against the same scope, only the first queue
 ## Root Cause
 
 - **File**: `scripts/little_loops/cli/loop/run.py`
-- **Lines**: 185–189
+- **Lines**: 250–253
 - **Function**: `cmd_run`
 - **Explanation**: After `wait_for_scope` returns `True`, `acquire()` is attempted once with no retry. This is correct for detecting genuine contention, but wrong in the queue path where the intent is "keep waiting until I can run." The single `acquire` attempt after the wait is not retry-safe when multiple waiters are released simultaneously.
 
@@ -93,7 +94,7 @@ Alternatively, wrap the wait-and-acquire in a loop that retries on contention ra
 
 ## Implementation Steps
 
-1. In `scripts/little_loops/cli/loop/run.py:185–188`, replace the single `acquire()` call with a retry loop. Capture `start = time.time()` immediately before the loop (note: `_queue_wait_start` referenced in the Proposed Solution does not yet exist — add it here). The loop should call `wait_for_scope` followed by `acquire` until `acquired` or `time.time() - start >= queue_wait_timeout_seconds`.
+1. In `scripts/little_loops/cli/loop/run.py:250–253`, replace the single `acquire()` call with a retry loop. Capture `start = time.time()` immediately before the loop (note: `_queue_wait_start` referenced in the Proposed Solution does not yet exist — add it here). The loop should call `wait_for_scope` followed by `acquire` until `acquired` or `time.time() - start >= queue_wait_timeout_seconds`.
 2. Track elapsed time with `start = time.time()` captured once before the retry loop; pass the remaining budget `(queue_wait_timeout_seconds - elapsed)` as the `timeout` arg to each `wait_for_scope` call to avoid consuming the full timeout on every iteration.
 3. Add tests in `scripts/tests/test_concurrency.py` (unit: N threads race after `wait_for_scope`, all eventually acquire) and `scripts/tests/test_cli_loop_background.py` or a new `test_cli_loop_queue.py` (integration: 3 loops against the same scope all complete in order). Follow the `threading.Barrier` pattern at `test_concurrency.py:333–355` for the unit test, and `patch("time.sleep")` suppression from `test_cli_loop_background.py:440–468` for integration tests.
 4. Update the queue entry's `context` to reflect "nth in queue" position if possible (dashboard improvement — optional/separate).
@@ -119,9 +120,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/fsm/concurrency.py` (may need `wait_for_scope` signature adjustment)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/run.py:156` — first `acquire(fsm.name, scope)` call (non-queued path; not affected)
-- `scripts/little_loops/cli/loop/run.py:178–180` — calls `wait_for_scope(scope, timeout=_config.loops.queue_wait_timeout_seconds)` in the queue wait path
-- `scripts/little_loops/cli/loop/run.py:185` — re-acquire after wait (the race-loser exit at lines 186–188; **the bug site**)
+- `scripts/little_loops/cli/loop/run.py:221` — first `acquire(fsm.name, scope)` call (non-queued path; not affected)
+- `scripts/little_loops/cli/loop/run.py:243–245` — calls `wait_for_scope(scope, timeout=_config.loops.queue_wait_timeout_seconds)` in the queue wait path
+- `scripts/little_loops/cli/loop/run.py:250` — re-acquire after wait (the race-loser exit at lines 251–253; **the bug site**)
 - `scripts/little_loops/cli/loop/lifecycle.py` — imports from `concurrency` module (indirect dependency; not affected by fix)
 - `scripts/little_loops/fsm/persistence.py` — imports concurrency utilities (indirect dependency; not affected by fix)
 
@@ -171,13 +172,28 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `bug`, `concurrency`, `queue`
 
+## Resolution
+
+**Status**: Resolved — 2026-04-25
+
+**Root cause confirmed**: `run.py:250–253` — single `acquire()` attempt after `wait_for_scope` returned; race losers exited instead of retrying.
+
+**Fix**: Replaced the single `acquire()` call with a budget-bounded retry loop (`run.py:249–265`). Each iteration calls `wait_for_scope` (with remaining budget) followed by `acquire`; losers loop back and wait again rather than erroring out. The full `queue_wait_timeout_seconds` budget is honored across all retry iterations.
+
+**Files changed**:
+- `scripts/little_loops/cli/loop/run.py` — added `import time`, replaced single re-acquire with retry loop
+- `scripts/tests/test_concurrency.py` — added `test_n_waiters_all_acquire_with_retry_loop` to `TestLockManagerRaceConditions`
+- `scripts/tests/test_cli_loop_queue.py` — new file with 3 integration tests covering retry-on-race-loss, timeout, and no-queue paths
+
 ## Status
 
-**Open** | Created: 2026-04-25 | Priority: P2
+**Completed** | Created: 2026-04-25 | Resolved: 2026-04-25 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-25T18:28:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4588686a-6793-4135-809c-1d6ca930a43d.jsonl`
 - `/ll:confidence-check` - 2026-04-25T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a9f32ef-6ec4-4af5-8546-284a45998af5.jsonl`
 - `/ll:wire-issue` - 2026-04-25T18:22:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54b83519-3784-4f4d-b5d2-f18d09719dba.jsonl`
 - `/ll:refine-issue` - 2026-04-25T18:17:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72c88749-3ee6-4e4b-abc5-6e087bca4831.jsonl`
 - `/ll:format-issue` - 2026-04-25T17:55:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d2c7950-d0ee-4041-bf92-0ddda25d62fa.jsonl`
+- `/ll:manage-issue` - 2026-04-25T18:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12337146-4afa-476f-8b72-8f6e961f721f.jsonl`
 - `/ll:capture-issue` - 2026-04-25T17:52:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`

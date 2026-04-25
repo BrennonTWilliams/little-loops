@@ -355,6 +355,47 @@ class TestLockManagerRaceConditions:
         assert results.count(True) == 1, f"Expected exactly 1 success, got: {results}"
         assert results.count(False) == 1
 
+    def test_n_waiters_all_acquire_with_retry_loop(self, manager: LockManager) -> None:
+        """N queued waiters using the wait+retry pattern all eventually acquire (BUG-1281).
+
+        Simulates the post-fix cmd_run retry loop: each thread calls wait_for_scope
+        then acquire, looping back on loss until it wins.  All N threads must succeed.
+        """
+        n = 3
+        results: list[str] = []
+        results_lock = threading.Lock()
+
+        manager.acquire("holder", ["src/"])
+
+        def waiter(name: str) -> None:
+            start = time.time()
+            budget = 10.0
+            acquired = False
+            while time.time() - start < budget:
+                remaining = budget - (time.time() - start)
+                if not manager.wait_for_scope(["src/"], timeout=remaining):
+                    break
+                if manager.acquire(name, ["src/"]):
+                    acquired = True
+                    break
+            with results_lock:
+                results.append(name if acquired else f"{name}-failed")
+            if acquired:
+                time.sleep(0.01)
+                manager.release(name)
+
+        threads = [threading.Thread(target=waiter, args=(f"loop-{i}",)) for i in range(n)]
+        for t in threads:
+            t.start()
+        time.sleep(0.1)  # let threads enter wait_for_scope before releasing
+        manager.release("holder")
+        for t in threads:
+            t.join(timeout=15)
+
+        assert len(results) == n
+        failed = [r for r in results if r.endswith("-failed")]
+        assert not failed, f"Some waiters failed to acquire: {failed}"
+
 
 class TestLockManagerWait:
     """Tests for wait_for_scope functionality."""
