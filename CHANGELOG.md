@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.91.0] - 2026-04-26
+
+### Added
+
+- feat(diagram): render FSM off-path non-linear topologies via DAG layout (30da8f18)
+- feat(diagram): render FSM off-path linear chains vertically (10a3c178)
+- feat(diagram): switch FSM box diagram to vertical layout (86cc6ec4)
+
+### Fixed
+
+- **autodev triage_outcome_failure uses score_ambiguity proxy instead of decision_needed flag** — Fixed silent data loss where issues with `decision_needed: true` but high `score_ambiguity` were dropped from the pipeline. The `triage_outcome_failure` state now checks the `decision_needed` flag as the authoritative signal. (BUG-1294)
+- fix(workflow-analyzer): compute entities_matched before all_entities mutation (269c297b)
+
 ## [1.90.0] - 2026-04-26
 
 ### Added
@@ -107,6 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
 - **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
 
+[1.91.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.90.0...v1.91.0
 [1.90.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.89.0...v1.90.0
 [1.89.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.88.0...v1.89.0
 [1.88.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.87.0...v1.88.0
