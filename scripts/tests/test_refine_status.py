@@ -1276,6 +1276,7 @@ class TestRefineStatusFormatColumn:
         assert written is True, (
             "append_session_log_entry should succeed with explicit session_jsonl"
         )
+        assert list(bugs_dir.glob("*.tmp")) == [], "no orphaned .tmp files after append_session_log_entry"
 
         with patch.object(
             sys,

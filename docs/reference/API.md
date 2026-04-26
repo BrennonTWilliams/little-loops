@@ -47,6 +47,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.goals_parser` | Product goals file parsing |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
+| `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
 | `little_loops.text_utils` | Text extraction utilities for issue content |
 | `little_loops.cli` | CLI entry points (package) |
 | `little_loops.parallel` | Parallel processing subpackage |

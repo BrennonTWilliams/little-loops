@@ -1,6 +1,7 @@
 ---
 discovered_date: "2026-04-24"
 discovered_by: review
+completed_at: 2026-04-26T19:19:29Z
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 71
@@ -64,7 +65,7 @@ _Note: `scripts/little_loops/cli/issues/` itself contains **no** `write_text()` 
 - `scripts/little_loops/cli/issues/__init__.py:469,478` — dispatches to `append-log` and `skip` sub-commands
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/parallel/orchestrator.py:742` — calls `append_session_log_entry()` after issue completion (no signature change, no update required) [Agent 1 finding]
+- `scripts/little_loops/parallel/orchestrator.py:1261` — calls `append_session_log_entry()` after issue completion (no signature change, no update required) [Agent 1 finding]
 - `scripts/little_loops/issue_lifecycle.py:714` — `complete_issue_lifecycle()` also calls `append_session_log_entry()` (separate from the `skip_issue()` write_text call sites; no update required) [Agent 1 finding]
 
 ### Similar Patterns
@@ -82,8 +83,8 @@ No shared `file_utils.py` or `io_utils.py` exists; a new `atomic_write()` helper
 
 ### Tests
 - `scripts/tests/test_ll_issues_atomic_write.py` — new test file for atomic write verification (does not exist yet)
-- `scripts/tests/test_issues_cli.py:2243` — `TestIssuesAppendLog.test_append_log_writes_entry` (existing; extend to assert `os.replace` is called)
-- `scripts/tests/test_issues_cli.py:2800` — `TestIssuesSkip` (existing; extend to assert no `.tmp` orphans)
+- `scripts/tests/test_issues_cli.py:2273` — `TestIssuesAppendLog.test_append_log_writes_entry` at line 2276 (existing; extend to assert `os.replace` is called)
+- `scripts/tests/test_issues_cli.py:2830` — `TestIssuesSkip` (existing; extend to assert no `.tmp` orphans)
 - `scripts/tests/test_state.py:557-620` — model test structure after this (covers: `os.replace` called once, no orphaned `.tmp` files, original preserved on rename failure)
 - `scripts/tests/test_rate_limit_circuit.py:134-168` — model concurrency test after this (concurrent reader/writer; reader never sees partial file)
 
@@ -156,7 +157,25 @@ _Added by `/ll:confidence-check` on 2026-04-26_
 - **Unresolved placement decision**: `atomic_write()` helper placement (new `file_utils.py` vs top of `session_log.py`) is still open. Conditional doc updates (API.md, ARCHITECTURE.md, CONTRIBUTING.md) depend on this choice. Decide at the start of Step 1 to avoid re-work.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-04-26T19:16:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f710fa0b-5103-4227-b6b5-481b229473ec.jsonl`
 - `/ll:confidence-check` - 2026-04-26T18:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/543e902c-e842-4902-bf7b-20373bd4ee5f.jsonl`
 - `/ll:wire-issue` - 2026-04-26T18:10:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a9dffad-1333-4628-a6b0-01a2936c3e81.jsonl`
 - `/ll:refine-issue` - 2026-04-26T18:04:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea84d70c-d9aa-47c1-90e8-7c4dcc625502.jsonl`
 - `/ll:format-issue` - 2026-04-26T17:53:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70712d29-8a54-4a5c-99f2-80dc1d4864ed.jsonl`
+- `/ll:manage-issue` - 2026-04-26T19:19:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f710fa0b-5103-4227-b6b5-481b229473ec.jsonl`
+
+## Resolution
+
+**Status**: Completed 2026-04-26
+
+**Implementation**:
+- Created `scripts/little_loops/file_utils.py` with `atomic_write(path, content, encoding)` helper using `tempfile.mkstemp + os.replace` (matching codebase convention in `state.py`, `fsm/rate_limit_circuit.py`)
+- Placed `atomic_write()` in new `file_utils.py` (not `session_log.py`) to keep it reusable
+- Replaced `issue_path.write_text(content)` in `session_log.py:append_session_log_entry()`
+- Replaced three `write_text()` calls in `issue_lifecycle.py:skip_issue()` (git-mv failed path, git-mv succeeded path, not-tracked path)
+- Updated docs: `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `CONTRIBUTING.md`
+- New test file: `scripts/tests/test_ll_issues_atomic_write.py` (7 tests)
+- Extended `test_session_log.py:TestAppendSessionLogEntry` with 2 atomic write assertions
+- Extended `test_refine_status.py` with `.tmp` orphan guard
+
+**Tests**: 81 tests pass (0 failures)

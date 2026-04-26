@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -148,6 +149,33 @@ class TestAppendSessionLogEntry:
         assert len(lines) == 1
         assert lines[0].startswith("- `/ll:test` - ")
         assert lines[0].endswith(f"- `{jsonl}`")
+
+    def test_append_uses_os_replace(self, tmp_path: Path) -> None:
+        issue = tmp_path / "issue.md"
+        issue.write_text("# Issue\n")
+
+        replace_calls: list[tuple[str, str]] = []
+        original_replace = os.replace
+
+        def capture(src: str, dst: str) -> None:
+            replace_calls.append((str(src), str(dst)))
+            original_replace(src, dst)
+
+        jsonl = tmp_path / "s.jsonl"
+        with patch("os.replace", side_effect=capture):
+            append_session_log_entry(issue, "/ll:test", session_jsonl=jsonl)
+
+        assert len(replace_calls) == 1, "append_session_log_entry must use os.replace once"
+        assert Path(replace_calls[0][1]) == issue
+
+    def test_append_no_tmp_orphan_on_success(self, tmp_path: Path) -> None:
+        issue = tmp_path / "issue.md"
+        issue.write_text("# Issue\n")
+
+        jsonl = tmp_path / "s.jsonl"
+        append_session_log_entry(issue, "/ll:test", session_jsonl=jsonl)
+
+        assert list(tmp_path.glob("*.tmp")) == []
 
 
 class TestParseSessionLog:

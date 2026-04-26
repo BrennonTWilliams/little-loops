@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.config import BRConfig
+from little_loops.file_utils import atomic_write
 from little_loops.events import EventBus
 from little_loops.frontmatter import update_frontmatter
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
@@ -895,13 +896,13 @@ def skip_issue(original_path: Path, new_path: Path, reason: str | None = None) -
 
         if result is None or result.returncode != 0:
             # git mv failed — fall back to write + rename
-            original_path.write_text(content, encoding="utf-8")
+            atomic_write(original_path, content, encoding="utf-8")
             original_path.rename(new_path)
         else:
-            new_path.write_text(content, encoding="utf-8")
+            atomic_write(new_path, content, encoding="utf-8")
     else:
         # Not tracked — write updated content then rename atomically
-        original_path.write_text(content, encoding="utf-8")
+        atomic_write(original_path, content, encoding="utf-8")
         original_path.rename(new_path)
 
 

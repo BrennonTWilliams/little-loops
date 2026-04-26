@@ -10,6 +10,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from little_loops.file_utils import atomic_write
 from little_loops.user_messages import get_project_folder
 
 # Regex to isolate the ## Session Log section content
@@ -125,5 +126,5 @@ def append_session_log_entry(
         else:
             content += f"\n\n## Session Log\n{entry}\n"
 
-    issue_path.write_text(content)
+    atomic_write(issue_path, content)
     return True

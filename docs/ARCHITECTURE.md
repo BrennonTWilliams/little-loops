@@ -248,6 +248,7 @@ little-loops/
         │   ├── formatting.py    #   Report and graph formatting
         │   └── operations.py    #   File mutation operations (apply/fix)
         ├── session_log.py       # Session log linking for issues
+        ├── file_utils.py        # Shared file I/O utilities (atomic writes)
         ├── user_messages.py     # User message extraction
         ├── workflow_sequence/   # Workflow analysis (ll-workflows, sub-package)
         │   ├── __init__.py      #   Re-exports: analyze_workflows, models
