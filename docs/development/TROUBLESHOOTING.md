@@ -92,10 +92,6 @@ ls -la .ll/ll-config.json
 
 ### Ghost git worktree refs after SIGKILL
 
-<!-- TODO: update-docs stub — ENH-1246 — drafted 2026-04-22 -->
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
-
 **Symptom**: `fatal: '<path>' already exists` when `ll-parallel` starts a new run, even though `.worktrees/worker-*` directories look clean.
 
 **Cause**: A SIGKILL mid-teardown can delete the on-disk worktree directory before `git worktree prune` commits. This leaves a ghost metadata entry at `.git/worktrees/<name>/`. The next `git worktree add` for the same path fails because git still believes the worktree exists.
@@ -108,13 +104,7 @@ git worktree prune
 git worktree list  # verify the ghost is gone
 ```
 
-<!-- END TODO stub -->
-
 ### Worktree cleanup fails on locked worktree
-
-<!-- TODO: update-docs stub — ENH-1247/1251/1252/1253 — drafted 2026-04-22 -->
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details.
 
 **Symptom**: `git worktree remove --force` errors with "unable to remove" even with `--force`, leaving stale worktrees after a SIGKILL.
 
@@ -128,8 +118,6 @@ git worktree unlock .worktrees/worker-<name>
 git worktree remove --force .worktrees/worker-<name>
 git worktree prune
 ```
-
-<!-- END TODO stub -->
 
 ### Worktree creation fails
 
