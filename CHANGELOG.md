@@ -7,20 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`LearnTestRecord` Registry Module** — New `little_loops.learning_tests` module implementing the learning test registry. Provides `LearnTestRecord` and `Assertion` dataclasses and five public functions: `write_record`, `read_record`, `list_records`, `mark_stale`, and `check_learning_test`. Records are stored as YAML-frontmatter Markdown files under `.ll/learning-tests/<slug>.md` with `proven`/`refuted`/`stale` status and a list of typed assertions. (FEAT-1285)
-- **`autodev` Outcome Failure Triage Before Size-Review** — When confidence thresholds are not met, `autodev` now enters a `triage_outcome_failure` state that reads `score_ambiguity` before routing. Issues with `score_ambiguity ≤ 10` route directly to `/ll:decide-issue` (low ambiguity indicates an unresolved decision is the cause); issues with higher ambiguity fall through to `detect_children` and size-review as before. This prevents incorrect decomposition of well-scoped issues whose low outcome confidence stems from an unresolved competing option.
-- **`autodev` Missing-Artifact Routing Branch** — `triage_outcome_failure` now has a third routing leg: after ruling out an unresolved decision (`score_ambiguity > 10`), the loop enters a new `check_missing_artifacts` gate that reads the `missing_artifacts` frontmatter flag. If `true` (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors contain artifact-absence signal phrases), the loop routes to `run_wire` (`/ll:wire-issue --auto`) before re-queuing instead of falling through to size-review. Issues with genuine scope bigness still reach `detect_children` unchanged. Adds `run_wire`, `run_refine`, and `check_missing_artifacts` states to the autodev FSM; adds `missing_artifacts: bool | None` field to `IssueInfo` and `ll-issues show --json` output; adds Phase 4.7 to the `confidence-check` skill. (ENH-1291)
-
-### Fixed
-
-- **`confidence-check` Phases 4.5/4.6 Now Respect Configurable `outcome_threshold`** — Phases 4.5 (Outcome Risk Factors) and 4.6 (decision signal detection) previously used a hardcoded threshold. They now read `config.commands.confidence_gate.outcome_threshold` (default: 75), so project-level overrides in `ll-config.json` take effect for these phases. (8bebe148)
-
 ### Planned
 
 - Windows compatibility testing
 - Performance benchmarks for large repositories
+
+## [1.90.0] - 2026-04-26
+
+### Added
+
+- **`LearnTestRecord` Registry Module** — New `little_loops.learning_tests` module implementing the learning test registry. Provides `LearnTestRecord` and `Assertion` dataclasses and five public functions: `write_record`, `read_record`, `list_records`, `mark_stale`, and `check_learning_test`. Records are stored as YAML-frontmatter Markdown files under `.ll/learning-tests/<slug>.md` with `proven`/`refuted`/`stale` status and a list of typed assertions. (FEAT-1285)
+- **Learning Test Registry Foundation** — Decomposed the learning-test infrastructure initiative into FEAT-1285 (registry module), FEAT-1286, and FEAT-1287; established module interface and `ll:explore-api` skill architecture. (FEAT-1282)
+- **`autodev` Outcome Failure Triage Before Size-Review** — When confidence thresholds are not met, `autodev` now enters a `triage_outcome_failure` state that reads `score_ambiguity` before routing. Issues with `score_ambiguity ≤ 10` route directly to `/ll:decide-issue` (low ambiguity indicates an unresolved decision is the cause); issues with higher ambiguity fall through to `detect_children` and size-review as before. This prevents incorrect decomposition of well-scoped issues whose low outcome confidence stems from an unresolved competing option. (ENH-1288)
+- **`autodev` Missing-Artifact Routing Branch in `triage_outcome_failure`** — `triage_outcome_failure` now has a third routing leg: after ruling out an unresolved decision (`score_ambiguity > 10`), the loop enters a new `check_missing_artifacts` gate that reads the `missing_artifacts` frontmatter flag. If `true` (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors contain artifact-absence signal phrases), the loop routes to `run_wire` (`/ll:wire-issue --auto`) before re-queuing instead of falling through to size-review. Issues with genuine scope bigness still reach `detect_children` unchanged. Adds `run_wire`, `run_refine`, and `check_missing_artifacts` states to the autodev FSM; adds `missing_artifacts: bool | None` field to `IssueInfo` and `ll-issues show --json` output; adds Phase 4.7 to the `confidence-check` skill. (ENH-1291)
+- **`.ll/program.md` Steering Convention for Long-Horizon Loop Runs** — Added `--program-md` flag to `ll-loop run` with a heading-based parser for `Directive`, `Targets`, `Benchmark`, and `Budget` sections. CLI args take precedence over `program.md` over loop defaults; `harness-optimize` loop now consumes the file's fields directly. (ENH-1121)
+- **`ll-issues` Atomic Writes via `file_utils.py`** — Created `scripts/little_loops/file_utils.py` with `atomic_write()` helper using `tempfile` + `os.rename()`. Replaced all `Path.write_text()` calls in `session_log.py` and `issue_lifecycle.py` to prevent partial writes. (ENH-1280)
+
+### Fixed
+
+- **Queued Loops Race on Lock Release** — Fixed race condition where queued loops exited with code 1 instead of retrying after losing lock acquisition. Replaced single `acquire()` call with a budget-bounded retry loop in `scripts/little_loops/cli/loop/run.py`. (BUG-1281)
+- **`confidence-check` Phases 4.5/4.6 Respect Configurable `outcome_threshold`** — Phases 4.5 (Outcome Risk Factors) and 4.6 (decision signal detection) previously used a hardcoded threshold. They now read `config.commands.confidence_gate.outcome_threshold` (default: 75), so project-level overrides in `ll-config.json` take effect. (BUG-1289)
+
+### Changed
+
+- **`issue-size-review --auto` Qualitative Skip Guard** — Phase 5 Auto Mode now skips decomposition for Large/Very Large issues when `score_ambiguity ≥ 18` and `score_complexity ≥ 18`, preventing spurious breakdown of issues whose bottleneck is qualitative rather than scope size. (ENH-1290)
+- **Executor-Level API Resilience** — Extended `classify_failure` to recognize server-error patterns; added `_handle_api_error` with flat backoff retry (≤2 attempts, ~30 s each). Sub-loop execution now forwards remaining budget to clamp child FSM timeout to parent's remaining time, preventing silent budget overrun. (ENH-1293)
+- **TROUBLESHOOTING Docs for Worktree SIGKILL** — Verified and finalized two sections in `docs/development/TROUBLESHOOTING.md` covering worktree SIGKILL recovery; removed `<!-- TODO: update-docs stub -->` markers. (ENH-1261)
+- **README Documents `ll-generate-schemas`** — Updated CLI tools count from 16 → 17 and added `### ll-generate-schemas` section with description and usage example. (ENH-1292)
 
 ## [1.89.0] - 2026-04-24
 
@@ -94,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
 - **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
 
+[1.90.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.89.0...v1.90.0
 [1.89.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.88.0...v1.89.0
 [1.88.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.87.0...v1.88.0
 [1.87.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.86.0...v1.87.0
@@ -2352,6 +2366,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.90.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.89.0...v1.90.0
 [1.89.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.88.0...v1.89.0
 [1.88.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.87.0...v1.88.0
 [1.87.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.86.0...v1.87.0
