@@ -246,6 +246,7 @@ class IssueInfo:
     size: str | None = None
     testable: bool | None = None
     decision_needed: bool | None = None
+    missing_artifacts: bool | None = None
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
     labels: list[str] = field(default_factory=list)
@@ -282,6 +283,7 @@ class IssueInfo:
             "size": self.size,
             "testable": self.testable,
             "decision_needed": self.decision_needed,
+            "missing_artifacts": self.missing_artifacts,
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
             "labels": self.labels,
@@ -311,6 +313,7 @@ class IssueInfo:
             size=data.get("size"),
             testable=data.get("testable"),
             decision_needed=data.get("decision_needed"),
+            missing_artifacts=data.get("missing_artifacts"),
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
             labels=data.get("labels", []),
@@ -421,6 +424,16 @@ class IssueParser:
         else:
             decision_needed_value = decision_needed_raw
 
+        missing_artifacts_raw = frontmatter.get("missing_artifacts")
+        if isinstance(missing_artifacts_raw, str):
+            missing_artifacts_value: bool | None = (
+                missing_artifacts_raw.lower() == "true"
+                if missing_artifacts_raw.lower() in ("true", "false")
+                else None
+            )
+        else:
+            missing_artifacts_value = missing_artifacts_raw
+
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
         blocked_by = self._parse_blocked_by(content)
@@ -479,6 +492,7 @@ class IssueParser:
             size=size,
             testable=testable_value,
             decision_needed=decision_needed_value,
+            missing_artifacts=missing_artifacts_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
         )

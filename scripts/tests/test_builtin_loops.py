@@ -1038,11 +1038,14 @@ class TestAutodevLoop:
             "recheck_scores",
             "check_decision_before_size_review",
             "triage_outcome_failure",
+            "check_missing_artifacts",
             "run_size_review",
             "enqueue_or_skip",
             "recheck_after_size_review",
             "decide_current",
             "run_decide",
+            "run_wire",
+            "run_refine",
             "implement_current",
             "done",
         }
@@ -1416,11 +1419,13 @@ class TestAutodevLoop:
             f"triage_outcome_failure.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
         )
 
-    def test_triage_outcome_failure_on_no_routes_to_detect_children(self, data: dict) -> None:
-        """triage_outcome_failure.on_no (structural bigness) must route to detect_children."""
+    def test_triage_outcome_failure_on_no_routes_to_check_missing_artifacts(
+        self, data: dict
+    ) -> None:
+        """triage_outcome_failure.on_no (not a decision) must route to check_missing_artifacts gate."""
         state = data["states"].get("triage_outcome_failure", {})
-        assert state.get("on_no") == "detect_children", (
-            f"triage_outcome_failure.on_no should be 'detect_children', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_missing_artifacts", (
+            f"triage_outcome_failure.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
         )
 
     def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
@@ -1428,6 +1433,55 @@ class TestAutodevLoop:
         state = data["states"].get("triage_outcome_failure", {})
         assert state.get("on_error") == "detect_children", (
             f"triage_outcome_failure.on_error should be 'detect_children', got {state.get('on_error')!r}"
+        )
+
+    def test_check_missing_artifacts_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_missing_artifacts must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("check_missing_artifacts", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_missing_artifacts.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_missing_artifacts_on_yes_routes_to_run_wire(self, data: dict) -> None:
+        """check_missing_artifacts.on_yes (missing_artifacts=true) must route to run_wire."""
+        state = data["states"].get("check_missing_artifacts", {})
+        assert state.get("on_yes") == "run_wire", (
+            f"check_missing_artifacts.on_yes should be 'run_wire', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_missing_artifacts_on_no_routes_to_detect_children(self, data: dict) -> None:
+        """check_missing_artifacts.on_no (no missing artifacts) must route to detect_children."""
+        state = data["states"].get("check_missing_artifacts", {})
+        assert state.get("on_no") == "detect_children", (
+            f"check_missing_artifacts.on_no should be 'detect_children', got {state.get('on_no')!r}"
+        )
+
+    def test_run_wire_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
+        """run_wire must use with_rate_limit_handling fragment (mirrors run_decide)."""
+        state = data["states"].get("run_wire", {})
+        assert state.get("fragment") == "with_rate_limit_handling", (
+            f"run_wire.fragment should be 'with_rate_limit_handling', got {state.get('fragment')!r}"
+        )
+
+    def test_run_wire_action_type_is_slash_command(self, data: dict) -> None:
+        """run_wire must use slash_command action_type."""
+        state = data["states"].get("run_wire", {})
+        assert state.get("action_type") == "slash_command", (
+            f"run_wire.action_type should be 'slash_command', got {state.get('action_type')!r}"
+        )
+
+    def test_run_refine_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
+        """run_refine must use with_rate_limit_handling fragment (mirrors run_decide)."""
+        state = data["states"].get("run_refine", {})
+        assert state.get("fragment") == "with_rate_limit_handling", (
+            f"run_refine.fragment should be 'with_rate_limit_handling', got {state.get('fragment')!r}"
+        )
+
+    def test_run_refine_action_type_is_slash_command(self, data: dict) -> None:
+        """run_refine must use slash_command action_type."""
+        state = data["states"].get("run_refine", {})
+        assert state.get("action_type") == "slash_command", (
+            f"run_refine.action_type should be 'slash_command', got {state.get('action_type')!r}"
         )
 
     def test_decide_current_uses_shell_exit_fragment(self, data: dict) -> None:

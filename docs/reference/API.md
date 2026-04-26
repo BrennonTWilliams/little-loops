@@ -570,6 +570,7 @@ class IssueInfo:
     size: str | None = None               # Issue size from /ll:issue-size-review (Small, Medium, Large, Very Large)
     testable: bool | None = None           # False = skip TDD phase; None = treat as testable
     decision_needed: bool | None = None    # Set to true by /ll:refine-issue (2+ options) or /ll:confidence-check (unresolved decision); cleared by /ll:decide-issue
+    missing_artifacts: bool | None = None  # Set to true by /ll:confidence-check (Phase 4.7) when absent files or unwired components detected in Outcome Risk Factors
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts
     labels: list[str] = []                 # Labels from ## Labels section

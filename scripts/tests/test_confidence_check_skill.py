@@ -97,6 +97,50 @@ class TestDecisionNeededFlagWriteBack:
         )
 
 
+class TestMissingArtifactsFlagWriteBack:
+    """Phase 4.7 must document setting missing_artifacts: true when artifact signal phrases found (ENH-1291)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.7: Missing-Artifacts Flag")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_4_7_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "Phase 4.7: Missing-Artifacts Flag" in content, (
+            "SKILL.md must contain a 'Phase 4.7: Missing-Artifacts Flag' section"
+        )
+
+    def test_missing_artifacts_true_in_phase_4_7(self) -> None:
+        assert "missing_artifacts: true" in self._phase_text(), (
+            "Phase 4.7 must document setting missing_artifacts: true in frontmatter"
+        )
+
+    def test_signal_phrases_documented(self) -> None:
+        text = self._phase_text()
+        assert "not yet created" in text or "does not exist" in text, (
+            "Phase 4.7 must document the signal phrases that trigger the flag"
+        )
+
+    def test_idempotency_guard_present(self) -> None:
+        text = self._phase_text()
+        assert "Idempotency" in text or "idempotent" in text.lower(), (
+            "Phase 4.7 must document the idempotency guard (skip if already true)"
+        )
+
+    def test_check_mode_guard_in_phase_4_7(self) -> None:
+        assert "CHECK_MODE" in self._phase_text(), (
+            "Phase 4.7 must include the CHECK_MODE skip guard (no writes in check mode)"
+        )
+
+    def test_no_ask_user_question_in_phase_4_7(self) -> None:
+        assert "AskUserQuestion" not in self._phase_text(), (
+            "Phase 4.7 must not use AskUserQuestion — flag write-back is unconditional"
+        )
+
+
 class TestPhase45OutcomeThreshold:
     """Phase 4.5 must use configurable outcome_threshold, not hardcoded 60 (BUG-1289)."""
 

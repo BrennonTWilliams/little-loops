@@ -514,6 +514,28 @@ If any signal phrase is found in the Outcome Risk Factors content written by Pha
 
 If no signal phrase is found, leave `decision_needed` unchanged.
 
+### Phase 4.7: Missing-Artifacts Flag
+
+**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
+
+After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an absent file, unwired component, or missing artifact causing low outcome confidence. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
+
+**Signal phrases** (any match triggers the flag):
+- "not yet created"
+- "does not exist"
+- "needs wiring"
+- "missing artifact"
+- "absent"
+- "unwired component"
+
+If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
+
+1. Use the Edit tool to update `missing_artifacts: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4)
+2. **Idempotency**: skip the write if `missing_artifacts` is already `true`
+3. Log to terminal output: `✓ missing_artifacts set to true — absent file or unwired component detected in Outcome Risk Factors`
+
+If no signal phrase is found, leave `missing_artifacts` unchanged.
+
 ### Auto Mode Behavior
 
 When `AUTO_MODE` is true:

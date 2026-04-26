@@ -155,6 +155,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     captured_at = frontmatter.get("captured_at")
     completed_at = frontmatter.get("completed_at")
     decision_needed_raw = frontmatter.get("decision_needed")
+    missing_artifacts_raw = frontmatter.get("missing_artifacts")
 
     # Source / norm / fmt fields
     from little_loops.issue_parser import is_formatted, is_normalized
@@ -247,6 +248,9 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "completed_at": str(completed_at) if completed_at is not None else None,
         "decision_needed": str(decision_needed_raw).lower()
         if decision_needed_raw is not None
+        else None,
+        "missing_artifacts": str(missing_artifacts_raw).lower()
+        if missing_artifacts_raw is not None
         else None,
     }
 

@@ -1695,6 +1695,137 @@ class TestIssueInfoDecisionNeeded:
         assert info.decision_needed is None
 
 
+class TestIssueInfoMissingArtifacts:
+    """Tests for IssueInfo.missing_artifacts field."""
+
+    def test_missing_artifacts_default_none(self) -> None:
+        """Test missing_artifacts defaults to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1291",
+            title="Test",
+        )
+        assert info.missing_artifacts is None
+
+    def test_missing_artifacts_false(self) -> None:
+        """Test missing_artifacts can be set to False."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1291",
+            title="Test",
+            missing_artifacts=False,
+        )
+        assert info.missing_artifacts is False
+
+    def test_missing_artifacts_true(self) -> None:
+        """Test missing_artifacts can be set to True."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1291",
+            title="Test",
+            missing_artifacts=True,
+        )
+        assert info.missing_artifacts is True
+
+    def test_missing_artifacts_in_to_dict(self) -> None:
+        """Test missing_artifacts appears in to_dict output."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1291",
+            title="Test",
+            missing_artifacts=True,
+        )
+        data = info.to_dict()
+        assert data["missing_artifacts"] is True
+
+    def test_missing_artifacts_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None when missing_artifacts key is absent."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1291",
+            "title": "Test Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.missing_artifacts is None
+
+    def test_missing_artifacts_from_dict_false(self) -> None:
+        """Test from_dict restores missing_artifacts=False."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1291",
+            "title": "Test Issue",
+            "missing_artifacts": False,
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.missing_artifacts is False
+
+    def test_parse_file_missing_artifacts_true(self, tmp_path: Path) -> None:
+        """Integration: parse_file reads missing_artifacts: true from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "enhancements"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P3-ENH-1291-missing-artifacts.md"
+        issue_file.write_text("---\nmissing_artifacts: true\n---\n# ENH-1291: Missing Artifacts\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.missing_artifacts is True
+
+    def test_parse_file_missing_artifacts_absent(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields missing_artifacts=None when frontmatter key absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "enhancements"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P3-ENH-1292-normal.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1292: Normal\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.missing_artifacts is None
+
+
 class TestIssueInfoSize:
     """Tests for IssueInfo.size field."""
 

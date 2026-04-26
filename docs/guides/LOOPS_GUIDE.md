@@ -451,7 +451,10 @@ init → dequeue_next → [queue empty?]
                          │                            └─ NO  → implement_current (ll-auto --only) → dequeue_next
                          └─ NO  → triage_outcome_failure → [score_ambiguity ≤ 10?]
                                     ├─ YES → run_decide → implement_current → dequeue_next
-                                    └─ NO/ERR → detect_children → [children found?]
+                                    ├─ ERR → detect_children → [children found?]
+                                    └─ NO  → check_missing_artifacts → [missing_artifacts=true?]
+                                               ├─ YES → run_wire → enqueue_or_skip → dequeue_next
+                                               └─ NO  → detect_children → [children found?]
                                                    ├─ YES → enqueue_children (prepend depth-first) → dequeue_next
                                                    └─ NO  → size_review_snap → check_broke_down → [broke_down AND children exist?]
                                                               ├─ YES → enqueue_or_skip → dequeue_next
@@ -474,7 +477,7 @@ init → dequeue_next → [queue empty?]
 
 **In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `.loops/tmp/autodev-inflight`; `enqueue_or_skip` clears it in the children-found branch; `recheck_after_size_review` clears it on the skip path (BUG-1230); `enqueue_children` clears it after decomposition; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
 
-**Outcome failure triage** (BUG-1277): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes directly to `run_decide` (invoking `/ll:decide-issue --auto`) and then implements without decomposition. If `score_ambiguity > 10` (or the read errors), the ambiguity signals a scope problem, and the loop falls through to `detect_children → size_review`. This prevents incorrect decomposition of issues whose low outcome confidence is caused by an unresolved competing option rather than excessive scope.
+**Outcome failure triage** (BUG-1277, ENH-1291): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes directly to `run_decide` (invoking `/ll:decide-issue --auto`) and then implements without decomposition. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) before re-queuing; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 

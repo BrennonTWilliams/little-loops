@@ -1805,6 +1805,36 @@ class TestIssuesCLIShow:
         data = json.loads(captured.out)
         assert data.get("decision_needed") == "true"
 
+    def test_show_json_includes_missing_artifacts(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output includes missing_artifacts key with lowercase string value."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P3-FEAT-504-missing-artifacts.md").write_text(
+            "---\nmissing_artifacts: true\n---\n# FEAT-504: Missing artifacts issue\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "FEAT-504", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data.get("missing_artifacts") == "true"
+
     def test_show_displays_captured_at(
         self,
         temp_project_dir: Path,

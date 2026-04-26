@@ -198,6 +198,27 @@ states:
     on_error: implement_current
     on_rate_limit_exhausted: done
 
+  run_wire:
+    # Run /ll:wire-issue to resolve absent files or unwired integration points
+    # identified by the missing_artifacts flag. on_error falls through to
+    # implement_current so a wiring failure is no worse than the previous behavior.
+    fragment: with_rate_limit_handling
+    action: "/ll:wire-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    next: enqueue_or_skip
+    on_error: enqueue_or_skip
+    on_rate_limit_exhausted: done
+
+  run_refine:
+    # Run /ll:refine-issue to fill in missing codebase context when wiring alone
+    # is insufficient. on_error falls through to enqueue_or_skip safely.
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    next: enqueue_or_skip
+    on_error: enqueue_or_skip
+    on_rate_limit_exhausted: done
+
   implement_current:
     # Interleaved implementation: as soon as a leaf passes refinement, run
     # ll-auto --only against it. Exit 0 (on_yes) → dequeue_next for next
@@ -386,8 +407,9 @@ states:
   triage_outcome_failure:
     # Diagnose why outcome_confidence failed before routing to size-review.
     # Low score_ambiguity (≤10) means an unresolved design decision is the
-    # bottleneck → route to run_decide. Structural bigness → detect_children
-    # (toward size-review). on_error falls back to detect_children safely.
+    # bottleneck → route to run_decide. Otherwise → check_missing_artifacts
+    # to test for absent files/wiring gaps before falling through to size-review.
+    # on_error falls back to detect_children safely.
     action: |
       python3 << 'PYEOF'
       import json, sys, subprocess
@@ -407,8 +429,34 @@ states:
       PYEOF
     fragment: shell_exit
     on_yes: run_decide
-    on_no: detect_children
+    on_no: check_missing_artifacts
     on_error: detect_children
+
+  check_missing_artifacts:
+    # Gate before size-review: if missing_artifacts=true, route to run_wire so
+    # absent files and unwired components are resolved before decomposition is
+    # attempted. Mirrors check_decision_before_size_review logic; on_no falls
+    # through to detect_children (size-review path).
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+
+      issue_id = '${captured.input.output}'
+
+      r = subprocess.run(
+          ['ll-issues', 'show', issue_id, '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception:
+          sys.exit(1)
+
+      sys.exit(0 if d.get('missing_artifacts') == 'true' else 1)
+      PYEOF
+    fragment: shell_exit
+    on_yes: run_wire
+    on_no: detect_children
 
   run_size_review:
     # Explicitly run issue-size-review when the sub-loop did not decompose the
