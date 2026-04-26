@@ -5,14 +5,14 @@ parent_issue: ENH-1248
 depends_on: [ENH-1254]
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
-decision_needed: true
+decision_needed: false
 decision_question: "Should ll-loop --worktree worktrees (naming: <timestamp>-<safe-name>) be added to the orchestrator's orphan scan, or should loop cleanup remain atexit-only? Choosing 'yes' requires extracting _is_ll_worktree() predicate and extending three startswith('worker-') guards plus fixing two _inspect_worktree fallbacks in orchestrator.py."
 size: Medium
-confidence_score: 75
-outcome_confidence: 56
+confidence_score: 96
+outcome_confidence: 64
 score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 18
 ---
 
@@ -50,6 +50,8 @@ Set `decision_needed: false` and document the chosen approach before implementin
 
 ## Proposed Solution (if decision = yes)
 
+> **Selected:** Extend orphan scan — SIGKILL leak is identical to the parallel-worker gap; `_is_ll_worktree()` fits `worktree_utils.py`'s shared-utility pattern and the implementation scope is fully bounded.
+
 ### Extract `_is_ll_worktree()` predicate
 
 Place in `scripts/little_loops/worktree_utils.py` (already a shared module); add `import re` at the top:
@@ -71,6 +73,25 @@ Replace all three inline `startswith("worker-")` guards with `_is_ll_worktree(na
 - `cleanup-worktrees.md:56,156` — `find … -name "worker-*"` must also match `<timestamp>-<safe-name>` dirs.
 - `cleanup-worktrees.md:89` — dry-run `sed 's/^worker-//'` branch derivation needs a conditional for loop worktree names.
 - `cleanup-worktrees.md:112` — live-run `sed 's/^worker-//'` branch derivation (same fix as line 89, separate code path).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-04-26.
+
+**Selected**: Extend orphan scan
+
+**Reasoning**: The SIGKILL leak gap for loop worktrees is the same failure mode as the parallel-worker gap, which already has orphan-scan coverage. Choosing to leave loop worktrees uncovered creates an inconsistency between two worktree types that share the same `.ll-session-<pid>` marker and the same liveness-check recovery mechanism — the marker is written unconditionally in `setup_worktree()` (worktree_utils.py:97-99), so the PID check already works correctly for loop worktrees once the naming guard is fixed. The `_is_ll_worktree()` predicate fits directly into `worktree_utils.py` alongside `setup_worktree`/`cleanup_worktree`, and all four guard replacements plus two `_inspect_worktree` conditionals are fully bounded and documented in this issue.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Extend orphan scan | 3/3 | 2/3 | 3/3 | 2/3 | 10/12 |
+| Atexit-only (won't implement) | 1/3 | 3/3 | 3/3 | 3/3 | 10/12 |
+
+**Key evidence**:
+- Extend orphan scan: `worktree_utils.py` has `setup_worktree`/`cleanup_worktree` as the direct pattern model; `.ll-session-<pid>` marker confirmed written unconditionally (worktree_utils.py:97-99); `orchestrator.py` already imports `re` (line 11); `TestBranchNameGeneration` (test_cli_loop_worktree.py:516-537) is the exact structural model for `TestIsLLWorktree`. Note: there are four `startswith("worker-")` guards across two files (not three), and the `_inspect_worktree` fallbacks are at lines 388 and 392-393 (not 332/336 as cited in the issue).
+- Atexit-only: `register_loop_signal_handlers` covers SIGTERM, but SIGKILL bypasses all handlers — the leak is real. Closing without implementing leaves `cleanup-worktrees.md` and `worktree-health.yaml` incomplete for loop worktrees, creating inconsistent tool coverage between the two worktree types.
 
 ## Implementation Steps (if decision = yes)
 
@@ -163,7 +184,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `parallel`, `worktree`, `loop`, `reliability`, `cleanup`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-26_
+
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- **Complexity is the primary risk driver (10/25)**: 7+ files span worktree_utils, orchestrator, worker_pool, cleanup-worktrees.md, and three test files — expect meaningful integration work even though each individual change is simple
+- **Ghost-ref-scan guards at `orchestrator.py:340,349` are unaccounted for**: these are a fourth distinct `startswith("worker-")` site (in the ghost-ref pruning function, separate from `_cleanup_orphaned_worktrees` and `_check_pending_worktrees`) — decide before implementing whether `_is_ll_worktree()` should extend there too
+- **Branch-name derivation for loop worktrees in `_inspect_worktree` is unspecified**: the issue says "add a conditional for timestamp-prefixed names" but doesn't name the target string (e.g., `loops/<name>` or similar) — resolve this convention before coding line 388
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:confidence-check` - 2026-04-26T19:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
+- `/ll:decide-issue` - 2026-04-26T19:26:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae825d2a-b598-42e3-8f2e-583ed68c3209.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:wire-issue` - 2026-04-22T17:09:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/509cc566-db9f-4e7a-a3c5-21f738bb3a0b.jsonl`
 - `/ll:refine-issue` - 2026-04-22T17:04:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c3dd3b0-98a8-494a-8720-4fa7296292d6.jsonl`
@@ -174,7 +210,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-23
+**Verdict**: VALID — Verified 2026-04-26
 
 - `orchestrator.py:248` — `startswith("worker-")` guard confirmed ✓
 - `orchestrator.py:441` — `_check_pending_worktrees` guard confirmed (was 385 in issue; line numbers shifted) ✓
