@@ -5624,8 +5624,7 @@ class TestSubLoopBudgetClamping:
         loops_dir.mkdir()
         # Child has a large explicit timeout (7200s) that exceeds parent's remaining budget
         (loops_dir / "child.yaml").write_text(
-            "name: child\ninitial: done\ntimeout: 7200\n"
-            "states:\n  done:\n    terminal: true\n"
+            "name: child\ninitial: done\ntimeout: 7200\nstates:\n  done:\n    terminal: true\n"
         )
         parent_fsm = FSMLoop(
             name="parent",
@@ -5668,8 +5667,7 @@ class TestSubLoopBudgetClamping:
         loops_dir.mkdir()
         # Child loop with its own explicit timeout
         (loops_dir / "child.yaml").write_text(
-            "name: child\ninitial: done\ntimeout: 600\n"
-            "states:\n  done:\n    terminal: true\n"
+            "name: child\ninitial: done\ntimeout: 600\nstates:\n  done:\n    terminal: true\n"
         )
 
         parent_fsm = FSMLoop(

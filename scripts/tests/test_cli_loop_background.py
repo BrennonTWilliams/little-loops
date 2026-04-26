@@ -436,7 +436,6 @@ class TestRunBackground:
     def test_forwards_program_md(self, tmp_path: Path) -> None:
         """Forwards --program-md PATH to child process when set (ENH-1121)."""
         import argparse
-        from pathlib import Path as _Path
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()

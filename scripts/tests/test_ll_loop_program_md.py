@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
 
 SAMPLE_PROGRAM_MD = """\
 ## Directive
@@ -171,7 +170,7 @@ class TestCmdRunProgramMdInjection:
         loops_dir.mkdir()
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
-            "context:\n  targets: \"\"\n  directive: \"\"\n"
+            'context:\n  targets: ""\n  directive: ""\n'
             "states:\n  done:\n    terminal: true\n"
         )
         return loops_dir
@@ -197,7 +196,9 @@ class TestCmdRunProgramMdInjection:
         def fake_load_and_validate(path: Path):  # type: ignore[override]
             return fsm, []
 
-        with patch("little_loops.fsm.validation.load_and_validate", side_effect=fake_load_and_validate):
+        with patch(
+            "little_loops.fsm.validation.load_and_validate", side_effect=fake_load_and_validate
+        ):
             cmd_run("test-loop", args, loops_dir, logger)
 
         assert fsm.context.get("directive") == "Optimize for clarity."
@@ -225,7 +226,9 @@ class TestCmdRunProgramMdInjection:
         def fake_load_and_validate(path: Path):  # type: ignore[override]
             return fsm, []
 
-        with patch("little_loops.fsm.validation.load_and_validate", side_effect=fake_load_and_validate):
+        with patch(
+            "little_loops.fsm.validation.load_and_validate", side_effect=fake_load_and_validate
+        ):
             cmd_run("test-loop", args, loops_dir, logger)
 
         assert fsm.context.get("targets") == "override.md"
@@ -242,7 +245,9 @@ class TestCmdRunProgramMdInjection:
         result = cmd_run("test-loop", args, loops_dir, logger)
         assert result == 0
 
-    def test_default_program_md_path_is_cwd_ll_program_md(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_program_md_path_is_cwd_ll_program_md(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When program_md arg is None, defaults to .ll/program.md in cwd."""
         from little_loops.cli.loop.run import _parse_program_md
 

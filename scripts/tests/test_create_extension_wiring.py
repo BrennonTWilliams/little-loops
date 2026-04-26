@@ -74,10 +74,10 @@ class TestFeat1045DocUpdates:
             "README.md must have an ll-create-extension section in the CLI Tools block"
         )
 
-    def test_readme_tool_count_is_16(self) -> None:
+    def test_readme_tool_count_is_17(self) -> None:
         content = README.read_text()
-        assert "16 CLI tools" in content, (
-            "README.md must say '16 CLI tools' (incremented from 15 after ll-action landed)"
+        assert "17 CLI tools" in content, (
+            "README.md must say '17 CLI tools' (incremented from 16 after ll-generate-schemas landed)"
         )
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
@@ -189,10 +189,10 @@ class TestFeat1229LlActionWiring:
         content = README.read_text()
         assert "ll-action" in content, "README.md must have an ll-action section in CLI Tools"
 
-    def test_readme_tool_count_is_16(self) -> None:
+    def test_readme_tool_count_is_17(self) -> None:
         content = README.read_text()
-        assert "16 CLI tools" in content, (
-            "README.md must say '16 CLI tools' after ll-action was added"
+        assert "17 CLI tools" in content, (
+            "README.md must say '17 CLI tools' after ll-generate-schemas was added"
         )
 
     def test_configure_areas_count_is_16(self) -> None:

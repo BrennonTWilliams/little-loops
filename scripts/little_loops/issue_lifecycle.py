@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.config import BRConfig
-from little_loops.file_utils import atomic_write
 from little_loops.events import EventBus
+from little_loops.file_utils import atomic_write
 from little_loops.frontmatter import update_frontmatter
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger

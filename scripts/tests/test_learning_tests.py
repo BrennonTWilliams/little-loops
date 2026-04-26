@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from little_loops.learning_tests import (
     Assertion,
@@ -113,9 +114,7 @@ class TestWriteRecord:
         path = write_record(sample_record, base_dir=learning_tests_dir)
         assert "anthropic-sdk-streaming" in path.name
 
-    def test_returns_path(
-        self, learning_tests_dir: Path, sample_record: LearnTestRecord
-    ) -> None:
+    def test_returns_path(self, learning_tests_dir: Path, sample_record: LearnTestRecord) -> None:
         result = write_record(sample_record, base_dir=learning_tests_dir)
         assert isinstance(result, Path)
 

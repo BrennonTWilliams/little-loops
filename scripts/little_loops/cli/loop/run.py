@@ -137,7 +137,9 @@ def cmd_run(
             fsm.context[fsm.input_key] = raw
     # Inject program.md fields before --context so --context can override
     program_md_arg = getattr(args, "program_md", None)
-    program_md_path = program_md_arg if program_md_arg is not None else Path.cwd() / ".ll" / "program.md"
+    program_md_path = (
+        program_md_arg if program_md_arg is not None else Path.cwd() / ".ll" / "program.md"
+    )
     for key, value in _parse_program_md(program_md_path).items():
         fsm.context[key] = value
     for kv in getattr(args, "context", None) or []:
@@ -248,7 +250,7 @@ def cmd_run(
             _budget = _config.loops.queue_wait_timeout_seconds
             while time.time() - _wait_start < _budget:
                 _remaining = _budget - (time.time() - _wait_start)
-                if not lock_manager.wait_for_scope(scope, timeout=_remaining):
+                if not lock_manager.wait_for_scope(scope, timeout=int(_remaining)):
                     _cleanup_queue_entry()
                     logger.error("Timeout waiting for scope to become available")
                     return 1

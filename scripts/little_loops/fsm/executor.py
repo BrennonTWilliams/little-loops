@@ -1189,7 +1189,11 @@ class FSMExecutor:
         record["total_wait"] += slept
         self._emit(
             "api_error_retry",
-            {"state": state_name, "attempt": record["retries"], "backoff": _DEFAULT_API_ERROR_BACKOFF},
+            {
+                "state": state_name,
+                "attempt": record["retries"],
+                "backoff": _DEFAULT_API_ERROR_BACKOFF,
+            },
         )
         return True, state_name
 
