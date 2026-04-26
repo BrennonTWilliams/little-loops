@@ -23,12 +23,9 @@ states:
     capture: baseline
     next: discover
   discover:
-    action_type: prompt
+    action: "/ll:scan-codebase"
+    action_type: slash_command
     timeout: 600
-    action: |
-      Run `/ll:scan-codebase` to discover new technical issues in the codebase.
-      Focus on genuine bugs, missing error handling, and code quality problems.
-      Do not re-file issues that already exist in .issues/.
     next: normalize
   normalize:
     action_type: prompt

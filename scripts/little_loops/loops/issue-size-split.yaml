@@ -10,12 +10,9 @@ scope:
   - ".issues/"
 states:
   find_large:
-    action_type: prompt
+    action: "/ll:issue-size-review"
+    action_type: slash_command
     timeout: 300
-    action: |
-      Run `/ll:issue-size-review` to evaluate the size and complexity of
-      all active issues. Identify any issues that are too large for a
-      single implementation session.
     capture: size_report
     next: route_large
   route_large:

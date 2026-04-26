@@ -30,21 +30,9 @@ states:
       Run `/ll:check-code fix` to auto-fix any lint and format violations.
     next: analyze-type-errors
   analyze-type-errors:
-    action_type: prompt
+    action: "/ll:check-code types"
+    action_type: slash_command
     timeout: 120
-    action: |
-      Run `/ll:check-code types` to get the current type errors.
-
-      If mypy exits cleanly (no errors), state: "No type errors found."
-
-      Otherwise, categorize the errors found:
-      - Missing type annotations
-      - Incompatible types
-      - Missing imports / stubs
-      - Other
-
-      List the top 5 highest-impact errors (those most likely to cause cascading
-      failures when fixed). We will fix these first.
     capture: type_analysis
     next: fix-type-errors
   fix-type-errors:
@@ -54,7 +42,7 @@ states:
       Based on the type error analysis:
       ${captured.type_analysis.output}
 
-      If the analysis says "No type errors found", skip this step and proceed.
+      If mypy reports no issues (clean exit, no errors listed), skip this step and proceed.
 
       Otherwise, fix the identified type errors in priority order. For each error:
       1. Read the affected file
