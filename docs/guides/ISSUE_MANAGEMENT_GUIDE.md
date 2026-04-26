@@ -357,7 +357,7 @@ This replaces the old behavior of always routing to `/ll:issue-size-review` rega
 
 Reviews active issues for scope. Issues estimated at more than one session's work (typically >4 hours or >~200 LOC) are flagged for decomposition. The skill proposes how to split them: identifying a core issue and N satellite issues that can each be implemented independently.
 
-**Flags:** `--auto` — non-interactive mode for FSM loop automation. Auto-decomposes only issues scoring >=8. `--sprint <name>` — scope to issues in the named sprint only.
+**Flags:** `--auto` — non-interactive mode for FSM loop automation. Auto-decomposes only issues scoring >=8, with a qualitative-skip guard: if `score_ambiguity ≥ 18` and `score_complexity ≥ 18` and `outcome_confidence` is set, the issue is skipped rather than decomposed (low confidence is qualitative, not a scope problem — run `/ll:refine-issue` or `/ll:wire-issue` instead). `--sprint <name>` — scope to issues in the named sprint only.
 
 #### Decomposition principle: independently shippable
 

@@ -207,7 +207,15 @@ For each candidate issue:
 
 #### Auto Mode Behavior
 
-**When `AUTO_MODE` is true**: Skip the AskUserQuestion prompts below. Auto-approve decomposition only for Very Large issues (score ≥ 8) where the decomposition is unambiguous (distinct sub-tasks with clear boundaries). Skip Large issues (score 5-7) as ambiguous — flag them in the output but do not decompose. Emit one status line per issue: `[ID] decomposed: N child issues` or `[ID] skipped: score X (ambiguous)`.
+**When `AUTO_MODE` is true**: Skip the AskUserQuestion prompts below.
+
+**Qualitative-skip guard (applies to both Large and Very Large issues)**: Before decomposing any issue, read its frontmatter for `score_ambiguity`, `score_complexity`, and `outcome_confidence`. If all three fields are present and non-zero, and `score_ambiguity ≥ 18` and `score_complexity ≥ 18`, the issue is structurally large but its confidence failure is qualitative (not a scope problem) — skip decomposition and emit:
+
+`[ID] skipped: structural score N but outcome_confidence low is qualitative (ambiguity: A, complexity: C) — suggest /ll:refine-issue or /ll:wire-issue`
+
+If any field is absent (confidence-check was never run on the issue), skip the guard entirely and fall through to normal behavior below.
+
+**Normal auto behavior**: Auto-approve decomposition only for Very Large issues (score ≥ 8) where the decomposition is unambiguous (distinct sub-tasks with clear boundaries). Skip Large issues (score 5-7) as ambiguous — flag them in the output but do not decompose. Emit one status line per issue: `[ID] decomposed: N child issues` or `[ID] skipped: score X (ambiguous)`.
 
 #### Check Mode Behavior (--check)
 

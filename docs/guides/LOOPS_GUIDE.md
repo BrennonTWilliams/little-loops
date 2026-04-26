@@ -332,7 +332,7 @@ create_sprint → route_create → [sprint exists?]
 |-------|---------|-------|
 | `create_sprint` | 300s | Headless `/ll:create-sprint --auto`; captures sprint name |
 | `route_create` | — | Shell check: `ll-sprint list \| grep -q .`; retries if no sprint found; routes to `size_review` on success |
-| `size_review` | 300s | `/ll:issue-size-review --auto` grouped across all sprint issues; Very Large issues (score ≥ 8) are decomposed before the sprint runs |
+| `size_review` | 300s | `/ll:issue-size-review --auto` grouped across all sprint issues; Very Large issues (score ≥ 8) are decomposed before the sprint runs (qualitative-skip guard: issues with `score_ambiguity ≥ 18`, `score_complexity ≥ 18`, and non-zero `outcome_confidence` are skipped rather than decomposed) |
 | `map_dependencies` | 300s | `/ll:map-dependencies --auto` grouped across all sprint issues |
 | `audit_conflicts` | 300s | `/ll:audit-issue-conflicts --auto` grouped across all sprint issues |
 | `verify_issues` | 600s | `/ll:verify-issues --auto` grouped across all sprint issues |

@@ -2,7 +2,8 @@
 captured_at: "2026-04-25T19:14:09Z"
 discovered_date: 2026-04-25
 discovered_by: capture-issue
-decision_needed: true
+decision_needed: false
+blocked_by: [ENH-753, ENH-1290]
 ---
 
 # ENH-1291: Autodev `triage_outcome_failure` missing-artifact routing branch
@@ -38,15 +39,43 @@ This is the third leg of ENH-1288's own Expected Behavior table:
 
 ENH-1288 deliberately scoped this out because `score_complexity` alone cannot distinguish the two artifact-case interpretations. Without this branch, a subset of wiring-blocked issues will continue to reach size-review and risk spurious decomposition (partially mitigated by ENH-1290's guard, but not fully prevented).
 
+## Success Metrics
+
+- Artifact-blocked issues (genuine wiring/reference gap) route to `run_wire` or `run_refine`, not `detect_children`
+- Decision-blocked issues (`score_ambiguity ≤ 10`) still route to `run_decide` — no regression
+- Scope-big issues (genuinely large scope) still route to `detect_children` — no regression
+- Chosen signal field set only when genuine artifact absence detected (minimal false positives)
+
 ## Proposed Solution
 
 TBD — requires a design decision on the signal. Two candidate approaches:
 
 **Option A**: Add a `missing_artifacts: true` field to confidence-check Phase 4.x write-back, set when `outcome_confidence` is low and specific signal phrases indicate absent files or wiring gaps (e.g., "absent", "not yet created", "does not exist", "needs wiring"). `triage_outcome_failure` reads this field directly.
 
+> **Selected:** Option A (`missing_artifacts: true`) — exact parallel to the existing `decision_needed: true` mechanism in Phase 4.6; all infrastructure (signal-phrase scan → boolean write → `d.get()` read in triage) already exists.
+
 **Option B**: Add a `wire_status: incomplete` field to confidence-check write-back using the existing wiring-gap detection in Phase 4.5. `triage_outcome_failure` checks `wire_status == "incomplete"` before falling through to `detect_children`.
 
 Option A is more explicit and self-documenting in the issue frontmatter. Option B reuses a concept that may already be tracked elsewhere. The decision should consider whether `wire-issue` or `refine-issue` is the right target (they overlap: `wire-issue` is for integration points, `refine-issue` for missing codebase context).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-04-26.
+
+**Selected**: Option A (`missing_artifacts: true`)
+
+**Reasoning**: Option A is a direct clone of the Phase 4.6 `decision_needed` mechanism — scan Outcome Risk Factors for signal phrases, write a boolean frontmatter field, read it in `triage_outcome_failure` via `d.get()`. The entire pattern (signal-phrase list, Edit-tool frontmatter write, `ll-issues show --json` + Python exit-code routing in `autodev.yaml:386-411`) already exists and can be copied verbatim. Option B (`wire_status: incomplete`) has no codebase precedent — the field does not exist anywhere, Phase 4.5 has no dedicated wiring-gap detection, and a string-enum routing check would introduce a new pattern type inconsistent with the boolean-flag convention.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (`missing_artifacts: true`) | 3/3 | 3/3 | 3/3 | 3/3 | **12/12** |
+| Option B (`wire_status: incomplete`) | 1/3 | 1/3 | 2/3 | 1/3 | **5/12** |
+
+**Key evidence**:
+- Option A: `decision_needed: true` set by Phase 4.6 (confidence-check SKILL.md:509-513), read by `triage_outcome_failure` at autodev.yaml:380 — identical pattern ready to reuse. `missing_artifacts: true` already appears in the issue's own test fixture (line 73), confirming author intent.
+- Option B: `wire_status` confirmed absent from entire codebase (grep across .md/.yaml/.json/.py); Phase 4.5 writes generic risk factors only — no wiring-specific detection code exists; string-valued field would also risk semantic collision if `wire-issue` later writes the same field.
 
 ## Integration Map
 
@@ -70,6 +99,15 @@ Option A is more explicit and self-documenting in the issue frontmatter. Option 
 
 ### Configuration
 - N/A — no new config required; new field written by confidence-check
+
+## API/Interface
+
+TBD — pending design decision (see Proposed Solution). New frontmatter field written by `confidence-check` Phase 4.x write-back:
+
+- **Option A**: `missing_artifacts: true` — set when `outcome_confidence` is low + artifact-absence signal phrases detected
+- **Option B**: `wire_status: incomplete` — set when Phase 4.5 wiring-gap detection triggers
+
+Read by `triage_outcome_failure` in `autodev.yaml` to route artifact-blocked issues to `run_wire`/`run_refine`.
 
 ## Implementation Steps
 
@@ -98,6 +136,9 @@ Option A is more explicit and self-documenting in the issue frontmatter. Option 
 `enhancement`, `autodev`, `confidence-gate`, `decision-needed`, `captured`
 
 ## Session Log
+- `/ll:decide-issue` - 2026-04-26T17:24:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42fabf89-9803-43b2-ae07-b91aa0889500.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
+- `/ll:format-issue` - 2026-04-26T17:20:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ca7be1e-da8b-4aa2-922c-a8891aadd970.jsonl`
 - `/ll:capture-issue` - 2026-04-25T19:14:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d254d7af-8d9d-458c-aec5-e845416d235d.jsonl`
 
 ---

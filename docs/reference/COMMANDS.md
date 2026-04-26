@@ -264,7 +264,7 @@ Evaluate the size and complexity of active issues and propose decomposition for 
 **Frontmatter write-back**: After assessing each issue, the skill writes `size: <label>` to the issue's YAML frontmatter (one of: `Small`, `Medium`, `Large`, `Very Large`). This is skipped when `--check` mode is active.
 
 **Flags:**
-- `--auto`: Non-interactive; auto-decomposes issues scoring ≥8 without prompting
+- `--auto`: Non-interactive; auto-decomposes issues scoring ≥8 without prompting. Exception: if the issue has `score_ambiguity ≥ 18`, `score_complexity ≥ 18`, and a non-zero `outcome_confidence` in its frontmatter, decomposition is skipped — the confidence failure is qualitative, not a scope problem (see qualitative-skip guard)
 - `--check`: Check-only mode; runs scoring without decomposition or frontmatter write-back; exits 1 if any issues score ≥5
 - `--sprint <name>`: Scope to issues in a named sprint definition only
 
