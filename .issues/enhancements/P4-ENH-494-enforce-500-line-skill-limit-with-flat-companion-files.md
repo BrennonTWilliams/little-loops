@@ -4,7 +4,7 @@ discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 98
 outcome_confidence: 71
-blocked_by: [ENH-753]
+blocked_by: []
 ---
 
 # ENH-494: Enforce 500-Line SKILL.md Limit with Flat Companion Files
@@ -60,12 +60,6 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 6. Add companion file existence tests (follow `test_improve_claude_md_skill.py:29–34` pattern) asserting that all 3 new companion files exist on disk after implementation
 
 _The `ll-verify-skills` CLI lint command is tracked separately in ENH-977 (blocked by this issue)._
-
-> **Ordering note (conflict with ENH-753)**: All implementation paths in steps 2–4 reference
-> `skills/confidence-check/`. ENH-753 renames that directory to `skills/score-confidence/`
-> and must be completed first (`blocked_by: [ENH-753]` in frontmatter). Before implementing
-> this issue, verify ENH-753 is complete and update all `confidence-check` path references
-> above to `score-confidence`.
 
 ### Codebase Research Findings
 
@@ -183,6 +177,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
@@ -214,9 +209,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Verification Notes
 
-- **Date**: 2026-04-23
+- **Date**: 2026-04-26
 - **Verdict**: NEEDS_UPDATE
-- **4 skills** exceed 500 lines: `audit-claude-config/SKILL.md` = **711** (unchanged), `confidence-check/SKILL.md` = **655** (was 648, +7), `init/SKILL.md` = **606** (was 618, −12), `manage-issue/SKILL.md` = **556** (was 516, +40). No companion files exist for these 4 skills yet.
+- **4 skills** exceed 500 lines: `audit-claude-config/SKILL.md` = **711** (unchanged), `confidence-check/SKILL.md` = **697** (was 655, +42), `init/SKILL.md` = **606** (unchanged), `manage-issue/SKILL.md` = **556** (unchanged). No companion files exist for these 4 skills yet.
 
 ## Status
 

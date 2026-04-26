@@ -66,9 +66,6 @@ Rename `skills/configure/` directory to `skills/settings/` and update the SKILL.
 - `skills/init/SKILL.md:455,559` — references `/ll:configure` in post-init instructions
 - `skills/init/interactive.md:145,213,255,442,444,734,735,736` — 8 references to `/ll:configure`
 
-### Similar Patterns
-- `P3-ENH-753-rename-confidence-check-skill-to-score-confidence.md` — precedent for skill rename workflow
-
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -132,9 +129,10 @@ _Added by `/ll:confidence-check` on 2026-04-12_
 - Wide reference surface (14+ external files) despite mechanical changes — real risk is missing a reference; use grep validation after implementation
 - Tests break immediately after `git mv`: update `test_update_skill.py:17` and `test_create_extension_wiring.py:16` in the same commit as the rename
 - Alias vs. remove is implicitly resolved as "remove" by the implementation steps — confirm this is intentional before starting
-- ENH-753 (cited precedent) is still open — no prior skill rename has been completed in this codebase
+- No prior skill rename has been completed in this codebase — treat implementation steps as first-pass; do a final grep sweep before closing
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:wire-issue` - 2026-04-13T04:37:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad8a9ad0-9a73-4793-b1e6-e50aecd235da.jsonl`
 - `/ll:refine-issue` - 2026-04-13T04:03:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c999cd5-2c5d-4efe-b7aa-08e541838d9e.jsonl`
