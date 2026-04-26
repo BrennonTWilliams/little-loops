@@ -109,5 +109,6 @@ FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue covers event *capture* only — detecting tool calls and writing structured event records. It must NOT own storage routing logic. The `if FEAT-1112 available, write to SQLite; else write to JSONL` conditional currently in scope should be deferred to FEAT-918's Transport abstraction layer. FEAT-1262's shell hook should emit a standard event JSON record and exit; where that event is stored or streamed is FEAT-918's concern. Related: FEAT-918 (Transport Protocol owns fan-out), FEAT-1112 (SQLite store is one Transport sink).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

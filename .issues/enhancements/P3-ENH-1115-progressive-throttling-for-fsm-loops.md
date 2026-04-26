@@ -229,6 +229,7 @@ _Added by `/ll:confidence-check` on 2026-04-24_
 - **Silent diagram regression**: `layout.py:204` must include `on_throttle_hard` in `_collect_edges()` — omitting it drops the transition from FSM diagrams without any error or failing test.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-26T19:34:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/baf6354e-f895-4724-a14b-8b08bc94c4ee.jsonl`
 - `/ll:wire-issue` - 2026-04-24T21:07:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e9e8880-2acc-4d17-bd55-40513e4f3106.jsonl`
 - `/ll:refine-issue` - 2026-04-24T20:57:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393f5547-5641-4053-b11e-6e1d77f12ffc.jsonl`

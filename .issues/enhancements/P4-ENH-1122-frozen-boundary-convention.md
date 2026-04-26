@@ -84,9 +84,11 @@ This is only meaningful once FEAT-1120 exists. Capture now so we don't forget; d
 
 ## Dependencies
 
-Blocked by: FEAT-1120 (harness-optimize) — this convention is only meaningful once a mutating loop exists. Keep this issue deferred until FEAT-1120 lands and we have signal on whether the convention is actually needed (maybe authors are fine with whole-file mutation; maybe they're not).
+~~Blocked by: FEAT-1120 (harness-optimize)~~ — **FEAT-1120 is now complete** (`scripts/little_loops/loops/harness-optimize.yaml` exists). This issue is unblocked and ready to implement. The harness-optimize loop currently runs with the mutable-all default, meaning any file is fully editable; ENH-1122 is the guardrail that makes it safe to run on files with load-bearing sections.
 
 ## Session Log
+- Manual review - 2026-04-26 - FEAT-1120 confirmed complete; issue unblocked
+- `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
@@ -95,11 +97,11 @@ Blocked by: FEAT-1120 (harness-optimize) — this convention is only meaningful 
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-23
+**Verdict**: VALID — Re-verified 2026-04-26
 
 - No `scripts/little_loops/fsm/mutable_regions.py` exists ✓
 - No `<!-- ll:mutable -->` markers in any project files ✓
-- Blocked by FEAT-1120 (harness-optimize) which is itself not yet implemented ✓
+- FEAT-1120 (harness-optimize) is **now complete** — blocker resolved ✓
 - Feature not yet implemented ✓
 
 ## Status

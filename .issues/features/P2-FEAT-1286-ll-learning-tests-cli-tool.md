@@ -154,5 +154,15 @@ def main_learning_tests() -> None:
 **Open** | Created: 2026-04-25 | Priority: P2
 
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-04-26
+
+- No `scripts/little_loops/cli/learning_tests.py` module ✓
+- No `ll-learning-tests` entry point in `scripts/pyproject.toml` ✓
+- No `check_learning_test`, `list_records`, `mark_stale` functions exist ✓
+- Feature not yet implemented ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-04-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
 - `/ll:format-issue` - 2026-04-25T20:15:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2dda3ac-5cb0-428a-8411-98d575600c2c.jsonl`

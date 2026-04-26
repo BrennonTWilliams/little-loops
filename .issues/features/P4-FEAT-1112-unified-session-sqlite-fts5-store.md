@@ -71,13 +71,15 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — Verified 2026-04-23
+**Verdict**: VALID — Verified 2026-04-26
 
-- Blocker **FEAT-1002 is now COMPLETED** (in `.issues/completed/`). The `blocked_by: [FEAT-1002]` frontmatter should be cleared — this issue is now unblocked.
+- Frontmatter `blocked_by: [FEAT-918]` is accurate — FEAT-1002 reference already cleared ✓
+- FEAT-918 (cross-process event streaming) is still open — block is real ✓
 - No `.ll/session.db` exists — feature not implemented ✓
 - No `ll-session` CLI entry point in `scripts/pyproject.toml` ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
