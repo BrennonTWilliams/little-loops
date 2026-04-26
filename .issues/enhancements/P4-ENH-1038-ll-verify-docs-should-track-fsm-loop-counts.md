@@ -72,6 +72,13 @@ The README pattern to match would be `\d+\s+FSM loops?`. The `extract_count_from
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-977 (add `ll-verify-skills`) both modify `scripts/little_loops/doc_counts.py` and `scripts/little_loops/cli/docs.py`. Changes are additive in different sections (ENH-1038 adds to `COUNT_TARGETS`; ENH-977 adds `check_skill_sizes()` and `main_verify_skills()`), but they should be sequenced or merged to avoid conflicts in the same PR. Related: ENH-977.

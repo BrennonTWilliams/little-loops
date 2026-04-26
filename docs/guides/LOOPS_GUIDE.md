@@ -1857,6 +1857,27 @@ Layered on top of the two-tier retry ladder is a shared **circuit breaker** that
   - `circuit_breaker_enabled` (default `true`) — set to `false` to disable pre-action gating and sidecar writes entirely.
   - `circuit_breaker_path` (default `.loops/tmp/rate-limit-circuit.json`) — override to relocate the shared file (e.g. onto a tmpfs or a path shared across multiple checkouts).
 
+#### Server-error automatic retry
+
+<!-- TODO: update-docs stub — ENH-1293 — drafted 2026-04-26 -->
+> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details.
+
+API 5xx errors (overload, 529, "server had an error") are automatically retried at the executor level — no per-loop YAML config required.
+
+- **Retry limit**: up to `max_api_error_retries` attempts (default: 2)
+- **Backoff**: flat 30s between attempts
+- **Scope**: `action_type: prompt` and `action_type: slash_command` actions
+- **Fallthrough**: after retries exhausted, normal FSM routing resumes
+
+This prevents transient infrastructure events from triggering incorrect FSM branching (e.g. autodev treating a server error as a failed confidence check).
+
+#### Sub-loop budget forwarding
+
+> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details.
+
+When a parent FSM spawns a child FSM via `_execute_sub_loop`, the child's `timeout` is clamped to the parent's remaining wall-clock budget. This ensures the child terminates cleanly before the parent's deadline, allowing the parent to route via `on_no`/`dequeue_next` rather than hitting a hard timeout.
+<!-- END TODO stub -->
+
 ### Stall Detection
 
 For prompt-based skills that may produce no-ops ("already done"), add a `check_stall` state using the `diff_stall` evaluator between `execute` and the first check state. Without it, idempotent skills silently exhaust `max_iterations` without progress:

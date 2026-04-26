@@ -106,7 +106,7 @@ This is only meaningful once FEAT-1120 exists. Capture now so we don't forget; d
 
 ## Status
 
-Open
+Deferred
 
 ---
 

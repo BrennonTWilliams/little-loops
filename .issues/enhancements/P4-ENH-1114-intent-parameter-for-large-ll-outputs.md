@@ -6,6 +6,7 @@ status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
 related: [FEAT-1112, ENH-1111]
+blocked_by: [FEAT-1112]
 ---
 
 # ENH-1114: Intent Parameter for Large ll-* CLI Outputs
@@ -58,5 +59,12 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `ranking.py` BM25 module introduced by this issue is an interim implementation. Once FEAT-1112 (unified SQLite + FTS5 store) lands, the ranking backend should be replaced with FTS5 rather than maintaining two parallel ranking approaches. Implement `ranking.py` as a thin, swappable backend so the transition is a drop-in replacement, not a rewrite.
