@@ -87,7 +87,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **27 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **16 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
+- **17 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
 - **43 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
 
@@ -487,6 +487,15 @@ ll-gitignore --dry-run        # Preview suggestions without modifying .gitignore
 ```
 
 Run `ll-gitignore --help` for all options.
+
+### ll-generate-schemas
+
+Regenerate JSON Schema files for all `LLEvent` types into `docs/reference/schemas/`. This is a maintainer tool used when adding new event types to the plugin.
+
+```bash
+ll-generate-schemas       # Regenerate all schema files
+ll-generate-schemas --help
+```
 
 ### ll-verify-docs / ll-check-links
 

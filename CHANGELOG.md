@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`LearnTestRecord` Registry Module** — New `little_loops.learning_tests` module implementing the learning test registry. Provides `LearnTestRecord` and `Assertion` dataclasses and five public functions: `write_record`, `read_record`, `list_records`, `mark_stale`, and `check_learning_test`. Records are stored as YAML-frontmatter Markdown files under `.ll/learning-tests/<slug>.md` with `proven`/`refuted`/`stale` status and a list of typed assertions. (FEAT-1285)
+- **`autodev` Outcome Failure Triage Before Size-Review** — When confidence thresholds are not met, `autodev` now enters a `triage_outcome_failure` state that reads `score_ambiguity` before routing. Issues with `score_ambiguity ≤ 10` route directly to `/ll:decide-issue` (low ambiguity indicates an unresolved decision is the cause); issues with higher ambiguity fall through to `detect_children` and size-review as before. This prevents incorrect decomposition of well-scoped issues whose low outcome confidence stems from an unresolved competing option.
+
+### Fixed
+
+- **`confidence-check` Phases 4.5/4.6 Now Respect Configurable `outcome_threshold`** — Phases 4.5 (Outcome Risk Factors) and 4.6 (decision signal detection) previously used a hardcoded threshold. They now read `config.commands.confidence_gate.outcome_threshold` (default: 75), so project-level overrides in `ll-config.json` take effect for these phases. (8bebe148)
+
 ### Planned
 
 - Windows compatibility testing

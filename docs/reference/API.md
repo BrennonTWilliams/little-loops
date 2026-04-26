@@ -4784,6 +4784,135 @@ result = update_frontmatter(content, {"completed_at": "2026-04-18T12:00:00Z"})
 
 ---
 
+<!-- TODO: update-docs stub — FEAT-1285 — drafted 2026-04-25 -->
+## little_loops.learning_tests
+
+Registry for learning test records — structured knowledge about external APIs and libraries, persisted as YAML-frontmatter Markdown files under `.ll/learning-tests/<slug>.md`.
+
+### Data Classes
+
+#### Assertion
+
+```python
+@dataclass
+class Assertion:
+    claim: str
+    result: Literal["pass", "fail", "untested"]
+```
+
+A single tested claim about an API or library behavior.
+
+#### LearnTestRecord
+
+```python
+@dataclass
+class LearnTestRecord:
+    target: str                    # API or library name (e.g., "Anthropic SDK streaming")
+    date: str                      # ISO date string (e.g., "2026-04-25")
+    status: Literal["proven", "refuted", "stale"]
+    assertions: list[Assertion]
+    raw_output_path: str | None    # Path to raw test output, if captured
+```
+
+A record capturing what is known about a target API or library. Records are stored at `.ll/learning-tests/<slugified-target>.md`.
+
+**File format** (`.ll/learning-tests/<slug>.md`):
+
+```yaml
+---
+target: "Anthropic SDK streaming"
+date: "2026-04-25"
+status: proven
+assertions:
+  - claim: "streaming events are dicts with a `type` key"
+    result: pass
+raw_output_path: ".ll/learning-tests/raw/anthropic-sdk-streaming.txt"
+---
+```
+
+### Public Functions
+
+| Function | Purpose |
+|----------|---------|
+| `write_record` | Write a `LearnTestRecord` to `.ll/learning-tests/<slug>.md` |
+| `read_record` | Read a record by slug; returns `None` if not found |
+| `list_records` | Return all records in the registry directory |
+| `mark_stale` | Set `status: stale` on an existing record, preserving other fields |
+| `check_learning_test` | Look up a record by target name (slugified); returns `None` if not found |
+
+### write_record
+
+```python
+def write_record(
+    record: LearnTestRecord, *, base_dir: Path | None = None
+) -> Path
+```
+
+Write `record` to `.ll/learning-tests/<slug>.md`, overwriting any existing file for the same target slug. Returns the path of the written file.
+
+**Example:**
+```python
+from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+
+record = LearnTestRecord(
+    target="Anthropic SDK streaming",
+    date="2026-04-25",
+    status="proven",
+    assertions=[Assertion(claim="events have a 'type' key", result="pass")],
+    raw_output_path=None,
+)
+path = write_record(record)
+```
+
+### read_record
+
+```python
+def read_record(
+    target_slug: str, *, base_dir: Path | None = None
+) -> LearnTestRecord | None
+```
+
+Read a record by its slug (the slugified form of `target`). Returns `None` if the file does not exist or has no parseable frontmatter.
+
+### list_records
+
+```python
+def list_records(*, base_dir: Path | None = None) -> list[LearnTestRecord]
+```
+
+Return all `LearnTestRecord` objects in the registry directory, sorted by filename. Returns an empty list if the directory does not exist.
+
+### mark_stale
+
+```python
+def mark_stale(target_slug: str, *, base_dir: Path | None = None) -> None
+```
+
+Set `status: stale` on the record identified by `target_slug`, preserving all other frontmatter fields. No-op if the record does not exist.
+
+### check_learning_test
+
+```python
+def check_learning_test(
+    target: str, *, base_dir: Path | None = None
+) -> LearnTestRecord | None
+```
+
+Convenience wrapper: slugifies `target` and calls `read_record`. Returns `None` if not found.
+
+**Example:**
+```python
+from little_loops.learning_tests import check_learning_test
+
+rec = check_learning_test("Anthropic SDK streaming")
+if rec and rec.status == "proven":
+    # assertions are trusted
+    pass
+```
+<!-- END TODO stub -->
+
+---
+
 ## little_loops.doc_counts
 
 Automated verification that documented counts (commands, agents, skills) match actual file counts in the codebase.
