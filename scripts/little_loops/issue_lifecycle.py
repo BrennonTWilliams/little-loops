@@ -128,6 +128,18 @@ def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, s
     if any(pattern in error_lower for pattern in resource_patterns):
         return (FailureType.TRANSIENT, "System resource error")
 
+    # API server error patterns (distinct from rate-limits; trigger short-burst retry in executor)
+    server_error_patterns = [
+        "the server had an error",
+        "internal server error",
+        "overloaded_error",
+        "overloaded",
+        "529",  # Anthropic overload HTTP code
+        "api error",  # generic "API Error: ..." prefix from Claude Code
+    ]
+    if any(pattern in error_lower for pattern in server_error_patterns):
+        return (FailureType.TRANSIENT, "API server error")
+
     # Default: treat as real failure
     return (FailureType.REAL, "Implementation error")
 

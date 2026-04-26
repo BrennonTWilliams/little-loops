@@ -5441,3 +5441,272 @@ class TestRateLimitCircuitIntegration:
             circuit=parent._circuit,
         )
         assert child._circuit is parent._circuit is circuit
+
+
+# =============================================================================
+# Tests: API server-error retry (ENH-1293 Fix 1)
+# =============================================================================
+
+
+class TestAPIErrorRetries:
+    """Tests for ENH-1293 Fix 1: transient API server error retry via _handle_api_error.
+
+    Tests patch ``_DEFAULT_API_ERROR_BACKOFF`` to 0 so interruptible-sleep returns
+    immediately without wall-clock delay.
+    """
+
+    def _make_fsm(self, *, on_error: str | None = "done") -> FSMLoop:
+        return FSMLoop(
+            name="api-err-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="done",
+                    on_no="done",
+                    on_error=on_error,
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def _server_error_result(self) -> dict:
+        return {
+            "output": "API Error: The server had an error while processing your request",
+            "exit_code": 1,
+        }
+
+    def _ok_result(self) -> dict:
+        return {"output": "success", "exit_code": 0}
+
+    def test_api_error_retries_state_in_place(self) -> None:
+        """On an API server error the executor retries the same state without routing away."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._server_error_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+        assert runner.calls.count("work.sh") == 2
+
+    def test_api_error_exhausted_falls_through_to_normal_routing(self) -> None:
+        """After max retries, executor falls through to normal verdict routing (not a hang)."""
+        from little_loops.fsm.executor import _DEFAULT_API_ERROR_RETRIES
+
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        # All results are server errors — should exhaust retries then route via exit_code=1 → on_no
+        runner.always_return(**self._server_error_result())
+
+        with patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        # _DEFAULT_API_ERROR_RETRIES attempts + 1 exhaustion attempt = retries+1 calls total
+        assert runner.calls.count("work.sh") == _DEFAULT_API_ERROR_RETRIES + 1
+        # exit_code=1 → verdict "no" → on_no="done"
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+
+    def test_api_error_exhausted_event_emitted(self) -> None:
+        """api_error_exhausted event is emitted when retries are exhausted."""
+        from little_loops.fsm.executor import _DEFAULT_API_ERROR_RETRIES
+
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(**self._server_error_result())
+
+        events: list[dict] = []
+        with patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            executor.run()
+
+        exhausted = [e for e in events if e.get("event") == "api_error_exhausted"]
+        assert len(exhausted) == 1
+        assert exhausted[0]["state"] == "execute"
+        assert exhausted[0]["retries"] == _DEFAULT_API_ERROR_RETRIES
+
+    def test_api_error_retry_event_emitted(self) -> None:
+        """api_error_retry event is emitted on each in-place retry attempt."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._server_error_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        events: list[dict] = []
+        with patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            executor.run()
+
+        retry_events = [e for e in events if e.get("event") == "api_error_retry"]
+        assert len(retry_events) == 1
+        assert retry_events[0]["state"] == "execute"
+        assert retry_events[0]["attempt"] == 1
+
+    def test_api_error_counter_reset_on_success(self) -> None:
+        """Per-state api_error_retries record is cleared when state completes without error."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._server_error_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert "execute" not in executor._api_error_retries
+
+    def test_api_error_does_not_trigger_rate_limit_handler(self) -> None:
+        """API server error should not call _handle_rate_limit (different handler)."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._server_error_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        # Rate limit tracking should remain empty — server errors don't use it
+        assert "execute" not in executor._rate_limit_retries
+
+    def test_529_overloaded_triggers_retry(self) -> None:
+        """529/overloaded pattern also triggers the API error retry path."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", {"output": "529 overloaded_error", "exit_code": 1}),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "done"
+        assert runner.calls.count("work.sh") == 2
+
+
+# =============================================================================
+# Tests: Sub-loop remaining-budget forwarding (ENH-1293 Fix 2)
+# =============================================================================
+
+
+class TestSubLoopBudgetClamping:
+    """Tests for ENH-1293 Fix 2: child FSM timeout clamped to parent's remaining budget."""
+
+    def _write_child_loop(self, loops_dir: Path, name: str = "child") -> None:
+        (loops_dir / f"{name}.yaml").write_text(
+            f"name: {name}\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+
+    def test_child_timeout_clamped_to_parent_remaining(self, tmp_path: Path) -> None:
+        """Child FSM timeout is clamped to parent's remaining wall-clock budget."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child has a large explicit timeout (7200s) that exceeds parent's remaining budget
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\ntimeout: 7200\n"
+            "states:\n  done:\n    terminal: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,  # 1h parent budget
+            states={
+                "run_child": StateConfig(loop="child", on_yes="done", on_no="failed"),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        # Simulate parent started 30 min ago (1_800_000ms elapsed)
+        executor.start_time_ms = 0
+
+        captured_child_timeouts: list[int | None] = []
+        original_run = FSMExecutor.run
+
+        def capturing_run(self_inner: FSMExecutor) -> ExecutionResult:
+            if self_inner.fsm.name == "child":
+                captured_child_timeouts.append(self_inner.fsm.timeout)
+            return original_run(self_inner)
+
+        with (
+            patch.object(FSMExecutor, "run", capturing_run),
+            patch("little_loops.fsm.executor._now_ms", return_value=1_800_000),
+        ):
+            # Call _execute_sub_loop directly to avoid run() overwriting start_time_ms
+            state = parent_fsm.states["run_child"]
+            ctx = executor._build_context()
+            executor._execute_sub_loop(state, ctx)
+
+        # 30 min elapsed from 1h budget → 30 min (1800s) remaining → child clamped to 1800
+        assert len(captured_child_timeouts) == 1
+        assert captured_child_timeouts[0] == 1800
+
+    def test_child_timeout_not_clamped_when_parent_has_no_timeout(self, tmp_path: Path) -> None:
+        """When parent has no timeout, child FSM timeout is left unchanged."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child loop with its own explicit timeout
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\ntimeout: 600\n"
+            "states:\n  done:\n    terminal: true\n"
+        )
+
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=None,  # no parent timeout
+            states={
+                "run_child": StateConfig(loop="child", on_yes="done", on_no="failed"),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        # Just verify it runs without error — child timeout unchanged
+        assert result.final_state == "done"
+
+    def test_child_timeout_routes_parent_via_on_no(self, tmp_path: Path) -> None:
+        """When child times out, parent routes via on_no (not a crash)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Child with max_iterations=1 and action that always fails → hits max_iterations → on_no
+        (loops_dir / "slow_child.yaml").write_text(
+            "name: slow_child\ninitial: work\nmax_iterations: 1\n"
+            "states:\n  work:\n    action: 'false'\n    on_yes: done\n    on_no: work\n"
+            "  done:\n    terminal: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,
+            states={
+                "run_child": StateConfig(loop="slow_child", on_yes="success", on_no="fallback"),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "fallback"

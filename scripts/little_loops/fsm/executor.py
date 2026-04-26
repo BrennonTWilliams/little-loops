@@ -71,6 +71,10 @@ _RATE_LIMIT_STORM_THRESHOLD: int = 3
 # Action types that consume LLM quota and are gated by the shared circuit breaker.
 # `_action_mode()` collapses both to "prompt"; the frozenset documents intent.
 LLM_ACTION_TYPES: frozenset[str] = frozenset({"slash_command", "prompt"})
+# Maximum per-state API server error retries before falling through to normal routing.
+_DEFAULT_API_ERROR_RETRIES: int = 2
+# Flat backoff in seconds between API server error retries (no exponential ladder).
+_DEFAULT_API_ERROR_BACKOFF: int = 30
 
 
 def _iso_now() -> str:
@@ -199,6 +203,11 @@ class FSMExecutor:
         # successful non-rate-limited state transition. When this reaches
         # _RATE_LIMIT_STORM_THRESHOLD, a RATE_LIMIT_STORM event is emitted.
         self._consecutive_rate_limit_exhaustions: int = 0
+
+        # Per-state API server error retry tracking (parallel to _rate_limit_retries).
+        # _api_error_retries[state_name] = {"retries": int, "total_wait": float}
+        # Reset when the state completes without a server error, or after exhaustion.
+        self._api_error_retries: dict[str, dict[str, Any]] = {}
 
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
@@ -432,6 +441,15 @@ class FSMExecutor:
             circuit=self._circuit,
         )
         child_executor._depth = depth  # propagate depth for further nesting
+
+        # Clamp child timeout to parent's remaining wall-clock budget so a slow sub-loop
+        # can't silently consume the parent's deadline with no recourse for the parent FSM.
+        if self.fsm.timeout:
+            elapsed_ms = _now_ms() - self.start_time_ms + self.elapsed_offset_ms
+            remaining_s = max(1, int((self.fsm.timeout * 1000 - elapsed_ms) // 1000))
+            if child_fsm.timeout is None or child_fsm.timeout > remaining_s:
+                child_fsm.timeout = remaining_s
+
         child_result = child_executor.run()
 
         # Merge child captures back into parent under the state name
@@ -544,11 +562,16 @@ class FSMExecutor:
                 _handled, _target = self._handle_rate_limit(state, route_ctx.state_name)
                 if _handled:
                     return _target
+            elif _failure_type == FailureType.TRANSIENT and "api server error" in _reason.lower():
+                _handled, _target = self._handle_api_error(state, route_ctx.state_name)
+                if _handled:
+                    return _target
+                # exhausted — fall through to normal verdict routing
             else:
-                # Not rate-limited: reset counter so future 429s start from zero.
+                # Not rate-limited or server-error: reset counters so future transients start fresh.
                 self._rate_limit_retries.pop(route_ctx.state_name, None)
-                # Successful non-rate-limited outcome resets the storm counter.
                 self._consecutive_rate_limit_exhaustions = 0
+                self._api_error_retries.pop(route_ctx.state_name, None)
 
         for interceptor in self._interceptors:
             if hasattr(interceptor, "before_route"):
@@ -1143,6 +1166,32 @@ class FSMExecutor:
                 },
             )
         return target
+
+    def _handle_api_error(self, state: StateConfig, state_name: str) -> tuple[bool, str | None]:
+        """Handle a detected API server error with short-burst flat backoff.
+
+        Unlike ``_handle_rate_limit``, uses a flat backoff with no long-wait tier and
+        falls through to normal FSM routing after ``_DEFAULT_API_ERROR_RETRIES`` attempts
+        so transient infrastructure hiccups don't permanently misdirect the loop.
+
+        Returns:
+            ``(True, state_name)`` to retry the state in place, or
+            ``(False, None)`` when the retry budget is exhausted (caller falls
+            through to normal verdict routing).
+        """
+        record = self._api_error_retries.setdefault(state_name, {"retries": 0, "total_wait": 0.0})
+        if record["retries"] >= _DEFAULT_API_ERROR_RETRIES:
+            self._api_error_retries.pop(state_name, None)
+            self._emit("api_error_exhausted", {"state": state_name, "retries": record["retries"]})
+            return False, None
+        record["retries"] += 1
+        slept = self._interruptible_sleep(_DEFAULT_API_ERROR_BACKOFF)
+        record["total_wait"] += slept
+        self._emit(
+            "api_error_retry",
+            {"state": state_name, "attempt": record["retries"], "backoff": _DEFAULT_API_ERROR_BACKOFF},
+        )
+        return True, state_name
 
     def _finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult:
         """Finalize execution and return result."""

@@ -774,6 +774,15 @@ class TestClassifyFailure:
             ("Error: No space left on device", "TRANSIENT", "resource"),
             ("Out of memory while processing", "TRANSIENT", "resource"),
             ("Too many open files", "TRANSIENT", "resource"),
+            # API server error patterns
+            (
+                "API Error: The server had an error while processing your request",
+                "TRANSIENT",
+                "api server",
+            ),
+            ("529 overloaded_error: model capacity exceeded", "TRANSIENT", "api server"),
+            ("internal server error from upstream", "TRANSIENT", "api server"),
+            ("Error: overloaded — please retry", "TRANSIENT", "api server"),
             # Real failure patterns
             ("SyntaxError: unexpected token at line 42", "REAL", "implementation"),
             (
