@@ -406,9 +406,9 @@ states:
 
   triage_outcome_failure:
     # Diagnose why outcome_confidence failed before routing to size-review.
-    # Low score_ambiguity (≤10) means an unresolved design decision is the
-    # bottleneck → route to run_decide. Otherwise → check_missing_artifacts
-    # to test for absent files/wiring gaps before falling through to size-review.
+    # decision_needed=true (authoritative flag) OR low score_ambiguity (≤10,
+    # proxy) routes to run_decide. Otherwise → check_missing_artifacts to test
+    # for absent files/wiring gaps before falling through to size-review.
     # on_error falls back to detect_children safely.
     action: |
       python3 << 'PYEOF'
@@ -425,7 +425,9 @@ states:
       except Exception:
           sys.exit(1)
 
-      sys.exit(0 if int(d.get('score_ambiguity') or 25) <= 10 else 1)
+      ambiguity_low = int(d.get('score_ambiguity') or 25) <= 10
+      decision_needed = d.get('decision_needed') == 'true'
+      sys.exit(0 if (ambiguity_low or decision_needed) else 1)
       PYEOF
     fragment: shell_exit
     on_yes: run_decide

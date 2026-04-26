@@ -1435,6 +1435,14 @@ class TestAutodevLoop:
             f"triage_outcome_failure.on_error should be 'detect_children', got {state.get('on_error')!r}"
         )
 
+    def test_triage_outcome_failure_action_checks_decision_needed(self, data: dict) -> None:
+        """triage_outcome_failure action must read decision_needed flag, not only score_ambiguity."""
+        state = data["states"].get("triage_outcome_failure", {})
+        action = state.get("action", "")
+        assert "decision_needed" in action, (
+            "triage_outcome_failure action must check 'decision_needed' flag as authoritative routing signal"
+        )
+
     def test_check_missing_artifacts_uses_shell_exit_fragment(self, data: dict) -> None:
         """check_missing_artifacts must use shell_exit fragment to route on exit code."""
         state = data["states"].get("check_missing_artifacts", {})
