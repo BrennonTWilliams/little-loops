@@ -273,6 +273,7 @@ states:                         # State definitions
     tools: list                 # Subprocess tool scope; passes --tools <csv> to the Claude subprocess (prompt states only)
 
 # Optional Loop-Level Settings
+description: string             # Human-readable summary shown by ll-loop list and /ll:review-loop
 context: object                 # Shared variables/config
 scope: array[string]            # Paths this loop operates on (for concurrency)
 max_iterations: integer         # Safety limit (default: 50)

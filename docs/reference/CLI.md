@@ -749,6 +749,46 @@ ll-issues asw --dry-run
 
 ---
 
+#### `ll-issues check-flag` / `ll-issues cf`
+
+Exit 0 if a named boolean frontmatter field in the issue equals `true`. Designed for use as a shell gate in FSM loop states.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
+| `field` | Frontmatter field name (e.g., `decision_needed`) |
+
+**Examples:**
+```bash
+ll-issues check-flag 518 decision_needed   # Exit 0 if decision_needed: true
+ll-issues cf FEAT-518 implementation_ready # Exit 0 if implementation_ready: true
+```
+
+**FSM loop use**: Use as a shell action with `evaluate: {type: exit_code}` to branch on a single frontmatter boolean without an LLM call.
+
+---
+
+#### `ll-issues check-readiness` / `ll-issues cr`
+
+Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the configured thresholds. Reads thresholds from `commands.confidence_gate` in `ll-config.json`, falling back to `--readiness` / `--outcome` CLI args.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `issue_id` | _(required)_ | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
+| `--readiness N` | `90` | Fallback readiness threshold when not set in `ll-config.json` |
+| `--outcome N` | `75` | Fallback outcome confidence threshold when not set in `ll-config.json` |
+
+**Examples:**
+```bash
+ll-issues check-readiness 518             # Use thresholds from ll-config.json
+ll-issues cr FEAT-518 --readiness 85      # Override readiness threshold
+ll-issues check-readiness 518 --readiness 80 --outcome 70
+```
+
+**FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. Pair with `ll-issues show --json` when you need the raw scores.
+
+---
+
 ### ll-deps
 
 Cross-issue dependency discovery and validation.
