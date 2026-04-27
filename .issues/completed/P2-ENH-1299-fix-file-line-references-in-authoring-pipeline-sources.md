@@ -4,7 +4,7 @@ discovered_date: "2026-04-27"
 discovered_by: issue-size-review
 decision_needed: false
 missing_artifacts: false
-size: Medium
+size: Very Large
 confidence_score: 100
 outcome_confidence: 53
 score_complexity: 10
@@ -200,7 +200,22 @@ _Added by `/ll:confidence-check` on 2026-04-27_
 - **No pre-existing automated validation for markdown prompt files**: The codebase has no unit tests for agent/skill/command `.md` files by design; the test written in Step 7 is the first. The 0/25 test-coverage score reflects the zero baseline, not a gap in the plan — the issue accounts for it. Mitigate by running the verification grep after each file edit rather than waiting until all 5 are done.
 - **Spread across 4 directories**: 6 files total across `agents/`, `commands/`, `skills/`, `scripts/tests/` — each edit is isolated text replacement but the distribution increases the chance of a missed occurrence. The acceptance-criteria grep (`grep -rn "file:line" agents/ skills/wire-issue/ skills/manage-issue/ commands/refine-issue.md`) is the definitive check; run it as the final step.
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-27
+- **Reason**: Issue too large for single session (score 11/11)
+
+### Decomposed Into
+- ENH-1302: Fix `file:line` references in agent source files (codebase-analyzer.md, codebase-pattern-finder.md)
+- ENH-1303: Fix `file:line` references in skill source files (wire-issue/SKILL.md, manage-issue/templates.md)
+- ENH-1304: Fix `file:line` references in commands/refine-issue.md and add verification test
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-27T16:43:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
+- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
 - `/ll:wire-issue` - 2026-04-27T16:36:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb17a9e1-1757-445b-a0d0-e017660b091f.jsonl`
 - `/ll:refine-issue` - 2026-04-27T16:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53865c02-ff65-4dff-937f-c70478af84a7.jsonl`
 - `/ll:format-issue` - 2026-04-27T16:24:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55b2ae6b-cfb7-490c-a90a-55c58082ceb5.jsonl`

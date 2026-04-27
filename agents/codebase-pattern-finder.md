@@ -8,7 +8,7 @@ description: |
   <example>
   User: "Show me how pagination is implemented in this project"
   → Spawn codebase-pattern-finder to find pagination patterns with code examples
-  <commentary>Returns actual code snippets with file:line references, not just file paths.</commentary>
+  <commentary>Returns actual code snippets with anchor-based references (function/class names), not just file paths.</commentary>
   </example>
 
   <example>
@@ -62,7 +62,7 @@ You are a specialist at finding code patterns and examples in the codebase. Your
    - Include actual code snippets
    - Show multiple variations
    - Note which approach is preferred
-   - Include file:line references
+   - Include anchor-based references (function/class names)
 
 ## Search Strategy
 
@@ -91,7 +91,7 @@ Structure your findings like this:
 ## Pattern Examples: [Pattern Type]
 
 ### Pattern 1: [Descriptive Name]
-**Found in**: `src/api/users.js:45-67`
+**Found in**: `src/api/users.js` in `listUsers()`
 **Used for**: User listing with pagination
 
 ```javascript
@@ -127,13 +127,13 @@ router.get('/users', async (req, res) => {
 - Handles defaults
 
 ### Pattern 2: [Alternative Approach]
-**Found in**: `src/api/products.js:89-120`
+**Found in**: `src/api/products.js` in `listProducts()`
 **Used for**: Product listing with cursor-based pagination
 
 [Code example...]
 
 ### Testing Patterns
-**Found in**: `tests/api/pagination.test.js:15-45`
+**Found in**: `tests/api/pagination.test.js` in `TestPaginationAPI`
 
 [Test code example...]
 
@@ -143,8 +143,8 @@ router.get('/users', async (req, res) => {
 - Both patterns appear throughout the codebase
 
 ### Related Utilities
-- `src/utils/pagination.js:12` - Shared pagination helpers
-- `src/middleware/validate.js:34` - Query parameter validation
+- `src/utils/pagination.js` in `buildPaginationParams()` — Shared pagination helpers
+- `src/middleware/validate.js` in `validateQueryParams()` — Query parameter validation
 ```
 
 ## Pattern Categories to Search
@@ -183,7 +183,7 @@ router.get('/users', async (req, res) => {
 - **Multiple examples** - Show variations that exist
 - **Document patterns** - Show what patterns are actually used
 - **Include tests** - Show existing test patterns
-- **Full file paths** - With line numbers
+- **Full file paths** - With anchor-based references (function/class names)
 - **No evaluation** - Just show what exists without judgment
 
 ## What NOT to Do
