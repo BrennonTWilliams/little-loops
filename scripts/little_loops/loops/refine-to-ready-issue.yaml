@@ -1,4 +1,5 @@
 name: "refine-to-ready-issue"
+description: "Drives a single issue from backlog to ready-state: refines it, wires integration points, runs confidence checks, and routes to issue-size-review if confidence thresholds cannot be met."
 category: issue-management
 # Routing summary:
 #   confidence_check → check_readiness → (on_yes) check_outcome → (on_yes) done
