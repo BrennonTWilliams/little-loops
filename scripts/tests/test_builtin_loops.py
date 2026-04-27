@@ -1519,14 +1519,14 @@ class TestAutodevLoop:
         assert state.get("fragment") == "with_rate_limit_handling"
 
     def test_run_decide_next_routes_to_implement_current(self, data: dict) -> None:
-        """run_decide.next (on success) must route to implement_current."""
+        """run_decide.next must route to recheck_after_decide (re-validates scores before implementing)."""
         state = data["states"].get("run_decide", {})
-        assert state.get("next") == "implement_current"
+        assert state.get("next") == "recheck_after_decide"
 
     def test_run_decide_on_error_routes_to_implement_current(self, data: dict) -> None:
-        """run_decide.on_error must fall through to implement_current (degraded mode)."""
+        """run_decide.on_error must fall through to recheck_after_decide (degraded mode)."""
         state = data["states"].get("run_decide", {})
-        assert state.get("on_error") == "implement_current"
+        assert state.get("on_error") == "recheck_after_decide"
 
     def test_run_decide_on_rate_limit_exhausted_routes_to_done(self, data: dict) -> None:
         """run_decide.on_rate_limit_exhausted must terminate the loop."""
