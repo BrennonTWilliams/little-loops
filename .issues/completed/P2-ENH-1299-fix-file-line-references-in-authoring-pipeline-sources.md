@@ -5,6 +5,12 @@ discovered_by: issue-size-review
 decision_needed: false
 missing_artifacts: false
 size: Medium
+confidence_score: 100
+outcome_confidence: 53
+score_complexity: 10
+score_test_coverage: 0
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-1299: Fix `file:line` references in issue-authoring pipeline source files
@@ -62,6 +68,25 @@ Pure text edits, ordered by leverage:
    - Update Agent 2 and Agent 3 prompt blocks to request anchors
    - Update Gap Detection table row from "Which file:line contains the bug" to "Which function/class contains the bug"
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — canonical anchor patterns confirmed in codebase:_
+
+**Established anchor patterns** (from `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, `CONTRIBUTING.md`, `docs/reference/ISSUE_TEMPLATE.md`):
+- Function: `` `in function foo()` `` or `` `in method ClassName.method_name()` ``
+- Class: `` `in class ClassName` `` or `` `near class Bar` ``
+- Section: `` `under section "Title"` `` (for markdown headings)
+- Integration Map entries: `` `path/to/file.py` — calls `affected_function()` in `handle_request()` ``
+
+**`agents/codebase-analyzer.md` Output Format example** (lines 92–138): the existing worked example uses `` `handlers/webhook.js:15-32` `` style throughout — replace with `` `handlers/webhook.js` in `handleWebhook()` `` / `` under section "Request Validation" ``.
+
+**Exact occurrence counts confirmed by research:**
+- `agents/codebase-analyzer.md`: 5 occurrences (frontmatter description ×3, body intro ×1, Important Guidelines ×1)
+- `agents/codebase-pattern-finder.md`: 2 occurrences (frontmatter commentary ×1, Core Responsibilities bullet ×1)
+- `skills/wire-issue/SKILL.md`: 2 literal `file:line` phrases + 3 `:N`-style template entries (caller/docs/tests templates + output report)
+- `skills/manage-issue/templates.md`: 17 raw occurrences across 16 lines
+- `commands/refine-issue.md`: 10 occurrences (Agent prompts ×2, Gap Detection ×2, enrichment template ×3, Research Summary ×1, Output Report ×2)
+
 ## Integration Map
 
 ### Files to Modify
@@ -73,19 +98,41 @@ Pure text edits, ordered by leverage:
 - `commands/refine-issue.md`
 
 ### Dependent Files (Callers/Importers)
-- N/A — changes are to prompt text in markdown files; no code imports or calls these files
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/decide-issue/SKILL.md:157` — Phase 4 agent prompt explicitly requests "Evidence FOR…with file:line references" from `codebase-pattern-finder`; no change needed for ENH-1299 scope but will be misaligned with anchor output after this fix (ENH-1300/1301 territory)
+- `commands/iterate-plan.md:69` — instructs spawned sub-agents (incl. `codebase-analyzer`) to return "specific file:line references in responses"; same misalignment risk post-fix
+- `commands/iterate-plan.md:100` — maintenance instruction "Keep all file:line references accurate" in plan files
+- `skills/confidence-check/SKILL.md:233` — downstream validator; checks that issues contain "specific file:line references" in the Root Cause/Problem Analysis section; after ENH-1299 the agents will produce anchor refs instead, which may cause confidence-check to flag new issues incorrectly
 
 ### Similar Patterns
 - N/A — text-only edits; no code patterns to synchronize across the codebase
 
 ### Tests
-- N/A — no test files need updating for markdown-only prompt changes
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh1299_doc_wiring.py` — new test file to write; assert that the 5 target files no longer contain `"file:line"` after implementation; follow the pattern in `scripts/tests/test_feat1172_doc_wiring.py` (path constants via `Path(__file__).parent.parent.parent`, class per file, `assert "file:line" not in content`)
+- No existing tests assert on the `file:line` strings being replaced — zero break risk across the full test suite
 
 ### Documentation
 - N/A — the changed files are themselves the agent/skill prompts
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — additional files with `file:line` references found beyond the 5 in scope (for ENH-1300/ENH-1301 awareness):_
+
+- `agents/consistency-checker.md` — "Report exact locations (file:line) for issues"
+- `agents/plugin-config-auditor.md` — "Note exact issues with file:line when possible"
+- `agents/prompt-optimizer.md` — multiple occurrences in prompt enhancement patterns
+- `skills/audit-docs/SKILL.md` — output templates reference file:line
+- `skills/confidence-check/SKILL.md` — checks for "specific file:line references" in issue analysis
+- `skills/product-analyzer/SKILL.md` — "Every finding MUST cite file:line evidence"
+- `hooks/prompts/continuation-prompt-template.md` — `[file:line]` placeholder slots
+- `hooks/prompts/optimize-prompt-hook.md` — "Specific file:line references to include"
+- `commands/iterate-plan.md` — "Request specific file:line references"
 
 ### Verification
 
@@ -105,6 +152,12 @@ Run `refine-issue` on a sample issue and confirm output uses anchors, not `file:
 4. Edit `skills/manage-issue/templates.md` — replace all 10+ instances.
 5. Edit `commands/refine-issue.md` — update prompts and Gap Detection table.
 6. Run verification grep.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Write `scripts/tests/test_enh1299_doc_wiring.py` — structural test asserting `"file:line"` is absent from the 5 target files post-edit; follow the pattern in `scripts/tests/test_feat1172_doc_wiring.py`
 
 ## Impact
 
@@ -136,9 +189,23 @@ N/A — No public API changes. This enhancement modifies only prose/template tex
 
 `enhancement`, `reference-cleanup`, `authoring-pipeline`, `captured`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-27_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 53/100 → LOW
+
+### Outcome Risk Factors
+- **No pre-existing automated validation for markdown prompt files**: The codebase has no unit tests for agent/skill/command `.md` files by design; the test written in Step 7 is the first. The 0/25 test-coverage score reflects the zero baseline, not a gap in the plan — the issue accounts for it. Mitigate by running the verification grep after each file edit rather than waiting until all 5 are done.
+- **Spread across 4 directories**: 6 files total across `agents/`, `commands/`, `skills/`, `scripts/tests/` — each edit is isolated text replacement but the distribution increases the chance of a missed occurrence. The acceptance-criteria grep (`grep -rn "file:line" agents/ skills/wire-issue/ skills/manage-issue/ commands/refine-issue.md`) is the definitive check; run it as the final step.
+
 ## Session Log
+- `/ll:wire-issue` - 2026-04-27T16:36:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb17a9e1-1757-445b-a0d0-e017660b091f.jsonl`
+- `/ll:refine-issue` - 2026-04-27T16:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53865c02-ff65-4dff-937f-c70478af84a7.jsonl`
 - `/ll:format-issue` - 2026-04-27T16:24:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55b2ae6b-cfb7-490c-a90a-55c58082ceb5.jsonl`
 - `/ll:issue-size-review` - 2026-04-27T17:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/300897f1-2940-4fd4-853f-e9037c0ea665.jsonl`
 
 ---
 

@@ -25,11 +25,11 @@ Return file paths with brief descriptions of relevance.
 Analyze the code paths related to [ISSUE-ID]: [issue title]
 
 For the files found, explain:
-- Current behavior with file:line references
+- Current behavior with function/class anchors (e.g. `in function foo()`, `near class Bar`)
 - Data flow and integration points
 - Any existing patterns being used
 
-Return detailed analysis with specific file:line references.
+Return detailed analysis with specific anchor-based references (function/class names).
 ```
 
 ### Codebase Pattern Finder Prompt
@@ -44,7 +44,7 @@ Search for:
 - Existing utility functions, helpers, and shared modules that could be reused or extended instead of writing new code
 - Similar logic elsewhere that suggests consolidation rather than duplication
 
-Return examples with file:line references. For reusable code, explicitly note whether to reuse as-is, extend, or justify creating new.
+Return examples with anchor-based references (function/class names). For reusable code, explicitly note whether to reuse as-is, extend, or justify creating new.
 ```
 
 ### Research Findings Template
@@ -53,8 +53,8 @@ Return examples with file:line references. For reusable code, explicitly note wh
 ## Research Findings
 
 ### Key Discoveries
-- [Discovery 1 with file:line reference]
-- [Discovery 2 with file:line reference]
+- [Discovery 1 with function/class anchor]
+- [Discovery 2 with function/class anchor]
 
 ### Current State
 - [How the affected code currently works]
@@ -62,11 +62,11 @@ Return examples with file:line references. For reusable code, explicitly note wh
 
 ### Patterns to Follow
 - [Convention 1 found in codebase]
-- [Similar implementation at file:line]
+- [Similar implementation with function/class anchor]
 
 ### Reusable Code
-- [Utility/module at file:line — reuse as-is / extend / justify new]
-- [Shared abstraction at file:line — how it applies]
+- [Utility/module with function/class anchor — reuse as-is / extend / justify new]
+- [Shared abstraction with function/class anchor — how it applies]
 
 ### Potential Concerns
 - [Any complexity or risk identified]
@@ -92,8 +92,8 @@ Write the plan using this structure (sections are recommended, skip if not appli
 [What exists now based on research findings]
 
 ### Key Discoveries
-- [Finding 1 with file:line reference]
-- [Finding 2 with file:line reference]
+- [Finding 1 with function/class anchor]
+- [Finding 2 with function/class anchor]
 - [Pattern discovered in codebase]
 
 ## Desired End State
@@ -121,7 +121,7 @@ Write the plan using this structure (sections are recommended, skip if not appli
 
 ## Code Reuse & Integration
 
-- **Reusable existing code**: [list utilities/modules to leverage with file:line refs]
+- **Reusable existing code**: [list utilities/modules to leverage with anchor-based references (function/class names)]
 - **Patterns to follow**: [established conventions this implementation must match]
 - **New code justification**: [what's genuinely new and why existing code doesn't cover it]
 
@@ -205,8 +205,8 @@ After writing tests, run: `{{config.project.test_cmd}} [test_files] -v`
 ## References
 
 - Original issue: `{{config.issues.base_dir}}/[type]/[filename].md`
-- Related patterns: `[file:line]`
-- Similar implementation: `[file:line]`
+- Related patterns: `[function/class anchor]`
+- Similar implementation: `[function/class anchor]`
 ````
 
 ---
@@ -277,8 +277,8 @@ When context is running low, write a continuation prompt to `$(pwd)/.ll/ll-conti
 Implementing [issue title]. Reached end of context during [phase].
 
 ## Completed Work
-- [x] Phase 1: [Name] - completed at [file:line]
-- [x] Phase 2: [Name] - completed at [file:line]
+- [x] Phase 1: [Name] - completed in [function/class anchor]
+- [x] Phase 2: [Name] - completed in [function/class anchor]
 
 ## Current State
 - Working on: Phase [N]: [Name]
@@ -287,7 +287,7 @@ Implementing [issue title]. Reached end of context during [phase].
 
 ## Key File References
 - Plan: `thoughts/shared/plans/[plan-file].md`
-- Modified: `[file:line]`, `[file:line]`
+- Modified: `[function/class anchor]`, `[function/class anchor]`
 - Tests: `[test-file]`
 
 ## Resume Command
@@ -296,7 +296,7 @@ Implementing [issue title]. Reached end of context during [phase].
 ## Critical Context
 - [Decision 1 made during implementation]
 - [Gotcha discovered]
-- [Pattern being followed from file:line]
+- [Pattern being followed from function/class anchor]
 ```
 
 ---

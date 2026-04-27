@@ -173,7 +173,7 @@ Analyze:
 4. Error message / log coupling — if error messages or log labels change, are there tests that assert on those strings?
 5. Schema / config coupling — if config keys or schema change, what reads or validates those keys?
 
-Return analysis with specific file:line references for each coupling found.
+Return analysis with specific anchor-based references (function/class names) for each coupling found.
 Exclude files already known from the issue.
 ```
 
@@ -196,7 +196,7 @@ Find:
 4. Integration or end-to-end test files that exercise the affected functionality
 5. If no tests exist for the changed area, show the test pattern to follow from the closest similar test file
 
-Return examples with file:line references.
+Return examples with anchor-based references (function/class names).
 Distinguish between: existing tests to update vs. new tests to write vs. tests that may break.
 ```
 
@@ -294,8 +294,8 @@ Locate the `## Integration Map` section (or `### Files to Modify` subsection). A
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `path/to/caller.py:42` — calls `affected_function()` [Agent 1 finding]
-- `path/to/importer.py:5` — imports `affected_module` [Agent 1 finding]
+- `path/to/caller.py` — calls `affected_function()` in `handle_request()` [Agent 1 finding]
+- `path/to/importer.py` — imports `affected_module` in `module_init()` [Agent 1 finding]
 ```
 
 **Registration / manifest files** — append to "Files to Modify" (these must be edited as part of the implementation):
@@ -311,7 +311,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/relevant.md:23` — describes `affected_function()`, needs updating [Agent 2 finding]
+- `docs/relevant.md` — describes `affected_function()` under section "Function Reference" [Agent 2 finding]
 - `commands/some-command.md` — mentions the old CLI flag, needs updating [Agent 2 finding]
 ```
 
@@ -323,7 +323,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `tests/test_affected.py` — existing coverage, update for new behavior [Agent 3 finding]
 - `tests/test_new_feature.py` — new test file needed, follow pattern in `tests/test_similar.py` [Agent 3 finding]
-- `tests/test_integration.py:88` — calls old API, will break — update [Agent 3 finding]
+- `tests/test_integration.py` — calls old API in `test_handle_request()`, will break — update [Agent 3 finding]
 ```
 
 **Config / schema** — append to a "Configuration" subsection:
@@ -413,7 +413,7 @@ WIRE ISSUE: {{ISSUE_ID}}
 ## INTEGRATION MAP CHANGES
 
 ### Added to Dependent Files
-- `path/to/caller.py:42` — calls `affected_fn()`
+- `path/to/caller.py` — calls `affected_fn()` in `handle_request()`
 ...
 
 ### Added to Files to Modify
@@ -421,7 +421,7 @@ WIRE ISSUE: {{ISSUE_ID}}
 ...
 
 ### Added to Documentation
-- `docs/api.md:15` — describes changed interface
+- `docs/api.md` — describes changed interface under section "API Reference"
 ...
 
 ### Added to Tests
