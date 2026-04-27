@@ -147,7 +147,7 @@ Analyze:
 - How the affected component connects to the rest of the system
 - Any existing error handling or edge cases
 
-Return analysis with specific file:line references.
+Return analysis with specific file path and anchor references (e.g., function names, class names).
 ```
 
 #### Agent 3: codebase-pattern-finder
@@ -167,7 +167,7 @@ Search for:
 - Existing utility functions and shared modules that could be reused
 - Similar logic elsewhere that suggests consolidation
 
-Return examples with file:line references.
+Return examples with file path and anchor references (e.g., function names, class names).
 ```
 
 #### Wait for ALL agents to complete before proceeding.
@@ -183,7 +183,7 @@ A section can be "present" per the template but still lack the codebase-specific
 **For BUGs:**
 | Knowledge Gap | What's Missing | Research Source |
 |---------------|---------------|----------------|
-| Root cause location | Which file:line contains the bug | codebase-analyzer |
+| Root cause location | Which file and function/class contains the bug | codebase-analyzer |
 | Affected code paths | What other code calls/depends on the buggy code | codebase-locator |
 | Reproduction context | What conditions trigger the bug based on code analysis | codebase-analyzer |
 | Test coverage | Which tests exist for affected code, what's untested | codebase-locator |
@@ -210,7 +210,7 @@ A section can be "present" per the template but still lack the codebase-specific
 #### Gap Detection
 
 For each knowledge gap category relevant to the issue type:
-1. Check if the issue already contains this information (with specific file:line references, not vague descriptions)
+1. Check if the issue already contains this information (with specific file path and anchor references, not vague descriptions)
 2. Check if the research findings provide this information
 3. If the issue lacks it but research found it: mark as **FILLABLE**
 4. If neither the issue nor research provides it: mark as **UNKNOWN** (requires interactive clarification)
@@ -269,11 +269,11 @@ Count distinct implementation options deposited. Detect by any of these patterns
 - Headed options: `### Option A`, `### Option B`, `### Option C` (etc.)
 - Bold options: `**Option A**`, `**Option B**`, `**Option 1**`, `**Option 2**` (etc.)
 
-Then update `decision_needed` in the issue's YAML frontmatter using the Edit tool (inline `---` block replacement, following `skills/confidence-check/SKILL.md:398-446`):
+Then update `decision_needed` in the issue's YAML frontmatter using the Edit tool (inline `---` block replacement, following `skills/confidence-check/SKILL.md` in section "Phase 4: Update Frontmatter"):
 - If option count >= 2: set `decision_needed: true`
 - If option count < 2: set `decision_needed: false` (or remove if absent — prevents stale `true` from a prior pass)
 
-**Idempotency**: skip the write if `decision_needed` already has the same value (follow `skills/format-issue/SKILL.md:163-175`).
+**Idempotency**: skip the write if `decision_needed` already has the same value (follow `skills/format-issue/SKILL.md` in section "2.5a. Testable Inference (doc-only detection)").
 **Dry-run guard**: skip the frontmatter write in `--dry-run` mode; report what would have been set in the DRY RUN PREVIEW block.
 
 **Implementation Steps** — make concrete with real file references:
@@ -299,8 +299,8 @@ When a section already has meaningful content:
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- [Finding 1 with file:line reference]
-- [Finding 2 with file:line reference]
+- [Finding 1 with file path and anchor reference]
+- [Finding 2 with file path and anchor reference]
 ```
 
 ### 5b. Interactive Refinement (Skip in Auto Mode)
@@ -317,7 +317,7 @@ First, display a summary of what was discovered:
 Research Findings for [ISSUE-ID]:
 - Found [N] related files
 - Identified [key integration points]
-- Found [similar patterns at file:line]
+- Found [similar patterns at file in function/class anchor]
 - [Key discovery from analysis]
 ```
 
@@ -426,7 +426,7 @@ ISSUE REFINED: [ISSUE-ID]
 
 ## SECTIONS ENRICHED
 - **Integration Map**: Populated with [N] file paths and [N] callers
-- **Root Cause**: Added file:line reference and behavioral analysis [BUG only]
+- **Root Cause**: Added file path and anchor reference and behavioral analysis [BUG only]
 - **Implementation Steps**: Made concrete with [N] specific file references
 - **[Other section]**: [What was added]
 
@@ -437,7 +437,7 @@ ISSUE REFINED: [ISSUE-ID]
 ## DRY RUN PREVIEW [--dry-run only]
 [Show exact enrichments that would be applied without applying them]
 - Would add to Integration Map: [N] file paths
-- Would update Root Cause with: [file:line reference]
+- Would update Root Cause with: [file path and anchor reference]
 - Would enrich Implementation Steps with: [N] concrete references
 
 ## FILE STATUS
