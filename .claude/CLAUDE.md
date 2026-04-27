@@ -35,7 +35,7 @@ Personal development preferences.
 ```
 commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
-skills/         # Skill definitions (26 skills)
+skills/         # Skill definitions (27 skills)
 hooks/          # Lifecycle hooks and prompts
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
@@ -104,6 +104,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-auto` - Process all backlog issues sequentially in priority order
 - `ll-parallel` - Process issues concurrently using isolated git worktrees
 - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
+- `ll-action` - Invoke any ll skill as a one-shot command with JSON-structured output
 - `ll-loop` - Execute FSM-based automation loops
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-logs` - Discover, extract, and tail Claude Code session logs (`discover` / `extract` / `tail` subcommands; writes `logs/index.md`)
