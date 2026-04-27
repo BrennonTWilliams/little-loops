@@ -59,6 +59,7 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 
 
 ## Session Log
+- `/ll:tradeoff-review-issues` - 2026-04-27T02:55:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
@@ -68,3 +69,21 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): The `ranking.py` BM25 module introduced by this issue is an interim implementation. Once FEAT-1112 (unified SQLite + FTS5 store) lands, the ranking backend should be replaced with FTS5 rather than maintaining two parallel ranking approaches. Implement `ranking.py` as a thin, swappable backend so the transition is a drop-in replacement, not a rewrite.
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-04-26 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | HIGH |
+| Complexity added | MEDIUM |
+| Technical debt risk | HIGH |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — This issue is explicitly blocked by FEAT-1112 (SQLite + FTS5 store), which does not yet exist. The proposed `ranking.py` BM25 module is designed to be thrown away once FEAT-1112 lands, creating throwaway tech debt. Defer implementation until FEAT-1112 is complete and replace BM25 backend directly with FTS5 rather than building the interim layer. If you do implement the interim, ensure `ranking.py` is a thin swappable backend with no callers hard-coupling to BM25 specifics.

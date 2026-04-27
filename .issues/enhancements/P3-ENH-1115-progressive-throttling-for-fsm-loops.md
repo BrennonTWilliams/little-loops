@@ -228,7 +228,26 @@ _Added by `/ll:confidence-check` on 2026-04-24_
 - **Persistence decision unresolved**: Whether `_throttle_counts` survives loop resume (persistence.py:457-460) is flagged as an open decision — resolve before implementing step 3.
 - **Silent diagram regression**: `layout.py:204` must include `on_throttle_hard` in `_collect_edges()` — omitting it drops the transition from FSM diagrams without any error or failing test.
 
+## Tradeoff Review Note
+
+**Reviewed**: 2026-04-26 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | HIGH |
+| Implementation effort | HIGH |
+| Complexity added | HIGH |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — Resolve the persistence decision at `persistence.py:457-460` before starting implementation: should `_throttle_counts` survive loop resume/handoff across ticks, or reset on resume? This determines whether step 3 (`__init__` counter) and `LoopState` serialization need changes. Without a decision, step 3 has an open implementation branch that could cause silent behavioral differences between resumed and fresh loops. Decide and document in the issue before coding.
+
+---
+
 ## Session Log
+- `/ll:tradeoff-review-issues` - 2026-04-27T02:55:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/baf6354e-f895-4724-a14b-8b08bc94c4ee.jsonl`
 - `/ll:wire-issue` - 2026-04-24T21:07:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e9e8880-2acc-4d17-bd55-40513e4f3106.jsonl`

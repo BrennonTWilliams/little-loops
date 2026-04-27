@@ -132,6 +132,7 @@ _Added by `/ll:confidence-check` on 2026-04-12_
 - No prior skill rename has been completed in this codebase — treat implementation steps as first-pass; do a final grep sweep before closing
 
 ## Session Log
+- `/ll:tradeoff-review-issues` - 2026-04-27T02:55:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `/ll:wire-issue` - 2026-04-13T04:37:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad8a9ad0-9a73-4793-b1e6-e50aecd235da.jsonl`
@@ -153,3 +154,21 @@ _Added by `/ll:confidence-check` on 2026-04-12_
 - Rename not yet applied ✓
 
 **Open** | Created: 2026-04-12 | Priority: P4
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-04-26
+- **Reason**: Low utility relative to implementation complexity
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: LOW
+- Complexity Added: LOW
+- Technical Debt Risk: LOW
+- Maintenance Overhead: LOW
+
+### Rationale
+Pure cosmetic rename that introduces a breaking change for existing users, touches 14+ files across docs/skills/tests/commands with only 28% outcome confidence (high miss-risk for stale references). The benefit is a naming preference only — no functional improvement. Wide reference surface creates meaningful risk of inconsistency after a missed reference sweep.
