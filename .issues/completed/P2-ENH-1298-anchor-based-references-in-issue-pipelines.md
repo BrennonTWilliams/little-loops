@@ -2,6 +2,14 @@
 captured_at: "2026-04-27T15:38:43Z"
 discovered_date: "2026-04-27"
 discovered_by: capture-issue
+decision_needed: false
+missing_artifacts: true
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # ENH-1298: Convert issue-authoring pipelines from `file:line` to anchor-based references
@@ -76,17 +84,28 @@ Extend `ready-issue` (preferred — already runs as a gate) or `verify-issues`:
 ### Files to Modify
 
 - `agents/codebase-analyzer.md` — rewrite `Output Format` worked example and `Important Guidelines` rule (root upstream — fix this first or downstream changes won't hold).
+- `agents/codebase-pattern-finder.md` — has the same `file:line references` convention at lines 11 and 65; update alongside `codebase-analyzer.md` or its output will re-contaminate downstream prompts.
 - `skills/wire-issue/SKILL.md` — update output templates in the section emitting "Dependent Files / Documentation / Tests" subsections.
 - `skills/manage-issue/templates.md` — replace all "file:line references" prompt strings.
 - `commands/refine-issue.md` — update prompts in `Agent 2: codebase-analyzer`, `Agent 3: codebase-pattern-finder`, and the `Gap Detection` table.
 - `hooks/prompts/continuation-prompt-template.md` — *optional, see Scope Boundaries*.
 - `skills/ready-issue/SKILL.md` (or `verify-issues`) — add lint check; reuse anchor resolver.
-- New: a sweeper script or skill (location TBD — likely `scripts/little_loops/issues/anchor_sweep.py` plus a `commands/ll:anchor-sweep.md` thin wrapper, OR fold into `ready-issue --fix`).
+- `scripts/little_loops/cli/issues/__init__.py` — add `anchor-sweep` subparser block and dispatch branch in `main_issues()`; update epilog string (referenced in "Existing Infrastructure" section but must be listed here as a required edit).
+- New: `scripts/little_loops/issues/__init__.py` + `scripts/little_loops/issues/anchors.py` (anchor resolver module).
+- New: `scripts/little_loops/issues/anchor_sweep.py` (sweeper), with thin CLI wrapper as `scripts/little_loops/cli/issues/anchor_sweep.py` following the `check_readiness.py` pattern.
 
 ### Dependent Files (Callers/Importers)
 
 - `commands/manage-issue.md` and the `manage-issue` skill — invoke `codebase-analyzer`. Behavior changes transitively once the agent definition changes; verify nothing in those skills *parses* `file:line` from agent output.
 - Any skill that calls `wire-issue` or `refine-issue` as a sub-step (check `ll-auto`, `ll-parallel`, `ll-sprint` orchestrators in `scripts/little_loops/`) — same transitive concern.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/issue-workflow/SKILL.md` — integrates all five affected commands (`refine-issue`, `wire-issue`, `manage-issue`, `ready-issue`, `verify-issues`); behavior changes transitively when agent output convention changes.
+- `scripts/little_loops/loops/autodev.yaml` — FSM loop that invokes `refine-issue`, `wire-issue`, and `ready-issue` as states; verify no state expects `file:line` in its output matching logic.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — invokes refine, ready, verify steps; same transitive check.
+- `scripts/little_loops/loops/recursive-refine.yaml` — invokes refine steps.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — invokes the full pipeline.
+- `scripts/little_loops/loops/issue-refinement.yaml` — invokes refine steps.
 
 ### Similar Patterns
 
@@ -98,15 +117,47 @@ Extend `ready-issue` (preferred — already runs as a gate) or `verify-issues`:
 - Add an integration test that runs `wire-issue` against a sample issue and asserts the output contains no `:[0-9]+` patterns.
 - Add a `verify-issues` test asserting the lint flags a contaminated fixture.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issues_anchors.py` — new test file for `scripts/little_loops/issues/anchors.py`; follow pattern from `test_ll_issues_atomic_write.py` (one class per logical unit, `tmp_path` for I/O, module docstring citing ENH-1298). Cover: function walk-back, class walk-back, markdown section heading lookup, code-fence exclusion, and no-anchor-found fallback.
+- `scripts/tests/test_enh1298_doc_wiring.py` — structural test asserting that `commands/refine-issue.md`, `skills/wire-issue/SKILL.md`, `agents/codebase-analyzer.md`, and `agents/codebase-pattern-finder.md` no longer contain `file:line` language patterns after the edit pass; follow pattern from `test_refine_issue_command.py`.
+- `scripts/tests/test_issue_discovery.py:252-264` — `test_extract_line_numbers` — update if `_extract_line_numbers` regex is modified; currently has one test case asserting `src/file.py:20-30` yields `{20, 30}`. [update if regex changes]
+- `scripts/tests/test_dependency_mapper.py:54-115` — `TestExtractFilePaths` — add test cases for anchor-format input (e.g. `file.py` with no `:N` suffix); current tests don't explicitly verify line-number stripping. [add cases]
+- `scripts/tests/test_text_utils.py` — add direct tests for `extract_file_paths`, `_STANDALONE_PATH`, and `_CODE_FENCE`; currently only tests `extract_words`/`calculate_word_overlap`/`score_bm25`. [add cases]
+
 ### Documentation
 
 - `docs/reference/ISSUE_TEMPLATE.md` — already correct; no changes needed.
 - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — already correct; no changes needed.
 - `CHANGELOG.md` — add entry describing the policy enforcement and backlog sweep (concrete `## [X.Y.Z]` section per project changelog conventions, not Unreleased).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `### ll-issues` section (lines 474–718) needs a new `anchor-sweep` subcommand entry with flag table and example (mirrors the `check-readiness` entry pattern).
+- `docs/reference/API.md` — `main_issues` subcommands table (around line 2976) needs a new `anchor-sweep` row.
+- `docs/ARCHITECTURE.md` — `cli/issues/` directory tree block (around line 208) needs a line for `anchor_sweep.py`.
+- `README.md` — `### ll-issues` section (around line 466) needs an `anchor-sweep` example line.
+- `.claude/CLAUDE.md` line 116 — `ll-issues` subcommand list needs `anchor-sweep` added to the parenthetical enumeration.
+
 ### Configuration
 
 - N/A — no config schema changes.
+
+### Existing Infrastructure to Reuse
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/text_utils.py` in `extract_file_paths()` — `_STANDALONE_PATH` regex already matches `file.py:42` style (captures then strips the `:N` suffix); `_CODE_FENCE` regex provides code-fence exclusion. Both are directly reusable for the detector.
+- `scripts/little_loops/issue_discovery/matching.py` in `_extract_line_numbers()` — the `:(\d+)(?:-(\d+))?` capturing pattern shows the established `re.finditer` convention for extracting line numbers from issue text.
+- `scripts/little_loops/doc_counts.py` in `fix_counts()` — canonical two-phase sweep-and-rewrite pattern (collect hits, then fix grouped by file). Follow this shape for the sweeper.
+- `scripts/little_loops/dependency_mapper/operations.py` in `fix_dependencies()` — `dry_run` parameter convention, `FixResult` dataclass return type.
+- `scripts/little_loops/file_utils.py` — `atomic_write()` for safe issue-file rewrites.
+- `scripts/little_loops/frontmatter.py` — `parse_frontmatter()` / `update_frontmatter()` for any frontmatter edits during a sweep.
+- `scripts/little_loops/cli/issues/__init__.py` in `main_issues()` — dispatch table; add `anchor-sweep` sub-parser and case here following the existing `check-readiness` / `check-flag` pattern.
+- `scripts/little_loops/cli/issues/check_readiness.py` — model for `cmd_anchor_sweep()` function signature (`config: BRConfig, args: argparse.Namespace) -> int`) and `--check` exit-code convention.
+- `scripts/little_loops/issue_parser.py` in `_strip_code_fences()` — closest structural analogue for a line-by-line stateful scanner (state machine over `content.split("\n")`).
+
+**Note on directory**: `scripts/little_loops/issues/` does not exist yet — creating `anchors.py` there also requires a new `__init__.py`. No `ast_utils.py` exists in the package; the anchor resolver must be written using Python stdlib `ast` module.
+
+**Note on templates**: All three section templates (`enh-sections.json`, `bug-sections.json`, `feat-sections.json`) already contain the anchor preference in `quality_checks.common`. No template changes needed.
 
 ## Implementation Steps
 
@@ -116,6 +167,29 @@ Extend `ready-issue` (preferred — already runs as a gate) or `verify-issues`:
 4. **Build the sweeper** that uses the resolver to rewrite references in existing issue files. Run it once against `.issues/**/*.md` (active dirs only — leave `completed/` alone since those are historical record).
 5. **Extend `ready-issue` (preferred) with the lint check** that uses the same resolver to flag and optionally auto-fix new contamination.
 6. **Verification**: re-run the audit query (`grep -rE '\.(py|md|ts):[0-9]+|line [0-9]+' .issues/{bugs,features,enhancements}`) and confirm hit count drops to zero. Run `wire-issue` and `refine-issue` against a fixture and confirm output is anchor-only.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Add `agents/codebase-pattern-finder.md` to the text-edit pass in Step 2 — update lines 11 and 65 where "Returns actual code snippets with file:line references" and "Include file:line references" appear; otherwise `codebase-pattern-finder` will re-contaminate downstream issues during `refine-issue` runs.
+8. Register `anchor-sweep` in `scripts/little_loops/cli/issues/__init__.py` — add `subs.add_parser("anchor-sweep", ...)`, a lazy import of the subcommand module, a dispatch branch in `main_issues()`, and update the epilog string; follow the `check_readiness` / `check_flag` pattern added in the recent commit.
+9. Update `docs/reference/CLI.md` — add `anchor-sweep` section under `### ll-issues` (flag table + example).
+10. Update `docs/reference/API.md` — add `anchor-sweep` row in the `main_issues` subcommands table.
+11. Update `docs/ARCHITECTURE.md` — add `anchor_sweep.py` entry to the `cli/issues/` directory tree block.
+12. Update `README.md` and `.claude/CLAUDE.md` — add `anchor-sweep` example / listing to the `ll-issues` sections.
+13. Write `scripts/tests/test_issues_anchors.py` — unit tests for `resolve_anchor()` covering function walk-back, class walk-back, markdown section heading lookup, code-fence exclusion, and no-anchor-found fallback.
+14. Write `scripts/tests/test_enh1298_doc_wiring.py` — structural assertions that the primary target files no longer contain `file:line` language patterns after the edit pass.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Step 1 exact targets**: `agents/codebase-analyzer.md` — change the `Important Guidelines` rule (`"Always include file:line references for claims"`) and rewrite all `file.js:N` examples in the `## Output Format` section to anchor style (e.g., `` `handlers/webhook.js` in `handleWebhook()` ``). Also update the `description` YAML frontmatter which says "precise file:line references" and "exact file:line references".
+- **Step 2 exact targets**: `skills/wire-issue/SKILL.md` Phase 4 agent prompt (`"Return analysis with specific file:line references."`), Phase 8a Integration Map templates (`` `path/to/caller.py:42` ``), and Phase 10 output report template. `skills/manage-issue/templates.md` sections: Codebase Analyzer Prompt (line 32), Research Findings Template (lines 57-68), Enhanced Plan Template `[file:line]` slots, Session Continuation Template. `commands/refine-issue.md` Agent 2 and Agent 3 prompts, Gap Detection table "Which file:line contains the bug" row, and Integration Map populate templates.
+- **Step 3 (anchor resolver)**: New package `scripts/little_loops/issues/` needs `__init__.py` + `anchors.py`. For code files: use `ast.parse(source)` and walk nodes to find the last `FunctionDef`/`AsyncFunctionDef`/`ClassDef` whose `node.lineno ≤ target_line`. For markdown files: scan `lines[:target_line][::-1]` for `^#{1,6}\s+` heading. Use `_CODE_FENCE` regex from `text_utils.py` to exclude code-fence spans before scanning.
+- **Step 4 (sweeper)**: Follow `fix_counts()` in `doc_counts.py` — two-phase shape: (1) scan issue files using `_STANDALONE_PATH` pattern from `text_utils.py` to collect `(path, line_number)` matches outside code fences, call resolver, collect `(file_path, span, replacement)` tuples; (2) apply grouped by file with `atomic_write()` from `file_utils.py`. Add `--dry-run` following `fix_dependencies()` in `dependency_mapper/operations.py`. Register as `anchor-sweep` in `main_issues()` dispatch table in `cli/issues/__init__.py`.
+- **Step 5 (ready-issue lint)**: Insert new bullet in `### Code References` block under `### 2. Validate Issue Content`. Add new correction category `[anchor_rewrite]` to the `CORRECTIONS_MADE` list in Phase 5 auto-correction. The existing `_CODE_FENCE` / `_STANDALONE_PATH` machinery from `text_utils.py` drives the detection.
 
 ## API/Interface
 
@@ -171,9 +245,25 @@ def resolve_anchor(file_path: str, line_number: int) -> str:
 
 `enhancement`, `tooling`, `issue-management`, `policy-enforcement`, `captured`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-04-27_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Outcome Risk Factors
+- `skills/ready-issue/SKILL.md` does not exist — the ready-issue implementation lives at `commands/ready-issue.md`; the Integration Map path needs correction before Step 5 can be executed cleanly.
+- Large transitive caller surface — 14 files reference `codebase-analyzer` and 6 FSM loops invoke the pipeline; the verification step (confirming no state parses `file:line` from agent output) spans a broad surface.
+- New Python package with no existing code — the stdlib `ast` walk-back for function resolution has edge cases (nested closures, decorators, conditional defs); plan extra time for this component and validate thoroughly before the sweep.
+- Batch sweep risk — 49 active issue files will be rewritten by an unproven resolver; a `--dry-run` pass is essential before committing the sweep to avoid silent corruption.
+
 ## Session Log
+- `/ll:wire-issue` - 2026-04-27T16:00:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d54eeff-f86d-4b23-8cfc-7b8fbdbb1bdb.jsonl`
+- `/ll:refine-issue` - 2026-04-27T15:51:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5a45a6d-6d80-457a-8641-7851f84d3dca.jsonl`
 - `/ll:format-issue` - 2026-04-27T15:44:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/933853fd-592c-42de-a9cd-023028367dfd.jsonl`
 
+- `/ll:confidence-check` - 2026-04-27T17:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:capture-issue` - 2026-04-27T15:38:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee48ea9f-1e1e-44a3-be08-80264f2f9ca1.jsonl`
 
 ---

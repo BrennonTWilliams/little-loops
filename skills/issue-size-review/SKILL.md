@@ -190,7 +190,21 @@ For each candidate issue:
 
    **Never split by artifact type**: tests and docs for a child's new behavior belong in that child, not in a dedicated tests/docs child. The only exception: a test-only or doc-only issue for *already-shipped* code.
 
-3. Draft child issue structure:
+3. **Scope completeness check** — before drafting child content, enumerate every numbered step and every `###` subsection in the parent's "Proposed Solution" / "Implementation Steps". Map each to exactly one proposed child. If any parent step or subsection is not claimed by any child:
+   - Emit a `⚠ SCOPE GAP` warning naming the uncovered step(s)
+   - Either add another child to cover the gap, or explicitly note the step is being deferred (and explain why it is intentionally out of scope for this decomposition)
+   - **Never proceed to execution with unresolved scope gaps** — missing scope silently drops work
+
+4. **Ordering dependency analysis** — classify the execution pattern of the proposed children:
+   - **Parallel**: children can be worked concurrently with no ordering constraints
+   - **Partially ordered**: some children depend on others, but some parallelism is possible
+   - **Strictly sequential**: every child must complete before the next can start
+
+   Detect sequential ordering by looking for language in the parent such as "run after step N", "must complete before", "blocked by", numbered steps that explicitly build on each other, or shared infrastructure that one child builds and another consumes.
+
+   If the pattern is **strictly sequential** AND the children share infrastructure or have tightly coupled scope, add a recommendation: `Consider keeping as one issue — strictly sequential children with shared scope offer no parallelism benefit and add tracking overhead.` Present this as a reason for the user to reconsider the split, but do not block the proposal.
+
+5. Draft child issue structure:
    ```markdown
    # [TYPE]-[NNN]: [Specific Title]
 
@@ -216,6 +230,8 @@ For each candidate issue:
 If any field is absent (confidence-check was never run on the issue), skip the guard entirely and fall through to normal behavior below.
 
 **Normal auto behavior**: Auto-approve decomposition only for Very Large issues (score ≥ 8) where the decomposition is unambiguous (distinct sub-tasks with clear boundaries). Skip Large issues (score 5-7) as ambiguous — flag them in the output but do not decompose. Emit one status line per issue: `[ID] decomposed: N child issues` or `[ID] skipped: score X (ambiguous)`.
+
+**Scope gap guard (auto and interactive)**: If the scope completeness check (Phase 4, step 3) found any unresolved gaps, do not execute the decomposition regardless of mode. In auto mode emit: `[ID] blocked: decomposition would lose scope — steps not covered: [list]. Review manually.` In interactive mode, present the gaps to the user and require them to either assign the uncovered steps to a child or explicitly mark them as intentionally deferred before approving.
 
 #### Check Mode Behavior (--check)
 
@@ -332,18 +348,23 @@ ISSUE SIZE REVIEW                          [Sprint: <name> (N issues) | Full bac
 ### [ISSUE-ID]: [Title]
 **Score**: X/11
 **Breakdown**: [which criteria scored]
+**Execution pattern**: [Parallel | Partially ordered | Strictly sequential]
+**Scope coverage**: [✓ All parent steps covered | ⚠ Gaps: step N, subsection "X" unassigned]
 
 **Proposed decomposition into N issues:**
 
 1. **[TYPE]-[NNN]: [Child title 1]**
    - Scope: [What this child covers]
+   - Covers: [which parent steps/subsections]
    - Files: [Which files this affects]
 
 2. **[TYPE]-[NNN]: [Child title 2]**
    - Scope: [What this child covers]
+   - Covers: [which parent steps/subsections]
    - Files: [Which files this affects]
 
 **Rationale**: [Why this split makes sense]
+**Note** (if strictly sequential): [parallelism warning if applicable]
 
 [AskUserQuestion prompt]
 
@@ -411,6 +432,8 @@ Uses project configuration from `.ll/ll-config.json`:
 
 - Creating too many tiny issues (cognitive overhead)
 - Splitting tightly-coupled concerns that should stay together
+- **Losing scope when decomposing** — every numbered step and subsection in the parent must be explicitly assigned to a child or marked as intentionally deferred; unassigned scope is silently dropped work
+- **Decomposing strictly sequential children with shared infrastructure** — if all children must run in order anyway and share modules, the tracking overhead outweighs the benefit; recommend keeping as one issue instead
 - Losing context when decomposing (always reference parent)
 - Creating circular dependencies between children
 - Splitting tests or documentation into a dedicated child issue for newly-introduced behavior (they belong with the implementation)
