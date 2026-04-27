@@ -197,6 +197,10 @@ little-loops/
         │   ├── loop/            # ll-loop subcommands
         │   ├── sprint/          # ll-sprint subcommands
         │   └── issues/          # ll-issues subcommands
+        ├── issues/              # Issue utility sub-package (ENH-1300)
+        │   ├── __init__.py
+        │   ├── anchors.py       # resolve_anchor(): language-agnostic backwards scan
+        │   └── anchor_sweep.py  # sweep_issues(): two-phase scan-and-rewrite
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration management
         ├── state.py             # State persistence

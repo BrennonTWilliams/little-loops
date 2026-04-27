@@ -14,6 +14,7 @@ def main_issues() -> int:
     Returns:
         Exit code (0 = success, 1 = error)
     """
+    from little_loops.cli.issues.anchor_sweep import cmd_anchor_sweep
     from little_loops.cli.issues.append_log import cmd_append_log
     from little_loops.cli.issues.check_flag import cmd_check_flag
     from little_loops.cli.issues.check_readiness import cmd_check_readiness
@@ -57,6 +58,7 @@ Sub-commands:
   check-readiness  Exit 0 if an issue meets readiness and outcome thresholds
   check-flag       Exit 0 if a boolean frontmatter field equals 'true'
   skip             Deprioritize an issue by bumping its priority prefix
+  anchor-sweep     Rewrite file:line references in active issue files to anchor form
 
 Examples:
   %(prog)s next-id
@@ -93,6 +95,9 @@ Examples:
   %(prog)s clusters --json
   %(prog)s clusters --include-orphans
   %(prog)s clusters --min-connections 2
+  %(prog)s anchor-sweep --dry-run
+  %(prog)s anchor-sweep --issues-dir .issues
+  %(prog)s asw --dry-run
 """,
     )
 
@@ -454,6 +459,27 @@ Examples:
     )
     add_config_arg(cr)
 
+    asw = subs.add_parser(
+        "anchor-sweep",
+        aliases=["asw"],
+        help="Rewrite file:line references in active issue files to anchor form",
+    )
+    asw.set_defaults(command="anchor-sweep")
+    asw.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help="Print changes without modifying files",
+    )
+    asw.add_argument(
+        "--issues-dir",
+        default=".issues",
+        metavar="DIR",
+        dest="issues_dir",
+        help="Issues base directory (default: .issues)",
+    )
+    add_config_arg(asw)
+
     sk = subs.add_parser(
         "skip",
         help="Deprioritize an issue by bumping its priority prefix",
@@ -515,6 +541,8 @@ Examples:
         return cmd_check_flag(config, args)
     if args.command == "check-readiness":
         return cmd_check_readiness(config, args)
+    if args.command == "anchor-sweep":
+        return cmd_anchor_sweep(config, args)
     if args.command == "skip":
         return cmd_skip(config, args)
     return 1

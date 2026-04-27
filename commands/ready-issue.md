@@ -141,6 +141,7 @@ Read the per-type template `templates/{type}-sections.json` v2.0 (relative to th
 - [ ] Line numbers are accurate (or can be corrected using anchor)
 - [ ] Code snippets match current code
 - [ ] Anchor field present and valid (function/class name exists)
+- [ ] No `file:line` references outside code fences (flag any found; auto-fix: run `ll-issues anchor-sweep --dry-run` to preview anchor replacements)
 
 **Using Stable Anchors for Validation**:
 If line numbers are outdated but an Anchor field exists:
@@ -338,6 +339,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 - `[file_moved]` - File path changed since scan
 - `[content_fix]` - Content accuracy correction (missing sections, wrong info)
 - `[issue_status]` - Related issue status updated
+- `[anchor_rewrite]` - `file:line` reference rewritten to enclosing function/class/section anchor
 
 ## READY_FOR
 - Implementation: Yes/No

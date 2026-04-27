@@ -2988,6 +2988,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
 | `append-log` | Append a session log entry to an issue file |
 | `clusters` | Visualize issue dependency clusters as box diagrams (`--include-orphans`, `--min-connections N`, `--json`) |
+| `anchor-sweep` | Rewrite bare `file:line` references in active issue files to enclosing anchor form (`--dry-run`, `--issues-dir DIR`) |
 
 #### next-issue
 

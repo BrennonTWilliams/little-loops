@@ -11,6 +11,8 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+captured_at: 2026-04-27T00:00:00Z
+completed_at: 2026-04-27T20:54:41Z
 ---
 
 
@@ -443,7 +445,19 @@ _Updated by `/ll:confidence-check` on 2026-04-27 (scores unchanged from prior ru
 - **Batch rewrite risk**: The sweeper will rewrite ~49 active issue files in-place; `--dry-run` is mandatory before production run; a wrong anchor is harder to recover than a stale line number
 - **`scripts/little_loops/issues/` does not exist** — must be created (Step 1) before any imports work; wiring the import in `cli/issues/__init__.py` before `anchors.py`/`anchor_sweep.py` exist will break all 3,504 lines of `test_issues_cli.py` at import time
 
+## Resolution
+
+Implemented as specified. All 5 new files created (`issues/__init__.py`, `issues/anchors.py`, `issues/anchor_sweep.py`, `cli/issues/anchor_sweep.py`, `tests/test_issues_anchors.py`). All 13 files modified. 30 new tests pass; zero pre-existing regressions introduced.
+
+Key decisions:
+- Fixed `pub struct` matching by restructuring the universal class pattern to handle `pub` as a standalone modifier prefix.
+- Used span intersection (not content blanking) for fence exclusion to preserve character positions for in-place replacement.
+- `_FILE_LINE` regex only matches relative paths (starting `[a-zA-Z_]`), so absolute paths are intentionally excluded.
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-27T20:55:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/564c5e37-eac4-477b-965f-3f220acda028.jsonl`
+- `/ll:manage-issue` - 2026-04-27T20:54:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6db6f9a8-f94e-4fa1-8d9a-d6bac325f1f6.jsonl`
+- `/ll:ready-issue` - 2026-04-27T20:37:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6db6f9a8-f94e-4fa1-8d9a-d6bac325f1f6.jsonl`
 - `/ll:confidence-check` - 2026-04-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac825fad-b8ee-45c2-8945-487043d3bba9.jsonl`
 - `/ll:wire-issue` - 2026-04-27T20:14:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ae96759-c3f2-4177-a13a-8f6ee414e468.jsonl`
 - `/ll:refine-issue` - 2026-04-27T19:33:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f03c07e-76a1-42e2-9978-4ffb6684e484.jsonl`

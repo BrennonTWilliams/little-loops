@@ -3502,3 +3502,125 @@ class TestIssuesCLIClusters:
             "No annotation line found containing both BUG-020 and BUG-022 "
             "(skip-level edge BUG-020→BUG-022 must appear as annotation)"
         )
+
+
+class TestIssuesCLIAnchorSweep:
+    """Tests for ll-issues anchor-sweep sub-command."""
+
+    def test_dry_run_no_issues(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """anchor-sweep --dry-run on empty issues dir reports no references found."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        for cat in ("bugs", "features", "enhancements"):
+            (temp_project_dir / ".issues" / cat).mkdir(parents=True, exist_ok=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "anchor-sweep", "--dry-run", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No file:line references" in captured.out
+
+    def test_alias_asw(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """asw alias works identically to anchor-sweep."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        for cat in ("bugs", "features", "enhancements"):
+            (temp_project_dir / ".issues" / cat).mkdir(parents=True, exist_ok=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "asw", "--dry-run", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_sweep_rewrites_file_line_ref(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """anchor-sweep rewrites a file:line ref when an anchor can be resolved."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        for cat in ("features", "enhancements"):
+            (temp_project_dir / ".issues" / cat).mkdir(parents=True, exist_ok=True)
+
+        # Create a source file so resolve_anchor can find the function
+        src_dir = temp_project_dir / "src"
+        src_dir.mkdir()
+        src_file = src_dir / "helper.py"
+        src_file.write_text("def my_func():\n    pass\n")
+
+        # Use relative path (src/helper.py:2) — _FILE_LINE only matches relative paths.
+        # chdir to temp_project_dir so relative path resolves correctly.
+        monkeypatch.chdir(temp_project_dir)
+        issue_content = "# BUG-001: Test\n\nSee src/helper.py:2 for details.\n"
+        issue_file = bugs_dir / "P3-BUG-001-test.md"
+        issue_file.write_text(issue_content)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "anchor-sweep", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        rewritten = issue_file.read_text()
+        assert ":2" not in rewritten
+        assert "my_func" in rewritten
+
+    def test_missing_issues_dir_returns_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """anchor-sweep returns exit code 1 when the issues dir doesn't exist."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "anchor-sweep",
+                "--issues-dir",
+                "nonexistent",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1

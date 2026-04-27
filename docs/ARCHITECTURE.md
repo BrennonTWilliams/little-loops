@@ -205,7 +205,8 @@ little-loops/
         │   │   ├── impact_effort.py # impact-effort subcommand
         │   │   ├── show.py          # show subcommand
         │   │   ├── refine_status.py # refine-status subcommand
-        │   │   └── append_log.py    # append-log subcommand
+        │   │   ├── append_log.py    # append-log subcommand
+        │   │   └── anchor_sweep.py  # anchor-sweep subcommand (CLI wrapper)
         │   ├── loop/
         │   │   ├── __init__.py      # Entry point (main_loop) + argparse
         │   │   ├── _helpers.py      # Shared utilities
@@ -247,6 +248,10 @@ little-loops/
         │   ├── analysis.py      #   Conflict scoring and dependency analysis
         │   ├── formatting.py    #   Report and graph formatting
         │   └── operations.py    #   File mutation operations (apply/fix)
+        ├── issues/              # Issue utility sub-package (ENH-1300)
+        │   ├── __init__.py      #   Package init
+        │   ├── anchors.py       #   resolve_anchor(): language-agnostic backwards scan
+        │   └── anchor_sweep.py  #   sweep_issues(): two-phase scan-and-rewrite
         ├── session_log.py       # Session log linking for issues
         ├── file_utils.py        # Shared file I/O utilities (atomic writes)
         ├── user_messages.py     # User message extraction

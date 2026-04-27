@@ -716,6 +716,35 @@ ll-issues nxs --path                             # Ranked list as file paths
 ll-issues skip FEAT-955                          # Deprioritize to P5
 ll-issues skip BUG-042 --priority P4 --reason "retry after CI fix"
 ll-issues append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
+ll-issues anchor-sweep --dry-run                 # Preview file:line rewrites
+ll-issues anchor-sweep                           # Rewrite file:line refs in active issues
+ll-issues asw --dry-run                          # Alias: asw
+```
+
+---
+
+#### `ll-issues anchor-sweep` / `ll-issues asw`
+
+Scan all active issue files (`bugs/`, `features/`, `enhancements/`) for bare `file:line` references outside code fences and rewrite them to enclosing function/class/section anchors. Uses a language-agnostic regex backwards-scan (no AST) covering Python, TypeScript, JavaScript, Go, Rust, Ruby, Java, C#, and Markdown.
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Print what would change without modifying files |
+| `--issues-dir DIR` | Issues base directory (default: `.issues`) |
+
+**Behavior:**
+- Scans backwards from the cited line number to find the nearest enclosing `def`/`func`/`fn`/`function`/`class`/`struct`/`#` heading.
+- Replaces `file.py:42` with `` `file.py` (near function `foo`) ``.
+- References inside code fences are skipped.
+- References with no resolvable anchor are left unchanged with a warning.
+- Always run `--dry-run` before the first production sweep.
+
+**Examples:**
+```bash
+ll-issues anchor-sweep --dry-run
+ll-issues anchor-sweep
+ll-issues anchor-sweep --issues-dir custom/issues
+ll-issues asw --dry-run
 ```
 
 ---

@@ -464,6 +464,8 @@ ll-issues nxs --path                          # Ranked list as file paths
 ll-issues skip FEAT-001                       # Deprioritize issue to P5 (move out of active queue)
 ll-issues skip FEAT-001 --priority P4         # Deprioritize to specific priority
 ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
+ll-issues anchor-sweep --dry-run              # Preview file:line → anchor rewrites in active issues
+ll-issues anchor-sweep                        # Rewrite file:line references to enclosing anchors
 ```
 
 ### ll-create-extension
