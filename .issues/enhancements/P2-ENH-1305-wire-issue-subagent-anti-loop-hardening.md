@@ -37,7 +37,6 @@ When `/ll:wire-issue --auto` runs Phase 4 on a broad-scope issue, the 3 parallel
 Each Phase 4 subagent should:
 - Treat `"File unchanged since last read"` as a hard stop signal and not re-read that file again
 - Stop and synthesize if a search returns results identical to a prior search
-- Respect a 20-tool-call budget per subagent
 - Track visited file paths and grep patterns, never re-querying them
 
 A `/ll:wire-issue --auto` run on a large issue should complete in under 5 minutes without manual intervention.
@@ -61,18 +60,7 @@ If a search returns results identical to a prior search, do NOT repeat it.
 Stop and synthesize your findings immediately.
 ```
 
-### 2. Add tool-call budget to each subagent prompt
-
-Append to each of the 3 prompts:
-
-```
-Complete your research in no more than 20 tool calls.
-Prioritize breadth over depth — if you've covered the main files, synthesize.
-```
-
-This provides a concrete stopping condition that doesn't depend on the agent recognizing error messages.
-
-### 3. Add visited-file tracking instruction to each subagent prompt
+### 2. Add visited-file tracking instruction to each subagent prompt
 
 Append to each of the 3 prompts:
 
@@ -91,7 +79,7 @@ A wire-issue hang blocks the entire autodev loop. The fix is low-risk (adding in
 
 1. Open `skills/wire-issue/SKILL.md`
 2. Locate Agent 1 prompt block (lines ~129-155), Agent 2 (~159-178), Agent 3 (~182-201)
-3. Append the 3 instruction blocks (anti-loop, tool-call budget, visited-file tracking) to each of the 3 prompts
+3. Append the 2 instruction blocks (anti-loop, visited-file tracking) to each of the 3 prompts
 4. Keep existing prompt content intact — append only, do not replace
 5. Test by running `/ll:wire-issue --auto --dry-run` on a broad-scope issue and verifying subagents complete
 
