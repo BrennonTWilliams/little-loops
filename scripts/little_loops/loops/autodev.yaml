@@ -244,13 +244,13 @@ states:
 
   run_wire:
     # Run /ll:wire-issue to resolve absent files or unwired integration points
-    # identified by the missing_artifacts flag. on_error falls through to
-    # implement_current so a wiring failure is no worse than the previous behavior.
+    # identified by the missing_artifacts flag. Chains to run_refine so that
+    # codebase context is filled in even when wiring alone is insufficient.
     fragment: with_rate_limit_handling
     action: "/ll:wire-issue ${captured.input.output} --auto"
     action_type: slash_command
-    next: enqueue_or_skip
-    on_error: enqueue_or_skip
+    next: run_refine
+    on_error: run_refine
     on_rate_limit_exhausted: done
 
   run_refine:
