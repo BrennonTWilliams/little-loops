@@ -10,6 +10,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 10
+size: Very Large
 ---
 
 # ENH-1298: Convert issue-authoring pipelines from `file:line` to anchor-based references
@@ -259,6 +260,7 @@ _Added by `/ll:confidence-check` on 2026-04-27_
 - Batch sweep risk — 49 active issue files will be rewritten by an unproven resolver; a `--dry-run` pass is essential before committing the sweep to avoid silent corruption.
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-04-27T16:22:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805eb58-0b32-4596-a10d-4137f4b7cce1.jsonl`
 - `/ll:wire-issue` - 2026-04-27T16:00:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d54eeff-f86d-4b23-8cfc-7b8fbdbb1bdb.jsonl`
 - `/ll:refine-issue` - 2026-04-27T15:51:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5a45a6d-6d80-457a-8641-7851f84d3dca.jsonl`
 - `/ll:format-issue` - 2026-04-27T15:44:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/933853fd-592c-42de-a9cd-023028367dfd.jsonl`
@@ -266,6 +268,26 @@ _Added by `/ll:confidence-check` on 2026-04-27_
 - `/ll:confidence-check` - 2026-04-27T17:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:capture-issue` - 2026-04-27T15:38:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee48ea9f-1e1e-44a3-be08-80264f2f9ca1.jsonl`
 
+- `/ll:issue-size-review` - 2026-04-27T17:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- manual review - 2026-04-27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6004b6bd-98cd-4890-a69a-b3c5136d203f.jsonl`
+
 ---
 
-**Open** | Created: 2026-04-27 | Priority: P2
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-04-27
+- **Reason**: Issue too large for a single session; decomposed into focused child issues.
+
+### Decomposed Into
+
+- ENH-1299: Fix `file:line` references in issue-authoring pipeline source files (pure text edits, no code)
+- ENH-1300: Build anchor resolver module and backlog sweeper (`ll-issues anchor-sweep`)
+
+### Note
+
+Step 3 of the original proposal (extending `ready-issue` with an anchor lint check) was not captured in either child at decomposition time. That scope should be tracked as a follow-on issue if the lint gate is still desired after ENH-1299 and ENH-1300 land.
+
+---
+
+**Decomposed** | Created: 2026-04-27 | Priority: P2
