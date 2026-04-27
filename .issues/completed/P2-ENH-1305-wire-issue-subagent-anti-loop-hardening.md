@@ -5,6 +5,7 @@ priority: P2
 title: "wire-issue: harden Phase 4 subagent prompts against infinite loops"
 status: backlog
 captured_at: "2026-04-27T16:55:56Z"
+completed_at: "2026-04-27T19:02:43Z"
 discovered_date: "2026-04-27"
 discovered_by: capture-issue
 confidence_score: 100
@@ -122,11 +123,22 @@ A wire-issue hang blocks the entire autodev loop. The fix is low-risk (adding in
 
 `enhancement`, `automation`, `reliability`, `wire-issue`
 
+## Resolution
+
+Appended two anti-loop instruction blocks to each of the 3 Phase 4 subagent prompts in `skills/wire-issue/SKILL.md`:
+
+1. **Anti-loop stop condition**: instructs agents to treat `"File unchanged since last read"` as a hard stop, and to stop and synthesize if a search returns identical results to a prior search.
+2. **Visited-file tracking**: instructs agents to track queried file paths and grep patterns, never re-querying the same path or pattern.
+
+Changes are purely additive — existing prompt content is intact.
+
 ## Status
 
-**Open** | Created: 2026-04-27 | Priority: P2
+**Completed** | Created: 2026-04-27 | Completed: 2026-04-27 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-04-27T19:02:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-04-27T19:01:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/108364d6-c0f4-4ae4-bc32-44adeae9df3d.jsonl`
 - `/ll:format-issue` - 2026-04-27T16:59:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ac2537a-c3f4-41a5-bfff-ceabdb529f5c.jsonl`
 
 - `/ll:capture-issue` - 2026-04-27T16:55:56Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

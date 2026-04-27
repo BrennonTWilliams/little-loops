@@ -152,6 +152,14 @@ Return file paths grouped by:
 - Config files
 
 Exclude files already in the "already known" lists.
+
+IMPORTANT: If you see "File unchanged since last read" when reading a file,
+do NOT re-read it — use the content from your earlier read.
+If a search returns results identical to a prior search, do NOT repeat it.
+Stop and synthesize your findings immediately.
+
+Track which files and search patterns you have already queried.
+Do NOT re-query the same file path or the same grep pattern a second time.
 ```
 
 ### Agent 2: Side-Effect Surface Tracer (codebase-analyzer)
@@ -175,6 +183,14 @@ Analyze:
 
 Return analysis with specific anchor-based references (function/class names) for each coupling found.
 Exclude files already known from the issue.
+
+IMPORTANT: If you see "File unchanged since last read" when reading a file,
+do NOT re-read it — use the content from your earlier read.
+If a search returns results identical to a prior search, do NOT repeat it.
+Stop and synthesize your findings immediately.
+
+Track which files and search patterns you have already queried.
+Do NOT re-query the same file path or the same grep pattern a second time.
 ```
 
 ### Agent 3: Test Gap Finder (codebase-pattern-finder)
@@ -198,6 +214,14 @@ Find:
 
 Return examples with anchor-based references (function/class names).
 Distinguish between: existing tests to update vs. new tests to write vs. tests that may break.
+
+IMPORTANT: If you see "File unchanged since last read" when reading a file,
+do NOT re-read it — use the content from your earlier read.
+If a search returns results identical to a prior search, do NOT repeat it.
+Stop and synthesize your findings immediately.
+
+Track which files and search patterns you have already queried.
+Do NOT re-query the same file path or the same grep pattern a second time.
 ```
 
 #### Wait for ALL 3 agents to complete before proceeding.
