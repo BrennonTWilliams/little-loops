@@ -3003,6 +3003,33 @@ class TestIssuesSkip:
 
 
 @pytest.fixture
+def issues_dir_fan_out(temp_project_dir: Path) -> Path:
+    """Issue directory with a single source blocking two targets (fan-out).
+
+    BUG-020 blocks both BUG-021 and BUG-022. The topo order is
+    [BUG-020, BUG-021, BUG-022], so the BUG-020→BUG-022 edge is
+    non-consecutive (skip-level) and must appear as an annotation below the grid.
+    """
+    issues_base = temp_project_dir / ".issues"
+    bugs_dir = issues_base / "bugs"
+    bugs_dir.mkdir(parents=True)
+    (issues_base / "completed").mkdir(parents=True)
+    (issues_base / "deferred").mkdir(parents=True)
+
+    (bugs_dir / "P0-BUG-020-root.md").write_text(
+        "# BUG-020: Root\n\n## Summary\nBlocks both children.\n\n## Blocks\n- BUG-021\n- BUG-022\n"
+    )
+    (bugs_dir / "P1-BUG-021-child-a.md").write_text(
+        "# BUG-021: Child A\n\n## Summary\nFirst child.\n\n## Blocked By\n- BUG-020\n"
+    )
+    (bugs_dir / "P2-BUG-022-child-b.md").write_text(
+        "# BUG-022: Child B\n\n## Summary\nSecond child.\n\n## Blocked By\n- BUG-020\n"
+    )
+
+    return issues_base
+
+
+@pytest.fixture
 def issues_dir_multi_root(temp_project_dir: Path) -> Path:
     """Issue directory with two independent root nodes in the same cluster.
 
@@ -3435,4 +3462,43 @@ class TestIssuesCLIClusters:
         gap_lines = lines[lo + 1 : hi]
         assert "▼" not in " ".join(gap_lines), (
             "False arrow drawn between independent roots BUG-010 and BUG-011"
+        )
+
+    def test_clusters_renders_skip_level_edges_for_fan_out(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Skip-level edges appear as annotations below the grid for fan-out clusters.
+
+        BUG-020 blocks both BUG-021 and BUG-022. The consecutive grid can only show
+        BUG-020→BUG-021; the BUG-020→BUG-022 edge is non-consecutive and must appear
+        as a skip-edge annotation line below the diagram.
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        output = captured.out
+
+        assert "BUG-020" in output
+        assert "BUG-021" in output
+        assert "BUG-022" in output
+        # The skip-edge annotation line must show both endpoints and the relation
+        assert "→" in output, "Skip-edge annotation arrow must be present"
+        lines = output.splitlines()
+        annotation_lines = [ln for ln in lines if "BUG-020" in ln and "BUG-022" in ln]
+        assert annotation_lines, (
+            "No annotation line found containing both BUG-020 and BUG-022 "
+            "(skip-level edge BUG-020→BUG-022 must appear as annotation)"
         )

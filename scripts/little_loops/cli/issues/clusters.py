@@ -165,6 +165,19 @@ def _render_cluster_diagram(
     while lines and not lines[-1].strip():
         lines.pop()
 
+    # Append annotations for skip-level edges (non-consecutive in topo order).
+    pos = {id_: i for i, id_ in enumerate(ordered_ids)}
+    skip_edges = [
+        (f, t, r)
+        for (f, t), r in sorted(edge_map.items())
+        if pos[t] - pos[f] > 1
+    ]
+    if skip_edges:
+        lines.append("")
+        for f, t, r in skip_edges:
+            color = EDGE_COLOR.get(r, "37")
+            lines.append(f"  {f} {colorize('→', color)} {t}  ({r})")
+
     return lines
 
 

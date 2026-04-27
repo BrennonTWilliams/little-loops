@@ -817,7 +817,7 @@ def from_issues(
 Build graph from list of issues.
 
 **Parameters:**
-- `issues` - List of `IssueInfo` objects with `blocked_by` fields
+- `issues` - List of `IssueInfo` objects; both `blocked_by` and `blocks` fields are consumed to build edges
 - `completed_ids` - Set of completed issue IDs (treated as resolved)
 - `all_known_ids` - Set of all issue IDs that exist on disk; references to these are silently skipped (not warned) even if not in the graph
 

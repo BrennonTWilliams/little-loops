@@ -107,6 +107,24 @@ class DependencyGraph:
                 graph.blocked_by[issue.issue_id].add(blocker_id)
                 graph.blocks[blocker_id].add(issue.issue_id)
 
+        # Second pass: honour one-sided blocks: declarations.
+        # If A declares blocks: [B] without a matching blocked_by: [A] on B,
+        # the A→B edge was never added above; add it now (dedup guard prevents
+        # double-counting symmetric declarations).
+        for issue in issues:
+            for blocked_id in issue.blocks:
+                if blocked_id in completed:
+                    continue
+                if blocked_id not in all_issue_ids:
+                    if all_known_ids is None or blocked_id not in all_known_ids:
+                        logger.warning(
+                            f"Issue {issue.issue_id} blocks unknown issue {blocked_id}"
+                        )
+                    continue
+                if issue.issue_id not in graph.blocked_by.get(blocked_id, set()):
+                    graph.blocked_by[blocked_id].add(issue.issue_id)
+                    graph.blocks[issue.issue_id].add(blocked_id)
+
         return graph
 
     def get_ready_issues(self, completed: set[str] | None = None) -> list[IssueInfo]:

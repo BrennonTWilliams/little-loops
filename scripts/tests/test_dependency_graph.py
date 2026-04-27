@@ -143,6 +143,40 @@ class TestDependencyGraphConstruction:
         # FEAT-001 should not block FEAT-002 since it's completed
         assert graph.blocked_by["FEAT-002"] == set()
 
+    def test_one_sided_blocks_declaration(self) -> None:
+        """One-sided blocks: on A produces A→B edge without blocked_by: on B."""
+        issue_a = make_issue("BUG-001", blocks=["BUG-002"])
+        issue_b = make_issue("BUG-002")  # no blocked_by declared
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        assert "BUG-002" in graph.blocks["BUG-001"], (
+            "BUG-001 should block BUG-002 via one-sided blocks: declaration"
+        )
+        assert "BUG-001" in graph.blocked_by["BUG-002"], (
+            "BUG-002 should be marked as blocked by BUG-001"
+        )
+
+    def test_symmetric_blocks_declaration_no_duplicate(self) -> None:
+        """Symmetric blocks:/blocked_by: declarations produce exactly one edge."""
+        issue_a = make_issue("BUG-001", blocks=["BUG-002"])
+        issue_b = make_issue("BUG-002", blocked_by=["BUG-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        assert graph.blocks["BUG-001"] == {"BUG-002"}
+        assert graph.blocked_by["BUG-002"] == {"BUG-001"}
+
+    def test_one_sided_blocks_completed_target_skipped(self) -> None:
+        """one-sided blocks: targeting a completed issue is ignored."""
+        issue_a = make_issue("BUG-001", blocks=["BUG-002"])
+        issue_b = make_issue("BUG-002")
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b], completed_ids={"BUG-002"})
+
+        # BUG-002 is completed so the edge should not be added
+        assert "BUG-002" not in graph.blocks.get("BUG-001", set())
+
 
 class TestGetReadyIssues:
     """Tests for get_ready_issues()."""
