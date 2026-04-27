@@ -43,7 +43,9 @@ def cmd_anchor_sweep(config: BRConfig, args: argparse.Namespace) -> int:
         for change in result.changes:
             print(f"{mode}{change}")
         if dry_run:
-            print(f"\n{mode}Would modify {len(result.changes)} file(s). Re-run without --dry-run to apply.")
+            print(
+                f"\n{mode}Would modify {len(result.changes)} file(s). Re-run without --dry-run to apply."
+            )
         else:
             print(f"\nModified {len(result.modified_files)} file(s).")
     else:

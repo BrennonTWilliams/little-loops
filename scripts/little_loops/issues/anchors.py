@@ -17,9 +17,7 @@ _ANCHOR_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^[ \t]*(?:async\s+)?def\s+(\w+)\s*\("), "function"),
     # JS / TS — function declaration or named function expression
     (
-        re.compile(
-            r"^[ \t]*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s+(\w+)\s*\("
-        ),
+        re.compile(r"^[ \t]*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s+(\w+)\s*\("),
         "function",
     ),
     # JS / TS — const/let/var arrow or assigned function
@@ -33,9 +31,7 @@ _ANCHOR_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^func\s+(?:\([^)]+\)\s+)?(\w+)\s*[(\[]"), "function"),
     # Rust — fn (optionally pub, async, unsafe)
     (
-        re.compile(
-            r"^[ \t]*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+(\w+)\s*[<(]"
-        ),
+        re.compile(r"^[ \t]*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+(\w+)\s*[<(]"),
         "function",
     ),
     # Java / C# heuristic — access-modifier(s) + return-type + name(

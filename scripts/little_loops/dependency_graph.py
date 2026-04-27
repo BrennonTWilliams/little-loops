@@ -117,9 +117,7 @@ class DependencyGraph:
                     continue
                 if blocked_id not in all_issue_ids:
                     if all_known_ids is None or blocked_id not in all_known_ids:
-                        logger.warning(
-                            f"Issue {issue.issue_id} blocks unknown issue {blocked_id}"
-                        )
+                        logger.warning(f"Issue {issue.issue_id} blocks unknown issue {blocked_id}")
                     continue
                 if issue.issue_id not in graph.blocked_by.get(blocked_id, set()):
                     graph.blocked_by[blocked_id].add(issue.issue_id)

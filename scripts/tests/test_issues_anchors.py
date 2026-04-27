@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from little_loops.issues.anchors import resolve_anchor
 from little_loops.issues.anchor_sweep import _FILE_LINE
+from little_loops.issues.anchors import resolve_anchor
 
 
 class TestResolveAnchorPython:

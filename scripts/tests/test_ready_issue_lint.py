@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-
 CLEAN_ISSUE = """\
 ---
 title: Clean issue
@@ -57,9 +54,7 @@ class TestReadyIssueLintRule:
         def _in_fence(start: int, end: int) -> bool:
             return any(fs <= start and end <= fe for fs, fe in fence_spans)
 
-        matches = [
-            m for m in _FILE_LINE.finditer(content) if not _in_fence(m.start(), m.end())
-        ]
+        matches = [m for m in _FILE_LINE.finditer(content) if not _in_fence(m.start(), m.end())]
         assert matches == [], f"Expected no file:line matches, got: {matches}"
 
     def test_contaminated_issue_flagged(self) -> None:
@@ -72,9 +67,7 @@ class TestReadyIssueLintRule:
         def _in_fence(start: int, end: int) -> bool:
             return any(fs <= start and end <= fe for fs, fe in fence_spans)
 
-        matches = [
-            m for m in _FILE_LINE.finditer(content) if not _in_fence(m.start(), m.end())
-        ]
+        matches = [m for m in _FILE_LINE.finditer(content) if not _in_fence(m.start(), m.end())]
         paths = [m.group(1) for m in matches]
         assert "scripts/foo.py" in paths
         assert "bar.ts" in paths
@@ -89,7 +82,5 @@ class TestReadyIssueLintRule:
         def _in_fence(start: int, end: int) -> bool:
             return any(fs <= start and end <= fe for fs, fe in fence_spans)
 
-        matches = [
-            m for m in _FILE_LINE.finditer(content) if not _in_fence(m.start(), m.end())
-        ]
+        matches = [m for m in _FILE_LINE.finditer(content) if not _in_fence(m.start(), m.end())]
         assert matches == []
