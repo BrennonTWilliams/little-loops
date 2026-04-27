@@ -125,38 +125,10 @@ states:
     # genuine confidence pass. Records passing issues in autodev-passed.txt
     # and routes to implement_current to interleave implementation.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-      from pathlib import Path
-
-      issue_id = '${captured.input.output}'
-
-      p = Path('.ll/ll-config.json')
-      cg = {}
-      if p.exists():
-          try:
-              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-          except Exception:
-              pass
-      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
-      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          sys.exit(1)
-
-      passed = (int(d.get('confidence') or 0) >= readiness
-                and int(d.get('outcome') or 0) >= outcome)
-      if passed:
-          with open('.loops/tmp/autodev-passed.txt', 'a') as f:
-              f.write(issue_id + '\n')
-      sys.exit(0 if passed else 1)
-      PYEOF
+      ll-issues check-readiness ${captured.input.output} \
+        --readiness ${context.readiness_threshold} \
+        --outcome ${context.outcome_threshold} \
+        && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
     fragment: shell_exit
     on_yes: decide_current
     on_no: triage_outcome_failure
@@ -166,23 +138,7 @@ states:
     # Check if the issue requires a decision before implementation. Reads
     # decision_needed from ll-issues show --json; if true, runs /ll:decide-issue
     # to resolve competing options before handing off to ll-auto.
-    action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-
-      issue_id = '${captured.input.output}'
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          sys.exit(1)
-
-      sys.exit(0 if d.get('decision_needed') == 'true' else 1)
-      PYEOF
+    action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
     on_yes: run_decide
     on_no: implement_current
@@ -205,38 +161,10 @@ states:
     # check_passed logic; routes to dequeue_next on failure to avoid
     # re-triggering decide on the same issue in the same iteration.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-      from pathlib import Path
-
-      issue_id = '${captured.input.output}'
-
-      p = Path('.ll/ll-config.json')
-      cg = {}
-      if p.exists():
-          try:
-              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-          except Exception:
-              pass
-      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
-      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          sys.exit(1)
-
-      passed = (int(d.get('confidence') or 0) >= readiness
-                and int(d.get('outcome') or 0) >= outcome)
-      if passed:
-          with open('.loops/tmp/autodev-passed.txt', 'a') as f:
-              f.write(issue_id + '\n')
-      sys.exit(0 if passed else 1)
-      PYEOF
+      ll-issues check-readiness ${captured.input.output} \
+        --readiness ${context.readiness_threshold} \
+        --outcome ${context.outcome_threshold} \
+        && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
     fragment: shell_exit
     on_yes: implement_current
     on_no: dequeue_next
@@ -386,38 +314,10 @@ states:
     # max-iterations hit while the issue was already ready). Mirrors
     # check_passed logic exactly; on pass, interleave implementation.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-      from pathlib import Path
-
-      issue_id = '${captured.input.output}'
-
-      p = Path('.ll/ll-config.json')
-      cg = {}
-      if p.exists():
-          try:
-              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-          except Exception:
-              pass
-      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
-      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          sys.exit(1)
-
-      passed = (int(d.get('confidence') or 0) >= readiness
-                and int(d.get('outcome') or 0) >= outcome)
-      if passed:
-          with open('.loops/tmp/autodev-passed.txt', 'a') as f:
-              f.write(issue_id + '\n')
-      sys.exit(0 if passed else 1)
-      PYEOF
+      ll-issues check-readiness ${captured.input.output} \
+        --readiness ${context.readiness_threshold} \
+        --outcome ${context.outcome_threshold} \
+        && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
     fragment: shell_exit
     on_yes: decide_current
     on_no: check_decision_before_size_review
@@ -427,23 +327,7 @@ states:
     # Gate before size-review: if decision_needed=true, route to run_decide so
     # an unresolved design decision is resolved before decomposition is attempted.
     # Mirrors decide_current logic; on_no falls through to run_size_review.
-    action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-
-      issue_id = '${captured.input.output}'
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          sys.exit(1)
-
-      sys.exit(0 if d.get('decision_needed') == 'true' else 1)
-      PYEOF
+    action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
     on_yes: run_decide
     on_no: run_size_review
@@ -455,24 +339,10 @@ states:
     # for absent files/wiring gaps before falling through to size-review.
     # on_error falls back to detect_children safely.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-
-      issue_id = '${captured.input.output}'
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          sys.exit(1)
-
-      ambiguity_low = int(d.get('score_ambiguity') or 25) <= 10
-      decision_needed = d.get('decision_needed') == 'true'
-      sys.exit(0 if (ambiguity_low or decision_needed) else 1)
-      PYEOF
+      ll-issues show ${captured.input.output} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      sys.exit(0 if (int(d.get('score_ambiguity') or 25) <= 10 or d.get('decision_needed') == 'true') else 1)"
     fragment: shell_exit
     on_yes: run_decide
     on_no: check_missing_artifacts
@@ -483,23 +353,7 @@ states:
     # absent files and unwired components are resolved before decomposition is
     # attempted. Mirrors check_decision_before_size_review logic; on_no falls
     # through to detect_children (size-review path).
-    action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-
-      issue_id = '${captured.input.output}'
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          sys.exit(1)
-
-      sys.exit(0 if d.get('missing_artifacts') == 'true' else 1)
-      PYEOF
+    action: "ll-issues check-flag ${captured.input.output} missing_artifacts"
     fragment: shell_exit
     on_yes: run_wire
     on_no: detect_children
@@ -578,43 +432,15 @@ states:
     # skip. Mirrors recheck_scores exactly; on pass routes to implement_current
     # so ready leaf issues are not silently dropped.
     action: |
-      python3 << 'PYEOF'
-      import json, sys, subprocess
-      from pathlib import Path
-
-      issue_id = '${captured.input.output}'
-
-      p = Path('.ll/ll-config.json')
-      cg = {}
-      if p.exists():
-          try:
-              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-          except Exception:
-              pass
-      readiness = cg.get('readiness_threshold', ${context.readiness_threshold})
-      outcome = cg.get('outcome_threshold', ${context.outcome_threshold})
-
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      try:
-          d = json.loads(r.stdout)
-      except Exception:
-          Path('.loops/tmp/autodev-inflight').unlink(missing_ok=True)
-          sys.exit(1)
-
-      passed = (int(d.get('confidence') or 0) >= readiness
-                and int(d.get('outcome') or 0) >= outcome)
-      if passed:
-          with open('.loops/tmp/autodev-passed.txt', 'a') as f:
-              f.write(issue_id + '\n')
-      else:
-          with open('.loops/tmp/autodev-skipped.txt', 'a') as f:
-              f.write(issue_id + '\n')
-          Path('.loops/tmp/autodev-inflight').unlink(missing_ok=True)
-      sys.exit(0 if passed else 1)
-      PYEOF
+      if ll-issues check-readiness ${captured.input.output} \
+          --readiness ${context.readiness_threshold} \
+          --outcome ${context.outcome_threshold}; then
+        echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
+      else
+        echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
+        rm -f .loops/tmp/autodev-inflight
+        exit 1
+      fi
     fragment: shell_exit
     on_yes: decide_current
     on_no: dequeue_next

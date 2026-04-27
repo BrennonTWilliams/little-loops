@@ -15,6 +15,8 @@ def main_issues() -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.append_log import cmd_append_log
+    from little_loops.cli.issues.check_flag import cmd_check_flag
+    from little_loops.cli.issues.check_readiness import cmd_check_readiness
     from little_loops.cli.issues.clusters import cmd_clusters
     from little_loops.cli.issues.count_cmd import cmd_count
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
@@ -52,7 +54,9 @@ Sub-commands:
   next-issue     Print the issue ID ranked highest by outcome confidence and readiness
   next-issues    Print all active issues in ranked order (alias: nxs)
   clusters       Visualize issue dependency clusters as box diagrams
-  skip           Deprioritize an issue by bumping its priority prefix
+  check-readiness  Exit 0 if an issue meets readiness and outcome thresholds
+  check-flag       Exit 0 if a boolean frontmatter field equals 'true'
+  skip             Deprioritize an issue by bumping its priority prefix
 
 Examples:
   %(prog)s next-id
@@ -417,6 +421,39 @@ Examples:
     nxs.add_argument("--path", action="store_true", help="Output one file path per line")
     add_config_arg(nxs)
 
+    cf = subs.add_parser(
+        "check-flag",
+        aliases=["cf"],
+        help="Exit 0 if a boolean frontmatter field equals 'true'",
+    )
+    cf.set_defaults(command="check-flag")
+    cf.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+    cf.add_argument("field", help="Frontmatter field name (e.g., decision_needed)")
+    add_config_arg(cf)
+
+    cr = subs.add_parser(
+        "check-readiness",
+        aliases=["cr"],
+        help="Exit 0 if an issue meets readiness and outcome thresholds",
+    )
+    cr.set_defaults(command="check-readiness")
+    cr.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+    cr.add_argument(
+        "--readiness",
+        type=int,
+        default=90,
+        metavar="N",
+        help="Fallback readiness threshold when not set in ll-config.json (default: 90)",
+    )
+    cr.add_argument(
+        "--outcome",
+        type=int,
+        default=75,
+        metavar="N",
+        help="Fallback outcome threshold when not set in ll-config.json (default: 75)",
+    )
+    add_config_arg(cr)
+
     sk = subs.add_parser(
         "skip",
         help="Deprioritize an issue by bumping its priority prefix",
@@ -474,6 +511,10 @@ Examples:
         return cmd_next_issue(config, args)
     if args.command == "next-issues":
         return cmd_next_issues(config, args)
+    if args.command == "check-flag":
+        return cmd_check_flag(config, args)
+    if args.command == "check-readiness":
+        return cmd_check_readiness(config, args)
     if args.command == "skip":
         return cmd_skip(config, args)
     return 1
