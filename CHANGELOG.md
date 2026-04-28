@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.92.0] - 2026-04-27
+
+### Added
+
+- **Anchor resolver module and `ll-issues anchor-sweep`** — New subcommand that builds an anchor map from source files, sweeps all issue docs for stale `file:line` references, and rewrites them to anchor-based equivalents with regression lint integration. (ENH-1300)
+- feat(loops): add description fields to built-in loop definitions (e5e54b04)
+
+### Changed
+
+- **Convert issue-authoring pipelines from `file:line` to anchor-based references** — Updated `refine-issue`, `wire-issue`, and related pipeline commands to use anchor-based references throughout. (ENH-1298)
+- **Fix `file:line` references in issue-authoring pipeline source files** — Migrated all stale `file:line` refs in issue-authoring pipeline source files to anchors. (ENH-1299)
+- **Fix `file:line` references in agent source files** — Replaced stale `file:line` references in agent definitions with anchor-based equivalents. (ENH-1302)
+- **Fix `file:line` references in skill source files** — Replaced stale `file:line` references in skill source files with anchor-based equivalents. (ENH-1303)
+- **Fix `file:line` references in `commands/refine-issue.md` and add verification test** — Replaced stale refs and added a verification test. (ENH-1304)
+- **Improve `issue-size-review` with scope completeness and ordering checks** — Added scope gap guard and ordering analysis to the skill. (ENH-1301)
+- **Harden `wire-issue` Phase 4 subagent prompts against infinite loops** — Added safeguards to prevent runaway subagent execution during Phase 4 wiring. (ENH-1305)
+- **Enforce `slash_command` action_type for skill invocations in loops** — Loop YAML now uses `slash_command` action type consistently for all skill invocations. (ENH-1295)
+- docs(.claude): update skill count and document ll-action CLI tool (7ac4149e)
+- docs(ll-issues): document check-flag, check-readiness, and loop description field (98ed0148)
+
+### Fixed
+
+- **`ll-issues clusters` drops skip-level edges and ignores one-sided `blocks:` declarations** — Fixed dependency graph rendering to correctly render skip-level edges and honour one-sided `blocks:` declarations. (BUG-1297)
+- **`autodev run_decide` bypasses score gate when reached from score-failing paths** — Added `recheck_after_decide` state to guard implementation behind the score gate. (BUG-1296)
+
 ## [1.91.0] - 2026-04-26
 
 ### Added
@@ -120,6 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
 - **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
 
+[1.92.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.91.0...v1.92.0
 [1.91.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.90.0...v1.91.0
 [1.90.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.89.0...v1.90.0
 [1.89.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.88.0...v1.89.0
