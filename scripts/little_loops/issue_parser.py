@@ -541,11 +541,17 @@ class IssueParser:
                 issue_id = f"{match.group(1)}-{match.group(2)}"
                 return category, issue_id
 
-        # Fall back to inferring from directory
+        # Fall back to inferring category from directory.
         parent_name = issue_path.parent.name
         for category_name, category_config in self.config.issues.categories.items():
             if parent_name == category_config.dir:
-                # Generate ID from filename
+                # If the filename uses the standard P[0-5]-NNN-... shape but
+                # omits the type token, capture the number directly and pair
+                # it with the directory-derived prefix. Without this, generic
+                # number scanning would pick up the priority digit instead.
+                priority_match = re.match(r"^P\d+-(\d+)(?:[-.]|$)", filename)
+                if priority_match:
+                    return category_name, f"{category_config.prefix}-{priority_match.group(1)}"
                 issue_id = self._generate_id_from_filename(filename, category_config.prefix)
                 return category_name, issue_id
 
@@ -562,8 +568,10 @@ class IssueParser:
         Returns:
             Generated issue ID
         """
-        # Try to extract a number from the filename
-        numbers = re.findall(r"\d+", filename)
+        # Strip a leading priority token (e.g. "P2-") so it does not get
+        # picked up as the issue number by the generic digit scan below.
+        scan_target = re.sub(r"^P\d+-", "", filename)
+        numbers = re.findall(r"\d+", scan_target)
         if numbers:
             return f"{prefix}-{numbers[0]}"
         # Use next sequential number instead of hash-based fallback

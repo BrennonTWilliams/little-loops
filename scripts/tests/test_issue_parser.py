@@ -497,6 +497,64 @@ class TestIssueParser:
         assert info.issue_id == "BUG-011"
         assert info.issue_type == "bugs"
 
+    def test_parse_file_priority_prefix_without_type_token(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Filenames like P2-9096-foo.md (no type token) must yield BUG-9096, not BUG-2."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P2-9096-eval-specfile-gold-animation-bounce.md"
+        issue_file.write_text("# Eval failure\n\nDetails.")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.priority == "P2"
+        assert info.issue_id == "BUG-9096"
+        assert info.issue_type == "bugs"
+
+    def test_parse_file_priority_prefix_features_dir(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Priority-prefixed feature filenames pair with the directory-derived prefix."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P3-4242-add-thing.md"
+        issue_file.write_text("# Add thing\n")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.issue_id == "FEAT-4242"
+        assert info.issue_type == "features"
+
+    def test_generate_id_strips_priority_prefix(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """_generate_id_from_filename must skip the leading priority token when scanning."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        parser = IssueParser(config)
+
+        # P2-9096-... must yield BUG-9096 (was BUG-2 before the fix).
+        assert parser._generate_id_from_filename(
+            "P2-9096-eval-specfile-gold-animation-bounce.md", "BUG"
+        ) == "BUG-9096"
+        # No priority token: first number still wins.
+        assert parser._generate_id_from_filename(
+            "9096-eval-specfile-gold.md", "BUG"
+        ) == "BUG-9096"
+
     def test_parse_discovered_by_from_frontmatter(
         self,
         temp_project_dir: Path,
