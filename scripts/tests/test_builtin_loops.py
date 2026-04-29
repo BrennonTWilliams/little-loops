@@ -1030,6 +1030,7 @@ class TestAutodevLoop:
             "init",
             "dequeue_next",
             "refine_current",
+            "check_decision_after_refine",
             "check_passed",
             "detect_children",
             "enqueue_children",
@@ -1146,10 +1147,32 @@ class TestAutodevLoop:
         state = data["states"].get("implement_current", {})
         assert state.get("on_error") == "done"
 
-    def test_check_passed_on_yes_routes_to_decide_current(self, data: dict) -> None:
-        """On threshold pass, check decision_needed before implementation."""
+    def test_copy_broke_down_routes_to_check_decision_after_refine(self, data: dict) -> None:
+        """copy_broke_down must route to check_decision_after_refine so decision_needed is
+        checked immediately after confidence-check (via sub-loop) completes."""
+        state = data["states"].get("copy_broke_down", {})
+        assert state.get("next") == "check_decision_after_refine", (
+            f"copy_broke_down.next should be 'check_decision_after_refine', got {state.get('next')!r}"
+        )
+
+    def test_check_decision_after_refine_routes_correctly(self, data: dict) -> None:
+        """check_decision_after_refine must route to run_decide (on_yes) and check_passed (on_no/on_error)."""
+        state = data["states"].get("check_decision_after_refine", {})
+        assert state.get("on_yes") == "run_decide", (
+            f"check_decision_after_refine.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_passed", (
+            f"check_decision_after_refine.on_no should be 'check_passed', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_passed", (
+            f"check_decision_after_refine.on_error should be 'check_passed', got {state.get('on_error')!r}"
+        )
+
+    def test_check_passed_on_yes_routes_to_implement_current(self, data: dict) -> None:
+        """On threshold pass, proceed directly to implementation (decision_needed already handled
+        by check_decision_after_refine before scores are evaluated)."""
         state = data["states"].get("check_passed", {})
-        assert state.get("on_yes") == "decide_current"
+        assert state.get("on_yes") == "implement_current"
 
     def test_check_passed_on_no_routes_to_triage_outcome_failure(self, data: dict) -> None:
         """On threshold fail, triage outcome before routing to size-review or decide."""

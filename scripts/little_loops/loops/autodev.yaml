@@ -115,7 +115,17 @@ states:
         printf '0' > .loops/tmp/autodev-broke-down
       fi
     action_type: shell
-    next: check_passed
+    next: check_decision_after_refine
+    on_error: check_decision_after_refine
+
+  check_decision_after_refine:
+    # Check decision_needed immediately after confidence-check (via sub-loop)
+    # completes. Runs /ll:decide-issue before score thresholds are evaluated,
+    # so an unresolved design decision is resolved on the direct post-refine path.
+    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    fragment: shell_exit
+    on_yes: run_decide
+    on_no: check_passed
     on_error: check_passed
 
   check_passed:
@@ -130,7 +140,7 @@ states:
         --outcome ${context.outcome_threshold} \
         && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
     fragment: shell_exit
-    on_yes: decide_current
+    on_yes: implement_current
     on_no: triage_outcome_failure
     on_error: detect_children
 
