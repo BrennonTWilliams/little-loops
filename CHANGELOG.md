@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.92.1] - 2026-04-29
+
+### Fixed
+
+- **`issue-parser` collapses issue ID to priority digit when type token is omitted** — Preserve the issue number when the type token is missing from the filename. (BUG-1306)
+
+### Changed
+
+- Refactor autodev FSM loop to run `/ll:decide-issue` after `/ll:confidence-check` when `decision_needed` is true (c5fee57c)
+
 ## [1.92.0] - 2026-04-27
 
 ### Added
@@ -145,6 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **autodev Skips Implementation After Size Review Decline** — `recheck_after_size_review` state added to re-evaluate leaf-sized issues that were already ready, preventing autodev from silently skipping implementation (BUG-1230)
 - **autodev Drops Breakdown Result on Timeout** — Pending shell state is now flushed on timeout and in-flight autodev work is tracked, preventing breakdown result loss between `refine_current` and `copy_broke_down` (BUG-1226)
 
+[1.92.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.92.0...v1.92.1
 [1.92.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.91.0...v1.92.0
 [1.91.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.90.0...v1.91.0
 [1.90.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.89.0...v1.90.0
