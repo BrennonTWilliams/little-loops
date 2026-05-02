@@ -423,6 +423,7 @@ Show loop details and FSM structure. The header line displays active [per-loop c
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--json` | `-j` | Output FSM config as JSON |
+| `--resolved` | | Expand sub-loop states inline under `_subloop` key (requires `--json`) |
 
 #### `ll-loop fragments <lib>`
 
@@ -460,6 +461,7 @@ ll-loop history fix-types <run_id>    # Inspect a specific archived run
 ll-loop install fix-types             # Install built-in loop
 ll-loop show fix-types                # Show loop details
 ll-loop show fix-types --json         # FSM config as JSON
+ll-loop show fix-types --json --resolved  # FSM config with sub-loop states expanded
 ll-loop fragments lib/common.yaml     # List built-in common fragments with descriptions
 ll-loop fragments lib/cli.yaml        # List built-in CLI tool fragments with descriptions
 ll-loop fragments lib/benchmark.yaml  # List built-in benchmark runner fragment

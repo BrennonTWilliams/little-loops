@@ -1,0 +1,11 @@
+name: inner-eval
+description: "Minimal evaluation child loop for testing"
+initial: evaluate
+states:
+  evaluate:
+    action_type: prompt
+    action: "Evaluate the current state."
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true

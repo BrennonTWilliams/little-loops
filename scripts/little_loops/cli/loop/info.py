@@ -22,6 +22,7 @@ from little_loops.cli.loop.layout import (  # noqa: F401
 )
 from little_loops.cli.output import colorize, print_json, terminal_width
 from little_loops.fsm.schema import FSMLoop, StateConfig
+from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
 
 
@@ -641,7 +642,17 @@ def cmd_show(
         return 1
 
     if getattr(args, "json", False):
-        print_json(fsm.to_dict())
+        data = fsm.to_dict()
+        if getattr(args, "resolved", False):
+            for state in data.get("states", {}).values():
+                if "loop" in state:
+                    try:
+                        child_path = resolve_loop_path(state["loop"], loops_dir)
+                        child_fsm, _ = load_and_validate(child_path)
+                        state["_subloop"] = child_fsm.to_dict().get("states", {})
+                    except (FileNotFoundError, ValueError):
+                        pass
+        print_json(data)
         return 0
 
     tw = terminal_width()

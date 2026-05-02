@@ -1914,7 +1914,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 |---------|-------------|
 | `ll-loop run <name>` | Run a loop (also: `ll-loop <name>`); use `--worktree` for isolated branch execution |
 | `ll-loop validate <name>` | Check YAML for schema errors and unreachable states |
-| `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--json` for raw FSM config) |
+| `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--json` for raw FSM config; `--resolved` to expand sub-loop states inline under `_subloop`) |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions |
 | `ll-loop list` | List available loops; `--running` for active only, `--builtin` for built-ins, `--category <cat>` / `--label <tag>` to filter by category or label |

@@ -354,6 +354,9 @@ Examples:
         "--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt"
     )
     show_parser.add_argument("-j", "--json", action="store_true", help="Output FSM config as JSON")
+    show_parser.add_argument(
+        "--resolved", action="store_true", help="Expand sub-loop states inline under _subloop key"
+    )
 
     # Fragments subcommand
     fragments_parser = subparsers.add_parser(

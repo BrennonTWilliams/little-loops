@@ -2447,7 +2447,7 @@ class TestCmdShowJson:
         from little_loops.logger import Logger
 
         logger = Logger(verbose=False)
-        args = argparse.Namespace(json=True, verbose=False)
+        args = argparse.Namespace(json=True, verbose=False, resolved=False)
         result = cmd_show("my-loop", args, loops_dir, logger)
 
         assert result == 0
@@ -2468,7 +2468,7 @@ class TestCmdShowJson:
         loops_dir.mkdir()
 
         logger = Logger(verbose=False)
-        args = argparse.Namespace(json=True, verbose=False)
+        args = argparse.Namespace(json=True, verbose=False, resolved=False)
         result = cmd_show("nonexistent-loop", args, loops_dir, logger)
 
         assert result == 1
@@ -2498,13 +2498,116 @@ class TestCmdShowJson:
         from little_loops.logger import Logger
 
         logger = Logger(verbose=False)
-        args = argparse.Namespace(json=False, verbose=False)
+        args = argparse.Namespace(json=False, verbose=False, resolved=False)
         result = cmd_show("my-loop", args, loops_dir, logger)
 
         assert result == 0
         out = capsys.readouterr().out
         assert "my-loop" in out
         assert "Diagram:" in out
+
+
+class TestCmdShowResolved:
+    """Tests for ll-loop show --resolved --json sub-loop expansion."""
+
+    def test_resolved_expands_subloop(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--resolved --json adds _subloop key for states with loop: field."""
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        child_yaml = loops_dir / "inner-eval.yaml"
+        child_yaml.write_text(
+            "name: inner-eval\n"
+            "description: Minimal evaluation child loop for testing\n"
+            "initial: evaluate\n"
+            "states:\n"
+            "  evaluate:\n"
+            "    action_type: prompt\n"
+            "    action: Evaluate the current state.\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        parent_yaml = loops_dir / "parent-loop.yaml"
+        parent_yaml.write_text(
+            "name: parent-loop\n"
+            "description: Parent loop with sub-loop reference\n"
+            "initial: run_eval\n"
+            "states:\n"
+            "  run_eval:\n"
+            "    loop: inner-eval\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        logger = Logger(verbose=False)
+        args = argparse.Namespace(json=True, verbose=False, resolved=True)
+        result = cmd_show("parent-loop", args, loops_dir, logger)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "_subloop" in data["states"]["run_eval"]
+        subloop = data["states"]["run_eval"]["_subloop"]
+        assert "evaluate" in subloop
+        assert "done" in subloop
+
+    def test_resolved_json_without_resolved_unchanged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json without --resolved does not add _subloop key."""
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        child_yaml = loops_dir / "inner-eval.yaml"
+        child_yaml.write_text(
+            "name: inner-eval\n"
+            "initial: evaluate\n"
+            "states:\n"
+            "  evaluate:\n"
+            "    action_type: prompt\n"
+            "    action: Evaluate.\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        parent_yaml = loops_dir / "parent-loop.yaml"
+        parent_yaml.write_text(
+            "name: parent-loop\n"
+            "initial: run_eval\n"
+            "states:\n"
+            "  run_eval:\n"
+            "    loop: inner-eval\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        logger = Logger(verbose=False)
+        args = argparse.Namespace(json=True, verbose=False, resolved=False)
+        result = cmd_show("parent-loop", args, loops_dir, logger)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "_subloop" not in data["states"]["run_eval"]
 
 
 class TestHistoryFiltering:

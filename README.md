@@ -86,7 +86,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
-- **27 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
+- **28 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 - **17 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
 - **43 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
@@ -164,6 +164,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:create-eval-from-issues <issue-id> [...]` | Generate eval harness YAML from issue IDs |
 | `/ll:review-loop` | Review and improve existing FSM loop configurations |
 | `/ll:analyze-loop` | Analyze loop execution history for actionable issues |
+| `/ll:assess-loop [loop-name] [--no-rubric-audit]` | Audit loop goal achievement: artifact mutations, contracts, phantom success |
 | `/ll:cleanup-loops [--dry-run] [--threshold N]` | Find and clean stuck or stale loop processes |
 | `/ll:rename-loop <old> <new> [--dry-run] [--yes]` | Rename a loop and update all references |
 | `/ll:loop-suggester [file|--from-commands]` | Suggest FSM loops from message history or command catalog |
@@ -224,6 +225,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `create-eval-from-issues`^ | Automation & Loops | Generate eval harness YAML from issue IDs |
 | `review-loop`^ | Automation & Loops | Review and improve existing FSM loop configurations |
 | `analyze-loop`^ | Automation & Loops | Analyze loop execution history to synthesize actionable issues from failures |
+| `assess-loop`^ | Automation & Loops | Audit loop goal achievement: artifact mutations, threshold contracts, phantom convergence detection |
 | `cleanup-loops`^ | Automation & Loops | Find stuck/stale loops, diagnose root causes, and clean them up |
 | `rename-loop`^ | Automation & Loops | Rename a loop and update all references to maintain full functionality |
 | `workflow-automation-proposer`^ | Automation & Loops | Synthesize workflow patterns into automation proposals |
@@ -320,8 +322,9 @@ ll-loop history <loop-name> <run_id>  # Inspect a specific archived run
 ll-loop test <loop-name>         # Run a single test iteration
 ll-loop simulate <loop-name>     # Trace execution interactively
 ll-loop install <loop-name>      # Copy built-in loop to .loops/
-ll-loop show <loop-name>         # Show loop details and structure
-ll-loop show <loop-name> --json  # Show loop details as JSON
+ll-loop show <loop-name>                   # Show loop details and structure
+ll-loop show <loop-name> --json            # Show loop details as JSON
+ll-loop show <loop-name> --json --resolved # Show with sub-loop states expanded
 ```
 
 Run `ll-loop --help` for all options. See [Loops Guide](docs/guides/LOOPS_GUIDE.md) for loop authoring.
