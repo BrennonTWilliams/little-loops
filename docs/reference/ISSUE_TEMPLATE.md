@@ -886,6 +886,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `size` | string | absent | Size label written by `/ll:issue-size-review`: `Small`, `Medium`, `Large`, or `Very Large` |
 | `decision_needed` | bool | absent | Set to `true` by `/ll:refine-issue --auto` when 2+ implementation options are deposited into `Proposed Solution`; signals automated pipelines (`ll-auto`, `ll-parallel`) to invoke `/ll:decide-issue` before implementation; cleared to `false` by `/ll:decide-issue` after the winning option is annotated |
 | `missing_artifacts` | bool | absent | Set to `true` by `/ll:confidence-check` (Phase 4.7) when Outcome Risk Factors contain signal phrases indicating absent files or unwired components (e.g., "not yet created", "does not exist", "needs wiring"); routes autodev to `/ll:wire-issue` before attempting size-review |
+| `parent_issue` | string | absent | Bare issue ID of the parent issue that was decomposed to create this child (e.g., `ENH-179`). Written automatically by `/ll:issue-size-review` (Phase 4 and Phase 6) when generating child issues. Machine-readable; used alongside the `## Parent Issue` body section for parent→child tracing. |
 
 ### `testable: false`
 

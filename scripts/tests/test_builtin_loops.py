@@ -522,11 +522,25 @@ class TestRefineToReadyIssueSubLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_confidence_check_routes_to_check_readiness(self, data: dict) -> None:
-        """confidence_check must transition unconditionally to check_readiness (ENH-1033 split)."""
+    def test_confidence_check_routes_to_verify_scores_persisted(self, data: dict) -> None:
+        """confidence_check must route to verify_scores_persisted guard before check_readiness (ENH-1033 + guard)."""
         confidence_check = data["states"].get("confidence_check", {})
-        assert confidence_check.get("next") == "check_readiness", (
-            f"confidence_check.next should be 'check_readiness', got {confidence_check.get('next')!r}"
+        assert confidence_check.get("next") == "verify_scores_persisted", (
+            f"confidence_check.next should be 'verify_scores_persisted', got {confidence_check.get('next')!r}"
+        )
+
+    def test_verify_scores_persisted_on_yes_routes_to_check_readiness(self, data: dict) -> None:
+        """verify_scores_persisted.on_yes must route to check_readiness (scores written → proceed)."""
+        state = data["states"].get("verify_scores_persisted", {})
+        assert state.get("on_yes") == "check_readiness", (
+            f"verify_scores_persisted.on_yes should be 'check_readiness', got {state.get('on_yes')!r}"
+        )
+
+    def test_verify_scores_persisted_on_no_routes_to_failed(self, data: dict) -> None:
+        """verify_scores_persisted.on_no must route to failed (missing scores → fail loudly)."""
+        state = data["states"].get("verify_scores_persisted", {})
+        assert state.get("on_no") == "failed", (
+            f"verify_scores_persisted.on_no should be 'failed', got {state.get('on_no')!r}"
         )
 
     def test_check_readiness_on_yes_routes_to_check_outcome(self, data: dict) -> None:
