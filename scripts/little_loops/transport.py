@@ -256,9 +256,7 @@ class UnixSocketTransport:
                 pass
             t = client.thread
             if t is not None and t.is_alive():
-                budget = min(
-                    _CLIENT_THREAD_JOIN_TIMEOUT, max(0.0, deadline - time.monotonic())
-                )
+                budget = min(_CLIENT_THREAD_JOIN_TIMEOUT, max(0.0, deadline - time.monotonic()))
                 t.join(timeout=budget)
                 if t.is_alive():
                     logger.warning(
@@ -303,8 +301,8 @@ def wire_transports(
             if not hasattr(socket, "AF_UNIX"):
                 raise RuntimeError(
                     "UnixSocketTransport requires AF_UNIX, which is not available on this "
-                    "platform (e.g. Windows). Remove \"socket\" from events.transports or "
-                    "use a different transport such as \"jsonl\"."
+                    'platform (e.g. Windows). Remove "socket" from events.transports or '
+                    'use a different transport such as "jsonl".'
                 )
             resolved = _resolve_socket_path(config.socket.path, base)
             bus.add_transport(UnixSocketTransport(resolved, config.socket.max_clients))

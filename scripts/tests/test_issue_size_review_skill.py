@@ -147,9 +147,7 @@ class TestIssueSizeReviewWiringTddGuard:
         assert "Never split wiring from implementation" in text, (
             "Phase 4 must include a 'Never split wiring from implementation' rule"
         )
-        assert "tdd_mode" in text, (
-            "Phase 4 wiring rule must reference config.commands.tdd_mode"
-        )
+        assert "tdd_mode" in text, "Phase 4 wiring rule must reference config.commands.tdd_mode"
 
     def test_wiring_tdd_rule_not_in_check_mode(self) -> None:
         """The wiring-TDD rule must not bleed into Check Mode behavior."""
@@ -190,6 +188,4 @@ class TestIssueSizeReviewWiringTddGuard:
         assert "wiring" in avoid_text.lower(), (
             "Best Practices > Avoid must mention wiring-split avoidance"
         )
-        assert "tdd_mode" in avoid_text, (
-            "Avoid bullet must reference config.commands.tdd_mode"
-        )
+        assert "tdd_mode" in avoid_text, "Avoid bullet must reference config.commands.tdd_mode"

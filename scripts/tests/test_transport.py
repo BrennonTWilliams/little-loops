@@ -484,9 +484,7 @@ class TestUnixSocketTransport:
                     t.send({"event": "spam", "i": i})
 
             assert client.dropped_total >= 20
-            assert any(
-                "slow client" in record.message.lower() for record in caplog.records
-            )
+            assert any("slow client" in record.message.lower() for record in caplog.records)
             c1.close()
         finally:
             t.close()

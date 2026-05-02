@@ -30,8 +30,8 @@ def main_issues() -> int:
     from little_loops.cli.issues.refine_status import cmd_refine_status
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
-    from little_loops.cli.issues.show import cmd_show
     from little_loops.cli.issues.set_scores import cmd_set_scores
+    from little_loops.cli.issues.show import cmd_show
     from little_loops.cli.issues.skip import cmd_skip
     from little_loops.cli_args import VALID_PRIORITIES, add_config_arg, add_skip_arg
     from little_loops.config import BRConfig
