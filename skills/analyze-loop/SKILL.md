@@ -91,10 +91,12 @@ If the command fails (loop not found), report the error and stop.
 Also load the loop configuration to understand state routing:
 
 ```bash
-ll-loop show <loop_name> --json 2>/dev/null
+ll-loop show <loop_name> --resolved --json 2>/dev/null
 ```
 
 This outputs a JSON object with a `"states"` key mapping state names to their config (including `evaluate.type` and `on_no`). Parse it into a state config map for use in signal classification. If the command fails, proceed without state config (treat all states as having no config).
+
+States with a `_subloop` key contain the child loop's resolved state map one level deep. These entries are used for sub-loop signal classification and goal alignment analysis (see Step 3 and Step 3b). Sub-loop states do not contribute to parent loop event counts.
 
 **Parse the events** into a structured list for classification. Key fields by event type:
 
@@ -176,6 +178,13 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Title: `"<state> evaluation failed <N>x in <loop_name> loop"`
 - Include: `reason` field from last failure, timestamps
 
+#### BUG — Sub-loop verdict discarded
+- Trigger: any state in the loop config (from Step 2) has `loop:` set AND `on_yes == on_no` (same destination regardless of child outcome). This is a **config-based** signal detected from FSM structure, not event history — emit regardless of how many times the state was visited.
+- Priority: P3
+- Title: `"<state> sub-loop verdict discarded in <loop_name> loop — <child_loop> result ignored (<shared_next>)"`
+- Include: state name, child loop name (`loop:` value), shared next state (both `on_yes`/`on_no` point to)
+- Rationale: when the parent routes child success and child failure identically, the sub-loop's outcome is silently dropped — this is a structural logic error independent of execution frequency.
+
 ### Multiple signals on same state
 If a state triggers both an action failure and an evaluate failure BUG, emit only the action failure (higher severity signal takes priority). Emit all distinct signals from different states.
 
@@ -211,6 +220,7 @@ If a description is available (≥ 5 words):
 2. Check whether the dominant state's name or its action text (from the state config loaded in Step 2) corresponds to a described activity
 3. If the dominant state accounts for ≥ 50% of iterations and has no clear connection to the declared goal activities: flag as a **goal alignment anomaly**
 4. If `terminated_by == "terminal"` (completed successfully) but heavy cycling occurred (total iterations > 3× the number of distinct states visited): note that completion may mask an ambiguous exit criterion
+5. If any state has a `_subloop` key (from `--resolved` output), treat its child states as a **separate execution scope** — do not add child state names to the parent loop's dominant state tally. Flag any `_subloop` states that represent a disproportionate share of child work as a cross-boundary note (e.g., "sub-loop `issue-refinement` is invoked from `refine_issues`; child routing is distinct from parent goal alignment").
 
 ### 3b-4: Cross-Signal Reasoning
 

@@ -541,6 +541,9 @@ Analyze loop execution history to synthesize actionable issues from failure patt
 - `rate_limit_exhausted` event present on a state (max rate-limit retries burned through) → BUG P3; surfaces upstream rate-limit pressure separate from generic retry loops. `rate_limit_waiting` heartbeat events in the same window indicate in-progress sleeps contributing to the budget.
 - Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
 - `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
+- State has `loop:` set AND `on_yes == on_no` (config-based, detected from FSM structure) → `BUG — Sub-loop verdict discarded` P3; child loop result is silently dropped regardless of outcome
+
+**Sub-loop visibility:** Step 2 uses `--resolved --json` so states with a `_subloop` key expose the child loop's resolved state map one level deep. Sub-loop states are classified separately and do not contribute to parent loop event counts.
 
 **Output format:** Each run begins with an Execution Summary preamble before the numbered signal list:
 
@@ -572,7 +575,55 @@ Analyze loop execution history to synthesize actionable issues from failure patt
 
 **Trigger keywords:** "analyze loop", "loop issues", "loop failures", "loop history issues"
 
-**See also:** `/ll:review-loop`, `/ll:create-loop`, `ll-loop history`
+**See also:** `/ll:review-loop`, `/ll:create-loop`, `/ll:assess-loop`, `ll-loop history`
+
+### `/ll:assess-loop`
+Audit whether a loop's execution actually achieved its stated goal — checking artifact mutations, threshold contracts, structural defects (phantom convergence, degenerate gates, rubric drift, sub-loop verdict laundering), and producing ranked improvement proposals. Auto-selects the most recent loop if no name is given.
+
+**Arguments:**
+- `loop_name` (optional): Loop name to assess. If omitted, auto-selects the most recently updated loop.
+- `tail` (optional): Limit history events analyzed to the N most recent (default 200)
+- `--no-rubric-audit` (flag): Skip the LLM rubric-vs-description pass (cost gate)
+
+**Sub-loop visibility:** Step 2 uses `--resolved --json`, making sub-loop states visible under `_subloop` keys in the FSM output. The Step 8 laundering check (`on_yes == on_no` on any sub-loop state) now operates on the fully-resolved state map.
+
+**Verdict values:**
+| Verdict | Condition |
+|---------|-----------|
+| `met` | Terminal reached AND all threshold contracts verified AND all expected artifact mutations occurred |
+| `phantom` | Terminal reached AND (artifacts unchanged OR threshold unverified — only model self-reported) |
+| `partial` | Terminal reached AND some but not all contracts satisfied |
+| `degraded` | Loop completed but metric trended downward vs baseline |
+
+**Output format:** Each assessment emits a Goal-vs-Outcome Scorecard followed by ranked improvement proposals:
+
+```
+### Goal-vs-Outcome Scorecard
+
+**Goal**: "<loop description or (no description provided)>"
+**Contract**: <threshold keys and values, or "none detected">
+**Artifacts checked**: <list of paths and mutation status>
+**Phase 1 signals**: <fault signal count, or "none">
+**Verdict**: `<met | phantom | partial | degraded>`
+
+**Rationale**: <one paragraph explaining the verdict>
+```
+
+**Usage:**
+```bash
+# Assess most recent loop
+/ll:assess-loop
+
+# Assess a specific loop
+/ll:assess-loop issue-fixer
+
+# Skip rubric audit (faster, lower cost)
+/ll:assess-loop issue-fixer --no-rubric-audit
+```
+
+**Trigger keywords:** "assess loop", "audit loop", "loop effectiveness", "loop goal", "phantom success", "loop artifacts", "did the loop work"
+
+**See also:** `/ll:analyze-loop`, `/ll:review-loop`, `/ll:create-loop`
 
 ### `/ll:cleanup-loops`
 Find stuck or stale `ll-loop` processes, diagnose root causes from state and events files, and clean them up after user confirmation.
@@ -693,6 +744,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
 | `analyze-loop`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from failure signals |
+| `assess-loop`^ | Audit loop goal achievement: checks artifact mutations, threshold contracts, phantom convergence, and produces ranked improvement proposals |
 | `cleanup-loops`^ | Find and clean stuck or stale loop processes |
 | `rename-loop`^ | Rename a loop and update all references |
 | `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |

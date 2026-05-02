@@ -60,7 +60,7 @@ Filter to `status` one of `"running"`, `"interrupted"`, `"failed"`, `"timed_out"
 Load the fully-materialized FSM:
 
 ```bash
-ll-loop show <loop_name> --json
+ll-loop show <loop_name> --resolved --json
 ```
 
 This returns `FSMLoop.to_dict()` JSON with always-present keys `name`, `initial`, `states`, and conditionally `description`, `context` (threshold keys live here), `max_iterations`, `parameters`.

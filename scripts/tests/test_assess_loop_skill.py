@@ -75,6 +75,12 @@ class TestAssessLoopSkill:
         assert "--no-rubric-audit" in content
         # → skill must support --no-rubric-audit to skip LLM judge calls
 
+    def test_skill_uses_resolved_flag(self) -> None:
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        content = skill_path.read_text()
+        assert "--resolved" in content
+        # → skill must use --resolved --json for sub-loop visibility in Step 2
+
     def test_skill_scorecard_has_four_verdicts(self) -> None:
         skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
         content = skill_path.read_text()

@@ -185,3 +185,46 @@ class TestAnalyzeLoopSynthesis:
         dominant = max(visits, key=visits.__getitem__)
         share = (visits[dominant] / total) * 100
         assert share < DOMINANT_CYCLING_THRESHOLD
+
+    # ------------------------------------------------------------------
+    # Step 3: Sub-loop verdict laundering signal
+    # ------------------------------------------------------------------
+
+    def test_subloop_laundering_has_sub_loop_state(self) -> None:
+        """Laundering fixture must contain at least one state with a loop: key."""
+        spec = self._load_fixture("assess-subloop-laundering.yaml")
+        states = spec.get("states", {})
+        sub_loop_states = [n for n, d in states.items() if "loop" in d]
+        assert sub_loop_states
+        # → analyze-loop should check on_yes == on_no for all sub-loop states
+
+    def test_subloop_laundering_on_yes_equals_on_no(self) -> None:
+        """Sub-loop state routes success and failure to the same next state."""
+        spec = self._load_fixture("assess-subloop-laundering.yaml")
+        states = spec.get("states", {})
+        for name, defn in states.items():
+            if "loop" in defn:
+                assert defn.get("on_yes") == defn.get("on_no"), (
+                    f"Sub-loop state '{name}' must have on_yes == on_no for laundering fixture"
+                )
+                # → analyze-loop should emit BUG — Sub-loop verdict discarded (P3)
+
+    def test_subloop_laundering_shared_next_state_exists(self) -> None:
+        """The shared destination state that both on_yes and on_no route to actually exists."""
+        spec = self._load_fixture("assess-subloop-laundering.yaml")
+        states = spec.get("states", {})
+        initial = spec.get("initial")
+        sub_loop_state = states.get(initial, {})
+        assert "loop" in sub_loop_state
+        next_state = sub_loop_state.get("on_yes")
+        assert next_state is not None
+        assert next_state in states
+        # → child verdict silently discarded; signal title includes shared_next
+
+    def test_subloop_laundering_happy_path_reaches_terminal(self) -> None:
+        """Happy-path traversal completes normally despite laundering defect."""
+        spec = self._load_fixture("assess-subloop-laundering.yaml")
+        path = self._happy_path(spec)
+        states = spec.get("states", {})
+        assert states.get(path[-1], {}).get("terminal") is True
+        # → loop appears to succeed; laundering only detected via FSM structure inspection

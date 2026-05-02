@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.94.0] - 2026-05-02
+
+### Changed
+
+- **Sub-loop visibility in `/ll:analyze-loop` and `/ll:assess-loop`** — Both skills now call `ll-loop show --resolved --json` so child loop state maps appear under `_subloop` keys in the FSM output. `/ll:analyze-loop` Step 3 emits a new `BUG — Sub-loop verdict discarded` (P3) signal when a state with `loop:` routes child success and child failure to the same destination (`on_yes == on_no`). Step 3b goal alignment treats `_subloop` states as a separate execution scope. (ENH-1334)
+
 ## [1.93.0] - 2026-05-02
 
 ### Added
