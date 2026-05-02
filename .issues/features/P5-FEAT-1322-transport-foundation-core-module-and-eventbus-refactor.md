@@ -140,7 +140,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/parallel/orchestrator.py` — calls `self._event_bus.emit()` at line 976; uses bare `EventBus()`, no `add_file_sink` calls; unaffected by transport refactor [Agent 1 finding]
 - `scripts/little_loops/cli/loop/_helpers.py` — accesses `executor.event_bus.register(display_progress)` at line 539; coupled to `PersistentExecutor.event_bus` remaining a public attribute; no changes needed for FEAT-1322 [Agent 2 finding]
-- `scripts/little_loops/__init__.py` — currently exports `EventBus` and `LLEvent`; decide whether `Transport` and `JsonlTransport` should be added to package-level `__all__`; no mandatory change for FEAT-1322 unless public API exposure is intended [Agent 2 finding]
+- `scripts/little_loops/__init__.py` — add `Transport`, `JsonlTransport`, and `wire_transports` to the `from little_loops.transport import (...)` block and `__all__` (under a `# transport` comment, sibling of `# events`). Decision: consistent with the extension system pattern — `LLExtension` (Protocol), `NoopLoggerExtension` (impl), and `wire_extensions()` are all exported; `Transport`, `JsonlTransport`, and `wire_transports` follow the same contract [Agent 2 finding, resolved 2026-05-02]
 
 ## Use Case
 
@@ -178,12 +178,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-8. Export `EventsConfig` in `scripts/little_loops/config/__init__.py` — add to `from little_loops.config.features import (...)` block and `__all__` list (after `SyncConfig`)
-9. Update `scripts/tests/test_config.py::TestBRConfig::test_to_dict` (line 701) — add `assert "events" in result` for completeness check
-10. Add `TestBRConfigEventsIntegration` class to `test_config.py` — 4-test pattern: `test_events_property_exists`, `test_events_property_with_defaults`, `test_events_property_loads_from_config`, `test_events_in_to_dict` (follow `TestBRConfigSyncIntegration` starting line 1117)
-11. Update `docs/ARCHITECTURE.md` (line 473) — EventBus components table row: replace "optional JSONL file sink" with transport abstraction description
-12. Update `docs/reference/EVENT-SCHEMA.md` (line 6) — replace "file sinks" with "transports" in cross-reference description
-13. Update `docs/reference/CONFIGURATION.md` — add `events.transports` array section (sibling of `extensions`)
+8. Export `Transport`, `JsonlTransport`, and `wire_transports` in `scripts/little_loops/__init__.py` — add `from little_loops.transport import (Transport, JsonlTransport, wire_transports)` and add all three to `__all__` under a `# transport` comment (sibling of `# events`)
+9. Export `EventsConfig` in `scripts/little_loops/config/__init__.py` — add to `from little_loops.config.features import (...)` block and `__all__` list (after `SyncConfig`)
+10. Update `scripts/tests/test_config.py::TestBRConfig::test_to_dict` (line 701) — add `assert "events" in result` for completeness check
+11. Add `TestBRConfigEventsIntegration` class to `test_config.py` — 4-test pattern: `test_events_property_exists`, `test_events_property_with_defaults`, `test_events_property_loads_from_config`, `test_events_in_to_dict` (follow `TestBRConfigSyncIntegration` starting line 1117)
+12. Update `docs/ARCHITECTURE.md` (line 473) — EventBus components table row: replace "optional JSONL file sink" with transport abstraction description
+13. Update `docs/reference/EVENT-SCHEMA.md` (line 6) — replace "file sinks" with "transports" in cross-reference description
+14. Update `docs/reference/CONFIGURATION.md` — add `events.transports` array section (sibling of `extensions`)
 
 ## Impact
 
@@ -212,7 +213,7 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 ### Outcome Risk Factors
 - **Complexity breadth**: 15 files span events, fsm/persistence, config, tests, and docs subsystems. Each individual change is small and patterned, but the accumulated surface area raises the probability of a missed step. Work through the 13 implementation steps sequentially, running tests after each subsystem group.
 - **test_transport.py does not yet exist**: The new `transport.py` module has no prior test baseline; implementation errors will surface only after new tests are written as part of this issue. Write `test_transport.py` before finalizing `transport.py` (TDD approach is configured for this project).
-- **Minor unresolved judgment call**: Whether `Transport` and `JsonlTransport` belong in `scripts/little_loops/__init__.py` `__all__` is explicitly deferred ("no mandatory change"). Decide during implementation to avoid a follow-up PR.
+- **`__init__.py` exports resolved**: `Transport`, `JsonlTransport`, and `wire_transports` will be added to `__all__` (step 8), consistent with the extension system pattern. No judgment call remains.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea8713f7-6133-46d3-a7c4-835e7fe80de1.jsonl`
