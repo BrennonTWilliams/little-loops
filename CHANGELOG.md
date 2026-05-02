@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.93.0] - 2026-05-02
+
+### Added
+
+- **SessionStart Context Injector** - Implement a SessionStart hook that reads `ll-continue-prompt.md` and injects it into Claude's context via `additionalContext` JSON, enabling hands-off session resume without manual `/ll:resume`. (FEAT-1263)
+- **Typed Parameter Contract for Sub-Loop Calls** - Add `parameters:` block to loop YAML and per-call `with:` block for sub-loop states, replacing `context_passthrough` with explicit validated named bindings. Includes 33 new tests and schema updates. (FEAT-1311)
+- **Loop YAML Template Inheritance via `from:` Field** - Add `from: <loop-name>` field enabling child loops to inherit a parent's state graph and override only deltas, with cycle detection and deep merge semantics. (FEAT-1308)
+
+[1.93.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.92.1...v1.93.0
+
 ## [1.92.1] - 2026-04-29
 
 ### Fixed
