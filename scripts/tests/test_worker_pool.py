@@ -794,10 +794,11 @@ class TestWorkerPoolWorktreeManagement:
         temp_repo_with_config: Path,
         mock_logger: MagicMock,
     ) -> None:
-        """cleanup_all_worktrees() removes all worker-* directories."""
+        """cleanup_all_worktrees() removes all worker-* and timestamp-prefixed directories."""
         worktree_base = temp_repo_with_config / ".worktrees"
         (worktree_base / "worker-bug-001").mkdir()
         (worktree_base / "worker-bug-002").mkdir()
+        (worktree_base / "20260101-000000-my-loop").mkdir()
         (worktree_base / "other-dir").mkdir()  # Should not be removed
 
         cleanup_calls: list[Path] = []
@@ -808,11 +809,12 @@ class TestWorkerPoolWorktreeManagement:
         with patch.object(worker_pool, "_cleanup_worktree", side_effect=mock_cleanup):
             worker_pool.cleanup_all_worktrees()
 
-        # Should have cleaned up 2 worker directories
-        assert len(cleanup_calls) == 2
+        # Should have cleaned up 3 directories (2 worker + 1 loop)
+        assert len(cleanup_calls) == 3
         cleaned_names = [p.name for p in cleanup_calls]
         assert "worker-bug-001" in cleaned_names
         assert "worker-bug-002" in cleaned_names
+        assert "20260101-000000-my-loop" in cleaned_names
         assert "other-dir" not in cleaned_names
 
     def test_setup_worktree_skips_directory_entries(

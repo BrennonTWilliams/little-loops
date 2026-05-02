@@ -30,6 +30,12 @@ The comment at `cli/loop/run.py:246` acknowledges this: *"when N waiters are rel
 
 Waiters acquire the scope lock in the order they were enqueued (FIFO). The process that called `wait_for_scope` first should be the first to run after the active loop finishes.
 
+## Success Metrics
+
+- FIFO ordering: Loop B (enqueued first) always runs before Loop C (enqueued second) after Loop A finishes — 100% deterministic, verified by new test in `test_cli_loop_queue.py`
+- No regression: All existing `test_cli_loop_queue.py` tests continue to pass
+- Overhead: Per-poll overhead increase bounded to one `.queue/` directory scan + sort per waiter per second
+
 ## Proposed Solution
 
 Use the existing `.queue/<id>.json` files (already written at `run.py:231–242`) as the ordering source:
@@ -52,11 +58,32 @@ A simpler approximation: after winning `acquire()`, sleep briefly (e.g., 50 ms) 
 3. Add a test in `scripts/tests/test_cli_loop_queue.py` that enqueues two waiters with different `enqueuedAt` values and asserts the earlier one acquires first.
 4. Update `cli/loop/layout.py` (dashboard) if queue position is displayed — no behavioral change, but sort order now reflects true sequence.
 
-## Files to Modify
+## Integration Map
 
-- `scripts/little_loops/cli/loop/run.py:246–265` — add earliest-waiter check in retry loop
+### Files to Modify
+- `scripts/little_loops/cli/loop/run.py` — add earliest-waiter check in `cmd_run` retry loop (after `wait_for_scope` returns `True`)
 - `scripts/little_loops/cli/loop/_helpers.py` — add `_is_earliest_waiter()` helper
 - `scripts/tests/test_cli_loop_queue.py` — add FIFO ordering test
+
+### Dependent Files (Callers/Importers)
+- TBD — use grep to find references: `grep -r "wait_for_scope\|_is_earliest_waiter" scripts/`
+
+### Similar Patterns
+- `scripts/little_loops/cli/loop/layout.py` — dashboard queue display (queue entries may need sort-order update to reflect true FIFO sequence)
+
+### Tests
+- `scripts/tests/test_cli_loop_queue.py` — add test with two waiters and distinct `enqueuedAt` values asserting the earlier one acquires first
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Scope Boundaries
+
+- **In scope**: FIFO ordering for waiters competing for the same scope lock; using existing `.queue/*.json` `enqueuedAt` timestamps as the ordering source; lightweight file-read + sort per poll tick
+- **Out of scope**: Priority-based (non-FIFO) scheduling; cross-scope ordering; distributed lock fairness; changes to the `fcntl.flock` lock mechanism itself; queue persistence across process restarts
 
 ## Acceptance Criteria
 
@@ -75,5 +102,10 @@ A simpler approximation: after winning `acquire()`, sleep briefly (e.g., 50 ms) 
 
 `loop`, `queue`, `concurrency`, `reliability`
 
+## Status
+
+**Open** | Created: 2026-05-02 | Priority: P4
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-02T19:59:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d469eb33-2332-43d1-ae05-da1005adf370.jsonl`
 - `/ll:capture-issue` - 2026-05-02T19:56:20Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c7505b5-ede1-476a-a6b7-a18e3c4c8571.jsonl`

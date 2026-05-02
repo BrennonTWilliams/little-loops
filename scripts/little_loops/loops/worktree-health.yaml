@@ -27,8 +27,8 @@ states:
     timeout: 120
     action: |
       Run `/ll:cleanup-worktrees` to remove orphaned worktrees from
-      interrupted ll-parallel runs. Review each worktree before removal
-      to ensure no uncommitted work is lost.
+      interrupted ll-parallel and ll-loop --worktree runs. Review each
+      worktree before removal to ensure no uncommitted work is lost.
     next: check_branches
   check_branches:
     action: |
