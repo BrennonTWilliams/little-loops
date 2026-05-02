@@ -130,3 +130,66 @@ class TestIssueSizeReviewQualitativeGuard:
         assert "score_ambiguity" not in interactive_text, (
             "Qualitative guard must not appear inside the Interactive Mode section"
         )
+
+
+class TestIssueSizeReviewWiringTddGuard:
+    """Verify Phase 4 TDD-aware wiring-split rule is present and correct (ENH-1320)."""
+
+    def _phase4_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        phase4_start = content.index("### Phase 4: Decomposition Proposal")
+        next_heading = content.find("\n### Phase 5", phase4_start)
+        return content[phase4_start:next_heading]
+
+    def test_wiring_tdd_rule_in_phase_4(self) -> None:
+        """Phase 4 must include the TDD-aware wiring-split rule referencing tdd_mode."""
+        text = self._phase4_text()
+        assert "Never split wiring from implementation" in text, (
+            "Phase 4 must include a 'Never split wiring from implementation' rule"
+        )
+        assert "tdd_mode" in text, (
+            "Phase 4 wiring rule must reference config.commands.tdd_mode"
+        )
+
+    def test_wiring_tdd_rule_not_in_check_mode(self) -> None:
+        """The wiring-TDD rule must not bleed into Check Mode behavior."""
+        content = SKILL_FILE.read_text()
+        phase5_start = content.index("### Phase 5: User Approval")
+        check_mode_start = content.index("#### Check Mode Behavior", phase5_start)
+        next_heading = content.find("\n####", check_mode_start + 1)
+        check_mode_text = content[check_mode_start:next_heading]
+        assert "Never split wiring" not in check_mode_text, (
+            "Wiring-TDD rule must not appear inside the Check Mode section"
+        )
+
+    def test_wiring_tdd_rule_not_in_phase_3(self) -> None:
+        """The wiring-TDD rule must not bleed into Phase 3 (Frontmatter Write-back)."""
+        content = SKILL_FILE.read_text()
+        phase3_start = content.index("### Phase 3: Frontmatter Write-back")
+        phase3_end = content.index("### Phase 4", phase3_start)
+        phase3_text = content[phase3_start:phase3_end]
+        assert "Never split wiring" not in phase3_text, (
+            "Wiring-TDD rule must not appear inside Phase 3"
+        )
+
+    def test_independently_shippable_exception_present(self) -> None:
+        """Phase 4 wiring rule must include the 'independently shippable' escape hatch."""
+        text = self._phase4_text()
+        assert "independently shippable" in text, (
+            "Wiring rule must reference 'independently shippable' as the exception"
+        )
+
+    def test_avoid_section_has_wiring_bullet(self) -> None:
+        """Best Practices > Avoid must include a wiring-split avoidance bullet."""
+        content = SKILL_FILE.read_text()
+        avoid_start = content.index("### Avoid")
+        next_heading = content.find("\n### ", avoid_start + 1)
+        next_h2 = content.find("\n## ", avoid_start + 1)
+        end = min(x for x in (next_heading, next_h2, len(content)) if x != -1)
+        avoid_text = content[avoid_start:end]
+        assert "wiring" in avoid_text.lower(), (
+            "Best Practices > Avoid must mention wiring-split avoidance"
+        )
+        assert "tdd_mode" in avoid_text, (
+            "Avoid bullet must reference config.commands.tdd_mode"
+        )

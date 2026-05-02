@@ -367,7 +367,7 @@ The key constraint: **do not split tests and docs from the code they cover**. A 
 
 Examples:
 - **Good split**: `FEAT-A: parse YAML frontmatter with inline arrays` + `FEAT-B: prefer frontmatter blocked_by over body sections` — each is testable and mergeable independently.
-- **Bad split**: `FEAT-A: wire decide-issue pipeline` + `FEAT-B: tests and docs for decide-issue` — FEAT-B has no standalone value and leaves FEAT-A untested until FEAT-B merges.
+- **Bad split**: `FEAT-A: wire decide-issue pipeline` + `FEAT-B: tests and docs for decide-issue` — FEAT-B has no standalone value and leaves FEAT-A untested until FEAT-B merges. When `config.commands.tdd_mode` is `true`, FEAT-A is *itself* problematic: wiring is part of the TDD cycle, so a wiring-only child can only be tested with mocks until FEAT-B lands — defeating fast feedback and risking mock/prod divergence. (ENH-1320)
 
 (ENH-1242)
 

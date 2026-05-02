@@ -263,6 +263,8 @@ Evaluate the size and complexity of active issues and propose decomposition for 
 
 **Frontmatter write-back**: After assessing each issue, the skill writes `size: <label>` to the issue's YAML frontmatter (one of: `Small`, `Medium`, `Large`, `Very Large`). This is skipped when `--check` mode is active.
 
+**TDD awareness**: The skill respects `config.commands.tdd_mode`. When `true`, decomposition proposals must not split wiring from the implementation that introduces it — wiring is part of the TDD cycle and belongs in the same child (see `skills/issue-size-review/SKILL.md` Phase 4 for the full rule and the "independently shippable" exception).
+
 **Flags:**
 - `--auto`: Non-interactive; auto-decomposes issues scoring ≥8 without prompting. Exception: if the issue has `score_ambiguity ≥ 18`, `score_complexity ≥ 18`, and a non-zero `outcome_confidence` in its frontmatter, decomposition is skipped — the confidence failure is qualitative, not a scope problem (see qualitative-skip guard)
 - `--check`: Check-only mode; runs scoring without decomposition or frontmatter write-back; exits 1 if any issues score ≥5

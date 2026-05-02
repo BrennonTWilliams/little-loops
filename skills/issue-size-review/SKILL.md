@@ -190,6 +190,8 @@ For each candidate issue:
 
    **Never split by artifact type**: tests and docs for a child's new behavior belong in that child, not in a dedicated tests/docs child. The only exception: a test-only or doc-only issue for *already-shipped* code.
 
+   **Never split wiring from implementation when TDD mode is configured**: If `config.commands.tdd_mode` is `true`, wiring (integration points, callers, registration hooks) belongs in the same child as the implementation that introduces it — the integration test that drives the wiring is part of the TDD cycle, and splitting it leaves the first child shippable only with mocks (risking mock/prod divergence) until the second merges. The only exception: wiring into a genuinely independent, separately-testable subsystem (e.g., a new transport protocol or storage backend) that qualifies as **independently shippable** on its own merits.
+
 3. **Scope completeness check** — before drafting child content, enumerate every numbered step and every `###` subsection in the parent's "Proposed Solution" / "Implementation Steps". Map each to exactly one proposed child. If any parent step or subsection is not claimed by any child:
    - Emit a `⚠ SCOPE GAP` warning naming the uncovered step(s)
    - Either add another child to cover the gap, or explicitly note the step is being deferred (and explain why it is intentionally out of scope for this decomposition)
@@ -444,6 +446,7 @@ Uses project configuration from `.ll/ll-config.json`:
 - Losing context when decomposing (always reference parent)
 - Creating circular dependencies between children
 - Splitting tests or documentation into a dedicated child issue for newly-introduced behavior (they belong with the implementation)
+- **Splitting wiring from the implementation that introduces it when `config.commands.tdd_mode` is `true`** — wiring is part of the TDD cycle; the integration test belongs with the wired feature, not in a follow-up issue. The only exception is wiring into a genuinely independent, separately-testable subsystem.
 
 ## Integration
 
