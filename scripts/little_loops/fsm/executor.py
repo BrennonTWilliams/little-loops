@@ -414,8 +414,29 @@ class FSMExecutor:
         loop_path = resolve_loop_path(state.loop, self.loops_dir or Path(".loops"))
         child_fsm, _ = load_and_validate(loop_path)
 
-        # Pass parent context to child if requested
-        if state.context_passthrough:
+        # Bind child context: explicit with: bindings take precedence over legacy passthrough
+        if state.with_:
+            from little_loops.fsm.interpolation import interpolate_dict
+
+            resolved = interpolate_dict(state.with_, ctx)
+            # Apply declared defaults for unbound optional parameters
+            for param_name, param_spec in child_fsm.parameters.items():
+                if (
+                    param_name not in resolved
+                    and not param_spec.required
+                    and param_spec.default is not None
+                ):
+                    resolved[param_name] = param_spec.default
+            # Runtime check: required parameters must be present after interpolation
+            for param_name, param_spec in child_fsm.parameters.items():
+                if param_spec.required and param_name not in resolved:
+                    raise ValueError(
+                        f"Sub-loop '{state.loop}' requires parameter '{param_name}' "
+                        f"but it is not bound in 'with'"
+                    )
+            # Merge: child's own context block provides base; with: bindings override
+            child_fsm.context = {**child_fsm.context, **resolved}
+        elif state.context_passthrough:
             # Extract .output strings from capture result dicts so ${context.key} resolves
             # to the plain output string (e.g. "ENH-123") rather than the full capture object.
             captured_as_context = {
@@ -453,7 +474,7 @@ class FSMExecutor:
         child_result = child_executor.run()
 
         # Merge child captures back into parent under the state name
-        if state.context_passthrough and child_executor.captured:
+        if (state.context_passthrough or state.with_) and child_executor.captured:
             self.captured[self.current_state] = child_executor.captured
 
         # Route based on child termination reason and terminal state name

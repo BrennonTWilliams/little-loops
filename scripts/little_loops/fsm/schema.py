@@ -178,6 +178,53 @@ class RouteConfig:
 
 
 @dataclass
+class ParameterSpec:
+    """Specification for a single loop input parameter.
+
+    Declares a typed input that callers bind via the 'with:' block on sub-loop states.
+
+    Attributes:
+        type: Parameter type. One of: string, integer, number, boolean, enum, path.
+        required: If True, callers must supply this parameter in 'with:' (mutually
+            exclusive with 'default').
+        default: Default value used when the caller does not bind the parameter.
+            Only valid when required is False.
+        description: Human-readable description of the parameter.
+        values: Allowed values for 'enum' type parameters.
+    """
+
+    type: str
+    required: bool = False
+    default: Any = None
+    description: str | None = None
+    values: list[Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization."""
+        result: dict[str, Any] = {"type": self.type}
+        if self.required:
+            result["required"] = self.required
+        if self.default is not None:
+            result["default"] = self.default
+        if self.description is not None:
+            result["description"] = self.description
+        if self.values is not None:
+            result["values"] = self.values
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ParameterSpec:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            type=data["type"],
+            required=data.get("required", False),
+            default=data.get("default"),
+            description=data.get("description"),
+            values=data.get("values"),
+        )
+
+
+@dataclass
 class StateConfig:
     """Configuration for a single FSM state.
 
@@ -224,7 +271,11 @@ class StateConfig:
             commands.rate_limits.long_wait_ladder ([300, 900, 1800, 3600]).
         loop: Name of a loop YAML to execute as a sub-FSM. Mutually exclusive with action.
         context_passthrough: When True, pass parent context variables to child loop and
-            merge child captures back into parent context.
+            merge child captures back into parent context. Legacy escape hatch; prefer
+            'with_' for explicit named bindings.
+        with_: Explicit parameter bindings for sub-loop calls (YAML key: 'with'). Maps
+            declared child parameter names to parent expressions. Only valid when 'loop'
+            is set. Mutually exclusive with context_passthrough.
     """
 
     action: str | None = None
@@ -251,6 +302,7 @@ class StateConfig:
     rate_limit_long_wait_ladder: list[int] | None = None
     loop: str | None = None
     context_passthrough: bool = False
+    with_: dict[str, Any] = field(default_factory=dict)
     agent: str | None = None
     tools: list[str] | None = None
     extra_routes: dict[str, str] = field(default_factory=dict)
@@ -307,6 +359,8 @@ class StateConfig:
             result["loop"] = self.loop
         if self.context_passthrough:
             result["context_passthrough"] = self.context_passthrough
+        if self.with_:
+            result["with"] = self.with_
         if self.agent is not None:
             result["agent"] = self.agent
         if self.tools is not None:
@@ -370,6 +424,7 @@ class StateConfig:
             rate_limit_long_wait_ladder=data.get("rate_limit_long_wait_ladder"),
             loop=data.get("loop"),
             context_passthrough=data.get("context_passthrough", False),
+            with_=data.get("with", {}),
             agent=data.get("agent"),
             tools=data.get("tools"),
             extra_routes=extra_routes,
@@ -546,6 +601,7 @@ class FSMLoop:
     states: dict[str, StateConfig]
     description: str | None = None
     context: dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, ParameterSpec] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)
     max_iterations: int = 50
     backoff: float | None = None
@@ -571,6 +627,8 @@ class FSMLoop:
             result["description"] = self.description
         if self.context:
             result["context"] = self.context
+        if self.parameters:
+            result["parameters"] = {name: spec.to_dict() for name, spec in self.parameters.items()}
         if self.scope:
             result["scope"] = self.scope
         if self.max_iterations != 50:
@@ -620,12 +678,18 @@ class FSMLoop:
         if "config" in data:
             loop_config = LoopConfigOverrides.from_dict(data["config"])
 
+        parameters = {
+            name: ParameterSpec.from_dict(spec)
+            for name, spec in data.get("parameters", {}).items()
+        }
+
         return cls(
             name=data["name"],
             initial=data["initial"],
             states=states,
             description=data.get("description"),
             context=data.get("context", {}),
+            parameters=parameters,
             scope=data.get("scope", []),
             max_iterations=data.get("max_iterations", 50),
             backoff=data.get("backoff"),

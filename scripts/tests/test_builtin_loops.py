@@ -937,10 +937,13 @@ class TestAutoRefineAndImplementLoop:
         assert state.get("capture") == "input"
 
     def test_refine_issue_delegates_to_recursive_refine(self, data: dict) -> None:
-        """refine_issue must delegate to recursive-refine with context_passthrough."""
+        """refine_issue must delegate to recursive-refine with explicit input binding."""
         state = data["states"].get("refine_issue", {})
         assert state.get("loop") == "recursive-refine"
-        assert state.get("context_passthrough") is True
+        # Migrated from context_passthrough to explicit with: binding (FEAT-1311)
+        assert "input" in state.get("with", {}), (
+            "refine_issue must bind 'input' via 'with:' to pass the issue ID to recursive-refine"
+        )
 
     def test_refine_issue_has_success_and_failure_routes(self, data: dict) -> None:
         """refine_issue must define on_success and on_failure routes."""

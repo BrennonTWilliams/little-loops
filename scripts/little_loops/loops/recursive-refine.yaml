@@ -16,6 +16,11 @@ initial: parse_input
 max_iterations: 500
 timeout: 28800
 on_handoff: spawn
+parameters:
+  input:
+    type: string
+    required: true
+    description: Issue ID(s) to refine (comma-separated list accepted)
 context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json

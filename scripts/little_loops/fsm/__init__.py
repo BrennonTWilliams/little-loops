@@ -122,6 +122,7 @@ from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
     LLMConfig,
+    ParameterSpec,
     RouteConfig,
     StateConfig,
 )
@@ -166,6 +167,7 @@ __all__ = [
     "InterpolationError",
     "LLMConfig",
     "LockManager",
+    "ParameterSpec",
     "LoopState",
     "PersistentExecutor",
     "RateLimitCircuit",

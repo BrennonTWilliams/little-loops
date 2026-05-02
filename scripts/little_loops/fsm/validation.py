@@ -24,7 +24,7 @@ from typing import Any
 import yaml
 
 from little_loops.fsm.fragments import resolve_fragments, resolve_inheritance
-from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
+from little_loops.fsm.schema import EvaluateConfig, FSMLoop, ParameterSpec, StateConfig
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "initial",
         "states",
         "context",
+        "parameters",
         "scope",
         "max_iterations",
         "backoff",
@@ -98,6 +99,11 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "fragments",
         "from",
     }
+)
+
+# Valid parameter types for the 'parameters:' block
+VALID_PARAMETER_TYPES: frozenset[str] = frozenset(
+    {"string", "integer", "number", "boolean", "enum", "path"}
 )
 
 
@@ -194,6 +200,142 @@ def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[Valid
     return errors
 
 
+def _validate_parameters(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate the loop's top-level parameters: block.
+
+    Args:
+        fsm: The FSM loop to validate
+
+    Returns:
+        List of validation errors found
+    """
+    errors: list[ValidationError] = []
+
+    for param_name, param_spec in fsm.parameters.items():
+        path = f"parameters.{param_name}"
+
+        if param_spec.type not in VALID_PARAMETER_TYPES:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"Unknown parameter type '{param_spec.type}'. "
+                        f"Must be one of: {', '.join(sorted(VALID_PARAMETER_TYPES))}"
+                    ),
+                    path=path,
+                )
+            )
+
+        if param_spec.type == "enum" and not param_spec.values:
+            errors.append(
+                ValidationError(
+                    message="Parameter type 'enum' requires a 'values' list",
+                    path=path,
+                )
+            )
+
+        if param_spec.required and param_spec.default is not None:
+            errors.append(
+                ValidationError(
+                    message="Parameter cannot be both 'required: true' and have a 'default' value",
+                    path=path,
+                )
+            )
+
+    return errors
+
+
+def _check_param_type(value: Any, spec: ParameterSpec) -> str | None:
+    """Return an error message if value does not match spec.type, else None."""
+    if spec.type == "string" and not isinstance(value, str):
+        return f"expected string, got {type(value).__name__}"
+    if spec.type == "integer" and not isinstance(value, int):
+        return f"expected integer, got {type(value).__name__}"
+    if spec.type == "number" and not isinstance(value, (int, float)):
+        return f"expected number, got {type(value).__name__}"
+    if spec.type == "boolean" and not isinstance(value, bool):
+        return f"expected boolean, got {type(value).__name__}"
+    if spec.type == "enum" and spec.values and value not in spec.values:
+        return f"expected one of {spec.values!r}, got {value!r}"
+    return None
+
+
+def _validate_with_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationError]:
+    """Validate with: bindings against child loop parameter contracts.
+
+    Called from load_and_validate (not validate_fsm) because resolving child loops
+    requires file-system access via the loop directory path.
+
+    Args:
+        fsm: The parent FSM loop
+        loop_dir: Directory to resolve child loop paths from
+
+    Returns:
+        List of validation errors found
+    """
+    errors: list[ValidationError] = []
+
+    for state_name, state in fsm.states.items():
+        if state.loop is None or not state.with_:
+            continue
+
+        # Try to resolve and load the child loop; skip if unavailable
+        try:
+            from little_loops.cli.loop._helpers import resolve_loop_path
+
+            loop_path = resolve_loop_path(state.loop, loop_dir)
+            child_fsm, _ = load_and_validate(loop_path)
+        except Exception:
+            continue
+
+        if not child_fsm.parameters:
+            continue  # Child has no declared contract — nothing to cross-validate
+
+        path = f"states.{state_name}"
+
+        # Unknown with: keys (not declared by child)
+        for key in state.with_:
+            if key not in child_fsm.parameters:
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"'with.{key}' is not a declared parameter of loop '{state.loop}'. "
+                            f"Declared: {', '.join(sorted(child_fsm.parameters))}"
+                        ),
+                        path=f"{path}.with.{key}",
+                    )
+                )
+
+        # Required parameters not bound
+        for param_name, param_spec in child_fsm.parameters.items():
+            if param_spec.required and param_name not in state.with_:
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"Required parameter '{param_name}' of loop '{state.loop}' "
+                            f"is not bound in 'with'"
+                        ),
+                        path=f"{path}.with",
+                    )
+                )
+
+        # Statically-detectable type mismatches (skip interpolation strings)
+        for param_name, value in state.with_.items():
+            if param_name not in child_fsm.parameters:
+                continue
+            if isinstance(value, str) and "${" in value:
+                continue
+            type_error = _check_param_type(value, child_fsm.parameters[param_name])
+            if type_error:
+                errors.append(
+                    ValidationError(
+                        message=f"Parameter '{param_name}': {type_error}",
+                        path=f"{path}.with.{param_name}",
+                    )
+                )
+
+    return errors
+
+
 def _validate_state_action(state_name: str, state: StateConfig) -> list[ValidationError]:
     """Validate state action configuration.
 
@@ -222,6 +364,28 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
             ValidationError(
                 message="'loop' and 'action' are mutually exclusive — "
                 "a sub-loop state cannot also have an action",
+                path=f"{path}",
+            )
+        )
+
+    # with: requires loop: to be set
+    if state.with_ and state.loop is None:
+        errors.append(
+            ValidationError(
+                message="'with' is only valid when 'loop' is set",
+                path=f"{path}.with",
+            )
+        )
+
+    # with: and context_passthrough are mutually exclusive
+    if state.with_ and state.context_passthrough:
+        errors.append(
+            ValidationError(
+                message=(
+                    "'with' and 'context_passthrough' are mutually exclusive — "
+                    "use 'with' for explicit parameter bindings or 'context_passthrough' "
+                    "for legacy bulk passthrough, not both"
+                ),
                 path=f"{path}",
             )
         )
@@ -390,6 +554,9 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
     """
     errors: list[ValidationError] = []
     defined_states = fsm.get_all_state_names()
+
+    # Validate parameters block
+    errors.extend(_validate_parameters(fsm))
 
     # Check initial state exists
     if fsm.initial not in defined_states:
@@ -574,6 +741,9 @@ def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
 
     # Validate
     errors = validate_fsm(fsm)
+
+    # Validate with: bindings against child loop parameters (requires file-system access)
+    errors.extend(_validate_with_bindings(fsm, path.parent))
 
     # Filter to errors only (not warnings) for raising
     error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]

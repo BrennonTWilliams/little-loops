@@ -168,6 +168,13 @@
         },
         "additionalProperties": true
       }
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Declares the loop's public input contract. Callers bind values to these parameters via 'with:' on sub-loop states.",
+      "additionalProperties": {
+        "$ref": "#/definitions/parameterSpec"
+      }
     }
   },
   "additionalProperties": false,
@@ -293,7 +300,12 @@
         "context_passthrough": {
           "type": "boolean",
           "default": false,
-          "description": "Pass parent context variables to child loop and merge child captures back into parent context."
+          "description": "Pass parent context variables to child loop and merge child captures back into parent context. Legacy escape hatch; prefer 'with' for explicit named bindings."
+        },
+        "with": {
+          "type": "object",
+          "description": "Explicit parameter bindings for sub-loop calls. Maps the child loop's declared parameter names to parent expressions (supports ${variable} interpolation). Only valid when 'loop' is set. Mutually exclusive with 'context_passthrough'.",
+          "additionalProperties": true
         },
         "fragment": {
           "type": "string",
@@ -439,6 +451,36 @@
           }
         }
       ]
+    },
+    "parameterSpec": {
+      "type": "object",
+      "description": "Specification for a single loop input parameter declared in the 'parameters:' block",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "integer", "number", "boolean", "enum", "path"],
+          "description": "Parameter type"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, callers must supply this parameter in 'with:'. Mutually exclusive with 'default'."
+        },
+        "default": {
+          "description": "Default value when the parameter is not bound by the caller. Only valid when 'required' is false."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the parameter"
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values for 'enum' type parameters",
+          "items": {}
+        }
+      },
+      "additionalProperties": false
     },
     "llmConfig": {
       "type": "object",

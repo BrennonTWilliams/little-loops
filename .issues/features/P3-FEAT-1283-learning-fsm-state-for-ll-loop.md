@@ -42,6 +42,10 @@ When the loop enters `learning`:
 3. If any target is missing or stale → execute `/ll:explore-api` for that target, capture results, retry
 4. If a target is refuted → transition to a `blocked` state and surface the failure for human input
 
+## Use Case
+
+A developer kicks off `ll-auto` on an issue that requires integrating with the Anthropic SDK's streaming API. Without a learning gate, the loop's planning agent fabricates the shape of streaming events and iterates on broken implementations until time or retries run out. With a `learning` state declared in the loop config and `"Anthropic SDK streaming events"` listed as a target, the loop first queries the learning-tests registry (ENH-1282); on a miss it runs `/ll:explore-api`, writes the proven record, then advances to `planning` with verified API knowledge. The next loop run on a different issue that touches the same SDK skips re-exploration entirely because the registry already has a current proven record. If a target is later refuted (e.g., SDK behavior changed), the loop halts and emits a push notification rather than silently producing slop.
+
 ## Motivation
 
 The FSM loop is little-loops' core autonomous execution engine. Without a learning state, fully automated runs (ll-auto, ll-loop) are subject to the same assumption leakage that causes slop code in interactive sessions. The `learning` state is the architectural enforcement of "prove it before you build it" — it turns the registry (ENH-1282) from a passive reference into an active gate. Harness-first methodology means the loop cannot accidentally skip the proof phase.
@@ -96,11 +100,13 @@ The FSM loop is little-loops' core autonomous execution engine. Without a learni
 6. Write tests in `scripts/tests/test_learning_state.py`
 7. Update docs and loop YAML schema reference
 
-## Success Metrics
+## Acceptance Criteria
 
-- A loop with `type: learning` and a proven target advances without re-running explore-api
-- A loop with an unproven target automatically invokes explore-api, writes the record, then advances
-- A loop with a refuted target halts and emits a push notification
+- A loop with `type: learning` and a proven target advances to `on_pass` without re-running explore-api
+- A loop with an unproven target automatically invokes `/ll:explore-api`, writes the registry record, then advances
+- A loop with a refuted target halts, transitions to a `blocked` state, and emits a `PushNotification`
+- After `max_retries` exhaustion on stale/missing targets, the loop transitions to `blocked` rather than looping indefinitely
+- Loop YAML schema validation rejects `type: learning` states missing required fields (`targets`, `on_pass`, `on_fail`)
 
 ## Scope Boundaries
 
@@ -163,6 +169,7 @@ class LearningStateHandler:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-02T02:07:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04ed7039-9c6c-4ed5-8bb4-0babdee81a7b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 

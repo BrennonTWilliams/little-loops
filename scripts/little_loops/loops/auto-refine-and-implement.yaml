@@ -40,7 +40,8 @@ states:
 
   refine_issue:
     loop: recursive-refine
-    context_passthrough: true
+    with:
+      input: "${captured.input.output}"
     on_success: get_passed_issues
     on_failure: skip_and_continue
     on_error: skip_and_continue

@@ -19,6 +19,7 @@ from little_loops.fsm.schema import (
     FSMLoop,
     LLMConfig,
     LoopConfigOverrides,
+    ParameterSpec,
     RouteConfig,
     StateConfig,
 )
@@ -2115,3 +2116,204 @@ class TestAgentToolsStateConfig:
         restored = StateConfig.from_dict(d)
         assert restored.agent == "my-agent"
         assert restored.tools == ["Bash", "Edit"]
+
+
+class TestParameterSpec:
+    """Tests for the ParameterSpec dataclass."""
+
+    def test_minimal_from_dict(self) -> None:
+        """ParameterSpec.from_dict parses required 'type' field."""
+        spec = ParameterSpec.from_dict({"type": "string"})
+        assert spec.type == "string"
+        assert spec.required is False
+        assert spec.default is None
+        assert spec.description is None
+        assert spec.values is None
+
+    def test_full_from_dict(self) -> None:
+        """ParameterSpec.from_dict parses all fields."""
+        spec = ParameterSpec.from_dict(
+            {
+                "type": "enum",
+                "required": True,
+                "default": None,
+                "description": "Mode selector",
+                "values": ["fast", "slow"],
+            }
+        )
+        assert spec.type == "enum"
+        assert spec.required is True
+        assert spec.description == "Mode selector"
+        assert spec.values == ["fast", "slow"]
+
+    def test_to_dict_minimal(self) -> None:
+        """to_dict omits optional fields at their defaults."""
+        spec = ParameterSpec(type="integer")
+        d = spec.to_dict()
+        assert d == {"type": "integer"}
+        assert "required" not in d
+        assert "default" not in d
+        assert "description" not in d
+        assert "values" not in d
+
+    def test_to_dict_full(self) -> None:
+        """to_dict includes all non-default fields."""
+        spec = ParameterSpec(
+            type="enum",
+            required=True,
+            description="A choice",
+            values=["a", "b"],
+        )
+        d = spec.to_dict()
+        assert d["type"] == "enum"
+        assert d["required"] is True
+        assert d["description"] == "A choice"
+        assert d["values"] == ["a", "b"]
+
+    def test_round_trip_all_types(self) -> None:
+        """All v1 parameter types survive from_dict/to_dict round-trip."""
+        for ptype in ["string", "integer", "number", "boolean", "enum", "path"]:
+            original = ParameterSpec(type=ptype)
+            restored = ParameterSpec.from_dict(original.to_dict())
+            assert restored.type == ptype
+
+    def test_round_trip_with_default(self) -> None:
+        """ParameterSpec with default value round-trips correctly."""
+        original = ParameterSpec(type="boolean", default=False, description="Enable strict mode")
+        restored = ParameterSpec.from_dict(original.to_dict())
+        assert restored.type == "boolean"
+        assert restored.default is False
+        assert restored.description == "Enable strict mode"
+
+
+class TestFSMLoopParameters:
+    """Tests for FSMLoop.parameters field."""
+
+    def test_parameters_defaults_to_empty(self) -> None:
+        """FSMLoop.parameters defaults to empty dict."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert fsm.parameters == {}
+
+    def test_to_dict_omits_empty_parameters(self) -> None:
+        """to_dict does not include 'parameters' key when empty."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert "parameters" not in fsm.to_dict()
+
+    def test_to_dict_includes_parameters(self) -> None:
+        """to_dict serializes parameters block."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            parameters={
+                "pr_number": ParameterSpec(type="integer", required=True),
+                "branch": ParameterSpec(type="string", default="main"),
+            },
+        )
+        d = fsm.to_dict()
+        assert "parameters" in d
+        assert d["parameters"]["pr_number"] == {"type": "integer", "required": True}
+        assert d["parameters"]["branch"] == {"type": "string", "default": "main"}
+
+    def test_from_dict_parses_parameters(self) -> None:
+        """from_dict deserializes parameters block into ParameterSpec instances."""
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "parameters": {
+                "issue_id": {"type": "string", "required": True},
+                "strict": {"type": "boolean", "default": False},
+            },
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert "issue_id" in fsm.parameters
+        assert fsm.parameters["issue_id"].type == "string"
+        assert fsm.parameters["issue_id"].required is True
+        assert "strict" in fsm.parameters
+        assert fsm.parameters["strict"].default is False
+
+    def test_round_trip_parameters(self) -> None:
+        """FSMLoop with parameters block round-trips through to_dict/from_dict."""
+        original = FSMLoop(
+            name="my-loop",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            parameters={
+                "target": ParameterSpec(
+                    type="string", required=True, description="Target identifier"
+                ),
+                "mode": ParameterSpec(
+                    type="enum", values=["fast", "slow"], default="fast"
+                ),
+            },
+        )
+        d = original.to_dict()
+        restored = FSMLoop.from_dict(d)
+        assert restored.parameters["target"].type == "string"
+        assert restored.parameters["target"].required is True
+        assert restored.parameters["mode"].values == ["fast", "slow"]
+
+
+class TestStateConfigWith:
+    """Tests for StateConfig.with_ field (YAML key: 'with')."""
+
+    def test_with_defaults_to_empty(self) -> None:
+        """StateConfig.with_ defaults to empty dict."""
+        state = StateConfig(loop="child", on_yes="done")
+        assert state.with_ == {}
+
+    def test_to_dict_omits_empty_with(self) -> None:
+        """to_dict does not include 'with' when with_ is empty."""
+        state = StateConfig(loop="child", on_yes="done")
+        assert "with" not in state.to_dict()
+
+    def test_to_dict_includes_with(self) -> None:
+        """to_dict serializes with_ as 'with' key."""
+        state = StateConfig(
+            loop="child",
+            with_={"pr_number": "${context.target_pr}", "branch": "main"},
+            on_yes="done",
+        )
+        d = state.to_dict()
+        assert "with" in d
+        assert d["with"]["pr_number"] == "${context.target_pr}"
+        assert d["with"]["branch"] == "main"
+
+    def test_from_dict_parses_with(self) -> None:
+        """from_dict reads 'with' key into with_ field."""
+        data = {
+            "loop": "child",
+            "with": {"issue_id": "${captured.input.output}"},
+            "on_yes": "done",
+        }
+        state = StateConfig.from_dict(data)
+        assert state.with_ == {"issue_id": "${captured.input.output}"}
+
+    def test_from_dict_without_with_defaults_empty(self) -> None:
+        """from_dict defaults with_ to empty dict when 'with' is absent."""
+        data = {"loop": "child", "on_yes": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.with_ == {}
+
+    def test_round_trip_with_bindings(self) -> None:
+        """StateConfig with with_ round-trips through to_dict/from_dict."""
+        original = StateConfig(
+            loop="analyze-pr-review",
+            with_={"pr_number": "${context.target_pr}", "branch": "main"},
+            on_yes="done",
+            on_no="failed",
+        )
+        d = original.to_dict()
+        restored = StateConfig.from_dict(d)
+        assert restored.loop == "analyze-pr-review"
+        assert restored.with_["pr_number"] == "${context.target_pr}"
+        assert restored.with_["branch"] == "main"
