@@ -36,19 +36,38 @@ Update the heuristic in `skills/issue-size-review/SKILL.md` (and any associated 
 - **Change**: only suggest separating wiring if the wiring target is a genuinely independent, separately-testable subsystem
 - **Add**: a TDD-awareness note in the heuristic rationale — if the project uses TDD, wiring + tests + implementation belong together
 
+## Scope Boundaries
+
+**In scope:**
+- Wiring-split heuristic within `skills/issue-size-review/SKILL.md`
+
+**Out of scope:**
+- Docs-split recommendations — preserved as-is
+- Changes to any other skill (e.g., `wire-issue`, `manage-issue`, `confidence-check`)
+- Python runtime code, CLI tools, or FSM framework changes
+- Retroactively updating issues that were previously split using the old heuristic
+- TDD detection or awareness in any skill other than `issue-size-review`
+
 ## Integration Map
 
 ### Files to Modify
 - `skills/issue-size-review/SKILL.md` — primary heuristic logic for split suggestions
 
 ### Dependent Files (Callers/Importers)
-- TBD — search for any shared split-heuristic logic referenced by other skills
+- N/A — split heuristic logic is inline in the skill; no shared module or referenced helper
 
 ### Similar Patterns
 - `skills/wire-issue/SKILL.md` — treats wiring as part of the same implementation cycle (consistent reference)
 
 ### Tests
-- TBD — check if `scripts/tests/` has coverage for issue-size-review skill behavior
+- `scripts/tests/test_issue_size_review_skill.py` — existing test coverage for skill behavior; add/update test cases for the wiring-split heuristic change
+
+### Documentation
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — documents split behavior and "good/bad split" examples (~lines 358-370); update to reflect the wiring-split constraint
+- `docs/reference/COMMANDS.md` — issue-size-review command description (~lines 256-271); update if wiring behavior is explicitly described
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -81,4 +100,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-02 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-02T15:17:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d52d5c5-7c63-4dc9-9749-7c3748e3066a.jsonl`
 - `/ll:capture-issue` - 2026-05-02T15:14:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
