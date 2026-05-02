@@ -5,6 +5,7 @@ parent_issue: ENH-1248
 depends_on:
 - ENH-1254
 discovered_date: '2026-04-22'
+completed_at: '2026-05-02T20:01:24Z'
 discovered_by: issue-size-review
 decision_needed: false
 decision_question: 'Should ll-loop --worktree worktrees (naming: <timestamp>-<safe-name>)
@@ -307,4 +308,8 @@ _Added by `/ll:confidence-check` on 2026-04-26_
 - Loop worktrees (timestamp-named) would not be scanned ✓
 - Feature not yet implemented ✓
 
-**Open** | Created: 2026-04-22 | Priority: P3
+**Completed** | Created: 2026-04-22 | Completed: 2026-05-02 | Priority: P3
+
+## Resolution
+
+Implemented 2026-05-02. Extended orphan scan to cover `ll-loop --worktree` worktrees via a shared `_is_ll_worktree()` predicate in `worktree_utils.py`. Replaced all 5 inline `startswith("worker-")` guards across `orchestrator.py` (4 sites) and `worker_pool.py` (1 site). Updated `cleanup-worktrees.md` shell patterns and `worktree-health.yaml` action prompt. Added `TestIsLLWorktree` and extended tests in all 3 affected test files. All 234 tests pass.
