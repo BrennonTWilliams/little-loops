@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from little_loops.events import EventBus, LLEvent
+from little_loops.transport import JsonlTransport
 
 
 class TestLLEvent:
@@ -168,10 +169,10 @@ class TestEventBus:
         assert any("observer raised an exception" in record.message for record in caplog.records)
 
     def test_file_sink(self, tmp_path: Path) -> None:
-        """EventBus can write events to a JSONL file sink."""
+        """EventBus dispatches events to a JsonlTransport."""
         log_file = tmp_path / "events.jsonl"
         bus = EventBus()
-        bus.add_file_sink(log_file)
+        bus.add_transport(JsonlTransport(log_file))
 
         bus.emit({"event": "first", "ts": "t1", "x": 1})
         bus.emit({"event": "second", "ts": "t2", "x": 2})
@@ -182,10 +183,10 @@ class TestEventBus:
         assert json.loads(lines[1])["event"] == "second"
 
     def test_file_sink_reads_back(self, tmp_path: Path) -> None:
-        """Events written to file sink can be read back as LLEvents."""
+        """Events written via JsonlTransport can be read back as LLEvents."""
         log_file = tmp_path / "events.jsonl"
         bus = EventBus()
-        bus.add_file_sink(log_file)
+        bus.add_transport(JsonlTransport(log_file))
 
         bus.emit({"event": "fsm.state_enter", "ts": "2026-04-02T12:00:00Z", "state": "build"})
 

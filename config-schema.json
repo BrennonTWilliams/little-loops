@@ -1032,6 +1032,19 @@
       "items": { "type": "string" },
       "default": [],
       "description": "Extension module paths to load (format: 'module.path:ClassName'). Extensions receive structured events from the EventBus."
+    },
+    "events": {
+      "type": "object",
+      "description": "Event transport configuration. Transports are sinks attached to the EventBus and receive every emitted event.",
+      "properties": {
+        "transports": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Names of transports to wire onto the EventBus (e.g. \"jsonl\"). Unknown names are skipped with a warning."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

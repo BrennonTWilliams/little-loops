@@ -3,7 +3,7 @@
 This document catalogs every event type emitted by little-loops subsystems. It is the primary reference for extension authors, external consumers (e.g. loop-viz), and internal development.
 
 > **Related Documentation:**
-> - [API Reference — EventBus and LLExtension](API.md#littleloopsevents) — bus registration, file sinks, filter patterns
+> - [API Reference — EventBus and LLExtension](API.md#littleloopsevents) — bus registration, transports, filter patterns
 > - [Architecture Overview](../ARCHITECTURE.md) — Event persistence patterns and FSM executor design
 
 ---

@@ -5316,11 +5316,14 @@ Structured event system and EventBus dispatcher for the extension architecture.
 > **Event catalog:** For a complete reference of all event types, payload fields, and subsystem namespaces, see [EVENT-SCHEMA.md](EVENT-SCHEMA.md).
 
 ```python
+from pathlib import Path
+
 from little_loops.events import EventBus, LLEvent
+from little_loops.transport import JsonlTransport
 
 bus = EventBus()
 bus.register(lambda evt: print(f"Event: {evt['event']}"))
-bus.add_file_sink(Path(".ll/events.jsonl"))
+bus.add_transport(JsonlTransport(Path(".ll/events.jsonl")))
 bus.emit(LLEvent(type="issue.completed", timestamp="2026-04-02T12:00:00Z", payload={"id": "BUG-001"}).to_dict())
 ```
 
@@ -5369,15 +5372,16 @@ Convenience wrapper over `from_dict`. Copies the input dict before parsing so th
 
 ### EventBus
 
-Central dispatcher that fans out events to registered observers and file sinks.
+Central dispatcher that fans out events to registered observers and transports.
 
 ```python
 from little_loops.events import EventBus, LLEvent
+from little_loops.transport import JsonlTransport
 from pathlib import Path
 
 bus = EventBus()
 bus.register(lambda evt: print(evt))
-bus.add_file_sink(Path(".ll/events.jsonl"))
+bus.add_transport(JsonlTransport(Path(".ll/events.jsonl")))
 bus.emit({"event": "test", "ts": "2026-04-02T00:00:00Z"})
 ```
 
@@ -5387,7 +5391,7 @@ bus.emit({"event": "test", "ts": "2026-04-02T00:00:00Z"})
 EventBus()
 ```
 
-Initializes empty observer and file sink lists. No parameters.
+Initializes empty observer and transport lists. No parameters.
 
 #### Methods
 
@@ -5395,8 +5399,9 @@ Initializes empty observer and file sink lists. No parameters.
 |--------|-------------|
 | `register(callback: EventCallback, filter: str \| list[str] \| None = None) -> None` | Append an observer callback with an optional glob filter. `None` (default) receives all events. |
 | `unregister(callback: EventCallback) -> None` | Remove an observer by identity. Silently ignores if not found. |
-| `add_file_sink(path: Path) -> None` | Add a JSONL file sink. Creates parent directories if needed. |
-| `emit(event: dict[str, Any]) -> None` | Fan out event to matching observers, then append JSON line to all file sinks. Per-observer exceptions are caught and logged. |
+| `add_transport(transport: Transport) -> None` | Register a `Transport` to receive every emitted event. |
+| `close_transports() -> None` | Call `close()` on every registered transport, isolating exceptions. |
+| `emit(event: dict[str, Any]) -> None` | Fan out event to matching observers, then deliver to every transport via `send()`. Per-observer and per-transport exceptions are caught and logged. |
 | `read_events(path: Path) -> list[LLEvent]` | *(static)* Read a JSONL event log file. Returns `[]` if file does not exist. Skips invalid JSON lines. |
 
 #### Filter parameter
@@ -5422,6 +5427,94 @@ bus.register(my_callback)
 - `state.*` — state manager events (`state.issue_completed`, `state.issue_failed`)
 - `parallel.*` — parallel orchestrator events (`parallel.worker_completed`)
 - Bare names — FSM executor events (`state_enter`, `loop_start`, `action_start`, etc.)
+
+---
+
+## little_loops.transport
+
+Transport abstraction for the EventBus. A `Transport` is an additive sink that receives every event emitted on the bus. The Protocol is intentionally minimal — `send(event)` for delivery and `close()` for cleanup — so new sinks can be added without modifying `EventBus` itself.
+
+```python
+from pathlib import Path
+
+from little_loops.events import EventBus
+from little_loops.transport import JsonlTransport, Transport
+
+bus = EventBus()
+bus.add_transport(JsonlTransport(Path(".ll/events.jsonl")))
+bus.emit({"event": "demo", "ts": "2026-05-02T00:00:00Z"})
+bus.close_transports()
+```
+
+### Transport Protocol
+
+```python
+@runtime_checkable
+class Transport(Protocol):
+    def send(self, event: dict[str, Any]) -> None: ...
+    def close(self) -> None: ...
+```
+
+Implement this protocol to register a custom event sink. The `@runtime_checkable` decorator enables `isinstance(obj, Transport)` checks at runtime. Transports do not filter events — every event emitted on the bus is delivered to every registered transport. Implementations must tolerate arbitrary `dict[str, Any]` shapes (the bus does not validate event contents). Per-transport `send()` and `close()` exceptions are caught and logged by `EventBus`, so a faulty transport never blocks delivery to other observers or transports.
+
+### JsonlTransport
+
+Reference implementation that appends each event as a single JSON line to a file. Replaces the previous `EventBus._file_sinks` mechanism.
+
+```python
+from little_loops.transport import JsonlTransport
+from pathlib import Path
+
+transport = JsonlTransport(Path(".ll/events.jsonl"))
+transport.send({"event": "demo", "ts": "2026-05-02T00:00:00Z"})
+```
+
+#### Constructor
+
+```python
+JsonlTransport(path: Path)
+```
+
+**Parameters:**
+- `path` - Path to the JSONL log file. The parent directory is created at construction time so per-event writes do not have to check it.
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `send(event: dict[str, Any]) -> None` | Append `json.dumps(event)` as a line to the configured path. Each call opens and closes the file. |
+| `close() -> None` | No-op. Each `send()` already closes its file handle. |
+
+### wire_transports
+
+Register the transports listed in an `EventsConfig` on an `EventBus`. Called by CLI entry points (ll-loop, ll-parallel, ll-sprint) at startup.
+
+```python
+from little_loops.events import EventBus
+from little_loops.transport import wire_transports
+from pathlib import Path
+
+bus = EventBus()
+wire_transports(bus, config.events, log_dir=Path(".ll"))
+```
+
+**Signature:**
+```python
+def wire_transports(
+    bus: EventBus,
+    config: EventsConfig,
+    log_dir: Path | None = None,
+) -> None
+```
+
+**Parameters:**
+- `bus` - The `EventBus` instance to register transports on.
+- `config` - `EventsConfig` whose `transports` field lists the transport names to wire up.
+- `log_dir` - Directory under which built-in transports place their log files. Defaults to `Path(".ll")` under the current working directory.
+
+**Behavior:**
+- Each name in `config.transports` is resolved against an internal registry of built-in transport names. Currently shipped: `"jsonl"` (registers a `JsonlTransport` writing to `<log_dir>/events.jsonl`).
+- Unknown names log a `WARNING` and are skipped — a typo in user config never prevents the loop from starting.
 
 ---
 

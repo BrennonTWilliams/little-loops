@@ -470,7 +470,7 @@ little-loops includes an extension architecture built on a structured event bus.
 | Component | File | Purpose |
 |-----------|------|---------|
 | `LLEvent` | `events.py` | Structured event dataclass (type, timestamp, payload) |
-| `EventBus` | `events.py` | Multi-observer dispatcher with optional JSONL file sink |
+| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (JSONL via `JsonlTransport`) |
 | `LLExtension` | `extension.py` | Runtime-checkable protocol for event consumers |
 | `ExtensionLoader` | `extension.py` | Discovers extensions from config paths and entry points |
 | `InterceptorExtension` | `extension.py` | Protocol for plugins providing `before_route`/`after_route` hooks; stored in `FSMExecutor._interceptors` |

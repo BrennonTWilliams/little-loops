@@ -109,3 +109,19 @@ class TestConfigSchema:
         lt_props = data["properties"]["learning_tests"]["properties"]
         assert "stale_after_days" in lt_props
         assert lt_props["stale_after_days"]["type"] == "integer"
+
+    def test_events_in_schema(self) -> None:
+        """events block must be declared in config-schema.json with a transports array.
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing events will be rejected unless the property is declared.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "events" in data["properties"], (
+            "events is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        events_props = data["properties"]["events"]["properties"]
+        assert "transports" in events_props
+        assert events_props["transports"]["type"] == "array"
+        assert events_props["transports"]["items"]["type"] == "string"

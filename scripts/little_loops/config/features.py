@@ -369,3 +369,22 @@ class SyncConfig:
             provider=data.get("provider", "github"),
             github=GitHubSyncConfig.from_dict(data.get("github", {})),
         )
+
+
+@dataclass
+class EventsConfig:
+    """Event transport configuration.
+
+    Lists the transports to wire onto the EventBus at runtime. Names are
+    resolved against the registry in `little_loops.transport.wire_transports`;
+    unknown names are skipped with a warning.
+    """
+
+    transports: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EventsConfig:
+        """Create EventsConfig from dictionary."""
+        return cls(
+            transports=data.get("transports", []),
+        )

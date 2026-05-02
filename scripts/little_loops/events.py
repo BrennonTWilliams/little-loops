@@ -6,7 +6,7 @@ and automation workflows.
 
 Public exports:
     LLEvent: Structured event dataclass with type, timestamp, and payload
-    EventBus: Multi-observer event dispatcher with optional JSONL file sink
+    EventBus: Multi-observer event dispatcher with pluggable transports
 """
 
 from __future__ import annotations
@@ -17,7 +17,10 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from little_loops.transport import Transport
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +76,7 @@ class EventBus:
 
     def __init__(self) -> None:
         self._observers: list[tuple[EventCallback, list[str] | None]] = []
-        self._file_sinks: list[Path] = []
+        self._transports: list[Transport] = []
 
     def register(self, callback: EventCallback, filter: str | list[str] | None = None) -> None:
         """Register an observer to receive events.
@@ -99,16 +102,23 @@ class EventBus:
                 del self._observers[i]
                 return
 
-    def add_file_sink(self, path: Path) -> None:
-        """Add a JSONL file sink. Events will be appended to this file."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._file_sinks.append(path)
+    def add_transport(self, transport: Transport) -> None:
+        """Register a Transport to receive every emitted event."""
+        self._transports.append(transport)
+
+    def close_transports(self) -> None:
+        """Call ``close()`` on every registered transport, isolating exceptions."""
+        for transport in self._transports:
+            try:
+                transport.close()
+            except Exception:
+                logger.warning("EventBus transport close raised an exception", exc_info=True)
 
     def emit(self, event: dict[str, Any]) -> None:
-        """Dispatch event to all observers and file sinks.
+        """Dispatch event to all observers and transports.
 
-        Observer exceptions are caught and logged to prevent one observer
-        from blocking others.
+        Observer and transport exceptions are caught and logged to prevent one
+        sink from blocking others.
         """
         event_type = event.get("event", "")
         for observer, filter_patterns in self._observers:
@@ -121,12 +131,11 @@ class EventBus:
             except Exception:
                 logger.warning("EventBus observer raised an exception", exc_info=True)
 
-        for sink_path in self._file_sinks:
+        for transport in self._transports:
             try:
-                with open(sink_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(event) + "\n")
+                transport.send(event)
             except Exception:
-                logger.warning("EventBus file sink write failed: %s", sink_path, exc_info=True)
+                logger.warning("EventBus transport raised an exception", exc_info=True)
 
     @staticmethod
     def read_events(path: Path) -> list[LLEvent]:

@@ -747,7 +747,7 @@ class TestPersistentExecutor:
         assert result is None
 
     def test_resume_emits_resume_event(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
-        """resume() emits loop_resume event."""
+        """resume() emits loop_resume event through the EventBus (no bypass)."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
 
@@ -768,11 +768,20 @@ class TestPersistentExecutor:
         executor = PersistentExecutor(
             simple_fsm, persistence=persistence, action_runner=MockActionRunner()
         )
+
+        # Register an observer to verify the resume event flows through EventBus
+        bus_events: list[dict[str, Any]] = []
+        executor.event_bus.register(lambda e: bus_events.append(e))
+
         executor.resume()
 
         events = persistence.read_events()
         event_types = [e["event"] for e in events]
         assert "loop_resume" in event_types
+
+        # The bypass fix: loop_resume must also flow through EventBus.emit()
+        bus_event_types = [e["event"] for e in bus_events]
+        assert "loop_resume" in bus_event_types
 
     def test_resume_clears_pending_signals(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """resume() clears both _pending_handoff and _pending_error from the previous run."""

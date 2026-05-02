@@ -742,6 +742,32 @@ Extensions can also be auto-discovered via Python entry points — see [API Refe
 
 ---
 
+### `events.transports`
+
+List of transports to wire onto the EventBus at runtime. Transports are additive sinks that receive every event emitted on the bus (no filtering at the transport layer). Names are resolved against the registry in `little_loops.transport.wire_transports`; unknown names log a warning and are skipped so a typo never prevents the loop from starting.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `events.transports` | `array` of `string` | `[]` | Transport names to register on the EventBus. |
+
+**Currently shipped transports:**
+
+| Name | Effect |
+|------|--------|
+| `"jsonl"` | Registers a `JsonlTransport` writing to `<log_dir>/events.jsonl` (defaults to `.ll/events.jsonl`). |
+
+```json
+{
+  "events": {
+    "transports": ["jsonl"]
+  }
+}
+```
+
+See [API Reference → little_loops.transport](API.md#little_loopstransport) for the `Transport` Protocol and how to author custom transports.
+
+---
+
 ## Manual Configuration
 
 The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.

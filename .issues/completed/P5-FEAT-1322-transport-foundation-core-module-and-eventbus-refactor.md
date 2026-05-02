@@ -10,6 +10,7 @@ score_complexity: 0
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+completed_at: 2026-05-02T15:59:58Z
 ---
 
 # FEAT-1322: Transport Foundation — Core Module and EventBus Refactor
@@ -91,10 +92,10 @@ def wire_transports(bus: EventBus, config: EventsConfig) -> None: ...
 
 ### Tests
 
-- `scripts/tests/test_events.py` — rewrite `test_file_sink` (line 174) and `test_file_sink_reads_back` (line 188) to use `bus.add_transport(JsonlTransport(path))`. Other 23 tests unaffected.
+- `scripts/tests/test_events.py` — rewrite `test_file_sink` (line 170) and `test_file_sink_reads_back` (line 184) to use `bus.add_transport(JsonlTransport(path))`. Other 23 tests unaffected.
 - `scripts/tests/test_transport.py` (new) — Protocol satisfaction (pattern: `test_extension.py:19-32`), `JsonlTransport` lifecycle, error isolation when one transport raises (pattern: `test_events.py:140-154`)
 - `scripts/tests/test_config.py` — `EventsConfig` defaults + nested-key parsing (pattern: `temp_project_dir` fixture, `BRConfig(temp_project_dir)`)
-- `scripts/tests/test_fsm_persistence.py:745` — extend `test_resume_emits_resume_event` to assert `EventBus.emit` was called for `loop_resume`
+- `scripts/tests/test_fsm_persistence.py:749` — extend `test_resume_emits_resume_event` to assert `EventBus.emit` was called for `loop_resume`
 - `scripts/tests/test_config_schema.py` — assert `"events"` in `data["properties"]` and `"transports"` in `data["properties"]["events"]["properties"]`; pattern: `test_learning_tests_in_schema`
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -201,7 +202,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-05-02 | Priority: P5
+**Completed** | Created: 2026-05-02 | Completed: 2026-05-02 | Priority: P5
+
+## Resolution
+
+Shipped the transport foundation as scoped:
+
+- **New module** `scripts/little_loops/transport.py` — `Transport` Protocol (runtime-checkable), `JsonlTransport` (parent dir created at construction; `send()` appends a JSON line; `close()` is a no-op), and `wire_transports()` with a registry of built-in names (`{"jsonl": ...}`); unknown names log a warning and are skipped.
+- **EventBus refactor** in `events.py` — removed `_file_sinks` and `add_file_sink()`; added `_transports`, `add_transport()`, and `close_transports()`; `emit()` fans out per-transport with exception isolation.
+- **`loop_resume` bypass fix** at `scripts/little_loops/fsm/persistence.py:555` — resume events now flow through `EventBus.emit()` in addition to `append_event()`. Added `PersistentExecutor.close_transports()` after the `_on_event.setter`.
+- **Config stack** — `EventsConfig(transports: list[str])` dataclass added in `config/features.py`; imported and parsed in `config/core.py` (`_parse_config`, `events` property, `to_dict`); exported from `config/__init__.py`.
+- **Schema** — `config-schema.json` extended with an `events.transports` array as a sibling of `extensions`.
+- **Public API** — `scripts/little_loops/__init__.py` re-exports `Transport`, `JsonlTransport`, and `wire_transports`.
+- **Tests** — new `scripts/tests/test_transport.py` (14 tests covering Protocol satisfaction, `JsonlTransport` lifecycle, EventBus transport fan-out, exception isolation, `close_transports`, and `wire_transports` registry); two file-sink tests in `test_events.py` rewritten to use `add_transport(JsonlTransport(...))`; `test_fsm_persistence.py:749` extended to assert `EventBus.emit()` for resume events; `TestEventsConfig` and `TestBRConfigEventsIntegration` added to `test_config.py`; `test_events_in_schema` added to `test_config_schema.py`.
+- **Docs** — `docs/reference/API.md` gained a `little_loops.transport` section; `docs/ARCHITECTURE.md`, `docs/reference/EVENT-SCHEMA.md`, and `docs/reference/CONFIGURATION.md` updated to reflect the transport abstraction (including a new `events.transports` config section).
+
+Verification: full `pytest scripts/tests/` shows 5533 passed with 3 pre-existing unrelated failures (marketplace.json version mismatch + builtin_loops YAML structure, confirmed via `git stash` baseline). No new lint or mypy regressions. Unblocks FEAT-1323 (CLI wiring pass).
 
 ## Confidence Check Notes
 
@@ -216,8 +232,11 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - **`__init__.py` exports resolved**: `Transport`, `JsonlTransport`, and `wire_transports` will be added to `__all__` (step 8), consistent with the extension system pattern. No judgment call remains.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-02T15:46:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca51ce79-fc5d-451e-b964-005cf666a01c.jsonl`
+- `/ll:ready-issue` - 2026-05-02T15:46:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca51ce79-fc5d-451e-b964-005cf666a01c.jsonl`
 - `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea8713f7-6133-46d3-a7c4-835e7fe80de1.jsonl`
 - `/ll:wire-issue` - 2026-05-02T15:35:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0920c085-edd5-4d96-901f-87d998a45ed1.jsonl`
 - `/ll:refine-issue` - 2026-05-02T15:27:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34a9360e-afb7-429d-aa82-7d4cf5507f1f.jsonl`
 - `/ll:format-issue` - 2026-05-02T15:22:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/784c461e-af3a-415e-9ed1-30cb388a8682.jsonl`
 - `/ll:issue-size-review` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
+- `/ll:manage-issue` - 2026-05-02T15:59:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b593866a-d3e5-4a59-9fd9-49e3382dda71.jsonl`

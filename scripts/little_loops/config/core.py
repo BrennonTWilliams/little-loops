@@ -19,6 +19,7 @@ from little_loops.config.automation import (
 )
 from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
+    EventsConfig,
     IssuesConfig,
     LearningTestsConfig,
     LoopsConfig,
@@ -117,6 +118,7 @@ class BRConfig:
         self._refine_status = RefineStatusConfig.from_dict(
             self._raw_config.get("refine_status", {})
         )
+        self._events = EventsConfig.from_dict(self._raw_config.get("events", {}))
 
     @property
     def project(self) -> ProjectConfig:
@@ -182,6 +184,11 @@ class BRConfig:
     def refine_status(self) -> RefineStatusConfig:
         """Get refine-status display configuration."""
         return self._refine_status
+
+    @property
+    def events(self) -> EventsConfig:
+        """Get events configuration."""
+        return self._events
 
     @property
     def extensions(self) -> list[str]:
@@ -443,6 +450,9 @@ class BRConfig:
             },
             "learning_tests": {
                 "stale_after_days": self._learning_tests.stale_after_days,
+            },
+            "events": {
+                "transports": list(self._events.transports),
             },
             "sync": {
                 "enabled": self._sync.enabled,

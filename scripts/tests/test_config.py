@@ -24,6 +24,7 @@ from little_loops.config import (
     ConfidenceGateConfig,
     DependencyMappingConfig,
     DuplicateDetectionConfig,
+    EventsConfig,
     GitHubSyncConfig,
     IssuesConfig,
     LearningTestsConfig,
@@ -711,6 +712,7 @@ class TestBRConfig:
         assert result["automation"]["timeout_seconds"] == 1800
         assert result["parallel"]["max_workers"] == 3
         assert "queue_wait_timeout_seconds" in result["loops"]
+        assert "events" in result
 
         # Should be JSON serializable
         json.dumps(result)
@@ -1195,6 +1197,59 @@ class TestBRConfigSyncIntegration:
 
         assert config.resolve_variable("sync.enabled") == "True"
         assert config.resolve_variable("sync.provider") == "github"
+
+
+class TestEventsConfig:
+    """Tests for EventsConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating EventsConfig with default values."""
+        config = EventsConfig.from_dict({})
+
+        assert config.transports == []
+
+    def test_from_dict_with_transports(self) -> None:
+        """Test creating EventsConfig with explicit transports list."""
+        config = EventsConfig.from_dict({"transports": ["jsonl"]})
+
+        assert config.transports == ["jsonl"]
+
+
+class TestBRConfigEventsIntegration:
+    """Tests for BRConfig events property integration."""
+
+    def test_events_property_exists(self, temp_project_dir: Path) -> None:
+        """Test that BRConfig has events property."""
+        config = BRConfig(temp_project_dir)
+
+        assert hasattr(config, "events")
+        assert isinstance(config.events, EventsConfig)
+
+    def test_events_property_with_defaults(self, temp_project_dir: Path) -> None:
+        """Test events property returns defaults when not configured."""
+        config = BRConfig(temp_project_dir)
+
+        assert config.events.transports == []
+
+    def test_events_property_loads_from_config(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test events property loads from config file."""
+        sample_config["events"] = {"transports": ["jsonl"]}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.events.transports == ["jsonl"]
+
+    def test_events_in_to_dict(self, temp_project_dir: Path) -> None:
+        """Test events config appears in to_dict output."""
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "events" in result
+        assert "transports" in result["events"]
 
 
 class TestScoringWeightsConfig:

@@ -395,6 +395,10 @@ class PersistentExecutor:
         if callback is not None:
             self.event_bus.register(callback)
 
+    def close_transports(self) -> None:
+        """Close all transports registered on the underlying EventBus."""
+        self.event_bus.close_transports()
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
 
@@ -553,6 +557,7 @@ class PersistentExecutor:
             resume_event["from_handoff"] = True
             resume_event["continuation_prompt"] = state.continuation_prompt
         self.persistence.append_event(resume_event)
+        self.event_bus.emit(resume_event)
 
         # Continue execution (don't clear previous events)
         return self.run(clear_previous=False)
