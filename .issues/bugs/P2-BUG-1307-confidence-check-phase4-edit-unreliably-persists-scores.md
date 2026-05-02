@@ -63,13 +63,14 @@ The same fragility applies to `autodev`'s post-refine `check_passed` gate (`auto
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues/` — new `set_scores.py` module + entry-point registration in `scripts/little_loops/cli/issues/__init__.py` / `pyproject.toml`.
+- `scripts/little_loops/cli/issues/set_scores.py` — new module (create); `scripts/little_loops/cli/issues/__init__.py` — register subcommand. No `pyproject.toml` change needed.
 - `skills/confidence-check/SKILL.md` — replace Phase 4 Edit instructions with Bash CLI call.
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — insert `verify_scores_persisted` between `confidence_check` and `check_readiness`.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/issues/show.py` — reads `confidence_score`/`outcome_confidence` from frontmatter; must stay in sync with whatever `set-scores` writes.
-- `scripts/little_loops/loops/autodev.yaml` — `check_passed` reads same frontmatter via `ll-issues check-readiness` (or `show --json`); confirm it observes the new writes.
+- `scripts/little_loops/cli/issues/show.py` — `_parse_card_fields()` reads `confidence_score`/`outcome_confidence` from frontmatter; produces JSON keys `"confidence"`/`"outcome"` consumed by `check_readiness`/`check_outcome` states in `refine-to-ready-issue.yaml`.
+- `scripts/little_loops/cli/issues/check_readiness.py` — `cmd_check_readiness()` reads `confidence_score`/`outcome_confidence` directly via `parse_frontmatter()`; consumed by `check_passed`, `recheck_after_decide`, `recheck_scores`, and `recheck_after_size_review` states in `autodev.yaml`.
+- `scripts/little_loops/loops/autodev.yaml` — four states use `ll-issues check-readiness`; all observe the same frontmatter fields.
 - Any other loop YAML that calls `/ll:confidence-check` and then reads `confidence_score` from frontmatter.
 
 ### Similar Patterns
@@ -84,6 +85,37 @@ The same fragility applies to `autodev`'s post-refine `check_passed` gate (`auto
 ### Documentation
 - `skills/confidence-check/SKILL.md` Phase 4 prose.
 - Any developer docs describing the autodev/refine flow.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Frontmatter utility (path correction):**
+- The correct path is `scripts/little_loops/frontmatter.py` (not `utils/frontmatter.py` — no `utils/` subdirectory exists). The `update_frontmatter(content, updates)` function at line 110 handles both the "no existing frontmatter" case (prepends new block) and the "update existing" case (`yaml.safe_load` → merge → `yaml.dump`). This is the function `set_scores.py` should call after reading the file.
+
+**pyproject.toml does not need changes:**
+- `ll-issues = "little_loops.cli:main_issues"` in `scripts/pyproject.toml` already routes all subcommands to `main_issues()`. Adding `set-scores` only requires changes to `scripts/little_loops/cli/issues/__init__.py` and the new `set_scores.py` module file.
+
+**CLI registration pattern in `__init__.py` (`main_issues()`):**
+1. Add a lazy import inside the function body: `from little_loops.cli.issues.set_scores import cmd_set_scores`
+2. Add `add_parser("set-scores", ...)` with the required argument flags in the subparser block (see `check-readiness` parser at line 439 as the closest parallel)
+3. Add a dispatch case: `if args.command == "set-scores": return cmd_set_scores(config, args)`
+- Pattern file: `scripts/little_loops/cli/issues/append_log.py` — the simplest example of a file-mutating subcommand (reads path arg, mutates file, returns exit code)
+
+**Two distinct gate read paths (both must observe new writes):**
+- `refine-to-ready-issue.yaml` `check_readiness` state: calls `ll-issues show ${ID} --json` → `show.py:_parse_card_fields()` (line 147) → `parse_frontmatter(coerce_types=True)` → returns JSON key `"confidence"` from `confidence_score` frontmatter field
+- `autodev.yaml` `check_passed`, `recheck_after_decide`, `recheck_scores`, `recheck_after_size_review` states: call `ll-issues check-readiness ${ID}` → `check_readiness.py:cmd_check_readiness()` (line 49) → `parse_frontmatter(coerce_types=True)` → reads `confidence_score`/`outcome_confidence` directly. Both paths evaluate `int(value or 0)` so `None` or missing fields → `0 < threshold` → gate fails.
+
+**Atomic file write:**
+- `scripts/little_loops/file_utils.py:atomic_write()` — available for safe in-place file mutation; `set_scores.py` can use `path.write_text(new_content)` for simplicity (consistent with how `check_readiness.py` reads), or `atomic_write` for extra safety
+
+**Test pattern for `test_set_scores_cli.py`:**
+- Best model: `scripts/tests/test_issues_cli.py:TestIssuesSkip` (line 2830) — uses `patch.object(sys, "argv", ["ll-issues", "set-scores", ..., "--config", str(temp_project_dir)])`, imports `main_issues` inside the `with` block, asserts on file contents via `.read_text()`
+- Fixtures: `temp_project_dir`, `sample_config`, `issues_dir` from `scripts/tests/conftest.py`
+- Required cases: (a) write all 6 score fields to issue with no frontmatter, (b) update existing fields without disturbing other frontmatter keys, (c) partial update (only `--confidence` flag), (d) nonexistent issue ID → exit 1 + stderr, (e) verify `ll-issues show <id> --json` returns updated values after write
+
+**`test_confidence_check_skill.py` structural guard pattern:**
+- The existing test file (`scripts/tests/test_confidence_check_skill.py`) uses text-search to assert Phase 4 behavior properties. After updating Phase 4, add a test asserting that Phase 4 contains `ll-issues set-scores` and does NOT contain a free-form `Edit` call for frontmatter.
 
 ### Configuration
 - N/A.
@@ -139,6 +171,7 @@ The bug is probabilistic (depends on whether the LLM executed the Phase 4 Edit).
 bug, autodev, refine-to-ready-issue, confidence-check, frontmatter, persistence, fsm
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-02T15:15:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d52d5c5-7c63-4dc9-9749-7c3748e3066a.jsonl`
 - `/ll:format-issue` - 2026-05-01T17:38:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
 - `/ll:capture-issue` - 2026-04-30T17:48:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ef26bc-40e0-42b3-b405-4e9de6b8db77.jsonl`
 
