@@ -125,3 +125,16 @@ class TestConfigSchema:
         assert "transports" in events_props
         assert events_props["transports"]["type"] == "array"
         assert events_props["transports"]["items"]["type"] == "string"
+
+        assert "socket" in events_props, (
+            "events.socket is not declared; configs using events.socket will be "
+            "rejected by additionalProperties: false on the events block"
+        )
+        socket_block = events_props["socket"]
+        assert socket_block["type"] == "object"
+        assert socket_block.get("additionalProperties") is False
+        socket_props = socket_block["properties"]
+        assert socket_props["path"]["type"] == "string"
+        assert socket_props["path"]["default"] == ".ll/events.sock"
+        assert socket_props["max_clients"]["type"] == "integer"
+        assert socket_props["max_clients"]["default"] == 8

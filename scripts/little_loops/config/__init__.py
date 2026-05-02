@@ -43,6 +43,7 @@ from little_loops.config.features import (
     NextIssueConfig,
     NextIssueSortKey,
     ScanConfig,
+    SocketEventsConfig,
     SprintsConfig,
     SyncConfig,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "RateLimitsConfig",
     "SyncConfig",
     "EventsConfig",
+    "SocketEventsConfig",
     "ScoringWeightsConfig",
     "DependencyMappingConfig",
     "DuplicateDetectionConfig",

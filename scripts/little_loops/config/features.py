@@ -372,6 +372,22 @@ class SyncConfig:
 
 
 @dataclass
+class SocketEventsConfig:
+    """UnixSocketTransport configuration."""
+
+    path: str = ".ll/events.sock"
+    max_clients: int = 8
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SocketEventsConfig:
+        """Create SocketEventsConfig from dictionary."""
+        return cls(
+            path=data.get("path", ".ll/events.sock"),
+            max_clients=data.get("max_clients", 8),
+        )
+
+
+@dataclass
 class EventsConfig:
     """Event transport configuration.
 
@@ -381,10 +397,12 @@ class EventsConfig:
     """
 
     transports: list[str] = field(default_factory=list)
+    socket: SocketEventsConfig = field(default_factory=SocketEventsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EventsConfig:
         """Create EventsConfig from dictionary."""
         return cls(
             transports=data.get("transports", []),
+            socket=SocketEventsConfig.from_dict(data.get("socket", {})),
         )

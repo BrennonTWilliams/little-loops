@@ -36,6 +36,7 @@ from little_loops.config import (
     RateLimitsConfig,
     ScanConfig,
     ScoringWeightsConfig,
+    SocketEventsConfig,
     SprintsConfig,
     SyncConfig,
 )
@@ -1207,12 +1208,46 @@ class TestEventsConfig:
         config = EventsConfig.from_dict({})
 
         assert config.transports == []
+        assert isinstance(config.socket, SocketEventsConfig)
+        assert config.socket.path == ".ll/events.sock"
+        assert config.socket.max_clients == 8
 
     def test_from_dict_with_transports(self) -> None:
         """Test creating EventsConfig with explicit transports list."""
         config = EventsConfig.from_dict({"transports": ["jsonl"]})
 
         assert config.transports == ["jsonl"]
+
+    def test_from_dict_with_socket_overrides(self) -> None:
+        """events.socket sub-object overrides defaults."""
+        config = EventsConfig.from_dict(
+            {
+                "transports": ["jsonl", "socket"],
+                "socket": {"path": "/tmp/x.sock", "max_clients": 32},
+            }
+        )
+
+        assert config.transports == ["jsonl", "socket"]
+        assert config.socket.path == "/tmp/x.sock"
+        assert config.socket.max_clients == 32
+
+
+class TestSocketEventsConfig:
+    """Tests for SocketEventsConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        """SocketEventsConfig defaults match the documented values."""
+        config = SocketEventsConfig.from_dict({})
+
+        assert config.path == ".ll/events.sock"
+        assert config.max_clients == 8
+
+    def test_from_dict_with_overrides(self) -> None:
+        """Explicit values override defaults."""
+        config = SocketEventsConfig.from_dict({"path": "/var/run/ll.sock", "max_clients": 16})
+
+        assert config.path == "/var/run/ll.sock"
+        assert config.max_clients == 16
 
 
 class TestBRConfigEventsIntegration:
@@ -1250,6 +1285,29 @@ class TestBRConfigEventsIntegration:
 
         assert "events" in result
         assert "transports" in result["events"]
+
+    def test_events_socket_round_trips_through_to_dict(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """events.socket sub-config round-trips through BRConfig.to_dict().
+
+        Without this, `{{config.events.socket.path}}` template substitution
+        returns empty even when the user has set it — the silent-data-loss path
+        flagged in the FEAT-1313 wiring pass.
+        """
+        sample_config["events"] = {
+            "transports": ["socket"],
+            "socket": {"path": "/tmp/test.sock", "max_clients": 4},
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["events"]["transports"] == ["socket"]
+        assert result["events"]["socket"]["path"] == "/tmp/test.sock"
+        assert result["events"]["socket"]["max_clients"] == 4
 
 
 class TestScoringWeightsConfig:

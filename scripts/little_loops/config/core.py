@@ -453,6 +453,10 @@ class BRConfig:
             },
             "events": {
                 "transports": list(self._events.transports),
+                "socket": {
+                    "path": self._events.socket.path,
+                    "max_clients": self._events.socket.max_clients,
+                },
             },
             "sync": {
                 "enabled": self._sync.enabled,

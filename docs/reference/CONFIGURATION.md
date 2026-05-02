@@ -755,14 +755,34 @@ List of transports to wire onto the EventBus at runtime. Transports are additive
 | Name | Effect |
 |------|--------|
 | `"jsonl"` | Registers a `JsonlTransport` writing to `<log_dir>/events.jsonl` (defaults to `.ll/events.jsonl`). |
+| `"socket"` | Registers a `UnixSocketTransport` streaming newline-delimited JSON events over an `AF_UNIX` socket. Configured under `events.socket` (see below). Not available on Windows — `wire_transports` raises `RuntimeError`. |
 
 ```json
 {
   "events": {
-    "transports": ["jsonl"]
+    "transports": ["jsonl", "socket"],
+    "socket": {
+      "path": ".ll/events.sock",
+      "max_clients": 8
+    }
   }
 }
 ```
+
+### `events.socket`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `events.socket.path` | `string` | `".ll/events.sock"` | Filesystem path for the AF_UNIX socket. The transport unlinks any stale file before binding and removes the file on `close()`. |
+| `events.socket.max_clients` | `integer` | `8` | Maximum simultaneous clients. Connections beyond the cap are accepted-and-closed. |
+
+The socket file is `chmod 0600` immediately after `bind()` — owner-only, since the events stream may include issue titles, file paths, and branch names. Operators wanting wider access must relax permissions out-of-band.
+
+**Per-client buffering and slow-consumer behaviour:** Each client gets a bounded outbound queue (1024 events). When a client cannot keep up, the newest event is dropped (preserving causal order) and a rate-limited warning is logged — `send()` never blocks the FSM thread.
+
+**`ll-auto` exclusion:** `cli/auto.py` does not construct an `EventBus`, so listing `"socket"` (or any transport) under `events.transports` has no effect under `ll-auto`. The socket transport is available under `ll-loop run`/`resume`, `ll-parallel`, and `ll-sprint` parallel-wave runs.
+
+**Subscribing locally:** Any AF_UNIX-aware tool can subscribe — for ad-hoc inspection, pipe `nc -U .ll/events.sock | jq`.
 
 See [API Reference → little_loops.transport](API.md#little_loopstransport) for the `Transport` Protocol and how to author custom transports.
 

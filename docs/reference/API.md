@@ -5485,6 +5485,44 @@ JsonlTransport(path: Path)
 | `send(event: dict[str, Any]) -> None` | Append `json.dumps(event)` as a line to the configured path. Each call opens and closes the file. |
 | `close() -> None` | No-op. Each `send()` already closes its file handle. |
 
+### UnixSocketTransport
+
+Streams newline-delimited JSON events over an `AF_UNIX` socket so local consumers (TUIs, log tailers, dev dashboards) get sub-second latency without polling. Stdlib-only (no external dependencies).
+
+```python
+from little_loops.transport import UnixSocketTransport
+from pathlib import Path
+
+transport = UnixSocketTransport(Path(".ll/events.sock"), max_clients=8)
+transport.send({"event": "demo", "ts": "2026-05-02T00:00:00Z"})
+transport.close()
+```
+
+#### Constructor
+
+```python
+UnixSocketTransport(path: Path, max_clients: int = 8)
+```
+
+**Parameters:**
+- `path` - Path to the AF_UNIX socket. Any stale file at this path is unlinked before bind. The file is `chmod 0600` immediately after `bind()`.
+- `max_clients` - Maximum simultaneous client connections. Used as both the `listen()` backlog and the live-clients cap; further connections are accepted-and-closed.
+
+**Wire format:** Each `send(event)` serializes the event with `json.dumps(event)` and appends a `\n`, so consumers can parse one line at a time:
+
+```bash
+nc -U .ll/events.sock | jq
+```
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `send(event: dict[str, Any]) -> None` | Enqueue the serialized event into every connected client's outbound queue. Non-blocking — if a client's queue is full, the newest event is dropped (preserving causal order) and a rate-limited warning is logged. |
+| `close() -> None` | Set the shutdown event, join the accept thread (≤2s) and each client thread (≤1s, 10s ceiling overall), close the server socket, and unlink the socket file. |
+
+**Platform support:** Requires `AF_UNIX` (POSIX). On Windows, [`wire_transports`](#wire_transports) raises `RuntimeError` rather than registering the transport.
+
 ### wire_transports
 
 Register the transports listed in an `EventsConfig` on an `EventBus`. Called by CLI entry points (ll-loop, ll-parallel, ll-sprint) at startup.
@@ -5513,8 +5551,9 @@ def wire_transports(
 - `log_dir` - Directory under which built-in transports place their log files. Defaults to `Path(".ll")` under the current working directory.
 
 **Behavior:**
-- Each name in `config.transports` is resolved against an internal registry of built-in transport names. Currently shipped: `"jsonl"` (registers a `JsonlTransport` writing to `<log_dir>/events.jsonl`).
+- Each name in `config.transports` is resolved against an internal registry of built-in transport names. Currently shipped: `"jsonl"` (registers a `JsonlTransport` writing to `<log_dir>/events.jsonl`) and `"socket"` (registers a [`UnixSocketTransport`](#unixsockettransport) bound at `config.socket.path` with `config.socket.max_clients`).
 - Unknown names log a `WARNING` and are skipped — a typo in user config never prevents the loop from starting.
+- The `"socket"` transport raises `RuntimeError` on platforms without `AF_UNIX` (e.g. Windows). This is the deliberate exception to the warn-and-skip rule: silently dropping `"socket"` on Windows would be a more confusing failure mode.
 
 ---
 

@@ -1041,7 +1041,24 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "Names of transports to wire onto the EventBus (e.g. \"jsonl\"). Unknown names are skipped with a warning."
+          "description": "Names of transports to wire onto the EventBus (e.g. \"jsonl\", \"socket\"). Unknown names are skipped with a warning."
+        },
+        "socket": {
+          "type": "object",
+          "description": "UnixSocketTransport configuration. Streams newline-delimited JSON events over an AF_UNIX socket for sub-second latency local consumers (TUIs, log tailers). Unavailable on Windows.",
+          "properties": {
+            "path": {
+              "type": "string",
+              "default": ".ll/events.sock",
+              "description": "Filesystem path for the AF_UNIX socket."
+            },
+            "max_clients": {
+              "type": "integer",
+              "default": 8,
+              "description": "Maximum simultaneous client connections; further connects are rejected at accept time."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

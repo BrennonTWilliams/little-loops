@@ -7,6 +7,7 @@ score_complexity: 17
 score_test_coverage: 22
 score_ambiguity: 27
 score_change_surface: 18
+completed_at: 2026-05-02T17:20:11Z
 ---
 
 # FEAT-1313: UnixSocketTransport for Real-Time Local Streaming
@@ -232,7 +233,36 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-05-01 (split from FEAT-918) | Priority: P5
+**Completed** | Created: 2026-05-01 (split from FEAT-918) | Completed: 2026-05-02 | Priority: P5
+
+## Resolution
+
+Implemented `UnixSocketTransport` in `scripts/little_loops/transport.py`, satisfying the `Transport` Protocol with stdlib-only dependencies (`socket`, `threading`, `queue`, `json`). The transport binds an `AF_UNIX` socket at the configured path (unlinking any stale file first, `chmod 0600` after bind), runs an accept thread polling on `settimeout(1.0)`, and gives each connected client its own daemon thread with a bounded outbound `Queue(maxsize=1024)`. `send()` is non-blocking — a full client queue causes the newest event to be dropped (preserving causal order), with a first-drop warning and a 5-second rate-limited counter for subsequent drops. `close()` enforces a 10-second total budget (≤2s accept join, ≤1s per client join), unlinks the socket file, and never raises on overrun.
+
+Added `SocketEventsConfig(path, max_clients)` to `EventsConfig`, extended `config-schema.json` `events` block with a `socket` sub-object closed via `additionalProperties: false`, registered `"socket"` in `_TRANSPORT_REGISTRY` with an `elif name == "socket":` branch in `wire_transports()` that raises `RuntimeError` on platforms without `AF_UNIX`. Updated `BRConfig.to_dict()` to serialize `events.socket` so `{{config.events.socket.path}}` template substitution resolves correctly. Exposed `SocketEventsConfig` and `UnixSocketTransport` from the package `__init__.py` files.
+
+Tests cover: Protocol satisfaction, init/close socket-file lifecycle (including stale-file unlink), `chmod 0600` permission, end-to-end send/receive over a real client socket, two-client multicast, mid-stream disconnect tolerance, `max_clients` cap rejection, slow-client queue-full drop with warning, `close()` thread-join + unlink within budget, registry wiring, and the `RuntimeError` raised when `AF_UNIX` is unavailable. All AF_UNIX tests use a `short_tmp_path` fixture under `/tmp/ll-...` to stay within the macOS 104-char `sun_path` limit and skip cleanly on Windows. The `BRConfig.to_dict()` round-trip is also explicitly tested per the wiring-pass guard against silent data loss.
+
+Pre-implementation spike validated the threading shutdown topology twice (per the issue's de-risking step) before any production code was written; spike then deleted.
+
+### Files Changed
+
+- `scripts/little_loops/transport.py` — `UnixSocketTransport`, registry update, `_resolve_socket_path()` helper
+- `scripts/little_loops/config/features.py` — new `SocketEventsConfig`, extended `EventsConfig`
+- `scripts/little_loops/config/core.py` — `BRConfig.to_dict()` serializes `events.socket`
+- `scripts/little_loops/__init__.py`, `scripts/little_loops/config/__init__.py` — export the new symbols
+- `config-schema.json` — `events.socket` sub-object
+- `scripts/tests/test_transport.py` — `TestUnixSocketTransport` class + 4 new wire tests + `short_tmp_path` fixture
+- `scripts/tests/test_config.py` — `TestSocketEventsConfig` + extended `TestEventsConfig` + `to_dict()` round-trip
+- `scripts/tests/test_config_schema.py` — extended `test_events_in_schema()` to assert socket sub-object
+- `docs/reference/CONFIGURATION.md`, `docs/reference/API.md`, `docs/ARCHITECTURE.md` — socket transport documented, including `ll-auto` exclusion note
+
+### Verification
+
+- `python -m pytest scripts/tests/test_transport.py scripts/tests/test_config.py scripts/tests/test_config_schema.py` — 190 passed
+- `python -m pytest scripts/tests/` — 5567 passed (3 pre-existing failures unrelated to this issue: `test_marketplace_top_level_version_matches_plugin`, `test_marketplace_plugin_entry_version_matches_plugin`, `test_confidence_check_routes_to_check_readiness`; all reproduce on `main` without these changes)
+- `ruff check` — clean on all changed files
+- `python -m mypy scripts/little_loops/transport.py scripts/little_loops/config/features.py scripts/little_loops/config/core.py` — no issues
 
 ## Confidence Check Notes
 
@@ -250,6 +280,8 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 See the **Pinned Decisions** section above for the full list. These remove ambiguity around per-client queue maxsize, queue-full policy, drop-log rate, `close()` timeout split, socket file permissions, listen backlog, `json.dumps()` failure handling, and `_TRANSPORT_REGISTRY` dispatch shape — all previously implementer-discretion items.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-02T17:20:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ee4581b-3eff-49c4-b2e2-421a1a703829.jsonl`
+- `/ll:ready-issue` - 2026-05-02T17:07:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2482c293-1d07-45a1-adb2-d5da53a231a9.jsonl`
 - `/ll:confidence-check` - 2026-05-02T17:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e5721f1-ad32-42d3-b159-8e41135a2c42.jsonl`
 - `/ll:wire-issue` - 2026-05-02T16:55:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e5721f1-ad32-42d3-b159-8e41135a2c42.jsonl`
 - `/ll:refine-issue` - 2026-05-02T16:48:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48467571-3ea8-4dbd-9b91-f183ae524eb8.jsonl`
