@@ -142,3 +142,80 @@ def resolve_fragments(raw_loop_dict: dict[str, Any], loop_dir: Path) -> dict[str
 
     result["states"] = states
     return result
+
+
+def resolve_inheritance(
+    raw_loop_dict: dict[str, Any],
+    loop_dir: Path,
+    _seen: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Resolve ``from:`` template inheritance by deep-merging parent into child.
+
+    A loop YAML with ``from: <name>`` inherits all top-level fields and states
+    from the named parent loop. The child's own fields override the parent's at
+    every nesting level (per :func:`_deep_merge` semantics): scalars and lists
+    are replaced by the child, dicts are merged recursively. The ``from:`` key
+    itself is stripped from the returned dict.
+
+    Parent lookup uses :func:`little_loops.cli.loop._helpers.resolve_loop_path`,
+    which searches ``loop_dir`` first then falls back to the bundled built-in
+    loops directory. Cycles in the ``from:`` chain raise ``ValueError`` with the
+    full chain path; missing parents raise ``FileNotFoundError``.
+
+    Resolution must run *before* :func:`resolve_fragments` and *before* the
+    required-fields check in :func:`load_and_validate`, so a child can omit
+    fields its parent provides (including ``initial`` and ``states``) and so a
+    parent's ``import:``/``fragments:`` blocks survive into the merged result.
+
+    Args:
+        raw_loop_dict: Raw YAML dict loaded from a loop file.
+        loop_dir: Directory containing the (child) loop file; parent names are
+            resolved relative to this directory.
+        _seen: Internal tuple of parent names already visited during recursion;
+            used for cycle detection.
+
+    Returns:
+        New dict with ``from:`` resolved and stripped. If the input has no
+        ``from:`` key, returns it unchanged.
+
+    Raises:
+        ValueError: If ``from:`` is not a string, the parent is not a YAML
+            mapping, or a cycle is detected in the inheritance chain.
+        FileNotFoundError: If the parent loop name cannot be resolved.
+    """
+    if "from" not in raw_loop_dict:
+        return raw_loop_dict
+
+    parent_name = raw_loop_dict["from"]
+    if not isinstance(parent_name, str):
+        raise ValueError(
+            f"`from:` must be a string, got {type(parent_name).__name__}"
+        )
+
+    if parent_name in _seen:
+        chain = " -> ".join(_seen + (parent_name,))
+        raise ValueError(f"Circular `from:` chain: {chain}")
+
+    # Lazy import to avoid circular import at module load (cli.loop._helpers
+    # imports from fsm.* indirectly). Mirrors the pattern used in
+    # fsm/executor.py:410 for sub-loop calls.
+    from little_loops.cli.loop._helpers import resolve_loop_path
+
+    parent_path = resolve_loop_path(parent_name, loop_dir)
+    with open(parent_path) as f:
+        parent_data = yaml.safe_load(f)
+
+    if not isinstance(parent_data, dict):
+        raise ValueError(
+            f"Parent loop '{parent_name}' is not a YAML mapping "
+            f"(got {type(parent_data).__name__})"
+        )
+
+    parent_data = resolve_inheritance(
+        parent_data, parent_path.parent, _seen + (parent_name,)
+    )
+
+    child_without_from = {k: v for k, v in raw_loop_dict.items() if k != "from"}
+    merged = _deep_merge(parent_data, child_without_from)
+    merged.pop("from", None)
+    return merged

@@ -18,6 +18,7 @@
 - [Composable Sub-Loops](#composable-sub-loops)
 - [Loop Discovery: category and labels](#loop-discovery-category-and-labels)
 - [Reusable State Fragments](#reusable-state-fragments)
+- [Loop Template Inheritance via `from:`](#loop-template-inheritance-via-from)
 - [Troubleshooting](#troubleshooting)
 - [Further Reading](#further-reading)
 
@@ -2301,6 +2302,118 @@ Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import:
 | Inline states | Custom logic that doesn't map to any reuse pattern |
 
 Fragment resolution is parse-time only — the engine never sees `fragment:` keys and there is no runtime overhead.
+
+---
+
+## Loop Template Inheritance via `from:`
+
+When fragment-level reuse isn't enough — e.g., several variants of the same loop share a category, an iteration cap, default context, and a `done:` terminal state — the `from:` field inherits an entire loop template. The child YAML overrides only the deltas; everything else is taken from the parent.
+
+### Syntax
+
+```yaml
+name: my-scan-refine
+from: issue-refinement       # parent loop name (resolved like sub-loop calls)
+states:
+  execute:
+    prompt: "/ll:scan-codebase"
+```
+
+The `from:` value is resolved by `resolve_loop_path()` — the same lookup used everywhere else: project `loops/` first, built-in `scripts/little_loops/loops/` as a fallback. A name (no extension) finds `<name>.yaml` or `<name>.fsm.yaml`; a relative path like `lib/apo-base` finds `loops/lib/apo-base.yaml`.
+
+### Merge Rules
+
+The loader deep-merges parent and child *before* validation:
+
+- **Scalars** (`name`, `initial`, `description`, `category`, `max_iterations`, `timeout`, `on_handoff`, single-string `on_*` fields, etc.) — child wins.
+- **Lists** (`labels`) — child replaces parent's list outright (no append).
+- **Dicts** (`context`, `states`, `route`, nested `evaluate`) — recursive merge: child keys override the same parent keys; parent keys the child does not redefine are preserved.
+
+The child must declare its own `name:`. Everything else is optional — a child can omit `initial:`, `states:`, etc. when the parent already provides them.
+
+The `from:` key is stripped from the merged result, so it never reaches the FSM engine.
+
+### Inheriting Fragments
+
+A parent loop's `import:`/`fragments:` blocks are merged into the child first, *then* `resolve_fragments` runs on the merged result. So a child can reference any fragment its parent imports without re-importing the library.
+
+### Cycle Detection
+
+`A → B → A` (or any longer chain that loops back) raises `ValueError` with the full chain path:
+
+```
+Circular `from:` chain: a -> b -> a
+```
+
+A missing parent raises `FileNotFoundError` from `resolve_loop_path`.
+
+### Discovery: `lib/` is Hidden
+
+Inheritance-only base templates live under `loops/lib/` and are excluded from `ll-loop list` because loop discovery uses non-recursive `glob("*.yaml")`. Use a `lib/<name>` path in `from:` to point at them:
+
+```yaml
+name: apo-beam
+from: lib/apo-base
+initial: generate_variants
+states:
+  generate_variants: { ... }
+```
+
+### Worked Example: APO Variants
+
+`scripts/little_loops/loops/lib/apo-base.yaml` (not runnable directly):
+
+```yaml
+name: apo-base
+category: apo
+description: |
+  Base skeleton for Automated Prompt Optimization (APO) loops. Inherited via
+  `from: lib/apo-base`.
+max_iterations: 20
+timeout: 3600
+on_handoff: spawn
+context:
+  prompt_file: system.md
+states:
+  done:
+    terminal: true
+```
+
+`scripts/little_loops/loops/apo-beam.yaml`:
+
+```yaml
+name: apo-beam
+from: lib/apo-base
+description: |
+  Beam search prompt optimization (APO technique): ...
+initial: generate_variants
+context:
+  eval_criteria: ""
+  beam_width: 4
+  target_score: 90
+states:
+  generate_variants: { ... }
+  score_variants: { ... }
+  select_best: { ... }
+  route_convergence: { ... }
+  # `done` inherited from apo-base
+```
+
+The merged loop has every field from `apo-base` — `category`, `max_iterations`, `timeout`, `on_handoff`, `context.prompt_file`, the `done` state — plus everything `apo-beam` declares on top, with the `apo-beam` `name:` and `description:` winning the scalar-override.
+
+### Validation, Diagrams, and `/ll:review-loop`
+
+`ll-loop validate`, `ll-loop info`, and `/ll:review-loop` all consume the *materialized* loop returned by `load_and_validate`, so they see the merged graph. The raw YAML in `ll-loop info --raw` displays what the author wrote, not the merged form — useful for understanding *why* a state behaves a certain way.
+
+### When to Use `from:` vs. Fragments vs. Sub-Loops
+
+| Approach | Best for |
+|----------|----------|
+| `from:` | Sharing the *whole loop skeleton* across multiple variants (same category, iteration cap, terminal state, default context, etc.) |
+| Fragment (`fragment:`) | Sharing a single *state structure* (action_type + evaluate) across many states |
+| Sub-loop (`loop:`) | Reusing a complete loop as a pipeline stage with its own execution context |
+
+`from:` resolution, like fragment resolution, is parse-time only — the engine never sees the `from:` key and there is no runtime overhead.
 
 ---
 

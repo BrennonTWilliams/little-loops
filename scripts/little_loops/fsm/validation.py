@@ -23,7 +23,7 @@ from typing import Any
 
 import yaml
 
-from little_loops.fsm.fragments import resolve_fragments
+from little_loops.fsm.fragments import resolve_fragments, resolve_inheritance
 from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "labels",
         "import",
         "fragments",
+        "from",
     }
 )
 
@@ -537,6 +538,12 @@ def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
 
     if not isinstance(data, dict):
         raise ValueError(f"FSM file must contain a YAML mapping, got {type(data)}")
+
+    # Resolve `from:` inheritance before any further checks, so a child loop
+    # can omit fields its parent provides (including `initial`/`states`) and
+    # so a parent's `import:`/`fragments:` blocks survive into the merged
+    # result for the subsequent `resolve_fragments` pass.
+    data = resolve_inheritance(data, path.parent)
 
     # Check required fields before parsing
     missing = []

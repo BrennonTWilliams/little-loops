@@ -1,5 +1,5 @@
 name: apo-textgrad
-category: apo
+from: lib/apo-base
 description: |
   TextGrad-style prompt optimization (APO technique): tests the current prompt
   against a set of labeled examples, computes a text gradient (failure pattern,
@@ -7,11 +7,7 @@ description: |
   prompt, and repeats until the pass rate exceeds the target or max_iterations
   is reached. Requires examples_file containing labeled input/output pairs.
 initial: test_on_examples
-max_iterations: 20
-timeout: 3600
-on_handoff: spawn
 context:
-  prompt_file: system.md
   examples_file: examples.json
   target_pass_rate: 90
 states:
@@ -60,5 +56,3 @@ states:
       Output the full refined prompt, then overwrite ${context.prompt_file} with it.
     on_blocked: done
     next: test_on_examples
-  done:
-    terminal: true

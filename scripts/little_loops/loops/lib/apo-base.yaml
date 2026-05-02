@@ -1,0 +1,17 @@
+name: apo-base
+category: apo
+description: |
+  Base skeleton for Automated Prompt Optimization (APO) loops. Inherited via
+  `from: lib/apo-base`. Provides the common scalars (category, iteration cap,
+  timeout, handoff mode), the default `prompt_file` context entry, and the
+  shared `done:` terminal state. Children supply their own `initial:` state and
+  the operative state graph. Not runnable directly — kept under `lib/` so it
+  is excluded from non-recursive loop discovery.
+max_iterations: 20
+timeout: 3600
+on_handoff: spawn
+context:
+  prompt_file: system.md
+states:
+  done:
+    terminal: true

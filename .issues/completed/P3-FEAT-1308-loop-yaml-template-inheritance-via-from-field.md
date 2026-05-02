@@ -1,5 +1,6 @@
 ---
 captured_at: "2026-05-01T17:30:19Z"
+completed_at: "2026-05-02T01:40:26Z"
 discovered_date: "2026-05-01"
 discovered_by: capture-issue
 confidence_score: 100
@@ -185,7 +186,26 @@ _Added by `/ll:refine-issue` — concrete file:line anchors for each step:_
 
 feature, loops, fsm, yaml, loader, inheritance, captured
 
+## Resolution
+
+Implemented `from:` template inheritance for loop YAML files.
+
+**Changes:**
+- `scripts/little_loops/fsm/fragments.py` — new `resolve_inheritance()` function. Recursively merges parent loop into child via `_deep_merge`, with cycle detection (tuple-based `_seen` for ordered chain in error message), missing-parent surfaces as `FileNotFoundError`, parent lookup reuses `resolve_loop_path()` for project-first / built-in-fallback semantics.
+- `scripts/little_loops/fsm/validation.py` — `resolve_inheritance(data, path.parent)` runs *before* the required-fields check so a child can omit `initial`/`states`. `"from"` added to `KNOWN_TOP_LEVEL_KEYS` defensively (it's stripped during resolution anyway).
+- `scripts/little_loops/loops/lib/apo-base.yaml` — new shared APO skeleton (under `lib/` so it's hidden from non-recursive loop discovery).
+- `scripts/little_loops/loops/apo-beam.yaml`, `scripts/little_loops/loops/apo-textgrad.yaml` — refactored to `from: lib/apo-base`. Both validate via `ll-loop validate` and expose identical state graphs to before.
+- `scripts/tests/test_fsm_inheritance.py` — 17 tests covering simple/deep override, multi-level chain, cycle detection, missing parent, route-dict deep-merge by verdict, fragment+from interaction, end-to-end `load_and_validate`.
+- `docs/guides/LOOPS_GUIDE.md` — new "Loop Template Inheritance via `from:`" section with merge rules, worked APO example, and decision matrix vs. fragments/sub-loops.
+- `docs/generalized-fsm-loop.md` — inheritance pattern example added alongside fragment/sub-loop patterns.
+- `skills/review-loop/SKILL.md`, `skills/create-loop/SKILL.md` — one-line note that `from:` is resolved before validation/diagrams.
+
+**Merge semantics (v1):** child wins on scalars and lists (lists replace, not append); dicts (`context`, `states`, `route`, nested `evaluate`) merge recursively. The shorthand `on_*` fields are scalars and override naturally. The `route:` dict deep-merges by verdict. No `route_replace` flag — defer until a real use case demands wholesale verdict-table reset.
+
+**Verification:** full pytest suite green (5474 passed), `ruff check` clean, `mypy` clean on changed files. `ll-loop validate apo-beam` and `ll-loop validate apo-textgrad` both report identical state graphs to pre-refactor.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-02T01:40:26Z - implementation
 - `/ll:ready-issue` - 2026-05-02T01:23:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b5d0503-0ff9-4660-9753-3a6da844502e.jsonl`
 - `/ll:confidence-check` - 2026-05-01T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d63e8ea-5e14-4a5d-8d02-e5160454b094.jsonl`
 - `/ll:refine-issue` - 2026-05-01T20:58:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1a27e94-952b-4a2d-adc7-4cec048a5642.jsonl`
@@ -197,7 +217,7 @@ feature, loops, fsm, yaml, loader, inheritance, captured
 
 ## Status
 
-**Open** | Created: 2026-05-01 | Priority: P3
+**Completed** | Created: 2026-05-01 | Completed: 2026-05-02 | Priority: P3
 
 ---
 

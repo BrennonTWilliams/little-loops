@@ -80,6 +80,8 @@ Use `Read` to load the YAML. Parse as a raw dict (you do not need to invoke Pyth
 **Format detection**:
 - **FSM format**: YAML has `initial:` key — this is the only supported format
 
+**Note on `from:` inheritance**: If the YAML has a top-level `from:` field, the loop inherits its skeleton from another loop. The validator (`ll-loop validate`) and FSM diagram see the *materialized* loop after inheritance and fragment resolution, so quality checks below operate on the merged graph. When reviewing the raw YAML directly (without invoking the loader), keep in mind that `initial:`, `states:`, etc. may be inherited from the parent referenced in `from:`.
+
 Record:
 - `loop_name`: the `name` field
 - `initial`: the `initial` field

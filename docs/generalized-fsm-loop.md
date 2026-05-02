@@ -217,6 +217,39 @@ states:
 
 **Without `context_passthrough`** the child loop runs with its own isolated context and its captured values are not available to the parent after it completes.
 
+### Inheritance pattern (`from:`)
+
+For variants that share a skeleton — e.g. APO loops that share `category`, iteration cap, default `context`, and a `done:` terminal state — declare a parent template and have children inherit it via a top-level `from:` field. The loader deep-merges parent into child *before* validation: scalars and lists override, dicts (`context`, `states`, `route`) merge recursively, and the `from:` key is stripped from the result. Cycles raise `ValueError`; missing parents raise `FileNotFoundError`.
+
+```yaml
+# scripts/little_loops/loops/lib/apo-base.yaml — not runnable directly
+name: apo-base
+category: apo
+max_iterations: 20
+timeout: 3600
+on_handoff: spawn
+context:
+  prompt_file: system.md
+states:
+  done:
+    terminal: true
+```
+
+```yaml
+# scripts/little_loops/loops/apo-beam.yaml — inherits + overrides
+name: apo-beam
+from: lib/apo-base
+initial: generate_variants
+context:
+  beam_width: 4
+  target_score: 90
+states:
+  generate_variants: { ... }
+  # `done` state and all parent scalars come from apo-base
+```
+
+Use `from:` for whole-loop skeleton reuse, `fragment:` for shared state structures, and `loop:` for sub-loop pipelining. See `docs/guides/LOOPS_GUIDE.md#loop-template-inheritance-via-from` for the full merge rules.
+
 ---
 
 ## Universal FSM Schema

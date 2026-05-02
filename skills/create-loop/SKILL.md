@@ -298,6 +298,8 @@ If confirmed:
 - For loop type question flows and FSM YAML generation, see [loop-types.md](loop-types.md)
 - For quick reference tables and advanced configuration, see [reference.md](reference.md)
 
+**Note on `from:` inheritance**: A new loop that closely matches an existing one can declare `from: <parent-loop-name>` at the top level instead of duplicating the full state graph. Inheritance is resolved before validation and diagram generation, so the validator and `/ll:review-loop` always see the materialized loop. See `docs/guides/LOOPS_GUIDE.md#loop-template-inheritance-via-from` for merge rules.
+
 ## Examples
 
 ```bash

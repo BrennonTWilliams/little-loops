@@ -1,5 +1,5 @@
 name: apo-beam
-category: apo
+from: lib/apo-base
 description: |
   Beam search prompt optimization (APO technique): generates N candidate variants
   per iteration, scores all of them against evaluation criteria, selects the
@@ -7,11 +7,7 @@ description: |
   the best score exceeds the target or max_iterations is reached.
   Controlled by beam_width (number of variants per round) and target_score (0–100).
 initial: generate_variants
-max_iterations: 20
-timeout: 3600
-on_handoff: spawn
 context:
-  prompt_file: system.md
   eval_criteria: ""
   beam_width: 4
   target_score: 90
@@ -57,5 +53,3 @@ states:
     on_yes: done
     on_no: generate_variants
     on_error: generate_variants
-  done:
-    terminal: true
