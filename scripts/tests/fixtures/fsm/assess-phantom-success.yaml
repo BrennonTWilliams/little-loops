@@ -1,0 +1,17 @@
+name: assess-phantom-success
+description: "Optimize prompt quality until pass rate target is reached"
+initial: optimize
+context:
+  prompt_file: "prompts/test.md"
+  target_pass_rate: 90
+states:
+  optimize:
+    action_type: prompt
+    action: "Improve the prompt in ${context.prompt_file} to increase pass rate."
+    evaluate:
+      type: llm_structured
+      prompt: "Did pass rate reach ${context.target_pass_rate}%? Answer YES or NO."
+    on_yes: done
+    on_no: optimize
+  done:
+    terminal: true

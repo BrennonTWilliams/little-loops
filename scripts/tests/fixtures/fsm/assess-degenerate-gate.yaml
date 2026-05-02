@@ -1,0 +1,17 @@
+name: assess-degenerate-gate
+description: "Run dataset quality check until quality threshold is met"
+initial: check_quality
+context:
+  quality_threshold: 95
+states:
+  check_quality:
+    action_type: shell
+    action: "python scripts/check_quality.py"
+    evaluate:
+      type: exit_code
+      target: 0
+    on_yes: done
+    on_no: check_quality
+    on_error: check_quality
+  done:
+    terminal: true

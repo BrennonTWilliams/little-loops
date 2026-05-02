@@ -1,0 +1,14 @@
+name: assess-subloop-laundering
+description: "Run child evaluation loop and act on result"
+initial: run_eval
+states:
+  run_eval:
+    loop: inner-eval
+    on_yes: report_done
+    on_no: report_done
+  report_done:
+    action_type: prompt
+    action: "Write a summary of the evaluation outcome."
+    next: done
+  done:
+    terminal: true

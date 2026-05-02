@@ -1,0 +1,16 @@
+name: assess-rubric-drift
+description: "Improve answer quality in the training dataset until convergence"
+initial: refine_answers
+context:
+  pass_threshold: 80
+states:
+  refine_answers:
+    action_type: prompt
+    action: "Review and improve the dataset answers for clarity and correctness."
+    evaluate:
+      type: llm_structured
+      prompt: "Does the file contain clean Python syntax with no errors? Respond YES or NO."
+    on_yes: done
+    on_no: refine_answers
+  done:
+    terminal: true
