@@ -547,13 +547,14 @@ class TestIssueParser:
         parser = IssueParser(config)
 
         # P2-9096-... must yield BUG-9096 (was BUG-2 before the fix).
-        assert parser._generate_id_from_filename(
-            "P2-9096-eval-specfile-gold-animation-bounce.md", "BUG"
-        ) == "BUG-9096"
+        assert (
+            parser._generate_id_from_filename(
+                "P2-9096-eval-specfile-gold-animation-bounce.md", "BUG"
+            )
+            == "BUG-9096"
+        )
         # No priority token: first number still wins.
-        assert parser._generate_id_from_filename(
-            "9096-eval-specfile-gold.md", "BUG"
-        ) == "BUG-9096"
+        assert parser._generate_id_from_filename("9096-eval-specfile-gold.md", "BUG") == "BUG-9096"
 
     def test_parse_discovered_by_from_frontmatter(
         self,

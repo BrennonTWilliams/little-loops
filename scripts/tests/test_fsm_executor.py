@@ -22,7 +22,6 @@ from little_loops.fsm.interpolation import InterpolationContext
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
-    ParameterSpec,
     RouteConfig,
     StateConfig,
 )

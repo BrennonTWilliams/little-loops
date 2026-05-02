@@ -679,8 +679,7 @@ class FSMLoop:
             loop_config = LoopConfigOverrides.from_dict(data["config"])
 
         parameters = {
-            name: ParameterSpec.from_dict(spec)
-            for name, spec in data.get("parameters", {}).items()
+            name: ParameterSpec.from_dict(spec) for name, spec in data.get("parameters", {}).items()
         }
 
         return cls(

@@ -2251,9 +2251,7 @@ class TestFSMLoopParameters:
                 "target": ParameterSpec(
                     type="string", required=True, description="Target identifier"
                 ),
-                "mode": ParameterSpec(
-                    type="enum", values=["fast", "slow"], default="fast"
-                ),
+                "mode": ParameterSpec(type="enum", values=["fast", "slow"], default="fast"),
             },
         )
         d = original.to_dict()

@@ -381,8 +381,7 @@ class TestWithBindingValidation:
         )
         errors = validate_fsm(fsm)
         assert any(
-            "'with' and 'context_passthrough' are mutually exclusive" in e.message
-            for e in errors
+            "'with' and 'context_passthrough' are mutually exclusive" in e.message for e in errors
         )
 
     def test_with_on_loop_state_no_error(self) -> None:
@@ -401,9 +400,7 @@ class TestWithBindingValidation:
         )
         # Only structural errors — cross-loop binding errors need load_and_validate
         errors = [
-            e
-            for e in validate_fsm(fsm)
-            if "'with'" in e.message and e.severity.value == "error"
+            e for e in validate_fsm(fsm) if "'with'" in e.message and e.severity.value == "error"
         ]
         assert errors == []
 

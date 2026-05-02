@@ -188,9 +188,7 @@ def resolve_inheritance(
 
     parent_name = raw_loop_dict["from"]
     if not isinstance(parent_name, str):
-        raise ValueError(
-            f"`from:` must be a string, got {type(parent_name).__name__}"
-        )
+        raise ValueError(f"`from:` must be a string, got {type(parent_name).__name__}")
 
     if parent_name in _seen:
         chain = " -> ".join(_seen + (parent_name,))
@@ -207,13 +205,10 @@ def resolve_inheritance(
 
     if not isinstance(parent_data, dict):
         raise ValueError(
-            f"Parent loop '{parent_name}' is not a YAML mapping "
-            f"(got {type(parent_data).__name__})"
+            f"Parent loop '{parent_name}' is not a YAML mapping (got {type(parent_data).__name__})"
         )
 
-    parent_data = resolve_inheritance(
-        parent_data, parent_path.parent, _seen + (parent_name,)
-    )
+    parent_data = resolve_inheritance(parent_data, parent_path.parent, _seen + (parent_name,))
 
     child_without_from = {k: v for k, v in raw_loop_dict.items() if k != "from"}
     merged = _deep_merge(parent_data, child_without_from)
