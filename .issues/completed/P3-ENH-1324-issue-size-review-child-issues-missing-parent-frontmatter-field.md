@@ -3,6 +3,7 @@ id: ENH-1324
 priority: P3
 type: ENH
 captured_at: "2026-05-02T15:21:00Z"
+completed_at: "2026-05-02T15:43:47Z"
 discovered_date: "2026-05-02"
 discovered_by: capture-issue
 confidence_score: 100
@@ -142,6 +143,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `enhancement`, `issue-size-review`, `frontmatter`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-02T15:42:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9af83f74-9a87-4225-aae0-40159b7f2c9f.jsonl`
 - `/ll:confidence-check` - 2026-05-02T16:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a9c71c0-adf7-40bc-837d-16a2416a35a6.jsonl`
 - `/ll:refine-issue` - 2026-05-02T15:29:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b933433e-a2ea-4542-b73a-fc38fe8430f2.jsonl`
 - `/ll:format-issue` - 2026-05-02T15:23:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e175d4b-c038-412d-b640-89e2a9e307d0.jsonl`
@@ -149,4 +151,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
-**Open** | Created: 2026-05-02 | Priority: P3
+---
+
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-05-02
+- **Changes**: Two targeted edits to `skills/issue-size-review/SKILL.md`:
+  1. Phase 4 draft template: added full frontmatter block with `parent_issue: [PARENT-ID]` before the `#` heading
+  2. Phase 6 step 2: replaced vague "parent reference in frontmatter" with explicit `parent_issue: [PARENT-ID]` field name, format (bare issue ID), and machine-readability rationale
+
+**Closed** | Created: 2026-05-02 | Completed: 2026-05-02 | Priority: P3
