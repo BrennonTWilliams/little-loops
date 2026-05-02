@@ -38,7 +38,7 @@ The current handoff approach (`/ll:handoff`, `precompact-handoff.sh`) reconstruc
 - Hook adds no noticeable latency for high-frequency tool calls (jq extraction + one append)
 - `hooks/hooks.json` registers the script as a PostToolUse entry
 - `TestSessionCapture` class added to `scripts/tests/test_hooks_integration.py`
-- If FEAT-1112 (session store) is available, writes to its store instead of flat JSONL; otherwise falls back to JSONL
+- Storage routing (JSONL vs SQLite vs other) is NOT this issue's concern — emit canonical event JSON to `.ll/ll-session-events.jsonl`; routing/fan-out is FEAT-918's Transport responsibility (FEAT-1112 subscribes via Transport sink)
 
 ## Implementation
 
@@ -60,6 +60,16 @@ Follow `precompact-state.sh` structure:
 {"ts": "2026-04-22T20:01:00Z", "type": "git", "op": "commit", "subject": "-m 'fix: ...'", "status": ""}
 {"ts": "2026-04-22T20:02:00Z", "type": "error", "op": "bash_error", "subject": "pytest ...", "status": "1"}
 ```
+
+### Event Semantics (canonical — consumers MUST cite this section)
+
+Producers and consumers of `.ll/ll-session-events.jsonl` share these semantic rules. Downstream consumers (FEAT-1264, FEAT-1112) reference these definitions instead of redefining them.
+
+**Error-resolution heuristic**: an event with `type=error` for `subject=X` is considered "unresolved" if the most recent event for `subject=X` is itself a `type=error`. A subsequent `type=file` Write/Edit event touching the same subject is treated as likely-resolved. This is a heuristic — it can produce false positives (e.g., an unrelated edit) and false negatives (e.g., the bug persists). Consumers may surface confidence levels but should not invent stricter rules without coordinating an update here.
+
+**Subject normalization**: file subjects are stored relative to the project root, no leading `./`; git subjects are the raw command args (truncated at 200 chars). Consumers compare subjects as raw strings — no canonicalization.
+
+**Recency**: latest-event-wins for any state derived from the log (task status, error resolution, net file ops). Earlier events are evidence of motion, not truth.
 
 ### Registration: `hooks/hooks.json`
 
@@ -109,6 +119,7 @@ FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue covers event *capture* only — detecting tool calls and writing structured event records. It must NOT own storage routing logic. The `if FEAT-1112 available, write to SQLite; else write to JSONL` conditional currently in scope should be deferred to FEAT-918's Transport abstraction layer. FEAT-1262's shell hook should emit a standard event JSON record and exit; where that event is stored or streamed is FEAT-918's concern. Related: FEAT-918 (Transport Protocol owns fan-out), FEAT-1112 (SQLite store is one Transport sink).
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

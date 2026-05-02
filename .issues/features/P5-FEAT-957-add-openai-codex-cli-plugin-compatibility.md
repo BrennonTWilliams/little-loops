@@ -29,6 +29,8 @@ A user running Codex CLI can install little-loops and get all commands, skills, 
 - Session lifecycle hooks fire via a Codex CLI plugin (config loading, duplicate ID check, context monitoring, compact/cleanup)
 - Config resolves from `.codex/ll-config.json` when present, falls back to `.claude/ll-config.json`
 - `ll:init --codex` detects Codex CLI presence and offers to register the plugin
+- The config-directory resolution layer (extended in `config/core.py` and `lib/common.sh`) accepts an ordered candidate list (`.claude/`, `.codex/`, `.opencode/`, `.pi/`, …) so future plugin-compat issues (FEAT-992) patch data, not code
+- The Codex-event → ll-hook-intent mapping table is published in shared docs (e.g. `docs/reference/PLUGIN_COMPAT.md` or under `docs/`) — explicitly references the FEAT-1116 hook-intent contract — so FEAT-992 (Pi) and any future host reuse the same mapping rather than inventing parallel ones
 - Existing Claude Code and OpenCode behavior is unchanged (no regressions)
 
 ## Motivation
@@ -197,6 +199,7 @@ _No documents linked._
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-23T00:14:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c0e0697-1da9-403b-82a7-6eb401f63ad3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`

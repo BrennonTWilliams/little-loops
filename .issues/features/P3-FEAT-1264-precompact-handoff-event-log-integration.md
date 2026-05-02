@@ -65,7 +65,7 @@ The event-log path uses `jq` (already required by the script) to filter and grou
 
 ### Error Resolution Heuristic
 
-An error is "unresolved" if the most recent event for that subject is `type=error`. If a later `type=file` Write/Edit event touches the same subject, treat the error as likely resolved. This is a heuristic — keep it simple and document the approximation.
+The error-resolution heuristic is defined canonically in FEAT-1262's `### Event Semantics` section. This issue is the consumer; cite that schema rather than redefining the rule here. If the heuristic needs to evolve, update FEAT-1262's schema first, then update this consumer to match.
 
 ### Size-Capping Compatibility
 
@@ -105,5 +105,12 @@ This issue modifies only `precompact-handoff.sh`. It does NOT modify:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): MVP designation from 2026-05-01 audit. FEAT-1264 is the MVP for "reconstruct PreCompact summary at handoff" — the JSONL+jq path defined here. FEAT-1112's SQLite/FTS5-backed reconstruction is a future replacement that reuses the same snapshot-builder API surface (input → markdown sections). Designing the snapshot builder as a stable interface allows the SQLite implementation to swap in without changes to `precompact-handoff.sh` consumers. The error-resolution heuristic referenced above lives canonically in FEAT-1262's Event Semantics section.

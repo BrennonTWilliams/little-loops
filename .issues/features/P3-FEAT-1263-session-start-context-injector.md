@@ -5,7 +5,7 @@ priority: P3
 status: open
 discovered_date: 2026-04-22
 discovered_by: issue-size-review
-blocked_by: [FEAT-1156]
+blocked_by: [FEAT-1156, FEAT-1116]
 parent: FEAT-1159
 related: [FEAT-1156, FEAT-1264, FEAT-1262]
 ---
@@ -115,5 +115,6 @@ FEAT-1116 risk: `session-start-inject.sh` is a SessionStart shell script in the 
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

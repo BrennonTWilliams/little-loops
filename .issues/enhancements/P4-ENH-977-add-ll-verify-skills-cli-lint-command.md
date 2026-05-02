@@ -102,6 +102,7 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
@@ -113,3 +114,5 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-1038 (ll-verify-docs should track FSM loop counts) both modify `scripts/little_loops/doc_counts.py` and `scripts/little_loops/cli/docs.py`. Changes are additive in different sections (ENH-977 adds `check_skill_sizes()` and `main_verify_skills()`; ENH-1038 adds to `COUNT_TARGETS`), but they should be sequenced or merged to avoid conflicts in the same PR. Related: ENH-1038.
+
+**Note** (added by `/ll:audit-issue-conflicts`, 2026-05-01): The "companion files alongside `SKILL.md` are not counted toward the 500-line limit" test case (Implementation Step 5) explicitly assumes ENH-494's flat-companion-file pattern landed first. ENH-977's `rglob('SKILL.md')` walk is robust to the alternative subdirectory pattern, but the test fixtures are not — keep `blocked_by: [ENH-494]` and re-validate the fixture layout if ENH-494's companion-file decision ever changes.

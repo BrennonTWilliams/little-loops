@@ -72,6 +72,7 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 ## Acceptance Criteria
 
 - [ ] Extension manifest schema defined and documented
+- [ ] Manifest schema includes a `transports` capability key alongside `events`, `hooks`, and `actions/evaluators` so transports introduced by FEAT-918 are first-class in `ll extensions list`/`info`
 - [ ] `ll extensions list` shows installed extensions with status and compatibility
 - [ ] `ll extensions check` validates version compatibility for all installed extensions
 - [ ] `ll extensions info <name>` displays manifest details
@@ -112,6 +113,7 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 **Open** | Created: 2026-04-02 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
 - `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`

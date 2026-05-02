@@ -163,6 +163,7 @@ class LearningStateHandler:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 
 - `/ll:verify-issues` - 2026-04-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
@@ -171,3 +172,7 @@ class LearningStateHandler:
 ---
 
 **Open** | Created: 2026-04-25 | Priority: P3
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`, 2026-05-01): Cross-reference with FEAT-1308 (loop YAML `from:` template inheritance). The example in this issue declares states as a YAML list (`states: - name: ...`); FEAT-1308's `from:` deep-merge mechanism requires the mapping form (`states.<name>: ...`). Pin the canonical states schema to the mapping form before either issue ships. Update the example in this issue to the mapping form during implementation: `states.learning: { type: learning, targets: [...], on_pass: planning, on_fail: learning, max_retries: 2 }`.
