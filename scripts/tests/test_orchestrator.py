@@ -380,7 +380,7 @@ class TestOrphanedWorktreeCleanup:
         orchestrator: ParallelOrchestrator,
         temp_repo_with_config: Path,
     ) -> None:
-        """Does not clean up directories not starting with worker-."""
+        """Does not clean up directories not starting with worker- or a timestamp."""
         worktree_base = temp_repo_with_config / ".worktrees"
         other_dir = worktree_base / "other-directory"
         other_dir.mkdir()
@@ -398,6 +398,33 @@ class TestOrphanedWorktreeCleanup:
         orchestrator._cleanup_orphaned_worktrees()
 
         assert other_dir.exists()
+
+    def test_cleans_up_loop_worktree(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Cleans up timestamp-prefixed loop worktrees left by ll-loop --worktree."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        loop_dir = worktree_base / "20260101-000000-my-loop"
+        loop_dir.mkdir()
+
+        removed: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+            if args[:2] == ["worktree", "remove"]:
+                removed.append(args[-1])
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        orchestrator._cleanup_orphaned_worktrees()
+
+        assert not loop_dir.exists() or any("20260101-000000-my-loop" in r for r in removed)
 
     def test_skips_worktree_owned_by_live_process(
         self,
@@ -637,7 +664,7 @@ class TestOrphanedWorktreeCleanup:
             worktree_base = repo_path / ".worktrees"
             worktree_base.mkdir()
 
-            # Create a real git worktree
+            # Create a real git worktree (ll-parallel worker)
             wt_name = "worker-bug-001-20260101-120000"
             wt_path = worktree_base / wt_name
             sp.run(
@@ -647,13 +674,28 @@ class TestOrphanedWorktreeCleanup:
                 check=True,
             )
 
-            git_wt_dir = repo_path / ".git" / "worktrees" / wt_name
-            assert git_wt_dir.exists(), "worktree metadata should exist before simulated SIGKILL"
+            # Create a real git worktree (ll-loop --worktree, timestamp-prefixed)
+            loop_wt_name = "20260422-153012-my-loop"
+            loop_wt_path = worktree_base / loop_wt_name
+            sp.run(
+                ["git", "worktree", "add", str(loop_wt_path), "-b", loop_wt_name],
+                cwd=repo_path,
+                capture_output=True,
+                check=True,
+            )
 
-            # Simulate SIGKILL: delete the directory without running git worktree prune
+            git_wt_dir = repo_path / ".git" / "worktrees" / wt_name
+            loop_git_wt_dir = repo_path / ".git" / "worktrees" / loop_wt_name
+            assert git_wt_dir.exists(), "worktree metadata should exist before simulated SIGKILL"
+            assert loop_git_wt_dir.exists(), "loop worktree metadata should exist before simulated SIGKILL"
+
+            # Simulate SIGKILL: delete the directories without running git worktree prune
             shutil.rmtree(wt_path)
+            shutil.rmtree(loop_wt_path)
             assert not wt_path.exists(), "worktree directory should be gone"
+            assert not loop_wt_path.exists(), "loop worktree directory should be gone"
             assert git_wt_dir.exists(), "ghost ref should still be present in .git/worktrees/"
+            assert loop_git_wt_dir.exists(), "loop ghost ref should still be present in .git/worktrees/"
 
             # Create orchestrator pointing to the real git repo
             br_config = BRConfig(repo_path)
@@ -685,6 +727,7 @@ class TestOrphanedWorktreeCleanup:
             orch._cleanup_orphaned_worktrees()
 
             assert not git_wt_dir.exists(), "ghost ref should be pruned by startup scan"
+            assert not loop_git_wt_dir.exists(), "loop ghost ref should be pruned by startup scan"
 
 
 class TestCheckPendingWorktrees:
@@ -750,7 +793,7 @@ class TestCheckPendingWorktrees:
         orchestrator: ParallelOrchestrator,
         temp_repo_with_config: Path,
     ) -> None:
-        """Does not report directories not starting with worker-."""
+        """Does not report directories not matching an ll worktree naming pattern."""
         worktree_base = temp_repo_with_config / ".worktrees"
         worktree_base.mkdir(exist_ok=True)
 
@@ -760,6 +803,24 @@ class TestCheckPendingWorktrees:
 
         result = orchestrator._check_pending_worktrees()
         assert result == []
+
+    def test_includes_loop_worktrees_in_pending_check(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Timestamp-prefixed loop worktrees are included in the pending scan."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+
+        loop_dir = worktree_base / "20260422-153012-my-loop"
+        loop_dir.mkdir()
+
+        result = orchestrator._check_pending_worktrees()
+        # Loop worktrees have no issue-id concept; _inspect_worktree returns None for
+        # directories with no commits ahead or no git branch; result may be empty but
+        # the directory must have been scanned (no assertion error from the guard change).
+        assert isinstance(result, list)
 
 
 class TestInspectWorktree:

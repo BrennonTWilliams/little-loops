@@ -2,17 +2,21 @@
 id: ENH-1255
 priority: P3
 parent_issue: ENH-1248
-depends_on: [ENH-1254]
-discovered_date: "2026-04-22"
+depends_on:
+- ENH-1254
+discovered_date: '2026-04-22'
 discovered_by: issue-size-review
 decision_needed: false
-decision_question: "Should ll-loop --worktree worktrees (naming: <timestamp>-<safe-name>) be added to the orchestrator's orphan scan, or should loop cleanup remain atexit-only? Choosing 'yes' requires extracting _is_ll_worktree() predicate and extending three startswith('worker-') guards plus fixing two _inspect_worktree fallbacks in orchestrator.py."
+decision_question: 'Should ll-loop --worktree worktrees (naming: <timestamp>-<safe-name>)
+  be added to the orchestrator''s orphan scan, or should loop cleanup remain atexit-only?
+  Choosing ''yes'' requires extracting _is_ll_worktree() predicate and extending three
+  startswith(''worker-'') guards plus fixing two _inspect_worktree fallbacks in orchestrator.py.'
 size: Medium
-confidence_score: 96
-outcome_confidence: 64
+confidence_score: 100
+outcome_confidence: 78
 score_complexity: 10
-score_test_coverage: 18
-score_ambiguity: 18
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -61,18 +65,43 @@ def _is_ll_worktree(name: str) -> bool:
     return name.startswith("worker-") or re.match(r"^\d{8}-\d{6}-", name) is not None
 ```
 
-Replace all three inline `startswith("worker-")` guards with `_is_ll_worktree(name)`.
+Replace all 5 inline `startswith("worker-")` guards with `_is_ll_worktree(name)` — see Files to Modify for full list.
 
-### Fix `_inspect_worktree` fallbacks
+### `_inspect_worktree` fallbacks — no change required
 
-- `orchestrator.py:332` — `replace("worker-", "parallel/")` produces wrong branch name for loop worktrees; add a conditional for timestamp-prefixed names.
-- `orchestrator.py:336` — issue-ID regex `r"worker-([a-z]+-\d+)-\d{8}-\d{6}"` won't match loop names; add a separate pattern or fall through gracefully.
+> **Resolved 2026-05-02** — original draft said these needed conditionals; codebase research shows the existing fallbacks already produce correct behavior for loop worktrees:
+>
+> - `orchestrator.py:388` — `worktree_path.name.replace("worker-", "parallel/")` is a pure no-op when the name has no `"worker-"` substring, returning `worktree_path.name`. Since `cli/loop/run.py:291-292` defines `_branch_name = f"{_timestamp}-{_safe_name}"; _worktree_path = _worktree_base / _branch_name`, dir name **is** the branch name for loop worktrees — the no-op result is correct.
+> - `orchestrator.py:392` — issue-ID regex `r"worker-([a-z]+-\d+)-\d{8}-\d{6}"` won't match loop names; the existing fallthrough sets `issue_id = worktree_path.name`, which is acceptable since loop worktrees have no issue-ID concept (they aren't tied to issues).
+>
+> **Action: leave both lines unchanged.** The implementation is now strictly guard replacement + predicate extraction.
 
 ### Update `commands/cleanup-worktrees.md`
 
-- `cleanup-worktrees.md:56,156` — `find … -name "worker-*"` must also match `<timestamp>-<safe-name>` dirs.
-- `cleanup-worktrees.md:89` — dry-run `sed 's/^worker-//'` branch derivation needs a conditional for loop worktree names.
-- `cleanup-worktrees.md:112` — live-run `sed 's/^worker-//'` branch derivation (same fix as line 89, separate code path).
+- `cleanup-worktrees.md:56,177` — `find … -name "worker-*"` must also match `<timestamp>-<safe-name>` dirs.
+- `cleanup-worktrees.md:90` — dry-run `sed 's/^worker-//'` branch derivation needs a conditional for loop worktree names.
+- `cleanup-worktrees.md:122` — live-run `sed 's/^worker-//'` branch derivation (same fix as line 90, separate code path).
+
+**Exact replacements (verified against current file):**
+
+- **Lines 56 and 177** — replace `-name "worker-*"` with `\( -name "worker-*" -o -name "[0-9]*" \)`:
+  ```bash
+  # Line 56 (discovery)
+  WORKTREES=$(find "$WORKTREE_BASE" -maxdepth 1 -type d \( -name "worker-*" -o -name "[0-9]*" \) 2>/dev/null || true)
+  # Line 177 (summary REMAINING count)
+  REMAINING=$(find "$WORKTREE_BASE" -maxdepth 1 -type d \( -name "worker-*" -o -name "[0-9]*" \) 2>/dev/null | wc -l | tr -d ' ')
+  ```
+  `[0-9]*` safely selects timestamp-prefixed dirs (`YYYYMMDD-HHMMSS-*`) since no other ll-managed directory names begin with a digit.
+
+- **Lines 90 and 122** — replace inline `sed` with a conditional (both dry-run and live-run paths):
+  ```bash
+  if echo "$WORKTREE_NAME" | grep -q "^worker-"; then
+      BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
+  else
+      BRANCH_NAME="$WORKTREE_NAME"
+  fi
+  ```
+  Loop worktrees have dir-name == branch-name (`cli/loop/run.py:289-292`), so no prefix stripping is needed.
 
 ### Decision Rationale
 
@@ -101,20 +130,41 @@ _See "Proposed Solution" below for detailed steps. Wiring phase at the end of th
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-1. Update `scripts/tests/test_orchestrator.py:615-637` (`test_extracts_issue_id`) — verify the `_inspect_worktree` fallback fix at `orchestrator.py:332` preserves `worker-` → `parallel/` for `worker-*` names; update assertion if the conditional adds a new branch that changes behavior
+1. Verify `scripts/tests/test_orchestrator.py:768` (`test_extracts_issue_id`) still passes — exercises `_inspect_worktree` fallback at `orchestrator.py:388`; no code change needed here since `_inspect_worktree` is not modified by this issue (see Refinement Pass 2026-05-02)
 2. Update `scripts/little_loops/loops/worktree-health.yaml:29` — change action prompt from "ll-parallel runs" to "ll-parallel and ll-loop --worktree runs"
 3. Optionally update `docs/ARCHITECTURE.md:820-826` — add `<timestamp>-<safe-name>/` to the `.worktrees/` layout diagram
 4. Optionally update `docs/guides/LOOPS_GUIDE.md:538` — expand orphaned-worktrees description to mention loop worktrees
+5. Update `scripts/tests/test_orchestrator.py:595` (`test_prunes_ghost_worktree_refs`) — add timestamp-prefixed worktree dir case alongside existing `worker-bug-001-20260101-120000`; covers guard replacements at `orchestrator.py:340,349` inside `_prune_ghost_worktree_refs()`
+6. Fix implementation reference: `test_ignores_non_worker_directories` (pending check, `_check_pending_worktrees`) is at line 748, not 595 as listed in Files to Modify; line 595 is `test_prunes_ghost_worktree_refs` — update the `test_orchestrator.py:375,595` reference to `test_orchestrator.py:375,595,748`
 
 ## Files to Modify (if decision = yes)
 
+> **Updated 2026-05-02** — line numbers re-verified; ghost-ref guards added; `_inspect_worktree` changes removed (no-op for loop worktrees).
+
 - `scripts/little_loops/worktree_utils.py` — add `import re` and `_is_ll_worktree()` predicate
-- `scripts/little_loops/parallel/orchestrator.py:248,332,336,385` — replace `startswith("worker-")` guards and fix `_inspect_worktree` fallbacks
-- `scripts/little_loops/parallel/worker_pool.py:1316` — replace `startswith("worker-")` guard
-- `commands/cleanup-worktrees.md:56,89,112,156` — update `find` and `sed` patterns (line 112 is live-run branch derivation, separate from dry-run at line 89)
-- `scripts/tests/test_cli_loop_worktree.py` — add `TestIsLLWorktree` class: `worker-bug-001` → True, `20260101-000000-my-loop` → True, `other-directory` → False
-- `scripts/tests/test_orchestrator.py:375,595` — add timestamp-prefixed dir case to the two `test_ignores_non_worker_directories` tests
+- `scripts/little_loops/parallel/orchestrator.py:248,340,349,441` — replace 4 `startswith("worker-")` guards (`_cleanup_orphaned_worktrees`, two in `_prune_ghost_worktree_refs`, `_check_pending_worktrees`)
+- `scripts/little_loops/parallel/worker_pool.py:1316` — replace `startswith("worker-")` guard in `cleanup_all_worktrees()`
+- `commands/cleanup-worktrees.md:56,90,122,177` — update `find` and `sed` patterns (line 122 is live-run branch derivation, separate from dry-run at line 90)
+- `scripts/tests/test_cli_loop_worktree.py` — add `TestIsLLWorktree` class modelled after `TestBranchNameGeneration` (line 516): imports inside test bodies, no fixtures:
+  ```python
+  class TestIsLLWorktree:
+      """Verify _is_ll_worktree() predicate matches both naming patterns."""
+
+      def test_worker_prefix_matches(self) -> None:
+          from little_loops.worktree_utils import _is_ll_worktree
+          assert _is_ll_worktree("worker-bug-001") is True
+
+      def test_timestamp_prefix_matches(self) -> None:
+          from little_loops.worktree_utils import _is_ll_worktree
+          assert _is_ll_worktree("20260101-000000-my-loop") is True
+
+      def test_other_directory_does_not_match(self) -> None:
+          from little_loops.worktree_utils import _is_ll_worktree
+          assert _is_ll_worktree("other-directory") is False
+  ```
+- `scripts/tests/test_orchestrator.py:378,595,748` — add timestamp-prefixed dir case to the three `test_ignores_non_worker_directories` tests (378=orphan cleanup, 595=ghost-ref prune, 748=pending check)
 - `scripts/tests/test_worker_pool.py:791` — add `20260101-000000-my-loop` dir to `test_cleanup_all_worktrees_removes_all` and assert count becomes 3
+- _Not modified_: `orchestrator.py:388,392` (`_inspect_worktree` fallbacks) — existing string-replace and regex naturally fall through to correct behavior for loop worktrees because dir name == branch name (`cli/loop/run.py:289-292`)
 
 ## Integration Map
 
@@ -128,13 +178,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_orchestrator.py:615-637` (`test_extracts_issue_id`) — **may break**: exercises the `_inspect_worktree` fallback at `orchestrator.py:332` (the exact fallback ENH-1255 modifies); asserts `result.branch_name == "parallel/enh-042-20260117-150000"` via the string-replace path; survives only if the fix preserves `worker-` → `parallel/` for `worker-*` names and only adds conditional logic for timestamp-prefixed names
+- `scripts/tests/test_orchestrator.py:768` (`test_extracts_issue_id`) — **should pass unchanged**: exercises `_inspect_worktree` fallback at `orchestrator.py:388`; since `_inspect_worktree` is NOT modified by this issue (Refinement Pass 2026-05-02), this test needs no update — just run as regression check
+- `scripts/tests/test_orchestrator.py:595` (`test_prunes_ghost_worktree_refs`) — **must update**: covers `_prune_ghost_worktree_refs()` (defined at `orchestrator.py:316`); both guards at lines 340 and 349 inside that function are being replaced by `_is_ll_worktree()`; add a timestamp-prefixed dir case to verify ghost refs for loop worktrees are pruned [Wire pass 2]
+- `scripts/tests/test_orchestrator.py:748` (`test_ignores_non_worker_directories` in `TestCheckPendingWorktrees`) — **line-number correction**: "Files to Modify" lists this test at line 595, but line 595 is `test_prunes_ghost_worktree_refs` (entry above); the `_check_pending_worktrees` ignore test is at line 748; update implementation reference from `375,595` to `375,595,748` [Wire pass 2]
 
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md:820-826` — directory layout diagram shows only `worker-N/` naming under `.worktrees/`; loop worktree directories (`<timestamp>-<safe-name>/`) are absent; low-priority doc update
 - `docs/guides/LOOPS_GUIDE.md:538` — `worktree-health` loop description says it monitors orphaned worktrees left by `ll-parallel` runs only; after ENH-1255, loop worktrees appear too
+- `docs/ARCHITECTURE.md:381-384` — mermaid `subgraph Worktrees` diagram hardcodes `".worktrees/worker-1/"`, `".worktrees/worker-2/"`, `".worktrees/worker-N/"` node labels; second location in the same file beyond the already-noted 820-826 layout section; optional [Wire pass 2]
+- `docs/development/TROUBLESHOOTING.md:117` — "Worktree cleanup fails on locked worktree" manual-fix block uses `git worktree unlock .worktrees/worker-<name>` / `git worktree remove .worktrees/worker-<name>`; same steps apply to loop worktrees with `.worktrees/<timestamp>-<safe-name>` path; optional [Wire pass 2]
 
 ### Configuration
 
@@ -157,7 +211,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `cleanup-worktrees.md:112` — `BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"` (live-run path; same fix as dry-run line 89, separate code branch)
+- `cleanup-worktrees.md:122` — `BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"` (live-run path; same fix as dry-run line 90, separate code branch)
 - `orchestrator.py:247-248` — `for item in worktree_base.iterdir(): if item.is_dir() and item.name.startswith("worker-"):`
 - `orchestrator.py:382-385` — list comprehension: `[item for item in worktree_base.iterdir() if item.is_dir() and item.name.startswith("worker-")]`
 - `worker_pool.py:1315-1316` — `for worktree_dir in worktree_base.iterdir(): if worktree_dir.is_dir() and worktree_dir.name.startswith("worker-"):`
@@ -165,6 +219,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `test_orchestrator.py:595-608` — `test_ignores_non_worker_directories` (pending): same pattern for `_check_pending_worktrees()`, asserts `result == []`
 - `test_worker_pool.py:791-816` — `test_cleanup_all_worktrees_removes_all`: uses `patch.object(worker_pool, "_cleanup_worktree", side_effect=mock_cleanup)` + `cleanup_calls: list[Path]`, asserts `len == 2`; add timestamp dir and change assertion to `== 3`
 - `test_cli_loop_worktree.py:458-479` — `TestBranchNameGeneration` (closest analog): pure-logic class, no fixtures, imports inside test bodies — model `TestIsLLWorktree` after this style
+
+### Refinement Pass 2026-05-02 (resolves Confidence Check open items)
+
+_Added by `/ll:refine-issue` — addresses risks flagged in Confidence Check Notes:_
+
+- **Ghost-ref-scan guards confirmed at `orchestrator.py:340` and `:349`** (inside `_prune_ghost_worktree_refs()`, defined at line 316). Both guards filter `git worktree list --porcelain` output to find dangling `.git/worktrees/<name>` refs whose backing directory is gone. Same SIGKILL-leak logic that motivates `_cleanup_orphaned_worktrees()` applies here — a SIGKILLed loop worktree leaves both an orphan dir AND a ghost ref. **Decision: extend `_is_ll_worktree()` to both ghost-ref guards too.** This brings the guard total to 5 (not 3-4): `orchestrator.py:248,340,349,441` + `worker_pool.py:1316`.
+- **Branch-name derivation for loop worktrees in `_inspect_worktree` is a no-op fix.** `cli/loop/run.py:289-292` sets `_branch_name = f"{_timestamp}-{_safe_name}"` and `_worktree_path = _worktree_base / _branch_name` — i.e., **for loop worktrees, dir name == branch name**. The existing fallback at `orchestrator.py:388` (`worktree_path.name.replace("worker-", "parallel/")`) is a string-replace that becomes a pure no-op when the name has no `"worker-"` substring, returning `worktree_path.name` unchanged — which is the correct branch name for loop worktrees. **No conditional needed at line 388.** Similarly at line 392, the issue-id regex won't match loop names and the fallback `issue_id = worktree_path.name` is acceptable since loop worktrees have no issue ID concept. **Recommendation: leave both `_inspect_worktree` fallbacks alone.** This removes one risk vector and simplifies the change to a pure guard-replacement plus predicate extraction.
+- **Current authoritative line numbers** (verified 2026-05-02):
+  - `orchestrator.py:248` — `_cleanup_orphaned_worktrees()` guard
+  - `orchestrator.py:340,349` — `_prune_ghost_worktree_refs()` guards (was unscoped in original Files to Modify)
+  - `orchestrator.py:388,392` — `_inspect_worktree` fallbacks (leave unchanged)
+  - `orchestrator.py:441` — `_check_pending_worktrees()` guard (was 385 in earlier draft)
+  - `worker_pool.py:1316` — `cleanup_all_worktrees()` guard
+- **Updated guard-replacement count: 5** (`orchestrator.py:248,340,349,441` + `worker_pool.py:1316`); **`_inspect_worktree` changes: 0** (down from 2 in original Proposed Solution).
 
 ## Similar Patterns
 
@@ -180,6 +248,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - All three test files updated with timestamp-prefixed dir cases pass
 - Regression: `python -m pytest scripts/tests/test_orchestrator.py scripts/tests/test_worker_pool.py scripts/tests/test_cli_loop_worktree.py -v`
 
+## Impact
+
+- **Priority**: P3 - Low-priority reliability improvement; atexit handles most cases, but SIGKILL leaves a real leak gap
+- **Effort**: Medium - 7+ file changes (worktree_utils, orchestrator, worker_pool, cleanup-worktrees.md, 3 test files, worktree-health.yaml)
+- **Risk**: Low - pure guard replacements with a simple predicate; no behavior change for existing `worker-*` worktrees
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+- `_inspect_worktree` fallbacks at `orchestrator.py:388,392` — **not modified** (loop dir name == branch name, existing behavior is correct)
+- Signal handler registration (`register_loop_signal_handlers`) — not in scope
+- `worktree-health.yaml` structural fix — covered by ENH-1254 (already completed); this issue only updates the action prompt text
+- Loop worker session lifecycle — no changes to how loop worktrees are created; only the startup orphan scan is extended
+
 ## Labels
 
 `parallel`, `worktree`, `loop`, `reliability`, `cleanup`
@@ -193,10 +275,16 @@ _Added by `/ll:confidence-check` on 2026-04-26_
 
 ### Outcome Risk Factors
 - **Complexity is the primary risk driver (10/25)**: 7+ files span worktree_utils, orchestrator, worker_pool, cleanup-worktrees.md, and three test files — expect meaningful integration work even though each individual change is simple
-- **Ghost-ref-scan guards at `orchestrator.py:340,349` are unaccounted for**: these are a fourth distinct `startswith("worker-")` site (in the ghost-ref pruning function, separate from `_cleanup_orphaned_worktrees` and `_check_pending_worktrees`) — decide before implementing whether `_is_ll_worktree()` should extend there too
-- **Branch-name derivation for loop worktrees in `_inspect_worktree` is unspecified**: the issue says "add a conditional for timestamp-prefixed names" but doesn't name the target string (e.g., `loops/<name>` or similar) — resolve this convention before coding line 388
+- ~~**Ghost-ref-scan guards at `orchestrator.py:340,349` are unaccounted for**~~: **RESOLVED 2026-05-02** — confirmed both sites belong to `_prune_ghost_worktree_refs()` and the same SIGKILL-leak logic applies; `_is_ll_worktree()` will replace these guards too (now in Files to Modify)
+- ~~**Branch-name derivation for loop worktrees in `_inspect_worktree` is unspecified**~~: **RESOLVED 2026-05-02** — for loop worktrees, dir name == branch name (`cli/loop/run.py:289-292`), so the existing `replace("worker-", "parallel/")` no-op already produces the correct result; no code change needed at lines 388 or 392
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-02T19:55:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f796fee3-8b88-4699-bb0b-8ba376b85aea.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3dc73644-56ce-485c-9743-074873fcaa8f.jsonl`
+- `/ll:wire-issue` - 2026-05-02T19:50:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b1fee64-5798-4b35-82d5-d17a1e52d8d4.jsonl`
+- `/ll:refine-issue` - 2026-05-02T19:44:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22b8f0dd-e355-4cc0-93b5-3fa545866dec.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00db13ea-6bab-4b46-be19-afae31f720a7.jsonl`
+- `/ll:refine-issue` - 2026-05-02T18:52:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab38a044-b629-4607-845e-54c5a6ef505d.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:confidence-check` - 2026-04-26T19:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
 - `/ll:decide-issue` - 2026-04-26T19:26:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae825d2a-b598-42e3-8f2e-583ed68c3209.jsonl`

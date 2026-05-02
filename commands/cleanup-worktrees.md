@@ -53,7 +53,7 @@ Find all worktrees matching the ll-parallel pattern:
 
 ```bash
 # Get list of worker worktrees
-WORKTREES=$(find "$WORKTREE_BASE" -maxdepth 1 -type d -name "worker-*" 2>/dev/null || true)
+WORKTREES=$(find "$WORKTREE_BASE" -maxdepth 1 -type d \( -name "worker-*" -o -name "[0-9]*" \) 2>/dev/null || true)
 
 if [ -z "$WORKTREES" ]; then
     echo "No ll-parallel worktrees found in $WORKTREE_BASE"
@@ -87,7 +87,11 @@ if [ "$MODE" = "dry-run" ]; then
     echo "$WORKTREES" | while read -r w; do
         if [ -n "$w" ]; then
             WORKTREE_NAME=$(basename "$w")
-            BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
+            if echo "$WORKTREE_NAME" | grep -q "^worker-"; then
+                BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
+            else
+                BRANCH_NAME="$WORKTREE_NAME"
+            fi
             MARKER=$(ls "${w}/.ll-session-"* 2>/dev/null | head -1)
             if [ -n "$MARKER" ]; then
                 PID=$(basename "$MARKER" | sed 's/^\.ll-session-//')
@@ -119,7 +123,11 @@ if [ "$MODE" = "run" ]; then
     echo "$WORKTREES" | while read -r w; do
         if [ -n "$w" ] && [ -d "$w" ]; then
             WORKTREE_NAME=$(basename "$w")
-            BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
+            if echo "$WORKTREE_NAME" | grep -q "^worker-"; then
+                BRANCH_NAME="parallel/$(echo "$WORKTREE_NAME" | sed 's/^worker-//')"
+            else
+                BRANCH_NAME="$WORKTREE_NAME"
+            fi
 
             # Liveness check: skip worktrees owned by a running process
             MARKER=$(ls "${w}/.ll-session-"* 2>/dev/null | head -1)
@@ -174,7 +182,7 @@ echo "========================================"
 echo ""
 
 # Check what's left
-REMAINING=$(find "$WORKTREE_BASE" -maxdepth 1 -type d -name "worker-*" 2>/dev/null | wc -l | tr -d ' ')
+REMAINING=$(find "$WORKTREE_BASE" -maxdepth 1 -type d \( -name "worker-*" -o -name "[0-9]*" \) 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$REMAINING" = "0" ]; then
     echo "All ll-parallel worktrees have been cleaned."

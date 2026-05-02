@@ -35,6 +35,7 @@ from little_loops.parallel.types import (
 )
 from little_loops.parallel.worker_pool import WorkerPool
 from little_loops.session_log import append_session_log_entry
+from little_loops.worktree_utils import _is_ll_worktree
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -245,7 +246,7 @@ class ParallelOrchestrator:
         # Get list of worktree directories, skipping those owned by live processes (BUG-579)
         orphaned = []
         for item in worktree_base.iterdir():
-            if item.is_dir() and item.name.startswith("worker-"):
+            if item.is_dir() and _is_ll_worktree(item.name):
                 # Check for a .ll-session-<pid> marker left by an active orchestrator
                 owned_by_live = False
                 for marker in item.glob(".ll-session-*"):
@@ -337,7 +338,7 @@ class ParallelOrchestrator:
                 if current:
                     path_str = current.get("worktree", "")
                     name = Path(path_str).name
-                    if name.startswith("worker-") and path_str and not Path(path_str).exists():
+                    if _is_ll_worktree(name) and path_str and not Path(path_str).exists():
                         ghost_names.append(name)
                     current = {}
                 continue
@@ -346,7 +347,7 @@ class ParallelOrchestrator:
         if current:
             path_str = current.get("worktree", "")
             name = Path(path_str).name
-            if name.startswith("worker-") and path_str and not Path(path_str).exists():
+            if _is_ll_worktree(name) and path_str and not Path(path_str).exists():
                 ghost_names.append(name)
 
         if not ghost_names:
@@ -438,7 +439,7 @@ class ParallelOrchestrator:
         worktrees = [
             item
             for item in worktree_base.iterdir()
-            if item.is_dir() and item.name.startswith("worker-")
+            if item.is_dir() and _is_ll_worktree(item.name)
         ]
 
         if not worktrees:

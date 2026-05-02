@@ -1312,8 +1312,10 @@ class WorkerPool:
         if not worktree_base.exists():
             return
 
+        from little_loops.worktree_utils import _is_ll_worktree
+
         for worktree_dir in worktree_base.iterdir():
-            if worktree_dir.is_dir() and worktree_dir.name.startswith("worker-"):
+            if worktree_dir.is_dir() and _is_ll_worktree(worktree_dir.name):
                 self._cleanup_worktree(worktree_dir)
 
         self.logger.info("Cleaned up all worker worktrees")

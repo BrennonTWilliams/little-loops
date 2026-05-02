@@ -537,6 +537,25 @@ class TestBranchNameGeneration:
         assert re.match(r"^\d{8}-\d{6}-my-loop$", branch)
 
 
+class TestIsLLWorktree:
+    """Verify _is_ll_worktree() predicate matches both naming patterns."""
+
+    def test_worker_prefix_matches(self) -> None:
+        from little_loops.worktree_utils import _is_ll_worktree
+
+        assert _is_ll_worktree("worker-bug-001") is True
+
+    def test_timestamp_prefix_matches(self) -> None:
+        from little_loops.worktree_utils import _is_ll_worktree
+
+        assert _is_ll_worktree("20260101-000000-my-loop") is True
+
+    def test_other_directory_does_not_match(self) -> None:
+        from little_loops.worktree_utils import _is_ll_worktree
+
+        assert _is_ll_worktree("other-directory") is False
+
+
 class TestCmdRunWorktree:
     """Integration tests for the cmd_run(worktree=True) code path (ENH-1254)."""
 

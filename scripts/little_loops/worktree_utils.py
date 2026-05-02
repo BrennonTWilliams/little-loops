@@ -7,6 +7,7 @@ worktrees with consistent file-copy behavior.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -141,3 +142,12 @@ def cleanup_worktree(
     if delete_branch and branch_name:
         git_lock.run(["branch", "-D", branch_name], cwd=repo_path, timeout=10)
         logger.info(f"Deleted branch {branch_name}")
+
+
+def _is_ll_worktree(name: str) -> bool:
+    """Return True if the directory name matches an ll-managed worktree naming pattern.
+
+    Matches both ll-parallel worker dirs (``worker-<issue>-<timestamp>``) and
+    ll-loop worktree dirs (``<YYYYMMDD>-<HHMMSS>-<safe-name>``).
+    """
+    return name.startswith("worker-") or re.match(r"^\d{8}-\d{6}-", name) is not None
