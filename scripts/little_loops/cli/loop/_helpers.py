@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import signal
 import subprocess
 import sys
@@ -64,6 +65,29 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
             fsm_proc = getattr(inner, "_current_process", None)
             if fsm_proc is not None:
                 fsm_proc.kill()
+
+
+def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
+    """Return True if entry_id is the earliest-enqueued waiter in queue_dir.
+
+    Returns True when this waiter is first or the queue is empty/unreadable,
+    allowing it to proceed with acquire(). Non-first waiters return False and
+    should back off to yield to the earlier waiter (ENH-1332).
+    """
+    if not queue_dir.exists():
+        return True
+    entries: list[dict] = []
+    for f in queue_dir.glob("*.json"):
+        try:
+            with open(f) as fh:
+                data = json.load(fh)
+            entries.append(data)
+        except (json.JSONDecodeError, KeyError, FileNotFoundError, OSError):
+            continue
+    if not entries:
+        return True
+    entries.sort(key=lambda d: d.get("enqueuedAt", ""))
+    return entries[0].get("id") == entry_id
 
 
 def register_loop_signal_handlers(executor: Any, pid_file: Path | None = None) -> None:

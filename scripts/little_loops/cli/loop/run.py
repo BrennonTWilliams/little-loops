@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
+    _is_earliest_waiter,
     get_builtin_loops_dir,
     print_execution_plan,
     register_loop_signal_handlers,
@@ -254,6 +255,9 @@ def cmd_run(
                     _cleanup_queue_entry()
                     logger.error("Timeout waiting for scope to become available")
                     return 1
+                if not _is_earliest_waiter(entry_id, queue_dir):
+                    time.sleep(1)
+                    continue
                 if lock_manager.acquire(fsm.name, scope):
                     acquired = True
                     break

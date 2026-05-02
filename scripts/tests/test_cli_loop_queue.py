@@ -127,6 +127,64 @@ class TestQueueRetryOnRace:
         mock_lm.wait_for_scope.assert_not_called()
 
 
+class TestQueueFifoOrdering:
+    """_is_earliest_waiter enforces FIFO ordering among queue waiters (ENH-1332)."""
+
+    def test_is_earliest_when_queue_dir_missing(self, tmp_path: Path) -> None:
+        """Returns True when queue directory does not exist."""
+        from little_loops.cli.loop._helpers import _is_earliest_waiter
+
+        assert _is_earliest_waiter("any-id", tmp_path / ".queue")
+
+    def test_is_earliest_when_queue_is_empty(self, tmp_path: Path) -> None:
+        """Returns True when queue directory exists but contains no entries."""
+        from little_loops.cli.loop._helpers import _is_earliest_waiter
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+        assert _is_earliest_waiter("any-id", queue_dir)
+
+    def test_earliest_entry_wins(self, tmp_path: Path) -> None:
+        """Returns True only for the entry with the earliest enqueuedAt timestamp."""
+        import json
+        import uuid
+
+        from little_loops.cli.loop._helpers import _is_earliest_waiter
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+
+        id_b = str(uuid.uuid4())
+        id_c = str(uuid.uuid4())
+        (queue_dir / f"{id_b}.json").write_text(
+            json.dumps({"id": id_b, "enqueuedAt": "2026-05-02T10:00:00+00:00"})
+        )
+        (queue_dir / f"{id_c}.json").write_text(
+            json.dumps({"id": id_c, "enqueuedAt": "2026-05-02T10:00:01+00:00"})
+        )
+
+        assert _is_earliest_waiter(id_b, queue_dir) is True
+        assert _is_earliest_waiter(id_c, queue_dir) is False
+
+    def test_malformed_entries_are_skipped(self, tmp_path: Path) -> None:
+        """Malformed queue entries are skipped without affecting valid entry ordering."""
+        import json
+        import uuid
+
+        from little_loops.cli.loop._helpers import _is_earliest_waiter
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+
+        good_id = str(uuid.uuid4())
+        (queue_dir / f"{good_id}.json").write_text(
+            json.dumps({"id": good_id, "enqueuedAt": "2026-05-02T10:00:00+00:00"})
+        )
+        (queue_dir / "bad.json").write_text("not-valid-json")
+
+        assert _is_earliest_waiter(good_id, queue_dir) is True
+
+
 class TestCmdRunTransportWiring:
     """Tests for FEAT-1323: cmd_run wires transports onto the executor's EventBus."""
 
