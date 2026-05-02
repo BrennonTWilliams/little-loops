@@ -463,6 +463,10 @@ ll-issues nxs --json                          # Ranked list as JSON array
 ll-issues nxs --path                          # Ranked list as file paths
 ll-issues skip FEAT-001                       # Deprioritize issue to P5 (move out of active queue)
 ll-issues skip FEAT-001 --priority P4         # Deprioritize to specific priority
+ll-issues check-readiness FEAT-001            # Exit 0 if confidence/outcome thresholds are met
+ll-issues check-readiness FEAT-001 --readiness 85 --outcome 70
+ll-issues set-scores BUG-1307 --confidence 95 --outcome 80  # Write scores to frontmatter (used by confidence-check Phase 4)
+ll-issues set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
 ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
 ll-issues anchor-sweep --dry-run              # Preview file:line → anchor rewrites in active issues
 ll-issues anchor-sweep                        # Rewrite file:line references to enclosing anchors

@@ -2,9 +2,10 @@ name: "refine-to-ready-issue"
 description: "Drives a single issue from backlog to ready-state: refines it, wires integration points, runs confidence checks, and routes to issue-size-review if confidence thresholds cannot be met."
 category: issue-management
 # Routing summary:
-#   confidence_check → check_readiness → (on_yes) check_outcome → (on_yes) done
-#                                      → (on_no)  check_refine_limit → refine_issue
-#                      check_outcome   → (on_no)  breakdown_issue
+#   confidence_check → verify_scores_persisted → (on_yes) check_readiness → (on_yes) check_outcome → (on_yes) done
+#                                              → (on_no)  failed (scores not written)
+#                      check_readiness         → (on_no)  check_refine_limit → refine_issue
+#                      check_outcome           → (on_no)  breakdown_issue
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
 initial: resolve_issue
 max_iterations: 20
@@ -106,7 +107,44 @@ states:
   confidence_check:
     action: "/ll:confidence-check ${captured.issue_id.output}"
     action_type: slash_command
-    next: check_readiness
+    next: verify_scores_persisted
+
+  verify_scores_persisted:
+    # Guard: assert that Phase 4 of confidence-check actually wrote scores to frontmatter.
+    # Routes to failed (not refine) so a CLI write failure surfaces loudly instead of
+    # being misrouted to breakdown_issue as if the issue were too large.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys, subprocess
+
+      r = subprocess.run(
+          ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
+          capture_output=True, text=True
+      )
+      try:
+          d = json.loads(r.stdout)
+      except Exception as e:
+          print(f"ERROR: verify_scores_persisted: failed to parse ll-issues show output: {e}", file=sys.stderr)
+          sys.exit(1)
+      confidence = d.get('confidence')
+      outcome = d.get('outcome')
+      if confidence is None or outcome is None:
+          print(
+              f"ERROR: verify_scores_persisted: scores not found in frontmatter after confidence_check "
+              f"(confidence={confidence}, outcome={outcome}). "
+              "The confidence-check skill did not write scores via ll-issues set-scores. "
+              "Routing to failed to prevent spurious issue-size-review.",
+              file=sys.stderr
+          )
+          sys.exit(1)
+      sys.exit(0)
+      PYEOF
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: check_readiness
+    on_no: failed
+    on_error: failed
 
   check_readiness:
     # Step 1 of 2: check only technical readiness (confidence_score vs readiness_threshold).

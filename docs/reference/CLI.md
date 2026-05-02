@@ -787,6 +787,28 @@ ll-issues check-readiness 518 --readiness 80 --outcome 70
 
 **FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. Pair with `ll-issues show --json` when you need the raw scores.
 
+#### `ll-issues set-scores` / `ll-issues ss`
+
+Write `confidence_score`, `outcome_confidence`, and the four per-dimension scores into an issue's YAML frontmatter. Writes idempotently: existing fields are overwritten, unrelated keys are preserved, and missing frontmatter is created from scratch. If no score flags are provided, returns 0 with a warning and writes nothing.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `issue_id` | _(required)_ | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
+| `--confidence N` | `None` | Overall readiness score (0–100) |
+| `--outcome N` | `None` | Outcome confidence score (0–100) |
+| `--score-complexity N` | `None` | Complexity dimension score (0–25) |
+| `--score-test-coverage N` | `None` | Test-coverage dimension score (0–25) |
+| `--score-ambiguity N` | `None` | Ambiguity dimension score (0–25) |
+| `--score-change-surface N` | `None` | Change-surface dimension score (0–25) |
+
+**Examples:**
+```bash
+ll-issues set-scores BUG-1307 --confidence 95 --outcome 80
+ll-issues ss FEAT-518 --confidence 88 --outcome 72 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
+```
+
+**Used by**: `/ll:confidence-check` Phase 4 to persist scores deterministically instead of a free-form `Edit` call.
+
 ---
 
 ### ll-deps

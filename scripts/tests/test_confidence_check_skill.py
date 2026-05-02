@@ -8,6 +8,36 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILL_FILE = PROJECT_ROOT / "skills" / "confidence-check" / "SKILL.md"
 
 
+class TestConfidenceCheckPhase4CLI:
+    """Phase 4 must use ll-issues set-scores (CLI), not a free-form Edit call (BUG-1307)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4: Update Frontmatter")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_4_uses_set_scores_cli(self) -> None:
+        """Phase 4 must instruct the LLM to call ll-issues set-scores via Bash."""
+        assert "ll-issues set-scores" in self._phase_text(), (
+            "Phase 4 must use the ll-issues set-scores CLI, not a free-form Edit call (BUG-1307)"
+        )
+
+    def test_phase_4_does_not_use_edit_for_frontmatter(self) -> None:
+        """Phase 4 must not instruct the LLM to use the Edit tool for frontmatter fields."""
+        text = self._phase_text()
+        assert "Use the Edit tool" not in text, (
+            "Phase 4 must not use the Edit tool for frontmatter — CLI is the single source of truth (BUG-1307)"
+        )
+
+    def test_phase_4_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "### Phase 4: Update Frontmatter" in content, (
+            "SKILL.md must contain a '### Phase 4: Update Frontmatter' section"
+        )
+
+
 class TestConfidenceCheckSkillWriteBack:
     """Verify Phase 4.5 write-back behavior is unconditional (ENH-1087)."""
 

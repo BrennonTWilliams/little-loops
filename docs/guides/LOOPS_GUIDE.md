@@ -270,10 +270,11 @@ ll-loop run refine-to-ready-issue --context readiness_threshold=85 --context out
 
 To apply project-wide defaults, set `commands.confidence_gate.readiness_threshold` / `outcome_threshold` in `ll-config.json`, then install the loop locally (`ll-loop install refine-to-ready-issue`) and update its `context:` block defaults.
 
-**Two-stage threshold check**: After `confidence_check` runs, the loop evaluates readiness and outcome confidence in two sequential shell states rather than one combined check. This split lets the loop route failures differently depending on which threshold was missed:
+**Three-stage threshold check**: After `confidence_check` runs, the loop evaluates scores in three sequential shell states rather than one combined check. This split lets the loop route failures differently depending on what went wrong:
 
-1. `check_readiness` — compares `confidence_score` against `readiness_threshold`. Failure routes to `check_refine_limit` (more refinement can close a technical gap).
-2. `check_outcome` — compares `outcome_confidence` against `outcome_threshold`. Failure routes to `breakdown_issue` (low outcome confidence signals a scope problem; additional refinement won't fix it).
+1. `verify_scores_persisted` — asserts that `confidence_score` and `outcome_confidence` are non-null in frontmatter (i.e., `/ll:confidence-check` Phase 4 actually wrote scores via `ll-issues set-scores`). Failure routes to `failed` with a clear error message — a missing-score condition is a tool failure, not a refinement signal, and must not silently route to `breakdown_issue`.
+2. `check_readiness` — compares `confidence_score` against `readiness_threshold`. Failure routes to `check_refine_limit` (more refinement can close a technical gap).
+3. `check_outcome` — compares `outcome_confidence` against `outcome_threshold`. Failure routes to `breakdown_issue` (low outcome confidence signals a scope problem; additional refinement won't fix it).
 
 **Timeout recovery**: If `check_readiness` encounters an unexpected Python error, the loop falls back to `check_scores_from_file` — a deterministic recovery state that reads `confidence_score` and `outcome_confidence` directly from the issue's frontmatter via `ll-issues show --json`. If both scores meet the thresholds, the loop routes to `done`; otherwise it routes to `breakdown_issue`.
 

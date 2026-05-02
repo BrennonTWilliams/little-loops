@@ -397,53 +397,27 @@ Combine both scores in the final output. The readiness score drives the go/no-go
 
 ### Phase 4: Update Frontmatter
 
-After scoring, update the issue file's YAML frontmatter with both aggregate scores and the four per-dimension scores from Phase 2b (criteria A–D).
+After scoring, persist both aggregate scores and the four per-dimension scores from Phase 2b into the issue file's YAML frontmatter via the CLI. Use `Bash` to run:
 
-If the issue file has existing frontmatter (starts with `---`):
-- Add or update the `confidence_score`, `outcome_confidence`, and the four `score_*` fields within the frontmatter block
-- Use the Edit tool to replace the frontmatter section
-
-Example — if frontmatter is:
-```yaml
----
-discovered_date: 2026-02-13
-discovered_by: capture-issue
----
+```bash
+ll-issues set-scores [ISSUE-ID] \
+  --confidence [confidence_score] \
+  --outcome [outcome_confidence] \
+  --score-complexity [score_A] \
+  --score-test-coverage [score_B] \
+  --score-ambiguity [score_C] \
+  --score-change-surface [score_D]
 ```
 
-Update to:
-```yaml
----
-discovered_date: 2026-02-13
-discovered_by: capture-issue
-confidence_score: 85
-outcome_confidence: 62
-score_complexity: 20
-score_test_coverage: 18
-score_ambiguity: 22
-score_change_surface: 12
----
-```
+Replace `[ISSUE-ID]` with the actual issue identifier (e.g., `BUG-1307`) and the bracketed placeholders with the integer values from Phase 2b and Phase 3.
 
-Where the four `score_*` values are the per-criterion integer scores (0–25 each) recorded during Phase 2b:
-- `score_complexity` — Criterion A score
-- `score_test_coverage` — Criterion B score
-- `score_ambiguity` — Criterion C score
-- `score_change_surface` — Criterion D score
+The four `score_*` values are the per-criterion integer scores (0–25 each):
+- `--score-complexity` — Criterion A score
+- `--score-test-coverage` — Criterion B score
+- `--score-ambiguity` — Criterion C score
+- `--score-change-surface` — Criterion D score
 
-If any of these fields already exist, replace their values with the new scores.
-
-If the issue file has no frontmatter, add one:
-```yaml
----
-confidence_score: 85
-outcome_confidence: 62
-score_complexity: 20
-score_test_coverage: 18
-score_ambiguity: 22
-score_change_surface: 12
----
-```
+The CLI writes idempotently: existing fields are overwritten, unrelated frontmatter fields are preserved, and missing frontmatter is created from scratch. Do **not** use the `Edit` tool to write these fields — the CLI is the single source of truth for score persistence and is much harder to accidentally skip.
 
 ### Phase 4.5: Findings Write-Back
 

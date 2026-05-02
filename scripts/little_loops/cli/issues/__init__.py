@@ -31,6 +31,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
     from little_loops.cli.issues.show import cmd_show
+    from little_loops.cli.issues.set_scores import cmd_set_scores
     from little_loops.cli.issues.skip import cmd_skip
     from little_loops.cli_args import VALID_PRIORITIES, add_config_arg, add_skip_arg
     from little_loops.config import BRConfig
@@ -57,6 +58,7 @@ Sub-commands:
   clusters       Visualize issue dependency clusters as box diagrams
   check-readiness  Exit 0 if an issue meets readiness and outcome thresholds
   check-flag       Exit 0 if a boolean frontmatter field equals 'true'
+  set-scores       Write confidence and dimension scores to issue frontmatter
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
 
@@ -98,6 +100,8 @@ Examples:
   %(prog)s anchor-sweep --dry-run
   %(prog)s anchor-sweep --issues-dir .issues
   %(prog)s asw --dry-run
+  %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80
+  %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
 """,
     )
 
@@ -459,6 +463,61 @@ Examples:
     )
     add_config_arg(cr)
 
+    ss = subs.add_parser(
+        "set-scores",
+        aliases=["ss"],
+        help="Write confidence and dimension scores to issue frontmatter",
+    )
+    ss.set_defaults(command="set-scores")
+    ss.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+    ss.add_argument(
+        "--confidence",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Overall readiness score (0–100)",
+    )
+    ss.add_argument(
+        "--outcome",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Outcome confidence score (0–100)",
+    )
+    ss.add_argument(
+        "--score-complexity",
+        type=int,
+        default=None,
+        metavar="N",
+        dest="score_complexity",
+        help="Complexity dimension score (0–25)",
+    )
+    ss.add_argument(
+        "--score-test-coverage",
+        type=int,
+        default=None,
+        metavar="N",
+        dest="score_test_coverage",
+        help="Test coverage dimension score (0–25)",
+    )
+    ss.add_argument(
+        "--score-ambiguity",
+        type=int,
+        default=None,
+        metavar="N",
+        dest="score_ambiguity",
+        help="Ambiguity dimension score (0–25)",
+    )
+    ss.add_argument(
+        "--score-change-surface",
+        type=int,
+        default=None,
+        metavar="N",
+        dest="score_change_surface",
+        help="Change surface dimension score (0–25)",
+    )
+    add_config_arg(ss)
+
     asw = subs.add_parser(
         "anchor-sweep",
         aliases=["asw"],
@@ -541,6 +600,8 @@ Examples:
         return cmd_check_flag(config, args)
     if args.command == "check-readiness":
         return cmd_check_readiness(config, args)
+    if args.command == "set-scores":
+        return cmd_set_scores(config, args)
     if args.command == "anchor-sweep":
         return cmd_anchor_sweep(config, args)
     if args.command == "skip":
