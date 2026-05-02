@@ -1309,6 +1309,10 @@ Title: {info.title}
         self.worker_pool.shutdown(wait=True)
         self.merge_coordinator.shutdown(wait=True, timeout=30)
 
+        # Flush transports regardless of interrupt state so events are not lost.
+        if self._event_bus is not None:
+            self._event_bus.close_transports()
+
         # Clean up worktrees if not interrupted
         if not self._shutdown_requested:
             self.worker_pool.cleanup_all_worktrees()

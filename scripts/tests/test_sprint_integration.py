@@ -487,6 +487,71 @@ issues:
             assert pc.overlap_detection is False, "Sprint should disable runtime overlap detection"
             assert pc.serialize_overlapping is True, "Sprint should serialize overlapping issues"
 
+    def test_sprint_wires_transports_per_wave(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """_cmd_sprint_run calls wire_transports per wave (FEAT-1323)."""
+        import argparse
+        from unittest.mock import patch
+
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_multi_wave_project(tmp_path)
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_inplace,
+        )
+
+        class MockQueue:
+            def __init__(self, ids: set[str]):
+                self._ids = ids
+
+            @property
+            def completed_ids(self) -> list[str]:
+                return sorted(self._ids)
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return []
+
+        class MockOrchestrator:
+            execution_duration = 2.0
+
+            def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
+                self.queue = MockQueue(parallel_config.only_ids)
+
+            def run(self) -> int:
+                return 0
+
+        monkeypatch.setattr(
+            "little_loops.cli.sprint.run.ParallelOrchestrator",
+            MockOrchestrator,
+        )
+
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="multi-wave",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=4,
+            quiet=False,
+        )
+
+        with patch("little_loops.transport.wire_transports") as mock_wire:
+            result = cli._cmd_sprint_run(args, manager, config)
+
+        assert result == 0
+        # Multi-wave sprint hits the orchestrator path at least once
+        # (single-issue waves use process_issue_inplace, so call count == multi-issue waves)
+        assert mock_wire.call_count >= 1, "wire_transports must be called for orchestrator waves"
+
 
 class TestErrorRecovery:
     """Integration tests for error recovery during sprint execution."""

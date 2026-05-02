@@ -1048,6 +1048,7 @@ class TestCmdResumeCircuitWiring:
             tmp_path / "rate-limit-circuit.json"
         )
         mock_config.extensions = {}
+        mock_config.events = MagicMock(transports=[])
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1055,6 +1056,7 @@ class TestCmdResumeCircuitWiring:
             patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
             patch("little_loops.config.BRConfig", return_value=mock_config),
             patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
         ):
             mock_persist_cls.return_value.load_state.return_value = None
             mock_exec_cls.return_value.resume.return_value = mock_result
@@ -1082,6 +1084,7 @@ class TestCmdResumeCircuitWiring:
             tmp_path / "rate-limit-circuit.json"
         )
         mock_config.extensions = {}
+        mock_config.events = MagicMock(transports=[])
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1089,6 +1092,7 @@ class TestCmdResumeCircuitWiring:
             patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
             patch("little_loops.config.BRConfig", return_value=mock_config),
             patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
         ):
             mock_persist_cls.return_value.load_state.return_value = None
             mock_exec_cls.return_value.resume.return_value = mock_result
@@ -1096,3 +1100,107 @@ class TestCmdResumeCircuitWiring:
 
         kwargs = mock_exec_cls.call_args.kwargs
         assert kwargs.get("circuit") is None
+
+
+class TestCmdResumeTransportWiring:
+    """Tests for FEAT-1323: cmd_resume wires transports and tears them down on exit."""
+
+    def test_cmd_resume_wires_transports(self, tmp_path: Path) -> None:
+        """cmd_resume calls wire_transports(executor.event_bus, config.events)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 100
+        mock_result.terminated_by = "terminal"
+
+        mock_config = MagicMock()
+        mock_config.commands.rate_limits.circuit_breaker_enabled = False
+        mock_config.commands.rate_limits.circuit_breaker_path = str(
+            tmp_path / "rate-limit-circuit.json"
+        )
+        mock_config.extensions = {}
+        mock_config.events = MagicMock(transports=[])
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports") as mock_wire,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        mock_wire.assert_called_once()
+        bus_arg, events_arg = mock_wire.call_args.args
+        assert bus_arg is mock_exec_cls.return_value.event_bus
+        assert events_arg is mock_config.events
+
+    def test_cmd_resume_calls_close_transports_on_success(self, tmp_path: Path) -> None:
+        """cmd_resume runs executor.close_transports() in finally on normal exit."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 100
+        mock_result.terminated_by = "terminal"
+
+        mock_config = MagicMock()
+        mock_config.commands.rate_limits.circuit_breaker_enabled = False
+        mock_config.commands.rate_limits.circuit_breaker_path = str(
+            tmp_path / "rate-limit-circuit.json"
+        )
+        mock_config.extensions = {}
+        mock_config.events = MagicMock(transports=[])
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        mock_exec_cls.return_value.close_transports.assert_called_once()
+
+    def test_cmd_resume_close_transports_runs_on_exception(self, tmp_path: Path) -> None:
+        """cmd_resume still tears down transports if executor.resume() raises."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.commands.rate_limits.circuit_breaker_enabled = False
+        mock_config.commands.rate_limits.circuit_breaker_path = str(
+            tmp_path / "rate-limit-circuit.json"
+        )
+        mock_config.extensions = {}
+        mock_config.events = MagicMock(transports=[])
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.side_effect = KeyboardInterrupt
+            try:
+                cmd_resume("test-loop", args, tmp_path, logger)
+            except KeyboardInterrupt:
+                pass
+
+        mock_exec_cls.return_value.close_transports.assert_called_once()

@@ -491,11 +491,14 @@ The `EventBus` is wired into the following subsystems, which emit events at key 
 
 Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`, so they receive events from all subsystems during a run:
 
-| CLI Entry Point | File | Extensions Wired |
-|-----------------|------|-----------------|
-| `ll-loop` | `cli/loop/run.py`, `cli/loop/lifecycle.py` | Yes — EventBus + FSMExecutor registry wired (interceptors, contributed actions/evaluators populated) |
-| `ll-parallel` | `cli/parallel.py` | Yes — EventBus only (no FSMExecutor wiring) |
-| `ll-sprint` | `cli/sprint/run.py` | Yes — EventBus only (no FSMExecutor wiring for parallel branch) |
+| CLI Entry Point | File | Extensions Wired | Transports Wired |
+|-----------------|------|------------------|------------------|
+| `ll-loop run` | `cli/loop/run.py` | Yes — EventBus + FSMExecutor registry wired (interceptors, contributed actions/evaluators populated) | Yes — `wire_transports()` after extensions; `executor.close_transports()` runs in `finally` before lock release |
+| `ll-loop resume` | `cli/loop/lifecycle.py` | Yes — EventBus + FSMExecutor registry wired | Yes — `wire_transports()` after extensions; `executor.close_transports()` runs in `finally` so transports flush on exit/exception |
+| `ll-parallel` | `cli/parallel.py` | Yes — EventBus only (no FSMExecutor wiring) | Yes — `wire_transports()` after extensions; teardown runs in `ParallelOrchestrator._cleanup()` via `event_bus.close_transports()` |
+| `ll-sprint` | `cli/sprint/run.py` | Yes — EventBus only (no FSMExecutor wiring for parallel branch) | Yes — per-wave `wire_transports()` after extensions; teardown delegated to per-wave `ParallelOrchestrator._cleanup()` |
+
+The transport layer fans events out additively: every event emitted on the `EventBus` is delivered to every registered observer **and** every registered transport. `JsonlTransport` is the only built-in transport today; `events.transports: ["jsonl"]` in `ll-config.json` selects it. New transports (webhook, OTel, Unix socket) plug in through the same `Transport` protocol without changes to `EventBus` or the CLI wiring.
 
 ### Extension Loading
 

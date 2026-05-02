@@ -251,6 +251,7 @@ def cmd_resume(
     from little_loops.config import BRConfig
     from little_loops.extension import wire_extensions
     from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
+    from little_loops.transport import wire_transports
 
     config = BRConfig(Path.cwd())
     circuit = (
@@ -264,23 +265,27 @@ def cmd_resume(
     register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
     wire_extensions(executor.event_bus, config.extensions, executor=executor)
+    wire_transports(executor.event_bus, config.events)
 
-    result = executor.resume()
+    try:
+        result = executor.resume()
 
-    if result is None:
-        logger.warning(f"Nothing to resume for: {loop_name}")
-        return 1
+        if result is None:
+            logger.warning(f"Nothing to resume for: {loop_name}")
+            return 1
 
-    duration_sec = result.duration_ms / 1000
-    if duration_sec < 60:
-        duration_str = f"{duration_sec:.1f}s"
-    else:
-        minutes = int(duration_sec // 60)
-        seconds = duration_sec % 60
-        duration_str = f"{minutes}m {seconds:.0f}s"
+        duration_sec = result.duration_ms / 1000
+        if duration_sec < 60:
+            duration_str = f"{duration_sec:.1f}s"
+        else:
+            minutes = int(duration_sec // 60)
+            seconds = duration_sec % 60
+            duration_str = f"{minutes}m {seconds:.0f}s"
 
-    logger.success(
-        f"Resumed and completed: {result.final_state} "
-        f"({result.iterations} iterations, {duration_str})"
-    )
-    return EXIT_CODES.get(result.terminated_by, 1)
+        logger.success(
+            f"Resumed and completed: {result.final_state} "
+            f"({result.iterations} iterations, {duration_str})"
+        )
+        return EXIT_CODES.get(result.terminated_by, 1)
+    finally:
+        executor.close_transports()

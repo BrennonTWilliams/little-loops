@@ -397,6 +397,10 @@ Emitted when a paused or interrupted loop is resumed. Occurs after the executor 
 }
 ```
 
+#### Transport behavior
+
+`loop_resume` is emitted via `EventBus.emit()` and therefore fans out to every registered observer **and** every registered transport (FEAT-1322 / FEAT-1323). In `ll-loop resume` (`cli/loop/lifecycle.py:cmd_resume`), `wire_transports()` is called immediately after `wire_extensions()`, so transports configured under `events.transports` in `ll-config.json` see `loop_resume` for resumed runs the same way `ll-loop run` sees `loop_start` for fresh runs. Earlier builds wired transports only on `cmd_run`, which meant resumed loops bypassed the transport layer; that gap is closed by FEAT-1323. Teardown happens in a `try/finally` around the resume call: `executor.close_transports()` runs even on `KeyboardInterrupt` so any buffered `loop_resume` (and downstream) events are flushed before the process exits.
+
 ---
 
 ## Subsystem: StateManager

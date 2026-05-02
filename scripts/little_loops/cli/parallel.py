@@ -224,8 +224,10 @@ Examples:
 
     event_bus = EventBus()
     from little_loops.extension import wire_extensions
+    from little_loops.transport import wire_transports
 
     wire_extensions(event_bus, config.extensions)
+    wire_transports(event_bus, config.events)
     orchestrator = ParallelOrchestrator(
         parallel_config=parallel_config,
         br_config=config,

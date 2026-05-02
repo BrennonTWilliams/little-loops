@@ -68,6 +68,7 @@ class TestQueueRetryOnRace:
             patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
             patch("little_loops.cli.loop.run.run_foreground", return_value=0),
             patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
         ):
             mock_lm = MagicMock()
             mock_lm_cls.return_value = mock_lm
@@ -124,3 +125,98 @@ class TestQueueRetryOnRace:
         assert result == 1
         assert mock_lm.acquire.call_count == 1
         mock_lm.wait_for_scope.assert_not_called()
+
+
+class TestCmdRunTransportWiring:
+    """Tests for FEAT-1323: cmd_run wires transports onto the executor's EventBus."""
+
+    def test_cmd_run_wires_transports(self, tmp_path: Path) -> None:
+        """cmd_run calls wire_transports(executor.event_bus, config.events) before running."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = _make_loop(tmp_path)
+        logger = Logger(use_color=False)
+        args = _make_args(queue=False)
+
+        with (
+            patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports") as mock_wire,
+        ):
+            mock_lm = MagicMock()
+            mock_lm_cls.return_value = mock_lm
+            mock_lm.acquire.return_value = True
+            mock_exec = MagicMock()
+            mock_exec_cls.return_value = mock_exec
+
+            result = cmd_run("test-loop", args, loops_dir, logger)
+
+        assert result == 0
+        mock_wire.assert_called_once()
+        bus_arg = mock_wire.call_args.args[0]
+        assert bus_arg is mock_exec.event_bus
+
+    def test_cmd_run_calls_close_transports_in_finally(self, tmp_path: Path) -> None:
+        """cmd_run calls executor.close_transports() in finally before lock release."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = _make_loop(tmp_path)
+        logger = Logger(use_color=False)
+        args = _make_args(queue=False)
+
+        with (
+            patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
+        ):
+            mock_lm = MagicMock()
+            mock_lm_cls.return_value = mock_lm
+            mock_lm.acquire.return_value = True
+            mock_exec = MagicMock()
+            mock_exec_cls.return_value = mock_exec
+
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        mock_exec.close_transports.assert_called_once()
+        mock_lm.release.assert_called_once()
+
+    def test_cmd_run_close_transports_runs_on_exception(self, tmp_path: Path) -> None:
+        """cmd_run still calls close_transports() if the loop body raises."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = _make_loop(tmp_path)
+        logger = Logger(use_color=False)
+        args = _make_args(queue=False)
+
+        with (
+            patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
+            patch(
+                "little_loops.cli.loop.run.run_foreground",
+                side_effect=KeyboardInterrupt,
+            ),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
+        ):
+            mock_lm = MagicMock()
+            mock_lm_cls.return_value = mock_lm
+            mock_lm.acquire.return_value = True
+            mock_exec = MagicMock()
+            mock_exec_cls.return_value = mock_exec
+
+            try:
+                cmd_run("test-loop", args, loops_dir, logger)
+            except KeyboardInterrupt:
+                pass
+
+        mock_exec.close_transports.assert_called_once()

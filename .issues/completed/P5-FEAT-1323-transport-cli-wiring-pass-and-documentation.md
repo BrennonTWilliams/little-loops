@@ -8,6 +8,7 @@ score_complexity: 0
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+completed_at: 2026-05-02T16:40:58Z
 ---
 
 # FEAT-1323: Transport CLI Wiring Pass and Documentation
@@ -123,14 +124,35 @@ A developer adds a `JsonlTransport` entry to `events.transports` in `.ll/ll-conf
 
 ## Acceptance Criteria
 
-- [ ] `wire_transports()` called at `run.py:334`, `lifecycle.py:266`, `parallel.py:229`, `sprint/run.py:403`
-- [ ] `close_transports()` called in `run.py:343 finally` (before lock release), new `lifecycle.py finally`, and `orchestrator._cleanup()`
+- [x] `wire_transports()` called at `run.py:334`, `lifecycle.py:266`, `parallel.py:229`, `sprint/run.py:403`
+- [x] `close_transports()` called in `run.py:343 finally` (before lock release), new `lifecycle.py finally`, and `orchestrator._cleanup()`
 - [x] `EventsConfig` exported from `config/__init__.py` and available in `__all__` *(already done by FEAT-1322 — verified at `scripts/little_loops/config/__init__.py:37,68`)*
 - [x] `wire_transports` exported from `scripts/little_loops/__init__.py` *(already done by FEAT-1322 — verified at `scripts/little_loops/__init__.py:33,62`)*
-- [ ] `TestCmdResumeCircuitWiring` fixtures fixed — tests pass with `wire_transports` active in `cmd_resume`
-- [ ] `test_orchestrator.py` covers `_cleanup()` calling `close_transports()` and `_event_bus=None` guard
-- [ ] All four documentation files updated
-- [ ] All existing tests pass
+- [x] `TestCmdResumeCircuitWiring` fixtures fixed — tests pass with `wire_transports` active in `cmd_resume`
+- [x] `test_orchestrator.py` covers `_cleanup()` calling `close_transports()` and `_event_bus=None` guard
+- [x] All four documentation files updated (`CONFIGURATION.md` already done by FEAT-1322; `API.md`, `ARCHITECTURE.md`, `EVENT-SCHEMA.md` updated here)
+- [x] All existing tests pass
+
+## Resolution
+
+Wired `wire_transports()` at all four CLI entry points and added matching teardown via `close_transports()`:
+
+- `cli/loop/run.py:cmd_run` — `wire_transports()` after `wire_extensions()`; `executor.close_transports()` runs in `finally` before `lock_manager.release()` (executor sentinel `None` handles failures before construction).
+- `cli/loop/lifecycle.py:cmd_resume` — `wire_transports()` after `wire_extensions()`; `executor.resume()` wrapped in `try/finally` so `executor.close_transports()` runs on exit/exception (including `KeyboardInterrupt`).
+- `cli/parallel.py:main_parallel` — `wire_transports()` after `wire_extensions()`; teardown delegated to `ParallelOrchestrator._cleanup()`.
+- `cli/sprint/run.py:_cmd_sprint_run` — per-wave `wire_transports()` after `wire_extensions()`; teardown delegated to per-wave `ParallelOrchestrator._cleanup()`.
+- `parallel/orchestrator.py:_cleanup` — added `self._event_bus.close_transports()` after `merge_coordinator.shutdown()`, gated on `self._event_bus is not None`, so transports flush regardless of `_shutdown_requested`.
+
+Test coverage:
+- Fixed `TestCmdResumeCircuitWiring` (lifecycle), added `MagicMock(transports=[])` + `patch("little_loops.transport.wire_transports")` to `TestCmdRunWorktree` and `TestQueueRetryOnRace`.
+- Added `TestCmdRunTransportWiring` (3 tests), `TestCmdResumeTransportWiring` (3 tests), `test_cleanup_calls_close_transports_on_event_bus`, `test_cleanup_safe_when_event_bus_is_none`, `test_ll_parallel_wires_transports`, `test_sprint_wires_transports_per_wave`.
+
+Documentation:
+- `docs/ARCHITECTURE.md` — extended the CLI entry-point table with a "Transports Wired" column and added a paragraph on the additive multi-transport fan-out model.
+- `docs/reference/EVENT-SCHEMA.md` — added a "Transport behavior" subsection under `loop_resume` documenting the previous bypass and the FEAT-1323 fix.
+- `docs/reference/API.md` and `docs/reference/CONFIGURATION.md` — already complete (FEAT-1322); the forward-looking "Called by CLI entry points" claim in `API.md` is now factual.
+
+Verification: full pytest suite passes (5548 passed; 3 pre-existing failures on `main` are unrelated — marketplace version sync and a builtin-loop YAML check). `ruff check` and `ruff format --check` pass on all modified files; `mypy` clean on all modified source files.
 
 ## Implementation Steps
 
@@ -166,7 +188,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-05-02 | Priority: P5
+**Completed** | Created: 2026-05-02 | Completed: 2026-05-02 | Priority: P5
 
 ## Confidence Check Notes
 
@@ -181,6 +203,9 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - 7 test files require patch additions (`wire_transports` mock); if any are missed, tests fail immediately — the full list is identified in the integration map but implementation must be meticulous
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-05-02T16:41:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
+- `/ll:manage-issue` - 2026-05-02T16:40:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
+- `/ll:ready-issue` - 2026-05-02T16:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d73397d4-b2be-454b-b88f-b82e927e6265.jsonl`
 - `/ll:confidence-check` - 2026-05-02T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/456c0106-3520-4939-a7be-d96adc064527.jsonl`
 - `/ll:wire-issue` - 2026-05-02T16:25:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ab09e3a-7876-4093-acb8-51d064a572a3.jsonl`
 - `/ll:refine-issue` - 2026-05-02T16:19:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60c38c7d-c3d4-476f-947b-a6dac8e2f4ba.jsonl`

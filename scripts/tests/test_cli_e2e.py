@@ -354,6 +354,41 @@ class TestParallelExecutionWorkflow(E2ETestFixture):
             os.chdir(original_cwd)
             sys.argv = original_argv
 
+    def test_ll_parallel_wires_transports(self, e2e_project_dir: Path) -> None:
+        """main_parallel calls wire_transports(event_bus, config.events) before orchestrator runs (FEAT-1323)."""
+        import os
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli import main_parallel
+
+        original_cwd = Path.cwd()
+        original_argv = sys.argv.copy()
+
+        try:
+            os.chdir(e2e_project_dir)
+            sys.argv = ["ll-parallel", "--dry-run", "--workers", "2"]
+
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+
+            with (
+                patch(
+                    "little_loops.parallel.ParallelOrchestrator",
+                    return_value=mock_orch,
+                ),
+                patch("little_loops.transport.wire_transports") as mock_wire,
+                patch("subprocess.Popen"),
+                patch("subprocess.run"),
+            ):
+                exit_code = main_parallel()
+
+            assert exit_code == 0
+            mock_wire.assert_called_once()
+        finally:
+            os.chdir(original_cwd)
+            sys.argv = original_argv
+
     def test_ll_parallel_worktree_creation(self, e2e_project_dir: Path) -> None:
         """ll-parallel should create worktrees for parallel processing."""
         from little_loops.config import BRConfig

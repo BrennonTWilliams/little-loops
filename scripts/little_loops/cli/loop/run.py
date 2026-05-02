@@ -273,6 +273,7 @@ def cmd_run(
             logger.error("Failed to acquire scope lock (unknown reason)")
             return 1
 
+    executor: PersistentExecutor | None = None
     try:
         # Worktree isolation: create branch + directory before anything reads Path.cwd()
         if getattr(args, "worktree", False):
@@ -330,8 +331,10 @@ def cmd_run(
         register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
         from little_loops.extension import wire_extensions
+        from little_loops.transport import wire_transports
 
         wire_extensions(executor.event_bus, _config.extensions, executor=executor)
+        wire_transports(executor.event_bus, _config.events)
         return run_foreground(
             executor,
             fsm,
@@ -341,4 +344,6 @@ def cmd_run(
             badges=_badges,
         )
     finally:
+        if executor is not None:
+            executor.close_transports()
         lock_manager.release(fsm.name)

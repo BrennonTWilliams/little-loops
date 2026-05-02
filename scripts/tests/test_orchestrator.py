@@ -1124,6 +1124,43 @@ class TestStateManagement:
 
         assert before <= orchestrator._last_save_time <= after
 
+    def test_cleanup_calls_close_transports_on_event_bus(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_cleanup() calls close_transports() on the injected EventBus (FEAT-1323)."""
+        mock_event_bus = MagicMock()
+        with (
+            patch("little_loops.parallel.orchestrator.WorkerPool"),
+            patch("little_loops.parallel.orchestrator.MergeCoordinator"),
+            patch("little_loops.parallel.orchestrator.IssuePriorityQueue"),
+        ):
+            orch = ParallelOrchestrator(
+                parallel_config=default_parallel_config,
+                br_config=br_config,
+                repo_path=temp_repo_with_config,
+                event_bus=mock_event_bus,
+            )
+            orch.queue.completed_ids = []  # type: ignore[misc]
+            orch.queue.failed_ids = []  # type: ignore[misc]
+            orch.queue.in_progress_ids = []  # type: ignore[misc]
+            orch.queue.completed_count = 0  # type: ignore[misc]
+            orch.queue.failed_count = 0  # type: ignore[misc]
+            orch._cleanup()
+
+        mock_event_bus.close_transports.assert_called_once()
+
+    def test_cleanup_safe_when_event_bus_is_none(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_cleanup() does not raise when no EventBus was injected (FEAT-1323)."""
+        assert orchestrator._event_bus is None
+        # Should not raise
+        orchestrator._cleanup()
+
 
 class TestRunMethod:
     """Tests for the main run() method."""

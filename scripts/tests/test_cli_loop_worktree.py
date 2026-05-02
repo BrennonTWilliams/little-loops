@@ -587,6 +587,7 @@ class TestCmdRunWorktree:
             patch("little_loops.cli.loop.run.os.chdir"),
             patch("little_loops.cli.loop.run.atexit.register", side_effect=registered.append),
             patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.transport.wire_transports"),
         ):
             mock_cfg.return_value.get_worktree_base.return_value = tmp_path / ".worktrees"
             mock_cfg.return_value.parallel.worktree_copy_files = []
@@ -595,6 +596,7 @@ class TestCmdRunWorktree:
             mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
             mock_cfg.return_value.commands.rate_limits.circuit_breaker_enabled = False
             mock_cfg.return_value.extensions = []
+            mock_cfg.return_value.events = MagicMock(transports=[])
 
             result = cmd_run("test-loop", args, loops_dir, logger)
 
@@ -620,6 +622,7 @@ class TestCmdRunWorktree:
             patch("little_loops.cli.loop.run.os.chdir", side_effect=chdir_calls.append),
             patch("little_loops.cli.loop.run.atexit.register"),
             patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.transport.wire_transports"),
         ):
             mock_cfg.return_value.get_worktree_base.return_value = tmp_path / ".worktrees"
             mock_cfg.return_value.parallel.worktree_copy_files = []
@@ -628,6 +631,7 @@ class TestCmdRunWorktree:
             mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
             mock_cfg.return_value.commands.rate_limits.circuit_breaker_enabled = False
             mock_cfg.return_value.extensions = []
+            mock_cfg.return_value.events = MagicMock(transports=[])
 
             cmd_run("test-loop", args, loops_dir, logger)
 
