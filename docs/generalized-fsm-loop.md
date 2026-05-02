@@ -217,6 +217,32 @@ states:
 
 **Without `context_passthrough`** the child loop runs with its own isolated context and its captured values are not available to the parent after it completes.
 
+### Typed parameter bindings (`parameters:` / `with:`)
+
+A child loop can declare a typed input contract at the top level. Callers bind parent values explicitly instead of passing the whole context:
+
+```yaml
+# child loop — declares what it needs
+parameters:
+  input:
+    type: string          # string | integer | number | boolean | enum | path
+    required: true
+    description: "Issue ID(s) to refine"
+```
+
+```yaml
+# parent loop — binds only the declared input
+states:
+  refine_issue:
+    loop: "recursive-refine"
+    with:
+      input: "${captured.input.output}"
+    on_success: "next_state"
+    on_failure: "skip"
+```
+
+`with:` is mutually exclusive with `context_passthrough` on the same state. Unknown `with:` keys and missing `required` parameters are caught at load time. Values support `${variable}` interpolation; type validation runs after interpolation at runtime. For the full `ParameterSpec` definition see `scripts/little_loops/fsm/schema.py`.
+
 ### Inheritance pattern (`from:`)
 
 For variants that share a skeleton — e.g. APO loops that share `category`, iteration cap, default `context`, and a `done:` terminal state — declare a parent template and have children inherit it via a top-level `from:` field. The loader deep-merges parent into child *before* validation: scalars and lists override, dicts (`context`, `states`, `route`) merge recursively, and the `from:` key is stripped from the result. Cycles raise `ValueError`; missing parents raise `FileNotFoundError`.

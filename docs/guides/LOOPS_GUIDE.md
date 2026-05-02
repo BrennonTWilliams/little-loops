@@ -2079,6 +2079,54 @@ states:
 
 Without `context_passthrough`, the child runs with its own isolated context and its captured values are discarded after it exits.
 
+### Typed Parameter Bindings (`parameters:` / `with:`)
+
+Instead of leaking the entire parent context via `context_passthrough`, a child loop can declare a typed input contract and callers bind only the values the child needs:
+
+**Child loop — declare the contract:**
+
+```yaml
+name: "recursive-refine"
+parameters:
+  input:
+    type: string
+    required: true
+    description: Issue ID(s) to refine (comma-separated list accepted)
+initial: parse_input
+...
+```
+
+**Parent loop — bind values explicitly:**
+
+```yaml
+states:
+  refine_issue:
+    loop: "recursive-refine"
+    with:
+      input: "${captured.input.output}"   # bind parent capture to child parameter
+    on_success: "get_passed_issues"
+    on_failure: "skip_and_continue"
+```
+
+The child's context is seeded with only the declared `with:` values (plus any declared defaults). The parent context does not leak into the child — a rename in the parent cannot silently break the child.
+
+**Parameter types**: `string`, `integer`, `number`, `boolean`, `enum`, `path`
+
+**`with:` field rules:**
+- `with:` is mutually exclusive with `context_passthrough` on the same state
+- `required: true` parameters must appear in `with:` (the validator raises an error at load time if missing)
+- `with:` keys must match names declared in the child's `parameters:` block (unknown keys are rejected)
+- Values support `${variable}` interpolation — type validation runs after interpolation
+
+**When to use `with:` vs. `context_passthrough`:**
+
+| Approach | Best for |
+|----------|----------|
+| `with:` | Reusable child loops with a stable input contract; avoids context coupling |
+| `context_passthrough: true` | Legacy loops or when the child genuinely needs the full parent context |
+
+For full schema details and the `ParameterSpec` dataclass API, see [`scripts/little_loops/fsm/schema.py`](../../scripts/little_loops/fsm/schema.py) and [`scripts/little_loops/loops/recursive-refine.yaml`](../../scripts/little_loops/loops/recursive-refine.yaml) for a real-world example.
+
 ### Routing Aliases
 
 `on_success` and `on_failure` are accepted as aliases for `on_yes` and `on_no` in all states (not just sub-loop states). Use whichever reads more clearly for your use case.
