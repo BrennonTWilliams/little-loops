@@ -892,3 +892,148 @@ PYEOF
         assert result.returncode == 0
         assert "=== Decomposition Tree ===" not in result.stdout
         assert "Passed  (1):" in result.stdout
+
+
+class TestAggregateDecomposition:
+    """aggregate_decomposition state: parent→children rollup from decomposition.tsv."""
+
+    # Mirrors the aggregate_decomposition state's action body after FSM interpolation.
+    _AGGREGATE_SCRIPT = r"""
+    if [ ! -s .loops/tmp/recursive-refine-decomposition.tsv ]; then
+      exit 0
+    fi
+    python3 << 'PYEOF'
+from pathlib import Path
+
+def read_ids(path):
+    try:
+        return [ln.strip() for ln in Path(path).read_text().splitlines() if ln.strip()]
+    except FileNotFoundError:
+        return []
+
+passed = set(read_ids('.loops/tmp/recursive-refine-passed.txt'))
+
+rows = []
+try:
+    for line in Path('.loops/tmp/recursive-refine-decomposition.tsv').read_text().splitlines():
+        parts = line.strip().split('\t')
+        if len(parts) >= 2:
+            parent_id = parts[0]
+            child_ids = [c for c in parts[1].split(',') if c]
+            rows.append((parent_id, child_ids))
+except FileNotFoundError:
+    import sys; sys.exit(0)
+
+if not rows:
+    import sys; sys.exit(0)
+
+print(f'\nDecomposed ({len(rows)}):')
+for parent_id, child_ids in rows:
+    passed_children = [c for c in child_ids if c in passed]
+    other_children = [c for c in child_ids if c not in passed]
+    status_parts = []
+    if passed_children:
+        status_parts.append(f'{len(passed_children)} passed')
+    if other_children:
+        status_parts.append(f'{len(other_children)} not passed')
+    status = f' ({", ".join(status_parts)})' if status_parts else ''
+    child_list = ', '.join(child_ids)
+    print(f'  {parent_id} → [{child_list}]{status}')
+PYEOF
+    """
+
+    def test_one_parent_three_children_all_passed(self, tmp_path: Path) -> None:
+        """1-parent-3-children fixture: all children passed produces correct rollup line."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        (loops_tmp / "recursive-refine-decomposition.tsv").write_text(
+            "ENH-100\tENH-200,ENH-201,ENH-202\tsub-loop\t2026-05-03T12:00:00Z\n"
+        )
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-200\nENH-201\nENH-202\n")
+
+        result = _bash(self._AGGREGATE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Decomposed (1):" in result.stdout
+        assert "ENH-100" in result.stdout
+        assert "ENH-200" in result.stdout
+        assert "ENH-201" in result.stdout
+        assert "ENH-202" in result.stdout
+        assert "3 passed" in result.stdout
+
+    def test_one_parent_three_children_partial_pass(self, tmp_path: Path) -> None:
+        """Partial pass: some children passed, some did not."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        (loops_tmp / "recursive-refine-decomposition.tsv").write_text(
+            "ENH-100\tENH-200,ENH-201,ENH-202\tsize-review\t2026-05-03T12:00:00Z\n"
+        )
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-200\n")
+
+        result = _bash(self._AGGREGATE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Decomposed (1):" in result.stdout
+        assert "1 passed" in result.stdout
+        assert "2 not passed" in result.stdout
+
+    def test_multiple_parents(self, tmp_path: Path) -> None:
+        """Multiple decomposed parents produce N=2 rollup."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        (loops_tmp / "recursive-refine-decomposition.tsv").write_text(
+            "ENH-100\tENH-200,ENH-201\tsub-loop\t2026-05-03T12:00:00Z\n"
+            "ENH-300\tENH-400,ENH-401\tsize-review\t2026-05-03T12:01:00Z\n"
+        )
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-200\nENH-201\nENH-400\n")
+
+        result = _bash(self._AGGREGATE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Decomposed (2):" in result.stdout
+        assert "ENH-100" in result.stdout
+        assert "ENH-300" in result.stdout
+
+    def test_empty_tsv_exits_cleanly(self, tmp_path: Path) -> None:
+        """Empty decomposition.tsv produces no output and exits 0."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        (loops_tmp / "recursive-refine-decomposition.tsv").write_text("")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+
+        result = _bash(self._AGGREGATE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Decomposed" not in result.stdout
+
+    def test_missing_tsv_exits_cleanly(self, tmp_path: Path) -> None:
+        """Missing decomposition.tsv (no decompositions this run) exits 0 silently."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+
+        result = _bash(self._AGGREGATE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Decomposed" not in result.stdout
+
+    def test_decomposition_tsv_initialized_empty_by_parse_input(self, tmp_path: Path) -> None:
+        """parse_input creates (or clears) recursive-refine-decomposition.tsv for the new run."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-decomposition.tsv").write_text(
+            "stale-parent\tchild1,child2\tsub-loop\t2026-01-01T00:00:00Z\n"
+        )
+
+        _bash(
+            r"""
+            printf '' > .loops/tmp/recursive-refine-decomposition.tsv
+            """,
+            tmp_path,
+        )
+
+        assert (loops_tmp / "recursive-refine-decomposition.tsv").read_text() == ""

@@ -56,6 +56,7 @@ states:
       > .loops/tmp/recursive-refine-skipped-depth.txt
       printf '' > .loops/tmp/recursive-refine-attempts.txt
       printf '' > .loops/tmp/recursive-refine-skipped-budget.txt
+      printf '' > .loops/tmp/recursive-refine-decomposition.tsv
       COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
       echo "Queued $COUNT issue(s) for recursive refinement"
     fragment: shell_exit
@@ -84,7 +85,7 @@ states:
     fragment: shell_exit
     capture: input
     on_yes: check_attempt_budget
-    on_no: done
+    on_no: aggregate_decomposition
     on_error: done
 
   check_attempt_budget:
@@ -275,6 +276,9 @@ states:
       while IFS= read -r child; do
         echo "$child $((PARENT_DEPTH + 1))" >> .loops/tmp/recursive-refine-depth-map.txt
       done < .loops/tmp/recursive-refine-new-children.txt
+      CHILD_IDS=$(cat .loops/tmp/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
+      printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "sub-loop" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
       echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
       PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
       if [ -n "$PARENT_FILE" ]; then
@@ -475,6 +479,9 @@ states:
         while IFS= read -r child; do
           echo "$child $((PARENT_DEPTH + 1))" >> .loops/tmp/recursive-refine-depth-map.txt
         done < .loops/tmp/recursive-refine-new-children.txt
+        CHILD_IDS=$(cat .loops/tmp/recursive-refine-new-children.txt | tr '\n' ',' | sed 's/,$//')
+        printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "size-review" \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
         PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
         if [ -n "$PARENT_FILE" ]; then
@@ -491,6 +498,55 @@ states:
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
+
+  aggregate_decomposition:
+    # Cross-reference decomposition.tsv against passed.txt and emit a rollup block.
+    # Runs after the queue is exhausted (dequeue_next on_no) and before done.
+    action: |
+      if [ ! -s .loops/tmp/recursive-refine-decomposition.tsv ]; then
+        exit 0
+      fi
+      python3 << 'PYEOF'
+      from pathlib import Path
+
+      def read_ids(path):
+          try:
+              return [ln.strip() for ln in Path(path).read_text().splitlines() if ln.strip()]
+          except FileNotFoundError:
+              return []
+
+      passed = set(read_ids('.loops/tmp/recursive-refine-passed.txt'))
+
+      rows = []
+      try:
+          for line in Path('.loops/tmp/recursive-refine-decomposition.tsv').read_text().splitlines():
+              parts = line.strip().split('\t')
+              if len(parts) >= 2:
+                  parent_id = parts[0]
+                  child_ids = [c for c in parts[1].split(',') if c]
+                  rows.append((parent_id, child_ids))
+      except FileNotFoundError:
+          import sys; sys.exit(0)
+
+      if not rows:
+          import sys; sys.exit(0)
+
+      print(f'\nDecomposed ({len(rows)}):')
+      for parent_id, child_ids in rows:
+          passed_children = [c for c in child_ids if c in passed]
+          other_children = [c for c in child_ids if c not in passed]
+          status_parts = []
+          if passed_children:
+              status_parts.append(f'{len(passed_children)} passed')
+          if other_children:
+              status_parts.append(f'{len(other_children)} not passed')
+          status = f' ({", ".join(status_parts)})' if status_parts else ''
+          child_list = ', '.join(child_ids)
+          print(f'  {parent_id} → [{child_list}]{status}')
+      PYEOF
+    action_type: shell
+    next: done
+    on_error: done
 
   done:
     # Emit a structured summary of passed and skipped issues for this run.

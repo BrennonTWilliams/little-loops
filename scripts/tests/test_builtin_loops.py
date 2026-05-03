@@ -1626,6 +1626,7 @@ class TestRecursiveRefineLoop:
             "check_depth",
             "run_size_review",
             "enqueue_or_skip",
+            "aggregate_decomposition",
             "done",
             "failed",
         }
@@ -1652,6 +1653,20 @@ class TestRecursiveRefineLoop:
         """dequeue_next.on_yes must route to check_attempt_budget (not directly to capture_baseline)."""
         state = data["states"].get("dequeue_next", {})
         assert state.get("on_yes") == "check_attempt_budget"
+
+    def test_dequeue_next_on_no_routes_to_aggregate_decomposition(self, data: dict) -> None:
+        """dequeue_next.on_no must route to aggregate_decomposition (not directly to done)."""
+        state = data["states"].get("dequeue_next", {})
+        assert state.get("on_no") == "aggregate_decomposition"
+
+    def test_aggregate_decomposition_state_exists(self, data: dict) -> None:
+        """aggregate_decomposition state must be present in the FSM."""
+        assert "aggregate_decomposition" in data["states"]
+
+    def test_aggregate_decomposition_routes_to_done(self, data: dict) -> None:
+        """aggregate_decomposition.next must route to done."""
+        state = data["states"].get("aggregate_decomposition", {})
+        assert state.get("next") == "done"
 
     def test_check_attempt_budget_routes_to_capture_baseline(self, data: dict) -> None:
         """check_attempt_budget.on_yes must route to capture_baseline."""
