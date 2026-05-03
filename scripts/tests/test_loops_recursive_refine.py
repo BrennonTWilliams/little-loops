@@ -1037,3 +1037,164 @@ PYEOF
         )
 
         assert (loops_tmp / "recursive-refine-decomposition.tsv").read_text() == ""
+
+
+# ---------------------------------------------------------------------------
+# ENH-1348: dequeue_next progress line
+# ---------------------------------------------------------------------------
+
+_DEQUEUE_NEXT_SCRIPT = r"""
+if [ ! -s .loops/tmp/recursive-refine-queue.txt ]; then
+  exit 1
+fi
+CURRENT=$(head -1 .loops/tmp/recursive-refine-queue.txt)
+tail -n +2 .loops/tmp/recursive-refine-queue.txt \
+  > .loops/tmp/recursive-refine-queue.tmp
+mv .loops/tmp/recursive-refine-queue.tmp \
+  .loops/tmp/recursive-refine-queue.txt
+echo "$CURRENT" >> .loops/tmp/recursive-refine-visited.txt
+DEPTH=$(grep "^$CURRENT " .loops/tmp/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
+printf '%s' "${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
+DEQUEUED=$(cat .loops/tmp/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
+DEQUEUED=$((DEQUEUED + 1))
+printf '%s' "$DEQUEUED" > .loops/tmp/recursive-refine-dequeued-count.txt
+TOTAL=$(cat .loops/tmp/recursive-refine-total-enqueued.txt 2>/dev/null || echo '?')
+PASSED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-passed.txt 2>/dev/null || echo 0)
+QUEUED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
+SKIPPED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-skipped.txt 2>/dev/null || echo 0)
+DEPTH_STR=${DEPTH:+" (depth: $DEPTH)"}
+printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
+  "$DEQUEUED" "$TOTAL" "$CURRENT" "$DEPTH_STR" "$PASSED" "$QUEUED" "$SKIPPED" >&2
+echo "$CURRENT"
+"""
+
+
+def _setup_dequeue_env(
+    loops_tmp: Path,
+    *,
+    queue: list[str],
+    total: int | None = None,
+    dequeued: int = 0,
+    passed: list[str] | None = None,
+    skipped: list[str] | None = None,
+    depth_map: dict[str, int] | None = None,
+) -> None:
+    """Populate tmp files for a dequeue_next test."""
+    (loops_tmp / "recursive-refine-queue.txt").write_text("".join(f"{id}\n" for id in queue))
+    (loops_tmp / "recursive-refine-visited.txt").write_text("")
+    (loops_tmp / "recursive-refine-passed.txt").write_text(
+        "".join(f"{id}\n" for id in (passed or []))
+    )
+    (loops_tmp / "recursive-refine-skipped.txt").write_text(
+        "".join(f"{id}\n" for id in (skipped or []))
+    )
+    effective_total = total if total is not None else len(queue)
+    (loops_tmp / "recursive-refine-total-enqueued.txt").write_text(str(effective_total))
+    (loops_tmp / "recursive-refine-dequeued-count.txt").write_text(str(dequeued))
+    if depth_map is not None:
+        (loops_tmp / "recursive-refine-depth-map.txt").write_text(
+            "".join(f"{id} {d}\n" for id, d in depth_map.items())
+        )
+    else:
+        (loops_tmp / "recursive-refine-depth-map.txt").write_text(
+            "".join(f"{id} 0\n" for id in queue)
+        )
+
+
+class TestDequeueProgressLine:
+    """dequeue_next emits [N/M] → ID ... progress line to stderr (ENH-1348)."""
+
+    def test_progress_line_emitted_to_stderr(self, tmp_path: Path) -> None:
+        """A single dequeue emits one progress line on stderr."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_dequeue_env(loops_tmp, queue=["ENH-001"], total=3)
+
+        result = _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
+
+        assert "[1/3] → ENH-001" in result.stderr
+
+    def test_progress_line_not_on_stdout(self, tmp_path: Path) -> None:
+        """Progress line goes to stderr only; stdout carries the dequeued ID for capture."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_dequeue_env(loops_tmp, queue=["ENH-001"], total=3)
+
+        result = _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
+
+        assert result.stdout.strip() == "ENH-001"
+        assert "[1/3]" not in result.stdout
+
+    def test_three_issue_run_emits_three_progress_lines(self, tmp_path: Path) -> None:
+        """Synthetic 3-issue run: all 3 progress lines appear in stderr output."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_dequeue_env(loops_tmp, queue=["ENH-001", "ENH-002", "ENH-003"], total=3)
+
+        combined_stderr = ""
+        for _ in range(3):
+            result = _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
+            combined_stderr += result.stderr
+
+        assert "[1/3] → ENH-001" in combined_stderr
+        assert "[2/3] → ENH-002" in combined_stderr
+        assert "[3/3] → ENH-003" in combined_stderr
+
+    def test_progress_line_includes_passed_and_queued_counts(self, tmp_path: Path) -> None:
+        """Progress line includes current passed and queued counts."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_dequeue_env(
+            loops_tmp,
+            queue=["ENH-003"],
+            total=3,
+            dequeued=2,
+            passed=["ENH-001", "ENH-002"],
+        )
+
+        result = _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
+
+        assert "passed: 2" in result.stderr
+        assert "queued: 0" in result.stderr
+
+    def test_depth_shown_when_in_depth_map(self, tmp_path: Path) -> None:
+        """Depth field appears in progress line when issue is in the depth map."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_dequeue_env(
+            loops_tmp,
+            queue=["ENH-010"],
+            total=5,
+            depth_map={"ENH-010": 2},
+        )
+
+        result = _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
+
+        assert "(depth: 2)" in result.stderr
+
+    def test_depth_omitted_when_not_in_depth_map(self, tmp_path: Path) -> None:
+        """Depth field is absent when issue ID has no entry in the depth map."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_dequeue_env(
+            loops_tmp,
+            queue=["ENH-999"],
+            total=1,
+            depth_map={},
+        )
+
+        result = _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
+
+        assert "(depth:" not in result.stderr
+        assert "[1/1] → ENH-999" in result.stderr
+
+    def test_dequeued_counter_increments_across_calls(self, tmp_path: Path) -> None:
+        """dequeued-count.txt is incremented on each successive dequeue."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_dequeue_env(loops_tmp, queue=["ENH-001", "ENH-002", "ENH-003"], total=3)
+
+        for expected in [1, 2, 3]:
+            _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
+            count = int((loops_tmp / "recursive-refine-dequeued-count.txt").read_text())
+            assert count == expected

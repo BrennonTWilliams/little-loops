@@ -1914,6 +1914,34 @@ class TestRecursiveRefineLoop:
             "issue remains open for future retry"
         )
 
+    def test_parse_input_initializes_dequeued_count_and_total_enqueued(self, data: dict) -> None:
+        """parse_input action must reference both ENH-1348 counter files."""
+        action = data["states"].get("parse_input", {}).get("action", "")
+        assert "recursive-refine-dequeued-count.txt" in action, (
+            "parse_input must initialize recursive-refine-dequeued-count.txt"
+        )
+        assert "recursive-refine-total-enqueued.txt" in action, (
+            "parse_input must initialize recursive-refine-total-enqueued.txt"
+        )
+
+    def test_dequeue_next_action_references_dequeued_count_file(self, data: dict) -> None:
+        """dequeue_next action must read and write recursive-refine-dequeued-count.txt (ENH-1348)."""
+        action = data["states"].get("dequeue_next", {}).get("action", "")
+        assert "recursive-refine-dequeued-count.txt" in action, (
+            "dequeue_next must maintain recursive-refine-dequeued-count.txt for progress line"
+        )
+
+    def test_dequeue_next_emits_progress_line_to_stderr(self, data: dict) -> None:
+        """dequeue_next action must emit a [N/M] → ID progress line to stderr (ENH-1348)."""
+        action = data["states"].get("dequeue_next", {}).get("action", "")
+        assert "recursive-refine-total-enqueued.txt" in action, (
+            "dequeue_next must read recursive-refine-total-enqueued.txt for the progress line"
+        )
+        assert ">&2" in action, (
+            "dequeue_next must redirect the progress printf to stderr so it does not "
+            "interfere with stdout capture"
+        )
+
 
 class TestSprintBuildAndValidateLoop:
     """Structural tests for the sprint-build-and-validate FSM loop."""
