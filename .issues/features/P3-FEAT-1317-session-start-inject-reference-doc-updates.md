@@ -125,3 +125,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - `/ll:issue-size-review` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dba14921-b765-4d41-b830-b8e1511f2654.jsonl`
 - `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a4f54c6-7e68-4068-b26b-79ed42e70c22.jsonl`
+
+## Blocks
+
+- FEAT-1319

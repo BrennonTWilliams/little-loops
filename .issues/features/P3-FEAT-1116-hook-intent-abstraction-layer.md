@@ -281,3 +281,11 @@ The three architectural forks originally flagged have been decided and are now d
 - `/ll:wire-issue` - 2026-04-15T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42380a24-4141-40a0-985b-e93647a4e8dc.jsonl`
 - `/ll:confidence-check` - 2026-04-15T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42380a24-4141-40a0-985b-e93647a4e8dc.jsonl`
 - `/ll:confidence-check` - 2026-04-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe879343-523c-44c0-92a5-5f7e3d6c9865.jsonl`
+
+## Blocks
+
+- FEAT-1156
+- FEAT-1262
+- FEAT-1315
+- FEAT-957
+- FEAT-992

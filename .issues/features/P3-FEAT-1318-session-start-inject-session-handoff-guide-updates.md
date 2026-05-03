@@ -202,3 +202,7 @@ _Updated by `/ll:confidence-check` on 2026-05-01_
 - `/ll:wire-issue` - 2026-05-02T03:48:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91286acc-2865-4339-97ae-a8b386be8836.jsonl`
 - `/ll:refine-issue` - 2026-05-02T03:43:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d452ceb7-8597-43d6-8d48-8dd672aecffc.jsonl`
 - `/ll:issue-size-review` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+
+## Blocks
+
+- FEAT-1319

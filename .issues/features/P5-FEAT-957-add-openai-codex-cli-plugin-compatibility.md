@@ -188,6 +188,11 @@ _No documents linked._
 
 - FEAT-1116 (hook-intent abstraction layer for multi-host support must land before Codex plugin wiring can be added)
 
+
+## Blocks
+
+- FEAT-992
+
 ## Labels
 
 `feature`, `codex`, `compatibility`, `hooks`

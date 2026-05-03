@@ -96,3 +96,12 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 1. **Event capture is FEAT-1262's job, not this one's.** Drop "Ingestion via a lightweight daemon or SessionStart/PostToolUse hook" framing where it implies installing a parallel hook. This issue subscribes to FEAT-1262's event log via FEAT-918's Transport sink — no new PostToolUse hook is added by FEAT-1112.
 2. **PreCompact summary reconstruction is FEAT-1264's MVP.** FEAT-1264 (JSONL/jq) is the MVP path for PreCompact handoff snapshots; FEAT-1112's SQLite-backed reconstruction is a future replacement that swaps in via the same stable snapshot-builder API. Don't ship parallel summary builders.
 3. **SessionStart slot is shared.** FEAT-1112 owns SessionStart *ingestion* only; FEAT-1263 owns SessionStart *context injection*. `hooks/hooks.json` supports multiple SessionStart entries — the two are co-existing consumers, not competitors for the slot.
+
+## Blocks
+
+- FEAT-1156
+- FEAT-1157
+- FEAT-1158
+- FEAT-1262
+- ENH-1114
+- FEAT-1160
