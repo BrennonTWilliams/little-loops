@@ -191,6 +191,26 @@ Scan the event list and classify signals using the rules below. Group events by 
 - **Include**: state name, total evaluations `<M>`, dominant branch name and count `<N>/<M>`, percentage
 - **Rationale**: an `evaluate` state whose route is overwhelmingly one-sided is not adding signal — the gate is either always-pass or always-fail and could be removed or replaced with an unconditional transition.
 
+#### ENH — Capture Vacuum (Signal 4)
+- **Class**: Effectiveness signal (history walker).
+- **Trigger**: a downstream state's `action` text or `evaluate.source` references `${captured.X.output}` AND the producing state for capture `X` shows empty/whitespace output in **>20% of occurrences** within the analyzed window.
+
+  Maintain a `capture_emptiness: {capture_name: {empty_count: int, total_count: int}}` dict, updated on every `action_complete` event whose state has `capture: X` set in the resolved YAML. There is **no `capture` event** in the JSONL stream — read emptiness from `action_complete.output_preview` (last 2000 chars of the action's stdout, included in every `action_complete` payload). After the walk, for each capture whose `total_count >= 3`, compute `empty_count / total_count`; flag if it exceeds 20%.
+- **Priority**: P3
+- **Title**: `"<consumer_state> consumes capture <X> that is empty in <N>/<M> runs"`
+- **Include**: capture name, producing state, consumer state(s), empty count `<N>/<M>`, percentage
+- **Rationale**: a downstream state that interpolates a capture whose producer routinely emits empty output is doing busywork — the consumer either has no input to process or silently treats blanks as valid, both of which suggest dead-weight wiring that should either be guarded with `on_blocked` routing or removed entirely.
+
+#### ENH — Numeric Trajectory Stall (Signal 5)
+- **Class**: Effectiveness signal (history walker).
+- **Trigger**: `evaluate.type` is `output_numeric` or `convergence`. The captured numeric value across consecutive iterations within one run has **standard deviation < 1% of mean for ≥3 iterations** AND the value has **not crossed its target threshold** (read from `evaluate.target` on the event payload).
+
+  Maintain a `numeric_trajectory: {state: [value, value, ...]}` dict, appending `evaluate.value` (`output_numeric`) or `evaluate.current` (`convergence`) on each `evaluate` event for that state. Both fields are emitted directly via the `**result.details` splat in `executor.py::_evaluate` — there is no preceding `capture` event to consult. After the walk, for each state with ≥3 samples, compute `stddev / mean` and compare against `evaluate.target` to determine whether the value is stalled below threshold.
+- **Priority**: P3
+- **Title**: `"<state> numeric output stalled at <value> across <N> iterations (target=<threshold>)"`
+- **Include**: state name, sample count `<N>`, mean value, stddev, target threshold, evaluator type (`output_numeric` or `convergence`)
+- **Rationale**: a numeric evaluator that hovers at a constant value but never crosses its target indicates the loop's optimization mechanism is not making progress — either the gradient/reward signal is broken, the action being scored is not actually mutating the underlying artifact, or the target threshold is unreachable given the current strategy.
+
 #### ENH — Retry flood (true retries only)
 - **Classification**: Before emitting this signal, check the loop config (loaded in Step 2) for the flagged state. A state is a **true retry state** if its config has `on_retry` or `max_retries` fields. A state is an **intentional cycling state** if it has neither (uses `on_no`/`on_yes` routing only).
 - Trigger: `retry_exhausted` event is present for a state **OR** a true retry state appears in `state_enter` events **5 or more times**
@@ -357,7 +377,7 @@ If all signals are duplicates, report: "All <N> signals already have active issu
 
 ## Step 5: Present Proposals and Confirm
 
-Display the analysis output, always starting with the Execution Summary from Step 3b. Signals are grouped into two markdown-heading buckets — **Fault Signals** (BUG-class anomalies that broke the run: action failure, SIGKILL, FATAL_ERROR, evaluate failure, sub-loop verdict discarded, rate-limit exhaustion) and **Effectiveness Signals** (ENH-class observations that the run completed but did not do useful work: stub action from the Step 2 `static_issues` list, retry flood, slow state, iter-1 convergence without apply, degenerate gate). Omit either heading when its count is zero.
+Display the analysis output, always starting with the Execution Summary from Step 3b. Signals are grouped into two markdown-heading buckets — **Fault Signals** (BUG-class anomalies that broke the run: action failure, SIGKILL, FATAL_ERROR, evaluate failure, sub-loop verdict discarded, rate-limit exhaustion) and **Effectiveness Signals** (ENH-class observations that the run completed but did not do useful work: stub action from the Step 2 `static_issues` list, retry flood, slow state, iter-1 convergence without apply, degenerate gate, capture vacuum, numeric trajectory stall). Omit either heading when its count is zero.
 
 ```
 Analyzing loop: <loop_name> (last updated: <updated_at>)

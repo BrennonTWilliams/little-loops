@@ -1,0 +1,19 @@
+name: analysis-capture-vacuum
+description: "Harvest upstream data and judge each candidate against a quality bar"
+initial: harvest
+states:
+  harvest:
+    action: "ll-messages --skill capture-issue --stdout"
+    action_type: shell
+    capture: harvested_examples
+    next: judge
+  judge:
+    action: |
+      Process the harvested candidates below and emit a JSON array of survivors.
+      Candidates: ${captured.harvested_examples.output}
+    action_type: prompt
+    on_yes: done
+    on_no: harvest
+    on_error: harvest
+  done:
+    terminal: true

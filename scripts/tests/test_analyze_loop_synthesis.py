@@ -405,6 +405,133 @@ class TestAnalyzeLoopSynthesis:
         assert states.get(on_yes, {}).get("terminal") is True or on_yes == "done"
 
     # ------------------------------------------------------------------
+    # Step 3 ENH — Signal 4: Capture Vacuum
+    # ------------------------------------------------------------------
+
+    def test_signal4_fixture_has_producer_state_with_capture(self) -> None:
+        """Signal 4 fixture must include at least one state with a `capture:` key
+        (the producer whose output_preview is checked for emptiness)."""
+        spec = self._load_fixture("analysis-capture-vacuum.yaml")
+        states = spec.get("states", {})
+        producers = [n for n, d in states.items() if "capture" in d]
+        assert producers, (
+            "Signal 4 fixture must include a producer state with a 'capture:' key"
+        )
+
+    def test_signal4_fixture_has_consumer_referencing_capture(self) -> None:
+        """Signal 4 fixture must include a consumer state whose action references
+        ${captured.X.output} — that's the trigger for the vacuum signal."""
+        import re
+
+        spec = self._load_fixture("analysis-capture-vacuum.yaml")
+        states = spec.get("states", {})
+        capture_ref = re.compile(r"\$\{captured\.\w+\.output\}")
+        consumers = [
+            n for n, d in states.items() if capture_ref.search(d.get("action", ""))
+        ]
+        assert consumers, (
+            "Signal 4 fixture must include a consumer state whose action references "
+            "${captured.X.output}"
+        )
+
+    def test_signal4_consumer_reference_matches_producer_capture(self) -> None:
+        """The consumer's ${captured.X.output} reference must name an actual
+        capture in the fixture — otherwise Signal 4's join is structurally invalid."""
+        import re
+
+        spec = self._load_fixture("analysis-capture-vacuum.yaml")
+        states = spec.get("states", {})
+        producer_captures = {d["capture"] for d in states.values() if "capture" in d}
+        capture_ref = re.compile(r"\$\{captured\.(\w+)\.output\}")
+        referenced: set[str] = set()
+        for d in states.values():
+            for m in capture_ref.finditer(d.get("action", "")):
+                referenced.add(m.group(1))
+        assert referenced & producer_captures, (
+            f"Consumer references {referenced} must overlap producer captures "
+            f"{producer_captures}"
+        )
+
+    # ------------------------------------------------------------------
+    # Step 3 ENH — Signal 5: Numeric Trajectory Stall
+    # ------------------------------------------------------------------
+
+    def test_signal5_fixture_has_convergence_evaluator(self) -> None:
+        """Signal 5 fixture must include a state with evaluate.type: convergence
+        (or output_numeric) — those are the only evaluators that emit numeric values."""
+        spec = self._load_fixture("analysis-numeric-stall.yaml")
+        states = spec.get("states", {})
+        numeric_states = [
+            n
+            for n, d in states.items()
+            if d.get("evaluate", {}).get("type") in ("convergence", "output_numeric")
+        ]
+        assert numeric_states, (
+            "Signal 5 fixture must include a state with evaluate.type in "
+            "{convergence, output_numeric}"
+        )
+
+    def test_signal5_convergence_state_has_previous_field(self) -> None:
+        """Convergence evaluator requires a previous: field so the executor emits
+        delta/current and the analyzer can build the numeric trajectory."""
+        spec = self._load_fixture("analysis-numeric-stall.yaml")
+        states = spec.get("states", {})
+        for name, defn in states.items():
+            evaluate = defn.get("evaluate", {})
+            if evaluate.get("type") == "convergence":
+                assert "previous" in evaluate, (
+                    f"Convergence state '{name}' must declare evaluate.previous"
+                )
+                return
+        raise AssertionError("No convergence state found in fixture")
+
+    def test_signal5_convergence_state_has_target(self) -> None:
+        """Stall detection compares the trajectory mean against evaluate.target —
+        the fixture must declare a target so the trigger is well-defined."""
+        spec = self._load_fixture("analysis-numeric-stall.yaml")
+        states = spec.get("states", {})
+        for defn in states.values():
+            evaluate = defn.get("evaluate", {})
+            if evaluate.get("type") == "convergence":
+                assert "target" in evaluate, (
+                    "Convergence evaluator must declare a target threshold"
+                )
+                return
+        raise AssertionError("No convergence state found in fixture")
+
+    def test_signal5_inline_stddev_below_one_percent_of_mean_flags(self) -> None:
+        """Three samples [0.50, 0.501, 0.499] → stddev ~0.001, mean 0.50 →
+        0.2% of mean < 1% threshold → flag if target (0.85) not crossed."""
+        import statistics
+
+        samples = [0.50, 0.501, 0.499]
+        mean = statistics.mean(samples)
+        stddev = statistics.stdev(samples)
+        target = 0.85
+        # Below 1% of mean -> stalled
+        assert stddev / mean < 0.01
+        # And no sample crossed the target -> signal fires
+        assert max(samples) < target
+
+    def test_signal5_inline_high_variance_no_flag(self) -> None:
+        """Three samples [0.10, 0.50, 0.90] → stddev ~0.4, mean 0.50 →
+        80% of mean >> 1% threshold → not stalled, no signal."""
+        import statistics
+
+        samples = [0.10, 0.50, 0.90]
+        mean = statistics.mean(samples)
+        stddev = statistics.stdev(samples)
+        assert stddev / mean > 0.01
+
+    def test_signal5_inline_target_crossed_no_flag(self) -> None:
+        """Even with low variance, if any sample crosses the target the trajectory
+        is not 'stalled below threshold' and the signal does not fire."""
+        samples = [0.86, 0.861, 0.859]
+        target = 0.85
+        # Low-variance trajectory but already past target → no signal
+        assert max(samples) >= target
+
+    # ------------------------------------------------------------------
     # Step 5 output grouping (Fault/Effectiveness)
     # ------------------------------------------------------------------
 
@@ -426,12 +553,16 @@ class TestAnalyzeLoopSynthesis:
             "stub_action",  # Signal 3
             "iter1_no_apply",  # Signal 1
             "degenerate_gate",  # Signal 2
+            "capture_vacuum",  # Signal 4
+            "numeric_stall",  # Signal 5
             "retry_flood",
             "slow_state",
         }
         # No overlap between buckets
         assert not (fault_signals & effectiveness_signals)
-        # All three new signals are effectiveness-class
+        # All five enumerated signals are effectiveness-class
         assert "stub_action" in effectiveness_signals
         assert "iter1_no_apply" in effectiveness_signals
         assert "degenerate_gate" in effectiveness_signals
+        assert "capture_vacuum" in effectiveness_signals
+        assert "numeric_stall" in effectiveness_signals

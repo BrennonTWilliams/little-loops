@@ -1,0 +1,20 @@
+name: analysis-numeric-stall
+description: "Score outputs with a convergence evaluator until the reward target is met"
+initial: score
+states:
+  score:
+    action: "echo 0.5"
+    action_type: shell
+    evaluate:
+      type: convergence
+      target: 0.85
+      direction: maximize
+      tolerance: 0.05
+      previous: "${captured.prev_reward.output}"
+    route:
+      target: done
+      progress: score
+      stall: score
+      error: done
+  done:
+    terminal: true
