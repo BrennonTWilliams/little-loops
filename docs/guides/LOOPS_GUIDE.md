@@ -501,6 +501,7 @@ init → dequeue_next → [queue empty?]
 | `outcome_threshold` | `75` | Minimum outcome confidence score (override via `commands.confidence_gate.outcome_threshold` in `ll-config.json`) |
 | `max_refine_count` | `5` | Maximum `/ll:refine-issue` calls per issue lifetime; enforced directly by `check_attempt_budget` before each sub-loop entry — issues that reach this cap are skipped with reason `budget` (override via `commands.max_refine_count` in `ll-config.json`) |
 | `max_depth` | `3` | Maximum decomposition depth per subtree; issues at or beyond this depth are skipped with reason `depth-cap` instead of being passed to size-review (override via `commands.recursive_refine.max_depth` in `ll-config.json`) |
+| `tree_summary` | `true` | When `true` (default), the `done` state renders an indented decomposition tree after the flat summary; set to `false` to suppress the block for noisy multi-root runs |
 
 **Invocation**:
 ```bash
@@ -538,7 +539,7 @@ parse_input → dequeue_next → [queue empty?]
                                                                                                                                         └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
-**Summary output**: When the queue is exhausted, `done` emits a structured summary:
+**Summary output**: When the queue is exhausted, `done` emits a structured summary followed (by default) by an indented decomposition tree:
 ```
 === Recursive Refine Summary ===
 
@@ -547,7 +548,17 @@ Skipped (1): BUG-17
 Skipped (depth-cap 3): ENH-99
 Skipped (cycle 1): ENH-100
 Skipped (budget 1): ENH-101
+
+=== Decomposition Tree ===
+
+ENH-99 [decomposed]
+  ├── FEAT-42 (passed, conf=92, outcome=78)
+  └── BUG-17 [decomposed]
+      ├── FEAT-43 (passed, conf=95, outcome=82)
+      └── ENH-100 (skipped: cycle)
+ENH-101 (skipped: budget)
 ```
+Set `tree_summary: false` in context to suppress the tree block.
 
 **Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `.loops/tmp/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `.loops/tmp/recursive-refine-skipped-budget.txt`.
 

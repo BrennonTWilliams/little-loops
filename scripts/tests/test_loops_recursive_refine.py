@@ -597,6 +597,8 @@ class TestCycleSkipReason:
 class TestDoneSummary:
     """Skipped (depth-cap N) and Skipped (cycle N) lines in done state summary."""
 
+    # Mirrors the done state action body after FSM interpolation.
+    # ${TREE_SUMMARY:-true} represents the FSM-interpolated ${context.tree_summary} value.
     _DONE_SCRIPT = r"""
     PASSED_IDS=$(cat .loops/tmp/recursive-refine-passed.txt 2>/dev/null \
       | grep -v '^[[:space:]]*$' | sort -u || true)
@@ -627,6 +629,102 @@ class TestDoneSummary:
     printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "${DEPTH_LIST:-none}"
     printf 'Skipped (cycle %d): %s\n' "$CYCLE_COUNT" "${CYCLE_LIST:-none}"
     printf 'Skipped (budget %d): %s\n' "$BUDGET_COUNT" "${BUDGET_LIST:-none}"
+    if [ "${TREE_SUMMARY:-true}" != "false" ]; then
+      python3 << 'PYEOF'
+import subprocess, sys, json, os, re
+from pathlib import Path
+
+def read_ids(path):
+    try:
+        return [ln.strip() for ln in Path(path).read_text().splitlines() if ln.strip()]
+    except FileNotFoundError:
+        return []
+
+roots = read_ids('.loops/tmp/recursive-refine-original-queue.txt')
+if not roots:
+    sys.exit(0)
+
+passed = set(read_ids('.loops/tmp/recursive-refine-passed.txt'))
+skipped = set(read_ids('.loops/tmp/recursive-refine-skipped.txt'))
+depth_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-depth.txt'))
+cycle_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-cycle.txt'))
+budget_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-budget.txt'))
+all_ids = passed | skipped
+
+def build_parent_map():
+    parent_to_children = {}
+    for iid in all_ids:
+        r = subprocess.run(
+            ['grep', '-rl', f'parent_issue: {iid}', '.issues/'],
+            capture_output=True, text=True
+        )
+        children = []
+        for f in r.stdout.splitlines():
+            m = re.search(r'(BUG|FEAT|ENH)-(\d+)', os.path.basename(f))
+            if m:
+                children.append(f'{m.group(1)}-{m.group(2)}')
+        if children:
+            parent_to_children[iid] = children
+    return parent_to_children
+
+parent_to_children = build_parent_map()
+
+def get_scores(iid):
+    try:
+        r = subprocess.run(
+            ['ll-issues', 'show', iid, '--json'],
+            capture_output=True, text=True
+        )
+        d = json.loads(r.stdout)
+        return int(d.get('confidence') or 0), int(d.get('outcome') or 0)
+    except Exception:
+        return 0, 0
+
+def get_skip_reason(iid):
+    if iid in depth_skipped:
+        return 'depth-cap'
+    if iid in cycle_skipped:
+        return 'cycle'
+    if iid in budget_skipped:
+        return 'budget'
+    return 'refinement'
+
+lines = []
+
+def render(iid, prefix, is_last):
+    connector = '└── ' if is_last else '├── '
+    children = parent_to_children.get(iid, [])
+    if children:
+        lines.append(f'{prefix}{connector}{iid} [decomposed]')
+        child_prefix = prefix + ('    ' if is_last else '│   ')
+        for j, child in enumerate(children):
+            render(child, child_prefix, j == len(children) - 1)
+    elif iid in passed:
+        conf, outcome = get_scores(iid)
+        lines.append(f'{prefix}{connector}{iid} (passed, conf={conf}, outcome={outcome})')
+    else:
+        reason = get_skip_reason(iid)
+        lines.append(f'{prefix}{connector}{iid} (skipped: {reason})')
+
+for root in roots:
+    children = parent_to_children.get(root, [])
+    if children:
+        lines.append(f'{root} [decomposed]')
+        for j, child in enumerate(children):
+            render(child, '  ', j == len(children) - 1)
+    elif root in passed:
+        conf, outcome = get_scores(root)
+        lines.append(f'{root} (passed, conf={conf}, outcome={outcome})')
+    else:
+        reason = get_skip_reason(root)
+        lines.append(f'{root} (skipped: {reason})')
+
+if lines:
+    print('\n=== Decomposition Tree ===')
+    for line in lines:
+        print(line)
+PYEOF
+    fi
     printf '\n'
     """
 
@@ -720,3 +818,77 @@ class TestDoneSummary:
 
         assert result.returncode == 0
         assert "Skipped (budget 0): none" in result.stdout
+
+    def test_decomposition_tree_three_levels(self, tmp_path: Path) -> None:
+        """done renders a 3-level decomposition tree when original-queue.txt is present.
+
+        Scenario: ENH-100 (root) decomposes into ENH-200 and ENH-201.
+        ENH-201 further decomposes into ENH-300 (grandchild).
+        ENH-200 and ENH-300 pass; ENH-100 and ENH-201 are skipped (decomposed).
+        """
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        # Tracking files
+        (loops_tmp / "recursive-refine-original-queue.txt").write_text("ENH-100\n")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-200\nENH-300\n")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-100\nENH-201\n")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
+
+        # Stub issue files with parent_issue frontmatter so grep can find them
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        (issues_dir / "P3-ENH-200-child-a.md").write_text(
+            "---\nid: ENH-200\nparent_issue: ENH-100\n---\n"
+        )
+        (issues_dir / "P3-ENH-201-child-b.md").write_text(
+            "---\nid: ENH-201\nparent_issue: ENH-100\n---\n"
+        )
+        (issues_dir / "P3-ENH-300-grandchild.md").write_text(
+            "---\nid: ENH-300\nparent_issue: ENH-201\n---\n"
+        )
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "=== Decomposition Tree ===" in result.stdout
+        assert "ENH-100 [decomposed]" in result.stdout
+        assert "ENH-200" in result.stdout
+        assert "ENH-201 [decomposed]" in result.stdout
+        assert "ENH-300" in result.stdout
+        assert "passed" in result.stdout
+
+    def test_decomposition_tree_suppressed_when_flag_false(self, tmp_path: Path) -> None:
+        """done omits the tree block when TREE_SUMMARY=false."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-original-queue.txt").write_text("ENH-100\n")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-100\n")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
+
+        script = "TREE_SUMMARY=false\n" + self._DONE_SCRIPT
+        result = _bash(script, tmp_path)
+
+        assert result.returncode == 0
+        assert "=== Decomposition Tree ===" not in result.stdout
+
+    def test_decomposition_tree_absent_when_no_original_queue(self, tmp_path: Path) -> None:
+        """done omits the tree block gracefully when original-queue.txt is missing."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "=== Decomposition Tree ===" not in result.stdout
+        assert "Passed  (1):" in result.stdout
