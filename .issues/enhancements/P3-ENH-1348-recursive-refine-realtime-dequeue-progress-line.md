@@ -5,8 +5,18 @@ priority: P3
 status: open
 discovered_date: 2026-05-03
 discovered_by: capture-issue
-captured_at: "2026-05-03T16:43:25Z"
-related: [ENH-1347, ENH-1338, ENH-1339, ENH-1350]
+captured_at: '2026-05-03T16:43:25Z'
+related:
+- ENH-1347
+- ENH-1338
+- ENH-1339
+- ENH-1350
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-1348: Real-Time Dequeue Progress Line in `recursive-refine`
@@ -197,6 +207,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-05-03 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-03T21:18:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
+- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
 - `/ll:wire-issue` - 2026-05-03T21:15:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
 - `/ll:refine-issue` - 2026-05-03T21:10:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
 - `/ll:format-issue` - 2026-05-03T19:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
