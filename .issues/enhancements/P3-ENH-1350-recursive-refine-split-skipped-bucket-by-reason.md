@@ -159,21 +159,88 @@ printf '\n'
 - `scripts/tests/test_builtin_loops.py` — update `TestRecursiveRefineLoop` `done` output assertions
 - `scripts/tests/test_loops_recursive_refine.py` — add per-reason row verification
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will break (existing assertions on old format):**
+- `TestDoneSummary._DONE_SCRIPT` (line ~602) — verbatim copy of `done` bash body; all 8 `TestDoneSummary` test methods run against this variable; must be replaced with the new bash body [Agent 3 finding]
+- `TestDoneSummary.test_depth_cap_line_shows_capped_ids` (line ~731) — asserts `"Skipped (2):"` (flat aggregate row removed) and `"Skipped (depth-cap 1):"` (label changes) [Agent 3 finding]
+- `TestDoneSummary.test_depth_cap_line_shows_none_when_no_capped_issues` (line ~748) — asserts `"Skipped (depth-cap 0): none"` (label changes) [Agent 3 finding]
+- `TestDoneSummary.test_cycle_line_shows_cycle_ids` (line ~762) — asserts `"Skipped (cycle 1):"` (label changes) [Agent 3 finding]
+- `TestDoneSummary.test_cycle_line_shows_none_when_no_cycle_issues` (line ~777) — asserts `"Skipped (cycle 0): none"` (label changes) [Agent 3 finding]
+- `TestDoneSummary.test_budget_line_shows_budget_ids` (line ~791) — asserts `"Skipped (budget 1):"` (label changes to `Budget`) [Agent 3 finding]
+- `TestDoneSummary.test_budget_line_shows_none_when_no_budget_issues` (line ~807) — asserts `"Skipped (budget 0): none"` (label changes) [Agent 3 finding]
+- `scripts/tests/test_enh1345_doc_wiring.py` — `TestLoopsGuideWiring.test_depth_cap_summary_line_present` asserts `"Skipped (depth-cap"` in `LOOPS_GUIDE.md`; will break if the doc example block is updated to the new named-row format [Agent 2 finding]
+
+**New tests to write:**
+- `TestDepthMapInit` (or new `TestParseInputInit`): two tests for `parse_input` initializing `skipped-decomposed.txt` and `skipped-deadend.txt` — follow `test_skipped_depth_file_is_cleared` pattern (line ~40) [Agent 3 finding]
+- New class for `enqueue_children` dual-write: assert parent ID appears in both `skipped.txt` AND `skipped-decomposed.txt` — follow `TestCheckDepth.test_at_max_depth_echoes_1_and_writes_both_skip_files` pattern (line ~236) [Agent 3 finding]
+- New tests for `enqueue_or_skip` children branch: assert parent written to both `skipped.txt` AND `skipped-decomposed.txt` (same dual-file assertion pattern) [Agent 3 finding]
+- New tests for `enqueue_or_skip` dead-end branch: assert parent written to both `skipped.txt` AND `skipped-deadend.txt` (same dual-file assertion pattern) [Agent 3 finding]
+- Two paired `TestDoneSummary` tests for `Decomposed` row (IDs-present + none) — follow `test_depth_cap_line_shows_capped_ids` / `test_depth_cap_line_shows_none_when_no_capped_issues` pattern [Agent 3 finding]
+- Two paired `TestDoneSummary` tests for `Dead-ends` row (IDs-present + none) — same pattern [Agent 3 finding]
+- `TestRecursiveRefineLoop` in `test_builtin_loops.py`: two YAML-level assertions that `recursive-refine-skipped-decomposed.txt` and `recursive-refine-skipped-deadend.txt` appear in the `parse_input` action string — follow `test_parse_input_initializes_dequeued_count_and_total_enqueued` pattern (line ~1917) [Agent 1 finding]
+
 ### Documentation
-- N/A — no user-facing documentation changes required
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — "Summary output" subsection contains a verbatim code block showing the current `Skipped (N):` format; must be updated to show the new named-row format (`Passed`, `Decomposed`, `Dead-ends`, `Depth-cap`, `Budget`). The "Notes" paragraph inventories every `.loops/tmp/recursive-refine-*.txt` file and is missing `recursive-refine-skipped-decomposed.txt` and `recursive-refine-skipped-deadend.txt`. [Agent 2 finding]
 
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Precise write locations in `recursive-refine.yaml`** (line numbers differ from original issue estimates):
+- `parse_input` initializes `skipped.txt` at line ~44, `skipped-depth.txt` at line ~56, `skipped-budget.txt` at line ~58 — new files slot in the same block using `printf '' > ...` form
+- `enqueue_children` skipped.txt write: `echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt` at line ~294
+- `enqueue_or_skip` children-branch write: same echo pattern at line ~510 (after the Python cycle-filter block at lines ~472–495)
+- `enqueue_or_skip` dead-end-branch write: same echo pattern at line ~533
+
+**`done` state already has 5 rows, not a single `Skipped (M)` line:**
+The current `done` already emits: `Passed (N)`, `Skipped (N)` (aggregate), `Skipped (depth-cap N)`, `Skipped (cycle N)`, `Skipped (budget N)`. The change here is to ADD two more rows (`Decomposed` and `Dead-ends`) and decide whether to keep the flat `Skipped (N)` aggregate row. The issue's Expected Behavior omits both the aggregate `Skipped` row and the `Skipped (cycle)` row — implementer must decide whether those rows stay, and how to handle the cycle row that is not mentioned in the expected output format.
+
+**`TestDoneSummary._DONE_SCRIPT`** in `test_loops_recursive_refine.py` (line ~602) is a verbatim copy of the `done` action bash body. This class variable must be updated alongside the YAML or test assertions will fail against the old shell behavior.
+
+**Test patterns to follow:**
+- `parse_input` init test: `TestDepthMapInit.test_skipped_depth_file_is_cleared` (line ~40) — pre-seed stale content, run shell snippet, assert empty
+- Dual-file write test: `TestCheckDepth.test_at_max_depth_echoes_1_and_writes_both_skip_files` (line ~228) — assert ID appears in both per-reason file and `skipped.txt`
+- `done` per-reason row tests: `TestDoneSummary.test_depth_cap_line_shows_capped_ids` (line ~731) and `test_depth_cap_line_shows_none_when_no_capped_issues` (line ~748) — two paired tests per reason (IDs-present case + none case)
+- YAML file-reference assertion: `TestRecursiveRefineLoop.test_parse_input_initializes_dequeued_count_and_total_enqueued` (line ~1917) — assert file name substring exists in state action string
+
 ## Implementation Steps
 
-1. Initialize `skipped-decomposed.txt` and `skipped-deadend.txt` in `parse_input`.
-2. Add decomposed write to `enqueue_children`.
-3. Add decomposed write to `enqueue_or_skip` children branch.
-4. Add dead-end write to `enqueue_or_skip` dead-end branch.
-5. Replace `done` flat-skipped block with 5-row per-category summary.
-6. Update test assertions in `test_builtin_loops.py` for the new `done` format.
-7. Add per-reason row verification to `test_loops_recursive_refine.py`.
+1. In `recursive-refine.yaml` `parse_input` (~line 58), after the `skipped-budget.txt` init, add:
+   ```bash
+   printf '' > .loops/tmp/recursive-refine-skipped-decomposed.txt
+   printf '' > .loops/tmp/recursive-refine-skipped-deadend.txt
+   ```
+2. In `enqueue_children` (~line 294), after the existing `echo ... >> skipped.txt` append, add:
+   ```bash
+   echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
+   ```
+3. In `enqueue_or_skip` children branch (~line 510), after the existing `skipped.txt` append, add the same decomposed write.
+4. In `enqueue_or_skip` dead-end branch (~line 533), after the existing `skipped.txt` append, add:
+   ```bash
+   echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-deadend.txt
+   ```
+5. In `done` (~lines 589–620): add reads for `skipped-decomposed.txt` and `skipped-deadend.txt` (defensive `2>/dev/null`, same pattern as depth/cycle/budget) and add two new `printf` rows. Decide whether the flat `Skipped (N)` aggregate row and the `Skipped (cycle N)` row remain — the issue's Expected Behavior omits both, but both currently exist; align with the expected format in the issue unless there is a reason to preserve them.
+6. Update `TestDoneSummary._DONE_SCRIPT` in `test_loops_recursive_refine.py` (~line 602) to match the new `done` bash body exactly.
+7. Add two paired `TestDoneSummary` tests per new reason (IDs-present + none) following the pattern at lines ~731 and ~748.
+8. In `test_builtin_loops.py` `TestRecursiveRefineLoop`, add assertions that `recursive-refine-skipped-decomposed.txt` and `recursive-refine-skipped-deadend.txt` appear in the `parse_input` action string, following the pattern at line ~1917.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Update `docs/guides/LOOPS_GUIDE.md` — replace the "Summary output" code block with the new named-row format; add `recursive-refine-skipped-decomposed.txt` and `recursive-refine-skipped-deadend.txt` to the "Notes" file-inventory paragraph
+10. Update `TestDoneSummary._DONE_SCRIPT` (~line 602 in `test_loops_recursive_refine.py`) to exactly match the new `done` bash body; update all 7 existing `TestDoneSummary` assertion strings that reference the old `Skipped (N):` / `Skipped (depth-cap N):` / `Skipped (cycle N):` / `Skipped (budget N):` labels; add `skipped-decomposed.txt` and `skipped-deadend.txt` file creation to each test's fixture setup so the new `cat 2>/dev/null` reads don't fail
+11. Update `test_enh1345_doc_wiring.py` `TestLoopsGuideWiring.test_depth_cap_summary_line_present` to assert against the new `Depth-cap` label (or whatever the doc example uses after step 9)
+12. Add new `parse_input` init tests to `test_loops_recursive_refine.py` (2 tests) for the new tracking files, following the `test_skipped_depth_file_is_cleared` pattern (~line 40)
+13. Add new dual-file write tests for `enqueue_children` and both `enqueue_or_skip` branches (4 tests), following the `TestCheckDepth.test_at_max_depth_echoes_1_and_writes_both_skip_files` pattern (~line 236)
+14. Add 4 paired `TestDoneSummary` tests (2 for `Decomposed`, 2 for `Dead-ends`), following the `test_depth_cap_line_shows_capped_ids` / `test_depth_cap_line_shows_none` pattern (~lines 731, 748)
+15. Add 2 YAML-level assertions to `TestRecursiveRefineLoop` in `test_builtin_loops.py` confirming `parse_input` action references both new file names, following `test_parse_input_initializes_dequeued_count_and_total_enqueued` (~line 1917)
 
 ## Impact
 
@@ -196,5 +263,7 @@ printf '\n'
 **Open** | Created: 2026-05-03 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-03T21:55:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee908308-1c25-4a99-aeca-3c787c3838d9.jsonl`
+- `/ll:refine-issue` - 2026-05-03T21:50:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1873aa88-61fd-4251-9283-38981a2c0599.jsonl`
 - `/ll:format-issue` - 2026-05-03T19:20:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
 - `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`
