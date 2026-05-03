@@ -41,9 +41,11 @@ states:
       mkdir -p .loops/tmp
       printf '' > .loops/tmp/recursive-refine-passed.txt
       printf '' > .loops/tmp/recursive-refine-skipped.txt
+      printf '' > .loops/tmp/recursive-refine-visited.txt
       echo "${context.input}" | tr ',' '\n' \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v '^[[:space:]]*$' \
+        | sort -u \
         > .loops/tmp/recursive-refine-queue.txt
       cp .loops/tmp/recursive-refine-queue.txt \
         .loops/tmp/recursive-refine-original-queue.txt
@@ -72,6 +74,7 @@ states:
         > .loops/tmp/recursive-refine-queue.tmp
       mv .loops/tmp/recursive-refine-queue.tmp \
         .loops/tmp/recursive-refine-queue.txt
+      echo "$CURRENT" >> .loops/tmp/recursive-refine-visited.txt
       DEPTH=$(grep "^$CURRENT " .loops/tmp/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
       printf '%s' "${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
       echo "$CURRENT"
@@ -199,6 +202,27 @@ states:
     # so children are refined before the next sibling in the original list.
     # Records the parent as skipped since it was decomposed, not refined to ready.
     action: |
+      python3 << 'PYEOF'
+      from pathlib import Path
+      import sys
+      visited = set()
+      for f in ['recursive-refine-visited.txt', 'recursive-refine-passed.txt']:
+          p = Path(f'.loops/tmp/{f}')
+          if p.exists():
+              visited.update(ln.strip() for ln in p.read_text().splitlines() if ln.strip())
+      queue_p = Path('.loops/tmp/recursive-refine-queue.txt')
+      if queue_p.exists():
+          visited.update(ln.strip() for ln in queue_p.read_text().splitlines() if ln.strip())
+      candidates_p = Path('.loops/tmp/recursive-refine-new-children.txt')
+      candidates = []
+      if candidates_p.exists():
+          candidates = [ln.strip() for ln in candidates_p.read_text().splitlines() if ln.strip()]
+      for cid in candidates:
+          if cid in visited:
+              print(f'WARN: refusing to re-enqueue {cid} (already visited / passed)', file=sys.stderr)
+      survivors = [cid for cid in candidates if cid not in visited]
+      candidates_p.write_text(''.join(f'{c}\n' for c in survivors))
+      PYEOF
       CHILDREN=$(cat .loops/tmp/recursive-refine-new-children.txt)
       EXISTING=$(cat .loops/tmp/recursive-refine-queue.txt 2>/dev/null || true)
       { echo "$CHILDREN"; echo "$EXISTING"; } \
@@ -373,6 +397,31 @@ states:
       done < .loops/tmp/recursive-refine-diff-ids.txt \
         > .loops/tmp/recursive-refine-new-children.txt
 
+      python3 << 'PYEOF'
+      from pathlib import Path
+      import sys
+      visited = set()
+      for f in ['recursive-refine-visited.txt', 'recursive-refine-passed.txt']:
+          p = Path(f'.loops/tmp/{f}')
+          if p.exists():
+              visited.update(ln.strip() for ln in p.read_text().splitlines() if ln.strip())
+      queue_p = Path('.loops/tmp/recursive-refine-queue.txt')
+      if queue_p.exists():
+          visited.update(ln.strip() for ln in queue_p.read_text().splitlines() if ln.strip())
+      candidates_p = Path('.loops/tmp/recursive-refine-new-children.txt')
+      candidates = []
+      if candidates_p.exists():
+          candidates = [ln.strip() for ln in candidates_p.read_text().splitlines() if ln.strip()]
+      for cid in candidates:
+          if cid in visited:
+              print(f'WARN: refusing to re-enqueue {cid} (already visited / passed)', file=sys.stderr)
+      survivors = [cid for cid in candidates if cid not in visited]
+      candidates_p.write_text(''.join(f'{c}\n' for c in survivors))
+      if len(candidates) > 0 and len(survivors) == 0:
+          with open('.loops/tmp/recursive-refine-skipped-cycle.txt', 'a') as cf:
+              cf.write('${captured.input.output}\n')
+      PYEOF
+
       if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
         CHILDREN=$(cat .loops/tmp/recursive-refine-new-children.txt)
         EXISTING=$(cat .loops/tmp/recursive-refine-queue.txt 2>/dev/null || true)
@@ -409,19 +458,24 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       DEPTH_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-depth.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      CYCLE_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-cycle.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Recursive Refine Summary ===\n\n'
       printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
       printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
       printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "$${DEPTH_LIST:-none}"
+      printf 'Skipped (cycle %d): %s\n' "$CYCLE_COUNT" "$${CYCLE_LIST:-none}"
       printf '\n'
     action_type: shell
     terminal: true

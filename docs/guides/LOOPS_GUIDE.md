@@ -543,9 +543,10 @@ parse_input → dequeue_next → [queue empty?]
 Passed  (2): FEAT-42, FEAT-43
 Skipped (1): BUG-17
 Skipped (depth-cap 3): ENH-99
+Skipped (cycle 1): ENH-100
 ```
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`.
 
 **Code Quality**
 

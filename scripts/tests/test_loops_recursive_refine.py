@@ -1,8 +1,8 @@
-"""Tests for recursive-refine depth-cap behavior (ENH-1347).
+"""Tests for recursive-refine depth-cap behavior (ENH-1347) and cycle detection (ENH-1338).
 
-Tests the depth-tracking bash logic for parse_input, dequeue_next, check_depth,
-enqueue_children / enqueue_or_skip, and done states by executing shell snippets
-directly against a tmp_path environment.
+Tests the depth-tracking and cycle-detection bash/python logic for parse_input,
+dequeue_next, check_depth, enqueue_children / enqueue_or_skip, and done states by
+executing shell snippets directly against a tmp_path environment.
 """
 from __future__ import annotations
 
@@ -57,6 +57,51 @@ class TestDepthMapInit:
         assert (loops_tmp / "recursive-refine-skipped-depth.txt").read_text() == ""
 
 
+class TestParseInputDedup:
+    """parse_input deduplication of comma-separated input."""
+
+    def test_duplicate_ids_written_once_to_queue(self, tmp_path: Path) -> None:
+        """parse_input deduplicates the comma-split queue via sort -u."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        _bash(
+            r"""
+            INPUT="ENH-001,ENH-002,ENH-001,ENH-003,ENH-002"
+            mkdir -p .loops/tmp
+            printf '' > .loops/tmp/recursive-refine-visited.txt
+            echo "$INPUT" | tr ',' '\n' \
+              | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+              | grep -v '^[[:space:]]*$' \
+              | sort -u \
+              > .loops/tmp/recursive-refine-queue.txt
+            """,
+            tmp_path,
+        )
+
+        queue = (loops_tmp / "recursive-refine-queue.txt").read_text()
+        lines = [ln for ln in queue.splitlines() if ln.strip()]
+        assert lines.count("ENH-001") == 1
+        assert lines.count("ENH-002") == 1
+        assert lines.count("ENH-003") == 1
+        assert len(lines) == 3
+
+    def test_visited_file_created_empty_by_parse_input(self, tmp_path: Path) -> None:
+        """parse_input creates (or clears) recursive-refine-visited.txt for the new run."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("stale-entry\n")
+
+        _bash(
+            r"""
+            printf '' > .loops/tmp/recursive-refine-visited.txt
+            """,
+            tmp_path,
+        )
+
+        assert (loops_tmp / "recursive-refine-visited.txt").read_text() == ""
+
+
 class TestDequeueDepth:
     """dequeue_next depth lookup."""
 
@@ -106,6 +151,61 @@ class TestDequeueDepth:
         )
 
         assert (loops_tmp / "recursive-refine-current-depth.txt").read_text() == "0"
+
+
+class TestVisitedSetAppend:
+    """dequeue_next appends dequeued ID to recursive-refine-visited.txt."""
+
+    def test_dequeued_id_appears_in_visited_file(self, tmp_path: Path) -> None:
+        """dequeue_next appends current ID to visited.txt on each dequeue."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-queue.txt").write_text("ENH-042\n")
+        (loops_tmp / "recursive-refine-depth-map.txt").write_text("ENH-042 0\n")
+        (loops_tmp / "recursive-refine-visited.txt").write_text("")
+
+        result = _bash(
+            r"""
+            CURRENT=$(head -1 .loops/tmp/recursive-refine-queue.txt)
+            tail -n +2 .loops/tmp/recursive-refine-queue.txt \
+              > .loops/tmp/recursive-refine-queue.tmp
+            mv .loops/tmp/recursive-refine-queue.tmp .loops/tmp/recursive-refine-queue.txt
+            echo "$CURRENT" >> .loops/tmp/recursive-refine-visited.txt
+            DEPTH=$(grep "^$CURRENT " .loops/tmp/recursive-refine-depth-map.txt 2>/dev/null \
+              | awk '{print $2}')
+            printf '%s' "${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
+            echo "$CURRENT"
+            """,
+            tmp_path,
+        )
+
+        assert result.stdout.strip() == "ENH-042"
+        assert "ENH-042" in (loops_tmp / "recursive-refine-visited.txt").read_text()
+
+    def test_multiple_dequeues_accumulate_visited(self, tmp_path: Path) -> None:
+        """Each dequeue appends to visited.txt; two dequeues produce two entries."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-queue.txt").write_text("ENH-001\nENH-002\n")
+        (loops_tmp / "recursive-refine-depth-map.txt").write_text("ENH-001 0\nENH-002 0\n")
+        (loops_tmp / "recursive-refine-visited.txt").write_text("")
+
+        _bash(
+            r"""
+            for _ in 1 2; do
+              CURRENT=$(head -1 .loops/tmp/recursive-refine-queue.txt)
+              tail -n +2 .loops/tmp/recursive-refine-queue.txt \
+                > .loops/tmp/recursive-refine-queue.tmp
+              mv .loops/tmp/recursive-refine-queue.tmp .loops/tmp/recursive-refine-queue.txt
+              echo "$CURRENT" >> .loops/tmp/recursive-refine-visited.txt
+            done
+            """,
+            tmp_path,
+        )
+
+        visited = (loops_tmp / "recursive-refine-visited.txt").read_text()
+        assert "ENH-001" in visited
+        assert "ENH-002" in visited
 
 
 def _check_depth_script(current_id: str, max_depth: int = 2) -> str:
@@ -239,8 +339,174 @@ class TestEnqueueChildDepths:
         assert "ENH-021 2" in depth_map
 
 
+_VISITED_FILTER_SCRIPT = r"""
+python3 << 'PYEOF'
+from pathlib import Path
+import sys
+visited = set()
+for f in ['recursive-refine-visited.txt', 'recursive-refine-passed.txt']:
+    p = Path(f'.loops/tmp/{f}')
+    if p.exists():
+        visited.update(ln.strip() for ln in p.read_text().splitlines() if ln.strip())
+queue_p = Path('.loops/tmp/recursive-refine-queue.txt')
+if queue_p.exists():
+    visited.update(ln.strip() for ln in queue_p.read_text().splitlines() if ln.strip())
+candidates_p = Path('.loops/tmp/recursive-refine-new-children.txt')
+candidates = []
+if candidates_p.exists():
+    candidates = [ln.strip() for ln in candidates_p.read_text().splitlines() if ln.strip()]
+for cid in candidates:
+    if cid in visited:
+        print(f'WARN: refusing to re-enqueue {cid} (already visited / passed)', file=sys.stderr)
+survivors = [cid for cid in candidates if cid not in visited]
+candidates_p.write_text(''.join(f'{c}\n' for c in survivors))
+PYEOF
+"""
+
+_CYCLE_FILTER_SCRIPT = r"""
+python3 << 'PYEOF'
+from pathlib import Path
+import sys
+visited = set()
+for f in ['recursive-refine-visited.txt', 'recursive-refine-passed.txt']:
+    p = Path(f'.loops/tmp/{f}')
+    if p.exists():
+        visited.update(ln.strip() for ln in p.read_text().splitlines() if ln.strip())
+queue_p = Path('.loops/tmp/recursive-refine-queue.txt')
+if queue_p.exists():
+    visited.update(ln.strip() for ln in queue_p.read_text().splitlines() if ln.strip())
+candidates_p = Path('.loops/tmp/recursive-refine-new-children.txt')
+candidates = []
+if candidates_p.exists():
+    candidates = [ln.strip() for ln in candidates_p.read_text().splitlines() if ln.strip()]
+for cid in candidates:
+    if cid in visited:
+        print(f'WARN: refusing to re-enqueue {cid} (already visited / passed)', file=sys.stderr)
+survivors = [cid for cid in candidates if cid not in visited]
+candidates_p.write_text(''.join(f'{c}\n' for c in survivors))
+if len(candidates) > 0 and len(survivors) == 0:
+    with open('.loops/tmp/recursive-refine-skipped-cycle.txt', 'a') as cf:
+        cf.write('ENH-PARENT\n')
+PYEOF
+"""
+
+
+class TestVisitedSetFilter:
+    """enqueue_children / enqueue_or_skip filter candidate children against the visited set."""
+
+    def test_visited_id_is_filtered_and_warns(self, tmp_path: Path) -> None:
+        """Candidate ID already in visited.txt is dropped and a WARN is printed to stderr."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("ENH-010\n")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("")
+        (loops_tmp / "recursive-refine-queue.txt").write_text("")
+        (loops_tmp / "recursive-refine-new-children.txt").write_text("ENH-010\nENH-020\n")
+
+        result = _bash(_VISITED_FILTER_SCRIPT, tmp_path)
+
+        survivors = (loops_tmp / "recursive-refine-new-children.txt").read_text()
+        assert "ENH-010" not in survivors
+        assert "ENH-020" in survivors
+        assert "WARN: refusing to re-enqueue ENH-010" in result.stderr
+
+    def test_passed_id_is_filtered(self, tmp_path: Path) -> None:
+        """Candidate ID already in passed.txt is dropped."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-030\n")
+        (loops_tmp / "recursive-refine-queue.txt").write_text("")
+        (loops_tmp / "recursive-refine-new-children.txt").write_text("ENH-030\nENH-040\n")
+
+        result = _bash(_VISITED_FILTER_SCRIPT, tmp_path)
+
+        survivors = (loops_tmp / "recursive-refine-new-children.txt").read_text()
+        assert "ENH-030" not in survivors
+        assert "ENH-040" in survivors
+        assert "WARN: refusing to re-enqueue ENH-030" in result.stderr
+
+    def test_queue_id_is_filtered(self, tmp_path: Path) -> None:
+        """Candidate ID already in the live queue is dropped."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("")
+        (loops_tmp / "recursive-refine-queue.txt").write_text("ENH-050\n")
+        (loops_tmp / "recursive-refine-new-children.txt").write_text("ENH-050\nENH-060\n")
+
+        result = _bash(_VISITED_FILTER_SCRIPT, tmp_path)
+
+        survivors = (loops_tmp / "recursive-refine-new-children.txt").read_text()
+        assert "ENH-050" not in survivors
+        assert "ENH-060" in survivors
+        assert "WARN: refusing to re-enqueue ENH-050" in result.stderr
+
+    def test_unvisited_id_passes_through(self, tmp_path: Path) -> None:
+        """Candidate ID not in any tracking set is written back to new-children.txt."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("")
+        (loops_tmp / "recursive-refine-queue.txt").write_text("")
+        (loops_tmp / "recursive-refine-new-children.txt").write_text("ENH-099\n")
+
+        result = _bash(_VISITED_FILTER_SCRIPT, tmp_path)
+
+        survivors = (loops_tmp / "recursive-refine-new-children.txt").read_text()
+        assert "ENH-099" in survivors
+        assert result.stderr == ""
+
+
+class TestCycleSkipReason:
+    """enqueue_or_skip writes parent to skipped-cycle.txt when all children are cycle-filtered."""
+
+    def test_all_filtered_children_writes_to_skipped_cycle(self, tmp_path: Path) -> None:
+        """All candidate children already visited → parent is written to skipped-cycle.txt."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("ENH-010\nENH-011\n")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("")
+        (loops_tmp / "recursive-refine-queue.txt").write_text("")
+        (loops_tmp / "recursive-refine-new-children.txt").write_text("ENH-010\nENH-011\n")
+
+        _bash(_CYCLE_FILTER_SCRIPT, tmp_path)
+
+        cycle_file = (loops_tmp / "recursive-refine-skipped-cycle.txt").read_text()
+        assert "ENH-PARENT" in cycle_file
+        assert (loops_tmp / "recursive-refine-new-children.txt").read_text().strip() == ""
+
+    def test_partial_filter_does_not_write_to_skipped_cycle(self, tmp_path: Path) -> None:
+        """Only partially filtered children (some survive) do not trigger cycle-skip."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("ENH-010\n")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("")
+        (loops_tmp / "recursive-refine-queue.txt").write_text("")
+        (loops_tmp / "recursive-refine-new-children.txt").write_text("ENH-010\nENH-099\n")
+
+        _bash(_CYCLE_FILTER_SCRIPT, tmp_path)
+
+        assert not (loops_tmp / "recursive-refine-skipped-cycle.txt").exists()
+        survivors = (loops_tmp / "recursive-refine-new-children.txt").read_text()
+        assert "ENH-099" in survivors
+
+    def test_no_candidates_does_not_write_to_skipped_cycle(self, tmp_path: Path) -> None:
+        """Empty new-children.txt (pre-filter count = 0) does not create skipped-cycle.txt."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-visited.txt").write_text("ENH-010\n")
+        (loops_tmp / "recursive-refine-passed.txt").write_text("")
+        (loops_tmp / "recursive-refine-queue.txt").write_text("")
+        (loops_tmp / "recursive-refine-new-children.txt").write_text("")
+
+        _bash(_CYCLE_FILTER_SCRIPT, tmp_path)
+
+        assert not (loops_tmp / "recursive-refine-skipped-cycle.txt").exists()
+
+
 class TestDoneSummary:
-    """Skipped (depth-cap N) line in done state summary."""
+    """Skipped (depth-cap N) and Skipped (cycle N) lines in done state summary."""
 
     _DONE_SCRIPT = r"""
     PASSED_IDS=$(cat .loops/tmp/recursive-refine-passed.txt 2>/dev/null \
@@ -249,19 +515,24 @@ class TestDoneSummary:
       | grep -v '^[[:space:]]*$' | sort -u || true)
     DEPTH_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-depth.txt 2>/dev/null \
       | grep -v '^[[:space:]]*$' | sort -u || true)
+    CYCLE_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-cycle.txt 2>/dev/null \
+      | grep -v '^[[:space:]]*$' | sort -u || true)
 
     PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
     SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
     DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+    CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
     PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
     SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
     DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+    CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
     printf '\n=== Recursive Refine Summary ===\n\n'
     printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "${PASSED_LIST:-none}"
     printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "${SKIPPED_LIST:-none}"
     printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "${DEPTH_LIST:-none}"
+    printf 'Skipped (cycle %d): %s\n' "$CYCLE_COUNT" "${CYCLE_LIST:-none}"
     printf '\n'
     """
 
@@ -272,6 +543,7 @@ class TestDoneSummary:
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
         (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-002\nENH-003\n")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("ENH-003\n")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
 
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
@@ -288,8 +560,38 @@ class TestDoneSummary:
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
         (loops_tmp / "recursive-refine-skipped.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
 
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
         assert result.returncode == 0
         assert "Skipped (depth-cap 0): none" in result.stdout
+
+    def test_cycle_line_shows_cycle_ids(self, tmp_path: Path) -> None:
+        """done includes 'Skipped (cycle N): IDs' when cycle-detected issues exist."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-002\n")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("ENH-002\n")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Skipped (cycle 1):" in result.stdout
+        assert "ENH-002" in result.stdout
+
+    def test_cycle_line_shows_none_when_no_cycle_issues(self, tmp_path: Path) -> None:
+        """done emits 'Skipped (cycle 0): none' when no cycle-detected issues."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Skipped (cycle 0): none" in result.stdout
