@@ -257,8 +257,11 @@ def run_background(
         "little_loops.cli.loop",
         subcommand,
         loop_name,
-        "--foreground-internal",
     ]
+    input_val = getattr(args, "input", None)
+    if input_val is not None:
+        cmd.append(input_val)
+    cmd.append("--foreground-internal")
 
     # Forward relevant args
     max_iter = getattr(args, "max_iterations", None)

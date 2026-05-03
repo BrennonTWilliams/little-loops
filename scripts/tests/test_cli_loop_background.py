@@ -460,6 +460,59 @@ class TestRunBackground:
         assert "--program-md" in cmd
         assert str(program_md_path) in cmd
 
+    def test_forwards_positional_input(self, tmp_path: Path) -> None:
+        """Forwards positional input arg to child process when set."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            input="ENH-571",
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "ENH-571" in cmd
+        loop_idx = cmd.index("my-loop")
+        input_idx = cmd.index("ENH-571")
+        assert input_idx == loop_idx + 1, "input must immediately follow loop_name"
+
+    def test_input_not_forwarded_when_none(self, tmp_path: Path) -> None:
+        """Does not add positional input to child command when not set."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            input=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        loop_idx = cmd.index("my-loop")
+        next_token = cmd[loop_idx + 1]
+        assert next_token.startswith("--"), "nothing between loop_name and first flag when input=None"
+
     def test_program_md_not_forwarded_when_none(self, tmp_path: Path) -> None:
         """Does not add --program-md to child command when not set (ENH-1121)."""
         import argparse
