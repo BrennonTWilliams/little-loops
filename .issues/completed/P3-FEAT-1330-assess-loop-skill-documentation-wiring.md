@@ -3,6 +3,7 @@ id: FEAT-1330
 type: FEAT
 priority: P3
 parent_issue: FEAT-1325
+completed_at: 2026-05-03T03:22:26Z
 confidence_score: 98
 outcome_confidence: 71
 score_complexity: 10
@@ -79,10 +80,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] All five documentation files updated: skill count shows 28, `/ll:assess-loop` appears in all tables/listings.
-- [ ] `docs/reference/COMMANDS.md` has a full `### /ll:assess-loop` section with `--no-rubric-audit` flag and all four verdict values.
-- [ ] `TestAssessLoopCommandsWiring` passes in `test_enh1268_doc_wiring.py`.
-- [ ] `ll-verify-docs` passes (doc count 28 matches actual `rglob("SKILL.md")` result).
+- [x] All five documentation files updated: skill count shows 28, `/ll:assess-loop` appears in all tables/listings.
+- [x] `docs/reference/COMMANDS.md` has a full `### /ll:assess-loop` section with `--no-rubric-audit` flag and all four verdict values.
+- [x] `TestAssessLoopCommandsWiring` passes in `test_enh1268_doc_wiring.py`.
+- [x] `ll-verify-docs` passes (doc count 28 matches actual `rglob("SKILL.md")` result).
+- [x] `commands/help.md` updated: `assess-loop` added to AUTOMATION & LOOPS section and Quick Reference table.
+
+## Resolution
+
+Completed 2026-05-03. The bulk of this issue (6/7 doc files) was already finished before this session — only `commands/help.md` remained per the confidence check notes. Added `/ll:assess-loop` to the static AUTOMATION & LOOPS text block (with verdict values and `--no-rubric-audit` flag noted) and to the Quick Reference table footer.
+
+Verification:
+- `test_enh1268_doc_wiring.py` — 11/11 pass (5 `TestAssessLoopCommandsWiring` cases green)
+- `test_assess_loop_skill.py` — pass
+- `ll-verify-docs` — all 9 counts match
+- `ruff check scripts/` — clean
 
 ## Confidence Check Notes
 
@@ -101,3 +113,4 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - `/ll:issue-size-review` - 2026-05-02T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:wire-issue` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96ca59-02c3-488f-8fa0-1dafdef72208.jsonl`
+- `/ll:manage-issue` - 2026-05-03T03:22:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffee9af8-8893-41bb-833f-5dc61ab71466.jsonl`
