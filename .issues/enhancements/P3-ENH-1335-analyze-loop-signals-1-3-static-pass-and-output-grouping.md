@@ -3,6 +3,12 @@ id: ENH-1335
 type: ENH
 priority: P3
 parent_issue: ENH-1327
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-1335: Add Effectiveness Signals 1-3 + Static Pass + Output Grouping to `/ll:analyze-loop`
@@ -53,6 +59,16 @@ Decomposed from ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyz
 
 6. **Verify** `scripts/tests/test_enh1146_doc_wiring.py` — `TestAnalyzeLoopSkillWiring.test_semantic_synthesis_heading_present` asserts `"Step 3b"` exists in SKILL.md; confirm this heading is preserved when the Step 2 static analysis pass is inserted (step numbering must not shift it away).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Create `scripts/tests/fixtures/fsm/analysis-iter1-no-apply.yaml` — Signal 1 positive-case fixture; structure: evaluate state whose `on_yes: done` and no `apply_*`/`refine_*`/`update_*`/`write_*`/`commit_*` state in the state map; follow `analysis-multi-signal.yaml` shape (no `context:` block, explicit `on_yes`/`on_no`/`on_error`)
+8. Create `scripts/tests/fixtures/fsm/analysis-degenerate-gate.yaml` — Signal 2 structural fixture; evaluate state with `on_no: <same_state>` (self-loop showing >95% route fan-out to one branch); follow `analysis-multi-signal.yaml` shape
+9. Add test blocks in `scripts/tests/test_analyze_loop_synthesis.py` for Signals 1 and 2 structural assertions (happy-path and field-value checks following `test_3b2_happy_path_reconstruction_multi_signal` and `test_3b4_fixture_has_prompt_then_shell_adjacency` patterns); add `APPLY_STATE_PREFIXES = ("apply_", "refine_", "update_", "write_", "commit_")` constant at module level parallel to existing `DECISION_PREFIXES`
+10. Add `test_fault_signals_heading_present` and `test_effectiveness_signals_heading_present` to `TestAnalyzeLoopSkillWiring` in `scripts/tests/test_enh1146_doc_wiring.py` asserting these new Step 5 heading strings appear in `skills/analyze-loop/SKILL.md` after the output grouping change
+11. Update `skills/assess-loop/SKILL.md` `## Step 5: Phase 1 — Fault Signals` cross-reference (currently "same classification as `/ll:analyze-loop` Step 3`"): clarify that assess-loop inherits only the *fault-signal subset* of analyze-loop Step 3; after ENH-1335 Step 3 also contains effectiveness signals (Signals 1–2) which are out of scope for assess-loop Phase 1
+
 ## Codebase Research Findings (from ENH-1327)
 
 **SKILL.md section anchors**:
@@ -75,6 +91,73 @@ Decomposed from ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyz
 - `scripts/tests/fixtures/fsm/assess-degenerate-gate.yaml` — adapt for Signal 2 synthetic test
 - `scripts/tests/fixtures/fsm/analysis-multi-signal.yaml` — follow naming convention for new fixture
 
+## Codebase Research Findings (refine-issue verification pass — 2026-05-02)
+
+_Added by `/ll:refine-issue` — verified against current SKILL.md and surrounding files; corrects/extends parent ENH-1327 findings._
+
+### Splice Points in `skills/analyze-loop/SKILL.md`
+
+| Target | Anchor | Notes |
+|---|---|---|
+| Signal 3 static pass | End of `## Step 2: Load Event History and Loop Config` (~line 99), **after** the paragraph "Sub-loop states do not contribute to parent loop event counts." and **before** the `**Parse the events**` table (~line 101) | Insert here so `static_issues` are populated before history walking begins |
+| Signal 1 (iter-1 convergence) | New `####` block inside `### Signal Rules` in `## Step 3`, immediately after `#### BUG — FATAL_ERROR termination` | Co-locates with the other terminal/`loop_complete`-driven rules |
+| Signal 2 (degenerate gate) | New `####` block inside `### Signal Rules` (history-driven, alongside `#### BUG — Evaluate failure`) | Walks `route` events; uses the same "most recent `state_enter.state`" grouping convention already documented in the Step 3 preamble |
+| Step 5 output grouping | Replaces the flat numbered list at `## Step 5: Present Proposals and Confirm` (~lines 314–325; preamble `Found <M> issue signal(s):`) | See "Output convention" below |
+
+### Field-Name Corrections
+
+- **`iterations`, not `iteration_count`** — the `loop_complete` event payload exposes `iterations` (int), per the event-payload table in Step 2 of `skills/analyze-loop/SKILL.md` and `LLEvent` in `scripts/little_loops/events.py`. Treat the issue's `iteration_count == 1` trigger phrasing as shorthand for `iterations == 1`.
+- **`route.to` is the branch field** — `route` events carry `from` (origin state) and `to` (destination), per `_format_history_event()` in `scripts/little_loops/cli/loop/info.py:~319`. Signal 2's "branch distribution" should be a `{from_state: {to_state: count}}` dict.
+
+### State-Prefix Convention (Apply/Refine States)
+
+There is **no existing apply-state prefix list** in the codebase. The closest precedents:
+
+- `DECISION_PREFIXES = ("check_", "verify_", "evaluate_", "wait_")` — `scripts/tests/test_analyze_loop_synthesis.py:16` (used by 3b-5 dominant-state detection)
+- `GATE_STATE_PREFIXES = ("check_", "verify_", "validate_")` — `scripts/tests/test_review_loop.py:756`
+
+For Signal 1, define a parallel `APPLY_STATE_PREFIXES = ("apply_", "refine_", "update_", "write_", "commit_")` symmetric tuple (in the SKILL.md prose, since matching is performed by the LLM in-context, not by Python code). Document it adjacent to the existing prefix lists' style.
+
+### Static-Pass Precedent
+
+The only existing config-based signal in `analyze-loop` is `#### BUG — Sub-loop verdict discarded` (~SKILL.md lines 182–186), which inspects `state.on_yes == state.on_no` against the resolved state map. Today it lives in the same `### Signal Rules` bucket as history-driven rules. **Decision needed at implementation time** (low-stakes; not blocking refinement): does Signal 3 introduction motivate moving the sub-loop verdict signal into the new `static_issues` bucket too, or leave it where it is for backward compatibility? Default: leave it; let `static_issues` be the new bucket and document that pre-existing config-signal stays inline. Either way, Step 5's "Effectiveness Signals" group should include both static and history-driven effectiveness signals.
+
+The closest existing example of regex applied against `state.action` bodies is `_collect_action_text()` + `re.search()` in `scripts/tests/test_builtin_loops.py:~303–326`. Same shape: iterate `data["states"].values()`, read each `state["action"]` string, regex-match. Reference this when writing the SKILL.md prose for the static pass.
+
+### Output Convention (Step 5 grouping)
+
+Project convention for labelled output groups uses **markdown headings**, not bare-colon lines:
+
+- `skills/review-loop/reference.md:505–535` → `### Errors (N)` / `### Warnings (N)` / `### Suggestions (N)` (omit a section if N == 0)
+- `skills/audit-docs/templates.md:170–179` → `### Critical (Must Fix)` / `### Warnings (Should Fix)` / `### Suggestions`
+
+Recommend rendering as:
+
+```
+### Fault Signals (N)
+  [1] BUG P2 — <title>
+  ...
+
+### Effectiveness Signals (M)
+  [1] ENH P3 — <title>
+  ...
+```
+
+(omit either section when its count is 0). The issue's `Fault Signals (N):` colon-form is acceptable but inconsistent with the project's other multi-bucket renderings.
+
+### Doc-Wiring Test Caveat
+
+`scripts/tests/test_enh1146_doc_wiring.py::TestAnalyzeLoopSkillWiring` asserts **two** literal substrings against `skills/analyze-loop/SKILL.md`:
+
+1. `"rate_limit_waiting"` (`test_rate_limit_waiting_present`) — must be preserved in the Step 2 event-payload table.
+2. `"Step 3b"` (`test_semantic_synthesis_heading_present`) — must remain present.
+
+The issue's Acceptance Criteria mentions only `Step 3b`. Add `rate_limit_waiting` to the verification — the Step 2 static-pass insertion is adjacent to that table and an accidental edit could remove the row.
+
+### Implementation Locus Clarification
+
+All three signals are implemented as **prose directives in `skills/analyze-loop/SKILL.md`** for an LLM to execute at runtime — no new Python code is added under `scripts/little_loops/`. Existing `analyze-loop` signals follow this same in-context pattern (the Step 3 preamble even explicitly instructs "Group events by `state` (use the most recent `state_enter.state`...)" as natural-language guidance). The fixture in `scripts/tests/fixtures/fsm/analysis-stub-action.yaml` and any new test methods in `scripts/tests/test_analyze_loop_synthesis.py` are pure structural YAML assertions (no LLM/subprocess invocation) — see `test_3b4_fixture_has_prompt_then_shell_adjacency` for the canonical shape.
+
 ## Acceptance Criteria
 
 - [ ] Signal 3 (Stub Action) implemented as static pass at Step 2; `rl-rlhf` loop's `echo "5"` triggers it at config-load time.
@@ -94,5 +177,35 @@ Decomposed from ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyz
 - **In scope**: Signals 1, 2, 3 in `skills/analyze-loop/SKILL.md`; Step 5 output grouping; `analysis-stub-action.yaml` fixture; SKILL.md test verification.
 - **Out of scope**: Signals 4, 5 (Capture Vacuum, Numeric Stall — see ENH-1336); COMMANDS.md update (ENH-1336); `--json` flag with structured output (deferred per confidence check notes in parent).
 
+## Integration Map
+
+### Files to Modify
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/assess-loop/SKILL.md` — `## Step 5: Phase 1 — Fault Signals` cross-reference to "same classification as `/ll:analyze-loop` Step 3`" becomes incomplete after ENH-1335 adds effectiveness signals to Step 3; scope must be narrowed to fault-signal subset [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/fixtures/fsm/analysis-iter1-no-apply.yaml` — **new** Signal 1 positive-case fixture (no apply/refine state in state map, evaluate exits `on_yes: done` on first iteration) [Agent 3 finding]
+- `scripts/tests/fixtures/fsm/analysis-degenerate-gate.yaml` — **new** Signal 2 structural fixture (`on_no: <self>` evaluate state showing degenerate single-branch route fan-out) [Agent 3 finding]
+- `scripts/tests/test_analyze_loop_synthesis.py` — add Signal 1 and Signal 2 test blocks + `APPLY_STATE_PREFIXES` module-level constant; follow `test_3b2_*` and `test_3b4_*` patterns [Agent 3 finding]
+- `scripts/tests/test_enh1146_doc_wiring.py::TestAnalyzeLoopSkillWiring` — existing, **update**: add `test_fault_signals_heading_present` and `test_effectiveness_signals_heading_present` for new Step 5 heading strings; **re-verify** `test_rate_limit_waiting_present` (Step 2 table adjacent to static-pass insertion) and `test_semantic_synthesis_heading_present` (`"Step 3b"` must not be renumbered) still pass after SKILL.md edits [Agents 2 & 3 finding]
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-02_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Outcome Risk Factors
+- **Splice-point discipline required**: The Signal 3 static-pass insertion in Step 2 sits adjacent to the `rate_limit_waiting` event-payload table row and the `Step 3b` heading — both are asserted by `test_enh1146_doc_wiring.py`. Edit carefully at lines ~99–101 to avoid displacing either.
+- **One low-stakes design call remains open**: whether to migrate the existing sub-loop verdict signal into the new `static_issues` bucket alongside Signal 3. Stated default is to leave it in place; resolve this at the Step 2 insertion point without further research.
+- **7-file spread increases coordination cost**: SKILL.md edits drive two separate test files and three fixture YAMLs; work the acceptance criteria checklist in order (Signal 3 static pass first, then Signals 1 and 2, then Step 5 grouping) to keep changes coherent.
+
 ## Session Log
+- `/ll:wire-issue` - 2026-05-03T04:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`
+- `/ll:refine-issue` - 2026-05-03T04:30:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d1a6da-5f0e-44c1-99c9-d038fb2c92e5.jsonl`
 - `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`
