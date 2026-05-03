@@ -46,10 +46,9 @@ class TestCmdStatus:
         mock_state.continuation_prompt = None
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_status("test-loop", tmp_path, logger)
 
         assert result == 0
@@ -71,10 +70,9 @@ class TestCmdStatus:
         mock_state.continuation_prompt = "A" * 300  # Long prompt
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_status("test-loop", tmp_path, logger)
 
         assert result == 0
@@ -115,9 +113,11 @@ class TestCmdStop:
         mock_state = MagicMock()
         mock_state.status = "running"
 
-        with patch("little_loops.fsm.persistence.StatePersistence") as mock_cls:
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+        ):
             mock_persistence = mock_cls.return_value
-            mock_persistence.load_state.return_value = mock_state
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
@@ -139,12 +139,12 @@ class TestCmdStop:
         alive_seq = [True, True, False]
 
         with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
@@ -168,12 +168,12 @@ class TestCmdStop:
         alive_seq = [True] + [True] * 10
 
         with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
@@ -203,12 +203,12 @@ class TestCmdStop:
                 raise OSError("No such process")
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("little_loops.fsm.persistence.StatePersistence"),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill", side_effect=kill_side_effect),
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0  # No exception propagated
@@ -343,11 +343,10 @@ class TestCmdResume:
                 "little_loops.cli.loop.lifecycle.load_loop",
                 return_value=mock_fsm,
             ),
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
             patch("builtins.print") as mock_print,
         ):
-            mock_persist_cls.return_value.load_state.return_value = mock_state
             mock_exec_cls.return_value.resume.return_value = mock_result
             result = cmd_resume("test-loop", args, tmp_path, logger)
 
@@ -916,10 +915,9 @@ class TestCmdStatusLogFile:
         os.utime(log_file, (mtime, mtime))
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_status("test-loop", tmp_path, logger)
 
         assert result == 0
@@ -942,10 +940,9 @@ class TestCmdStatusLogFile:
         running_dir.mkdir(parents=True)
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_status("test-loop", tmp_path, logger)
 
         assert result == 0
@@ -978,10 +975,9 @@ class TestCmdStatusLogFile:
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_status("test-loop", tmp_path, logger, args)
 
         assert result == 0
@@ -1012,10 +1008,9 @@ class TestCmdStatusLogFile:
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             result = cmd_status("test-loop", tmp_path, logger, args)
 
         assert result == 0
@@ -1204,3 +1199,330 @@ class TestCmdResumeTransportWiring:
                 pass
 
         mock_exec_cls.return_value.close_transports.assert_called_once()
+
+
+class TestFindInstances:
+    """Unit tests for _find_instances — ENH-1356."""
+
+    def _write_state(self, path, loop_name: str, status: str = "running") -> None:
+        import json
+
+        path.write_text(
+            json.dumps(
+                {
+                    "loop_name": loop_name,
+                    "current_state": "check",
+                    "iteration": 1,
+                    "captured": {},
+                    "prev_result": None,
+                    "last_result": None,
+                    "started_at": "2026-05-03T12:23:06Z",
+                    "updated_at": "2026-05-03T12:25:00Z",
+                    "status": status,
+                }
+            )
+        )
+
+    def test_empty_when_no_files(self, tmp_path) -> None:
+        """Returns empty list when running_dir has no state files."""
+        from little_loops.fsm.persistence import _find_instances
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        assert _find_instances("my-loop", running_dir) == []
+
+    def test_empty_when_dir_missing(self, tmp_path) -> None:
+        """Returns empty list when running_dir does not exist."""
+        from little_loops.fsm.persistence import _find_instances
+
+        assert _find_instances("my-loop", tmp_path / ".running") == []
+
+    def test_discovers_legacy_bare_stem(self, tmp_path) -> None:
+        """Discovers legacy bare-stem state file with instance_id=None."""
+        from little_loops.fsm.persistence import _find_instances
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        self._write_state(running_dir / "test-loop.state.json", "test-loop")
+
+        instances = _find_instances("test-loop", running_dir)
+        assert len(instances) == 1
+        instance_id, state = instances[0]
+        assert instance_id is None
+        assert state.loop_name == "test-loop"
+        assert state.status == "running"
+
+    def test_discovers_timestamp_scoped(self, tmp_path) -> None:
+        """Discovers instance-scoped state file; instance_id is the file stem."""
+        from little_loops.fsm.persistence import _find_instances
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        self._write_state(
+            running_dir / "test-loop-20260503T122306.state.json", "test-loop"
+        )
+
+        instances = _find_instances("test-loop", running_dir)
+        assert len(instances) == 1
+        instance_id, state = instances[0]
+        assert instance_id == "test-loop-20260503T122306"
+        assert state.loop_name == "test-loop"
+
+    def test_discovers_mixed_legacy_and_scoped(self, tmp_path) -> None:
+        """Discovers both legacy and instance-scoped files in the same directory."""
+        from little_loops.fsm.persistence import _find_instances
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        self._write_state(running_dir / "test-loop.state.json", "test-loop")
+        self._write_state(
+            running_dir / "test-loop-20260503T122306.state.json", "test-loop"
+        )
+
+        instances = _find_instances("test-loop", running_dir)
+        assert len(instances) == 2
+        ids = {iid for iid, _ in instances}
+        assert None in ids
+        assert "test-loop-20260503T122306" in ids
+
+    def test_ignores_other_loops(self, tmp_path) -> None:
+        """Does not return state files for a different loop name."""
+        from little_loops.fsm.persistence import _find_instances
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        self._write_state(running_dir / "other-loop.state.json", "other-loop")
+        self._write_state(
+            running_dir / "other-loop-20260503T122306.state.json", "other-loop"
+        )
+
+        assert _find_instances("test-loop", running_dir) == []
+
+    def test_skips_non_timestamp_hyphenated_names(self, tmp_path) -> None:
+        """Does not match files like 'test-loop-extra.state.json' (no timestamp suffix)."""
+        from little_loops.fsm.persistence import _find_instances
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        self._write_state(running_dir / "test-loop-extra.state.json", "test-loop-extra")
+
+        assert _find_instances("test-loop", running_dir) == []
+
+
+class TestCmdStatusMultiInstance:
+    """Multi-instance aggregate output for cmd_status — ENH-1356."""
+
+    def test_aggregate_shows_numbered_instances(self, tmp_path) -> None:
+        """Two instances produce a numbered list, not a single-instance block."""
+        logger = MagicMock()
+        state1 = MagicMock()
+        state1.loop_name = "autodev"
+        state1.status = "running"
+        state1.current_state = "implement"
+        state1.iteration = 12
+        state1.continuation_prompt = None
+
+        state2 = MagicMock()
+        state2.loop_name = "autodev"
+        state2.status = "running"
+        state2.current_state = "refine_current"
+        state2.iteration = 3
+        state2.continuation_prompt = None
+
+        instances = [
+            ("autodev-20260503T122306", state1),
+            ("autodev-20260503T122340", state2),
+        ]
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("autodev", tmp_path, logger)
+
+        assert result == 0
+        output = "\n".join(str(c) for c in mock_print.call_args_list)
+        assert "[1]" in output
+        assert "[2]" in output
+        assert "autodev-20260503T122306" in output
+        assert "autodev-20260503T122340" in output
+
+    def test_aggregate_header_shows_count(self, tmp_path) -> None:
+        """Header line includes the instance count and loop name."""
+        logger = MagicMock()
+        state1 = MagicMock()
+        state1.status = "running"
+        state1.continuation_prompt = None
+        state2 = MagicMock()
+        state2.status = "running"
+        state2.continuation_prompt = None
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[
+                    ("autodev-20260503T122306", state1),
+                    ("autodev-20260503T122340", state2),
+                ],
+            ),
+            patch("builtins.print") as mock_print,
+        ):
+            cmd_status("autodev", tmp_path, logger)
+
+        first_call = str(mock_print.call_args_list[0])
+        assert "2 instances" in first_call
+        assert "autodev" in first_call
+
+
+class TestCmdStopMultiInstance:
+    """Multi-instance stop behaviour — ENH-1356."""
+
+    def test_stop_terminates_all_running_instances(self, tmp_path) -> None:
+        """cmd_stop marks every running instance as interrupted."""
+        logger = MagicMock()
+        state1 = MagicMock()
+        state1.status = "running"
+        state2 = MagicMock()
+        state2.status = "running"
+
+        instances = [
+            ("autodev-20260503T122306", state1),
+            ("autodev-20260503T122340", state2),
+        ]
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+        ):
+            result = cmd_stop("autodev", tmp_path, logger)
+
+        assert result == 0
+        assert state1.status == "interrupted"
+        assert state2.status == "interrupted"
+
+    def test_stop_skips_non_running_instances(self, tmp_path) -> None:
+        """cmd_stop only processes instances with status 'running'."""
+        logger = MagicMock()
+        state_running = MagicMock()
+        state_running.status = "running"
+        state_done = MagicMock()
+        state_done.status = "completed"
+
+        instances = [
+            ("autodev-20260503T122306", state_running),
+            ("autodev-20260503T122340", state_done),
+        ]
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+        ):
+            result = cmd_stop("autodev", tmp_path, logger)
+
+        assert result == 0
+        assert state_running.status == "interrupted"
+        assert state_done.status == "completed"
+
+
+class TestCmdResumeMultiInstance:
+    """Multi-instance resume error — ENH-1356."""
+
+    def test_resume_errors_when_multiple_resumable(self, tmp_path) -> None:
+        """cmd_resume exits non-zero and lists instance IDs when 2+ are resumable."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+
+        state1 = MagicMock()
+        state1.status = "awaiting_continuation"
+        state2 = MagicMock()
+        state2.status = "running"
+
+        instances = [
+            ("autodev-20260503T122306", state1),
+            ("autodev-20260503T122340", state2),
+        ]
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_resume("autodev", args, tmp_path, logger)
+
+        assert result == 1
+        output = "\n".join(str(c) for c in mock_print.call_args_list)
+        assert "autodev-20260503T122306" in output
+        assert "autodev-20260503T122340" in output
+
+    def test_resume_succeeds_with_single_resumable(self, tmp_path) -> None:
+        """cmd_resume proceeds normally when exactly one resumable instance found."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 2
+        mock_result.duration_ms = 3000
+        mock_result.terminated_by = "terminal"
+
+        resumable_state = MagicMock()
+        resumable_state.status = "awaiting_continuation"
+        resumable_state.continuation_prompt = None
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[("autodev-20260503T122306", resumable_state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("autodev", args, tmp_path, logger)
+
+        assert result == 0
+
+
+class TestCmdListMultiInstance:
+    """cmd_list deduplication for multi-instance loops — ENH-1356."""
+
+    def test_list_no_duplicate_rows_for_multi_instance(
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ) -> None:
+        """Two instances of the same loop produce one grouped row, not two."""
+        import json
+        import sys
+        from unittest.mock import patch
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir()
+
+        base_state = {
+            "loop_name": "autodev",
+            "current_state": "implement",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-05-03T12:23:06Z",
+            "updated_at": "2026-05-03T12:25:00Z",
+            "status": "running",
+        }
+        (running_dir / "autodev-20260503T122306.state.json").write_text(json.dumps(base_state))
+        (running_dir / "autodev-20260503T122340.state.json").write_text(
+            json.dumps({**base_state, "iteration": 3})
+        )
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "list", "--running"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert out.count("autodev") == 1

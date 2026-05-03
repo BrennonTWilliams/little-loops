@@ -16,6 +16,7 @@ from little_loops.cli.loop._helpers import (
     run_background,
 )
 from little_loops.fsm.concurrency import _process_alive
+from little_loops.fsm.persistence import LoopState, _find_instances
 from little_loops.logger import Logger
 
 
@@ -43,28 +44,21 @@ def _read_pid_file(pid_file: Path) -> int | None:
         return None
 
 
-def cmd_status(
+def _status_single(
+    instance_id: str | None,
+    state: LoopState,
     loop_name: str,
-    loops_dir: Path,
-    logger: Logger,
-    args: argparse.Namespace | None = None,
+    running_dir: Path,
+    args: argparse.Namespace | None,
 ) -> int:
-    """Show loop status."""
+    """Render status for one instance (human-readable or JSON)."""
     from little_loops.cli.output import print_json
-    from little_loops.fsm.persistence import StatePersistence
 
-    persistence = StatePersistence(loop_name, loops_dir)
-    state = persistence.load_state()
-
-    if state is None:
-        logger.error(f"No state found for: {loop_name}")
-        return 1
-
-    running_dir = loops_dir / ".running"
-    pid_file = running_dir / f"{loop_name}.pid"
+    stem = instance_id or loop_name
+    pid_file = running_dir / f"{stem}.pid"
     pid = _read_pid_file(pid_file)
 
-    log_file = running_dir / f"{loop_name}.log"
+    log_file = running_dir / f"{stem}.log"
     log_file_str: str | None = None
     log_updated_ago: str | None = None
     last_event: str | None = None
@@ -95,14 +89,12 @@ def cmd_status(
     print(f"Started: {state.started_at}")
     print(f"Updated: {state.updated_at}")
 
-    # Show PID info if available (background mode)
     if pid is not None:
         if _process_alive(pid):
             print(f"PID: {pid} (running)")
         else:
             print(f"PID: {pid} (not running - stale PID file)")
 
-    # Show log file info
     if log_file_str is not None:
         print(f"Log: {log_file_str}")
         print(f"Log updated: {log_updated_ago}")
@@ -112,11 +104,79 @@ def cmd_status(
         print("Log: (not found)")
 
     if state.continuation_prompt:
-        # Show truncated continuation context
         prompt_preview = state.continuation_prompt[:200]
         if len(state.continuation_prompt) > 200:
             prompt_preview += "..."
         print(f"Continuation context: {prompt_preview}")
+    return 0
+
+
+def cmd_status(
+    loop_name: str,
+    loops_dir: Path,
+    logger: Logger,
+    args: argparse.Namespace | None = None,
+) -> int:
+    """Show loop status."""
+    from little_loops.cli.output import print_json
+
+    running_dir = loops_dir / ".running"
+    instances = _find_instances(loop_name, running_dir)
+
+    if not instances:
+        logger.error(f"No state found for: {loop_name}")
+        return 1
+
+    if len(instances) == 1:
+        instance_id, state = instances[0]
+        return _status_single(instance_id, state, loop_name, running_dir, args)
+
+    # Multiple instances: aggregate display
+    if getattr(args, "json", False):
+        result_list = []
+        for instance_id, state in instances:
+            stem = instance_id or loop_name
+            pid_file = running_dir / f"{stem}.pid"
+            pid = _read_pid_file(pid_file)
+            log_file = running_dir / f"{stem}.log"
+            d = state.to_dict()
+            d["instance_id"] = instance_id
+            d["pid"] = pid
+            if log_file.exists():
+                d["log_file"] = str(log_file)
+                d["log_updated_ago"] = _format_relative_time(
+                    time.time() - log_file.stat().st_mtime
+                )
+            else:
+                d["log_file"] = None
+                d["log_updated_ago"] = None
+            result_list.append(d)
+        print_json(result_list)
+        return 0
+
+    print(f"{len(instances)} instances of '{loop_name}':")
+    for i, (instance_id, state) in enumerate(instances, 1):
+        stem = instance_id or loop_name
+        pid_file = running_dir / f"{stem}.pid"
+        pid = _read_pid_file(pid_file)
+        log_file = running_dir / f"{stem}.log"
+
+        print()
+        print(f"[{i}] {stem}")
+        print(f"  Status: {state.status}")
+        print(f"  Current state: {state.current_state}")
+        print(f"  Iteration: {state.iteration}")
+        if pid is not None:
+            if _process_alive(pid):
+                print(f"  PID: {pid} (running)")
+            else:
+                print(f"  PID: {pid} (not running - stale PID file)")
+        if log_file.exists():
+            age_seconds = time.time() - log_file.stat().st_mtime
+            print(f"  Log: {log_file}")
+            print(f"  Log updated: {_format_relative_time(age_seconds)}")
+        else:
+            print("  Log: (not found)")
     return 0
 
 
@@ -128,51 +188,54 @@ def cmd_stop(
     """Stop a running loop."""
     from little_loops.fsm.persistence import StatePersistence
 
-    persistence = StatePersistence(loop_name, loops_dir)
-    state = persistence.load_state()
+    running_dir = loops_dir / ".running"
+    instances = _find_instances(loop_name, running_dir)
 
-    if state is None:
+    if not instances:
         logger.error(f"No state found for: {loop_name}")
         return 1
 
-    if state.status != "running":
+    running_instances = [(iid, s) for iid, s in instances if s.status == "running"]
+
+    if not running_instances:
+        _, state = instances[0]
         logger.error(f"Loop not running: {loop_name} (status: {state.status})")
         return 1
 
-    # Check PID before modifying state to avoid overwriting the process's own final status.
-    # Race condition: process may finish and write its terminal status between
-    # cmd_stop's state read and a premature state write.
-    running_dir = loops_dir / ".running"
-    pid_file = running_dir / f"{loop_name}.pid"
-    pid = _read_pid_file(pid_file)
-    if pid is not None:
-        if _process_alive(pid):
-            # Process confirmed alive: send SIGTERM, then wait for exit
-            os.kill(pid, signal.SIGTERM)
-            for _ in range(10):
-                time.sleep(1)
-                if not _process_alive(pid):
-                    break
+    for instance_id, state in running_instances:
+        persistence = StatePersistence(loop_name, loops_dir, instance_id=instance_id)
+        stem = instance_id or loop_name
+        pid_file = running_dir / f"{stem}.pid"
+        pid = _read_pid_file(pid_file)
+
+        if pid is not None:
+            if _process_alive(pid):
+                # Process confirmed alive: send SIGTERM, then wait for exit
+                os.kill(pid, signal.SIGTERM)
+                for _ in range(10):
+                    time.sleep(1)
+                    if not _process_alive(pid):
+                        break
+                else:
+                    # Still alive after grace period: force kill
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                        logger.warning(f"Sent SIGKILL to {stem} (PID: {pid})")
+                    except OSError:
+                        pass  # Process exited between poll and kill
+                state.status = "interrupted"
+                persistence.save_state(state)
+                pid_file.unlink(missing_ok=True)
+                logger.success(f"Stopped {stem} (PID: {pid})")
             else:
-                # Still alive after grace period: force kill
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                    logger.warning(f"Sent SIGKILL to {loop_name} (PID: {pid})")
-                except OSError:
-                    pass  # Process exited between poll and kill
+                # Process already exited: preserve its final status, only clean up PID file
+                logger.info(f"Process {pid} not running, cleaning up PID file")
+                pid_file.unlink(missing_ok=True)
+        else:
+            # No PID file: no background process tracked, update state only
             state.status = "interrupted"
             persistence.save_state(state)
-            pid_file.unlink(missing_ok=True)
-            logger.success(f"Stopped {loop_name} (PID: {pid})")
-        else:
-            # Process already exited: preserve its final status, only clean up PID file
-            logger.info(f"Process {pid} not running, cleaning up PID file")
-            pid_file.unlink(missing_ok=True)
-    else:
-        # No PID file: no background process tracked, update state only
-        state.status = "interrupted"
-        persistence.save_state(state)
-        logger.success(f"Marked {loop_name} as interrupted")
+            logger.success(f"Marked {stem} as interrupted")
 
     return 0
 
@@ -184,7 +247,7 @@ def cmd_resume(
     logger: Logger,
 ) -> int:
     """Resume an interrupted loop."""
-    from little_loops.fsm.persistence import PersistentExecutor, StatePersistence
+    from little_loops.fsm.persistence import PersistentExecutor
 
     # Background mode: spawn detached process and return
     if getattr(args, "background", False):
@@ -197,7 +260,27 @@ def cmd_resume(
 
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
-    instance_id = getattr(args, "instance_id", None)
+
+    # Discover all instances and resolve to a single resumable one.
+    instances = _find_instances(loop_name, running_dir)
+    resumable = [
+        (iid, s) for iid, s in instances if s.status in ("running", "awaiting_continuation")
+    ]
+    if len(resumable) > 1:
+        print(f"Multiple instances of '{loop_name}' are resumable:")
+        for iid, _ in resumable:
+            print(f"  {iid or loop_name}")
+        print("Use --instance-id to select one.")
+        return 1
+
+    # Use discovered instance_id (or fall back to args / None for no-state case)
+    if resumable:
+        instance_id: str | None = resumable[0][0]
+        state_for_display = resumable[0][1]
+    else:
+        instance_id = getattr(args, "instance_id", None)
+        state_for_display = None
+
     pid_file = running_dir / f"{instance_id or loop_name}.pid"
     foreground_pid_file: Path | None = pid_file
 
@@ -236,15 +319,12 @@ def cmd_resume(
             raise SystemExit("--handoff-threshold must be between 1 and 100")
         os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
 
-    # Check state before resuming to show context
-    persistence = StatePersistence(loop_name, loops_dir)
-    state = persistence.load_state()
-    if state and state.status == "awaiting_continuation":
-        print(f"Resuming from context handoff (iteration {state.iteration})...")
-        if state.continuation_prompt:
-            # Show truncated continuation context
-            prompt_preview = state.continuation_prompt[:500]
-            if len(state.continuation_prompt) > 500:
+    # Show context if resuming from a handoff
+    if state_for_display and state_for_display.status == "awaiting_continuation":
+        print(f"Resuming from context handoff (iteration {state_for_display.iteration})...")
+        if state_for_display.continuation_prompt:
+            prompt_preview = state_for_display.continuation_prompt[:500]
+            if len(state_for_display.continuation_prompt) > 500:
                 prompt_preview += "..."
             print(f"Context: {prompt_preview}")
             print()

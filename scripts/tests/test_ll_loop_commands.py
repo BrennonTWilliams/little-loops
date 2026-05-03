@@ -2368,7 +2368,7 @@ class TestCmdStatusJson:
             status="running",
         )
 
-        with patch.object(StatePersistence, "load_state", return_value=state):
+        with patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, state)]):
             from little_loops.logger import Logger
 
             logger = Logger(verbose=False)
@@ -2390,12 +2390,11 @@ class TestCmdStatusJson:
     ) -> None:
         """--json with no state returns exit code 1."""
         from little_loops.cli.loop.lifecycle import cmd_status
-        from little_loops.fsm.persistence import StatePersistence
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
 
-        with patch.object(StatePersistence, "load_state", return_value=None):
+        with patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[]):
             from little_loops.logger import Logger
 
             logger = Logger(verbose=False)
@@ -2411,7 +2410,7 @@ class TestCmdStatusJson:
     ) -> None:
         """Without --json, output is unchanged human-readable format."""
         from little_loops.cli.loop.lifecycle import cmd_status
-        from little_loops.fsm.persistence import LoopState, StatePersistence
+        from little_loops.fsm.persistence import LoopState
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -2428,7 +2427,7 @@ class TestCmdStatusJson:
             status="interrupted",
         )
 
-        with patch.object(StatePersistence, "load_state", return_value=state):
+        with patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, state)]):
             from little_loops.logger import Logger
 
             logger = Logger(verbose=False)

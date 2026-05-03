@@ -2191,27 +2191,24 @@ states:
     def test_stop_command(self) -> None:
         """main_loop stop command stops running loop."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Mock StatePersistence to return a running state
             mock_state = MagicMock()
             mock_state.status = "running"
 
-            with patch("little_loops.fsm.persistence.StatePersistence") as mock_sp_cls:
-                mock_sp = MagicMock()
-                mock_sp.load_state.return_value = mock_state
-                mock_sp_cls.return_value = mock_sp
+            with (
+                patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+                patch("little_loops.fsm.persistence.StatePersistence"),
+                patch.object(sys, "argv", ["ll-loop", "stop", "test-loop"]),
+            ):
+                import os
 
-                with patch.object(sys, "argv", ["ll-loop", "stop", "test-loop"]):
-                    # Change to temp directory so resolve_loop_path works
-                    import os
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(tmpdir)
+                    from little_loops.cli import main_loop
 
-                    original_cwd = os.getcwd()
-                    try:
-                        os.chdir(tmpdir)
-                        from little_loops.cli import main_loop
-
-                        result = main_loop()
-                    finally:
-                        os.chdir(original_cwd)
+                    result = main_loop()
+                finally:
+                    os.chdir(original_cwd)
 
             assert result == 0
 

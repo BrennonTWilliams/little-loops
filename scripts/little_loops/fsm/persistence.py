@@ -43,6 +43,7 @@ HISTORY_DIR = ".history"
 logger = logging.getLogger(__name__)
 
 _RUN_FOLDER = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
+_INSTANCE_SUFFIX = re.compile(r"-\d{8}T\d{6}$")
 
 
 def _parse_run_folder(name: str) -> tuple[str, str] | None:
@@ -571,6 +572,48 @@ class PersistentExecutor:
         return self.run(clear_previous=False)
 
 
+def _find_instances(
+    loop_name: str, running_dir: Path
+) -> list[tuple[str | None, LoopState]]:
+    """Discover all state-file instances for *loop_name* in *running_dir*.
+
+    Globs ``{loop_name}-*.state.json`` for instance-scoped files and
+    ``{loop_name}.state.json`` for legacy bare-name files.
+
+    Returns:
+        List of ``(instance_id, LoopState)`` tuples sorted by file name.
+        *instance_id* is the file stem (e.g. ``"autodev-20260503T122306"``)
+        for instance-scoped files, or ``None`` for legacy bare-name files.
+    """
+    if not running_dir.exists():
+        return []
+
+    instances: list[tuple[str | None, LoopState]] = []
+
+    # Instance-scoped files: {loop_name}-YYYYMMDDTHHMMSS.state.json
+    # Use Path(stem).stem to strip both suffixes (.state.json → base stem).
+    for state_file in sorted(running_dir.glob(f"{loop_name}-*.state.json")):
+        base_stem = Path(state_file.stem).stem  # e.g. "autodev-20260503T122306"
+        if not _INSTANCE_SUFFIX.search(base_stem):
+            continue  # skip files like "loop-name-extra" that don't match timestamp pattern
+        try:
+            data = json.loads(state_file.read_text())
+            instances.append((base_stem, LoopState.from_dict(data)))
+        except (json.JSONDecodeError, KeyError):
+            continue
+
+    # Legacy bare-name file: {loop_name}.state.json
+    legacy_file = running_dir / f"{loop_name}.state.json"
+    if legacy_file.exists():
+        try:
+            data = json.loads(legacy_file.read_text())
+            instances.append((None, LoopState.from_dict(data)))
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    return instances
+
+
 def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
     """List all loops with saved state.
 
@@ -598,7 +641,6 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
     # Strip instance-ID timestamp suffix (e.g. "autodev-20240115T103000" → "autodev")
     # before the known_names check to avoid spurious "starting" entries for loops
     # that already have a state file under their logical name.
-    _INSTANCE_SUFFIX = re.compile(r"-\d{8}T\d{6}$")
     known_names = {s.loop_name for s in states}
     for pid_file in running_dir.glob("*.pid"):
         logical_name = _INSTANCE_SUFFIX.sub("", pid_file.stem)

@@ -65,20 +65,39 @@ def cmd_list(
             return 0
         print(colorize("Running loops:", "1"))
         _STATUS_COLORS = {"running": "32", "interrupted": "33", "stopped": "2", "starting": "33"}
+
+        # Group by loop_name to avoid duplicate rows for multi-instance loops
+        from collections import defaultdict
+
+        groups: dict[str, list] = defaultdict(list)
         for state in states:
-            elapsed_s = (state.accumulated_ms or 0) // 1000
-            elapsed_str = (
-                f"{elapsed_s}s" if elapsed_s < 60 else f"{elapsed_s // 60}m {elapsed_s % 60}s"
-            )
-            name_str = colorize(state.loop_name, "1")
-            state_str = colorize(state.current_state, "34")
-            status_color = _STATUS_COLORS.get(state.status, "2")
-            status_str = colorize(f"[{state.status}]", status_color)
-            elapsed_colored = colorize(elapsed_str, "2")
-            print(
-                f"  {name_str}: {state_str} (iteration {state.iteration})"
-                f" {status_str} {elapsed_colored}"
-            )
+            groups[state.loop_name].append(state)
+
+        for loop_name_key, group_states in groups.items():
+            if len(group_states) == 1:
+                state = group_states[0]
+                elapsed_s = (state.accumulated_ms or 0) // 1000
+                elapsed_str = (
+                    f"{elapsed_s}s" if elapsed_s < 60 else f"{elapsed_s // 60}m {elapsed_s % 60}s"
+                )
+                name_str = colorize(state.loop_name, "1")
+                state_str = colorize(state.current_state, "34")
+                status_color = _STATUS_COLORS.get(state.status, "2")
+                status_str = colorize(f"[{state.status}]", status_color)
+                elapsed_colored = colorize(elapsed_str, "2")
+                print(
+                    f"  {name_str}: {state_str} (iteration {state.iteration})"
+                    f" {status_str} {elapsed_colored}"
+                )
+            else:
+                # Multiple instances: show a grouped summary
+                name_str = colorize(loop_name_key, "1")
+                statuses = ", ".join(
+                    colorize(f"[{s.status}]", _STATUS_COLORS.get(s.status, "2"))
+                    for s in group_states
+                )
+                count_str = colorize(f"({len(group_states)} instances)", "2")
+                print(f"  {name_str}: {count_str} {statuses}")
         return 0
 
     builtin_only = getattr(args, "builtin", False)

@@ -3,6 +3,13 @@ id: ENH-1356
 type: ENH
 priority: P2
 parent_issue: ENH-1355
+confidence_score: 95
+outcome_confidence: 85
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
+completed_at: 2026-05-03T20:53:16Z
 ---
 
 # ENH-1356: Multi-Instance Loop — Core Implementation + Tests
@@ -16,6 +23,14 @@ Decomposed from ENH-1355. Add `_find_instances` to `lifecycle.py` to discover al
 ## Parent Issue
 
 Decomposed from ENH-1355: Multi-Instance Loop — Aggregated CLI (status/stop/resume/list) + Docs & Skills
+
+## Current Behavior
+
+After ENH-1354 merged, every `ll-loop run` invocation writes state to an instance-ID-scoped file (e.g., `autodev-20260503T122306.state.json`). However, `cmd_status`, `cmd_stop`, and `cmd_resume` in `lifecycle.py` still construct a `StatePersistence` object using the bare logical name (e.g., `autodev.state.json`), which no longer exists for any active loop. As a result:
+- `ll-loop status <name>` fails to find any state and reports nothing.
+- `ll-loop stop <name>` fails to terminate running instances.
+- `ll-loop resume <name>` fails to find the awaiting-continuation state.
+- `ll-loop list --running` shows duplicate rows when multiple instances of the same loop are running.
 
 ## Expected Behavior
 
@@ -183,11 +198,29 @@ _Added by `/ll:refine-issue` — verified against current code:_
 - **Risk**: Low — `_find_instances` is additive; fallback to single instance preserves current behavior
 - **Breaking Change**: No
 
+## Labels
+
+`enhancement`, `multi-instance`, `fsm-loops`, `cli`
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-03T20:32:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9801a914-60fd-4c39-bd37-f692c9dedc08.jsonl`
 - `/ll:wire-issue` - 2026-05-03T20:27:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/879ddfc0-5808-4a4e-a0a4-51d0bf3fb3a9.jsonl`
 - `/ll:refine-issue` - 2026-05-03T20:21:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94486e63-c38d-4bfc-93ce-d33e07f115ca.jsonl`
 - `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995ae302-a902-4497-a747-428e14fa83da.jsonl`
+- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a287343-6cbe-4223-ac2d-83767cd52baf.jsonl`
 
 ---
 
-**Open** | Created: 2026-05-03 | Priority: P2
+## Resolution
+
+Implemented all 14 steps from the issue:
+
+- **`persistence.py`**: Promoted `_INSTANCE_SUFFIX` to module level; added `_find_instances(loop_name, running_dir)` that globs `{loop_name}-*.state.json` (instance-scoped) and `{loop_name}.state.json` (legacy), returning `list[tuple[str | None, LoopState]]`.
+- **`lifecycle.py`**: Rewrote `cmd_status` (aggregate numbered-list for 2+ instances), `cmd_stop` (terminates all running instances), `cmd_resume` (errors with instance list when 2+ resumable). Added `_find_instances` as module-level import to enable `patch("little_loops.cli.loop.lifecycle._find_instances")`.
+- **`info.py`**: Updated `cmd_list --running` to group by `loop_name`, rendering multi-instance loops as a single grouped row.
+- **Tests updated**: `test_cli_loop_lifecycle.py`, `test_cli_loop_background.py`, `test_ll_loop_commands.py`, `test_cli.py` — all `StatePersistence.load_state` patches replaced with `lifecycle._find_instances` patches.
+- **New tests**: `TestFindInstances` (6 cases), `TestCmdStatusMultiInstance`, `TestCmdStopMultiInstance`, `TestCmdResumeMultiInstance`, `TestCmdListMultiInstance`.
+
+All 377 affected tests pass; 5 pre-existing unrelated failures unchanged.
+
+**Closed** | Completed: 2026-05-03 | Priority: P2

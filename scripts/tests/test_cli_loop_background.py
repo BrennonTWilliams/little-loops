@@ -557,13 +557,12 @@ class TestCmdStopWithPid:
         alive_seq = [True, False]
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("little_loops.fsm.persistence.StatePersistence"),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
-            mock_persistence = mock_cls.return_value
-            mock_persistence.load_state.return_value = mock_state
             from little_loops.cli.loop.lifecycle import cmd_stop
 
             result = cmd_stop("test-loop", tmp_path, logger)
@@ -584,11 +583,9 @@ class TestCmdStopWithPid:
         pid_file.write_text("99999")
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
         ):
-            mock_persistence = mock_cls.return_value
-            mock_persistence.load_state.return_value = mock_state
             from little_loops.cli.loop.lifecycle import cmd_stop
 
             result = cmd_stop("test-loop", tmp_path, logger)
@@ -602,9 +599,10 @@ class TestCmdStopWithPid:
         mock_state = MagicMock()
         mock_state.status = "running"
 
-        with patch("little_loops.fsm.persistence.StatePersistence") as mock_cls:
-            mock_persistence = mock_cls.return_value
-            mock_persistence.load_state.return_value = mock_state
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+        ):
             from little_loops.cli.loop.lifecycle import cmd_stop
 
             result = cmd_stop("test-loop", tmp_path, logger)
@@ -629,11 +627,11 @@ class TestCmdStopWithPid:
         pid_file.write_text("99999")
 
         with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
         ):
             mock_persistence = mock_cls.return_value
-            mock_persistence.load_state.return_value = mock_state
             from little_loops.cli.loop.lifecycle import cmd_stop
 
             result = cmd_stop("test-loop", tmp_path, logger)
@@ -664,11 +662,10 @@ class TestCmdStatusWithPid:
         pid_file.write_text("12345")
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             from little_loops.cli.loop.lifecycle import cmd_status
 
             result = cmd_status("test-loop", tmp_path, logger)
@@ -697,11 +694,10 @@ class TestCmdStatusWithPid:
         pid_file.write_text("99999")
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             from little_loops.cli.loop.lifecycle import cmd_status
 
             result = cmd_status("test-loop", tmp_path, logger)
@@ -725,10 +721,9 @@ class TestCmdStatusWithPid:
         mock_state.continuation_prompt = None
 
         with (
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
             patch("builtins.print") as mock_print,
         ):
-            mock_cls.return_value.load_state.return_value = mock_state
             from little_loops.cli.loop.lifecycle import cmd_status
 
             result = cmd_status("test-loop", tmp_path, logger)
