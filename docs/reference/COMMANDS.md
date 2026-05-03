@@ -527,25 +527,34 @@ SR-* findings are listed alongside FA-* findings in the Issues section of the ou
 **See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`
 
 ### `/ll:analyze-loop`
-Analyze loop execution history to synthesize actionable issues from failure patterns, SIGKILL terminations, retry floods, and performance anomalies. Auto-selects the most recently interrupted/failed loop, or analyzes a named loop when specified.
+Analyze loop execution history to synthesize actionable issues from fault signals (BUG-class anomalies that broke the run) and effectiveness signals (ENH-class observations that the run completed but did not do useful work). Auto-selects the most recently interrupted/failed loop, or analyzes a named loop when specified.
 
 **Arguments:**
 - `loop_name` (optional): Loop name to analyze. If omitted, auto-selects the most recently updated interrupted/failed loop.
 - `tail` (optional): Limit history events analyzed to the N most recent (default 200)
 
 **Signal detection rules:**
+
+_Fault Signals (BUG-class — broke the run):_
 - Action `exit_code ≠ 0` repeated 3+ times on same state → BUG P2
 - `loop_complete.terminated_by == "signal"` (SIGKILL) → BUG P2
 - `loop_complete.terminated_by == "error"` (FATAL_ERROR) → BUG P2
-- True retry state (has `on_retry`/`max_retries`) entered 5+ times, or `retry_exhausted` event present → ENH P3; intentional cycling state (no retry config) noted informally unless >20 consecutive re-entries → ENH P4
-- `rate_limit_exhausted` event present on a state (max rate-limit retries burned through) → BUG P3; surfaces upstream rate-limit pressure separate from generic retry loops. `rate_limit_waiting` heartbeat events in the same window indicate in-progress sleeps contributing to the budget.
-- Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
 - `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
 - State has `loop:` set AND `on_yes == on_no` (config-based, detected from FSM structure) → `BUG — Sub-loop verdict discarded` P3; child loop result is silently dropped regardless of outcome
+- `rate_limit_exhausted` event present on a state (max rate-limit retries burned through) → BUG P3; surfaces upstream rate-limit pressure separate from generic retry loops. `rate_limit_waiting` heartbeat events in the same window indicate in-progress sleeps contributing to the budget.
+
+_Effectiveness Signals (ENH-class — completed but did not do useful work):_
+- Stub action body in resolved state map (e.g. `echo "5"` in a `score`/`evaluate` state, `echo "TODO …"`, `echo "Replace …"`) → ENH P2; surfaces unimplemented action stubs as a static `static_issues` entry distinct from the history-driven signal list
+- `loop_complete.iterations == 1` AND no apply/refine/update/write/commit-prefixed state was visited → ENH P3 — likely phantom convergence (Signal 1 — iter-1 convergence without apply)
+- `evaluate` state route distribution >95% to a single branch (≥10 evaluations single-run, or ≥20 across 5 most recent runs) → ENH P3 (Signal 2 — degenerate gate)
+- Downstream state references `${captured.X.output}` AND producing state for capture `X` emits empty/whitespace output in >20% of occurrences (≥3 samples) → ENH P3 (Signal 4 — capture vacuum)
+- `evaluate.type` is `output_numeric` or `convergence` AND captured value has stddev <1% of mean across ≥3 iterations AND has not crossed `evaluate.target` → ENH P3 (Signal 5 — numeric trajectory stall)
+- True retry state (has `on_retry`/`max_retries`) entered 5+ times, or `retry_exhausted` event present → ENH P3; intentional cycling state (no retry config) noted informally unless >20 consecutive re-entries → ENH P4
+- Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
 
 **Sub-loop visibility:** Step 2 uses `--resolved --json` so states with a `_subloop` key expose the child loop's resolved state map one level deep. Sub-loop states are classified separately and do not contribute to parent loop event counts.
 
-**Output format:** Each run begins with an Execution Summary preamble before the numbered signal list:
+**Output format:** Each run begins with an Execution Summary preamble before two grouped signal lists (`Fault Signals` and `Effectiveness Signals`); either heading is omitted when its count is zero:
 
 ```
 ### Execution Summary
@@ -559,6 +568,18 @@ Analyze loop execution history to synthesize actionable issues from failure patt
 
 **Pattern note**: <sub-threshold behavioral observation>
 (omitted when no sub-threshold patterns are detected)
+
+### Fault Signals (N)
+
+  [1] BUG P2 — <title>
+  [2] BUG P3 — <title>
+  ...
+
+### Effectiveness Signals (M)
+
+  [1] ENH P2 — <title>
+  [2] ENH P3 — <title>
+  ...
 ```
 
 **Usage:**
@@ -743,7 +764,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `create-eval-from-issues`^ | Generate eval harness YAML from issue IDs |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
-| `analyze-loop`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from failure signals |
+| `analyze-loop`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from fault and effectiveness signals |
 | `assess-loop`^ | Audit loop goal achievement: checks artifact mutations, threshold contracts, phantom convergence, and produces ranked improvement proposals |
 | `cleanup-loops`^ | Find and clean stuck or stale loop processes |
 | `rename-loop`^ | Rename a loop and update all references |

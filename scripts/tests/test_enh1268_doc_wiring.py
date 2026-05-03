@@ -64,6 +64,20 @@ class TestAnalyzeLoopCommandsWiring:
             "the 'BUG — Sub-loop verdict discarded' signal"
         )
 
+    def test_fault_signals_grouping_present(self) -> None:
+        section = self._analyze_loop_section()
+        assert "Fault Signals" in section, (
+            "docs/reference/COMMANDS.md /ll:analyze-loop entry must document "
+            "the 'Fault Signals' output grouping introduced by ENH-1335"
+        )
+
+    def test_effectiveness_signals_grouping_present(self) -> None:
+        section = self._analyze_loop_section()
+        assert "Effectiveness Signals" in section, (
+            "docs/reference/COMMANDS.md /ll:analyze-loop entry must document "
+            "the 'Effectiveness Signals' output grouping introduced by ENH-1335"
+        )
+
 
 class TestAssessLoopCommandsWiring:
     """docs/reference/COMMANDS.md must document the Goal-vs-Outcome Scorecard output block."""

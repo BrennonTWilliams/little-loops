@@ -224,7 +224,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `create-loop`^ | Automation & Loops | Create new FSM loop configuration interactively |
 | `create-eval-from-issues`^ | Automation & Loops | Generate eval harness YAML from issue IDs |
 | `review-loop`^ | Automation & Loops | Review and improve existing FSM loop configurations |
-| `analyze-loop`^ | Automation & Loops | Analyze loop execution history to synthesize actionable issues from failures |
+| `analyze-loop`^ | Automation & Loops | Analyze loop execution history to synthesize actionable issues from fault and effectiveness signals |
 | `assess-loop`^ | Automation & Loops | Audit loop goal achievement: artifact mutations, threshold contracts, phantom convergence detection |
 | `cleanup-loops`^ | Automation & Loops | Find stuck/stale loops, diagnose root causes, and clean them up |
 | `rename-loop`^ | Automation & Loops | Rename a loop and update all references to maintain full functionality |
