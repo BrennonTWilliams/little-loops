@@ -831,12 +831,13 @@ Each parallel worker operates in a separate git worktree:
 
 ```
 .worktrees/
-├── worker-1/           # Full repo copy
+├── worker-1/                    # ll-parallel worker (full repo copy)
 │   ├── src/
 │   ├── tests/
 │   └── .claude/
 ├── worker-2/
-└── worker-N/
+├── worker-N/
+└── <timestamp>-<loop-name>/     # ll-loop --worktree isolated run
 ```
 
 **Benefits**:

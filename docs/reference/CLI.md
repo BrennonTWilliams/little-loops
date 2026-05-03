@@ -325,6 +325,8 @@ Run a loop.
 
 When `ll-loop run --queue` encounters a scope conflict with a running loop, it creates `<loops_dir>/.queue/<uuid>.json` before entering the wait and removes it on lock acquisition, timeout, error, or process exit (via `atexit`). The file lets external observers (e.g. a dashboard) enumerate loops that are waiting on a scope lock without scanning process state.
 
+**Ordering:** When multiple loops are waiting on the same lock, they acquire it in FIFO (arrival) order — the first loop to enqueue is the first to run after the current holder exits.
+
 **Entry schema:**
 
 ```json

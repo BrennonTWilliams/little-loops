@@ -553,7 +553,7 @@ Skipped (1): BUG-17
 | `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
 | `test-coverage-improvement` | Measure test coverage, identify uncovered code paths, write tests for highest-risk gaps, and converge when coverage target is met |
-| `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
+| `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches from both `ll-parallel` workers and `ll-loop --worktree` runs |
 
 ### `context-health-monitor` — Scratch File Pressure Monitor
 
@@ -1195,7 +1195,7 @@ scope:
   - "tests/"
 ```
 
-If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead. The maximum wait is controlled by `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default: 86400 s / 24 h). Decrease it for fail-fast CI environments; increase it for multi-day batch processing.
+If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead. The maximum wait is controlled by `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default: 86400 s / 24 h). Decrease it for fail-fast CI environments; increase it for multi-day batch processing. When multiple loops queue for the same lock, they acquire it in FIFO (arrival) order.
 
 ## Background Mode
 
