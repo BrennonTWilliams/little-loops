@@ -1,0 +1,20 @@
+name: analysis-stub-action
+description: "Score generated outputs using a reward model and accept high scorers"
+initial: generate
+states:
+  generate:
+    action: "Produce a candidate output for the current input"
+    action_type: prompt
+    on_yes: score
+    on_no: generate
+    on_error: generate
+  score:
+    action: 'echo "5"'
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: generate
+    on_error: generate
+  done:
+    terminal: true

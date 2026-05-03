@@ -46,6 +46,18 @@ class TestAnalyzeLoopSkillWiring:
             "skills/analyze-loop/SKILL.md must contain the 'Step 3b' semantic synthesis heading"
         )
 
+    def test_fault_signals_heading_present(self) -> None:
+        assert "### Fault Signals" in ANALYZE_LOOP.read_text(), (
+            "skills/analyze-loop/SKILL.md Step 5 must group output under "
+            "'### Fault Signals (N)' heading"
+        )
+
+    def test_effectiveness_signals_heading_present(self) -> None:
+        assert "### Effectiveness Signals" in ANALYZE_LOOP.read_text(), (
+            "skills/analyze-loop/SKILL.md Step 5 must group output under "
+            "'### Effectiveness Signals (M)' heading"
+        )
+
 
 class TestApiReferenceWiring:
     def test_rate_limit_max_wait_seconds_present(self) -> None:

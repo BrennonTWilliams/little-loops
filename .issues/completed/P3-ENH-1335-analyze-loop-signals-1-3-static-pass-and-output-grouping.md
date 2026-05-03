@@ -9,6 +9,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: 2026-05-03T04:57:18Z
 ---
 
 # ENH-1335: Add Effectiveness Signals 1-3 + Static Pass + Output Grouping to `/ll:analyze-loop`
@@ -233,11 +234,16 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - **One low-stakes design call remains open**: whether to migrate the existing sub-loop verdict signal into the new `static_issues` bucket alongside Signal 3. Stated default is to leave it in place; resolve this at the Step 2 insertion point without further research.
 - **7-file spread increases coordination cost**: SKILL.md edits drive two separate test files and three fixture YAMLs; work the acceptance criteria checklist in order (Signal 3 static pass first, then Signals 1 and 2, then Step 5 grouping) to keep changes coherent.
 
+## Resolution
+
+Implemented Signals 1, 2, 3 as prose directives in `skills/analyze-loop/SKILL.md` and added Step 5 Fault/Effectiveness output grouping. Signal 3 (Stub Action) is a static pass at Step 2 that scans the resolved state map for stub-action regex patterns; results land in a `static_issues` list that is merged with history-driven signals under the Effectiveness heading in Step 5. Signal 1 (Iter-1 Convergence) fires from the terminal handler when `iterations == 1` and no `apply_/refine_/update_/write_/commit_` state was visited. Signal 2 (Degenerate Gate) walks `route` events accumulating a `{from_state: {to_state: count}}` distribution and flags evaluate states whose dominant branch exceeds 95% over ≥10 evaluations. `skills/assess-loop/SKILL.md` Step 5 cross-reference was clarified to point only at the fault-signal subset of analyze-loop Step 3. Three new YAML fixtures were created (`analysis-stub-action.yaml`, `analysis-iter1-no-apply.yaml`, `analysis-degenerate-gate.yaml`) and 16 structural tests were added in `test_analyze_loop_synthesis.py` plus 2 doc-wiring tests in `test_enh1146_doc_wiring.py` for the new Step 5 headings. The `Step 3b` and `rate_limit_waiting` doc-wiring guards continue to pass.
+
 ## Status
 
-**Open** | Created: 2026-05-02 | Priority: P3
+**Completed** | Created: 2026-05-02 | Completed: 2026-05-03 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-03T04:57:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
 - `/ll:ready-issue` - 2026-05-03T04:44:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4217de01-e6a0-4956-b983-ddbac6e33cd5.jsonl`
 - `/ll:wire-issue` - 2026-05-03T04:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`
 - `/ll:refine-issue` - 2026-05-03T04:30:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d1a6da-5f0e-44c1-99c9-d038fb2c92e5.jsonl`

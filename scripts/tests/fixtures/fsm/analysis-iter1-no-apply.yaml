@@ -1,0 +1,14 @@
+name: analysis-iter1-no-apply
+description: "Check whether the gradient signal indicates convergence and exit if so"
+initial: route_convergence
+states:
+  route_convergence:
+    action: "check_convergence.sh"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: route_convergence
+    on_error: route_convergence
+  done:
+    terminal: true

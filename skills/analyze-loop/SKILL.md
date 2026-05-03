@@ -98,6 +98,28 @@ This outputs a JSON object with a `"states"` key mapping state names to their co
 
 States with a `_subloop` key contain the child loop's resolved state map one level deep. These entries are used for sub-loop signal classification and goal alignment analysis (see Step 3 and Step 3b). Sub-loop states do not contribute to parent loop event counts.
 
+### Static Pass: Stub Action Detection (Signal 3)
+
+Before walking the event history, scan the resolved state map for **stub action bodies** — `action` text that ships in the loop YAML but is inert (a literal `echo` placeholder rather than real work). This is a config-time check; results are emitted into a separate `static_issues` list distinct from the history-driven `signals` list of Step 3.
+
+For each state in the resolved state map, read its `action` body and apply these regex patterns:
+
+| Pattern | Scope | Rationale |
+|---|---|---|
+| `^echo "\d+"$` | states whose name contains `score`, `evaluate`, `judge`, `reward` | constant numeric verdict (e.g. `echo "5"` in `rl-rlhf.yaml::score`) |
+| `^echo "Replace.*"$` or `^echo "TODO.*"$` | any state | placeholder text shipped as production code |
+| `^echo "[A-Z_]+"$` | states whose `evaluate.type == "output_string"` | hard-coded literal verdict echo |
+
+For each match, emit a Signal 3 entry into `static_issues`:
+
+- **Type/Priority**: `ENH P2`
+- **Title**: `"<state> action is a stub (<echo body>) — loop ships unimplemented"`
+- **Include**: state name, the matched action body, the loop name
+
+**Note**: this static pass complements (does not replace) the existing config-based `BUG — Sub-loop verdict discarded` rule in Step 3. That rule remains where it is (history-driven `### Signal Rules` bucket) for backward compatibility; only the new Signal 3 results go into `static_issues`. Both static and history-driven effectiveness signals are merged in Step 5 under the `Effectiveness Signals` heading.
+
+(Reference: the closest existing precedent for regex over `state.action` bodies is `_collect_action_text()` + `re.search()` in `scripts/tests/test_builtin_loops.py` — same shape: iterate the state map, read `action`, regex-match.)
+
 **Parse the events** into a structured list for classification. Key fields by event type:
 
 | Event type | Key fields |
@@ -142,6 +164,32 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Priority: P2
 - Title: `"<loop_name> loop terminated with error in <final_state> state"`
 - Include: `final_state`, `iterations`, last 5 events before termination
+
+#### ENH — Iteration-1 Convergence Without Apply (Signal 1)
+- **Class**: Effectiveness signal (terminal-event handler).
+- **Trigger**: `loop_complete` with `iterations == 1` (note: the event payload field is `iterations`, an int — see the Step 2 event-payload table) AND no state matching the apply/refine pattern was visited during the run. The apply-state prefix list is:
+
+  `APPLY_STATE_PREFIXES = ("apply_", "refine_", "update_", "write_", "commit_")`
+
+  (Documented in prose form parallel to the existing `DECISION_PREFIXES` and `GATE_STATE_PREFIXES` tuples in `scripts/tests/test_analyze_loop_synthesis.py` and `scripts/tests/test_review_loop.py`. Matching is performed by the LLM in-context against `state_enter.state` names; no Python code is added.)
+
+  Track an `apply_state_visit` flag while iterating `state_enter` events: set it true if any visited state name starts with one of the `APPLY_STATE_PREFIXES`. After the walk, evaluate the trigger.
+- **Priority**: P3
+- **Title**: `"<loop_name> converged on iteration 1 without entering apply/refine state — likely phantom convergence"`
+- **Include**: `final_state`, `iterations`, the visited state sequence (compact, deduplicated)
+- **Rationale**: a loop that terminates after one iteration without ever visiting an apply/refine/update/write/commit state has likely returned a default verdict from a `check_*`/`evaluate_*` gate without doing the productive work the loop was designed to perform.
+
+#### ENH — Degenerate Gate Route Distribution (Signal 2)
+- **Class**: Effectiveness signal (history walker).
+- **Trigger**: an `evaluate` state's `route` event distribution shows >95% to a single branch when the per-state evaluation count meets a threshold:
+  - **Single-run window**: ≥10 evaluations in the current run with >95% to one branch
+  - **Multi-run window**: ≥20 evaluations across the most recent 5 runs with >95% to one branch (when prior-run history is available; otherwise apply only the single-run window)
+
+  Maintain a `route_distribution: {from_state: {to_state: count}}` dict, updated on every `route` event during the Step 3 walk (the `route` event payload exposes `from` and `to`, per the Step 2 event-payload table). After the walk, for each `from_state` whose total count meets the threshold, compute the dominant-branch share; flag if it exceeds 95%.
+- **Priority**: P3
+- **Title**: `"<state> route fan-out is degenerate (<N>/<M> evaluations took <branch>)"`
+- **Include**: state name, total evaluations `<M>`, dominant branch name and count `<N>/<M>`, percentage
+- **Rationale**: an `evaluate` state whose route is overwhelmingly one-sided is not adding signal — the gate is either always-pass or always-fail and could be removed or replaced with an unconditional transition.
 
 #### ENH — Retry flood (true retries only)
 - **Classification**: Before emitting this signal, check the loop config (loaded in Step 2) for the flagged state. A state is a **true retry state** if its config has `on_retry` or `max_retries` fields. A state is an **intentional cycling state** if it has neither (uses `on_no`/`on_yes` routing only).
@@ -309,7 +357,7 @@ If all signals are duplicates, report: "All <N> signals already have active issu
 
 ## Step 5: Present Proposals and Confirm
 
-Display the analysis output, always starting with the Execution Summary from Step 3b:
+Display the analysis output, always starting with the Execution Summary from Step 3b. Signals are grouped into two markdown-heading buckets — **Fault Signals** (BUG-class anomalies that broke the run: action failure, SIGKILL, FATAL_ERROR, evaluate failure, sub-loop verdict discarded, rate-limit exhaustion) and **Effectiveness Signals** (ENH-class observations that the run completed but did not do useful work: stub action from the Step 2 `static_issues` list, retry flood, slow state, iter-1 convergence without apply, degenerate gate). Omit either heading when its count is zero.
 
 ```
 Analyzing loop: <loop_name> (last updated: <updated_at>)
@@ -317,16 +365,22 @@ Events analyzed: <N> events
 
 <Execution Summary block from Step 3b>
 
-Found <M> issue signal(s):
+### Fault Signals (N)
 
   [1] BUG P2 — <title>
+  [2] BUG P3 — <title>
+  ...
+
+### Effectiveness Signals (M)
+
+  [1] ENH P2 — <title>
   [2] ENH P3 — <title>
   ...
 ```
 
-If `M == 0` (no signals passed deduplication): output the Execution Summary and stop — do not ask for confirmation.
+The total signal count for downstream confirmation is `N + M` (combine both buckets when prompting). If `N + M == 0` (no signals passed deduplication): output the Execution Summary and stop — do not ask for confirmation.
 
-Otherwise, use `AskUserQuestion` to ask:
+Otherwise, use `AskUserQuestion` to ask (where `<M>` is the combined `Fault + Effectiveness` count):
 
 ```
 Create these <M> issues? [Y/n/select]

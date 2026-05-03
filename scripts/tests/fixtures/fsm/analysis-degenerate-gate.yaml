@@ -1,0 +1,14 @@
+name: analysis-degenerate-gate
+description: "Check the outcome of a process and retry until success threshold is met"
+initial: check_outcome
+states:
+  check_outcome:
+    action: "evaluate_outcome.sh"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: check_outcome
+    on_error: check_outcome
+  done:
+    terminal: true
