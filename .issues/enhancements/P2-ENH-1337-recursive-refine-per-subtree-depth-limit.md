@@ -55,6 +55,92 @@ Our loop currently relies entirely on `max_iterations: 500` as a defense, but it
 5. In `enqueue_children` / `enqueue_or_skip`, when prepending children, append `child_id (parent_depth + 1)` to the depth map.
 6. In `done` summary, partition skipped IDs by reason file (`.loops/tmp/recursive-refine-skipped-depth.txt` vs `recursive-refine-skipped-other.txt`).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`check_depth` gate state pattern** (model: `check_refine_limit` in `refine-to-ready-issue.yaml`):
+```yaml
+check_depth:
+  action: |
+    MAX_DEPTH=$(python3 << 'PYEOF'
+    import json
+    from pathlib import Path
+    p = Path('.ll/ll-config.json')
+    cfg = {}
+    if p.exists():
+        try:
+            cfg = json.loads(p.read_text())
+        except Exception:
+            pass
+    print(cfg.get('commands', {}).get('recursive_refine', {}).get('max_depth', ${context.max_depth}))
+    PYEOF
+    )
+    [ -z "$MAX_DEPTH" ] && MAX_DEPTH=${context.max_depth}
+    CURRENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+    if [ "$CURRENT_DEPTH" -ge "$MAX_DEPTH" ]; then
+      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-depth.txt
+      echo 1
+    else
+      echo 0
+    fi
+  action_type: shell
+  evaluate:
+    type: output_numeric
+    operator: lt
+    target: 1
+  on_yes: run_size_review
+  on_no: dequeue_next
+  on_error: run_size_review
+```
+
+**Depth-map lookup in `dequeue_next`** (append after the existing head/tail pop):
+```bash
+DEPTH=$(grep "^$CURRENT " .loops/tmp/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}' || echo 0)
+printf '%s' "$DEPTH" > .loops/tmp/recursive-refine-current-depth.txt
+```
+
+**`parse_input` additions** (after existing queue initialization):
+```bash
+while IFS= read -r id; do echo "$id 0"; done \
+  < .loops/tmp/recursive-refine-queue.txt \
+  > .loops/tmp/recursive-refine-depth-map.txt
+> .loops/tmp/recursive-refine-skipped-depth.txt
+```
+
+**`enqueue_children` / `enqueue_or_skip` addition** (after prepending each child to queue):
+```bash
+PARENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+while IFS= read -r child; do
+  echo "$child $((PARENT_DEPTH + 1))" >> .loops/tmp/recursive-refine-depth-map.txt
+done < .loops/tmp/recursive-refine-new-children.txt
+```
+
+**`done` state additions** (read both skip files):
+```bash
+DEPTH_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-depth.txt 2>/dev/null \
+  | grep -v '^[[:space:]]*$' | sort -u || true)
+DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "$${DEPTH_LIST:-none}"
+```
+
+**`config-schema.json` addition** (model: existing `commands.confidence_gate` object at lines 351–421):
+```json
+"recursive_refine": {
+  "type": "object",
+  "description": "Configuration for the recursive-refine loop",
+  "properties": {
+    "max_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3,
+      "description": "Maximum decomposition depth per subtree (default 3)"
+    }
+  }
+}
+```
+
 ## Acceptance Criteria
 
 - [ ] `recursive-refine.yaml` exposes `max_depth` in `context:` and reads `.ll/ll-config.json` override.
@@ -73,16 +159,20 @@ Our loop currently relies entirely on `max_iterations: 500` as a defense, but it
 
 ### Files to Modify
 - `scripts/little_loops/loops/recursive-refine.yaml` — add `max_depth` to `context:`, insert `check_depth` state, update `parse_input`/`dequeue_next`/`enqueue_children`/`enqueue_or_skip`/`done`.
+- `config-schema.json` — add `commands.recursive_refine` object with `max_depth` integer property (see existing `commands.confidence_gate` object at lines 351–421 as the pattern).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/ll_loop.py` — loop runner; no direct change but consumes the YAML.
 - `scripts/tests/test_loops_recursive_refine.py` — exercises the loop end-to-end.
 
 ### Similar Patterns
-- Other FSM loops with per-iteration counters (e.g., `scripts/little_loops/loops/refine-to-ready-issue.yaml` for state structure conventions).
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:check_refine_limit` — reads a counter from a tmp file, prints the value, evaluated with `output_numeric` + `operator: lt` + `target:`; exact model for the `check_depth` gate state.
+- `scripts/little_loops/loops/recursive-refine.yaml:check_broke_down` — existing gate in the same loop using `output_numeric`; shows the on_yes/on_no/on_error routing convention.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:check_lifetime_limit` — Python inline config-override pattern (`cfg.get('commands', {}).get('max_refine_count', ${context.max_refine_count})`) to use in `check_depth` for reading `commands.recursive_refine.max_depth` from `.ll/ll-config.json`.
 
 ### Tests
-- `scripts/tests/test_loops_recursive_refine.py` — add a 4-level synthetic decomposition fixture with `max_depth: 2`.
+- `scripts/tests/test_loops_recursive_refine.py` — **file does not yet exist; must be created**. Follow the fixture pattern from `scripts/tests/test_ll_loop_execution.py:TestEndToEndExecution` and the `_make_mock_popen_factory` helper (lines 26–39) for mocking subprocess. Add a synthetic 4-level decomposition fixture with `max_depth: 2`.
+- `scripts/tests/test_builtin_loops.py:TestBuiltinLoopFiles.test_all_validate_as_valid_fsm` — will automatically validate the new `check_depth` state on the next run; no changes needed.
 
 ### Documentation
 - `docs/reference/loops/recursive-refine.md` (if present) — document `max_depth` parameter.
@@ -127,4 +217,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-03T15:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1e1f2e2-5a68-43cc-a7e0-9ee4146c15bd.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:format-issue` - 2026-05-03T04:41:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`

@@ -6,7 +6,7 @@ status: open
 discovered_date: 2026-05-02
 discovered_by: research-synthesis
 related: [ENH-1342]
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-1340: Aggregate Children's Outcomes Back to Parent in `recursive-refine`
@@ -45,6 +45,8 @@ Today our loop is "fire and forget" at the parent boundary — it loses the pare
 
 ### Option A: Lightweight TSV record + summary block only
 
+> **Selected:** Option A — Directly extends the established write-during-run/read-at-done idiom already used in `recursive-refine.yaml`; zero risk to completed files; one-edge wiring redirect.
+
 Add the TSV writer to `enqueue_children` and `enqueue_or_skip`; add a final aggregation pre-`done` state (`aggregate_decomposition`) that prints the rollup but does *not* modify the moved-to-`completed/` parent files. Cheapest, no risk to issue files.
 
 ### Option B: Lightweight TSV record + parent-file footer rewrite
@@ -52,6 +54,25 @@ Add the TSV writer to `enqueue_children` and `enqueue_or_skip`; add a final aggr
 Same as A, plus the aggregation state appends a `## Parent Aggregation` markdown section to each parent file in `.issues/completed/` listing child outcomes. Higher value for `analyze-history` / `ll-deps` but introduces a write-after-move on `completed/` files (need to confirm policy).
 
 **Default recommendation**: A first, B as a follow-up only if the rollup proves useful in `analyze-history`. The `decision_needed: true` flag is set so `/ll:decide-issue` evaluates this against codebase conventions.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-03.
+
+**Selected**: Option A: Lightweight TSV record + summary block only
+
+**Reasoning**: Option A directly extends the write-during-run/read-at-done idiom already established in `recursive-refine.yaml` (`passed.txt`, `skipped.txt`, `queue.txt`), with a direct precedent in `autodev.yaml`'s three-artifact `done` reader. Option B is eliminated because no existing code modifies files in `completed/` after the initial move, and neither `analyze-history` nor `ll-deps` reads completed file bodies in a structured way — the footer would provide no concrete value without additional new infrastructure in `CompletedIssue`/`parse_completed_issue`.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 2/3 | 3/3 | 11/12 |
+| Option B | 1/3 | 1/3 | 1/3 | 1/3 | 4/12 |
+
+**Key evidence**:
+- **Option A**: `recursive-refine.yaml` already initializes `passed.txt`/`skipped.txt`/`queue.txt` in `parse_input` and reads them in `done`; `dequeue_next`'s `on_no: done` edge is the only wiring change needed; `auto-refine-and-implement.yaml` reads `recursive-refine-passed.txt` confirming the tmp files are a stable inter-loop interface.
+- **Option B**: `issue_lifecycle.py:_move_issue_to_completed()` writes content once at move time — no post-move writes exist anywhere; `ll-deps` reads only filenames from `completed/`; `analyze-history` parses only frontmatter fields and undifferentiated body text — a `## Parent Aggregation` section would require new `CompletedIssue` model fields and parsing logic to be useful.
 
 ## Acceptance Criteria
 
@@ -125,4 +146,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-05-03T15:27:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46210245-3b62-4920-b3d0-c0a713e429eb.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:format-issue` - 2026-05-03T04:41:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`
