@@ -1607,8 +1607,7 @@ class TestLoadAndValidate:
         unknown_warnings = [
             w
             for w in warnings
-            if w.severity == ValidationSeverity.WARNING
-            and "Unknown top-level" in w.message
+            if w.severity == ValidationSeverity.WARNING and "Unknown top-level" in w.message
         ]
         assert len(unknown_warnings) == 1
         assert "foo" in unknown_warnings[0].message
@@ -1635,18 +1634,13 @@ class TestLoadAndValidate:
         """ENH-1331: loop YAML without description: produces a WARNING."""
         loop_yaml = tmp_path / "no-description.yaml"
         loop_yaml.write_text(
-            "name: test-loop\n"
-            "initial: check\n"
-            "states:\n"
-            "  check:\n"
-            "    terminal: true\n"
+            "name: test-loop\ninitial: check\nstates:\n  check:\n    terminal: true\n"
         )
         _, warnings = load_and_validate(loop_yaml)
         description_warnings = [
             w
             for w in warnings
-            if w.severity == ValidationSeverity.WARNING
-            and "description" in w.message.lower()
+            if w.severity == ValidationSeverity.WARNING and "description" in w.message.lower()
         ]
         assert len(description_warnings) == 1
         assert "description" in description_warnings[0].message
@@ -1663,9 +1657,7 @@ class TestLoadAndValidate:
             "    terminal: true\n"
         )
         _, warnings = load_and_validate(loop_yaml)
-        description_warnings = [
-            w for w in warnings if "No 'description' field" in w.message
-        ]
+        description_warnings = [w for w in warnings if "No 'description' field" in w.message]
         assert description_warnings == []
 
     def test_missing_name_field(self, fsm_fixtures: Path) -> None:

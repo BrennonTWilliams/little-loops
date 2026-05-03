@@ -85,8 +85,7 @@ class TestDescriptionFieldValidation:
         description_warnings = [
             e
             for e in errors
-            if e.severity == ValidationSeverity.WARNING
-            and "description" in e.message.lower()
+            if e.severity == ValidationSeverity.WARNING and "description" in e.message.lower()
         ]
         assert len(description_warnings) == 1
         assert description_warnings[0].path == "<root>"
@@ -104,8 +103,7 @@ class TestDescriptionFieldValidation:
         description_warnings = [
             e
             for e in errors
-            if e.severity == ValidationSeverity.WARNING
-            and "No 'description' field" in e.message
+            if e.severity == ValidationSeverity.WARNING and "No 'description' field" in e.message
         ]
         assert description_warnings == []
 
@@ -121,8 +119,7 @@ class TestDescriptionFieldValidation:
         description_warnings = [
             e
             for e in errors
-            if e.severity == ValidationSeverity.WARNING
-            and "No 'description' field" in e.message
+            if e.severity == ValidationSeverity.WARNING and "No 'description' field" in e.message
         ]
         assert len(description_warnings) == 1
 

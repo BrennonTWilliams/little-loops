@@ -687,7 +687,9 @@ class TestOrphanedWorktreeCleanup:
             git_wt_dir = repo_path / ".git" / "worktrees" / wt_name
             loop_git_wt_dir = repo_path / ".git" / "worktrees" / loop_wt_name
             assert git_wt_dir.exists(), "worktree metadata should exist before simulated SIGKILL"
-            assert loop_git_wt_dir.exists(), "loop worktree metadata should exist before simulated SIGKILL"
+            assert loop_git_wt_dir.exists(), (
+                "loop worktree metadata should exist before simulated SIGKILL"
+            )
 
             # Simulate SIGKILL: delete the directories without running git worktree prune
             shutil.rmtree(wt_path)
@@ -695,7 +697,9 @@ class TestOrphanedWorktreeCleanup:
             assert not wt_path.exists(), "worktree directory should be gone"
             assert not loop_wt_path.exists(), "loop worktree directory should be gone"
             assert git_wt_dir.exists(), "ghost ref should still be present in .git/worktrees/"
-            assert loop_git_wt_dir.exists(), "loop ghost ref should still be present in .git/worktrees/"
+            assert loop_git_wt_dir.exists(), (
+                "loop ghost ref should still be present in .git/worktrees/"
+            )
 
             # Create orchestrator pointing to the real git repo
             br_config = BRConfig(repo_path)

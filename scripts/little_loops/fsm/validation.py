@@ -562,10 +562,7 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
         errors.append(
             ValidationError(
                 path="<root>",
-                message=(
-                    "No 'description' field defined. "
-                    "Add a top-level description: key."
-                ),
+                message=("No 'description' field defined. Add a top-level description: key."),
                 severity=ValidationSeverity.WARNING,
             )
         )

@@ -437,9 +437,7 @@ class ParallelOrchestrator:
 
         # Find all worker directories
         worktrees = [
-            item
-            for item in worktree_base.iterdir()
-            if item.is_dir() and _is_ll_worktree(item.name)
+            item for item in worktree_base.iterdir() if item.is_dir() and _is_ll_worktree(item.name)
         ]
 
         if not worktrees:

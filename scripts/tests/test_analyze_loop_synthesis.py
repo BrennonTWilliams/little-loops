@@ -244,9 +244,7 @@ class TestAnalyzeLoopSynthesis:
         """Signal 1 fixture must contain no apply/refine/update/write/commit state."""
         spec = self._load_fixture("analysis-iter1-no-apply.yaml")
         states = spec.get("states", {})
-        apply_states = [
-            n for n in states if any(n.startswith(p) for p in APPLY_STATE_PREFIXES)
-        ]
+        apply_states = [n for n in states if any(n.startswith(p) for p in APPLY_STATE_PREFIXES)]
         assert not apply_states, (
             f"Signal 1 fixture must omit apply-prefixed states; found {apply_states}"
         )
@@ -345,9 +343,7 @@ class TestAnalyzeLoopSynthesis:
         states = spec["states"]
         # Fixture's stub state name must contain one of the trigger keywords
         stub_state_keywords = ("score", "evaluate", "judge", "reward")
-        stub_states = [
-            n for n in states if any(kw in n for kw in stub_state_keywords)
-        ]
+        stub_states = [n for n in states if any(kw in n for kw in stub_state_keywords)]
         assert stub_states, (
             f"Signal 3 fixture must include a state with name containing one of "
             f"{stub_state_keywords}"
@@ -370,7 +366,7 @@ class TestAnalyzeLoopSynthesis:
         assert pattern.match('echo "5"')
         assert pattern.match('echo "42"')
         assert not pattern.match('echo "hello"')
-        assert not pattern.match('echo 5')  # missing quotes
+        assert not pattern.match("echo 5")  # missing quotes
 
     def test_signal3_inline_replace_todo_echo_pattern_matches(self) -> None:
         """Regex pattern 2: ^echo "(Replace|TODO).*"$ matches placeholder text."""
@@ -414,9 +410,7 @@ class TestAnalyzeLoopSynthesis:
         spec = self._load_fixture("analysis-capture-vacuum.yaml")
         states = spec.get("states", {})
         producers = [n for n, d in states.items() if "capture" in d]
-        assert producers, (
-            "Signal 4 fixture must include a producer state with a 'capture:' key"
-        )
+        assert producers, "Signal 4 fixture must include a producer state with a 'capture:' key"
 
     def test_signal4_fixture_has_consumer_referencing_capture(self) -> None:
         """Signal 4 fixture must include a consumer state whose action references
@@ -426,9 +420,7 @@ class TestAnalyzeLoopSynthesis:
         spec = self._load_fixture("analysis-capture-vacuum.yaml")
         states = spec.get("states", {})
         capture_ref = re.compile(r"\$\{captured\.\w+\.output\}")
-        consumers = [
-            n for n, d in states.items() if capture_ref.search(d.get("action", ""))
-        ]
+        consumers = [n for n, d in states.items() if capture_ref.search(d.get("action", ""))]
         assert consumers, (
             "Signal 4 fixture must include a consumer state whose action references "
             "${captured.X.output}"
@@ -448,8 +440,7 @@ class TestAnalyzeLoopSynthesis:
             for m in capture_ref.finditer(d.get("action", "")):
                 referenced.add(m.group(1))
         assert referenced & producer_captures, (
-            f"Consumer references {referenced} must overlap producer captures "
-            f"{producer_captures}"
+            f"Consumer references {referenced} must overlap producer captures {producer_captures}"
         )
 
     # ------------------------------------------------------------------
@@ -493,9 +484,7 @@ class TestAnalyzeLoopSynthesis:
         for defn in states.values():
             evaluate = defn.get("evaluate", {})
             if evaluate.get("type") == "convergence":
-                assert "target" in evaluate, (
-                    "Convergence evaluator must declare a target threshold"
-                )
+                assert "target" in evaluate, "Convergence evaluator must declare a target threshold"
                 return
         raise AssertionError("No convergence state found in fixture")
 

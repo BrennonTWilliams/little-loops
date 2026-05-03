@@ -119,11 +119,7 @@ states:
         loops_dir.mkdir()
         loop_file = loops_dir / "no-desc.yaml"
         loop_file.write_text(
-            "name: no-desc\n"
-            "initial: check\n"
-            "states:\n"
-            "  check:\n"
-            "    terminal: true\n"
+            "name: no-desc\ninitial: check\nstates:\n  check:\n    terminal: true\n"
         )
 
         logger = Logger(use_color=False)

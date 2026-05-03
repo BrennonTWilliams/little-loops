@@ -51,14 +51,11 @@ class TestBuiltinLoopFiles:
         """
         for loop_file in builtin_loops:
             fsm, warnings = load_and_validate(loop_file)
-            assert fsm.description, (
-                f"{loop_file.name}: missing top-level 'description:' field"
-            )
+            assert fsm.description, f"{loop_file.name}: missing top-level 'description:' field"
             description_warnings = [
                 w
                 for w in warnings
-                if w.severity == ValidationSeverity.WARNING
-                and "description" in w.message.lower()
+                if w.severity == ValidationSeverity.WARNING and "description" in w.message.lower()
             ]
             assert not description_warnings, (
                 f"{loop_file.name}: produced description warning: "
