@@ -43,6 +43,28 @@ class TestBuiltinLoopFiles:
                 f"{loop_file.name}: validation errors: {[str(e) for e in error_list]}"
             )
 
+    def test_all_have_description_field(self, builtin_loops: list[Path]) -> None:
+        """All built-in loops define a top-level description: field.
+
+        Regression guard for ENH-1331: analyze-loop and assess-loop skills
+        require a machine-readable description for goal-alignment assessment.
+        """
+        for loop_file in builtin_loops:
+            fsm, warnings = load_and_validate(loop_file)
+            assert fsm.description, (
+                f"{loop_file.name}: missing top-level 'description:' field"
+            )
+            description_warnings = [
+                w
+                for w in warnings
+                if w.severity == ValidationSeverity.WARNING
+                and "description" in w.message.lower()
+            ]
+            assert not description_warnings, (
+                f"{loop_file.name}: produced description warning: "
+                f"{[str(w) for w in description_warnings]}"
+            )
+
     def test_expected_loops_exist(self) -> None:
         """The expected set of built-in loops exists."""
         expected = {

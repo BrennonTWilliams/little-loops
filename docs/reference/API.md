@@ -4273,6 +4273,7 @@ Validate FSM structure and return list of errors.
 - Evaluator configs have required fields
 - No conflicting routing definitions
 - Warns about unreachable states
+- Warns when no top-level `description:` field is set
 
 **Example:**
 ```python

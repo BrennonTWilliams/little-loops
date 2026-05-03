@@ -1,4 +1,5 @@
 name: test-loop
+description: A simple test loop
 initial: check
 states:
   check:

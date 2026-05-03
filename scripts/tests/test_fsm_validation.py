@@ -71,6 +71,62 @@ class TestExtraRoutesReachability:
         assert any("not reachable" in e.message for e in warnings)
 
 
+class TestDescriptionFieldValidation:
+    """ENH-1331: warn when top-level description field is absent."""
+
+    def test_missing_description_emits_warning(self) -> None:
+        """FSM without a description: field produces a WARNING."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={"check": make_state(terminal=True)},
+        )
+        errors = validate_fsm(fsm)
+        description_warnings = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING
+            and "description" in e.message.lower()
+        ]
+        assert len(description_warnings) == 1
+        assert description_warnings[0].path == "<root>"
+        assert "description" in description_warnings[0].message
+
+    def test_present_description_emits_no_warning(self) -> None:
+        """FSM with a description: field produces no description warning."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            description="A test loop with intent text",
+            states={"check": make_state(terminal=True)},
+        )
+        errors = validate_fsm(fsm)
+        description_warnings = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING
+            and "No 'description' field" in e.message
+        ]
+        assert description_warnings == []
+
+    def test_empty_string_description_emits_warning(self) -> None:
+        """An empty-string description is still treated as missing."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            description="",
+            states={"check": make_state(terminal=True)},
+        )
+        errors = validate_fsm(fsm)
+        description_warnings = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING
+            and "No 'description' field" in e.message
+        ]
+        assert len(description_warnings) == 1
+
+
 class TestRateLimitFieldValidation:
     """BUG-1108: paired validation for max_rate_limit_retries / on_rate_limit_exhausted."""
 

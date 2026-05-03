@@ -36,6 +36,7 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | V-14 | `timeout <= 0` | Error |
 | V-15 | `llm.max_tokens <= 0` | Error |
 | V-16 | `llm.timeout <= 0` | Error |
+| V-17 | Missing top-level `description:` field | Warning |
 
 ---
 

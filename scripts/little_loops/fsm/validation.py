@@ -555,6 +555,21 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
     errors: list[ValidationError] = []
     defined_states = fsm.get_all_state_names()
 
+    # Warn when no top-level description: field is set. The field is optional
+    # for FSM execution but required for goal-alignment skills (analyze-loop,
+    # assess-loop) and for ll-loop show --json to surface intent text.
+    if not fsm.description:
+        errors.append(
+            ValidationError(
+                path="<root>",
+                message=(
+                    "No 'description' field defined. "
+                    "Add a top-level description: key."
+                ),
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
     # Validate parameters block
     errors.extend(_validate_parameters(fsm))
 

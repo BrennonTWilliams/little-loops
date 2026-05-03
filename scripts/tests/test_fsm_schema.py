@@ -1594,6 +1594,7 @@ class TestLoadAndValidate:
         loop_yaml = tmp_path / "unknown-keys.yaml"
         loop_yaml.write_text(
             "name: test-loop\n"
+            "description: test\n"
             "initial: check\n"
             "max_iteration: 5\n"  # typo: should be max_iterations
             "foo: bar\n"
@@ -1603,7 +1604,12 @@ class TestLoadAndValidate:
         )
         fsm, warnings = load_and_validate(loop_yaml)
         assert fsm.name == "test-loop"
-        unknown_warnings = [w for w in warnings if w.severity == ValidationSeverity.WARNING]
+        unknown_warnings = [
+            w
+            for w in warnings
+            if w.severity == ValidationSeverity.WARNING
+            and "Unknown top-level" in w.message
+        ]
         assert len(unknown_warnings) == 1
         assert "foo" in unknown_warnings[0].message
         assert "max_iteration" in unknown_warnings[0].message
@@ -1624,6 +1630,43 @@ class TestLoadAndValidate:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+    def test_missing_description_warns(self, tmp_path: Path) -> None:
+        """ENH-1331: loop YAML without description: produces a WARNING."""
+        loop_yaml = tmp_path / "no-description.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        description_warnings = [
+            w
+            for w in warnings
+            if w.severity == ValidationSeverity.WARNING
+            and "description" in w.message.lower()
+        ]
+        assert len(description_warnings) == 1
+        assert "description" in description_warnings[0].message
+
+    def test_present_description_no_warning(self, tmp_path: Path) -> None:
+        """ENH-1331: loop YAML with description: produces no description warning."""
+        loop_yaml = tmp_path / "with-description.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A test loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        description_warnings = [
+            w for w in warnings if "No 'description' field" in w.message
+        ]
+        assert description_warnings == []
 
     def test_missing_name_field(self, fsm_fixtures: Path) -> None:
         """Missing 'name' field raises ValueError."""
