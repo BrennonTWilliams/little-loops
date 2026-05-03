@@ -3,6 +3,13 @@ id: ENH-1336
 type: ENH
 priority: P3
 parent_issue: ENH-1327
+confidence_score: 88
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
+size: Very Large
 ---
 
 # ENH-1336: Add Effectiveness Signals 4-5, Fixtures, and Documentation Wiring to `/ll:analyze-loop`
@@ -42,6 +49,14 @@ Decomposed from ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyz
 5. **COMMANDS.md update** (`docs/reference/COMMANDS.md`): Add 5 new signal descriptions to the "Signal detection rules:" list; update "Output format:" block to show `Fault Signals (N):` / `Effectiveness Signals (M):` two-group layout; update Quick Reference table entry to reflect effectiveness coverage (not "failure signals" only).
 
 6. **Test wiring: `test_enh1268_doc_wiring.py`** (`scripts/tests/test_enh1268_doc_wiring.py`): Update `TestAnalyzeLoopCommandsWiring` tests to assert `"Fault Signals"` and `"Effectiveness Signals"` grouping strings in COMMANDS.md after the Step 5 update; the existing 6 string-presence tests must remain passing.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Add new test methods to `scripts/tests/test_analyze_loop_synthesis.py` — for Signal 4: load `analysis-capture-vacuum.yaml` via `TestAnalyzeLoopSynthesis._load_fixture`, assert at least one state has a `capture:` key and at least one consumer state references `${captured.*.output}` in its action; for Signal 5: load `analysis-numeric-stall.yaml`, assert a state has `evaluate.type: convergence` with a `previous:` field; follow Style A fixture-backed pattern from `test_3b2_happy_path_reconstruction_multi_signal`
+8. Run `scripts/tests/test_enh1146_doc_wiring.py` after SKILL.md and COMMANDS.md edits to confirm `TestAnalyzeLoopSkillWiring.test_rate_limit_waiting_present`, `test_semantic_synthesis_heading_present`, and `TestCommandsWiring.test_rate_limit_waiting_present` all pass — these are guardrail tests that must not break
+9. Update `README.md` line 227 (`analyze-loop`^ row "from failures") to match the updated Quick Reference language in COMMANDS.md
 
 ## Codebase Research Findings (from ENH-1327)
 
@@ -121,6 +136,17 @@ _Added by `/ll:refine-issue` on 2026-05-02 — based on direct reading of `execu
 - `scripts/tests/test_analyze_loop_synthesis.py` — model new signal tests after this structure
 - `scripts/tests/fixtures/fsm/analysis-multi-signal.yaml` — multi-fault-signal fixture; naming convention reference
 
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh1146_doc_wiring.py` — guardrail: `TestAnalyzeLoopSkillWiring.test_rate_limit_waiting_present` and `test_semantic_synthesis_heading_present` assert `"rate_limit_waiting"` and `"Step 3b"` survive in SKILL.md; `TestCommandsWiring.test_rate_limit_waiting_present` asserts `"rate_limit_waiting"` survives in COMMANDS.md — run after all edits to verify no regressions [Agent 2 / Agent 3 finding]
+- `scripts/tests/test_analyze_loop_synthesis.py` — new test methods needed: for Signal 4, load `analysis-capture-vacuum.yaml` via `_load_fixture` and assert at least one state has a `capture:` key whose consumer references `${captured.X.output}`; for Signal 5, load `analysis-numeric-stall.yaml` and assert a state has `evaluate.type: convergence` with `previous:` field; follow `TestAnalyzeLoopSynthesis` Style A fixture-backed pattern (not inline dict) [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `README.md` — line 227, commands table: `analyze-loop`^ row contains "from failures" — parallels the stale Quick Reference "failure signals" language; update to match whatever language replaces "failure signals" in COMMANDS.md Quick Reference table [Agent 2 finding]
+
 ## Pre-requisites
 
 This issue should follow ENH-1335 (Signals 1-3 + output grouping) since:
@@ -147,6 +173,35 @@ This issue should follow ENH-1335 (Signals 1-3 + output grouping) since:
 - **In scope**: Signals 4, 5 in `skills/analyze-loop/SKILL.md`; `analysis-capture-vacuum.yaml` and `analysis-numeric-stall.yaml` fixtures; `docs/reference/COMMANDS.md` update; `test_enh1268_doc_wiring.py` update.
 - **Out of scope**: Signals 1, 2, 3 (ENH-1335); `--json` flag with structured output (deferred per confidence check notes in parent ENH-1327); assess-loop integration (FEAT-1325 separate).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-02_
+
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- **ENH-1335 COMMANDS.md not yet applied**: ENH-1335's SKILL.md changes (Signals 1-3, output grouping) are in place, but its COMMANDS.md step is unfinished. Steps 5-6 of this issue (COMMANDS.md signal descriptions + test_enh1268_doc_wiring.py assertions) must wait for ENH-1335 to land its COMMANDS.md changes first. Steps 1-4 (SKILL.md + fixtures) can proceed immediately.
+
+### Outcome Risk Factors
+- **SKILL.md signal detection is untestable programmatically**: Signals 4-5 live in AI-interpreted markdown instructions. End-to-end signal firing can only be confirmed manually or via a live loop run — plan to hand-test with examples-miner and rl-coding-agent before marking complete.
+- **Step ordering constraint**: implement steps 1-4 (SKILL.md + fixtures) first; gate steps 5-6 on ENH-1335's COMMANDS.md landing.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:wire-issue` - 2026-05-03T04:51:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ffb837c-fbed-4b17-979a-21f952936d58.jsonl`
 - `/ll:refine-issue` - 2026-05-03T04:46:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f1a3aae-d4f5-418e-925c-2341954b5c96.jsonl`
 - `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T04:56:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-03
+- **Reason**: Issue too large for single session (score 11/11 — Very Large)
+
+### Decomposed Into
+- ENH-1342: Implement Signals 4-5 in `/ll:analyze-loop` SKILL.md, Fixtures, and Synthesis Tests
+- ENH-1343: Documentation Wiring for All 5 Signals in `/ll:analyze-loop` (COMMANDS.md, Tests, README)

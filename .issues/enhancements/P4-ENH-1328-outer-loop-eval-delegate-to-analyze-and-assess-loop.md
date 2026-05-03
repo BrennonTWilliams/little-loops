@@ -45,9 +45,34 @@ After ENH-1326 and FEAT-1325 land:
 4. Update the `evaluate` block on the new `generate_report` to read structured fields rather than free text (e.g., check that the `proposals` array is non-empty rather than parsing prose for "None identified.").
 5. Update tests for `outer-loop-eval` to mock the skill outputs rather than the inline prompts.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/outer-loop-eval.yaml` — rewrite `analyze_definition`, `analyze_execution`, `generate_report`, and `refine_analysis` states to `action_type: shell` skill invocations
+
+### Dependent Files (Callers/Importers)
+- TBD — use grep to find references: `grep -r "outer-loop-eval" scripts/`
+
+### Similar Patterns
+- Other loop YAML files using `action_type: shell` with skill invocations
+
+### Tests
+- TBD — identify test files: `grep -r "outer.loop.eval\|outer_loop_eval" scripts/tests/`
+
+### Documentation
+- TBD — any docs describing `outer-loop-eval` behavior
+
+### Configuration
+- N/A
+
 ## API/Interface
 
 No new CLI surface — this is a pure refactor of one loop YAML to consume existing skills.
+
+## Scope Boundaries
+
+- **In scope**: Rewriting the four analysis states in `outer-loop-eval.yaml` to `action_type: shell` skill invocations; updating associated tests to mock skill output instead of inline prompts.
+- **Out of scope**: Changes to `/ll:analyze-loop` or `/ll:assess-loop` skill implementations; new CLI flags or public interface changes; altering `outer-loop-eval`'s invocation contract with callers.
 
 ## Acceptance Criteria
 
@@ -62,6 +87,13 @@ No new CLI surface — this is a pure refactor of one loop YAML to consume exist
 - ENH-1326 — resolved-graph view should be available.
 - ENH-1327 — effectiveness signals enrich the assessor's input (nice-to-have, not strict blocker).
 
+## Impact
+
+- **Priority**: P4 — blocked by FEAT-1325 and ENH-1326; low urgency until dependencies land
+- **Effort**: Medium — rewriting 3-4 YAML states + test mock updates; no new logic required
+- **Risk**: Low — pure refactor with identical external behavior; existing tests provide regression coverage
+- **Breaking Change**: No
+
 ## Labels
 
 `enhancement`, `loops`, `refactor`, `captured`
@@ -69,3 +101,7 @@ No new CLI surface — this is a pure refactor of one loop YAML to consume exist
 ## Status
 
 **Open** | Created: 2026-05-02 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-05-03T13:08:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66b7ef9c-3106-4ab5-9130-c852d0e94984.jsonl`
