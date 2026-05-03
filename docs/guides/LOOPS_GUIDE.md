@@ -1261,7 +1261,7 @@ ll-loop status my-scan
 tail -f $(ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('log_file',''))")
 ```
 
-All stdout and stderr from the background process are written to `.loops/.running/<instance-id>.log`. The PID is stored in `.loops/.running/<instance-id>.pid` and used by `status` and `stop` to detect liveness and send signals. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log path for a running instance.
+All stdout and stderr from the background process are written to `.loops/.running/<instance-id>.log`. The PID may be stored in `.loops/.running/<instance-id>.pid` (background-mode processes) or in `.loops/.running/<instance-id>.lock` (foreground runs); `ll-loop status` checks both, preferring the `.pid` file and falling back to the `.lock` file. The `pid_source` field in `--json` output indicates which file the PID came from. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log path for a running instance.
 
 ### Stopping a background loop
 

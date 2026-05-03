@@ -2382,6 +2382,7 @@ class TestCmdStatusJson:
         assert data["iteration"] == 5
         assert data["status"] == "running"
         assert "pid" in data
+        assert "pid_source" in data
 
     def test_status_json_no_state(
         self,

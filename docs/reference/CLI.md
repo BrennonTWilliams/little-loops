@@ -366,7 +366,7 @@ Show current status of a loop. Aggregates across all running instances of `<loop
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--json` | `-j` | Output loop state as JSON. Returns a single object when one instance is running; returns a JSON array of objects (each including `instance_id`, `pid`, `log_file`) when two or more instances are running |
+| `--json` | `-j` | Output loop state as JSON. Returns a single object when one instance is running; returns a JSON array of objects (each including `instance_id`, `pid`, `pid_source`, `log_file`) when two or more instances are running. The `pid` field is populated from the `.pid` file if present, otherwise falls back to the `.lock` file. The `pid_source` field is `"pid_file"`, `"lock_file"`, or `null` |
 
 #### `ll-loop stop <loop>`
 

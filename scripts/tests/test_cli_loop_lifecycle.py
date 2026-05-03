@@ -986,6 +986,7 @@ class TestCmdStatusLogFile:
         assert "log_file" in data
         assert "log_updated_ago" in data
         assert "last_event" in data
+        assert "pid_source" in data
 
     def test_status_json_log_not_found(self, tmp_path: Path) -> None:
         """JSON output includes null log fields when no log file."""
@@ -1019,6 +1020,202 @@ class TestCmdStatusLogFile:
         assert data["log_file"] is None
         assert data["log_updated_ago"] is None
         assert data["last_event"] is None
+
+
+class TestCmdStatusLockFilePid:
+    """Tests for BUG-1352: lock-file PID fallback in cmd_status."""
+
+    def _make_state(self) -> MagicMock:
+        mock_state = MagicMock()
+        mock_state.loop_name = "test-loop"
+        mock_state.status = "interrupted"
+        mock_state.current_state = "check"
+        mock_state.iteration = 3
+        mock_state.started_at = "2026-05-03T10:00:00"
+        mock_state.updated_at = "2026-05-03T10:05:00"
+        mock_state.continuation_prompt = None
+        mock_state.to_dict.return_value = {
+            "loop_name": "test-loop",
+            "status": "interrupted",
+            "current_state": "check",
+            "iteration": 3,
+        }
+        return mock_state
+
+    def test_status_json_reads_pid_from_lock_file(self, tmp_path: Path) -> None:
+        """JSON output includes PID from .lock file when no .pid file exists."""
+        import json as _json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        lock_file = running_dir / "test-loop.lock"
+        lock_file.write_text(
+            _json.dumps(
+                {"loop_name": "test-loop", "scope": ["/tmp"], "pid": 12345, "started_at": "2026-05-03T10:00:00Z"}
+            )
+        )
+
+        args = argparse.Namespace(json=True)
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger, args)
+
+        assert result == 0
+        data = _json.loads(mock_print.call_args_list[0][0][0])
+        assert data["pid"] == 12345
+        assert data["pid_source"] == "lock_file"
+
+    def test_status_json_pid_source_pid_file_when_pid_file_exists(self, tmp_path: Path) -> None:
+        """pid_source is 'pid_file' when PID comes from .pid file."""
+        import json as _json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("99999")
+
+        args = argparse.Namespace(json=True)
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger, args)
+
+        assert result == 0
+        data = _json.loads(mock_print.call_args_list[0][0][0])
+        assert data["pid"] == 99999
+        assert data["pid_source"] == "pid_file"
+
+    def test_status_json_pid_source_null_when_no_pid_or_lock(self, tmp_path: Path) -> None:
+        """pid_source is null when neither .pid nor .lock file exists."""
+        import json as _json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+
+        args = argparse.Namespace(json=True)
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger, args)
+
+        assert result == 0
+        data = _json.loads(mock_print.call_args_list[0][0][0])
+        assert data["pid"] is None
+        assert data["pid_source"] is None
+
+    def test_status_json_lock_file_malformed_yields_null_pid(self, tmp_path: Path) -> None:
+        """Malformed .lock file is silently ignored; pid remains null."""
+        import json as _json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        lock_file = running_dir / "test-loop.lock"
+        lock_file.write_text("not-valid-json{{")
+
+        args = argparse.Namespace(json=True)
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger, args)
+
+        assert result == 0
+        data = _json.loads(mock_print.call_args_list[0][0][0])
+        assert data["pid"] is None
+
+    def test_status_human_readable_shows_lock_pid(self, tmp_path: Path) -> None:
+        """Human-readable output shows lock-file PID when no .pid file."""
+        import json as _json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        lock_file = running_dir / "test-loop.lock"
+        lock_file.write_text(
+            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 12345, "started_at": "2026-05-03T10:00:00Z"})
+        )
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        output = "\n".join(str(c) for c in mock_print.call_args_list)
+        assert "12345" in output
+
+    def test_status_json_multi_instance_reads_lock_file_pid(self, tmp_path: Path) -> None:
+        """Multi-instance JSON output includes lock-file PID for each instance."""
+        import json as _json
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+
+        state1 = MagicMock()
+        state1.status = "interrupted"
+        state1.to_dict.return_value = {"loop_name": "test-loop", "status": "interrupted"}
+        state2 = MagicMock()
+        state2.status = "running"
+        state2.to_dict.return_value = {"loop_name": "test-loop", "status": "running"}
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        (running_dir / "test-loop-inst1.lock").write_text(
+            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 11111, "started_at": "2026-05-03T10:00:00Z"})
+        )
+
+        instances = [("test-loop-inst1", state1), ("test-loop-inst2", state2)]
+        args = argparse.Namespace(json=True)
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger, args)
+
+        assert result == 0
+        result_list = _json.loads(mock_print.call_args_list[0][0][0])
+        inst1 = next(r for r in result_list if r["instance_id"] == "test-loop-inst1")
+        inst2 = next(r for r in result_list if r["instance_id"] == "test-loop-inst2")
+        assert inst1["pid"] == 11111
+        assert inst1["pid_source"] == "lock_file"
+        assert inst2["pid"] is None
+        assert inst2["pid_source"] is None
 
 
 class TestCmdResumeCircuitWiring:

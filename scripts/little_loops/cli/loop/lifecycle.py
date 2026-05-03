@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import json
 import os
 import signal
 import time
@@ -57,6 +58,19 @@ def _status_single(
     stem = instance_id or loop_name
     pid_file = running_dir / f"{stem}.pid"
     pid = _read_pid_file(pid_file)
+    pid_source: str | None = "pid_file" if pid is not None else None
+
+    if pid is None:
+        lock_file_path = running_dir / f"{stem}.lock"
+        if lock_file_path.exists():
+            try:
+                with open(lock_file_path) as _lf:
+                    lock_data = json.load(_lf)
+                pid = lock_data.get("pid")
+                if pid is not None:
+                    pid_source = "lock_file"
+            except (json.JSONDecodeError, KeyError, OSError):
+                pass
 
     log_file = running_dir / f"{stem}.log"
     log_file_str: str | None = None
@@ -76,6 +90,7 @@ def _status_single(
     if getattr(args, "json", False):
         d = state.to_dict()
         d["pid"] = pid
+        d["pid_source"] = pid_source
         d["log_file"] = log_file_str
         d["log_updated_ago"] = log_updated_ago
         d["last_event"] = last_event
@@ -138,10 +153,23 @@ def cmd_status(
             stem = instance_id or loop_name
             pid_file = running_dir / f"{stem}.pid"
             pid = _read_pid_file(pid_file)
+            pid_source: str | None = "pid_file" if pid is not None else None
+            if pid is None:
+                lock_file_path = running_dir / f"{stem}.lock"
+                if lock_file_path.exists():
+                    try:
+                        with open(lock_file_path) as _lf:
+                            lock_data = json.load(_lf)
+                        pid = lock_data.get("pid")
+                        if pid is not None:
+                            pid_source = "lock_file"
+                    except (json.JSONDecodeError, KeyError, OSError):
+                        pass
             log_file = running_dir / f"{stem}.log"
             d = state.to_dict()
             d["instance_id"] = instance_id
             d["pid"] = pid
+            d["pid_source"] = pid_source
             if log_file.exists():
                 d["log_file"] = str(log_file)
                 d["log_updated_ago"] = _format_relative_time(
@@ -159,6 +187,15 @@ def cmd_status(
         stem = instance_id or loop_name
         pid_file = running_dir / f"{stem}.pid"
         pid = _read_pid_file(pid_file)
+        if pid is None:
+            lock_file_path = running_dir / f"{stem}.lock"
+            if lock_file_path.exists():
+                try:
+                    with open(lock_file_path) as _lf:
+                        lock_data = json.load(_lf)
+                    pid = lock_data.get("pid")
+                except (json.JSONDecodeError, KeyError, OSError):
+                    pass
         log_file = running_dir / f"{stem}.log"
 
         print()

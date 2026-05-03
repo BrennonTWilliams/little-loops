@@ -62,11 +62,12 @@ For each loop returned in Step 1, run:
 ll-loop status <loop_name> --json 2>/dev/null
 ```
 
-This produces the same fields as Step 1 plus one additional field:
+This produces the same fields as Step 1 plus two additional fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `pid` | integer\|null | PID from `.loops/.running/<instance_id>.pid`; null if no PID file exists |
+| `pid` | integer\|null | PID from `.loops/.running/<instance_id>.pid` **or** `.lock` file; null if neither exists |
+| `pid_source` | string\|null | `"pid_file"` if PID came from `.pid` file; `"lock_file"` if from `.lock` file; null if no PID |
 
 Also check whether the PID is alive (only when `pid` is non-null):
 
@@ -106,12 +107,18 @@ still alive, updates `status` to `interrupted`, and deletes the `.pid` file.
 
 ### NEEDS CLEANUP — stale-interrupted
 
-**Condition**: `status == "interrupted"` AND `pid` is non-null (orphaned `.pid` file present)
+**Condition**: `status == "interrupted"` AND `pid` is non-null (orphaned artifact present)
 
-**Action**: Remove the stale `.pid` file:
-```bash
-rm -f ".loops/.running/<loop_name>.pid"
-```
+**Action**: Remove the stale artifact based on `pid_source`:
+- `pid_source == "pid_file"` → remove the `.pid` file:
+  ```bash
+  rm -f ".loops/.running/<instance_id_or_loop_name>.pid"
+  ```
+- `pid_source == "lock_file"` → remove the `.lock` file:
+  ```bash
+  rm -f ".loops/.running/<instance_id_or_loop_name>.lock"
+  ```
+
 The `.state.json` is preserved for diagnostics.
 
 ### NEEDS ATTENTION — abandoned-handoff
@@ -211,10 +218,18 @@ report:
 
 ### stale-interrupted loops
 
-```bash
-rm -f .loops/.running/<loop_name>-*.pid
-echo "Removed stale PID file(s) for <loop_name>"
-```
+Branch on `pid_source` from Step 2:
+
+- `pid_source == "pid_file"`:
+  ```bash
+  rm -f ".loops/.running/<instance_id_or_loop_name>.pid"
+  echo "Removed stale .pid file for <loop_name>"
+  ```
+- `pid_source == "lock_file"`:
+  ```bash
+  rm -f ".loops/.running/<instance_id_or_loop_name>.lock"
+  echo "Removed stale .lock file for <loop_name>"
+  ```
 
 ---
 
