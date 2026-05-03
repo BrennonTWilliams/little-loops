@@ -9,6 +9,8 @@ score_complexity: 0
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+testable: false
+completed_at: 2026-05-03T21:16:09Z
 ---
 
 # ENH-1357: Multi-Instance Loop — Docs & Skills Updates
@@ -18,6 +20,14 @@ score_change_surface: 18
 Decomposed from ENH-1355. Update all documentation and skill files to reflect multi-instance loop semantics introduced by ENH-1354 and ENH-1356. Covers persistence docstrings, API reference, loops guide, skill files (cleanup-loops, rename-loop, analyze-loop, assess-loop), and CLI/commands reference docs.
 
 **Depends on**: ENH-1356 should be merged first (implementation defines the final semantics being documented).
+
+## Current Behavior
+
+Documentation and skill files reference `{loop_name}.*` file naming for the `.loops/.running/` directory (e.g., `fix-types.state.json`, `fix-types.events.jsonl`, `fix-types.pid`, `fix-types.lock`). Skills (`cleanup-loops`, `rename-loop`, `analyze-loop`, `assess-loop`) use bare-name paths and lack multi-instance disambiguation.
+
+## Expected Behavior
+
+All documentation and skill files reference `{instance_id}.*` naming (e.g., `fix-types-20260503T122306.state.json`), glob-based `.pid`/`.events.jsonl` patterns in cleanup and rename skills, and multi-instance disambiguation via `ll-loop status <loop_name> --json` in analyze/assess skills.
 
 ## Parent Issue
 
@@ -149,12 +159,26 @@ _Added by `/ll:confidence-check` on 2026-05-03_
 - No dedicated `test_enh1357_doc_wiring.py` exists yet; verification of doc correctness requires manual review or a new doc wiring test after implementation.
 - Skill `.md` files have no unit test coverage — prose changes in cleanup-loops, rename-loop, analyze-loop, and assess-loop can only be validated by manual inspection.
 
+## Labels
+
+`enhancement`, `documentation`, `multi-instance`
+
+## Resolution
+
+Updated all 12 target files to reflect multi-instance loop semantics:
+- `{loop_name}.*` → `{instance_id}.*` naming in all `.running/` directory references
+- Glob-based PID/events patterns in cleanup-loops and rename-loop skills
+- `instance_id` disambiguation via `ll-loop status --json` in analyze-loop and assess-loop
+- Multi-instance semantics documented in CLI.md (status/stop/resume/list) and README.md
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-03T21:09:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8dbc6f71-d2ca-405b-a38f-6deda185bda0.jsonl`
 - `/ll:confidence-check` - 2026-05-03T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93264a5c-207d-4729-8595-d35da63c07c0.jsonl`
 - `/ll:wire-issue` - 2026-05-03T21:03:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26eb2167-6e61-42dd-b600-23b39b69d0c2.jsonl`
 - `/ll:refine-issue` - 2026-05-03T20:57:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b372827-7847-4180-862d-16c925ec06b3.jsonl`
 - `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995ae302-a902-4497-a747-428e14fa83da.jsonl`
+- `/ll:manage-issue` - 2026-05-03T21:16:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 
 ---
 
-**Open** | Created: 2026-05-03 | Priority: P2
+**Completed** | Created: 2026-05-03 | Completed: 2026-05-03 | Priority: P2

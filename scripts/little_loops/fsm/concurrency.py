@@ -82,7 +82,7 @@ class ScopeLock:
 class LockManager:
     """Manage scope-based locks for concurrent loop execution.
 
-    Lock files are stored in .loops/.running/<name>.lock
+    Lock files are stored in .loops/.running/<instance_id>.lock
     and contain JSON with ScopeLock data.
     """
 

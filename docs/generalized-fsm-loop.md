@@ -1431,8 +1431,8 @@ All loop definitions live in `.loops/`:
 ├── fix-types.yaml          # User-defined loop
 ├── lint-cycle.yaml         # User-defined loop
 └── .running/               # Runtime state (auto-managed)
-    ├── fix-types.state.json
-    └── fix-types.events.jsonl
+    ├── fix-types-20260503T122306.state.json
+    └── fix-types-20260503T122306.events.jsonl
 ```
 
 ### Relationship to `.issues/`
@@ -1515,7 +1515,7 @@ ll-loop history fix-types
 ### State Persistence
 
 ```json
-// .loops/.running/<name>.state.json
+// .loops/.running/<instance-id>.state.json
 {
   "current_state": "fix",
   "iteration": 3,
@@ -1534,7 +1534,7 @@ ll-loop history fix-types
 
 ## Structured Events
 
-Events stream to `.loops/.running/<name>.events.jsonl`:
+Events stream to `.loops/.running/<instance-id>.events.jsonl`:
 
 ```jsonl
 {"event": "loop_start", "loop": "fix-types", "ts": "..."}

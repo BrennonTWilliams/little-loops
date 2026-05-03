@@ -358,26 +358,27 @@ List available loops. Output is grouped by `category` when categories are set. L
 | `--builtin` | | Only show built-in loops (exclude project `.loops/`) |
 | `--category <cat>` | `-c` | Filter to loops with the given category (e.g. `apo`, `issue-management`, `code-quality`) |
 | `--label <tag>` | `-l` | Filter to loops that carry the given label tag; repeat for multiple tags (OR match) |
-| `--json` / `-j` | | Output as JSON array; each entry includes `name`, `path`, `category`, `labels`, and `built_in` (when applicable) |
+| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name`, `path`, `category`, `labels`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 
-Show current status of a loop.
+Show current status of a loop. Aggregates across all running instances of `<loop>`.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--json` | `-j` | Output loop state as JSON |
+| `--json` | `-j` | Output loop state as JSON. Returns a single object when one instance is running; returns a JSON array of objects (each including `instance_id`, `pid`, `log_file`) when two or more instances are running |
 
 #### `ll-loop stop <loop>`
 
-Stop a running loop.
+Stop a running loop. Terminates **all running instances** of the named loop (no `--instance-id` selector).
 
 #### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
-Resume an interrupted loop.
+Resume an interrupted loop. Exits with an error listing instance IDs when two or more resumable instances exist — use `--instance-id` to select one.
 
 | Flag | Short | Description |
 |------|-------|-------------|
+| `--instance-id <id>` | | Select a specific instance to resume (required when 2+ resumable instances match) |
 | `--background` | `-b` | Resume as a detached background process |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; the top-level loop is preceded by `== loop: <name> ====...` and, when sub-loops are active, each nesting level is rendered below its parent separated by `── sub-loop: <name> ──` (supports arbitrary depth) |

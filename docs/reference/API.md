@@ -4349,7 +4349,7 @@ class LoopState:
 
 ```python
 class StatePersistence:
-    def __init__(self, loop_name: str, loops_dir: Path | None = None)
+    def __init__(self, loop_name: str, loops_dir: Path | None = None, instance_id: str | None = None)
 ```
 
 Manage loop state persistence and event streaming.
@@ -4373,8 +4373,8 @@ Manage loop state persistence and event streaming.
 .loops/
 ├── my-loop.yaml           # Loop definition
 └── .running/              # Runtime state
-    ├── my-loop.state.json
-    └── my-loop.events.jsonl
+    ├── my-loop-20260503T122306.state.json
+    └── my-loop-20260503T122306.events.jsonl
 ```
 
 #### PersistentExecutor
@@ -4510,14 +4510,14 @@ class LockManager:
     def __init__(self, loops_dir: Path | None = None) -> None
 ```
 
-Manage scope-based locks for concurrent loop execution. Lock files are stored in `.loops/.running/<name>.lock`.
+Manage scope-based locks for concurrent loop execution. Lock files are stored in `.loops/.running/<instance_id>.lock`.
 
 **Methods:**
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `acquire(loop_name, scope)` | `bool` | Acquire lock; returns `False` if conflict exists |
-| `release(loop_name)` | `None` | Release lock for a loop |
+| `acquire(loop_name, scope, instance_id=None)` | `bool` | Acquire lock; returns `False` if conflict exists |
+| `release(loop_name, instance_id=None)` | `None` | Release lock for a loop instance |
 | `find_conflict(scope)` | `ScopeLock \| None` | Find conflicting running loop; cleans stale locks |
 | `list_locks()` | `list[ScopeLock]` | List all active locks; cleans stale locks |
 | `wait_for_scope(scope, timeout=300)` | `bool` | Wait until scope is available; `False` on timeout |

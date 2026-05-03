@@ -77,12 +77,12 @@ Error: A loop named '<new_name>' already exists at <path>.
 
 ## Step 4: Guard — Check If Loop Is Running
 
-Check for an active PID file:
+Check for active PID files (any instance):
 ```bash
-test -f ".loops/.running/<old_name>.pid" && echo "RUNNING" || echo "OK"
+ls .loops/.running/<old_name>-*.pid 2>/dev/null | head -1
 ```
 
-If `RUNNING`, abort:
+If the output is non-empty (at least one PID file found), abort:
 ```
 Error: Loop '<old_name>' appears to be running (PID file found).
   Stop it first: ll-loop stop <old_name>

@@ -1245,7 +1245,7 @@ Output:
 
 ```
 Loop my-scan started in background (PID: 12345)
-  Log:    .loops/.running/my-scan.log
+  Log:    .loops/.running/my-scan-20260503T122306.log
   Status: ll-loop status my-scan
   Stop:   ll-loop stop my-scan
 ```
@@ -1256,11 +1256,11 @@ Loop my-scan started in background (PID: 12345)
 # Check whether the process is alive and what state the loop is in
 ll-loop status my-scan
 
-# Stream live output
-tail -f .loops/.running/my-scan.log
+# Stream live output (get the exact log path from status --json)
+tail -f $(ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('log_file',''))")
 ```
 
-All stdout and stderr from the background process are written to `.loops/.running/<loop-name>.log`. The PID is stored in `.loops/.running/<loop-name>.pid` and used by `status` and `stop` to detect liveness and send signals.
+All stdout and stderr from the background process are written to `.loops/.running/<instance-id>.log`. The PID is stored in `.loops/.running/<instance-id>.pid` and used by `status` and `stop` to detect liveness and send signals. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log path for a running instance.
 
 ### Stopping a background loop
 
@@ -1276,7 +1276,7 @@ The first signal (`SIGTERM`) triggers a graceful shutdown — the loop finishes 
 ll-loop my-scan --background --queue
 ```
 
-**Important:** `--background` causes the *parent* to return immediately. Queue waiting happens inside the detached child process. The parent does not block or report whether the child is queued — use `ll-loop status my-scan` or `tail -f .loops/.running/my-scan.log` to check. The same `loops.queue_wait_timeout_seconds` config value applies; the background child exits with code 1 if the timeout is reached.
+**Important:** `--background` causes the *parent* to return immediately. Queue waiting happens inside the detached child process. The parent does not block or report whether the child is queued — use `ll-loop status my-scan` or retrieve the log path via `ll-loop status my-scan --json` to check. The same `loops.queue_wait_timeout_seconds` config value applies; the background child exits with code 1 if the timeout is reached.
 
 ### Running multiple loops concurrently
 

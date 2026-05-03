@@ -48,6 +48,7 @@ ll-loop list --running --json
 
 This outputs a JSON array of `LoopState` objects. Each object contains:
 - `loop_name` — unique loop identifier
+- `instance_id` — per-instance timestamp stem (e.g. `fix-types-20260503T122306`); **absent from list output** — use `ll-loop status <loop_name> --json` to resolve
 - `status` — `"running"`, `"interrupted"`, `"failed"`, `"timed_out"`, `"completed"`, `"awaiting_continuation"`
 - `updated_at` — ISO 8601 timestamp of last state update
 - `current_state` — last active state
@@ -57,12 +58,20 @@ This outputs a JSON array of `LoopState` objects. Each object contains:
 
 - **Zero candidates**: Report "No interrupted or running loops found. Specify a loop name explicitly." and stop.
 - **One candidate**: Select it automatically. Report: `Auto-selected loop: <loop_name> (status: <status>, last updated: <updated_at>)`.
-- **Two or more candidates**: Use `AskUserQuestion` to present the list and ask the user to pick one:
+- **Two or more candidates with distinct `loop_name` values**: Use `AskUserQuestion` to present the list and ask the user to pick one:
   ```
   Multiple loops found. Select one to analyze:
 
   [1] <loop_name_1> — <status> — last updated <updated_at>
   [2] <loop_name_2> — <status> — last updated <updated_at>
+  ...
+  ```
+- **Two or more candidates sharing the same `loop_name`** (multiple instances): follow up with `ll-loop status <loop_name> --json` to retrieve per-instance detail (`instance_id`, `pid`, `log_file`), then use `AskUserQuestion` to present instance-level disambiguation:
+  ```
+  Multiple instances of '<loop_name>' found. Select one to analyze:
+
+  [1] <instance_id_1> — <status> — PID <pid> — last updated <updated_at>
+  [2] <instance_id_2> — <status> — PID <pid> — last updated <updated_at>
   ...
   ```
 

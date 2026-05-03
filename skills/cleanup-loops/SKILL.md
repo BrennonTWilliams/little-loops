@@ -36,6 +36,7 @@ regardless of whether they are actually running. Each element contains:
 | Field | Type | Description |
 |---|---|---|
 | `loop_name` | string | Unique loop identifier |
+| `instance_id` | string | Per-instance timestamp stem (e.g. `fix-types-20260503T122306`); absent from list output — use `ll-loop status <loop_name> --json` to resolve |
 | `status` | string | `"running"`, `"interrupted"`, `"failed"`, `"timed_out"`, `"awaiting_continuation"`, `"completed"` |
 | `current_state` | string | Last active FSM state name |
 | `updated_at` | string | ISO 8601 UTC timestamp of last state save |
@@ -65,7 +66,7 @@ This produces the same fields as Step 1 plus one additional field:
 
 | Field | Type | Description |
 |---|---|---|
-| `pid` | integer\|null | PID from `.loops/.running/<loop_name>.pid`; null if no PID file exists |
+| `pid` | integer\|null | PID from `.loops/.running/<instance_id>.pid`; null if no PID file exists |
 
 Also check whether the PID is alive (only when `pid` is non-null):
 
@@ -211,8 +212,8 @@ report:
 ### stale-interrupted loops
 
 ```bash
-rm -f ".loops/.running/<loop_name>.pid"
-echo "Removed stale PID file for <loop_name>"
+rm -f .loops/.running/<loop_name>-*.pid
+echo "Removed stale PID file(s) for <loop_name>"
 ```
 
 ---
@@ -223,7 +224,8 @@ For every cleaned loop (both stuck-running and stale-interrupted), tail the even
 surface what happened just before the failure:
 
 ```bash
-tail -20 ".loops/.running/<loop_name>.events.jsonl" 2>/dev/null
+f=$(ls .loops/.running/<loop_name>-*.events.jsonl 2>/dev/null | sort | tail -1)
+[ -n "$f" ] && tail -20 "$f"
 ```
 
 If the events file is missing, note: `(no events file found — loop may not have started)`

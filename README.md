@@ -312,10 +312,10 @@ ll-loop list --running           # List only running loops
 ll-loop list --builtin           # List only built-in loops
 ll-loop list --json              # JSON array of available loops
 ll-loop list --status interrupted  # Filter running loops by status (e.g., interrupted, awaiting_continuation)
-ll-loop stop <loop-name>         # Stop a running loop
-ll-loop status <loop-name>       # Show loop status
-ll-loop status <loop-name> --json  # Show loop status as JSON
-ll-loop resume <loop-name>       # Resume an interrupted loop
+ll-loop stop <loop-name>         # Stop all running instances of a loop
+ll-loop status <loop-name>       # Show loop status (aggregates across all instances)
+ll-loop status <loop-name> --json  # Loop state as JSON (array when 2+ instances running)
+ll-loop resume <loop-name>       # Resume interrupted loop (errors if 2+ match; use --instance-id to select)
 ll-loop validate <loop-name>     # Validate loop definition
 ll-loop history <loop-name>      # Show loop execution history (lists archived runs)
 ll-loop history <loop-name> <run_id>  # Inspect a specific archived run

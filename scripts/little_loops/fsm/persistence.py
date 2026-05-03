@@ -10,8 +10,8 @@ File structure:
     .loops/
     ├── fix-types.yaml          # Loop definition
     ├── .running/               # Runtime state (auto-managed)
-    │   ├── fix-types.state.json
-    │   └── fix-types.events.jsonl
+    │   ├── fix-types-20260503T122306.state.json
+    │   └── fix-types-20260503T122306.events.jsonl
     └── .history/               # Archived run logs (auto-populated)
         └── 2024-01-15T103000-fix-types/
             ├── state.json
@@ -191,7 +191,7 @@ class StatePersistence:
     - State file: JSON file with current execution state
     - Events file: JSONL file with execution events (append-only)
 
-    Files are stored in .loops/.running/<loop_name>.*
+    Files are stored in .loops/.running/<instance_id>.*
     """
 
     def __init__(

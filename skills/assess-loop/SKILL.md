@@ -49,9 +49,26 @@ ll-loop list --running --json
 
 Filter to `status` one of `"running"`, `"interrupted"`, `"failed"`, `"timed_out"`, `"awaiting_continuation"`. Sort by `updated_at` descending.
 
+Note: `ll-loop list --running --json` output does **not** include `instance_id` — entries with the same `loop_name` are indistinguishable at this level.
+
 - **Zero candidates**: Report "No interrupted or running loops found. Specify a loop name explicitly." and stop.
 - **One candidate**: Select automatically and report.
-- **Two or more**: Use `AskUserQuestion` to let the user pick.
+- **Two or more candidates with distinct `loop_name` values**: Use `AskUserQuestion` to let the user pick:
+  ```
+  Multiple loops found. Select one to assess:
+
+  [1] <loop_name_1> — <status> — last updated <updated_at>
+  [2] <loop_name_2> — <status> — last updated <updated_at>
+  ...
+  ```
+- **Two or more candidates sharing the same `loop_name`** (multiple instances): follow up with `ll-loop status <loop_name> --json` to retrieve per-instance detail (`instance_id`, `pid`, `log_file`), then use `AskUserQuestion` to present instance-level disambiguation:
+  ```
+  Multiple instances of '<loop_name>' found. Select one to assess:
+
+  [1] <instance_id_1> — <status> — PID <pid> — last updated <updated_at>
+  [2] <instance_id_2> — <status> — PID <pid> — last updated <updated_at>
+  ...
+  ```
 
 ---
 

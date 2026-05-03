@@ -123,20 +123,48 @@ N/A — No public API changes. All changes are internal to `recursive-refine.yam
 - `scripts/tests/test_loops_recursive_refine.py` — verify progress line content in synthetic run.
 - `scripts/tests/test_builtin_loops.py` — `TestRecursiveRefineLoop`: minimal structural check that `dequeue_next` action references counter files.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — invokes `loop: recursive-refine` in `refine_issue` state; reads `recursive-refine-passed.txt` and `recursive-refine-skipped.txt` post-run. No modification needed — interface contract (exit code, output files) is unchanged by ENH-1348.
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — same sub-loop invocation pattern with `context_passthrough: true`; reads same output files. No modification needed.
+- `scripts/little_loops/loops/sprint-build-and-validate.yaml` — invokes `loop: recursive-refine` as sub-loop. No modification needed.
+
 ### Dependencies / Enhances
 - ENH-1347 — depth field in progress line depends on `recursive-refine-current-depth.txt` written there; graceful fallback when absent.
 - ENH-1350 — skipped count in progress line will become more meaningful once skip reasons are partitioned.
 
 ### Similar Patterns
 - `scripts/little_loops/loops/recursive-refine.yaml` — existing counter files (`passed.txt`, `queue.txt`, `skipped.txt`) use the same `grep -c` pattern; new counter files follow the same convention.
+- `scripts/little_loops/loops/lib/common.yaml` — `retry_counter` fragment is the canonical read-increment-write pattern: `N=$(cat "$FILE" 2>/dev/null || echo 0); N=$((N + 1)); printf '%s' "$N" > "$FILE"`. Inline this for `dequeued-count` rather than invoking the fragment (routing logic differs).
 - Other FSM loops in `scripts/little_loops/loops/` — check for any that emit progress lines via `printf` to stderr for consistency.
 
 ### Tests
 - `scripts/tests/test_loops_recursive_refine.py` — add: synthetic 3-issue run capturing stderr; assert all 3 `[N/M] → ID` progress lines are present with correct format.
 - `scripts/tests/test_builtin_loops.py` — add: `dequeue_next` action references `recursive-refine-dequeued-count.txt`.
+- `scripts/tests/test_builtin_loops.py` — add: `test_parse_input_initializes_dequeued_count_and_total_enqueued` asserting `parse_input` action body references both `recursive-refine-dequeued-count.txt` and `recursive-refine-total-enqueued.txt`. [_Wiring pass added by `/ll:wire-issue`_]
 
 ### Documentation
 - N/A — internal observability improvement; no user-facing docs require updates.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — Notes paragraph enumerates all `.loops/tmp/recursive-refine-*.txt` state files. The two new counter files (`recursive-refine-total-enqueued.txt`, `recursive-refine-dequeued-count.txt`) are absent from that list. Optional: update the Notes paragraph to include them if the convention is to document all state files. Core N/A ruling stands — no behavioral docs change required.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Exact insertion points in `recursive-refine.yaml`:**
+- `parse_input` — insert the two new `printf '' >` counter-init lines after line 59 (last `printf '' >` for `recursive-refine-decomposition.tsv`) and before line 60 (`COUNT=$(wc -l …)`)
+- `dequeue_next` — insert after line 83 (`printf '%s' "${DEPTH:-0}" > …current-depth.txt`) and before line 84 (`echo "$CURRENT"`) — depth value is already resolved here, safe to read same-action
+- `enqueue_children` — insert after line 289 (`CHILD_COUNT=$(wc -l …)`) and before line 290 (`echo "Parent … decomposed"`)
+- `enqueue_or_skip` — insert after line 492 (`CHILD_COUNT=$(wc -l …)`) and before line 493 (`echo "Parent … decomposed by size-review"`) — only inside the `if [ -s … ]` children-found branch
+
+**ENH-1347 is already completed** (`.issues/completed/P2-ENH-1347-*`). `dequeue_next` already writes `recursive-refine-current-depth.txt` via `printf '%s' "${DEPTH:-0}"` on every dequeue. The depth value is always available in the same action block; no file-existence guard is needed (the `2>/dev/null` fallback on the `cat` read is still appropriate for robustness).
+
+**FSM `${}` escaping**: `dequeue_next` already uses single-dollar `${DEPTH:-0}` syntax successfully (FSM only expands dotted-path tokens like `${captured.input.output}`; plain `${VARNAME:-default}` passes through to bash). The `done` state's `$${PASSED_LIST:-none}` double-dollar pattern appears because `PASSED_LIST` is set inside a heredoc/subshell context — not relevant for inline `dequeue_next` action bash. Use single-dollar `${DEPTH:+…}` as the proposed solution shows.
+
+**Test pattern for stderr assertions** (from `test_loops_recursive_refine.py`): use `_bash(script, tmp_path)` helper (runs `bash -c <script>`, returns `CompletedProcess`). Assert `result.stderr` directly, e.g. `assert "[1/3] → ENH-001" in result.stderr`. Copy the relevant `dequeue_next` action block verbatim as the test script, pre-creating the counter files in `loops_tmp`.
 
 ### Configuration
 - N/A — runtime state only (`.loops/tmp/recursive-refine-*.txt`); no configuration file changes required.
@@ -169,5 +197,7 @@ N/A — No public API changes. All changes are internal to `recursive-refine.yam
 **Open** | Created: 2026-05-03 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-03T21:15:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
+- `/ll:refine-issue` - 2026-05-03T21:10:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
 - `/ll:format-issue` - 2026-05-03T19:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
 - `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`
