@@ -104,4 +104,5 @@ No new CLI surface — this is a pure refactor of one loop YAML to consume exist
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-03T15:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:format-issue` - 2026-05-03T13:08:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66b7ef9c-3106-4ab5-9130-c852d0e94984.jsonl`

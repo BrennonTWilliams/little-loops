@@ -118,6 +118,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **FEAT-1315 is still open**: `session-start-inject.sh` does not yet exist. Step 1 of the implementation plan explicitly says "Wait for FEAT-1315 to merge." The acceptance criteria reference a file that must exist before docs can be verified.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:refine-issue` - 2026-05-02T03:37:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea9b8888-aee4-4367-aecd-ef628a7ad191.jsonl`
 - `/ll:wire-issue` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-05-02T03:29:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d505f23-ba04-4111-b275-b786a56c1538.jsonl`

@@ -153,5 +153,6 @@ Output: `.ll/learning-tests/<slug>.md` in `LearnTestRecord` format (FEAT-1285 sc
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
 - `/ll:format-issue` - 2026-04-25T20:14:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e97fb3c-4c81-4d9a-b8ce-a2bcf181afa8.jsonl`

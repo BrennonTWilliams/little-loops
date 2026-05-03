@@ -209,11 +209,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-23
+**Verdict**: VALID — Verified 2026-04-23; re-verified 2026-05-03
 
 - No `throttle:` section in FSM state config schema (`scripts/little_loops/fsm/schema.py`) ✓
 - No per-state tool-call counter in FSM executor ✓
 - Feature not yet implemented ✓
+- **Line number drift** (2026-05-03): `executor.py:197-201` reference is stale — `_consecutive_rate_limit_exhaustions` counter declaration is now at line **205**; storm detection cited as `1136-1144` is now at **1180-1186**. Update Implementation Steps 2–3 accordingly before starting.
 
 
 ## Confidence Check Notes
@@ -247,6 +248,7 @@ Update first — Resolve the persistence decision at `persistence.py:457-460` be
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-04-27T02:55:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/baf6354e-f895-4724-a14b-8b08bc94c4ee.jsonl`

@@ -225,6 +225,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - `readiness_threshold` in config is 85 — the manage-issue Phase 2.5 gate will flag this score (80); must unblock deps to raise score to 100 before automated pipelines will proceed without a warning.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/062ec8c6-6424-4417-9cb0-d25f3f41a8bc.jsonl`
 - `/ll:refine-issue` - 2026-05-02T04:12:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e3297cf-0323-4e90-9d85-590243f90677.jsonl`
 - `/ll:wire-issue` - 2026-05-02T04:07:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19d3bdf4-5f60-472b-9dbc-a3be86bef0ca.jsonl`

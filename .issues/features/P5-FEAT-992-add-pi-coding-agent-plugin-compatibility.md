@@ -5,7 +5,7 @@ priority: P5
 status: open
 discovered_date: 2026-04-08
 discovered_by: capture-issue
-blocked_by: [FEAT-957, FEAT-918, FEAT-1116]
+blocked_by: [FEAT-957, FEAT-1116]
 ---
 
 # FEAT-992: Add Pi Coding Agent Plugin Compatibility
@@ -107,6 +107,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
