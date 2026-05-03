@@ -1198,3 +1198,133 @@ class TestDequeueProgressLine:
             _bash(_DEQUEUE_NEXT_SCRIPT, tmp_path)
             count = int((loops_tmp / "recursive-refine-dequeued-count.txt").read_text())
             assert count == expected
+
+
+# --- ENH-1349: Queue Peek After Enqueue ---
+
+_ENQUEUE_CHILDREN_PEEK_SCRIPT = r"""
+PEEK_COUNT=5
+QUEUE_LINES=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
+if [ "$QUEUE_LINES" -gt 0 ]; then
+  PEEK=$(head -"$PEEK_COUNT" .loops/tmp/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
+  if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
+    REMAINING=$((QUEUE_LINES - PEEK_COUNT))
+    printf '  Next up: %s [+%d more]\n' "$PEEK" "$REMAINING" >&2
+  else
+    printf '  Next up: %s\n' "$PEEK" >&2
+  fi
+fi
+"""
+
+_ENQUEUE_OR_SKIP_PEEK_SCRIPT = r"""
+if [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
+  PEEK_COUNT=5
+  QUEUE_LINES=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
+  if [ "$QUEUE_LINES" -gt 0 ]; then
+    PEEK=$(head -"$PEEK_COUNT" .loops/tmp/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
+    if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
+      REMAINING=$((QUEUE_LINES - PEEK_COUNT))
+      printf '  Next up: %s [+%d more]\n' "$PEEK" "$REMAINING" >&2
+    else
+      printf '  Next up: %s\n' "$PEEK" >&2
+    fi
+  fi
+else
+  echo "Skipped: no children"
+fi
+"""
+
+
+def _setup_enqueue_env(
+    loops_tmp: Path,
+    *,
+    queue: list[str],
+    children: list[str] | None = None,
+) -> None:
+    """Populate tmp files for an enqueue peek test."""
+    (loops_tmp / "recursive-refine-queue.txt").write_text(
+        "".join(f"{id}\n" for id in queue)
+    )
+    (loops_tmp / "recursive-refine-new-children.txt").write_text(
+        "".join(f"{id}\n" for id in (children or []))
+    )
+
+
+class TestEnqueuePeekLine:
+    """enqueue_children and enqueue_or_skip emit a 'Next up:' peek line to stderr (ENH-1349)."""
+
+    def test_enqueue_children_peek_on_stderr(self, tmp_path: Path) -> None:
+        """enqueue_children emits Next up line on stderr."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_enqueue_env(loops_tmp, queue=["ENH-001", "ENH-002", "ENH-003"])
+
+        result = _bash(_ENQUEUE_CHILDREN_PEEK_SCRIPT, tmp_path)
+
+        assert "Next up:" in result.stderr
+
+    def test_enqueue_or_skip_children_branch_peek_on_stderr(self, tmp_path: Path) -> None:
+        """enqueue_or_skip children branch emits Next up line on stderr."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_enqueue_env(
+            loops_tmp,
+            queue=["ENH-001", "ENH-002"],
+            children=["ENH-001", "ENH-002"],
+        )
+
+        result = _bash(_ENQUEUE_OR_SKIP_PEEK_SCRIPT, tmp_path)
+
+        assert "Next up:" in result.stderr
+
+    def test_peek_lists_all_ids_when_le_five(self, tmp_path: Path) -> None:
+        """All IDs listed without suffix when queue has 5 or fewer items."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_enqueue_env(
+            loops_tmp, queue=["ENH-001", "ENH-002", "ENH-003", "ENH-004", "ENH-005"]
+        )
+
+        result = _bash(_ENQUEUE_CHILDREN_PEEK_SCRIPT, tmp_path)
+
+        assert "ENH-001" in result.stderr
+        assert "ENH-005" in result.stderr
+        assert "[+" not in result.stderr
+
+    def test_peek_with_more_suffix_when_gt_five(self, tmp_path: Path) -> None:
+        """[+K more] suffix appended when queue has more than 5 items."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_enqueue_env(
+            loops_tmp,
+            queue=["ENH-001", "ENH-002", "ENH-003", "ENH-004", "ENH-005", "ENH-006", "ENH-007"],
+        )
+
+        result = _bash(_ENQUEUE_CHILDREN_PEEK_SCRIPT, tmp_path)
+
+        assert "Next up:" in result.stderr
+        assert "[+2 more]" in result.stderr
+
+    def test_peek_omitted_when_queue_empty(self, tmp_path: Path) -> None:
+        """No peek line emitted when queue is empty after enqueue."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_enqueue_env(loops_tmp, queue=[])
+
+        result = _bash(_ENQUEUE_CHILDREN_PEEK_SCRIPT, tmp_path)
+
+        assert "Next up:" not in result.stderr
+
+    def test_enqueue_or_skip_no_children_branch_no_peek(self, tmp_path: Path) -> None:
+        """enqueue_or_skip no-children branch does not emit a peek line."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        _setup_enqueue_env(
+            loops_tmp,
+            queue=["ENH-001", "ENH-002"],
+            children=[],
+        )
+
+        result = _bash(_ENQUEUE_OR_SKIP_PEEK_SCRIPT, tmp_path)
+
+        assert "Next up:" not in result.stderr

@@ -302,6 +302,17 @@ states:
       PREV_TOTAL=$(cat .loops/tmp/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
       printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > .loops/tmp/recursive-refine-total-enqueued.txt
       echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
+      PEEK_COUNT=5
+      QUEUE_LINES=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
+      if [ "$QUEUE_LINES" -gt 0 ]; then
+        PEEK=$(head -"$PEEK_COUNT" .loops/tmp/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
+        if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
+          REMAINING=$((QUEUE_LINES - PEEK_COUNT))
+          printf '  Next up: %s [+%d more]\n' "$PEEK" "$REMAINING" >&2
+        else
+          printf '  Next up: %s\n' "$PEEK" >&2
+        fi
+      fi
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -507,6 +518,17 @@ states:
         PREV_TOTAL=$(cat .loops/tmp/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
         printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > .loops/tmp/recursive-refine-total-enqueued.txt
         echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
+        PEEK_COUNT=5
+        QUEUE_LINES=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
+        if [ "$QUEUE_LINES" -gt 0 ]; then
+          PEEK=$(head -"$PEEK_COUNT" .loops/tmp/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
+          if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
+            REMAINING=$((QUEUE_LINES - PEEK_COUNT))
+            printf '  Next up: %s [+%d more]\n' "$PEEK" "$REMAINING" >&2
+          else
+            printf '  Next up: %s\n' "$PEEK" >&2
+          fi
+        fi
       else
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
         echo "Skipped: ${captured.input.output} (no further decomposition possible)"
