@@ -122,6 +122,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `ll-loop`, `concurrency`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-03T21:54:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0105a40-4f11-453e-842b-a9855e8ac301.jsonl`
 
 - `/ll:capture-issue` - 2026-05-03T18:44:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d6eb746-1937-4f45-bb7f-14d33480c49e.jsonl`
 
