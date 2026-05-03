@@ -2,10 +2,11 @@
 id: ENH-1348
 type: ENH
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-05-03
 discovered_by: capture-issue
 captured_at: '2026-05-03T16:43:25Z'
+completed_at: '2026-05-03T21:27:21Z'
 related:
 - ENH-1347
 - ENH-1338
@@ -202,11 +203,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `enhancement`, `recursive-refine`, `fsm-loops`, `observability`, `cli-output`
 
+## Resolution
+
+Implemented in `scripts/little_loops/loops/recursive-refine.yaml`:
+
+1. **`parse_input`** — initializes `recursive-refine-dequeued-count.txt` to `0` and `recursive-refine-total-enqueued.txt` to the root queue count.
+2. **`dequeue_next`** — increments `dequeued-count`, reads `total-enqueued` and live counts from passed/queued/skipped files, then emits `[N/M] → ID (depth: D) | passed: P | queued: Q | skipped: S` to stderr before the `echo "$CURRENT"` capture line.
+3. **`enqueue_children`** — bumps `total-enqueued` by the child count after prepending children.
+4. **`enqueue_or_skip`** (children-found branch) — same total bump.
+
+Test coverage added:
+- `TestDequeueProgressLine` (7 tests) in `test_loops_recursive_refine.py` — exercises the full bash logic including the 3-issue synthetic run, depth inclusion/omission, counter increment, and stderr-only output.
+- 3 structural assertions added to `TestRecursiveRefineLoop` in `test_builtin_loops.py` — verify parse_input initializes both counter files and dequeue_next references them with stderr redirect.
+
 ## Status
 
-**Open** | Created: 2026-05-03 | Priority: P3
+**Completed** | Created: 2026-05-03 | Completed: 2026-05-03 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-03T21:27:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:ready-issue` - 2026-05-03T21:18:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
 - `/ll:confidence-check` - 2026-05-03T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
 - `/ll:wire-issue` - 2026-05-03T21:15:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
