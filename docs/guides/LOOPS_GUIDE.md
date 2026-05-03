@@ -1195,7 +1195,7 @@ scope:
   - "tests/"
 ```
 
-If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead. The maximum wait is controlled by `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default: 3600 s). Increase it for long-running overnight loops; decrease it for fail-fast CI environments.
+If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead. The maximum wait is controlled by `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default: 86400 s / 24 h). Decrease it for fail-fast CI environments; increase it for multi-day batch processing.
 
 ## Background Mode
 

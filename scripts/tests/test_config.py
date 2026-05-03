@@ -555,7 +555,7 @@ class TestLoopsConfig:
         config = LoopsConfig.from_dict({})
 
         assert config.loops_dir == ".loops"
-        assert config.queue_wait_timeout_seconds == 3600
+        assert config.queue_wait_timeout_seconds == 86400
 
 
 class TestBRConfig:
