@@ -1614,6 +1614,7 @@ class TestRecursiveRefineLoop:
         required = {
             "parse_input",
             "dequeue_next",
+            "check_attempt_budget",
             "capture_baseline",
             "run_refine",
             "check_passed",
@@ -1646,6 +1647,16 @@ class TestRecursiveRefineLoop:
         """dequeue_next must capture as 'input' for context_passthrough to work."""
         state = data["states"].get("dequeue_next", {})
         assert state.get("capture") == "input"
+
+    def test_dequeue_next_routes_to_check_attempt_budget(self, data: dict) -> None:
+        """dequeue_next.on_yes must route to check_attempt_budget (not directly to capture_baseline)."""
+        state = data["states"].get("dequeue_next", {})
+        assert state.get("on_yes") == "check_attempt_budget"
+
+    def test_check_attempt_budget_routes_to_capture_baseline(self, data: dict) -> None:
+        """check_attempt_budget.on_yes must route to capture_baseline."""
+        state = data["states"].get("check_attempt_budget", {})
+        assert state.get("on_yes") == "capture_baseline"
 
     def test_run_refine_delegates_to_sub_loop(self, data: dict) -> None:
         """run_refine must delegate to refine-to-ready-issue with context_passthrough."""

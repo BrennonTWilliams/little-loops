@@ -53,6 +53,8 @@ states:
         < .loops/tmp/recursive-refine-queue.txt \
         > .loops/tmp/recursive-refine-depth-map.txt
       > .loops/tmp/recursive-refine-skipped-depth.txt
+      printf '' > .loops/tmp/recursive-refine-attempts.txt
+      printf '' > .loops/tmp/recursive-refine-skipped-budget.txt
       COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
       echo "Queued $COUNT issue(s) for recursive refinement"
     fragment: shell_exit
@@ -80,9 +82,49 @@ states:
       echo "$CURRENT"
     fragment: shell_exit
     capture: input
-    on_yes: capture_baseline
+    on_yes: check_attempt_budget
     on_no: done
     on_error: done
+
+  check_attempt_budget:
+    # Gate: skip this issue if it has consumed its per-issue refinement budget.
+    # Reads max_refine_count from ll-config.json (commands.max_refine_count) with
+    # context.max_refine_count as fallback. Budget-exceeded IDs are written to both
+    # the budget-specific file and the shared skipped file so outer-loop callers
+    # (auto-refine-and-implement, sprint-refine-and-implement) accumulate them correctly.
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      from pathlib import Path
+      issue_id = '${captured.input.output}'
+      cfg = {}
+      p = Path('.ll/ll-config.json')
+      if p.exists():
+          try:
+              cfg = json.loads(p.read_text()).get('commands', {})
+          except Exception:
+              pass
+      cap = cfg.get('max_refine_count', ${context.max_refine_count})
+      attempts_file = '.loops/tmp/recursive-refine-attempts.txt'
+      try:
+          lines = Path(attempts_file).read_text().splitlines()
+      except FileNotFoundError:
+          lines = []
+      count = sum(1 for ln in lines if ln.strip() == issue_id)
+      if count >= cap:
+          with open('.loops/tmp/recursive-refine-skipped-budget.txt', 'a') as f:
+              f.write(issue_id + '\n')
+          with open('.loops/tmp/recursive-refine-skipped.txt', 'a') as f:
+              f.write(issue_id + '\n')
+          sys.exit(1)
+      with open(attempts_file, 'a') as f:
+          f.write(issue_id + '\n')
+      sys.exit(0)
+      PYEOF
+    fragment: shell_exit
+    on_yes: capture_baseline
+    on_no: dequeue_next
+    on_error: dequeue_next
 
   capture_baseline:
     # Snapshot all active issue IDs before running the refine sub-loop so we
@@ -460,22 +502,27 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       CYCLE_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-cycle.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      BUDGET_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-budget.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      BUDGET_LIST=$(echo "$BUDGET_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Recursive Refine Summary ===\n\n'
       printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
       printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
       printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "$${DEPTH_LIST:-none}"
       printf 'Skipped (cycle %d): %s\n' "$CYCLE_COUNT" "$${CYCLE_LIST:-none}"
+      printf 'Skipped (budget %d): %s\n' "$BUDGET_COUNT" "$${BUDGET_LIST:-none}"
       printf '\n'
     action_type: shell
     terminal: true

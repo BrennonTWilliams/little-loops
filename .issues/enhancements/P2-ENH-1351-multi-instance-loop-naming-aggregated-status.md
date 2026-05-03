@@ -6,6 +6,7 @@ status: open
 captured_at: "2026-05-03T17:41:57Z"
 discovered_date: "2026-05-03"
 discovered_by: capture-issue
+decision_needed: false
 ---
 
 # ENH-1351: Multi-Instance Loop Naming with Aggregated Status
@@ -29,6 +30,14 @@ When multiple instances of the same loop (e.g. `autodev`) run concurrently, they
 - `ll-loop stop autodev` stops all running instances.
 - `LoopState.loop_name` stays as the logical name (`autodev`) — no schema change.
 - Legacy files without timestamp suffix continue to work transparently (instance_id falls back to loop_name).
+
+## Success Metrics
+
+- Two concurrent `ll-loop run autodev` invocations produce distinct runtime files (`autodev-TIMESTAMP1.*` vs `autodev-TIMESTAMP2.*`) with no collision
+- `ll-loop status autodev` lists all N running instances with individual state, PID, and log details
+- `ll-loop stop autodev` terminates all running instances of the named loop
+- Single-instance behavior unchanged: a lone `ll-loop run foo` behaves identically to before (backward-compatible)
+- Legacy runtime files without a timestamp suffix (e.g., `foo.pid`) are still recognized and loaded transparently
 
 ## Motivation
 
@@ -59,6 +68,46 @@ def _make_instance_id(loop_name: str) -> str:
 ```
 
 **Hidden CLI arg** (`--instance-id`, `argparse.SUPPRESS`) added to `run_parser` and `resume_parser` so background launcher can pass its pre-generated ID to the foreground child process.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Current function signatures (pre-change):**
+
+```python
+# concurrency.py:98
+def acquire(self, loop_name: str, scope: list[str]) -> bool: ...
+# concurrency.py:143
+def release(self, loop_name: str) -> None: ...
+
+# persistence.py:196
+def __init__(self, loop_name: str, loops_dir: Path | None = None) -> None: ...
+
+# persistence.py:346
+def __init__(
+    self,
+    fsm: FSMLoop,
+    persistence: StatePersistence | None = None,
+    loops_dir: Path | None = None,
+    **executor_kwargs: Any,
+) -> None: ...
+
+# _helpers.py:232
+def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path, subcommand: str = "run") -> int: ...
+```
+
+**`PersistentExecutor` internal `StatePersistence` construction (persistence.py:366):**
+
+When no explicit `persistence` is passed to `PersistentExecutor`, the constructor builds one internally:
+```python
+self.persistence = persistence or StatePersistence(fsm.name, loops_dir or Path(".loops"))
+```
+The easiest threading path: add `instance_id: str | None = None` to `PersistentExecutor.__init__` and forward it when constructing the default `StatePersistence`. Callers that pass an explicit `persistence` object are unaffected.
+
+**`--queue` / `lock_manager.wait_for_scope` interaction (run.py:227-278):**
+
+When `acquire` returns `False` and `args.queue` is set, `cmd_run` enters a polling wait via `lock_manager.wait_for_scope`. With instance IDs, each run gets its own lock file (`autodev-TIMESTAMP.lock`) and its own scope. Two concurrent runs will no longer conflict on the lock file — so `--queue` becomes a no-op for multi-instance runs. Verify that this is intentional: `--queue` can be kept as-is (it will simply never trigger in the parallel-instance scenario) without breaking anything.
 
 **Aggregate status output** (2 instances):
 ```
@@ -95,30 +144,120 @@ def _make_instance_id(loop_name: str) -> str:
 - Any script that constructs `{loop_name}.pid` / `{loop_name}.state.json` paths directly (grep `running_dir / f"{.*}.pid"`)
 - `scripts/tests/test_cli_loop_background.py` — asserts on exact `my-loop.pid` / `my-loop.log` paths → update to glob `my-loop*.pid`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**All path construction points (exact line numbers):**
+| File | Line | Expression |
+|------|------|------------|
+| `concurrency.py` | 131 | `running_dir / f"{loop_name}.lock"` (acquire) |
+| `concurrency.py` | 149 | `running_dir / f"{loop_name}.lock"` (release) |
+| `persistence.py` | 206 | `running_dir / f"{loop_name}.state.json"` |
+| `persistence.py` | 207 | `running_dir / f"{loop_name}.events.jsonl"` |
+| `_helpers.py` | 250 | `running_dir / f"{loop_name}.pid"` |
+| `_helpers.py` | 251 | `running_dir / f"{loop_name}.log"` |
+| `run.py` | 203–205 | `running_dir / f"{loop_name}.pid"` (foreground) |
+| `lifecycle.py` | 64 | `running_dir / f"{loop_name}.pid"` (status) |
+| `lifecycle.py` | 67 | `running_dir / f"{loop_name}.log"` (status) |
+| `lifecycle.py` | 147 | `running_dir / f"{loop_name}.pid"` (stop) |
+| `lifecycle.py` | 200 | `running_dir / f"{loop_name}.pid"` (resume) |
+
+**Additional dependent file not previously listed:**
+- `scripts/little_loops/cli/loop/info.py:52-54` — `cmd_list` calls `list_running_loops(loops_dir)` directly; the displayed status table iterates all returned `LoopState` objects. Once multi-instance state files exist, this will surface duplicate logical-name rows unless `list_running_loops` groups by `loop_name`.
+
 ### Similar Patterns
 - `list_running_loops` in `persistence.py` — deduplication logic currently uses `loop_name` set; needs `stem`-based tracking
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`list_running_loops` deduplication bug mechanics** (`persistence.py:566`):
+
+The function runs two glob passes. The second pass (PID files, line 590) guards against phantom "starting" entries via:
+```python
+known_names = {s.loop_name for s in states}   # e.g. {"autodev"}
+if pid_file.stem in known_names: continue      # compares "autodev-TIMESTAMP" against "autodev"
+```
+With instance-ID suffixes, `pid_file.stem` = `"autodev-20260503T122306"` will never equal `"autodev"` in `known_names`, so every instance generates a spurious "starting" state object. The fix: strip the timestamp suffix when building `known_names`, or track already-seen `loop_name` values from state objects so the PID-file pass can skip any logical name already represented.
+
+**Hidden argparse arg precedent** (`__init__.py:122-124`, `__init__.py:229-231`):
+
+`--foreground-internal` is already registered with `help=argparse.SUPPRESS` on both `run_parser` and `resume_parser` — the exact same pattern to use for `--instance-id`. Consumed downstream via `getattr(args, "foreground_internal", False)`.
+
+**`_RUN_FOLDER` regex for parsing timestamp suffixes** (`persistence.py:45`):
+
+An existing regex already parses `{timestamp}-{name}` from archive folder names:
+```python
+_RUN_FOLDER = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
+```
+`_find_instances` can use a similar regex to strip the timestamp suffix from a `stem` and recover the logical `loop_name`.
+
+**`strftime` format inconsistency** (`run.py:293` vs proposed):
+
+`cmd_run` already generates a worktree timestamp using `%Y%m%d-%H%M%S` (hyphen between date and time). The issue proposes `%Y%m%dT%H%M%S` (ISO-style `T`). `archive_run()` at `persistence.py:316` uses `%Y-%m-%dT%H%M%S`. Implementer should pick one format consistently — ISO-T (`%Y%m%dT%H%M%S`) is already in the issue's expected-behavior examples and matches the archive run ID format most closely.
+
 ### Tests
-- `scripts/tests/test_cli_loop_background.py` — `test_writes_pid_file`, `test_creates_log_file`
-- `scripts/tests/test_cli_loop_lifecycle.py` — status/stop tests may assert on exact file names
-- `scripts/tests/test_concurrency.py` — lock file path assertions
+- `scripts/tests/test_cli_loop_background.py` — `test_writes_pid_file` (line 154), `test_creates_log_file` (line 174): assert exact `my-loop.pid`/`my-loop.log` paths → update to `glob("my-loop*.pid")`
+- `scripts/tests/test_cli_loop_lifecycle.py:563` — `TestCmdResumeBackground.test_plain_foreground_resume_writes_pid_file`: asserts `tmp_path / ".running" / "test-loop.pid"` exists → needs glob or instance-ID-aware lookup
+- `scripts/tests/test_cli_loop_lifecycle.py` — `TestCmdStop`, `TestCmdStatusWithPid`: use `_process_alive` mock patterns (both `return_value=True/False` and `side_effect=[True, False]` sequence forms)
+- `scripts/tests/test_concurrency.py:75-88` — lock file path assertions in `TestLockManager` → update to instance-ID path
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_persistence.py` — **MISSING from known tests; must update**. Primary coverage file for `StatePersistence`, `PersistentExecutor`, `list_running_loops`. Breaking path assertions:
+  - `TestPersistentExecutor.test_run_creates_state_file` (line 589): asserts `.running/test-loop.state.json` → update to instance-ID-aware glob
+  - `TestPersistentExecutor.test_run_creates_events_file` (line 601): asserts `.running/test-loop.events.jsonl` → same
+  - `TestAcceptanceCriteria.test_state_saved_after_state_transition` (line 1084): asserts `.running/test-loop.state.json` → same
+  - `TestUtilityFunctions.test_list_running_loops_no_duplicate_for_loop_with_both_files` (line 1020): deduplication test uses `pid_file.stem` directly as loop name; with suffix `"autodev-TIMESTAMP"` won't match `known_names = {"autodev"}` → update for the deduplication fix
+  - New cases needed for `test_list_running_loops` variants where `pid_file.stem` = `"my-loop-TIMESTAMP"` but `LoopState.loop_name` = `"my-loop"`
+- `scripts/tests/test_cli_loop_lifecycle.py` — additional breaking tests beyond those already listed:
+  - `TestCmdResumeBackground.test_foreground_internal_registers_pid_cleanup` (line 531): sets up `pid_file = running_dir / "test-loop.pid"` → must use instance-ID path
+  - `TestCmdResumeBackground.test_foreground_internal_does_not_overwrite_parent_pid` (line 613): same
+  - `TestCmdResume.test_resume_registers_signal_handlers` (line 386): `expected_pid_file = tmp_path / ".running" / "test-loop.pid"` asserted via `mock_register.assert_called_once_with` → must use instance-ID path
+  - `TestCmdStop.test_stop_with_pid_sends_sigterm_and_waits` (line 127): `pid_file = running_dir / "test-loop.pid"` → update
+  - `TestCmdStop.test_stop_sends_sigkill_if_process_does_not_exit` (line 156): same
+  - `TestCmdStop.test_stop_sigkill_handles_race_if_process_exits_between_poll_and_kill` (line 186): same
+  - `TestCmdStatusLogFile` (lines 903, 956): `log_file = running_dir / "test-loop.log"` → update
+  - `TestCmdStatus.test_no_state_returns_1` (line 25): patches `StatePersistence` directly; after rewrite `cmd_status` calls `_find_instances` — patch target may change
 
 ### Documentation
-- N/A
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/persistence.py` — module docstring (lines 9–18) shows `{loop_name}.*` file layout (e.g. `fix-types.state.json`); stale after change. `StatePersistence` class docstring (line 193): "Files are stored in `.loops/.running/<loop_name>.*`" — update to reflect `<instance_id>.*` naming
+- `docs/reference/API.md` — already in related docs, but specific sections need updating: `StatePersistence.__init__` signature block, `PersistentExecutor.__init__` signature block (add `instance_id` kwarg), `LockManager` methods table (`acquire`/`release`), and the `.running/` file structure diagram under `StatePersistence` section (shows `my-loop.state.json` / `my-loop.events.jsonl`)
+- `skills/cleanup-loops/SKILL.md` — Step 6 uses `rm -f ".loops/.running/<loop_name>.pid"` and Step 7 uses `tail -20 ".loops/.running/<loop_name>.events.jsonl"` — both hardcode bare loop-name paths; after this change stale PID/events files will be named `{instance_id}.*`, so cleanup will silently fail. Fix: glob `{loop_name}-*.pid` or delegate cleanup to `ll-loop stop`
+- `skills/rename-loop/SKILL.md` — Step 4 guard: `test -f ".loops/.running/<old_name>.pid"` always returns false when a loop is running with instance-ID suffix, silently allowing rename of a live loop. Fix: glob `{old_name}*.pid` or `{old_name}-*.pid`
+- `skills/analyze-loop/SKILL.md` — Step 1 calls `ll-loop list --running --json` and iterates by `loop_name` for user selection. With multiple instances of the same `loop_name`, the selection list presents duplicate entries with no disambiguator. Needs instance-ID awareness in the selection step
+- `skills/assess-loop/SKILL.md` — same `ll-loop list --running --json` ambiguity in Step 1
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. Add `_make_instance_id` to `_helpers.py`; update `run_background` to generate and pass `instance_id`
-2. Add hidden `--instance-id` arg to `run_parser` / `resume_parser` in `__init__.py`
-3. Update `run.py` `cmd_run` to generate or consume `instance_id` and route it to `LockManager` and `PersistentExecutor`
-4. Add `instance_id` kwarg to `LockManager.acquire` / `release` in `concurrency.py`
-5. Add `instance_id` kwarg to `StatePersistence` and `PersistentExecutor` in `persistence.py`; fix `list_running_loops` deduplication
-6. Add `_find_instances` to `lifecycle.py`; rewrite `cmd_status`, `cmd_stop`, `cmd_resume` for aggregate multi-instance handling
-7. Update `test_cli_loop_background.py` path assertions to glob pattern
-8. Run full test suite; smoke test with two concurrent `ll-loop run` invocations
+1. Add `_make_instance_id(loop_name: str) -> str` to `_helpers.py`; update `run_background` (line 232) to generate `instance_id`, embed it in the `--foreground-internal` re-exec command (line 264 pattern), and use it for `pid_file` (line 250) and `log_file` (line 251) paths
+2. Add hidden `--instance-id` arg (model after `--foreground-internal` at `__init__.py:122-124`) to `run_parser` (line 96) and `resume_parser` (line 220) in `__init__.py`
+3. Update `cmd_run` in `run.py:87` to generate `instance_id` (when not foreground-internal) or read it from `args.instance_id`; route through `LockManager.acquire(fsm.name, scope, instance_id=instance_id)` (line 225) and `PersistentExecutor.__init__` (line 332); update PID file path (line 203-205)
+4. Add `instance_id: str | None = None` kwarg to `LockManager.acquire` (line 98) and `release` (line 143) in `concurrency.py`; replace `f"{loop_name}.lock"` at lines 131, 149 with `f"{instance_id or loop_name}.lock"`
+5. Add `instance_id: str | None = None` kwarg to `StatePersistence.__init__` (line 196) and `PersistentExecutor.__init__` (line 346) in `persistence.py`; replace path stems at lines 206-207 with `instance_id or loop_name`; at line 366 forward `instance_id` to the internally-constructed `StatePersistence`; fix `list_running_loops` deduplication at line 590 (strip timestamp suffix before comparing against `known_names`)
+6. Add `_find_instances(loop_name: str, running_dir: Path) -> list[tuple[str, LoopState]]` to `lifecycle.py` (glob `{loop_name}-*.state.json` plus `{loop_name}.state.json` for legacy); rewrite `cmd_status` (line 46), `cmd_stop` (line 123), `cmd_resume` (line 180) to call `_find_instances` and iterate all matches
+7. Update `info.py:52-54` (`cmd_list`) to handle multiple `LoopState` objects with the same `loop_name` (group or deduplicate the display table)
+8. Update `atexit._cleanup_pid` closures in `run.py:211-214` and `lifecycle.py:206-209` — these are closed over `pid_file` which must now be the instance-ID-scoped path, not the bare loop-name path
+9. Update `test_cli_loop_background.py` path assertions from `my-loop.pid` / `my-loop.log` to `glob("my-loop*.pid")` / `glob("my-loop*.log")` (lines 154, 174)
+10. Update `test_cli_loop_lifecycle.py:563` (`test_plain_foreground_resume_writes_pid_file`) and `test_concurrency.py:75-88` lock path assertions to use instance-ID-aware lookup
+11. Run full test suite (`python -m pytest scripts/tests/`); smoke test with two concurrent `ll-loop run` invocations
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+12. Update `scripts/tests/test_fsm_persistence.py` — adapt `TestPersistentExecutor.test_run_creates_state_file` (line 589), `test_run_creates_events_file` (line 601), and `TestAcceptanceCriteria.test_state_saved_after_state_transition` (line 1084) from hard-coded `test-loop.*` path assertions to instance-ID-aware lookups (glob or pass explicit `instance_id` to constructors). Add new `TestUtilityFunctions` cases for `list_running_loops` deduplication where `pid_file.stem` = `"my-loop-TIMESTAMP"` but returned `LoopState.loop_name` = `"my-loop"`
+13. Update `scripts/tests/test_cli_loop_lifecycle.py` additional tests — `TestCmdResumeBackground.test_foreground_internal_registers_pid_cleanup` (line 531), `test_foreground_internal_does_not_overwrite_parent_pid` (line 613), `TestCmdResume.test_resume_registers_signal_handlers` (line 386), `TestCmdStop` tests at lines 127/156/186, `TestCmdStatusLogFile` at lines 903/956 — update from bare `test-loop.pid`/`test-loop.log` path construction to instance-ID-aware paths
+14. Update `persistence.py` docstrings — module-level docstring (lines 9–18) and `StatePersistence` class docstring (line 193) to reflect `{instance_id}.*` file naming instead of `{loop_name}.*`
+15. Update `docs/reference/API.md` — `StatePersistence.__init__` and `PersistentExecutor.__init__` signature blocks (add `instance_id: str | None = None` kwarg), `LockManager.acquire`/`release` methods table (same), and the `.running/` directory layout diagram under `StatePersistence`
+16. Update `skills/cleanup-loops/SKILL.md` — Steps 6 and 7: replace `rm -f ".loops/.running/<loop_name>.pid"` and `tail -20 ".loops/.running/<loop_name>.events.jsonl"` with glob-based paths (`{loop_name}-*.pid`, `{loop_name}-*.events.jsonl`) or delegate to `ll-loop stop`
+17. Update `skills/rename-loop/SKILL.md` — Step 4: replace `test -f ".loops/.running/<old_name>.pid"` guard with `ls .loops/.running/<old_name>*.pid 2>/dev/null | head -1` or equivalent glob to correctly detect running instances
+18. Update `skills/analyze-loop/SKILL.md` and `skills/assess-loop/SKILL.md` — Step 1: handle duplicate `loop_name` entries from `ll-loop list --running --json` by using `instance_id` (or a combined `loop_name:instance_id` key) for user selection disambiguation
 
 ## Impact
 
@@ -161,6 +300,9 @@ def _find_instances(loop_name: str, running_dir: Path) -> list[tuple[str, LoopSt
 `enhancement`, `ll-loop`, `concurrency`, `captured`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-03T18:02:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/075b3abf-eb8a-4b05-91fe-ab01841deab1.jsonl`
+- `/ll:refine-issue` - 2026-05-03T17:54:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c82c3b7-5d03-4f7e-ad8c-05324d8acd14.jsonl`
+- `/ll:format-issue` - 2026-05-03T17:47:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c397985-bbb0-4895-8d56-7d1468247afa.jsonl`
 
 - `/ll:capture-issue` - 2026-05-03T17:41:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/483c54db-a329-4b0d-92ed-ebfb1be65160.jsonl`
 

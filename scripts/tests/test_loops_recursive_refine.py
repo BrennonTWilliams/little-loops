@@ -292,6 +292,95 @@ class TestCheckDepth:
         assert "CHILD" not in depth_skipped
 
 
+def _check_attempt_budget_script(issue_id: str, max_count: int = 5) -> str:
+    return rf"""
+    python3 << 'PYEOF'
+import sys
+from pathlib import Path
+issue_id = '{issue_id}'
+cap = {max_count}
+attempts_file = '.loops/tmp/recursive-refine-attempts.txt'
+try:
+    lines = Path(attempts_file).read_text().splitlines()
+except FileNotFoundError:
+    lines = []
+count = sum(1 for ln in lines if ln.strip() == issue_id)
+if count >= cap:
+    with open('.loops/tmp/recursive-refine-skipped-budget.txt', 'a') as f:
+        f.write(issue_id + '\n')
+    with open('.loops/tmp/recursive-refine-skipped.txt', 'a') as f:
+        f.write(issue_id + '\n')
+    sys.exit(1)
+with open(attempts_file, 'a') as f:
+    f.write(issue_id + '\n')
+sys.exit(0)
+PYEOF
+    """
+
+
+class TestCheckAttemptBudget:
+    """check_attempt_budget gate state."""
+
+    def _setup(self, tmp_path: Path, attempts: int, issue_id: str = "ENH-001") -> Path:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True, exist_ok=True)
+        content = "\n".join([issue_id] * attempts) + ("\n" if attempts else "")
+        (loops_tmp / "recursive-refine-attempts.txt").write_text(content)
+        (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        return loops_tmp
+
+    def test_below_cap_exits_0_and_appends_to_attempts(self, tmp_path: Path) -> None:
+        """Below cap: exits 0 and appends issue_id to attempts file."""
+        loops_tmp = self._setup(tmp_path, attempts=2, issue_id="ENH-500")
+
+        result = _bash(_check_attempt_budget_script("ENH-500", max_count=5), tmp_path)
+
+        assert result.returncode == 0
+        attempts = (loops_tmp / "recursive-refine-attempts.txt").read_text()
+        assert attempts.count("ENH-500") == 3
+        assert "ENH-500" not in (loops_tmp / "recursive-refine-skipped-budget.txt").read_text()
+        assert "ENH-500" not in (loops_tmp / "recursive-refine-skipped.txt").read_text()
+
+    def test_at_cap_exits_1_and_writes_both_skip_files(self, tmp_path: Path) -> None:
+        """At cap: exits 1 and writes ID to both skipped-budget and skipped files."""
+        loops_tmp = self._setup(tmp_path, attempts=5, issue_id="ENH-600")
+
+        result = _bash(_check_attempt_budget_script("ENH-600", max_count=5), tmp_path)
+
+        assert result.returncode == 1
+        assert "ENH-600" in (loops_tmp / "recursive-refine-skipped-budget.txt").read_text()
+        assert "ENH-600" in (loops_tmp / "recursive-refine-skipped.txt").read_text()
+        attempts = (loops_tmp / "recursive-refine-attempts.txt").read_text()
+        assert attempts.count("ENH-600") == 5
+
+    def test_above_cap_also_exits_1(self, tmp_path: Path) -> None:
+        """Above cap (count > cap): also exits 1."""
+        loops_tmp = self._setup(tmp_path, attempts=7, issue_id="ENH-700")
+
+        result = _bash(_check_attempt_budget_script("ENH-700", max_count=5), tmp_path)
+
+        assert result.returncode == 1
+        assert "ENH-700" in (loops_tmp / "recursive-refine-skipped-budget.txt").read_text()
+
+    def test_exactly_max_refine_count_attempts_then_budget_skip(self, tmp_path: Path) -> None:
+        """Synthetic issue that always fails: produces exactly max_refine_count attempts then is budget-skipped."""
+        loops_tmp = self._setup(tmp_path, attempts=0, issue_id="ENH-EXHAUST")
+        cap = 5
+
+        for i in range(cap):
+            result = _bash(_check_attempt_budget_script("ENH-EXHAUST", max_count=cap), tmp_path)
+            assert result.returncode == 0, f"Attempt {i + 1} should be allowed"
+
+        result = _bash(_check_attempt_budget_script("ENH-EXHAUST", max_count=cap), tmp_path)
+        assert result.returncode == 1, "Attempt beyond cap should be budget-skipped"
+
+        attempts = (loops_tmp / "recursive-refine-attempts.txt").read_text()
+        assert attempts.count("ENH-EXHAUST") == cap
+        assert "ENH-EXHAUST" in (loops_tmp / "recursive-refine-skipped-budget.txt").read_text()
+        assert "ENH-EXHAUST" in (loops_tmp / "recursive-refine-skipped.txt").read_text()
+
+
 class TestEnqueueChildDepths:
     """Child depth appending in enqueue_children / enqueue_or_skip."""
 
@@ -517,22 +606,27 @@ class TestDoneSummary:
       | grep -v '^[[:space:]]*$' | sort -u || true)
     CYCLE_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-cycle.txt 2>/dev/null \
       | grep -v '^[[:space:]]*$' | sort -u || true)
+    BUDGET_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-budget.txt 2>/dev/null \
+      | grep -v '^[[:space:]]*$' | sort -u || true)
 
     PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
     SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
     DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
     CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+    BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
     PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
     SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
     DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
     CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+    BUDGET_LIST=$(echo "$BUDGET_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
     printf '\n=== Recursive Refine Summary ===\n\n'
     printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "${PASSED_LIST:-none}"
     printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "${SKIPPED_LIST:-none}"
     printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "${DEPTH_LIST:-none}"
     printf 'Skipped (cycle %d): %s\n' "$CYCLE_COUNT" "${CYCLE_LIST:-none}"
+    printf 'Skipped (budget %d): %s\n' "$BUDGET_COUNT" "${BUDGET_LIST:-none}"
     printf '\n'
     """
 
@@ -595,3 +689,34 @@ class TestDoneSummary:
 
         assert result.returncode == 0
         assert "Skipped (cycle 0): none" in result.stdout
+
+    def test_budget_line_shows_budget_ids(self, tmp_path: Path) -> None:
+        """done includes 'Skipped (budget N): IDs' when budget-exceeded issues exist."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-002\n")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("ENH-002\n")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Skipped (budget 1):" in result.stdout
+        assert "ENH-002" in result.stdout
+
+    def test_budget_line_shows_none_when_no_budget_issues(self, tmp_path: Path) -> None:
+        """done emits 'Skipped (budget 0): none' when no budget-exceeded issues."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Skipped (budget 0): none" in result.stdout

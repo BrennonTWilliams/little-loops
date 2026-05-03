@@ -499,7 +499,7 @@ init → dequeue_next → [queue empty?]
 |----------|---------|-------------|
 | `readiness_threshold` | `90` | Minimum confidence score for an issue to be considered ready (override via `commands.confidence_gate.readiness_threshold` in `ll-config.json`) |
 | `outcome_threshold` | `75` | Minimum outcome confidence score (override via `commands.confidence_gate.outcome_threshold` in `ll-config.json`) |
-| `max_refine_count` | `5` | Maximum `/ll:refine-issue` calls per issue lifetime; issues that exhaust this cap are routed to size-review instead of failing (override via `commands.max_refine_count` in `ll-config.json`) |
+| `max_refine_count` | `5` | Maximum `/ll:refine-issue` calls per issue lifetime; enforced directly by `check_attempt_budget` before each sub-loop entry — issues that reach this cap are skipped with reason `budget` (override via `commands.max_refine_count` in `ll-config.json`) |
 | `max_depth` | `3` | Maximum decomposition depth per subtree; issues at or beyond this depth are skipped with reason `depth-cap` instead of being passed to size-review (override via `commands.recursive_refine.max_depth` in `ll-config.json`) |
 
 **Invocation**:
@@ -521,7 +521,9 @@ ll-loop run recursive-refine --context input="FEAT-42"
 ```
 parse_input → dequeue_next → [queue empty?]
   ├─ YES → done (prints summary)
-  └─ NO  → capture_baseline → run_refine (sub-loop: refine-to-ready-issue)
+  └─ NO  → check_attempt_budget → [budget ok?]
+              ├─ NO  (budget exceeded) → dequeue_next (skip)
+              └─ YES → capture_baseline → run_refine (sub-loop: refine-to-ready-issue)
               ├─ on_success → check_passed → [thresholds met?]
               │                ├─ YES → dequeue_next (loop)
               │                └─ NO  → detect_children
@@ -544,9 +546,10 @@ Passed  (2): FEAT-42, FEAT-43
 Skipped (1): BUG-17
 Skipped (depth-cap 3): ENH-99
 Skipped (cycle 1): ENH-100
+Skipped (budget 1): ENH-101
 ```
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `.loops/tmp/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `.loops/tmp/recursive-refine-skipped-budget.txt`.
 
 **Code Quality**
 
