@@ -123,6 +123,7 @@ Examples:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    run_parser.add_argument("--instance-id", type=str, default=None, help=argparse.SUPPRESS)
     run_parser.add_argument("--quiet", "--qt", action="store_true", help="Suppress progress output")
     run_parser.add_argument(
         "--verbose",
@@ -230,6 +231,7 @@ Examples:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    resume_parser.add_argument("--instance-id", type=str, default=None, help=argparse.SUPPRESS)
     resume_parser.add_argument(
         "--context",
         action="append",

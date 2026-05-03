@@ -193,18 +193,22 @@ class StatePersistence:
     Files are stored in .loops/.running/<loop_name>.*
     """
 
-    def __init__(self, loop_name: str, loops_dir: Path | None = None) -> None:
+    def __init__(
+        self, loop_name: str, loops_dir: Path | None = None, instance_id: str | None = None
+    ) -> None:
         """Initialize persistence for a loop.
 
         Args:
             loop_name: Name of the loop
             loops_dir: Base directory for loops (default: .loops)
+            instance_id: Optional unique instance identifier; falls back to loop_name when None
         """
         self.loop_name = loop_name
         self.loops_dir = loops_dir or Path(".loops")
         self.running_dir = self.loops_dir / RUNNING_DIR
-        self.state_file = self.running_dir / f"{loop_name}.state.json"
-        self.events_file = self.running_dir / f"{loop_name}.events.jsonl"
+        stem = instance_id or loop_name
+        self.state_file = self.running_dir / f"{stem}.state.json"
+        self.events_file = self.running_dir / f"{stem}.events.jsonl"
 
     def initialize(self) -> None:
         """Create running directory if needed."""
@@ -348,6 +352,7 @@ class PersistentExecutor:
         fsm: FSMLoop,
         persistence: StatePersistence | None = None,
         loops_dir: Path | None = None,
+        instance_id: str | None = None,
         **executor_kwargs: Any,
     ) -> None:
         """Initialize persistent executor.
@@ -356,6 +361,7 @@ class PersistentExecutor:
             fsm: FSM loop definition
             persistence: Optional pre-configured persistence (for testing)
             loops_dir: Base directory for loops (default: .loops)
+            instance_id: Optional unique instance identifier for file path scoping
             **executor_kwargs: Additional kwargs for FSMExecutor
         """
         from little_loops.fsm.handoff_handler import HandoffBehavior, HandoffHandler
@@ -363,7 +369,9 @@ class PersistentExecutor:
 
         self.fsm = fsm
         self.loops_dir = loops_dir
-        self.persistence = persistence or StatePersistence(fsm.name, loops_dir or Path(".loops"))
+        self.persistence = persistence or StatePersistence(
+            fsm.name, loops_dir or Path(".loops"), instance_id=instance_id
+        )
         self.persistence.initialize()
 
         # Create signal detector and handler based on FSM config
@@ -586,10 +594,15 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
         except (json.JSONDecodeError, KeyError):
             continue  # Skip malformed files
 
-    # Include loops that have a PID file but no state file yet (still starting up)
+    # Include loops that have a PID file but no state file yet (still starting up).
+    # Strip instance-ID timestamp suffix (e.g. "autodev-20240115T103000" → "autodev")
+    # before the known_names check to avoid spurious "starting" entries for loops
+    # that already have a state file under their logical name.
+    _INSTANCE_SUFFIX = re.compile(r"-\d{8}T\d{6}$")
     known_names = {s.loop_name for s in states}
     for pid_file in running_dir.glob("*.pid"):
-        if pid_file.stem in known_names:
+        logical_name = _INSTANCE_SUFFIX.sub("", pid_file.stem)
+        if logical_name in known_names:
             continue  # state file already covers this loop
         try:
             pid = int(pid_file.read_text().strip())
@@ -598,7 +611,7 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
         if _process_alive(pid):
             states.append(
                 LoopState(
-                    loop_name=pid_file.stem,
+                    loop_name=logical_name,
                     current_state="(initializing)",
                     iteration=0,
                     captured={},

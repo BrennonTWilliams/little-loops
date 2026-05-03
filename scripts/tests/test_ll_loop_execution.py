@@ -465,10 +465,10 @@ states:
             assert "started in background" in captured.out
             assert "12345" in captured.out
 
-            # Verify PID file was written
-            pid_file = loops_dir / ".running" / "test-background.pid"
-            assert pid_file.exists()
-            assert pid_file.read_text() == "12345"
+            # Verify PID file was written (instance-ID-scoped name)
+            pid_files = list((loops_dir / ".running").glob("test-background-*.pid"))
+            assert len(pid_files) == 1
+            assert pid_files[0].read_text() == "12345"
 
     def test_plain_foreground_run_writes_pid_file(
         self,
@@ -496,9 +496,9 @@ states:
                 result = main_loop()
 
         assert result == 0
-        pid_file = loops_dir / ".running" / "test-foreground-pid.pid"
-        assert pid_file.exists(), "PID file should be written for plain foreground run (BUG-639)"
-        assert pid_file.read_text() == "55555"
+        pid_files = list((loops_dir / ".running").glob("test-foreground-pid-*.pid"))
+        assert len(pid_files) == 1, "PID file should be written for plain foreground run (BUG-639)"
+        assert pid_files[0].read_text() == "55555"
 
     def test_creates_state_files(
         self,
@@ -537,13 +537,14 @@ states:
 
                 main_loop()
 
-        # Verify state files created
+        # Verify state files created (instance-ID-scoped names)
         running_dir = loops_dir / ".running"
         assert running_dir.exists()
-        state_file = running_dir / "test-state.state.json"
-        assert state_file.exists()
-        events_file = running_dir / "test-state.events.jsonl"
-        assert events_file.exists()
+        state_files = list(running_dir.glob("test-state-*.state.json"))
+        assert len(state_files) == 1, f"Expected 1 state file, found: {list(running_dir.iterdir())}"
+        events_files = list(running_dir.glob("test-state-*.events.jsonl"))
+        assert len(events_files) == 1
+        events_file = events_files[0]
 
         # Verify events file has content
         with open(events_file) as f:

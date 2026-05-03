@@ -589,23 +589,25 @@ class TestPersistentExecutor:
     def test_run_creates_state_file(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """run() creates state file."""
         mock_runner = MockActionRunner()
+        instance_id = "test-loop-20240115T103000"
         executor = PersistentExecutor(
-            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner, instance_id=instance_id
         )
         executor.run()
 
-        state_file = tmp_loops_dir / ".running" / "test-loop.state.json"
+        state_file = tmp_loops_dir / ".running" / f"{instance_id}.state.json"
         assert state_file.exists()
 
     def test_run_creates_events_file(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """run() creates events file."""
         mock_runner = MockActionRunner()
+        instance_id = "test-loop-20240115T103000"
         executor = PersistentExecutor(
-            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner, instance_id=instance_id
         )
         executor.run()
 
-        events_file = tmp_loops_dir / ".running" / "test-loop.events.jsonl"
+        events_file = tmp_loops_dir / ".running" / f"{instance_id}.events.jsonl"
         assert events_file.exists()
 
     def test_run_saves_final_state(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
@@ -1035,6 +1037,53 @@ class TestUtilityFunctions:
         loop_a = next(s for s in states if s.loop_name == "loop-a")
         assert loop_a.status != "starting"
 
+    def test_list_running_loops_instance_id_pid_deduplication(self, tmp_path: Path) -> None:
+        """Instance-ID-named PID file does not produce spurious 'starting' entry when state file exists."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        # State file uses logical loop name
+        state = {
+            "loop_name": "autodev",
+            "current_state": "check",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2024-01-15T10:30:00Z",
+            "updated_at": "2024-01-15T10:30:01Z",
+            "status": "running",
+        }
+        (running_dir / "autodev-20240115T103000.state.json").write_text(json.dumps(state))
+        # PID file uses instance-ID naming
+        (running_dir / "autodev-20240115T103000.pid").write_text("12345")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+            states = list_running_loops(loops_dir)
+
+        names = [s.loop_name for s in states]
+        assert names.count("autodev") == 1, f"Expected 1 'autodev' entry, got: {names}"
+        loop = next(s for s in states if s.loop_name == "autodev")
+        assert loop.status != "starting", "State-file version (not synthetic) should be returned"
+
+    def test_list_running_loops_instance_id_pid_only_sets_logical_name(self, tmp_path: Path) -> None:
+        """Synthetic 'starting' entry from instance-ID PID file uses logical loop name."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        (running_dir / "myloop-20240115T103000.pid").write_text("99999")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+            states = list_running_loops(loops_dir)
+
+        assert len(states) == 1
+        assert states[0].loop_name == "myloop"
+        assert states[0].status == "starting"
+
     def test_get_loop_history(self, tmp_loops_dir: Path) -> None:
         """get_loop_history() returns events for a loop."""
         events = get_loop_history("loop-a", tmp_loops_dir)
@@ -1084,13 +1133,17 @@ class TestAcceptanceCriteria:
     def test_state_saved_after_state_transition(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:
-        """AC: State saved to <name>.state.json after each state transition."""
+        """AC: State saved to <instance_id>.state.json after each state transition."""
+        instance_id = "test-loop-20240115T103000"
         executor = PersistentExecutor(
-            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+            simple_fsm,
+            loops_dir=tmp_loops_dir,
+            action_runner=MockActionRunner(),
+            instance_id=instance_id,
         )
         executor.run()
 
-        state_file = tmp_loops_dir / ".running" / "test-loop.state.json"
+        state_file = tmp_loops_dir / ".running" / f"{instance_id}.state.json"
         assert state_file.exists()
 
         # Verify state content

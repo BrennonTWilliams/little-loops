@@ -197,7 +197,8 @@ def cmd_resume(
 
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
-    pid_file = running_dir / f"{loop_name}.pid"
+    instance_id = getattr(args, "instance_id", None)
+    pid_file = running_dir / f"{instance_id or loop_name}.pid"
     foreground_pid_file: Path | None = pid_file
 
     if not getattr(args, "foreground_internal", False):
@@ -259,7 +260,7 @@ def cmd_resume(
         if config.commands.rate_limits.circuit_breaker_enabled
         else None
     )
-    executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit)
+    executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id)
 
     # Register signal handlers for graceful shutdown (same as cmd_run)
     register_loop_signal_handlers(executor, pid_file=foreground_pid_file)

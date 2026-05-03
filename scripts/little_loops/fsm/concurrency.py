@@ -95,12 +95,13 @@ class LockManager:
         self.loops_dir = loops_dir or Path(".loops")
         self.running_dir = self.loops_dir / RUNNING_DIR
 
-    def acquire(self, loop_name: str, scope: list[str]) -> bool:
+    def acquire(self, loop_name: str, scope: list[str], instance_id: str | None = None) -> bool:
         """Attempt to acquire lock for the given scope.
 
         Args:
             loop_name: Name of the loop to acquire lock for
             scope: List of paths the loop operates on
+            instance_id: Optional unique instance identifier; falls back to loop_name when None
 
         Returns:
             True if lock acquired, False if conflict exists
@@ -128,7 +129,7 @@ class LockManager:
                 return False
 
             # Create lock file
-            lock_file = self.running_dir / f"{loop_name}.lock"
+            lock_file = self.running_dir / f"{instance_id or loop_name}.lock"
             lock = ScopeLock(
                 loop_name=loop_name,
                 scope=scope,
@@ -140,13 +141,14 @@ class LockManager:
 
         return True
 
-    def release(self, loop_name: str) -> None:
+    def release(self, loop_name: str, instance_id: str | None = None) -> None:
         """Release lock for a loop.
 
         Args:
             loop_name: Name of the loop to release lock for
+            instance_id: Optional unique instance identifier; falls back to loop_name when None
         """
-        lock_file = self.running_dir / f"{loop_name}.lock"
+        lock_file = self.running_dir / f"{instance_id or loop_name}.lock"
         lock_file.unlink(missing_ok=True)
 
     def find_conflict(self, scope: list[str]) -> ScopeLock | None:

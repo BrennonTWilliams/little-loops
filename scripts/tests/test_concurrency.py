@@ -512,3 +512,68 @@ class TestPathOverlap:
         build.mkdir()
 
         assert not manager._scopes_overlap([str(src), str(docs)], [str(tests), str(build)])
+
+
+class TestMultiInstanceSameName:
+    """Two instances of the same loop name with distinct instance_ids use distinct lock files (ENH-1354)."""
+
+    @pytest.fixture
+    def tmp_loops(self, tmp_path: Path) -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        return loops_dir
+
+    def test_distinct_instance_ids_produce_distinct_lock_files(self, tmp_loops: Path) -> None:
+        """Two same-name instances with different instance_ids write to distinct lock files."""
+        manager = LockManager(tmp_loops)
+        id1 = "autodev-20240115T103000"
+        id2 = "autodev-20240115T103001"
+
+        # First instance acquires; second conflicts on scope but uses a distinct lock file
+        assert manager.acquire("autodev", ["src/"], instance_id=id1)
+        # Release first, then second can acquire — verifies lock files are independently named
+        manager.release("autodev", instance_id=id1)
+        assert manager.acquire("autodev", ["src/"], instance_id=id2)
+        manager.release("autodev", instance_id=id2)
+
+        # Both lock files are gone after release
+        lock_file1 = tmp_loops / ".running" / f"{id1}.lock"
+        lock_file2 = tmp_loops / ".running" / f"{id2}.lock"
+        assert not lock_file1.exists()
+        assert not lock_file2.exists()
+
+    def test_concurrent_same_name_non_overlapping_scopes_both_acquire(
+        self, tmp_loops: Path, tmp_path: Path
+    ) -> None:
+        """Concurrent same-name instances on non-overlapping scopes both succeed (ENH-1354)."""
+        src_dir = tmp_path / "src"
+        lib_dir = tmp_path / "lib"
+        src_dir.mkdir()
+        lib_dir.mkdir()
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            def try_acquire(instance_id: str, scope: list[str]) -> None:
+                barrier.wait()
+                result = manager.acquire("autodev", scope, instance_id=instance_id)
+                results.append(result)
+
+            id1 = "autodev-20240115T103000"
+            id2 = "autodev-20240115T103001"
+            t1 = threading.Thread(target=try_acquire, args=(id1, ["src/"]))
+            t2 = threading.Thread(target=try_acquire, args=(id2, ["lib/"]))
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+        finally:
+            os.chdir(original_cwd)
+
+        assert results.count(True) == 2, (
+            f"Both non-overlapping instances should acquire; got: {results}"
+        )

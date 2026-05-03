@@ -167,9 +167,9 @@ class TestRunBackground:
 
             run_background("my-loop", args, loops_dir)
 
-        pid_file = loops_dir / ".running" / "my-loop.pid"
-        assert pid_file.exists()
-        assert pid_file.read_text() == "99"
+        pid_files = list((loops_dir / ".running").glob("my-loop-*.pid"))
+        assert len(pid_files) == 1
+        assert pid_files[0].read_text() == "99"
 
     def test_creates_log_file(self, tmp_path: Path) -> None:
         """Log file created at .loops/.running/<name>.log."""
@@ -187,8 +187,8 @@ class TestRunBackground:
 
             run_background("my-loop", args, loops_dir)
 
-        log_file = loops_dir / ".running" / "my-loop.log"
-        assert log_file.exists()
+        log_files = list((loops_dir / ".running").glob("my-loop-*.log"))
+        assert len(log_files) == 1
 
     def test_forwards_max_iterations(self, tmp_path: Path) -> None:
         """Forwards --max-iterations to child process."""
@@ -767,3 +767,34 @@ class TestMainModuleEntryPoint:
         assert result.returncode == 0, (
             f"Expected exit 0 from --help, got {result.returncode}\nstderr: {result.stderr}"
         )
+
+
+class TestMakeInstanceId:
+    """Tests for _make_instance_id() helper (ENH-1354)."""
+
+    def test_format_matches_pattern(self) -> None:
+        """Instance ID must match <loop_name>-YYYYMMDDTHHMMSS format."""
+        import re
+
+        from little_loops.cli.loop._helpers import _make_instance_id
+
+        result = _make_instance_id("autodev")
+        assert re.match(r"^autodev-\d{8}T\d{6}$", result), f"Unexpected format: {result!r}"
+
+    def test_embeds_loop_name_prefix(self) -> None:
+        """Instance ID must begin with the loop name."""
+        from little_loops.cli.loop._helpers import _make_instance_id
+
+        result = _make_instance_id("my-loop")
+        assert result.startswith("my-loop-")
+
+    def test_successive_calls_are_unique(self) -> None:
+        """Two successive calls return distinct values (timestamp resolution is 1 second)."""
+        import time
+
+        from little_loops.cli.loop._helpers import _make_instance_id
+
+        id1 = _make_instance_id("test")
+        time.sleep(1.05)
+        id2 = _make_instance_id("test")
+        assert id1 != id2, "Expected distinct instance IDs across second boundary"

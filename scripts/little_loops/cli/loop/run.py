@@ -14,6 +14,7 @@ from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
     _is_earliest_waiter,
+    _make_instance_id,
     get_builtin_loops_dir,
     print_execution_plan,
     register_loop_signal_handlers,
@@ -202,7 +203,11 @@ def cmd_run(
     # parent in run_background(); plain foreground runs must write their own PID here.
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
-    pid_file = running_dir / f"{loop_name}.pid"
+    if getattr(args, "foreground_internal", False):
+        instance_id: str | None = getattr(args, "instance_id", None)
+    else:
+        instance_id = _make_instance_id(loop_name)
+    pid_file = running_dir / f"{instance_id or loop_name}.pid"
     foreground_pid_file: Path | None = pid_file
 
     if not getattr(args, "foreground_internal", False):
@@ -222,7 +227,7 @@ def cmd_run(
         if _queue_entry_file is not None:
             _queue_entry_file.unlink(missing_ok=True)
 
-    if not lock_manager.acquire(fsm.name, scope):
+    if not lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
         conflict = lock_manager.find_conflict(scope)
         if conflict and getattr(args, "queue", False):
             # Write queue entry so dashboard shows the waiting loop
@@ -329,7 +334,7 @@ def cmd_run(
             if _config.commands.rate_limits.circuit_breaker_enabled
             else None
         )
-        executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit)
+        executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id)
 
         # Register signal handlers for graceful shutdown
         register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
@@ -350,4 +355,4 @@ def cmd_run(
     finally:
         if executor is not None:
             executor.close_transports()
-        lock_manager.release(fsm.name)
+        lock_manager.release(fsm.name, instance_id=instance_id)

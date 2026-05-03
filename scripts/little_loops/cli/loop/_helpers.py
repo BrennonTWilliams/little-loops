@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
@@ -229,6 +230,11 @@ def print_execution_plan(fsm: FSMLoop, edge_label_colors: dict[str, str] | None 
             print(f"  {key}: {value!r}")
 
 
+def _make_instance_id(loop_name: str) -> str:
+    """Generate a unique instance ID for a loop run."""
+    return f"{loop_name}-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+
+
 def run_background(
     loop_name: str, args: argparse.Namespace, loops_dir: Path, subcommand: str = "run"
 ) -> int:
@@ -247,8 +253,9 @@ def run_background(
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
 
-    pid_file = running_dir / f"{loop_name}.pid"
-    log_file = running_dir / f"{loop_name}.log"
+    instance_id = _make_instance_id(loop_name)
+    pid_file = running_dir / f"{instance_id}.pid"
+    log_file = running_dir / f"{instance_id}.log"
 
     # Build re-exec command with --foreground-internal instead of --background
     cmd = [
@@ -262,6 +269,7 @@ def run_background(
     if input_val is not None:
         cmd.append(input_val)
     cmd.append("--foreground-internal")
+    cmd.extend(["--instance-id", instance_id])
 
     # Forward relevant args
     max_iter = getattr(args, "max_iterations", None)
