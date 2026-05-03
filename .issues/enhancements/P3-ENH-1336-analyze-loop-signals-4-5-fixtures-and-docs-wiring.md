@@ -31,9 +31,9 @@ Decomposed from ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyz
 
 ## Implementation Steps
 
-1. **Signal 4 — Capture Vacuum** (Step 3): Add `capture_emptiness` tracking keyed by capture name; emit Signal 4 at end of event-history walk. Read `capture.output` from `LLEvent` for emptiness check.
+1. **Signal 4 — Capture Vacuum** (Step 3): Add `capture_emptiness` tracking keyed by capture name; emit Signal 4 at end of event-history walk. ⚠️ See "Refined Codebase Research Findings → CORRECTION 1" below: there is no `capture` event in the JSONL stream. Read emptiness from `action_complete.output_preview` for the state whose resolved YAML has `capture: X` (matched against the consumer's `${captured.X.output}` reference).
 
-2. **Signal 5 — Numeric Trajectory Stall** (Step 3): Add `numeric_trajectory` tracking per `output_numeric`/`convergence` evaluator. The raw numeric value is **not** in the `evaluate` event — read it from the most recent `capture` event emitted by the same state immediately before the `evaluate` event. The state's `evaluate.target` (threshold) and `evaluate.type` come from the resolved YAML state map.
+2. **Signal 5 — Numeric Trajectory Stall** (Step 3): Add `numeric_trajectory` tracking per `output_numeric`/`convergence` evaluator. ⚠️ See "Refined Codebase Research Findings → CORRECTION 2" below: the numeric value **is** in the `evaluate` event (`evaluate.value` for `output_numeric`, `evaluate.current` for `convergence`) — no preceding capture lookup needed. The state's `evaluate.target` is also on the event payload; `evaluate.type` is on the event and on the resolved YAML state map.
 
 3. **Fixture: `analysis-capture-vacuum.yaml`** — Signal 4 positive test case (capture chain with empty-output scenario); model after `examples-miner.yaml` structure (7-state `calibrated_corpus` capture chain).
 
@@ -51,6 +51,64 @@ Decomposed from ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyz
 - `scripts/little_loops/fsm/schema.py` — `EvaluateConfig.type` enum (`output_numeric`, `convergence`); `evaluate.target` threshold
 - `docs/reference/COMMANDS.md` — add 5 signal entries + update output format block
 - `scripts/tests/test_enh1268_doc_wiring.py` — `TestAnalyzeLoopCommandsWiring` 6 existing string-presence tests
+
+### Refined Codebase Research Findings
+
+_Added by `/ll:refine-issue` on 2026-05-02 — based on direct reading of `executor.py`, `evaluators.py`, `events.py`, and `schema.py`. **Corrects factual errors in the Implementation Steps and parent-issue findings above.**_
+
+**CORRECTION 1 — There is no `capture` event in the JSONL stream.**
+- `scripts/little_loops/fsm/executor.py:_run_action` lines 676-683 — captures are stored in the in-memory dict `self.captured[state.capture] = {"output": ..., "stderr": ..., "exit_code": ..., "duration_ms": ...}` immediately after `_emit("action_complete", ...)`. There is **no** corresponding `_emit("capture", ...)` call anywhere in the executor.
+- The full vocabulary of emitted event types is: `loop_start`, `state_enter`, `action_start`, `action_output`, `action_complete`, `action_error`, `evaluate`, `route`, `retry_exhausted`, `rate_limit_waiting`, `rate_limit_exhausted`, `api_error_exhausted`, `loop_complete`. No `capture` type exists.
+- **Implication for Signal 4**: emptiness must be read from `action_complete.output_preview` (executor.py:664-674 — last 2000 chars of `result.output`, included in every `action_complete` payload). The state being checked is identified by matching the resolved YAML `state.capture: X` field against the consumer state's `${captured.X.output}` reference in its `action:` text.
+- **Alternative**: stream `action_output` events (which carry per-line stdout) and aggregate per state-iteration. `output_preview` is simpler and sufficient for >20% emptiness threshold detection.
+
+**CORRECTION 2 — The numeric value IS in the `evaluate` event payload (Signal 5).**
+- `scripts/little_loops/fsm/executor.py:_evaluate` lines 844-851 — emits `{"type": <type>, "verdict": <verdict>, **result.details}`. The `**result.details` splat exposes the evaluator's full detail dict directly on the event.
+- `scripts/little_loops/fsm/evaluators.py:evaluate_output_numeric` returns `details = {"value": <float>, "target": <float>, "operator": <str>}`.
+- `scripts/little_loops/fsm/evaluators.py:evaluate_convergence` returns `details = {"current": <float>, "previous": <float|None>, "target": <float>, "delta": <float|None>, "direction": <str>}`.
+- **Implication for Signal 5**: read the numeric value directly from the `evaluate` event — `evaluate.value` for `output_numeric` or `evaluate.current` for `convergence`. **Do not** look for a preceding `capture` event (none exists). The `previous` value is also already on the `convergence` evaluate event for free.
+
+**CORRECTION 3 — `EvaluateConfig.previous` is a top-level field on the resolved YAML state, not an event field.**
+- `scripts/little_loops/fsm/schema.py:EvaluateConfig` — `previous: str | None = None` is a top-level field. In YAML it appears as a template string like `previous: "${captured.prev_reward.output}"` and is interpolated at evaluation time (`evaluators.py:801-809`).
+- The interpolated float result is what ends up on the `evaluate` event's `previous` detail. Signal 5's stall detection should track the per-iteration `current` values (already present in the event); the YAML `previous:` configuration is only relevant for confirming a state uses `convergence`-style stall semantics.
+
+**CORRECTION 4 — `EvaluateConfig.target` is a top-level optional field, may be a template string.**
+- `scripts/little_loops/fsm/schema.py:EvaluateConfig` — `target: int | float | str | None = None`. Interpolated at runtime (e.g., `target: "${context.reward_target}"` in `rl-coding-agent.yaml`).
+- For Signal 5's "has not crossed its target threshold" check, prefer reading the resolved `target` from the `evaluate` event payload (always present for `output_numeric` and `convergence`) rather than re-resolving from the YAML state map.
+
+**CONFIRMED — `examples-miner.yaml` capture chain (Signal 4 fixture model)**:
+- `harvest` (line 30, `action_type: shell`, `capture: harvested_examples`) → consumed by `judge` via `${captured.harvested_examples.output}` (line 42).
+- `judge` (`action_type: prompt`, `capture: judge_scores`) → consumed by `calibrate` via `${captured.judge_scores.output}` (line 101).
+- `calibrate` produces `calibrated_corpus`, fanned out to 6 downstream consumers.
+- `harvest` is the canonical empty-output testable case: the `ll-messages ... --since` shell command emits no output when no new sessions exist, producing an empty `harvested_examples` capture.
+
+**CONFIRMED — `rl-coding-agent.yaml` `score` state (Signal 5 fixture model)**:
+- `score` state lines 95-110: `evaluate.type: convergence`, `target: "${context.reward_target}"` (resolves to `0.85`), `tolerance: 0.05`, `previous: "${captured.prev_reward.output}"`, `direction: maximize`.
+- Stall scenario: `score` produces the same numeric value (e.g., 0.6) for ≥3 consecutive iterations; `convergence` evaluator returns verdict `"continue"` (within tolerance, below target) → routes via `stall: act` → re-runs without progress. Signal 5 detects this by computing stddev of the `current` values from successive `evaluate` events with `type: convergence` for the same state.
+
+**CONFIRMED — Fixture format and naming**:
+- Existing fixtures in `scripts/tests/fixtures/fsm/analysis-*.yaml` are loop YAMLs (not synthetic event streams). Tests in `scripts/tests/test_analyze_loop_synthesis.py` load them with `yaml.safe_load()` and walk the state graph structurally — they do not run the loop or replay events.
+- New fixtures `analysis-capture-vacuum.yaml` and `analysis-numeric-stall.yaml` should follow this minimal structural pattern (see `analysis-multi-signal.yaml`, 21 lines): just enough state graph to exhibit the structural property under test.
+- **Implication**: Signal 4 and 5 detection logic in SKILL.md operates on actual event-history JSONL (not these fixtures). The fixtures are graph-validation inputs for synthesis tests, not signal-detection inputs. If signal-detection unit tests need event streams, those would be inline JSONL strings in the test file (no precedent yet for this kind of fixture).
+
+**CONFIRMED — `TestAnalyzeLoopCommandsWiring` slicing helper**:
+- `scripts/tests/test_enh1268_doc_wiring.py:_analyze_loop_section` — slices COMMANDS.md from `"### \`/ll:analyze-loop\`"` to the next `"\n### \`"` heading. New `"Fault Signals"` / `"Effectiveness Signals"` strings must appear within that range. The 6 existing assertions are all simple `assert "<string>" in section`.
+
+**Updated Integration Map**:
+
+| Concern | File | Anchor |
+|---|---|---|
+| Signal 4 detection — Step 3 | `skills/analyze-loop/SKILL.md` | Step 3 ("Classify Issue Signals") |
+| Signal 4 emptiness source | `scripts/little_loops/fsm/executor.py` | `_run_action` lines 664-674 (`output_preview`) |
+| Signal 5 detection — Step 3 | `skills/analyze-loop/SKILL.md` | Step 3 |
+| Signal 5 numeric value source | `scripts/little_loops/fsm/executor.py` | `_evaluate` lines 844-851 (event `**details` splat) |
+| Numeric value details schema | `scripts/little_loops/fsm/evaluators.py` | `evaluate_output_numeric`, `evaluate_convergence` returns |
+| Resolved YAML state map | `skills/analyze-loop/SKILL.md` | Step 2 (`ll-loop show <loop> --resolved --json`) |
+| Signal 4 fixture pattern | `scripts/tests/fixtures/fsm/analysis-multi-signal.yaml` | full file (21 lines) |
+| Signal 5 fixture pattern | `scripts/tests/fixtures/fsm/analysis-multi-signal.yaml` | full file (21 lines) |
+| Doc wiring test class | `scripts/tests/test_enh1268_doc_wiring.py` | `TestAnalyzeLoopCommandsWiring._analyze_loop_section` |
+| COMMANDS.md target section | `docs/reference/COMMANDS.md` | `### \`/ll:analyze-loop\`` (lines 529-578) |
+| Quick Reference table entry | `docs/reference/COMMANDS.md` | line 746 (current text: "failure signals") |
 
 **Loop YAML sources**:
 - `scripts/little_loops/loops/examples-miner.yaml` — primary Signal 4 test case (harvest → judge → calibrate chain)
@@ -90,4 +148,5 @@ This issue should follow ENH-1335 (Signals 1-3 + output grouping) since:
 - **Out of scope**: Signals 1, 2, 3 (ENH-1335); `--json` flag with structured output (deferred per confidence check notes in parent ENH-1327); assess-loop integration (FEAT-1325 separate).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-03T04:46:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f1a3aae-d4f5-418e-925c-2341954b5c96.jsonl`
 - `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`

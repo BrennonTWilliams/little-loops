@@ -21,6 +21,24 @@ Implement three of the five new deterministic effectiveness signals in `/ll:anal
 
 Decomposed from ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyze-loop`
 
+## Current Behavior
+
+`/ll:analyze-loop` Step 3 emits only fault signals (BUG-class anomalies). It does not detect three known effectiveness pathologies that show up in current loop YAMLs and runs:
+
+- Stub `action` bodies (e.g., `score.action: echo "5"` in `rl-rlhf.yaml`) ship as if implemented but are inert.
+- Iteration-1 termination that bypasses the apply/refine state (e.g., `apo-textgrad`'s `route_convergence` taking `on_yes: done`) — phantom convergence.
+- Degenerate route fan-out where an `evaluate` state always takes the same branch (e.g., `refine-to-ready-issue.yaml`'s `check_outcome`) — gate adds no signal.
+
+Step 5 also presents all signals as a single flat numbered list with no separation between fault and effectiveness classes.
+
+## Expected Behavior
+
+- Signal 3 (Stub Action) emits at config-load time via a Step 2 static pass over the resolved state map, populating a separate `static_issues` list.
+- Signal 2 (Degenerate Gate) emits from a Step 3 event-history walker maintaining a `{from_state: {to_state: count}}` route distribution.
+- Signal 1 (Iter-1 Convergence) emits from the terminal-event handler when `iterations == 1` and no apply/refine/update/write/commit state was visited.
+- Step 5 renders two markdown-heading groups: `### Fault Signals (N)` and `### Effectiveness Signals (M)`, omitting either when count is zero.
+- Existing doc-wiring tests (`Step 3b` heading, `rate_limit_waiting` row) continue to pass.
+
 ## Proposed Signals to Implement
 
 ### Signal 3: Stub Action Detection (static pass — Step 2)
@@ -192,6 +210,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_analyze_loop_synthesis.py` — add Signal 1 and Signal 2 test blocks + `APPLY_STATE_PREFIXES` module-level constant; follow `test_3b2_*` and `test_3b4_*` patterns [Agent 3 finding]
 - `scripts/tests/test_enh1146_doc_wiring.py::TestAnalyzeLoopSkillWiring` — existing, **update**: add `test_fault_signals_heading_present` and `test_effectiveness_signals_heading_present` for new Step 5 heading strings; **re-verify** `test_rate_limit_waiting_present` (Step 2 table adjacent to static-pass insertion) and `test_semantic_synthesis_heading_present` (`"Step 3b"` must not be renumbered) still pass after SKILL.md edits [Agents 2 & 3 finding]
 
+## Impact
+
+- **Priority**: P3 — quality improvement to existing `/ll:analyze-loop` skill; not blocking other work but unlocks better diagnosis of loops that "complete" without doing useful work.
+- **Effort**: Medium — three signals across two SKILL.md sections plus Step 5 grouping, three fixture YAMLs, and test updates in two files; all signals follow existing prose-directive pattern (no new Python).
+- **Risk**: Low/Medium — splice points sit adjacent to assertions in `test_enh1146_doc_wiring.py` (`Step 3b`, `rate_limit_waiting`); careful editing required but no API surface changes.
+- **Breaking Change**: No — additive signal emission and output grouping only.
+
+## Labels
+
+`enhancement`, `analyze-loop`, `effectiveness-signals`, `decomposed-from-ENH-1327`, `wired`
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-05-02_
@@ -204,7 +233,12 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - **One low-stakes design call remains open**: whether to migrate the existing sub-loop verdict signal into the new `static_issues` bucket alongside Signal 3. Stated default is to leave it in place; resolve this at the Step 2 insertion point without further research.
 - **7-file spread increases coordination cost**: SKILL.md edits drive two separate test files and three fixture YAMLs; work the acceptance criteria checklist in order (Signal 3 static pass first, then Signals 1 and 2, then Step 5 grouping) to keep changes coherent.
 
+## Status
+
+**Open** | Created: 2026-05-02 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-03T04:44:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4217de01-e6a0-4956-b983-ddbac6e33cd5.jsonl`
 - `/ll:wire-issue` - 2026-05-03T04:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`
 - `/ll:refine-issue` - 2026-05-03T04:30:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d1a6da-5f0e-44c1-99c9-d038fb2c92e5.jsonl`
 - `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
