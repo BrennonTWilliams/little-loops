@@ -93,11 +93,20 @@ The peek count could optionally be driven by a `context.queue_peek_count: 5` var
 ### Files to Modify
 - `scripts/little_loops/loops/recursive-refine.yaml` — `enqueue_children` and `enqueue_or_skip` (children branch): add peek block after existing echo.
 
-### Dependent Files
-- `scripts/tests/test_loops_recursive_refine.py` — verify peek line content in synthetic run.
+### Dependent Files (Callers/Importers)
+- N/A — enqueue functions are internal FSM state handlers; no external callers.
 
 ### Similar Patterns
-- `enqueue_children` (line 191) and `enqueue_or_skip` (line 302) share the same enqueue pattern; the peek block should be identical in both and placed after the `echo "Parent ... decomposed ..."` line.
+- `enqueue_children` and `enqueue_or_skip` share the same enqueue pattern; the peek block should be identical in both and placed after the `echo "Parent ... decomposed ..."` line.
+
+### Tests
+- `scripts/tests/test_loops_recursive_refine.py` — verify peek line content in synthetic run.
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -108,7 +117,7 @@ The peek count could optionally be driven by a `context.queue_peek_count: 5` var
 ## Impact
 
 - **Priority**: P3 — Nice-to-have visibility; no behavior change.
-- **Effort**: Minimal — Two identical 8-line bash blocks.
+- **Effort**: Small — Two identical 8-line bash blocks.
 - **Risk**: None — Output-only change; does not affect routing or file state.
 - **Breaking Change**: No.
 
@@ -116,5 +125,10 @@ The peek count could optionally be driven by a `context.queue_peek_count: 5` var
 
 `enhancement`, `recursive-refine`, `fsm-loops`, `observability`, `cli-output`
 
+## Status
+
+**Open** | Created: 2026-05-03 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-03T19:20:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ac7040e-7ed3-4fc9-8eb6-0a927d3649e8.jsonl`
 - `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`

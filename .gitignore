@@ -75,6 +75,8 @@ scripts/.parallel-manage-state.json
 docs/demo
 .loops/.running/
 .loops/.history/
+.loops/.queue/
+.loops/tmp/
 *.Cast
 
 # Debug output files

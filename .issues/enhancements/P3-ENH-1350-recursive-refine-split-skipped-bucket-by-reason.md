@@ -152,6 +152,19 @@ printf '\n'
 - ENH-1341 (decomposition tree) — now has clean per-reason data to drive the tree render
 - ENH-1348 (progress line) — skipped count in progress line now reflects true skips, not decomposed parents
 
+### Similar Patterns
+- `recursive-refine-skipped-depth.txt` (ENH-1347) and `recursive-refine-skipped-budget.txt` (ENH-1339) are the precedent pattern being generalized here
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — update `TestRecursiveRefineLoop` `done` output assertions
+- `scripts/tests/test_loops_recursive_refine.py` — add per-reason row verification
+
+### Documentation
+- N/A — no user-facing documentation changes required
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. Initialize `skipped-decomposed.txt` and `skipped-deadend.txt` in `parse_input`.
@@ -178,5 +191,10 @@ printf '\n'
 
 `enhancement`, `recursive-refine`, `fsm-loops`, `observability`, `cli-output`
 
+## Status
+
+**Open** | Created: 2026-05-03 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-03T19:20:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
 - `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`

@@ -84,6 +84,10 @@ Config:
 - `config-schema.json` — extend `events` block with `webhook` sub-object: `url: string|null`, `batch_ms: integer (default 1000)`, `headers: object`. Pattern: model after `sync.github` (lines 776–818). Close with `additionalProperties: false`
 - `pyproject.toml` — add `webhooks = ["httpx>=0.24.0"]` to `[project.optional-dependencies]` (line 78+)
 
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/transport.py` — `wire_transports()` is the only constructor; it will instantiate `WebhookTransport` when `"webhook"` appears in `transports` list
+
 ### Similar Patterns
 
 - `scripts/little_loops/parallel/merge_coordinator.py:57-111` — daemon thread + `Queue` + `threading.Event` shutdown sentinel. Use as the batch-thread template
@@ -106,6 +110,11 @@ Config:
 - `docs/reference/CONFIGURATION.md` — document `events.webhook` block and `pip install little-loops[webhooks]` install
 - `docs/reference/API.md` — `WebhookTransport` constructor params
 - `docs/ARCHITECTURE.md` — webhook transport in the multi-transport list
+
+### Configuration
+
+- `config-schema.json` — already listed in Files to Modify (new `events.webhook` sub-object)
+- `pyproject.toml` — already listed in Files to Modify (`webhooks` optional dependency group)
 
 ## Use Case
 
@@ -157,6 +166,7 @@ A team runs `ll-parallel` against 10 issues. Their internal Slack bot exposes a 
 **Open** | Created: 2026-05-01 (split from FEAT-918) | Priority: P5
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-03T17:13:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ea146a5-288b-488a-b878-065475896445.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 
 - Split from FEAT-918 - 2026-05-01

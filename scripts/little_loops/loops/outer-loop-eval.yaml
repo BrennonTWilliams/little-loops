@@ -5,53 +5,77 @@ description: |
   as a sub-loop, then performing structured analysis to identify structural problems,
   logic gaps, flow inefficiencies, and component improvement opportunities.
   Produces an actionable improvement report with suggested YAML changes.
+
+  Note: run_sub_loop has a default timeout of 1800s. For loops with longer expected
+  runtimes, pass --timeout <seconds> to the outer loop invocation.
 initial: validate_input
-max_iterations: 10
-timeout: 3600
+max_iterations: 15
+timeout: 7200
 on_handoff: spawn
 context:
-  loop_name: ""   # Required: target loop name (built-in or project-level)
-  input: ""       # Optional: input value passed to the sub-loop
-
-import:
-  - lib/benchmark.yaml
+  loop_name: ""  # Required: target loop name (built-in or project-level)
+  input: ""      # Optional: input value passed to the sub-loop
 
 states:
 
   validate_input:
     action_type: shell
     action: |
-      test -n "${context.loop_name}" && echo "loop_name: ${context.loop_name}" || (echo "ERROR: loop_name is required. Pass it with --context loop_name=<name>" >&2; exit 1)
+      test -n "${context.loop_name}" \
+        && echo "loop_name: ${context.loop_name}" \
+        || (echo "ERROR: loop_name is required. Pass with --context loop_name=<name>" >&2; exit 1)
     on_error: done
+    next: load_definition
+
+  load_definition:
+    action_type: shell
+    timeout: 30
+    action: |
+      ll-loop show "${context.loop_name}" 2>&1
+    capture: loop_definition
+    on_error: analyze_definition
     next: analyze_definition
 
   analyze_definition:
     action_type: prompt
     timeout: 300
     action: |
-      Read the target loop's YAML definition using:
-        ll-loop show ${context.loop_name}
+      Analyze the YAML definition of loop: ${context.loop_name}
+
+      Definition:
+      ${captured.loop_definition.output}
+
+      If the definition was not found or is empty, note that clearly and limit
+      your analysis to what can be inferred from the loop name.
 
       Produce a structured analysis covering:
       - State coverage: all states reachable and have terminal paths
-      - Missing routes: states with no on_error handler for failure paths
-      - Evaluator types: appropriate evaluator types for each decision state
-      - Context variable hygiene: all context vars referenced are defined and
-        initialized with sensible defaults
-      - Cycle risks: potential infinite loops or missing exit conditions
+      - Missing routes: states with no on_error handler for shell or sub-loop actions
+      - Evaluator types: appropriate type per decision state; llm_structured evaluators
+        have min_confidence set
+      - Context variable hygiene: all referenced vars are defined in the context block
+        with sensible defaults; no vars required at startup that are absent
+      - Cycle risks: any state cycle where max_iterations is the only exit mechanism
+      - Timeout coverage: long-running shell states have explicit timeouts
 
-      Format your analysis clearly with a labeled section for each dimension.
-      If the loop is not found, note that in your analysis and continue.
+      Format your analysis with a labeled section for each dimension.
     capture: definition_analysis
     on_blocked: $current
+    on_error: run_sub_loop
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: run_sub_loop
     next: run_sub_loop
 
   run_sub_loop:
     action_type: shell
+    timeout: 1800
     action: |
-      ll-loop run "${context.loop_name}" "${context.input}"
+      INPUT="${context.input}"
+      if [ -n "$INPUT" ]; then
+        ll-loop run "${context.loop_name}" "$INPUT" 2>&1
+      else
+        ll-loop run "${context.loop_name}" 2>&1
+      fi
     capture: sub_loop_output
     on_error: analyze_execution
     next: analyze_execution
@@ -76,8 +100,9 @@ states:
       - Overall execution health assessment
     capture: execution_analysis
     on_blocked: $current
+    on_error: generate_report
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: generate_report
     next: generate_report
 
   generate_report:
@@ -118,6 +143,7 @@ states:
       or "None identified." if the section is clean.
     capture: improvement_report
     on_blocked: $current
+    on_error: done
     max_retries: 2
     on_retry_exhausted: done
     evaluate:
@@ -149,7 +175,7 @@ states:
       Look harder for:
       - Any state missing an on_error route for shell or sub-loop actions
       - Any evaluator that could be more specific or use a tighter min_confidence
-      - Any context variable that is used but not initialized in the context block
+      - Any context variable used but not initialized in the context block
       - Any retry logic where on_retry_exhausted routes to a suboptimal state
       - Any state where the prompt could be more targeted or structured
       - Any cycle risk where max_iterations is the only exit mechanism
@@ -159,17 +185,10 @@ states:
       with a revised version of the full report.
     capture: improvement_report
     on_blocked: $current
+    on_error: done
     max_retries: 2
     on_retry_exhausted: done
     next: generate_report
-
-  run_benchmark_opt_in:
-    fragment: run_benchmark
-    action: "${context.scorer} ${context.tasks_dir}"
-    capture: benchmark_score
-    on_yes: done
-    on_no: done
-    on_error: done
 
   done:
     terminal: true

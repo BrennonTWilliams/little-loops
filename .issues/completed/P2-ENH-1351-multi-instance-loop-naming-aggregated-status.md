@@ -13,6 +13,7 @@ score_complexity: 0
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+size: Very Large
 ---
 
 # ENH-1351: Multi-Instance Loop Naming with Aggregated Status
@@ -342,7 +343,21 @@ _Added by `/ll:confidence-check` on 2026-05-03_
 - **Broad test assertion surface**: 8 test files contain `{loop_name}.pid` / `{loop_name}.state.json` exact-path assertions. With 22+ test cases spread across `test_fsm_persistence.py`, `test_cli_loop_lifecycle.py`, `test_ll_loop_execution.py`, `test_ll_loop_commands.py`, and others, a partial update will produce hard-to-diagnose path-not-found failures. Mitigation: run the full test suite after implementing each numbered step rather than at the end.
 - **Strftime format (minor)**: Issue flags `%Y%m%d-%H%M%S` vs `%Y%m%dT%H%M%S` inconsistency and recommends ISO-T. No open decision, but `_find_instances` regex must match the exact chosen format consistently.
 
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-03
+- **Reason**: Issue too large for single session (score: 9/11, Very Large)
+
+### Decomposed Into
+- ENH-1354: Multi-Instance Loop — instance_id Generation and File Path Scoping
+- ENH-1355: Multi-Instance Loop — Aggregated CLI (status/stop/resume/list) + Docs & Skills
+
+---
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-05-03T19:26:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
 - `/ll:confidence-check` - 2026-05-03T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1710d27d-e7e6-41eb-bdb2-221618751457.jsonl`
 - `/ll:wire-issue` - 2026-05-03T19:18:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a9ee3ef-3cc6-4159-9524-6a2a2ffaf0b5.jsonl`
 - `/ll:refine-issue` - 2026-05-03T19:11:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6df60d0-1c78-4851-b324-323ef58d2758.jsonl`

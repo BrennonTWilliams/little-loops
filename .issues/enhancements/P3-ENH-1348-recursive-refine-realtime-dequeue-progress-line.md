@@ -103,6 +103,17 @@ printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
 - **Out of scope**: graphical progress bars, ETA estimation, rate calculations.
 - **Out of scope**: per-state heartbeat lines (that would be a separate proposal).
 
+## Success Metrics
+
+- Progress line emitted on every dequeue: all 3 lines visible in synthetic 3-issue stderr capture.
+- Format correctness: `[N/M] → ID | passed: P | queued: Q | skipped: S` matches expected format on each line.
+- Depth field: gracefully absent when `recursive-refine-current-depth.txt` is not present (no crash, no malformed line).
+- Total-enqueued counter: grows correctly as children are enqueued mid-run (counter reflects cumulative total, not initial queue size).
+
+## API/Interface
+
+N/A — No public API changes. All changes are internal to `recursive-refine.yaml` bash actions; new counter files (`.loops/tmp/recursive-refine-total-enqueued.txt`, `recursive-refine-dequeued-count.txt`) are runtime state only.
+
 ## Integration Map
 
 ### Files to Modify
@@ -115,6 +126,20 @@ printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
 ### Dependencies / Enhances
 - ENH-1347 — depth field in progress line depends on `recursive-refine-current-depth.txt` written there; graceful fallback when absent.
 - ENH-1350 — skipped count in progress line will become more meaningful once skip reasons are partitioned.
+
+### Similar Patterns
+- `scripts/little_loops/loops/recursive-refine.yaml` — existing counter files (`passed.txt`, `queue.txt`, `skipped.txt`) use the same `grep -c` pattern; new counter files follow the same convention.
+- Other FSM loops in `scripts/little_loops/loops/` — check for any that emit progress lines via `printf` to stderr for consistency.
+
+### Tests
+- `scripts/tests/test_loops_recursive_refine.py` — add: synthetic 3-issue run capturing stderr; assert all 3 `[N/M] → ID` progress lines are present with correct format.
+- `scripts/tests/test_builtin_loops.py` — add: `dequeue_next` action references `recursive-refine-dequeued-count.txt`.
+
+### Documentation
+- N/A — internal observability improvement; no user-facing docs require updates.
+
+### Configuration
+- N/A — runtime state only (`.loops/tmp/recursive-refine-*.txt`); no configuration file changes required.
 
 ## Implementation Steps
 
@@ -139,5 +164,10 @@ printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
 
 `enhancement`, `recursive-refine`, `fsm-loops`, `observability`, `cli-output`
 
+## Status
+
+**Open** | Created: 2026-05-03 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-03T19:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
 - `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`
