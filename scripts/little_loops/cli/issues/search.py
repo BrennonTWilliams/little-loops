@@ -32,7 +32,7 @@ def _parse_discovered_date(content: str) -> datetime | None:
     captured = fm.get("captured_at")
     if isinstance(captured, str) and captured:
         try:
-            return datetime.fromisoformat(captured.rstrip("Z"))
+            return datetime.fromisoformat(captured.rstrip("Z")).replace(tzinfo=None)
         except ValueError:
             pass
 

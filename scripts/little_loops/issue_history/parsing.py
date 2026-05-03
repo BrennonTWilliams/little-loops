@@ -85,7 +85,7 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.rstrip("Z"))
+        return datetime.fromisoformat(value.rstrip("Z")).replace(tzinfo=None)
     except ValueError:
         return None
 
