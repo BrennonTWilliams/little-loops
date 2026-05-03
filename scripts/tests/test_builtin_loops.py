@@ -1622,6 +1622,7 @@ class TestRecursiveRefineLoop:
             "size_review_snap",
             "check_broke_down",
             "recheck_scores",
+            "check_depth",
             "run_size_review",
             "enqueue_or_skip",
             "done",
@@ -1776,17 +1777,52 @@ class TestRecursiveRefineLoop:
         )
 
     def test_recheck_scores_on_no_routes_to_run_size_review(self, data: dict) -> None:
-        """recheck_scores.on_no must route to run_size_review when scores do not pass."""
+        """recheck_scores.on_no must route to check_depth (which gates into run_size_review)."""
         state = data["states"].get("recheck_scores", {})
-        assert state.get("on_no") == "run_size_review", (
-            f"recheck_scores.on_no should be 'run_size_review', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_depth", (
+            f"recheck_scores.on_no should be 'check_depth', got {state.get('on_no')!r}"
         )
 
     def test_recheck_scores_on_error_routes_to_run_size_review(self, data: dict) -> None:
-        """recheck_scores.on_error must route to run_size_review on evaluation error."""
+        """recheck_scores.on_error must route to check_depth on evaluation error."""
         state = data["states"].get("recheck_scores", {})
+        assert state.get("on_error") == "check_depth", (
+            f"recheck_scores.on_error should be 'check_depth', got {state.get('on_error')!r}"
+        )
+
+    def test_check_depth_evaluate_output_numeric_lt_1(self, data: dict) -> None:
+        """check_depth must use output_numeric lt 1 to detect depth-cap breach."""
+        state = data["states"].get("check_depth", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_depth evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("operator") == "lt", (
+            f"check_depth evaluate.operator should be 'lt', got {evaluate.get('operator')!r}"
+        )
+        assert evaluate.get("target") == 1, (
+            f"check_depth evaluate.target should be 1, got {evaluate.get('target')!r}"
+        )
+
+    def test_check_depth_on_yes_routes_to_run_size_review(self, data: dict) -> None:
+        """check_depth.on_yes (depth < max_depth) must route to run_size_review."""
+        state = data["states"].get("check_depth", {})
+        assert state.get("on_yes") == "run_size_review", (
+            f"check_depth.on_yes should be 'run_size_review', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_depth_on_no_routes_to_dequeue_next(self, data: dict) -> None:
+        """check_depth.on_no (depth >= max_depth) must route to dequeue_next, skipping size-review."""
+        state = data["states"].get("check_depth", {})
+        assert state.get("on_no") == "dequeue_next", (
+            f"check_depth.on_no should be 'dequeue_next', got {state.get('on_no')!r}"
+        )
+
+    def test_check_depth_on_error_routes_to_run_size_review(self, data: dict) -> None:
+        """check_depth.on_error must route to run_size_review (fail-safe: proceed normally)."""
+        state = data["states"].get("check_depth", {})
         assert state.get("on_error") == "run_size_review", (
-            f"recheck_scores.on_error should be 'run_size_review', got {state.get('on_error')!r}"
+            f"check_depth.on_error should be 'run_size_review', got {state.get('on_error')!r}"
         )
 
     def test_detect_children_filters_by_parent_reference(self, data: dict) -> None:

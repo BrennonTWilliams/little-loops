@@ -47,6 +47,10 @@ states:
         > .loops/tmp/recursive-refine-queue.txt
       cp .loops/tmp/recursive-refine-queue.txt \
         .loops/tmp/recursive-refine-original-queue.txt
+      while IFS= read -r id; do echo "$id 0"; done \
+        < .loops/tmp/recursive-refine-queue.txt \
+        > .loops/tmp/recursive-refine-depth-map.txt
+      > .loops/tmp/recursive-refine-skipped-depth.txt
       COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
       echo "Queued $COUNT issue(s) for recursive refinement"
     fragment: shell_exit
@@ -68,6 +72,8 @@ states:
         > .loops/tmp/recursive-refine-queue.tmp
       mv .loops/tmp/recursive-refine-queue.tmp \
         .loops/tmp/recursive-refine-queue.txt
+      DEPTH=$(grep "^$CURRENT " .loops/tmp/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
+      printf '%s' "${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
       echo "$CURRENT"
     fragment: shell_exit
     capture: input
@@ -198,6 +204,10 @@ states:
       { echo "$CHILDREN"; echo "$EXISTING"; } \
         | grep -v '^[[:space:]]*$' \
         > .loops/tmp/recursive-refine-queue.txt
+      PARENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+      while IFS= read -r child; do
+        echo "$child $((PARENT_DEPTH + 1))" >> .loops/tmp/recursive-refine-depth-map.txt
+      done < .loops/tmp/recursive-refine-new-children.txt
       echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
       PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
       if [ -n "$PARENT_FILE" ]; then
@@ -288,7 +298,45 @@ states:
       PYEOF
     fragment: shell_exit
     on_yes: dequeue_next
-    on_no: run_size_review
+    on_no: check_depth
+    on_error: check_depth
+
+  check_depth:
+    # Gate: skip size-review if this issue has reached the per-subtree depth cap.
+    # Reads MAX_DEPTH from ll-config.json (commands.recursive_refine.max_depth) with
+    # context.max_depth as fallback. Depth-capped IDs are written to both the
+    # depth-specific file and the shared skipped file so outer-loop callers
+    # (auto-refine-and-implement, sprint-refine-and-implement) accumulate them correctly.
+    action: |
+      MAX_DEPTH=$(python3 << 'PYEOF'
+      import json
+      from pathlib import Path
+      p = Path('.ll/ll-config.json')
+      cfg = {}
+      if p.exists():
+          try:
+              cfg = json.loads(p.read_text())
+          except Exception:
+              pass
+      print(cfg.get('commands', {}).get('recursive_refine', {}).get('max_depth', ${context.max_depth}))
+      PYEOF
+      )
+      [ -z "$MAX_DEPTH" ] && MAX_DEPTH=${context.max_depth}
+      CURRENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+      if [ "$CURRENT_DEPTH" -ge "$MAX_DEPTH" ]; then
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-depth.txt
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        echo 1
+      else
+        echo 0
+      fi
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 1
+    on_yes: run_size_review
+    on_no: dequeue_next
     on_error: run_size_review
 
   run_size_review:
@@ -331,6 +379,10 @@ states:
         { echo "$CHILDREN"; echo "$EXISTING"; } \
           | grep -v '^[[:space:]]*$' \
           > .loops/tmp/recursive-refine-queue.txt
+        PARENT_DEPTH=$(cat .loops/tmp/recursive-refine-current-depth.txt 2>/dev/null || echo 0)
+        while IFS= read -r child; do
+          echo "$child $((PARENT_DEPTH + 1))" >> .loops/tmp/recursive-refine-depth-map.txt
+        done < .loops/tmp/recursive-refine-new-children.txt
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
         PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
         if [ -n "$PARENT_FILE" ]; then
@@ -355,16 +407,21 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      DEPTH_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-depth.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Recursive Refine Summary ===\n\n'
       printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
       printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
+      printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "$${DEPTH_LIST:-none}"
       printf '\n'
     action_type: shell
     terminal: true
