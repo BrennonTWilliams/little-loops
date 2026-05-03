@@ -546,11 +546,12 @@ Decomposed (1):
 
 === Recursive Refine Summary ===
 
-Passed  (2): FEAT-42, FEAT-43
-Skipped (1): BUG-17
-Skipped (depth-cap 3): ENH-99
-Skipped (cycle 1): ENH-100
-Skipped (budget 1): ENH-101
+Passed       (2): FEAT-42, FEAT-43
+Decomposed   (1): ENH-99
+Dead-ends    (1): BUG-17
+Depth-cap    (0): none
+Cycle        (1): ENH-100
+Budget       (1): ENH-101
 
 === Decomposition Tree ===
 
@@ -563,7 +564,7 @@ ENH-101 (skipped: budget)
 ```
 Set `tree_summary: false` in context to suppress the tree block.
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `.loops/tmp/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `.loops/tmp/recursive-refine-skipped-budget.txt`; every decomposition event (from either the `enqueue_children` or `enqueue_or_skip` path) is appended to `.loops/tmp/recursive-refine-decomposition.tsv` (columns: `parent_id`, `child_ids` (comma-joined), `decomposer` (`sub-loop` | `size-review`), `timestamp`) so the `aggregate_decomposition` state can produce a parent→children rollup at the end of each run.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. All non-passing issue IDs are aggregated in `.loops/tmp/recursive-refine-skipped.txt` (read by outer-loop callers); decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `.loops/tmp/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `.loops/tmp/recursive-refine-skipped-budget.txt`; parents that were decomposed into children (by either `enqueue_children` or the `enqueue_or_skip` children branch) are recorded in `.loops/tmp/recursive-refine-skipped-decomposed.txt`; issues with no further decomposition possible are recorded in `.loops/tmp/recursive-refine-skipped-deadend.txt`; every decomposition event (from either the `enqueue_children` or `enqueue_or_skip` path) is appended to `.loops/tmp/recursive-refine-decomposition.tsv` (columns: `parent_id`, `child_ids` (comma-joined), `decomposer` (`sub-loop` | `size-review`), `timestamp`) so the `aggregate_decomposition` state can produce a parent→children rollup at the end of each run.
 
 **Code Quality**
 

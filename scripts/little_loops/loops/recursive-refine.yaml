@@ -56,6 +56,8 @@ states:
       > .loops/tmp/recursive-refine-skipped-depth.txt
       printf '' > .loops/tmp/recursive-refine-attempts.txt
       printf '' > .loops/tmp/recursive-refine-skipped-budget.txt
+      printf '' > .loops/tmp/recursive-refine-skipped-decomposed.txt
+      printf '' > .loops/tmp/recursive-refine-skipped-deadend.txt
       printf '' > .loops/tmp/recursive-refine-decomposition.tsv
       printf '0' > .loops/tmp/recursive-refine-dequeued-count.txt
       COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
@@ -292,6 +294,7 @@ states:
       printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "sub-loop" \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
       echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
       PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
       if [ -n "$PARENT_FILE" ]; then
         mkdir -p .issues/completed
@@ -508,6 +511,7 @@ states:
         printf '%s\t%s\t%s\t%s\n' "${captured.input.output}" "$CHILD_IDS" "size-review" \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .loops/tmp/recursive-refine-decomposition.tsv
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
         PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
         if [ -n "$PARENT_FILE" ]; then
           mkdir -p .issues/completed
@@ -531,6 +535,7 @@ states:
         fi
       else
         echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-deadend.txt
         echo "Skipped: ${captured.input.output} (no further decomposition possible)"
       fi
     action_type: shell
@@ -591,7 +596,9 @@ states:
     action: |
       PASSED_IDS=$(cat .loops/tmp/recursive-refine-passed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped.txt 2>/dev/null \
+      DECOMPOSED_IDS=$(cat .loops/tmp/recursive-refine-skipped-decomposed.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+      DEADEND_IDS=$(cat .loops/tmp/recursive-refine-skipped-deadend.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
       DEPTH_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-depth.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
@@ -601,23 +608,26 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      DECOMPOSED_COUNT=$(echo "$DECOMPOSED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      DEADEND_COUNT=$(echo "$DEADEND_IDS" | grep -c '[^[:space:]]' || echo 0)
       DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
-      SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      DECOMPOSED_LIST=$(echo "$DECOMPOSED_IDS" | tr '\n' ',' | sed 's/,$//')
+      DEADEND_LIST=$(echo "$DEADEND_IDS" | tr '\n' ',' | sed 's/,$//')
       DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       BUDGET_LIST=$(echo "$BUDGET_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Recursive Refine Summary ===\n\n'
-      printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
-      printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
-      printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "$${DEPTH_LIST:-none}"
-      printf 'Skipped (cycle %d): %s\n' "$CYCLE_COUNT" "$${CYCLE_LIST:-none}"
-      printf 'Skipped (budget %d): %s\n' "$BUDGET_COUNT" "$${BUDGET_LIST:-none}"
+      printf 'Passed       (%d): %s\n' "$PASSED_COUNT"     "$${PASSED_LIST:-none}"
+      printf 'Decomposed   (%d): %s\n' "$DECOMPOSED_COUNT" "$${DECOMPOSED_LIST:-none}"
+      printf 'Dead-ends    (%d): %s\n' "$DEADEND_COUNT"    "$${DEADEND_LIST:-none}"
+      printf 'Depth-cap    (%d): %s\n' "$DEPTH_COUNT"      "$${DEPTH_LIST:-none}"
+      printf 'Cycle        (%d): %s\n' "$CYCLE_COUNT"      "$${CYCLE_LIST:-none}"
+      printf 'Budget       (%d): %s\n' "$BUDGET_COUNT"     "$${BUDGET_LIST:-none}"
       if [ "${context.tree_summary}" != "false" ]; then
         python3 << 'PYEOF'
       import subprocess, sys, json, os, re

@@ -56,6 +56,36 @@ class TestDepthMapInit:
 
         assert (loops_tmp / "recursive-refine-skipped-depth.txt").read_text() == ""
 
+    def test_skipped_decomposed_file_is_initialized(self, tmp_path: Path) -> None:
+        """parse_input initializes recursive-refine-skipped-decomposed.txt to empty."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("stale-entry\n")
+
+        _bash(
+            r"""
+            printf '' > .loops/tmp/recursive-refine-skipped-decomposed.txt
+            """,
+            tmp_path,
+        )
+
+        assert (loops_tmp / "recursive-refine-skipped-decomposed.txt").read_text() == ""
+
+    def test_skipped_deadend_file_is_initialized(self, tmp_path: Path) -> None:
+        """parse_input initializes recursive-refine-skipped-deadend.txt to empty."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("stale-entry\n")
+
+        _bash(
+            r"""
+            printf '' > .loops/tmp/recursive-refine-skipped-deadend.txt
+            """,
+            tmp_path,
+        )
+
+        assert (loops_tmp / "recursive-refine-skipped-deadend.txt").read_text() == ""
+
 
 class TestParseInputDedup:
     """parse_input deduplication of comma-separated input."""
@@ -594,15 +624,96 @@ class TestCycleSkipReason:
         assert not (loops_tmp / "recursive-refine-skipped-cycle.txt").exists()
 
 
+class TestDecomposedDualWrite:
+    """enqueue_children and enqueue_or_skip write parent to both skipped.txt and skipped-decomposed.txt."""
+
+    def test_enqueue_children_writes_to_decomposed_file(self, tmp_path: Path) -> None:
+        """enqueue_children appends parent ID to skipped-decomposed.txt alongside skipped.txt."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+
+        _bash(
+            r"""
+            PARENT="ENH-001"
+            echo "$PARENT" >> .loops/tmp/recursive-refine-skipped.txt
+            echo "$PARENT" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
+            """,
+            tmp_path,
+        )
+
+        assert "ENH-001" in (loops_tmp / "recursive-refine-skipped.txt").read_text()
+        assert "ENH-001" in (loops_tmp / "recursive-refine-skipped-decomposed.txt").read_text()
+
+    def test_enqueue_or_skip_children_branch_writes_to_decomposed_file(self, tmp_path: Path) -> None:
+        """enqueue_or_skip children branch appends parent to both skipped.txt and skipped-decomposed.txt."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+
+        _bash(
+            r"""
+            PARENT="ENH-002"
+            echo "$PARENT" >> .loops/tmp/recursive-refine-skipped.txt
+            echo "$PARENT" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
+            """,
+            tmp_path,
+        )
+
+        assert "ENH-002" in (loops_tmp / "recursive-refine-skipped.txt").read_text()
+        assert "ENH-002" in (loops_tmp / "recursive-refine-skipped-decomposed.txt").read_text()
+
+    def test_enqueue_or_skip_deadend_branch_writes_to_deadend_file(self, tmp_path: Path) -> None:
+        """enqueue_or_skip dead-end branch appends parent to both skipped.txt and skipped-deadend.txt."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
+
+        _bash(
+            r"""
+            PARENT="ENH-003"
+            echo "$PARENT" >> .loops/tmp/recursive-refine-skipped.txt
+            echo "$PARENT" >> .loops/tmp/recursive-refine-skipped-deadend.txt
+            """,
+            tmp_path,
+        )
+
+        assert "ENH-003" in (loops_tmp / "recursive-refine-skipped.txt").read_text()
+        assert "ENH-003" in (loops_tmp / "recursive-refine-skipped-deadend.txt").read_text()
+
+    def test_decomposed_does_not_appear_in_deadend_file(self, tmp_path: Path) -> None:
+        """enqueue_children writes to skipped-decomposed.txt but NOT skipped-deadend.txt."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
+
+        _bash(
+            r"""
+            PARENT="ENH-004"
+            echo "$PARENT" >> .loops/tmp/recursive-refine-skipped-decomposed.txt
+            """,
+            tmp_path,
+        )
+
+        assert "ENH-004" in (loops_tmp / "recursive-refine-skipped-decomposed.txt").read_text()
+        assert "ENH-004" not in (loops_tmp / "recursive-refine-skipped-deadend.txt").read_text()
+
+
 class TestDoneSummary:
-    """Skipped (depth-cap N) and Skipped (cycle N) lines in done state summary."""
+    """Per-category summary rows in done state (Decomposed, Dead-ends, Depth-cap, Cycle, Budget)."""
 
     # Mirrors the done state action body after FSM interpolation.
     # ${TREE_SUMMARY:-true} represents the FSM-interpolated ${context.tree_summary} value.
     _DONE_SCRIPT = r"""
     PASSED_IDS=$(cat .loops/tmp/recursive-refine-passed.txt 2>/dev/null \
       | grep -v '^[[:space:]]*$' | sort -u || true)
-    SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped.txt 2>/dev/null \
+    DECOMPOSED_IDS=$(cat .loops/tmp/recursive-refine-skipped-decomposed.txt 2>/dev/null \
+      | grep -v '^[[:space:]]*$' | sort -u || true)
+    DEADEND_IDS=$(cat .loops/tmp/recursive-refine-skipped-deadend.txt 2>/dev/null \
       | grep -v '^[[:space:]]*$' | sort -u || true)
     DEPTH_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-depth.txt 2>/dev/null \
       | grep -v '^[[:space:]]*$' | sort -u || true)
@@ -612,23 +723,26 @@ class TestDoneSummary:
       | grep -v '^[[:space:]]*$' | sort -u || true)
 
     PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
-    SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+    DECOMPOSED_COUNT=$(echo "$DECOMPOSED_IDS" | grep -c '[^[:space:]]' || echo 0)
+    DEADEND_COUNT=$(echo "$DEADEND_IDS" | grep -c '[^[:space:]]' || echo 0)
     DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
     CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
     BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
     PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
-    SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+    DECOMPOSED_LIST=$(echo "$DECOMPOSED_IDS" | tr '\n' ',' | sed 's/,$//')
+    DEADEND_LIST=$(echo "$DEADEND_IDS" | tr '\n' ',' | sed 's/,$//')
     DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
     CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
     BUDGET_LIST=$(echo "$BUDGET_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
     printf '\n=== Recursive Refine Summary ===\n\n'
-    printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "${PASSED_LIST:-none}"
-    printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "${SKIPPED_LIST:-none}"
-    printf 'Skipped (depth-cap %d): %s\n' "$DEPTH_COUNT" "${DEPTH_LIST:-none}"
-    printf 'Skipped (cycle %d): %s\n' "$CYCLE_COUNT" "${CYCLE_LIST:-none}"
-    printf 'Skipped (budget %d): %s\n' "$BUDGET_COUNT" "${BUDGET_LIST:-none}"
+    printf 'Passed       (%d): %s\n' "$PASSED_COUNT"     "${PASSED_LIST:-none}"
+    printf 'Decomposed   (%d): %s\n' "$DECOMPOSED_COUNT" "${DECOMPOSED_LIST:-none}"
+    printf 'Dead-ends    (%d): %s\n' "$DEADEND_COUNT"    "${DEADEND_LIST:-none}"
+    printf 'Depth-cap    (%d): %s\n' "$DEPTH_COUNT"      "${DEPTH_LIST:-none}"
+    printf 'Cycle        (%d): %s\n' "$CYCLE_COUNT"      "${CYCLE_LIST:-none}"
+    printf 'Budget       (%d): %s\n' "$BUDGET_COUNT"     "${BUDGET_LIST:-none}"
     if [ "${TREE_SUMMARY:-true}" != "false" ]; then
       python3 << 'PYEOF'
 import subprocess, sys, json, os, re
@@ -729,71 +843,75 @@ PYEOF
     """
 
     def test_depth_cap_line_shows_capped_ids(self, tmp_path: Path) -> None:
-        """done includes 'Skipped (depth-cap N): IDs' when depth-capped issues exist."""
+        """done includes 'Depth-cap (N): IDs' when depth-capped issues exist."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-002\nENH-003\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("ENH-003\n")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
 
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
         assert result.returncode == 0
-        assert "Passed  (1):" in result.stdout
-        assert "Skipped (2):" in result.stdout
-        assert "Skipped (depth-cap 1):" in result.stdout
+        assert "Passed       (1):" in result.stdout
+        assert "Depth-cap    (1):" in result.stdout
         assert "ENH-003" in result.stdout
 
     def test_depth_cap_line_shows_none_when_no_capped_issues(self, tmp_path: Path) -> None:
-        """done emits 'Skipped (depth-cap 0): none' when no depth-capped issues."""
+        """done emits 'Depth-cap (0): none' when no depth-capped issues."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
 
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
         assert result.returncode == 0
-        assert "Skipped (depth-cap 0): none" in result.stdout
+        assert "Depth-cap    (0): none" in result.stdout
 
     def test_cycle_line_shows_cycle_ids(self, tmp_path: Path) -> None:
-        """done includes 'Skipped (cycle N): IDs' when cycle-detected issues exist."""
+        """done includes 'Cycle (N): IDs' when cycle-detected issues exist."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-002\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("ENH-002\n")
 
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
         assert result.returncode == 0
-        assert "Skipped (cycle 1):" in result.stdout
+        assert "Cycle        (1):" in result.stdout
         assert "ENH-002" in result.stdout
 
     def test_cycle_line_shows_none_when_no_cycle_issues(self, tmp_path: Path) -> None:
-        """done emits 'Skipped (cycle 0): none' when no cycle-detected issues."""
+        """done emits 'Cycle (0): none' when no cycle-detected issues."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
 
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
         assert result.returncode == 0
-        assert "Skipped (cycle 0): none" in result.stdout
+        assert "Cycle        (0): none" in result.stdout
 
     def test_budget_line_shows_budget_ids(self, tmp_path: Path) -> None:
-        """done includes 'Skipped (budget N): IDs' when budget-exceeded issues exist."""
+        """done includes 'Budget (N): IDs' when budget-exceeded issues exist."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-002\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("ENH-002\n")
@@ -801,15 +919,16 @@ PYEOF
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
         assert result.returncode == 0
-        assert "Skipped (budget 1):" in result.stdout
+        assert "Budget       (1):" in result.stdout
         assert "ENH-002" in result.stdout
 
     def test_budget_line_shows_none_when_no_budget_issues(self, tmp_path: Path) -> None:
-        """done emits 'Skipped (budget 0): none' when no budget-exceeded issues."""
+        """done emits 'Budget (0): none' when no budget-exceeded issues."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
@@ -817,7 +936,69 @@ PYEOF
         result = _bash(self._DONE_SCRIPT, tmp_path)
 
         assert result.returncode == 0
-        assert "Skipped (budget 0): none" in result.stdout
+        assert "Budget       (0): none" in result.stdout
+
+    def test_decomposed_line_shows_decomposed_ids(self, tmp_path: Path) -> None:
+        """done includes 'Decomposed (N): IDs' when decomposed parents exist."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-002\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Decomposed   (1):" in result.stdout
+        assert "ENH-001" in result.stdout
+
+    def test_decomposed_line_shows_none_when_no_decomposed(self, tmp_path: Path) -> None:
+        """done emits 'Decomposed (0): none' when no decomposed parents exist."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Decomposed   (0): none" in result.stdout
+
+    def test_deadend_line_shows_deadend_ids(self, tmp_path: Path) -> None:
+        """done includes 'Dead-ends (N): IDs' when dead-end issues exist."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("ENH-002\n")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Dead-ends    (1):" in result.stdout
+        assert "ENH-002" in result.stdout
+
+    def test_deadend_line_shows_none_when_no_deadends(self, tmp_path: Path) -> None:
+        """done emits 'Dead-ends (0): none' when no dead-end issues exist."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
+
+        result = _bash(self._DONE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+        assert "Dead-ends    (0): none" in result.stdout
 
     def test_decomposition_tree_three_levels(self, tmp_path: Path) -> None:
         """done renders a 3-level decomposition tree when original-queue.txt is present.
@@ -833,6 +1014,8 @@ PYEOF
         (loops_tmp / "recursive-refine-original-queue.txt").write_text("ENH-100\n")
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-200\nENH-300\n")
         (loops_tmp / "recursive-refine-skipped.txt").write_text("ENH-100\nENH-201\n")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("ENH-100\nENH-201\n")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
@@ -866,7 +1049,8 @@ PYEOF
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-original-queue.txt").write_text("ENH-100\n")
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-100\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
@@ -882,7 +1066,8 @@ PYEOF
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
         (loops_tmp / "recursive-refine-passed.txt").write_text("ENH-001\n")
-        (loops_tmp / "recursive-refine-skipped.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-decomposed.txt").write_text("")
+        (loops_tmp / "recursive-refine-skipped-deadend.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-depth.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
@@ -891,7 +1076,7 @@ PYEOF
 
         assert result.returncode == 0
         assert "=== Decomposition Tree ===" not in result.stdout
-        assert "Passed  (1):" in result.stdout
+        assert "Passed       (1):" in result.stdout
 
 
 class TestAggregateDecomposition:

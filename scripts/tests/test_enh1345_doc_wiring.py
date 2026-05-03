@@ -32,9 +32,9 @@ class TestLoopsGuideWiring:
 
     def test_depth_cap_summary_line_present(self) -> None:
         content = LOOPS_GUIDE.read_text()
-        assert "Skipped (depth-cap" in content, (
+        assert "Depth-cap" in content, (
             "docs/guides/LOOPS_GUIDE.md summary output example must include "
-            "`Skipped (depth-cap N)` line"
+            "`Depth-cap` row (ENH-1350 renamed from `Skipped (depth-cap N)`)"
         )
 
     def test_depth_map_tmp_file_present(self) -> None:

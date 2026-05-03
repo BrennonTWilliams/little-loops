@@ -5,8 +5,20 @@ priority: P3
 status: open
 discovered_date: 2026-05-03
 discovered_by: capture-issue
-captured_at: "2026-05-03T16:43:25Z"
-related: [ENH-1339, ENH-1340, ENH-1341, ENH-1347, ENH-1348]
+captured_at: '2026-05-03T16:43:25Z'
+completed_at: '2026-05-03T22:10:02Z'
+related:
+- ENH-1339
+- ENH-1340
+- ENH-1341
+- ENH-1347
+- ENH-1348
+confidence_score: 95
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-1350: Split `recursive-refine` "Skipped" Bucket Into Meaningful Reason Categories
@@ -258,11 +270,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `enhancement`, `recursive-refine`, `fsm-loops`, `observability`, `cli-output`
 
+## Resolution
+
+Implemented in full. `parse_input` now initializes `skipped-decomposed.txt` and `skipped-deadend.txt`; both `enqueue_children` and the `enqueue_or_skip` children branch write to `skipped-decomposed.txt`; the dead-end branch writes to `skipped-deadend.txt`; all paths continue writing to `skipped.txt` for outer-loop compat. `done` now shows 6 named rows (Passed, Decomposed, Dead-ends, Depth-cap, Cycle, Budget) — the flat `Skipped (N)` aggregate row is removed. Docs and tests updated.
+
 ## Status
 
-**Open** | Created: 2026-05-03 | Priority: P3
+**Completed** | Created: 2026-05-03 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-03T22:10:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8034eeda-8cb2-4af8-8438-79fcc58aa76c.jsonl`
+- `/ll:ready-issue` - 2026-05-03T21:59:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8034eeda-8cb2-4af8-8438-79fcc58aa76c.jsonl`
+- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca097e64-15bc-43c4-9e59-8813fa5986ca.jsonl`
 - `/ll:wire-issue` - 2026-05-03T21:55:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee908308-1c25-4a99-aeca-3c787c3838d9.jsonl`
 - `/ll:refine-issue` - 2026-05-03T21:50:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1873aa88-61fd-4251-9283-38981a2c0599.jsonl`
 - `/ll:format-issue` - 2026-05-03T19:20:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`

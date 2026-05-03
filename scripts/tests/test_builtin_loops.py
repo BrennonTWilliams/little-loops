@@ -1924,6 +1924,16 @@ class TestRecursiveRefineLoop:
             "parse_input must initialize recursive-refine-total-enqueued.txt"
         )
 
+    def test_parse_input_initializes_decomposed_and_deadend_tracking_files(self, data: dict) -> None:
+        """parse_input action must reference both ENH-1350 per-reason tracking files."""
+        action = data["states"].get("parse_input", {}).get("action", "")
+        assert "recursive-refine-skipped-decomposed.txt" in action, (
+            "parse_input must initialize recursive-refine-skipped-decomposed.txt"
+        )
+        assert "recursive-refine-skipped-deadend.txt" in action, (
+            "parse_input must initialize recursive-refine-skipped-deadend.txt"
+        )
+
     def test_dequeue_next_action_references_dequeued_count_file(self, data: dict) -> None:
         """dequeue_next action must read and write recursive-refine-dequeued-count.txt (ENH-1348)."""
         action = data["states"].get("dequeue_next", {}).get("action", "")
