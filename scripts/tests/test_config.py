@@ -34,6 +34,7 @@ from little_loops.config import (
     ParallelAutomationConfig,
     ProjectConfig,
     RateLimitsConfig,
+    RecursiveRefineConfig,
     ScanConfig,
     ScoringWeightsConfig,
     SocketEventsConfig,
@@ -443,6 +444,20 @@ class TestRateLimitsConfig:
         assert config.circuit_breaker_path == ".loops/tmp/rate-limit-circuit.json"
 
 
+class TestRecursiveRefineConfig:
+    """Tests for RecursiveRefineConfig dataclass."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating RecursiveRefineConfig with all schema-aligned fields."""
+        config = RecursiveRefineConfig.from_dict({"max_depth": 5})
+        assert config.max_depth == 5
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating RecursiveRefineConfig with default values."""
+        config = RecursiveRefineConfig.from_dict({})
+        assert config.max_depth == 3
+
+
 class TestCommandsConfig:
     """Tests for CommandsConfig dataclass."""
 
@@ -458,6 +473,7 @@ class TestCommandsConfig:
                 "max_wait_seconds": 7200,
                 "long_wait_ladder": [60, 120],
             },
+            "recursive_refine": {"max_depth": 5},
         }
         config = CommandsConfig.from_dict(data)
 
@@ -469,6 +485,7 @@ class TestCommandsConfig:
         assert config.tdd_mode is True
         assert config.rate_limits.max_wait_seconds == 7200
         assert config.rate_limits.long_wait_ladder == [60, 120]
+        assert config.recursive_refine.max_depth == 5
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating CommandsConfig with default values."""
@@ -483,6 +500,7 @@ class TestCommandsConfig:
         assert config.rate_limits.max_wait_seconds == 21600
         assert config.rate_limits.long_wait_ladder == [300, 900, 1800, 3600]
         assert config.rate_limits.circuit_breaker_enabled is True
+        assert config.recursive_refine.max_depth == 3
 
 
 class TestScanConfig:
@@ -755,6 +773,19 @@ class TestBRConfig:
         assert "readiness_threshold" in cg
         assert "outcome_threshold" in cg
         assert "threshold" not in cg
+
+    def test_commands_recursive_refine_in_to_dict(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test to_dict exports commands.recursive_refine.max_depth."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "recursive_refine" in result["commands"]
+        assert result["commands"]["recursive_refine"]["max_depth"] == 3
 
     def test_to_dict_automation_idle_timeout(
         self, temp_project_dir: Path, sample_config: dict[str, Any]

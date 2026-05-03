@@ -432,6 +432,9 @@ class BRConfig:
                     "circuit_breaker_enabled": self._commands.rate_limits.circuit_breaker_enabled,
                     "circuit_breaker_path": self._commands.rate_limits.circuit_breaker_path,
                 },
+                "recursive_refine": {
+                    "max_depth": self._commands.recursive_refine.max_depth,
+                },
             },
             "scan": {
                 "focus_dirs": self._scan.focus_dirs,

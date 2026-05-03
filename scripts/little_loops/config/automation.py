@@ -149,6 +149,18 @@ class RateLimitsConfig:
 
 
 @dataclass
+class RecursiveRefineConfig:
+    """Configuration for the recursive-refine loop."""
+
+    max_depth: int = 3
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RecursiveRefineConfig":
+        """Create RecursiveRefineConfig from dictionary."""
+        return cls(max_depth=data.get("max_depth", 3))
+
+
+@dataclass
 class CommandsConfig:
     """Command customization configuration."""
 
@@ -158,6 +170,7 @@ class CommandsConfig:
     confidence_gate: ConfidenceGateConfig = field(default_factory=ConfidenceGateConfig)
     tdd_mode: bool = False
     rate_limits: RateLimitsConfig = field(default_factory=RateLimitsConfig)
+    recursive_refine: RecursiveRefineConfig = field(default_factory=RecursiveRefineConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CommandsConfig:
@@ -169,6 +182,7 @@ class CommandsConfig:
             confidence_gate=ConfidenceGateConfig.from_dict(data.get("confidence_gate", {})),
             tdd_mode=data.get("tdd_mode", False),
             rate_limits=RateLimitsConfig.from_dict(data.get("rate_limits", {})),
+            recursive_refine=RecursiveRefineConfig.from_dict(data.get("recursive_refine", {})),
         )
 
 

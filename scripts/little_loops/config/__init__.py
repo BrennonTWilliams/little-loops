@@ -17,6 +17,7 @@ from little_loops.config.automation import (
     DependencyMappingConfig,
     ParallelAutomationConfig,
     RateLimitsConfig,
+    RecursiveRefineConfig,
     ScoringWeightsConfig,
 )
 from little_loops.config.cli import (
@@ -65,6 +66,7 @@ __all__ = [
     "GitHubSyncConfig",
     "ConfidenceGateConfig",
     "RateLimitsConfig",
+    "RecursiveRefineConfig",
     "SyncConfig",
     "EventsConfig",
     "SocketEventsConfig",

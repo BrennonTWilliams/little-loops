@@ -25,6 +25,7 @@ context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
   max_refine_count: 5       # canonical: commands.max_refine_count in ll-config.json
+  max_depth: 3              # canonical: commands.recursive_refine.max_depth in ll-config.json
 import:
   - lib/common.yaml
 

@@ -417,6 +417,18 @@
             }
           },
           "additionalProperties": false
+        },
+        "recursive_refine": {
+          "type": "object",
+          "description": "Configuration for the recursive-refine loop",
+          "properties": {
+            "max_depth": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3,
+              "description": "Maximum decomposition depth per subtree (default 3)"
+            }
+          }
         }
       },
       "additionalProperties": false

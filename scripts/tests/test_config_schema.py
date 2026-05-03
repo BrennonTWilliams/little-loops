@@ -53,6 +53,29 @@ class TestConfigSchema:
         assert "priority_first" in strategy["enum"]
         assert "bogus" not in strategy["enum"]  # sentinel guard, not real validation
 
+    def test_commands_recursive_refine_in_schema(self) -> None:
+        """commands.recursive_refine must be declared inside the commands block.
+
+        The `commands` object has additionalProperties: false, so any config
+        that sets commands.recursive_refine will fail schema validation unless
+        the block is declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        commands = data["properties"]["commands"]
+        assert commands.get("additionalProperties") is False, (
+            "commands block is expected to have additionalProperties: false"
+        )
+        assert "recursive_refine" in commands["properties"], (
+            "commands.recursive_refine is not declared; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        rr = commands["properties"]["recursive_refine"]
+        assert rr["type"] == "object"
+        rr_props = rr["properties"]
+        assert rr_props["max_depth"]["type"] == "integer"
+        assert rr_props["max_depth"]["minimum"] == 1
+        assert rr_props["max_depth"]["default"] == 3
+
     def test_commands_rate_limits_block(self) -> None:
         """commands.rate_limits must be declared inside the commands block.
 

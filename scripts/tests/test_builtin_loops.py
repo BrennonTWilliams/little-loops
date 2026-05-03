@@ -1703,6 +1703,7 @@ class TestRecursiveRefineLoop:
         assert "readiness_threshold" in ctx
         assert "outcome_threshold" in ctx
         assert "max_refine_count" in ctx
+        assert "max_depth" in ctx
 
     def test_size_review_snap_routes_to_check_broke_down(self, data: dict) -> None:
         """size_review_snap.next must route to check_broke_down to guard against duplicate size-review."""
