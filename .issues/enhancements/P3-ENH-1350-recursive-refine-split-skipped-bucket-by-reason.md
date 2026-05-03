@@ -169,6 +169,11 @@ printf '\n'
 - **Risk**: Low — `recursive-refine-skipped.txt` is unchanged; outer-loop callers unaffected.
 - **Breaking Change**: No — `done` output format changes (new rows), but no machine consumers of `done` output exist.
 
+
+## Blocked By
+
+- ENH-1348
+
 ## Labels
 
 `enhancement`, `recursive-refine`, `fsm-loops`, `observability`, `cli-output`

@@ -130,6 +130,11 @@ printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
 - **Risk**: Minimal — stderr output only; does not affect capture mechanism or loop routing.
 - **Breaking Change**: No.
 
+
+## Blocks
+
+- ENH-1350
+
 ## Labels
 
 `enhancement`, `recursive-refine`, `fsm-loops`, `observability`, `cli-output`
