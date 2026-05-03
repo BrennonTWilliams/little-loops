@@ -97,16 +97,16 @@ class TestOuterLoopEvalStates:
         assert state.get("capture") == "definition_analysis"
         assert state.get("next") == "run_sub_loop"
 
-    def test_run_sub_loop_is_shell(self, loop_data: dict) -> None:
+    def test_run_sub_loop_is_native_loop(self, loop_data: dict) -> None:
         state = loop_data["states"]["run_sub_loop"]
-        assert state.get("action_type") == "shell"
-        action = state.get("action", "")
-        assert "ll-loop run" in action, "run_sub_loop must use ll-loop run"
-        assert "context.loop_name" in action, "run_sub_loop must reference context.loop_name"
-        assert "context.input" in action, "run_sub_loop must reference context.input"
+        assert "loop" in state, "run_sub_loop must use native loop action (not shell)"
+        assert "context.loop_name" in state.get("loop", ""), "loop field must reference context.loop_name"
         assert state.get("capture") == "sub_loop_output"
+        assert state.get("on_yes") == "analyze_execution"
+        assert state.get("on_no") == "analyze_execution"
         assert state.get("on_error") == "analyze_execution"
-        assert state.get("next") == "analyze_execution"
+        with_ = state.get("with", {})
+        assert "input" in with_, "run_sub_loop must bind input via with:"
 
     def test_analyze_execution_is_prompt(self, loop_data: dict) -> None:
         state = loop_data["states"]["analyze_execution"]
@@ -150,13 +150,8 @@ class TestOuterLoopEvalStates:
         assert "context.tasks_dir" in state.get("action", "")
         assert state.get("on_error") == "done"
 
-    def test_run_sub_loop_uses_quoted_context_vars(self, loop_data: dict) -> None:
-        """Shell action must quote context vars to handle empty strings safely."""
-        action = loop_data["states"]["run_sub_loop"].get("action", "")
-        # Check that context vars are quoted in the shell action
-        assert '"${context.loop_name}"' in action or "'${context.loop_name}'" in action, (
-            "context.loop_name must be quoted in shell action"
-        )
-        assert '"${context.input}"' in action or "'${context.input}'" in action, (
-            "context.input must be quoted in shell action"
-        )
+    def test_run_sub_loop_input_binding_uses_context_var(self, loop_data: dict) -> None:
+        """with: binding for input must reference context.input."""
+        with_ = loop_data["states"]["run_sub_loop"].get("with", {})
+        input_val = with_.get("input", "")
+        assert "context.input" in input_val, "run_sub_loop with.input must reference context.input"

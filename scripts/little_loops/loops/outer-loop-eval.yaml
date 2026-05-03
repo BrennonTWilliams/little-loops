@@ -67,18 +67,14 @@ states:
     next: run_sub_loop
 
   run_sub_loop:
-    action_type: shell
+    loop: "${context.loop_name}"
     timeout: 1800
-    action: |
-      INPUT="${context.input}"
-      if [ -n "$INPUT" ]; then
-        ll-loop run "${context.loop_name}" "$INPUT" 2>&1
-      else
-        ll-loop run "${context.loop_name}" 2>&1
-      fi
+    with:
+      input: "${context.input}"
     capture: sub_loop_output
+    on_yes: analyze_execution
+    on_no: analyze_execution
     on_error: analyze_execution
-    next: analyze_execution
 
   analyze_execution:
     action_type: prompt

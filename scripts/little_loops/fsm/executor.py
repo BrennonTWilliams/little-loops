@@ -411,7 +411,8 @@ class FSMExecutor:
         from little_loops.fsm.validation import load_and_validate
 
         assert state.loop is not None  # guarded by caller
-        loop_path = resolve_loop_path(state.loop, self.loops_dir or Path(".loops"))
+        loop_name = interpolate(state.loop, ctx)
+        loop_path = resolve_loop_path(loop_name, self.loops_dir or Path(".loops"))
         child_fsm, _ = load_and_validate(loop_path)
 
         # Bind child context: explicit with: bindings take precedence over legacy passthrough
@@ -446,8 +447,10 @@ class FSMExecutor:
             child_fsm.context = {**self.fsm.context, **captured_as_context, **child_fsm.context}
 
         depth = self._depth + 1
+        child_events: list[dict] = []
 
         def _sub_event_callback(event: dict) -> None:
+            child_events.append(event)
             # Only inject depth if not already set by a deeper nested sub-loop
             if "depth" not in event:
                 self.event_callback({**event, "depth": depth})
@@ -472,6 +475,15 @@ class FSMExecutor:
                 child_fsm.timeout = remaining_s
 
         child_result = child_executor.run()
+
+        # Capture child event stream as a JSON-lines string if the state declares a capture key
+        if state.capture and child_events:
+            import json as _json
+
+            self.captured[state.capture] = {
+                "output": "\n".join(_json.dumps(e) for e in child_events),
+                "exit_code": None,
+            }
 
         # Merge child captures back into parent under the state name
         if (state.context_passthrough or state.with_) and child_executor.captured:
