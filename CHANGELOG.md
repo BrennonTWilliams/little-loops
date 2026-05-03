@@ -12,11 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
-## [1.94.0] - 2026-05-02
+## [1.94.0] - 2026-05-03
+
+### Added
+
+- **`/ll:assess-loop` Skill for Loop Effectiveness Auditing** — New skill that judges whether a loop execution achieves its stated goals using a goal-vs-outcome scorecard and rubric audit, with sub-loop scope awareness. (FEAT-1325, FEAT-1329, FEAT-1330)
 
 ### Changed
 
-- **Sub-loop visibility in `/ll:analyze-loop` and `/ll:assess-loop`** — Both skills now call `ll-loop show --resolved --json` so child loop state maps appear under `_subloop` keys in the FSM output. `/ll:analyze-loop` Step 3 emits a new `BUG — Sub-loop verdict discarded` (P3) signal when a state with `loop:` routes child success and child failure to the same destination (`on_yes == on_no`). Step 3b goal alignment treats `_subloop` states as a separate execution scope. (ENH-1334)
+- **Five deterministic effectiveness signals in `/ll:analyze-loop`** — Adds signals 1–5: Stub Action, Iter-1 Convergence, Degenerate Gate, Capture Vacuum, and Numeric Trajectory Stall. Outputs are grouped into Fault and Effectiveness sections with fixtures and synthesis tests. (ENH-1326, ENH-1327, ENH-1335, ENH-1336, ENH-1342, ENH-1343)
+- **Sub-loop visibility in `/ll:analyze-loop` and `/ll:assess-loop`** — Both skills now call `ll-loop show --resolved --json` so child loop state maps appear under `_subloop` keys in the FSM output. `/ll:analyze-loop` Step 3 emits a new `BUG — Sub-loop verdict discarded` (P3) signal when a state with `loop:` routes child success and child failure to the same destination (`on_yes == on_no`). (ENH-1334)
+- **`ll-loop show --resolved` CLI flag and sub-loop expansion** — New `--resolved` flag expands sub-loop references inline with full state resolution and JSON output support, including tests. (ENH-1333)
+- **FIFO ordering enforced for `--queue` waiters** — Queue waiters now execute in deterministic first-in, first-out order; default wait timeout set to 24 hours (86400s). (ENH-1332)
+- **Orphan scan extended to ll-loop worktrees** — `ll-parallel` orphan detection now covers worktrees created by `ll-loop`, preventing stale worktrees from accumulating. (ENH-1255)
+- **`description:` field enforced in loop YAML** — FSM warns at startup when a loop YAML file lacks a top-level `description:` field; built-in loop definitions migrated from comment-based descriptions. (ENH-1331)
+
+[1.94.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.93.0...v1.94.0
 
 ## [1.93.0] - 2026-05-02
 
