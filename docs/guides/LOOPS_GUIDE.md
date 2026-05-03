@@ -500,6 +500,7 @@ init → dequeue_next → [queue empty?]
 | `readiness_threshold` | `90` | Minimum confidence score for an issue to be considered ready (override via `commands.confidence_gate.readiness_threshold` in `ll-config.json`) |
 | `outcome_threshold` | `75` | Minimum outcome confidence score (override via `commands.confidence_gate.outcome_threshold` in `ll-config.json`) |
 | `max_refine_count` | `5` | Maximum `/ll:refine-issue` calls per issue lifetime; issues that exhaust this cap are routed to size-review instead of failing (override via `commands.max_refine_count` in `ll-config.json`) |
+| `max_depth` | `3` | Maximum decomposition depth per subtree; issues at or beyond this depth are skipped with reason `depth-cap` instead of being passed to size-review (override via `commands.recursive_refine.max_depth` in `ll-config.json`) |
 
 **Invocation**:
 ```bash
@@ -530,7 +531,9 @@ parse_input → dequeue_next → [queue empty?]
                                                                                         ├─ YES (flag=1 AND children) → enqueue_or_skip → dequeue_next
                                                                                         └─ NO  (flag=0 OR no children) → recheck_scores → [scores pass?]
                                                                                                                             ├─ YES → dequeue_next
-                                                                                                                            └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
+                                                                                                                            └─ NO  → check_depth → [depth >= max_depth?]
+                                                                                                                                        ├─ YES (depth-cap) → dequeue_next
+                                                                                                                                        └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
 **Summary output**: When the queue is exhausted, `done` emits a structured summary:
@@ -539,9 +542,10 @@ parse_input → dequeue_next → [queue empty?]
 
 Passed  (2): FEAT-42, FEAT-43
 Skipped (1): BUG-17
+Skipped (depth-cap 3): ENH-99
 ```
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Skipped issues are tracked in `.loops/tmp/recursive-refine-skipped.txt`; decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`.
 
 **Code Quality**
 
