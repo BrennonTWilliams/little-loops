@@ -23,7 +23,7 @@ from typing import Any
 
 import yaml
 
-from little_loops.fsm.fragments import resolve_fragments, resolve_inheritance
+from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
 from little_loops.fsm.schema import EvaluateConfig, FSMLoop, ParameterSpec, StateConfig
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "import",
         "fragments",
         "from",
+        "flow",
+        "state_defs",
     }
 )
 
@@ -724,11 +726,16 @@ def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
     # result for the subsequent `resolve_fragments` pass.
     data = resolve_inheritance(data, path.parent)
 
+    # Expand flow: linear shorthand into states: before required-fields check
+    data = resolve_flow(data)
+
     # Check required fields before parsing
     missing = []
-    for field in ["name", "initial", "states"]:
+    for field in ["name", "initial"]:
         if field not in data:
             missing.append(field)
+    if "states" not in data:
+        missing.append("states (or flow)")
 
     if missing:
         raise ValueError(f"FSM file missing required fields: {', '.join(missing)}")

@@ -4,7 +4,7 @@
   "title": "FSM Loop Definition",
   "description": "Schema for little-loops FSM loop definitions (.loops/*.yaml)",
   "type": "object",
-  "required": ["name", "initial", "states"],
+  "required": ["name", "initial"],
   "properties": {
     "name": {
       "type": "string",
@@ -175,6 +175,26 @@
       "additionalProperties": {
         "$ref": "#/definitions/parameterSpec"
       }
+    },
+    "flow": {
+      "type": "array",
+      "description": "Linear-mode shorthand: ordered list of state names defining a chain. Each entry is either a bare name (unconditional transition) or a ternary 'name?yes_target:no_target' (conditional branching). The last entry is implicitly terminal. Mutually exclusive with 'states'.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "state_defs": {
+      "type": "object",
+      "description": "State bodies for flow: entries. Keys must match names in the flow: list. Values are partial state dicts (prompt, action, evaluate, etc.) deep-merged into the generated state skeletons.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "from": {
+      "type": "string",
+      "description": "Parent loop name for template inheritance. Child inherits all parent fields; child overrides win per deep-merge semantics."
     }
   },
   "additionalProperties": false,

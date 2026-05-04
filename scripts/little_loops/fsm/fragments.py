@@ -214,3 +214,107 @@ def resolve_inheritance(
     merged = _deep_merge(parent_data, child_without_from)
     merged.pop("from", None)
     return merged
+
+
+def resolve_flow(raw_loop_dict: dict[str, Any]) -> dict[str, Any]:
+    """Expand ``flow:`` linear shorthand into a verbose ``states:`` map.
+
+    A loop YAML with ``flow: [<state>, ...]`` declares an ordered linear chain
+    of states. Each entry is either a bare name (unconditional forward
+    transition) or a ternary ``name?yes_target:no_target`` (conditional
+    branching). The last entry is implicitly ``terminal: true``.
+
+    Optional ``state_defs:`` supplies prompt/action/evaluate bodies that are
+    deep-merged into the generated state skeletons. If both ``flow:`` and
+    ``states:`` are present, raises ``ValueError`` — the two are mutually
+    exclusive.
+
+    Resolution runs *after* :func:`resolve_inheritance` (so a child can
+    override a parent's states with its own ``flow:``) and *before* the
+    required-fields check in :func:`load_and_validate` (so the expanded
+    ``states:`` key satisfies the validator).
+
+    Args:
+        raw_loop_dict: Raw YAML dict loaded from a loop file.
+
+    Returns:
+        New dict with ``flow:`` expanded to ``states:`` and both ``flow:``
+        and ``state_defs:`` stripped. If the input has no ``flow:`` key,
+        returns it unchanged.
+
+    Raises:
+        ValueError: If ``flow:`` is not a list, is empty, or contains a
+            malformed ternary entry.
+    """
+    if "flow" not in raw_loop_dict:
+        return raw_loop_dict
+
+    # If both flow: and states: are present, flow: takes precedence. This
+    # handles the case where states was inherited via `from:` — the child's
+    # explicit flow: overrides the parent's states.
+    #
+
+    flow = raw_loop_dict["flow"]
+    if not isinstance(flow, list):
+        raise ValueError(f"'flow:' must be a list, got {type(flow).__name__}")
+    if len(flow) < 1:
+        raise ValueError("'flow:' must contain at least one state")
+
+    state_defs: dict[str, dict[str, Any]] = raw_loop_dict.get("state_defs", {})
+    if not isinstance(state_defs, dict):
+        state_defs = {}
+
+    generated_states: dict[str, dict[str, Any]] = {}
+
+    # Pre-parse all entries to extract state names (strip ternary suffixes)
+    def _parse_name(raw: str) -> str:
+        return raw.split("?", 1)[0] if "?" in raw else raw
+
+    parsed_names = [_parse_name(e) if isinstance(e, str) else e for e in flow]
+
+    for i, entry in enumerate(flow):
+        is_last = i == len(flow) - 1
+        next_name = parsed_names[i + 1] if not is_last else None
+
+        if not isinstance(entry, str):
+            raise ValueError(
+                f"'flow:' entry {i} must be a string, got {type(entry).__name__}"
+            )
+
+        if "?" in entry:
+            # Ternary form: name?yes_target:no_target
+            parts = entry.split("?", 1)
+            state_name = parts[0]
+            targets = parts[1]
+
+            if ":" not in targets or targets.endswith(":") or targets.startswith(":"):
+                raise ValueError(
+                    f"Malformed ternary in flow entry '{entry}': "
+                    f"must be name?yes_target:no_target"
+                )
+            yes_target, no_target = targets.split(":", 1)
+            if not yes_target or not no_target:
+                raise ValueError(
+                    f"Malformed ternary in flow entry '{entry}': "
+                    f"both yes and no targets must be non-empty"
+                )
+
+            skeleton: dict[str, Any] = {"on_yes": yes_target, "on_no": no_target}
+        else:
+            state_name = entry
+            skeleton = {}
+            if next_name is not None:
+                skeleton["next"] = next_name
+
+        if is_last:
+            skeleton["terminal"] = True
+
+        # Deep-merge state_defs body into generated skeleton
+        if state_name in state_defs:
+            skeleton = _deep_merge(skeleton, state_defs[state_name])
+
+        generated_states[state_name] = skeleton
+
+    result = {k: v for k, v in raw_loop_dict.items() if k not in ("flow", "state_defs")}
+    result["states"] = generated_states
+    return result
