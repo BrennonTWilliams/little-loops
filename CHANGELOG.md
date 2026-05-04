@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.95.0] - 2026-05-04
+
+### Added
+
+- **Multi-Instance Loop Support** — Loops can now run as multiple named instances with isolated file paths (`instance_id` scoping) and aggregated CLI operations (`status`/`stop`/`resume`/`list`) across all instances. (ENH-1354, ENH-1356, ENH-1357)
+- **`recursive-refine` Depth Limiting** — Per-subtree `max_depth` parameter with YAML FSM `check_depth` gate and config schema support prevents unbounded recursion. (ENH-1346, ENH-1347)
+- **`recursive-refine` Cycle Detection** — Visited-set guard prevents revisiting already-processed issues during recursive refinement. (ENH-1338)
+- **`recursive-refine` Budget Cap** — Per-issue refinement budget cap enforces work limits during recursive processing. (ENH-1339)
+- **`recursive-refine` Parent Aggregation** — Children's outcomes are aggregated back to their parent issue on completion. (ENH-1340)
+- **`recursive-refine` Decomposition Tree Rendering** — Done summary now renders the full decomposition tree. (ENH-1341)
+- **`recursive-refine` Real-Time Progress** — Dequeue progress lines emitted to stderr in real time; queue peek lines emitted after enqueue operations. (ENH-1348, ENH-1349)
+- **`recursive-refine` Skipped Reason Categories** — "Skipped" output bucket now splits into meaningful per-reason categories. (ENH-1350)
+- **`recursive-refine` `max_depth` Documentation** — `max_depth` parameter and `check_depth` gate documented in the loop reference. (ENH-1345)
+
+### Fixed
+
+- **`ll-loop stop` ignores live PID on interrupted loops** — `stop` now acts on `interrupted` loops when a valid lock-file PID is present. (BUG-1353)
+- **`ll-loop status` reports null PID** — Status command now reads PID from the `.lock` file instead of returning `null`. (BUG-1352)
+- **outer-loop-eval scope conflict blocks sub-loop execution** — Scope conflict resolved by switching to native sub-loop execution. (BUG-1359)
+- **outer-loop-eval dead state causes validation error on startup** — Removed dead benchmark fragment; added missing `load_definition` state and error handling. (BUG-1358)
+- **`ll-loop run --background` drops positional input argument** — Background subprocess now correctly forwards the positional input argument. (BUG-1308)
+- Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
+
+[1.95.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.94.0...v1.95.0
+
 ## [1.94.0] - 2026-05-03
 
 ### Added
