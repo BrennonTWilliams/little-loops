@@ -84,6 +84,16 @@ class TestQueueRetryOnRace:
         assert result == 0
         assert mock_lm.acquire.call_count == 3
         assert mock_lm.wait_for_scope.call_count == 2
+        # Retry acquires must pass the same instance_id as the initial acquire so
+        # release() can delete the correct lock file (not {loop_name}.lock).
+        calls = mock_lm.acquire.call_args_list
+        initial_instance_id = calls[0].kwargs.get("instance_id")
+        assert initial_instance_id is not None, "Initial acquire must pass instance_id"
+        for call in calls[1:]:
+            retry_instance_id = call.kwargs.get("instance_id")
+            assert retry_instance_id == initial_instance_id, (
+                f"Retry acquire must pass instance_id={initial_instance_id!r}, got {retry_instance_id!r}"
+            )
 
     def test_exits_when_scope_never_becomes_available(self, tmp_path: Path) -> None:
         """cmd_run exits with code 1 when wait_for_scope times out."""

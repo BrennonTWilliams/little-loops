@@ -263,7 +263,7 @@ def cmd_run(
                 if not _is_earliest_waiter(entry_id, queue_dir):
                     time.sleep(1)
                     continue
-                if lock_manager.acquire(fsm.name, scope):
+                if lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
                     acquired = True
                     break
             if not acquired:
