@@ -1,15 +1,19 @@
 ---
 description: Validate active issues against key documents for relevance and alignment
-argument-hint: "[category]"
+argument-hint: "[category] [--issues ID,...]"
 allowed-tools:
   - Read
   - Glob
   - Grep
   - Edit
   - Bash(git:*)
+  - Bash(ll-issues:*)
 arguments:
   - name: category
     description: "Document category, document path (.md), or omit to check each issue's linked docs. Use --all for all categories."
+    required: false
+  - name: issues
+    description: "Comma-separated issue IDs to process (e.g., \"ENH-1362,BUG-123\"). If omitted, all active issues are processed."
     required: false
   - name: flags
     description: "Optional flags: --verbose (detailed analysis), --dry-run (report only, no auto-fixing)"
@@ -67,6 +71,11 @@ $ARGUMENTS
   - `--all` - Check all configured categories
   - Any custom category name defined in config
 
+- **issues** (optional): Comma-separated issue IDs to limit processing to specific issues
+  - `--issues ENH-1362` - Process only ENH-1362
+  - `--issues BUG-123,FEAT-045` - Process only BUG-123 and FEAT-045
+  - When omitted, all active issues are processed (existing behavior)
+
 - **flags** (optional): Command flags
   - `--verbose` - Include detailed alignment analysis for each issue
   - `--dry-run` - Report-only mode; show what would be fixed without making changes
@@ -80,6 +89,8 @@ CATEGORY="${category:-}"
 FLAGS="${flags:-}"
 VERBOSE=false
 DRY_RUN=false
+ISSUES_ARG="${issues:-}"
+declare -a ISSUE_FILES
 
 if [[ "$FLAGS" == *"--verbose"* ]]; then VERBOSE=true; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
@@ -152,8 +163,25 @@ For each document file in the category:
 ### 4. Find Active Issues
 
 ```bash
-# List all open issues (not in completed/ or deferred/)
-find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" -not -path "*/deferred/*" | sort
+if [ -n "$ISSUES_ARG" ]; then
+    IFS=',' read -ra IDS <<< "$ISSUES_ARG"
+    for id in "${IDS[@]}"; do
+        id="${id// /}"  # strip accidental spaces
+        FILE=$(ll-issues path "${id}" 2>/dev/null)
+        if [ -n "$FILE" ]; then
+            ISSUE_FILES+=("$FILE")
+        else
+            echo "Warning: Issue $id not found (skipping)"
+        fi
+    done
+    if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
+        echo "Error: None of the specified issue IDs resolved to active issues"
+        exit 1
+    fi
+else
+    # List all open issues (not in completed/ or deferred/)
+    mapfile -t ISSUE_FILES < <(find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" -not -path "*/deferred/*" | sort)
+fi
 ```
 
 ### 5. Analyze Each Issue
@@ -401,6 +429,15 @@ When checking all categories, produce combined report with per-category sections
 
 # Verbose dry-run for detailed analysis without changes
 /ll:align-issues --all --verbose --dry-run
+
+# Check alignment for a single issue only
+/ll:align-issues docs/ARCHITECTURE.md --issues ENH-1362
+
+# Check alignment for a comma-separated list of issues
+/ll:align-issues architecture --issues BUG-123,FEAT-045
+
+# Check a single issue against its own linked documents (no category)
+/ll:align-issues --issues ENH-1362
 ```
 
 ---

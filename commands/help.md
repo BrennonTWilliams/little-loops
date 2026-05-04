@@ -52,7 +52,7 @@ ISSUE REFINEMENT
 /ll:align-issues <category> [flags]
     Validate active issues against key documents for relevance and alignment
     Categories: architecture, product, --all
-    Flags: --verbose, --dry-run
+    Flags: --verbose, --dry-run, --issues ID[,ID,...]
     Requires: documents.enabled in ll-config.json
 
 /ll:format-issue [issue_id]

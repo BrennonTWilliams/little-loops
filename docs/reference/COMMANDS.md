@@ -148,6 +148,7 @@ Validate active issues against key documents for relevance and alignment.
 
 **Arguments:**
 - `category`: Document category (`architecture`, `product`, or `--all`)
+- `issues` (optional): Comma-separated issue IDs to limit processing (e.g., `ENH-1362,BUG-123`). When omitted, all active issues are processed.
 - `flags` (optional): `--verbose` (detailed analysis), `--dry-run` (report only, no auto-fixing)
 
 **Prerequisites:** Configure document tracking via `/ll:init --interactive`
