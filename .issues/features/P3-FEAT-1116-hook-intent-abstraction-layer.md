@@ -272,6 +272,7 @@ The three architectural forks originally flagged have been decided and are now d
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bef02fef-cdca-45e5-afbb-04019b11b074.jsonl`
@@ -289,3 +290,9 @@ The three architectural forks originally flagged have been decided and are now d
 - FEAT-1315
 - FEAT-957
 - FEAT-992
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The extension manifest schema (`[tool.little-loops.extension]` block in `pyproject.toml`) should gain an optional `hook_intents` list field alongside the existing `events` list. This is required for FEAT-917 (Extension Registry) to surface hook intent contributions in `ll extensions list/info`. Runtime discovery still uses `hasattr()` on the `little_loops.extensions` entry-point group — the manifest field is declarative metadata only, not a dispatch table. Add this to the integration map and cross-reference FEAT-917's manifest schema acceptance criterion.

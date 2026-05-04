@@ -204,6 +204,7 @@ _No documents linked._
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
@@ -227,3 +228,7 @@ _No documents linked._
 **Note** (added by `/ll:audit-issue-conflicts`): This issue establishes the plugin-compatibility pattern that FEAT-992 (Pi) will reuse. Extract a reusable config-directory-resolution abstraction in `scripts/little_loops/config/core.py` and `hooks/scripts/lib/common.sh` that accepts an ordered list of candidate config dirs (`.claude/`, `.codex/`, `.opencode/`, `.pi/`, ...), so FEAT-992 can reuse the mechanism instead of patching the same functions again.
 
 **Note** (added by `/ll:audit-issue-conflicts`): The `codex-plugin/` scaffold step (Step 2) must be gated on completing the Codex CLI SDK runtime research (Step 1). If Codex uses a different JS runtime than the Bun/TypeScript approach established by FEAT-961 for the OpenCode plugin, document the divergence explicitly here and in FEAT-961 before creating the plugin directory, so multi-runtime JS tooling decisions are made deliberately rather than discovered mid-implementation.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The `codex-plugin/` TypeScript directory structure (session.ts, tool.ts, compact.ts) described in the Proposed Solution and Integration Map is superseded by FEAT-1116's hook-intent abstraction model. When implementing, use the thin adapter stub approach under `hooks/adapters/codex/` (calling into `python -m little_loops.hooks.<intent>`) rather than scaffolding a full TS plugin directory. Do NOT create `codex-plugin/`.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The implementation MUST NOT extend `hooks/scripts/lib/common.sh:ll_resolve_config()` directly. FEAT-1116 will port that function to Python (`scripts/little_loops/hooks/common.py`). Add `.codex/` to the ordered candidate list in the new Python `common.py` module introduced by FEAT-1116 instead. Add this constraint to the "Files to Modify" list and implementation steps.

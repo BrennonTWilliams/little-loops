@@ -195,6 +195,7 @@ _Updated by `/ll:confidence-check` on 2026-05-01_
 - **config-schema.json description ownership is unscoped.** `config-schema.json:493-496` `auto_detect_on_session_start` description contradicts the rewritten guide. The issue flags FEAT-1317 as the likely owner but treats this as a fallback for FEAT-1318. Coordinate with FEAT-1317 before closing to avoid the contradiction landing unfixed.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9065566b-c476-4052-ae1c-d075d76f3b33.jsonl`
 - `/ll:refine-issue` - 2026-05-02T03:53:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72289cba-9611-4ef4-9b76-f0d5e2e83663.jsonl`
@@ -206,3 +207,9 @@ _Updated by `/ll:confidence-check` on 2026-05-01_
 ## Blocks
 
 - FEAT-1319
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The `config-schema.json:505-509` `auto_detect_on_session_start` description update has been assigned to FEAT-1317 (reference doc updates is the natural owner). Remove the "unscoped across siblings" fallback language from this issue's Configuration section — FEAT-1317 owns that edit. This issue owns only the `docs/guides/SESSION_HANDOFF.md` updates.

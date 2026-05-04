@@ -166,7 +166,14 @@ A team runs `ll-parallel` against 10 issues. Their internal Slack bot exposes a 
 **Open** | Created: 2026-05-01 (split from FEAT-918) | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:format-issue` - 2026-05-03T17:13:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ea146a5-288b-488a-b878-065475896445.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 
 - Split from FEAT-918 - 2026-05-01
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): FEAT-1312 (OTelTransport) and this issue both modify `wire_transports()` and `EventsConfig` in `scripts/little_loops/transport.py`. Implement this issue after FEAT-1312 lands, or combine both transports in a single PR. At minimum, coordinate PR ordering so the second merge applies cleanly over the first's changes to `_TRANSPORT_REGISTRY` and `EventsConfig`.

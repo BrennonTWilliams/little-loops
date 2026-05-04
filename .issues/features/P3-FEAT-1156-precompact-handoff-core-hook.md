@@ -102,6 +102,7 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
@@ -113,3 +114,9 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 - FEAT-1158
 - FEAT-1264
 - FEAT-1315
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The State Sources section specifies git diff/ll-issues/loops-JSON as the fallback approach — but does not acknowledge FEAT-1262's `.ll/ll-session-events.jsonl` as the richer primary source. If `.ll/ll-session-events.jsonl` is present and non-empty (i.e., FEAT-1262 has been shipping and running), prefer it as the primary source for the files-edited and decisions sections of the snapshot. Fall back to `git diff --name-only HEAD` and `ll-issues list` only when the JSONL is absent. FEAT-1264 (which formally integrates the event log) depends on this issue; this note ensures the fallback/primary distinction is documented in the implementation contract so FEAT-1264 doesn't need to re-explain the fallback semantics.

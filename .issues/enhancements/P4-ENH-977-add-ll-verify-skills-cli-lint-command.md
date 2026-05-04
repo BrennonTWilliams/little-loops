@@ -102,6 +102,7 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
@@ -117,3 +118,9 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-1038 (ll-verify-docs should track FSM loop counts) both modify `scripts/little_loops/doc_counts.py` and `scripts/little_loops/cli/docs.py`. Changes are additive in different sections (ENH-977 adds `check_skill_sizes()` and `main_verify_skills()`; ENH-1038 adds to `COUNT_TARGETS`), but they should be sequenced or merged to avoid conflicts in the same PR. Related: ENH-1038.
 
 **Note** (added by `/ll:audit-issue-conflicts`, 2026-05-01): The "companion files alongside `SKILL.md` are not counted toward the 500-line limit" test case (Implementation Step 5) explicitly assumes ENH-494's flat-companion-file pattern landed first. ENH-977's `rglob('SKILL.md')` walk is robust to the alternative subdirectory pattern, but the test fixtures are not — keep `blocked_by: [ENH-494]` and re-validate the fixture layout if ENH-494's companion-file decision ever changes.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): After ENH-494 ships and extracts overflow content from `audit-claude-config`, `confidence-check`, `init`, and `manage-issue` SKILL.md files, re-verify that the 500-line threshold is still meaningful (i.e., the remaining SKILL.md files are not all trivially under 500 lines). Confirm the threshold before publishing `ll-verify-skills` — if ENH-494 brings all files well below 500 lines, the tool may need a lower threshold or per-file annotations to remain useful.

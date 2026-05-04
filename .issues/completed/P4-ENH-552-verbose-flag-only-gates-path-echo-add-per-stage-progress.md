@@ -1,10 +1,14 @@
 ---
 discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
-discovered_date: 2026-03-04T02:11:48Z
+discovered_date: 2026-03-04 02:11:48+00:00
 discovered_by: scan-codebase
-confidence_score: 90
-outcome_confidence: 100
+confidence_score: 94
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-552: `--verbose` flag only gates path echo — add per-stage progress output during analysis

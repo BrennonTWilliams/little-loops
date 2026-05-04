@@ -248,6 +248,7 @@ Update first — Resolve the persistence decision at `persistence.py:457-460` be
 ---
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-04-27T02:55:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
@@ -256,3 +257,9 @@ Update first — Resolve the persistence decision at `persistence.py:457-460` be
 - `/ll:refine-issue` - 2026-04-24T20:57:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393f5547-5641-4053-b11e-6e1d77f12ffc.jsonl`
 - `/ll:format-issue` - 2026-04-24T20:51:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/952d3167-9cab-4483-a9fb-ad8fd963a3fa.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The new per-state tool-call counter MUST follow the existing `_retry_counts` dict pattern already in `FSMExecutor.__init__` (not a separate parallel dict). The counter must be reset in the same location where state-exit resets are performed (~line 285 of `scripts/little_loops/fsm/executor.py`). Reference `_retry_counts` and `_rate_limit_retries` as the implementation template to avoid a divergent counter with different reset semantics.

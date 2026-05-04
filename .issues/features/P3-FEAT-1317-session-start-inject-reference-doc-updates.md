@@ -118,6 +118,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **FEAT-1315 is still open**: `session-start-inject.sh` does not yet exist. Step 1 of the implementation plan explicitly says "Wait for FEAT-1315 to merge." The acceptance criteria reference a file that must exist before docs can be verified.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:refine-issue` - 2026-05-02T03:37:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea9b8888-aee4-4367-aecd-ef628a7ad191.jsonl`
 - `/ll:wire-issue` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
@@ -129,3 +130,9 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 ## Blocks
 
 - FEAT-1319
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): FEAT-1317 claims ownership of the `config-schema.json:505-509` `auto_detect_on_session_start` description field update. FEAT-1318 flagged this field as "unscoped across siblings" — add updating that description to FEAT-1317's "Files to Modify" list. The description should note that `session-start-inject.sh` (when registered) supersedes `auto_detect_on_session_start` for active injection, while the old flag governs legacy passive detection in `session-start.sh`.

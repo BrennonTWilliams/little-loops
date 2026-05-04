@@ -264,6 +264,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **Source-field decision still open** (`decision_needed: true`): choose one of the 3 documented options (inject-all / compact-only / all-except-clear) before writing test case 6; document the chosen behavior as a script header comment
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:decide-issue` - 2026-05-02T03:06:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6ed7bfa-f06a-46a2-b3b0-31a947ceaf0a.jsonl`
 - `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9dc6be6f-9ae9-42eb-8b36-2a19186357ee.jsonl`
@@ -278,3 +279,9 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - FEAT-1317
 - FEAT-1318
 - FEAT-1319
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): Add `FEAT-1262` to this issue's `related` frontmatter. The quality of the injected `additionalContext` depends on the FEAT-1262 → FEAT-1264 pipeline: FEAT-1262 (`session-capture.sh`) produces `.ll/ll-session-events.jsonl`; FEAT-1264 uses it to build a richer `ll-continue-prompt.md`; this hook injects that richer prompt. When FEAT-1262 has not yet shipped, the injected context is accurate but lower-fidelity. Document this degradation in the implementation as a known behavior, not a bug.

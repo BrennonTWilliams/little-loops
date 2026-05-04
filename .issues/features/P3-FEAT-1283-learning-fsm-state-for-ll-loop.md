@@ -169,6 +169,7 @@ class LearningStateHandler:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:format-issue` - 2026-05-02T02:07:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04ed7039-9c6c-4ed5-8bb4-0babdee81a7b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
@@ -184,3 +185,9 @@ class LearningStateHandler:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`, 2026-05-01): Cross-reference with FEAT-1308 (loop YAML `from:` template inheritance). The example in this issue declares states as a YAML list (`states: - name: ...`); FEAT-1308's `from:` deep-merge mechanism requires the mapping form (`states.<name>: ...`). Pin the canonical states schema to the mapping form before either issue ships. Update the example in this issue to the mapping form during implementation: `states.learning: { type: learning, targets: [...], on_pass: planning, on_fail: learning, max_retries: 2 }`.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `LearningStateHandler` is a Python module (`scripts/little_loops/fsm/learning_state.py`) and MUST use direct Python import — `from little_loops.learning_tests import read_record` — not shell out to the `ll-learning-tests` CLI. The CLI (FEAT-1286) exists specifically for non-Python callers (skills, Bash evaluators, FSM shell-type evaluators). Using the CLI from within the Python handler adds unnecessary subprocess overhead and goes against the intended interface split.

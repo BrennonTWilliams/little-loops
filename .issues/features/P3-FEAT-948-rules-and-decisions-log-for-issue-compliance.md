@@ -279,6 +279,7 @@ ll-issues decisions sync                        # write active required rules to
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
@@ -287,3 +288,9 @@ ll-issues decisions sync                        # write active required rules to
 - `/ll:refine-issue` - 2026-04-07T18:30:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a30dea-bcb8-4472-8595-836364d4ab19.jsonl`
 - `/ll:refine-issue` - 2026-04-04T21:54:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2617058-86bb-4762-8daf-c963cd330fc4.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d50b6641-c597-41dc-894f-47b323d241b9.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): Both this issue and FEAT-1112 modify `hooks/scripts/session-start.sh` independently (FEAT-948 adds `ll-decisions sync` output; FEAT-1112 adds event ingestion wiring). Apply FEAT-948's `session-start.sh` changes after FEAT-1112 (and FEAT-1263) have merged, and re-verify the hook's exit-code behavior to ensure FEAT-948's body-output extension is additive and does not conflict with FEAT-1112's ingestion wiring.

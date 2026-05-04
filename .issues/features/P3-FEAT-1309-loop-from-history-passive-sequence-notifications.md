@@ -63,6 +63,7 @@ Config additions (new keys under `loop_suggester` in `ll-config.json`):
 - The `SessionStart`/`Stop` hook is gated by config and is a no-op (zero stdout, zero blocking) when disabled.
 - Existing `/ll:loop-suggester` (no-flag, on-demand) behavior is unchanged.
 - `python -m pytest scripts/tests/` passes including new tests covering the n-gram detector and dismissal state.
+- Generated loop skeletons produced by `--passive-scan` MUST NOT include `type: learning` states; these are added by users manually after generation.
 
 ## Impact
 
@@ -89,6 +90,7 @@ feature, loop-suggester, automation, hooks, notifications, captured
 - **Type**: FEAT
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:format-issue` - 2026-05-01T17:38:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
@@ -102,3 +104,8 @@ feature, loop-suggester, automation, hooks, notifications, captured
 
 1. **Reuse existing pattern detection.** Implementation Step 1 is updated to require auditing `ll-workflows`, `/ll:analyze-history`, and `commands/loop-suggester.md` BEFORE writing any new n-gram miner. Extract a single shared helper and have all three callers use it; only build a parallel implementation if reuse is genuinely unworkable.
 2. **Suggested loops remain learning-state-agnostic.** Loop scaffolds emitted by passive scan should not pre-declare `type: learning` (FEAT-1283). The suggester emits skeletons; users add learning-gate states later by hand.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04):
+
+3. **SessionStart output channel conflict with FEAT-1315.** The passive-scan notification MUST NOT emit `additionalContext` JSON via the SessionStart hook. FEAT-1315 (`session-start-inject.sh`) is a `SessionStart *` hook that emits structured `additionalContext`; a second `SessionStart *` hook emitting plain text will corrupt FEAT-1315's injection payload. Move the notification to a `Stop` hook (consistent with the "or Stop" design note in Implementation Step 5), or if it must stay at SessionStart, emit only via `statusMessage` with FEAT-1315 ordered first in `hooks/hooks.json`.
+4. **JSONL mining preference.** Implementation Step 1: if `.ll/ll-session-events.jsonl` is present (FEAT-1262 has shipped), prefer it as the primary mining source for tool-use event sequences — it provides richer, structured data than raw `~/.claude` session logs. Continue to fall back to raw `~/.claude` logs for slash-command sequences not yet captured in the JSONL.

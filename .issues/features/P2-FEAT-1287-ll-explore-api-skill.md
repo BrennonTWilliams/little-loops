@@ -153,6 +153,13 @@ Output: `.ll/learning-tests/<slug>.md` in `LearnTestRecord` format (FEAT-1285 sc
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
 - `/ll:format-issue` - 2026-04-25T20:14:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e97fb3c-4c81-4d9a-b8ce-a2bcf181afa8.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): **Narrative doc ownership split with FEAT-1286.** FEAT-1287 owns: README skill table row (27→28), CONTRIBUTING skills tree, `.claude/CLAUDE.md`, and `docs/ARCHITECTURE.md`. FEAT-1286 owns CLI-surface docs (`commands/help.md`, `docs/reference/CLI.md`). The CLI count increment ("coordinate or pick up the diff here") is owned by FEAT-1286 — do not increment CLI count in this issue. Apply this issue's doc changes after FEAT-1286 has landed.

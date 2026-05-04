@@ -59,6 +59,7 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-04-27T02:55:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
@@ -70,6 +71,8 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): The `ranking.py` BM25 module introduced by this issue is an interim implementation. Once FEAT-1112 (unified SQLite + FTS5 store) lands, the ranking backend should be replaced with FTS5 rather than maintaining two parallel ranking approaches. Implement `ranking.py` as a thin, swappable backend so the transition is a drop-in replacement, not a rewrite.
+
+**Implementation constraint** (added by `/ll:audit-issue-conflicts` 2026-05-04): `ranking.py` MUST NOT be authored before FEAT-1112 ships. The correct sequence is: (1) wire the `--intent` flag UI into the affected CLIs with full unranked output as a no-op placeholder, (2) wait for FEAT-1112's FTS5 store to land, (3) implement ranking directly against FTS5. Building the BM25 interim layer creates throwaway code with HIGH technical debt (confirmed by tradeoff review 2026-04-26).
 
 ---
 
