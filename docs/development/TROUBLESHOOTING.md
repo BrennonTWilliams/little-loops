@@ -687,6 +687,21 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
 
 ## Loop Issues
 
+### Scope conflict blocks `ll-loop run` after an interrupted loop
+
+**Symptom**: `ll-loop run <name>` fails with `Scope conflict with running loop: <name>`, but `ll-loop status <name>` reports `status: interrupted` (not `running`).
+
+**Cause**: A foreground run exited (or was killed) without releasing its `.lock` file. The wrapper process that held the scope lock is gone, but the `.lock` file persists and blocks the next run. This can happen on hard kill, crash, or session disconnect.
+
+**Solution**: Run `ll-loop stop <name>`. The command now checks the `.lock` file for a live PID regardless of `status`, terminates the orphaned process if alive, and removes the lock. If the PID is already dead it cleans up the stale file:
+```bash
+ll-loop stop <name>          # terminate orphaned lock-holder or clean stale lock
+ll-loop run <name> ...       # now unblocked
+```
+If `ll-loop stop` still reports "not running" (e.g. lock file is missing but scope conflict persists), check `ll-loop status <name> --json` for `pid_source` details and inspect `.loops/.running/` directly.
+
+---
+
 ### Built-in loops not found after pip install
 
 **Symptom**: `ll-loop list --builtin` returns an empty list, or `ll-loop run <name>` reports the loop cannot be found even though it's a known built-in (e.g., `issue-refinement`, `dead-code-cleanup`).

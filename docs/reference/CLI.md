@@ -372,6 +372,8 @@ Show current status of a loop. Aggregates across all running instances of `<loop
 
 Stop a running loop. Terminates **all running instances** of the named loop (no `--instance-id` selector).
 
+Also handles loops in `interrupted` state that hold an orphaned lock-file PID: if `.loops/.running/<loop>.lock` exists and its PID is alive, `ll-loop stop` sends SIGTERM (with SIGKILL fallback after 10 s) and removes the lock file. This resolves scope conflicts that block subsequent `ll-loop run` invocations without requiring manual `kill` + `rm`. If the lock-file PID is already dead, the stale lock is cleaned up and reported.
+
 #### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
 Resume an interrupted loop. Exits with an error listing instance IDs when two or more resumable instances exist — use `--instance-id` to select one.
