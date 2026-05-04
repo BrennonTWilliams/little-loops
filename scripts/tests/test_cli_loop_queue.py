@@ -176,6 +176,41 @@ class TestQueueFifoOrdering:
         assert _is_earliest_waiter(id_b, queue_dir) is True
         assert _is_earliest_waiter(id_c, queue_dir) is False
 
+    def test_stale_entries_from_dead_pids_are_skipped(self, tmp_path: Path) -> None:
+        """Dead-PID queue entries are removed and not counted as earlier waiters (BUG-1360)."""
+        import json
+        import uuid
+
+        from little_loops.cli.loop._helpers import _is_earliest_waiter
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+
+        stale_id = str(uuid.uuid4())
+        live_id = str(uuid.uuid4())
+        stale_file = queue_dir / f"{stale_id}.json"
+        # Write a stale entry (earlier timestamp, dead PID 1 is never the waiter but
+        # use a guaranteed-dead PID: pid 99999999 which cannot exist on macOS/Linux)
+        stale_file.write_text(
+            json.dumps({
+                "id": stale_id,
+                "enqueuedAt": "2026-05-01T00:00:00+00:00",
+                "context": {"pid": 99999999},
+            })
+        )
+        (queue_dir / f"{live_id}.json").write_text(
+            json.dumps({
+                "id": live_id,
+                "enqueuedAt": "2026-05-02T00:00:00+00:00",
+                "context": {"pid": None},  # no pid → kept
+            })
+        )
+
+        # live_id should be earliest because the stale entry's PID is dead
+        assert _is_earliest_waiter(live_id, queue_dir) is True
+        # Stale file should have been deleted
+        assert not stale_file.exists()
+
     def test_malformed_entries_are_skipped(self, tmp_path: Path) -> None:
         """Malformed queue entries are skipped without affecting valid entry ordering."""
         import json

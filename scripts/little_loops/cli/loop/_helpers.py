@@ -14,6 +14,7 @@ from types import FrameType
 from typing import TYPE_CHECKING, Any
 
 from little_loops.cli.output import colorize, terminal_width
+from little_loops.fsm.concurrency import _process_alive
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -74,6 +75,9 @@ def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
     Returns True when this waiter is first or the queue is empty/unreadable,
     allowing it to proceed with acquire(). Non-first waiters return False and
     should back off to yield to the earlier waiter (ENH-1332).
+
+    Stale entries (dead PIDs) are removed on the fly so orphaned queue files
+    from crashed processes do not block live waiters indefinitely (BUG-1360).
     """
     if not queue_dir.exists():
         return True
@@ -82,6 +86,10 @@ def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
         try:
             with open(f) as fh:
                 data = json.load(fh)
+            pid = data.get("context", {}).get("pid")
+            if pid is not None and not _process_alive(pid):
+                f.unlink(missing_ok=True)
+                continue
             entries.append(data)
         except (json.JSONDecodeError, KeyError, FileNotFoundError, OSError):
             continue
