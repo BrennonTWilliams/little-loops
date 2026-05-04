@@ -45,6 +45,20 @@ def _read_pid_file(pid_file: Path) -> int | None:
         return None
 
 
+def _kill_with_timeout(pid: int, label: str, logger: Logger) -> None:
+    """Send SIGTERM to pid; escalate to SIGKILL after 10 s if still alive."""
+    os.kill(pid, signal.SIGTERM)
+    for _ in range(10):
+        time.sleep(1)
+        if not _process_alive(pid):
+            return
+    try:
+        os.kill(pid, signal.SIGKILL)
+        logger.warning(f"Sent SIGKILL to {label} (PID: {pid})")
+    except OSError:
+        pass
+
+
 def _status_single(
     instance_id: str | None,
     state: LoopState,
@@ -235,6 +249,33 @@ def cmd_stop(
     running_instances = [(iid, s) for iid, s in instances if s.status == "running"]
 
     if not running_instances:
+        # Secondary check: an orphaned lock-file with a live PID blocks scope
+        # acquisition even when state is not "running". Kill the holder and release.
+        for instance_id, state in instances:
+            stem = instance_id or loop_name
+            lock_file = running_dir / f"{stem}.lock"
+            if lock_file.exists():
+                lock_pid: int | None = None
+                try:
+                    with open(lock_file) as _lf:
+                        lock_data = json.load(_lf)
+                    lock_pid = lock_data.get("pid")
+                except (json.JSONDecodeError, KeyError, OSError):
+                    pass
+                if lock_pid and _process_alive(lock_pid):
+                    logger.warning(
+                        f"Loop state is '{state.status}' but lock file holds live PID {lock_pid}. "
+                        "Killing orphaned lock holder..."
+                    )
+                    _kill_with_timeout(lock_pid, stem, logger)
+                    lock_file.unlink(missing_ok=True)
+                    logger.success(f"Released orphaned scope lock for {stem}")
+                    return 0
+                elif lock_pid is not None:
+                    # Dead PID: stale lock file, just remove it
+                    lock_file.unlink(missing_ok=True)
+                    logger.info(f"Removed stale lock file for {stem}")
+                    return 0
         _, state = instances[0]
         logger.error(f"Loop not running: {loop_name} (status: {state.status})")
         return 1
@@ -247,19 +288,7 @@ def cmd_stop(
 
         if pid is not None:
             if _process_alive(pid):
-                # Process confirmed alive: send SIGTERM, then wait for exit
-                os.kill(pid, signal.SIGTERM)
-                for _ in range(10):
-                    time.sleep(1)
-                    if not _process_alive(pid):
-                        break
-                else:
-                    # Still alive after grace period: force kill
-                    try:
-                        os.kill(pid, signal.SIGKILL)
-                        logger.warning(f"Sent SIGKILL to {stem} (PID: {pid})")
-                    except OSError:
-                        pass  # Process exited between poll and kill
+                _kill_with_timeout(pid, stem, logger)
                 state.status = "interrupted"
                 persistence.save_state(state)
                 pid_file.unlink(missing_ok=True)

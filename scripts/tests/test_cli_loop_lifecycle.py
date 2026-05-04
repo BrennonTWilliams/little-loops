@@ -215,6 +215,84 @@ class TestCmdStop:
         assert mock_state.status == "interrupted"
         assert not pid_file.exists(), "PID file should be removed even when SIGKILL raises OSError"
 
+    def test_stop_interrupted_with_live_lock_pid_kills_process_and_removes_lock(
+        self, tmp_path: Path
+    ) -> None:
+        """Kills orphaned lock holder and returns 0 when interrupted state has live lock PID (BUG-1353)."""
+        import json as _json
+
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "interrupted"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        lock_file = running_dir / "test-loop.lock"
+        lock_file.write_text(
+            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 58522, "started_at": "2026-05-03T10:00:00Z"})
+        )
+
+        # alive check in orphaned-lock branch, then poll in _kill_with_timeout (dies on first poll)
+        alive_seq = [True, False]
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        mock_kill.assert_called_once_with(58522, signal.SIGTERM)
+        assert not lock_file.exists(), "Lock file should be removed after killing orphaned holder"
+        logger.warning.assert_called_once()
+        logger.success.assert_called_once()
+
+    def test_stop_interrupted_with_dead_lock_pid_removes_stale_lock_exits_0(
+        self, tmp_path: Path
+    ) -> None:
+        """Removes stale lock file and returns 0 when interrupted state has dead lock PID (BUG-1353)."""
+        import json as _json
+
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "interrupted"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        lock_file = running_dir / "test-loop.lock"
+        lock_file.write_text(
+            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 99999, "started_at": "2026-05-03T10:00:00Z"})
+        )
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+        ):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert not lock_file.exists(), "Stale lock file should be removed"
+        logger.info.assert_called_once()
+
+    def test_stop_interrupted_with_no_lock_file_returns_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Returns error when interrupted state has no lock file (unchanged behavior, BUG-1353)."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "interrupted"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+
+        with patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 1
+        logger.error.assert_called_once()
+
 
 class TestCmdResume:
     """Tests for cmd_resume."""

@@ -167,7 +167,7 @@ class TestCmdStop:
     def test_stop_interrupted_loop_returns_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """stop returns error if loop already interrupted."""
+        """stop returns error if interrupted and no lock file."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         running_dir = loops_dir / ".running"

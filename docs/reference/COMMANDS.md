@@ -658,7 +658,7 @@ Find stuck or stale `ll-loop` processes, diagnose root causes from state and eve
 2. Checks each loop's PID liveness and `updated_at` staleness
 3. Classifies loops: stuck-running, stale-interrupted, abandoned-handoff, terminal, or healthy
 4. Prompts user to confirm cleanup of actionable loops
-5. Calls `ll-loop stop` (stuck-running) or removes the orphaned artifact file — `.pid` or `.lock` — based on the `pid_source` field returned by `ll-loop status --json` (stale-interrupted)
+5. Calls `ll-loop stop` for stuck-running loops and for stale-interrupted loops whose lock-file PID is still alive (orphaned lock holder blocking scope); removes the artifact file directly for stale-interrupted loops with a dead PID
 6. Tails the events file to surface root cause for each cleaned loop
 
 **Usage:**

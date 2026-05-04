@@ -225,11 +225,18 @@ Branch on `pid_source` from Step 2:
   rm -f ".loops/.running/<instance_id_or_loop_name>.pid"
   echo "Removed stale .pid file for <loop_name>"
   ```
-- `pid_source == "lock_file"`:
-  ```bash
-  rm -f ".loops/.running/<instance_id_or_loop_name>.lock"
-  echo "Removed stale .lock file for <loop_name>"
-  ```
+- `pid_source == "lock_file"`: check whether the lock-holder process is still alive:
+  - **PID alive** (`kill -0 <pid>` exits 0): the process is an orphaned lock holder
+    blocking scope acquisition. Use `ll-loop stop` to kill it and remove the lock:
+    ```bash
+    ll-loop stop <loop_name>
+    ```
+  - **PID dead** (`kill -0 <pid>` exits non-zero): the process is gone but left a
+    stale file. Remove it directly:
+    ```bash
+    rm -f ".loops/.running/<instance_id_or_loop_name>.lock"
+    echo "Removed stale .lock file for <loop_name>"
+    ```
 
 ---
 
