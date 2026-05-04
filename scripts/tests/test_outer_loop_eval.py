@@ -63,12 +63,12 @@ class TestOuterLoopEvalStates:
 
     REQUIRED_STATES = {
         "validate_input",
+        "load_definition",
         "analyze_definition",
         "run_sub_loop",
         "analyze_execution",
         "generate_report",
         "refine_analysis",
-        "run_benchmark_opt_in",
         "done",
     }
 
@@ -86,9 +86,9 @@ class TestOuterLoopEvalStates:
         state = loop_data["states"]["validate_input"]
         assert state.get("on_error") == "done"
 
-    def test_validate_input_routes_next_to_analyze_definition(self, loop_data: dict) -> None:
+    def test_validate_input_routes_next_to_load_definition(self, loop_data: dict) -> None:
         state = loop_data["states"]["validate_input"]
-        assert state.get("next") == "analyze_definition"
+        assert state.get("next") == "load_definition"
 
     def test_analyze_definition_is_prompt(self, loop_data: dict) -> None:
         state = loop_data["states"]["analyze_definition"]
@@ -142,13 +142,12 @@ class TestOuterLoopEvalStates:
         assert state.get("action_type") == "prompt"
         assert state.get("next") == "generate_report"
 
-    def test_run_benchmark_opt_in_uses_fragment(self, loop_data: dict) -> None:
-        state = loop_data["states"]["run_benchmark_opt_in"]
-        assert state.get("fragment") == "run_benchmark"
-        assert state.get("capture") == "benchmark_score"
-        assert "context.scorer" in state.get("action", "")
-        assert "context.tasks_dir" in state.get("action", "")
-        assert state.get("on_error") == "done"
+    def test_load_definition_captures_loop_definition(self, loop_data: dict) -> None:
+        state = loop_data["states"]["load_definition"]
+        assert state.get("action_type") == "shell"
+        assert "context.loop_name" in state.get("action", "")
+        assert state.get("capture") == "loop_definition"
+        assert state.get("next") == "analyze_definition"
 
     def test_run_sub_loop_input_binding_uses_context_var(self, loop_data: dict) -> None:
         """with: binding for input must reference context.input."""
