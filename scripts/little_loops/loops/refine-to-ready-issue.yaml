@@ -6,7 +6,8 @@ category: issue-management
 #                                              → (on_no)  retry_confidence_check → verify_scores_persisted_final
 #                                                           → (on_yes) check_readiness | (on_no) failed
 #                      check_readiness         → (on_no)  check_refine_limit → refine_issue
-#                      check_outcome           → (on_no)  breakdown_issue
+#                      check_outcome           → (on_no)  check_decision_needed → (on_yes) done
+#                                                                               → (on_no)  breakdown_issue
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
 initial: resolve_issue
 max_iterations: 20
@@ -226,7 +227,7 @@ states:
 
   check_outcome:
     # Step 2 of 2: check outcome confidence (outcome_confidence vs outcome_threshold).
-    # Outcome below threshold → route to breakdown_issue (scope reduction, not more refinement).
+    # Outcome below threshold → check_decision_needed before falling through to breakdown_issue.
     # Outcome passes → done.
     action: |
       python3 << 'PYEOF'
@@ -253,8 +254,19 @@ states:
     evaluate:
       type: exit_code
     on_yes: done
-    on_no: breakdown_issue
+    on_no: check_decision_needed
     on_error: failed
+
+  check_decision_needed:
+    # Gate before size-review: if decision_needed=true the low outcome score is driven
+    # by unresolved option ambiguity (0/25 ambiguity), not by scope being too large.
+    # Exit via done so autodev's check_decision_after_refine can route to run_decide.
+    # on_no falls through to breakdown_issue (scope genuinely too large).
+    action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
+    fragment: shell_exit
+    on_yes: done
+    on_no: breakdown_issue
+    on_error: breakdown_issue
 
   check_refine_limit:
     action: |
