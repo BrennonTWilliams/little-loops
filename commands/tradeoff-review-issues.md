@@ -3,12 +3,18 @@ description: |
   Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.
 
   Trigger keywords: "tradeoff review", "review issues", "utility review", "prune backlog", "issue tradeoff", "sense check issues", "evaluate issues", "backlog review", "worth implementing", "low value issues"
+argument-hint: "[issue-ids]"
 allowed-tools:
   - Read
   - Glob
   - Edit
   - Task
   - Bash(git:*)
+  - Bash(ll-issues:*)
+arguments:
+  - name: issues
+    description: Comma-separated issue IDs to filter (e.g., "BUG-123,FEAT-456"). If omitted, scans all active issues.
+    required: false
 ---
 
 # Issue Tradeoff Review
@@ -21,7 +27,34 @@ The command follows a 5-phase workflow:
 
 ### Phase 1: Discovery
 
-Scan all active issues:
+**If the `issues` argument is provided** (comma-separated IDs), resolve each ID to a file path and use those as the issue set:
+
+```bash
+ISSUES_ARG="${issues:-}"
+declare -a ISSUE_FILES
+
+if [ -n "$ISSUES_ARG" ]; then
+    IFS=',' read -ra IDS <<< "$ISSUES_ARG"
+    for id in "${IDS[@]}"; do
+        id="${id// /}"  # strip accidental spaces
+        FILE=$(ll-issues path "${id}" 2>/dev/null)
+        if [ -n "$FILE" ]; then
+            ISSUE_FILES+=("$FILE")
+        else
+            echo "Warning: Issue $id not found (skipping)"
+        fi
+    done
+    if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
+        echo "Error: None of the specified issue IDs resolved to active issues"
+        exit 1
+    fi
+    # Build issue records from resolved paths (same structure as the Glob scan below)
+else
+    # Run the full Glob scan (steps 1-5 below)
+fi
+```
+
+**If the `issues` argument is NOT provided**, scan all active issues:
 
 1. Read `.ll/ll-config.json` for issue directory configuration
 2. Use Glob to find all `.md` files in:
@@ -359,6 +392,12 @@ Both can be run as part of backlog grooming. Run tradeoff review first to prune,
 ```bash
 # Review all active issues for utility vs complexity trade-offs
 /ll:tradeoff-review-issues
+
+# Review a single issue
+/ll:tradeoff-review-issues BUG-123
+
+# Review a specific subset of issues (comma-separated, no spaces)
+/ll:tradeoff-review-issues BUG-123,FEAT-456,ENH-789
 ```
 
 ---

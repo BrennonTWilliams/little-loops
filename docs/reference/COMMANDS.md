@@ -219,6 +219,9 @@ Post-refinement wiring pass that completes an issue's **Integration Map** — th
 ### `/ll:tradeoff-review-issues`
 Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.
 
+**Arguments:**
+- `issues` (optional): Comma-separated issue IDs to filter (e.g., `BUG-123,FEAT-456`). If omitted, scans all active issues.
+
 **Trigger keywords:** "tradeoff review", "review issues", "prune backlog", "sense check issues"
 
 ### `/ll:audit-issue-conflicts`

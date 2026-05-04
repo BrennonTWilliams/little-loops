@@ -70,9 +70,10 @@ ISSUE REFINEMENT
 /ll:verify-issues
     Verify all issue files against current codebase state
 
-/ll:tradeoff-review-issues
+/ll:tradeoff-review-issues [issue-ids]
     Evaluate issues for utility vs complexity trade-offs
     Recommends implement, update, or close/defer for each issue
+    Args: issue-ids - comma-separated IDs to filter (e.g., "BUG-123,FEAT-456"); omit to scan all
 
 /ll:audit-issue-conflicts [flags]
     Scan all open issues for conflicting requirements, objectives, or

@@ -1,7 +1,15 @@
 ---
-captured_at: "2026-05-04T20:29:17Z"
-discovered_date: "2026-05-04"
+captured_at: '2026-05-04T20:29:17Z'
+completed_at: '2026-05-04T21:54:39Z'
+discovered_date: '2026-05-04'
 discovered_by: capture-issue
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1363: Add --issues filter argument to tradeoff-review-issues
@@ -78,7 +86,7 @@ fi
 ## Integration Map
 
 ### Files to Modify
-- `commands/tradeoff-review-issues.md` - Add argument parsing and conditional Phase 1 skip
+- `commands/tradeoff-review-issues.md` - Add argument parsing and conditional Phase 1 skip; also add `Bash(ll-issues:*)` to `allowed-tools` frontmatter (currently absent — required for the new `ll-issues path` calls in the conditional branch) [Agent wiring finding]
 
 ### Dependent Files (Callers/Importers)
 - N/A (command file, not a Python module)
@@ -88,10 +96,17 @@ fi
 - `commands/ready-issue.md` - accepts issue ID argument for reference
 
 ### Tests
-- N/A (command definition, not directly testable via pytest)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh1363_doc_wiring.py` — new test file needed; follow the pattern in `scripts/tests/test_refine_issue_command.py` (`TestOptionCountDetectionInCommand`) and `scripts/tests/test_enh1299_doc_wiring.py`; assert: `argument-hint` present in frontmatter, `arguments:` block present, `issues` argument named with comma-separated description, `Bash(ll-issues:*)` in `allowed-tools`, conditional Phase 1 branch text present, filtered example in `## Examples` section [Agent 3 finding]
+- `scripts/tests/test_refine_status.py` — uses `/ll:tradeoff-review-issues` as a session-log fixture string (lines 752–754, 833, 1638); NOT broken by this change (command name is unchanged) [Agent 3 finding — no update needed]
 
 ### Documentation
 - `commands/tradeoff-review-issues.md` examples section - add example with IDs
+- `commands/help.md` — lines 73-75, the detail block for `/ll:tradeoff-review-issues`; should show `[issue-ids]` argument syntax [Agent 2 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` — `### /ll:tradeoff-review-issues` section (around line 219) lacks `**Arguments:**` subsection; add one for the new `issues` argument [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -105,6 +120,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `commands/tradeoff-review-issues.md` currently has **no `arguments:` frontmatter block** — one must be added alongside `argument-hint` (the file only declares `description` and `allowed-tools`)
 - Phase 1 uses **Glob tool calls** (not `find` or `ll-issues list`) against three subdirectories (`bugs/`, `features/`, `enhancements/`) — the conditional branch replaces these Glob calls when IDs are provided
 - Phase 1 output is an in-memory list of records with fields `file`, `issue_id`, `type`, `priority`, `title`, `summary` — the filter path must build records in this same structure after resolving paths via `ll-issues path`
+
+### Codebase Research Findings (Pass 2)
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Exact frontmatter insertion point**: `commands/tradeoff-review-issues.md` line 12 (closing `---`) — insert `argument-hint: "[issue-ids]"` before line 12; insert `arguments:` block after the existing `allowed-tools:` list (follow `commands/create-sprint.md:7–17` for ordering: `argument-hint` before `allowed-tools`, `arguments:` after)
+- **Exact Phase 1 Glob calls**: lines 27–30 in `commands/tradeoff-review-issues.md` — three consecutive Glob calls for `bugs/`, `features/`, `enhancements/`; the conditional branch wraps or replaces these when `${issues:-}` is non-empty
+- **Phase 1 / Phase 2 boundary**: Phase 1 ends at lines 40–43 (empty-backlog guard); Phase 2 (`### Phase 2: Wave-Based Evaluation`) begins at line 44
+- **Examples section insertion**: lines 357–363 in `commands/tradeoff-review-issues.md` — single bare invocation example; add filtered examples after the existing block
+- **`ll-issues path` accepts all three ID formats**: bare numeric (`1363`), `TYPE-NNN` (`ENH-1363`), or `P-TYPE-NNN` (`P4-ENH-1363`); the `2>/dev/null` suppression is universal across all call sites
+- **Sister issue ENH-1362** (`commands/align-issues.md`) implements the same filter pattern — consider reading its implementation first if it lands before this one
 
 ## Implementation Steps
 
@@ -121,6 +147,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 2. **Add conditional branch before Phase 1 Glob calls** in `commands/tradeoff-review-issues.md` — when `${issues:-}` is non-empty, resolve IDs using the loop from `skills/issue-size-review/SKILL.md:93–97` instead of running Glob; produce the same record structure (`file`, `issue_id`, `type`, `priority`, `title`, `summary`) that Phase 2 expects
 3. **Update examples section** of `commands/tradeoff-review-issues.md` — add single-ID and comma-separated usage examples (see API/Interface above)
 4. **Skip-on-miss behavior** — unresolvable IDs print `Warning: Issue <ID> not found (skipping)` and are skipped; abort if zero IDs resolve (see `skills/confidence-check/SKILL.md:147–153` for this exact pattern)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Add `Bash(ll-issues:*)` to `allowed-tools` in `commands/tradeoff-review-issues.md` frontmatter — currently absent; the `ll-issues path` call in the new conditional branch requires this permission
+6. Update `commands/help.md` — add `[issue-ids]` to the argument description in the detail block for `/ll:tradeoff-review-issues` (lines 73-75)
+7. Add `**Arguments:**` subsection to `docs/reference/COMMANDS.md` under `### /ll:tradeoff-review-issues` (around line 219) documenting the new `issues` argument
+8. Write `scripts/tests/test_enh1363_doc_wiring.py` — doc-wiring test asserting frontmatter completeness and conditional Phase 1 presence; follow `test_refine_issue_command.py` class structure
 
 ## Scope Boundaries
 
@@ -162,6 +197,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `enhancement`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-04T21:54:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/788e9e94-b8a6-4865-af7c-4f5eba1ae671.jsonl`
+- `/ll:ready-issue` - 2026-05-04T21:50:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2eb2f30a-fec4-4f7c-8ad6-cdf3a44a50a6.jsonl`
+- `/ll:confidence-check` - 2026-05-04T21:47:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e517095-5e16-4a2f-9ba9-022896042d88.jsonl`
+- `/ll:wire-issue` - 2026-05-04T21:45:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fcbd1f9-eaf5-479a-96d9-cb2fa0858814.jsonl`
+- `/ll:refine-issue` - 2026-05-04T21:40:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b533065f-bb41-4ee0-88bd-bf4355d9be26.jsonl`
 - `/ll:refine-issue` - 2026-05-04T21:11:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2cacbb2-3baa-47a6-8310-3720c7e6ca3e.jsonl`
 - `/ll:format-issue` - 2026-05-04T21:08:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2cacbb2-3baa-47a6-8310-3720c7e6ca3e.jsonl`
 - `/ll:format-issue` - 2026-05-04T21:07:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a99b592-a169-47b6-94ae-74c34304e026.jsonl`
@@ -170,4 +210,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
-**Open** | Created: 2026-05-04 | Priority: P4
+---
+
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-05-04
+- **Approach**: Added `argument-hint`, `arguments:` block, and `Bash(ll-issues:*)` to frontmatter; inserted conditional Phase 1 branch resolving comma-separated IDs via `ll-issues path`; updated help.md, COMMANDS.md, and examples; added 15-test doc-wiring suite.
+
+**Closed** | Created: 2026-05-04 | Completed: 2026-05-04 | Priority: P4
