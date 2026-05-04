@@ -572,9 +572,7 @@ class PersistentExecutor:
         return self.run(clear_previous=False)
 
 
-def _find_instances(
-    loop_name: str, running_dir: Path
-) -> list[tuple[str | None, LoopState]]:
+def _find_instances(loop_name: str, running_dir: Path) -> list[tuple[str | None, LoopState]]:
     """Discover all state-file instances for *loop_name* in *running_dir*.
 
     Globs ``{loop_name}-*.state.json`` for instance-scoped files and

@@ -186,9 +186,7 @@ def cmd_status(
             d["pid_source"] = pid_source
             if log_file.exists():
                 d["log_file"] = str(log_file)
-                d["log_updated_ago"] = _format_relative_time(
-                    time.time() - log_file.stat().st_mtime
-                )
+                d["log_updated_ago"] = _format_relative_time(time.time() - log_file.stat().st_mtime)
             else:
                 d["log_file"] = None
                 d["log_updated_ago"] = None
@@ -406,7 +404,9 @@ def cmd_resume(
         if config.commands.rate_limits.circuit_breaker_enabled
         else None
     )
-    executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id)
+    executor = PersistentExecutor(
+        fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id
+    )
 
     # Register signal handlers for graceful shutdown (same as cmd_run)
     register_loop_signal_handlers(executor, pid_file=foreground_pid_file)

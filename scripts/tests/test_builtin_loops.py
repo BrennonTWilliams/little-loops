@@ -1924,7 +1924,9 @@ class TestRecursiveRefineLoop:
             "parse_input must initialize recursive-refine-total-enqueued.txt"
         )
 
-    def test_parse_input_initializes_decomposed_and_deadend_tracking_files(self, data: dict) -> None:
+    def test_parse_input_initializes_decomposed_and_deadend_tracking_files(
+        self, data: dict
+    ) -> None:
         """parse_input action must reference both ENH-1350 per-reason tracking files."""
         action = data["states"].get("parse_input", {}).get("action", "")
         assert "recursive-refine-skipped-decomposed.txt" in action, (

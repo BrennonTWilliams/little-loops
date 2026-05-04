@@ -40,22 +40,19 @@ class TestLoopsGuideWiring:
     def test_depth_map_tmp_file_present(self) -> None:
         content = LOOPS_GUIDE.read_text()
         assert "recursive-refine-depth-map.txt" in content, (
-            "docs/guides/LOOPS_GUIDE.md Notes must document "
-            "`recursive-refine-depth-map.txt`"
+            "docs/guides/LOOPS_GUIDE.md Notes must document `recursive-refine-depth-map.txt`"
         )
 
     def test_current_depth_tmp_file_present(self) -> None:
         content = LOOPS_GUIDE.read_text()
         assert "recursive-refine-current-depth.txt" in content, (
-            "docs/guides/LOOPS_GUIDE.md Notes must document "
-            "`recursive-refine-current-depth.txt`"
+            "docs/guides/LOOPS_GUIDE.md Notes must document `recursive-refine-current-depth.txt`"
         )
 
     def test_skipped_depth_tmp_file_present(self) -> None:
         content = LOOPS_GUIDE.read_text()
         assert "recursive-refine-skipped-depth.txt" in content, (
-            "docs/guides/LOOPS_GUIDE.md Notes must document "
-            "`recursive-refine-skipped-depth.txt`"
+            "docs/guides/LOOPS_GUIDE.md Notes must document `recursive-refine-skipped-depth.txt`"
         )
 
 
@@ -65,6 +62,5 @@ class TestConfigurationWiring:
     def test_recursive_refine_max_depth_present(self) -> None:
         content = CONFIGURATION.read_text()
         assert "recursive_refine.max_depth" in content, (
-            "docs/reference/CONFIGURATION.md must document "
-            "`commands.recursive_refine.max_depth`"
+            "docs/reference/CONFIGURATION.md must document `commands.recursive_refine.max_depth`"
         )

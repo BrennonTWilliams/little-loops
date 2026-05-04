@@ -334,7 +334,9 @@ def cmd_run(
             if _config.commands.rate_limits.circuit_breaker_enabled
             else None
         )
-        executor = PersistentExecutor(fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id)
+        executor = PersistentExecutor(
+            fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id
+        )
 
         # Register signal handlers for graceful shutdown
         register_loop_signal_handlers(executor, pid_file=foreground_pid_file)

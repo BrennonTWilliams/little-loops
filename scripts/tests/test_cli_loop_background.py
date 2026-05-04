@@ -511,7 +511,9 @@ class TestRunBackground:
         cmd = mock_popen.call_args[0][0]
         loop_idx = cmd.index("my-loop")
         next_token = cmd[loop_idx + 1]
-        assert next_token.startswith("--"), "nothing between loop_name and first flag when input=None"
+        assert next_token.startswith("--"), (
+            "nothing between loop_name and first flag when input=None"
+        )
 
     def test_program_md_not_forwarded_when_none(self, tmp_path: Path) -> None:
         """Does not add --program-md to child command when not set (ENH-1121)."""
@@ -557,7 +559,9 @@ class TestCmdStopWithPid:
         alive_seq = [True, False]
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.fsm.persistence.StatePersistence"),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
@@ -583,7 +587,9 @@ class TestCmdStopWithPid:
         pid_file.write_text("99999")
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
         ):
             from little_loops.cli.loop.lifecycle import cmd_stop
@@ -600,7 +606,9 @@ class TestCmdStopWithPid:
         mock_state.status = "running"
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.fsm.persistence.StatePersistence"),
         ):
             from little_loops.cli.loop.lifecycle import cmd_stop
@@ -627,7 +635,9 @@ class TestCmdStopWithPid:
         pid_file.write_text("99999")
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
         ):
@@ -662,7 +672,9 @@ class TestCmdStatusWithPid:
         pid_file.write_text("12345")
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("builtins.print") as mock_print,
         ):
@@ -694,7 +706,9 @@ class TestCmdStatusWithPid:
         pid_file.write_text("99999")
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
             patch("builtins.print") as mock_print,
         ):
@@ -721,7 +735,9 @@ class TestCmdStatusWithPid:
         mock_state.continuation_prompt = None
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             from little_loops.cli.loop.lifecycle import cmd_status

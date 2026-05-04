@@ -558,6 +558,7 @@ class TestMultiInstanceSameName:
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
+
             def try_acquire(instance_id: str, scope: list[str]) -> None:
                 barrier.wait()
                 result = manager.acquire("autodev", scope, instance_id=instance_id)

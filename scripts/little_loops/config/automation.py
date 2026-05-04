@@ -155,7 +155,7 @@ class RecursiveRefineConfig:
     max_depth: int = 3
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "RecursiveRefineConfig":
+    def from_dict(cls, data: dict[str, Any]) -> RecursiveRefineConfig:
         """Create RecursiveRefineConfig from dictionary."""
         return cls(max_depth=data.get("max_depth", 3))
 

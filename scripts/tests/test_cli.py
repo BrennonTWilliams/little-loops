@@ -2195,7 +2195,10 @@ states:
             mock_state.status = "running"
 
             with (
-                patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+                patch(
+                    "little_loops.cli.loop.lifecycle._find_instances",
+                    return_value=[(None, mock_state)],
+                ),
                 patch("little_loops.fsm.persistence.StatePersistence"),
                 patch.object(sys, "argv", ["ll-loop", "stop", "test-loop"]),
             ):

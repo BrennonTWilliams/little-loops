@@ -2351,7 +2351,7 @@ class TestCmdStatusJson:
     ) -> None:
         """--json outputs loop state as a JSON object."""
         from little_loops.cli.loop.lifecycle import cmd_status
-        from little_loops.fsm.persistence import LoopState, StatePersistence
+        from little_loops.fsm.persistence import LoopState
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()

@@ -46,7 +46,9 @@ class TestCmdStatus:
         mock_state.continuation_prompt = None
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -70,7 +72,9 @@ class TestCmdStatus:
         mock_state.continuation_prompt = "A" * 300  # Long prompt
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -114,7 +118,9 @@ class TestCmdStop:
         mock_state.status = "running"
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
         ):
             mock_persistence = mock_cls.return_value
@@ -139,7 +145,9 @@ class TestCmdStop:
         alive_seq = [True, True, False]
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
@@ -168,8 +176,10 @@ class TestCmdStop:
         alive_seq = [True] + [True] * 10
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
-            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence"),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
@@ -203,7 +213,9 @@ class TestCmdStop:
                 raise OSError("No such process")
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.fsm.persistence.StatePersistence"),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill", side_effect=kill_side_effect),
@@ -229,14 +241,23 @@ class TestCmdStop:
         running_dir.mkdir()
         lock_file = running_dir / "test-loop.lock"
         lock_file.write_text(
-            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 58522, "started_at": "2026-05-03T10:00:00Z"})
+            _json.dumps(
+                {
+                    "loop_name": "test-loop",
+                    "scope": ["/tmp"],
+                    "pid": 58522,
+                    "started_at": "2026-05-03T10:00:00Z",
+                }
+            )
         )
 
         # alive check in orphaned-lock branch, then poll in _kill_with_timeout (dies on first poll)
         alive_seq = [True, False]
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
@@ -263,11 +284,20 @@ class TestCmdStop:
         running_dir.mkdir()
         lock_file = running_dir / "test-loop.lock"
         lock_file.write_text(
-            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 99999, "started_at": "2026-05-03T10:00:00Z"})
+            _json.dumps(
+                {
+                    "loop_name": "test-loop",
+                    "scope": ["/tmp"],
+                    "pid": 99999,
+                    "started_at": "2026-05-03T10:00:00Z",
+                }
+            )
         )
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
@@ -276,9 +306,7 @@ class TestCmdStop:
         assert not lock_file.exists(), "Stale lock file should be removed"
         logger.info.assert_called_once()
 
-    def test_stop_interrupted_with_no_lock_file_returns_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_stop_interrupted_with_no_lock_file_returns_error(self, tmp_path: Path) -> None:
         """Returns error when interrupted state has no lock file (unchanged behavior, BUG-1353)."""
         logger = MagicMock()
         mock_state = MagicMock()
@@ -287,7 +315,9 @@ class TestCmdStop:
         running_dir = tmp_path / ".running"
         running_dir.mkdir()
 
-        with patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]):
+        with patch(
+            "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+        ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 1
@@ -421,7 +451,9 @@ class TestCmdResume:
                 "little_loops.cli.loop.lifecycle.load_loop",
                 return_value=mock_fsm,
             ),
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
             patch("builtins.print") as mock_print,
         ):
@@ -993,7 +1025,9 @@ class TestCmdStatusLogFile:
         os.utime(log_file, (mtime, mtime))
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -1018,7 +1052,9 @@ class TestCmdStatusLogFile:
         running_dir.mkdir(parents=True)
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -1053,7 +1089,9 @@ class TestCmdStatusLogFile:
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger, args)
@@ -1087,7 +1125,9 @@ class TestCmdStatusLogFile:
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger, args)
@@ -1134,14 +1174,21 @@ class TestCmdStatusLockFilePid:
         lock_file = running_dir / "test-loop.lock"
         lock_file.write_text(
             _json.dumps(
-                {"loop_name": "test-loop", "scope": ["/tmp"], "pid": 12345, "started_at": "2026-05-03T10:00:00Z"}
+                {
+                    "loop_name": "test-loop",
+                    "scope": ["/tmp"],
+                    "pid": 12345,
+                    "started_at": "2026-05-03T10:00:00Z",
+                }
             )
         )
 
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger, args)
@@ -1168,7 +1215,9 @@ class TestCmdStatusLockFilePid:
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger, args)
@@ -1193,7 +1242,9 @@ class TestCmdStatusLockFilePid:
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger, args)
@@ -1220,7 +1271,9 @@ class TestCmdStatusLockFilePid:
         args = argparse.Namespace(json=True)
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger, args)
@@ -1242,11 +1295,20 @@ class TestCmdStatusLockFilePid:
         running_dir.mkdir(parents=True)
         lock_file = running_dir / "test-loop.lock"
         lock_file.write_text(
-            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 12345, "started_at": "2026-05-03T10:00:00Z"})
+            _json.dumps(
+                {
+                    "loop_name": "test-loop",
+                    "scope": ["/tmp"],
+                    "pid": 12345,
+                    "started_at": "2026-05-03T10:00:00Z",
+                }
+            )
         )
 
         with (
-            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]),
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
             patch("builtins.print") as mock_print,
         ):
@@ -1274,7 +1336,14 @@ class TestCmdStatusLockFilePid:
         running_dir = tmp_path / ".running"
         running_dir.mkdir(parents=True)
         (running_dir / "test-loop-inst1.lock").write_text(
-            _json.dumps({"loop_name": "test-loop", "scope": ["/tmp"], "pid": 11111, "started_at": "2026-05-03T10:00:00Z"})
+            _json.dumps(
+                {
+                    "loop_name": "test-loop",
+                    "scope": ["/tmp"],
+                    "pid": 11111,
+                    "started_at": "2026-05-03T10:00:00Z",
+                }
+            )
         )
 
         instances = [("test-loop-inst1", state1), ("test-loop-inst2", state2)]
@@ -1533,9 +1602,7 @@ class TestFindInstances:
 
         running_dir = tmp_path / ".running"
         running_dir.mkdir()
-        self._write_state(
-            running_dir / "test-loop-20260503T122306.state.json", "test-loop"
-        )
+        self._write_state(running_dir / "test-loop-20260503T122306.state.json", "test-loop")
 
         instances = _find_instances("test-loop", running_dir)
         assert len(instances) == 1
@@ -1550,9 +1617,7 @@ class TestFindInstances:
         running_dir = tmp_path / ".running"
         running_dir.mkdir()
         self._write_state(running_dir / "test-loop.state.json", "test-loop")
-        self._write_state(
-            running_dir / "test-loop-20260503T122306.state.json", "test-loop"
-        )
+        self._write_state(running_dir / "test-loop-20260503T122306.state.json", "test-loop")
 
         instances = _find_instances("test-loop", running_dir)
         assert len(instances) == 2
@@ -1567,9 +1632,7 @@ class TestFindInstances:
         running_dir = tmp_path / ".running"
         running_dir.mkdir()
         self._write_state(running_dir / "other-loop.state.json", "other-loop")
-        self._write_state(
-            running_dir / "other-loop-20260503T122306.state.json", "other-loop"
-        )
+        self._write_state(running_dir / "other-loop-20260503T122306.state.json", "other-loop")
 
         assert _find_instances("test-loop", running_dir) == []
 

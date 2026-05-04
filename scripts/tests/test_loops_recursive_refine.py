@@ -4,6 +4,7 @@ Tests the depth-tracking and cycle-detection bash/python logic for parse_input,
 dequeue_next, check_depth, enqueue_children / enqueue_or_skip, and done states by
 executing shell snippets directly against a tmp_path environment.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -646,7 +647,9 @@ class TestDecomposedDualWrite:
         assert "ENH-001" in (loops_tmp / "recursive-refine-skipped.txt").read_text()
         assert "ENH-001" in (loops_tmp / "recursive-refine-skipped-decomposed.txt").read_text()
 
-    def test_enqueue_or_skip_children_branch_writes_to_decomposed_file(self, tmp_path: Path) -> None:
+    def test_enqueue_or_skip_children_branch_writes_to_decomposed_file(
+        self, tmp_path: Path
+    ) -> None:
         """enqueue_or_skip children branch appends parent to both skipped.txt and skipped-decomposed.txt."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
@@ -1427,9 +1430,7 @@ def _setup_enqueue_env(
     children: list[str] | None = None,
 ) -> None:
     """Populate tmp files for an enqueue peek test."""
-    (loops_tmp / "recursive-refine-queue.txt").write_text(
-        "".join(f"{id}\n" for id in queue)
-    )
+    (loops_tmp / "recursive-refine-queue.txt").write_text("".join(f"{id}\n" for id in queue))
     (loops_tmp / "recursive-refine-new-children.txt").write_text(
         "".join(f"{id}\n" for id in (children or []))
     )
@@ -1466,9 +1467,7 @@ class TestEnqueuePeekLine:
         """All IDs listed without suffix when queue has 5 or fewer items."""
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
-        _setup_enqueue_env(
-            loops_tmp, queue=["ENH-001", "ENH-002", "ENH-003", "ENH-004", "ENH-005"]
-        )
+        _setup_enqueue_env(loops_tmp, queue=["ENH-001", "ENH-002", "ENH-003", "ENH-004", "ENH-005"])
 
         result = _bash(_ENQUEUE_CHILDREN_PEEK_SCRIPT, tmp_path)
 

@@ -100,7 +100,9 @@ class TestOuterLoopEvalStates:
     def test_run_sub_loop_is_native_loop(self, loop_data: dict) -> None:
         state = loop_data["states"]["run_sub_loop"]
         assert "loop" in state, "run_sub_loop must use native loop action (not shell)"
-        assert "context.loop_name" in state.get("loop", ""), "loop field must reference context.loop_name"
+        assert "context.loop_name" in state.get("loop", ""), (
+            "loop field must reference context.loop_name"
+        )
         assert state.get("capture") == "sub_loop_output"
         assert state.get("on_yes") == "analyze_execution"
         assert state.get("on_no") == "analyze_execution"

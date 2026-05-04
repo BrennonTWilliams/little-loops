@@ -1068,7 +1068,9 @@ class TestUtilityFunctions:
         loop = next(s for s in states if s.loop_name == "autodev")
         assert loop.status != "starting", "State-file version (not synthetic) should be returned"
 
-    def test_list_running_loops_instance_id_pid_only_sets_logical_name(self, tmp_path: Path) -> None:
+    def test_list_running_loops_instance_id_pid_only_sets_logical_name(
+        self, tmp_path: Path
+    ) -> None:
         """Synthetic 'starting' entry from instance-ID PID file uses logical loop name."""
         loops_dir = tmp_path / ".loops"
         running_dir = loops_dir / ".running"
