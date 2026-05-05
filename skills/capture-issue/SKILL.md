@@ -263,6 +263,8 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 git add "{{config.issues.base_dir}}/[category]/[filename]"
 ```
 
+> **Duplicate-ID recovery**: If the PostToolUse hook reports that the just-written file was deleted (duplicate integer ID detected), the `Write` call will have returned success but the file no longer exists. Re-allocate a fresh ID by calling `ll-issues next-id` again, generate a new filename with the new number, and repeat from step 3. Do not reuse the original ID.
+
 ### Phase 4b: Link Relevant Documents (if documents.enabled)
 
 See [templates.md](templates.md) for the complete document linking process including:
