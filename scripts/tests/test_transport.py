@@ -645,9 +645,7 @@ class TestOTelTransport:
         warning_count = sum(1 for r in caplog.records if "sub-loop" in r.message)
         assert warning_count == 1, "should warn exactly once per session, not per event"
 
-    def test_span_events_added_to_innermost_span(
-        self, test_provider: Any, exporter: Any
-    ) -> None:
+    def test_span_events_added_to_innermost_span(self, test_provider: Any, exporter: Any) -> None:
         """evaluate and route are recorded as span events on the innermost open span."""
         t = OTelTransport(_tracer_provider=test_provider)
         t.send({"event": "loop_start", "loop_name": "l"})

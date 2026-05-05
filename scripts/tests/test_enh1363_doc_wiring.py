@@ -23,7 +23,7 @@ class TestTradeoffReviewFrontmatter:
     def test_argument_hint_present(self) -> None:
         content = COMMAND_FILE.read_text()
         assert 'argument-hint: "[issue-ids]"' in content, (
-            "commands/tradeoff-review-issues.md must have argument-hint: \"[issue-ids]\" in frontmatter"
+            'commands/tradeoff-review-issues.md must have argument-hint: "[issue-ids]" in frontmatter'
         )
 
     def test_arguments_block_present(self) -> None:
@@ -42,7 +42,7 @@ class TestTradeoffReviewFrontmatter:
         content = COMMAND_FILE.read_text()
         args_start = content.index("arguments:")
         # Look within the arguments block (up to next top-level --- or end of frontmatter)
-        args_section = content[args_start:args_start + 300]
+        args_section = content[args_start : args_start + 300]
         assert "Comma-separated" in args_section or "comma-separated" in args_section, (
             "The 'issues' argument description must mention comma-separated IDs"
         )
@@ -60,7 +60,11 @@ class TestTradeoffReviewConditionalPhase1:
 
     def test_conditional_branch_present(self) -> None:
         content = COMMAND_FILE.read_text()
-        assert 'ISSUES_ARG="${issues:-}"' in content or "issues argument is provided" in content.lower() or "If the `issues` argument is provided" in content, (
+        assert (
+            'ISSUES_ARG="${issues:-}"' in content
+            or "issues argument is provided" in content.lower()
+            or "If the `issues` argument is provided" in content
+        ), (
             "commands/tradeoff-review-issues.md must contain the conditional Phase 1 branch for the issues argument"
         )
 
@@ -78,9 +82,11 @@ class TestTradeoffReviewConditionalPhase1:
 
     def test_zero_ids_error_present(self) -> None:
         content = COMMAND_FILE.read_text()
-        assert "None of the specified issue IDs" in content or "zero IDs" in content.lower() or "ISSUE_FILES[@]} -eq 0" in content, (
-            "commands/tradeoff-review-issues.md must abort when no IDs resolve to active issues"
-        )
+        assert (
+            "None of the specified issue IDs" in content
+            or "zero IDs" in content.lower()
+            or "ISSUE_FILES[@]} -eq 0" in content
+        ), "commands/tradeoff-review-issues.md must abort when no IDs resolve to active issues"
 
 
 class TestTradeoffReviewExamples:
@@ -109,10 +115,12 @@ class TestHelpFileUpdated:
     def test_help_file_shows_issue_ids_arg(self) -> None:
         content = HELP_FILE.read_text()
         tradeoff_start = content.index("/ll:tradeoff-review-issues")
-        tradeoff_block = content[tradeoff_start:tradeoff_start + 300]
-        assert "issue-ids" in tradeoff_block or "issue_ids" in tradeoff_block or "issues" in tradeoff_block, (
-            "commands/help.md must show the [issue-ids] argument for /ll:tradeoff-review-issues"
-        )
+        tradeoff_block = content[tradeoff_start : tradeoff_start + 300]
+        assert (
+            "issue-ids" in tradeoff_block
+            or "issue_ids" in tradeoff_block
+            or "issues" in tradeoff_block
+        ), "commands/help.md must show the [issue-ids] argument for /ll:tradeoff-review-issues"
 
 
 class TestCommandsRefUpdated:
@@ -122,7 +130,9 @@ class TestCommandsRefUpdated:
         content = COMMANDS_REF.read_text()
         tradeoff_start = content.index("### `/ll:tradeoff-review-issues`")
         next_heading = content.find("\n###", tradeoff_start + 1)
-        tradeoff_block = content[tradeoff_start:next_heading if next_heading != -1 else tradeoff_start + 500]
+        tradeoff_block = content[
+            tradeoff_start : next_heading if next_heading != -1 else tradeoff_start + 500
+        ]
         assert "**Arguments:**" in tradeoff_block, (
             "docs/reference/COMMANDS.md must have an **Arguments:** subsection under /ll:tradeoff-review-issues"
         )
@@ -131,7 +141,9 @@ class TestCommandsRefUpdated:
         content = COMMANDS_REF.read_text()
         tradeoff_start = content.index("### `/ll:tradeoff-review-issues`")
         next_heading = content.find("\n###", tradeoff_start + 1)
-        tradeoff_block = content[tradeoff_start:next_heading if next_heading != -1 else tradeoff_start + 500]
+        tradeoff_block = content[
+            tradeoff_start : next_heading if next_heading != -1 else tradeoff_start + 500
+        ]
         assert "`issues`" in tradeoff_block or "issues" in tradeoff_block, (
             "docs/reference/COMMANDS.md Arguments section must document the 'issues' argument"
         )

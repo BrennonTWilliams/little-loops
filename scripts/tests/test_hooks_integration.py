@@ -1195,7 +1195,9 @@ class TestDuplicateIssueIdPost:
     @pytest.fixture
     def hook_script(self) -> Path:
         """Path to check-duplicate-issue-id-post.sh."""
-        return Path(__file__).parent.parent.parent / "hooks/scripts/check-duplicate-issue-id-post.sh"
+        return (
+            Path(__file__).parent.parent.parent / "hooks/scripts/check-duplicate-issue-id-post.sh"
+        )
 
     def _make_input(self, file_path: str) -> str:
         """Build JSON stdin simulating a PostToolUse Write event."""
@@ -1223,7 +1225,9 @@ class TestDuplicateIssueIdPost:
                 timeout=5,
             )
 
-            assert result.returncode == 0, f"Expected exit 0, got {result.returncode}: {result.stderr}"
+            assert result.returncode == 0, (
+                f"Expected exit 0, got {result.returncode}: {result.stderr}"
+            )
             assert new_file.exists(), "Unique issue file should not be deleted"
         finally:
             os.chdir(original_dir)

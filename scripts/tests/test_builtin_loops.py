@@ -555,7 +555,9 @@ class TestRefineToReadyIssueSubLoop:
             f"verify_scores_persisted.on_yes should be 'check_readiness', got {state.get('on_yes')!r}"
         )
 
-    def test_verify_scores_persisted_on_no_routes_to_retry_confidence_check(self, data: dict) -> None:
+    def test_verify_scores_persisted_on_no_routes_to_retry_confidence_check(
+        self, data: dict
+    ) -> None:
         """verify_scores_persisted.on_no must route to retry_confidence_check (one re-run before failing)."""
         state = data["states"].get("verify_scores_persisted", {})
         assert state.get("on_no") == "retry_confidence_check", (

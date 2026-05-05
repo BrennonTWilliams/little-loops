@@ -77,10 +77,7 @@ class TestAlignIssuesConditionalStep4:
 
     def test_zero_ids_error_present(self) -> None:
         content = COMMAND_FILE.read_text()
-        assert (
-            "None of the specified issue IDs" in content
-            or "ISSUE_FILES[@]} -eq 0" in content
-        ), (
+        assert "None of the specified issue IDs" in content or "ISSUE_FILES[@]} -eq 0" in content, (
             "commands/align-issues.md must abort when no IDs resolve to active issues"
         )
 
@@ -124,7 +121,9 @@ class TestCommandsRefUpdated:
         content = COMMANDS_REF.read_text()
         align_start = content.index("### `/ll:align-issues`")
         next_heading = content.find("\n###", align_start + 1)
-        align_block = content[align_start : next_heading if next_heading != -1 else align_start + 500]
+        align_block = content[
+            align_start : next_heading if next_heading != -1 else align_start + 500
+        ]
         assert "**Arguments:**" in align_block, (
             "docs/reference/COMMANDS.md must have an **Arguments:** subsection under /ll:align-issues"
         )
@@ -133,7 +132,9 @@ class TestCommandsRefUpdated:
         content = COMMANDS_REF.read_text()
         align_start = content.index("### `/ll:align-issues`")
         next_heading = content.find("\n###", align_start + 1)
-        align_block = content[align_start : next_heading if next_heading != -1 else align_start + 500]
+        align_block = content[
+            align_start : next_heading if next_heading != -1 else align_start + 500
+        ]
         assert "`issues`" in align_block or "issues" in align_block, (
             "docs/reference/COMMANDS.md Arguments section must document the 'issues' argument"
         )

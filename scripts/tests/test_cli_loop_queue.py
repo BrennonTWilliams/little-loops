@@ -192,18 +192,22 @@ class TestQueueFifoOrdering:
         # Write a stale entry (earlier timestamp, dead PID 1 is never the waiter but
         # use a guaranteed-dead PID: pid 99999999 which cannot exist on macOS/Linux)
         stale_file.write_text(
-            json.dumps({
-                "id": stale_id,
-                "enqueuedAt": "2026-05-01T00:00:00+00:00",
-                "context": {"pid": 99999999},
-            })
+            json.dumps(
+                {
+                    "id": stale_id,
+                    "enqueuedAt": "2026-05-01T00:00:00+00:00",
+                    "context": {"pid": 99999999},
+                }
+            )
         )
         (queue_dir / f"{live_id}.json").write_text(
-            json.dumps({
-                "id": live_id,
-                "enqueuedAt": "2026-05-02T00:00:00+00:00",
-                "context": {"pid": None},  # no pid → kept
-            })
+            json.dumps(
+                {
+                    "id": live_id,
+                    "enqueuedAt": "2026-05-02T00:00:00+00:00",
+                    "context": {"pid": None},  # no pid → kept
+                }
+            )
         )
 
         # live_id should be earliest because the stale entry's PID is dead

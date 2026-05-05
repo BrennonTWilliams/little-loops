@@ -277,9 +277,7 @@ def resolve_flow(raw_loop_dict: dict[str, Any]) -> dict[str, Any]:
         next_name = parsed_names[i + 1] if not is_last else None
 
         if not isinstance(entry, str):
-            raise ValueError(
-                f"'flow:' entry {i} must be a string, got {type(entry).__name__}"
-            )
+            raise ValueError(f"'flow:' entry {i} must be a string, got {type(entry).__name__}")
 
         if "?" in entry:
             # Ternary form: name?yes_target:no_target
@@ -289,8 +287,7 @@ def resolve_flow(raw_loop_dict: dict[str, Any]) -> dict[str, Any]:
 
             if ":" not in targets or targets.endswith(":") or targets.startswith(":"):
                 raise ValueError(
-                    f"Malformed ternary in flow entry '{entry}': "
-                    f"must be name?yes_target:no_target"
+                    f"Malformed ternary in flow entry '{entry}': must be name?yes_target:no_target"
                 )
             yes_target, no_target = targets.split(":", 1)
             if not yes_target or not no_target:
