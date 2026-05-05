@@ -19,6 +19,7 @@
 - [Loop Discovery: category and labels](#loop-discovery-category-and-labels)
 - [Reusable State Fragments](#reusable-state-fragments)
 - [Loop Template Inheritance via `from:`](#loop-template-inheritance-via-from)
+- [Linear Flow Shorthand via `flow:`](#linear-flow-shorthand-via-flow)
 - [Troubleshooting](#troubleshooting)
 - [Further Reading](#further-reading)
 
@@ -2492,6 +2493,55 @@ The merged loop has every field from `apo-base` — `category`, `max_iterations`
 | Sub-loop (`loop:`) | Reusing a complete loop as a pipeline stage with its own execution context |
 
 `from:` resolution, like fragment resolution, is parse-time only — the engine never sees the `from:` key and there is no runtime overhead.
+
+---
+
+## Linear Flow Shorthand via `flow:`
+
+For simple linear pipelines where each state proceeds unconditionally to the next, the `flow:` key replaces the verbose `states:` map with an ordered list:
+
+```yaml
+description: "Run lint, then tests"
+flow:
+  - run_lint
+  - run_tests
+
+state_defs:
+  run_lint:
+    action: "ruff check scripts/"
+    fragment: shell_exit
+  run_tests:
+    action: "python -m pytest scripts/tests/"
+    fragment: shell_exit
+```
+
+The last entry is implicitly `terminal: true`. Every non-terminal entry transitions unconditionally to the next state (`on_yes`, `on_no`, and `on_error` all point forward).
+
+### Conditional branching in `flow:`
+
+Use the `name?yes_target:no_target` ternary syntax for states that need to branch:
+
+```yaml
+flow:
+  - check_ready?run_impl:done
+  - run_impl
+  - done
+```
+
+`check_ready` receives `on_yes: run_impl` and `on_no: done`; `run_impl` receives `on_yes: done`. Add the state body in `state_defs:` — the ternary only controls routing.
+
+### Relationship to `states:`
+
+`flow:` and `states:` are mutually exclusive — the validator rejects a YAML that defines both. When a child loop (via `from:`) supplies its own `flow:`, it overrides the parent's `states:` entirely.
+
+`state_defs:` supplies optional action/evaluate bodies that are deep-merged into the generated state skeletons. Omit it when a state inherits its body from a fragment.
+
+### When to use `flow:` vs. `states:`
+
+| Approach | Best for |
+|----------|----------|
+| `flow:` | Simple linear pipelines or pipelines with one or two conditional branches |
+| `states:` | Complex graphs with multiple convergent paths, retry loops, or multi-branch routing |
 
 ---
 

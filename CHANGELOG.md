@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **OTelTransport** — Maps ll loop executions to OpenTelemetry traces and spans (loop = trace root, state = child span, action = grandchild span), exporting via OTLP to Grafana, Jaeger, Datadog, and other OTel-compatible backends. Activate with `events.transports: ["otel"]` and configure via `events.otel.endpoint` / `events.otel.service_name`. Requires `pip install 'little-loops[otel]'`; the base package import is unaffected when the optional extras are absent. (FEAT-1312)
+- **`flow:` Linear Shorthand for Loop YAML** — Declare a linear state chain with `flow: [state1, state2, ...]` instead of writing a verbose `states:` map. The last entry is implicitly terminal; non-terminal entries transition unconditionally forward. Supports `name?yes:no` ternary syntax for single-branch gates. Optional `state_defs:` deep-merges bodies into generated states. `flow:` and `states:` are mutually exclusive; a child loop's `flow:` overrides a parent's `states:`.
+- **`--issues` Filter for `/ll:align-issues`** — Pass a comma-separated list of issue IDs (`ENH-123,BUG-456`) to scope alignment checks to specific issues instead of scanning all active issues. (ENH-1362)
+- **`--issues` Filter for `/ll:tradeoff-review-issues`** — Same comma-separated `--issues` argument available on the tradeoff-review command; when omitted, all active issues are reviewed. (ENH-1363)
+
+### Fixed
+
+- **Queued loops missing `instance_id` on retry-acquire** — `ll-loop run --queue` now correctly passes `instance_id` to the retry-acquire call inside the queue wait loop, preventing a scope mismatch that caused queued loops to fail at startup after winning the queue. (BUG-1360)
+- **Orphaned queue entries from dead processes block live waiters** — `_is_earliest_waiter` now skips and removes stale queue entries whose PID is no longer alive, so crashes or kills no longer block subsequent `--queue` runs indefinitely. (BUG-1361)
+- **`refine-to-ready-issue`: score-persistence miss triggers spurious size-review** — The loop now retries the confidence-check action once when `verify_scores_persisted` detects that scores were not written, rather than immediately routing to `breakdown_issue`. (BUG-1365)
+- **`refine-to-ready-issue`: low outcome score routes to `breakdown_issue` despite `decision_needed`** — Added a `check_decision_needed` gate between `check_outcome` and `breakdown_issue`. When `decision_needed: true`, the loop exits via `done` (so the autodev pipeline's `decide` step can resolve the ambiguity) instead of incorrectly triggering a size-review decomposition. (BUG-1366)
 
 ## [1.95.0] - 2026-05-04
 
