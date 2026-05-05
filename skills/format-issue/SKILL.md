@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks to format an issue, fix issue template structure, align an issue to template v2.0, or says "format this issue." Supports interactive Q&A and auto mode.
-
-  Trigger keywords: "format issue", "fix issue template", "align issue", "format this issue", "issue template", "reformat issue", "standardize issue"
 argument-hint: "[issue-id]"
 allowed-tools:
   - Read

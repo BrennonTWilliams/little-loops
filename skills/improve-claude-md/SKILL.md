@@ -3,8 +3,6 @@ description: |
   Use when the user asks to improve or rewrite CLAUDE.md, restructure instructions using
   <important if> blocks, or increase LLM instruction adherence. Apply the 9-step rewrite
   algorithm to wrap each section in a condition block scoped to when it is relevant.
-
-  Trigger keywords: "improve claude md", "rewrite claude md", "important if blocks",
   "instruction adherence", "restructure claude md", "scope instructions"
 argument-hint: "[--dry-run] [--file path]"
 allowed-tools:

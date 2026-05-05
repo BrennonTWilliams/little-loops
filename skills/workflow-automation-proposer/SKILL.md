@@ -1,8 +1,6 @@
 ---
 description: |
   Use when running step 3 of the workflow analysis pipeline, or when the user asks to propose automations, generate workflow proposals, or suggest automation opportunities from patterns.
-
-  Trigger keywords: "propose automations", "workflow proposals", "automation suggestions", "step 3 workflow analysis"
 model: sonnet
 allowed-tools:
   - Read

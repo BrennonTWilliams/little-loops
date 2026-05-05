@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks to analyze product goals, check for feature gaps, scan for goal alignment, evaluate business value, or asks "what features are we missing?" Requires ll-goals.md.
-
-  Trigger keywords: "product analysis", "analyze product goals", "feature gaps", "product scan", "goal alignment", "what features are we missing", "are we building the right things"
 model: sonnet
 allowed-tools:
   - Read

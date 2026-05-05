@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks for a pre-implementation confidence check, wants to evaluate readiness before coding, check implementation risk, or asks "is this issue ready to implement?" Produces dual scores: Readiness (go/no-go) and Outcome Confidence (implementation risk).
-
-  Trigger keywords: "confidence check", "pre-implementation check", "ready to implement", "implementation readiness", "confidence score", "outcome confidence"
 model: sonnet
 allowed-tools:
   - Read

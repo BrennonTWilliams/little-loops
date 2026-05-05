@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks to audit issues for conflicts, detect conflicting requirements or objectives across open issues, find incompatible architecture decisions, or says "check my backlog for conflicts." Supports auto-apply and dry-run modes.
-
-  Trigger keywords: "audit issue conflicts", "detect conflicts", "conflicting issues", "backlog conflicts", "incompatible issues", "conflict audit", "check for conflicts"
 argument-hint: "[--auto] [--dry-run]"
 model: sonnet
 allowed-tools:

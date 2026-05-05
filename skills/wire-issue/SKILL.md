@@ -1,8 +1,6 @@
 ---
 description: |
   Use when a refined issue is missing integration points, incomplete wiring in the implementation plan, or related files that need updating due to the planned changes. Traces all callers, importers, config references, doc mentions, test coverage, and CLI/registration hooks that an implementation must touch.
-
-  Trigger keywords: "wire issue", "missing integration points", "complete the wiring", "fill integration map", "trace dependencies", "find all callers", "wiring pass", "integration gaps"
 model: sonnet
 allowed-tools:
   - Read

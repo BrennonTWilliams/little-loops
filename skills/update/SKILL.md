@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks to update little-loops, update the plugin, or update the pip package.
-
-  Trigger keywords: "update little-loops", "update plugin", "update package", "ll update"
 argument-hint: "[flags]"
 allowed-tools:
   - Bash(python3:*)

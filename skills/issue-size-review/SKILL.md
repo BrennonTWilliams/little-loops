@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user wants to evaluate issue size/complexity, decompose large issues, check if issues are too big for a single session, or audit backlog sizes for sprint planning.
-
-  Trigger keywords: "issue size review", "decompose issues", "split large issues", "issue complexity", "break down issues", "audit issue sizes", "large issue check"
 model: sonnet
 allowed-tools:
   - Read

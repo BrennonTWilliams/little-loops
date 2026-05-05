@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks to assess loop effectiveness, audit loop goal achievement, check whether a loop actually mutated expected artifacts, detect phantom success, or evaluate loop quality before production use.
-
-  Trigger keywords: "assess loop", "audit loop", "loop effectiveness", "loop goal", "phantom success", "loop artifacts", "did the loop work", "loop quality"
 argument-hint: "[loop-name] [--tail N] [--no-rubric-audit]"
 model: sonnet
 allowed-tools:

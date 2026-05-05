@@ -4,8 +4,6 @@ description: |
   functionality. Updates the YAML file, its internal name: field, all loop: sub-loop
   references in other YAMLs, tests (for built-in loops), and docs.
 
-  Trigger keywords: "rename loop", "rename a loop", "change loop name"
-
 argument-hint: "<old-name> <new-name> [--dry-run] [--yes]"
 model: sonnet
 allowed-tools:

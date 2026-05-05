@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks to analyze loop execution history, investigate loop failures, find loop issues, or synthesize actionable issues from loop runs.
-
-  Trigger keywords: "analyze loop", "loop issues", "loop failures", "loop history issues", "loop execution", "loop anomalies"
 argument-hint: "[loop-name] [--tail N]"
 model: sonnet
 allowed-tools:

@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks "should I implement this?", wants an adversarial review of an issue, needs a go/no-go decision, or wants to debate whether an issue is worth implementing. Uses adversarial debate with concurrent pro/con agents and a judge.
-
-  Trigger keywords: "go no go", "go/no-go", "should I implement", "adversarial review", "worth implementing", "debate this issue", "go no go check"
 model: sonnet
 allowed-tools:
   - Read

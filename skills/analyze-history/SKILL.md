@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks about project health, velocity, bug trends, technical debt, issue history, or "are we making progress?" Analyzes issue history to surface trends and progress metrics.
-
-  Trigger keywords: "analyze history", "issue history", "velocity report", "bug trends", "technical debt", "project health", "are we making progress", "issue trends", "history analysis", "how are we doing"
 model: haiku
 allowed-tools:
   - Bash(ll-history:*)

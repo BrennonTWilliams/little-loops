@@ -1,8 +1,6 @@
 ---
 description: |
   Use when the user asks to clean up stuck loops, find stale loops, kill dead loop processes, or troubleshoot loop state issues.
-
-  Trigger keywords: "cleanup loops", "stuck loops", "clean loops", "stale loops", "kill stuck loops", "cleanup-loops"
 argument-hint: "[--dry-run] [--threshold N]"
 model: sonnet
 allowed-tools:
