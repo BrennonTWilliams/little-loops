@@ -7,6 +7,7 @@ for the little-loops FSM system.
 Public exports:
     # Schema
     FSMLoop: Main dataclass representing a complete loop definition
+    CommandEntry: A single entry in the loop's Commands display section
     StateConfig: Configuration for a single state
     EvaluateConfig: Evaluator configuration
     RouteConfig: Routing table configuration
@@ -119,6 +120,7 @@ from little_loops.fsm.persistence import (
 from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
 from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
+    CommandEntry,
     EvaluateConfig,
     FSMLoop,
     LLMConfig,
@@ -144,6 +146,7 @@ from little_loops.fsm.validation import (
 __all__ = [
     "ActionResult",
     "ActionRunner",
+    "CommandEntry",
     "RATE_LIMIT_EXHAUSTED_EVENT",
     "RATE_LIMIT_STORM_EVENT",
     "RATE_LIMIT_WAITING_EVENT",

@@ -866,13 +866,16 @@ def cmd_show(
     # --- Commands ---
     print()
     print("Commands:")
-    cmds = [
-        (f"ll-loop run {loop_name}", "run"),
-        (f"ll-loop test {loop_name}", "single test iteration"),
-        (f"ll-loop stop {loop_name}", "stop a running loop"),
-        (f"ll-loop status {loop_name}", "check if running"),
-        (f"ll-loop history {loop_name}", "execution history"),
-    ]
+    if fsm.commands:
+        cmds = [(e.cmd, e.comment) for e in fsm.commands]
+    else:
+        cmds = [
+            (f"ll-loop run {loop_name}", "run"),
+            (f"ll-loop test {loop_name}", "single test iteration"),
+            (f"ll-loop stop {loop_name}", "stop a running loop"),
+            (f"ll-loop status {loop_name}", "check if running"),
+            (f"ll-loop history {loop_name}", "execution history"),
+        ]
     col_width = max(len(c) for c, _ in cmds) + 2
     for cmd, comment in cmds:
         print(f"  {cmd:<{col_width}}  # {comment}")

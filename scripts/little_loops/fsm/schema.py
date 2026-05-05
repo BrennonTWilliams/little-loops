@@ -577,6 +577,19 @@ class LoopConfigOverrides:
 
 
 @dataclass
+class CommandEntry:
+    """A single command entry for the loop's Commands display section.
+
+    Attributes:
+        cmd: Full command string to display (e.g., "ll-loop run my-loop --param x=1")
+        comment: Short description shown as a comment (e.g., "run with parameter x")
+    """
+
+    cmd: str
+    comment: str
+
+
+@dataclass
 class FSMLoop:
     """Complete FSM loop definition.
 
@@ -594,6 +607,7 @@ class FSMLoop:
         maintain: If True, restart after completion
         llm: LLM evaluation configuration
         on_handoff: Behavior when handoff signal detected (pause/spawn/terminate)
+        commands: Optional override for the Commands section in ll-loop show
     """
 
     name: str
@@ -614,6 +628,7 @@ class FSMLoop:
     config: LoopConfigOverrides | None = None
     category: str = ""
     labels: list[str] = field(default_factory=list)
+    commands: list[CommandEntry] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -659,6 +674,8 @@ class FSMLoop:
             result["category"] = self.category
         if self.labels:
             result["labels"] = self.labels
+        if self.commands:
+            result["commands"] = [{"cmd": e.cmd, "comment": e.comment} for e in self.commands]
 
         return result
 
@@ -701,6 +718,7 @@ class FSMLoop:
             config=loop_config,
             category=data.get("category", ""),
             labels=data.get("labels", []),
+            commands=[CommandEntry(**e) for e in data.get("commands", [])],
         )
 
     def get_all_state_names(self) -> set[str]:

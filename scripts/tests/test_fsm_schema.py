@@ -15,6 +15,7 @@ import yaml
 
 from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
+    CommandEntry,
     EvaluateConfig,
     FSMLoop,
     LLMConfig,
@@ -1630,6 +1631,24 @@ class TestLoadAndValidate:
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
 
+    def test_commands_key_no_warning(self, tmp_path: Path) -> None:
+        """A YAML with top-level 'commands:' block produces no unknown-key warning."""
+        loop_yaml = tmp_path / "commands-key.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A parameterized loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+            "commands:\n"
+            "  - cmd: 'll-loop run test-loop --param issue_id=ENH-1367'\n"
+            "    comment: 'run (replace issue_id)'\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
     def test_missing_description_warns(self, tmp_path: Path) -> None:
         """ENH-1331: loop YAML without description: produces a WARNING."""
         loop_yaml = tmp_path / "no-description.yaml"
@@ -2294,6 +2313,82 @@ class TestFSMLoopParameters:
         assert restored.parameters["target"].type == "string"
         assert restored.parameters["target"].required is True
         assert restored.parameters["mode"].values == ["fast", "slow"]
+
+
+class TestFSMLoopCommands:
+    """Tests for FSMLoop.commands field (ENH-1367)."""
+
+    def test_commands_defaults_to_empty(self) -> None:
+        """FSMLoop.commands defaults to empty list."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert fsm.commands == []
+
+    def test_to_dict_omits_empty_commands(self) -> None:
+        """to_dict does not include 'commands' key when empty."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert "commands" not in fsm.to_dict()
+
+    def test_to_dict_includes_commands(self) -> None:
+        """to_dict serializes commands block when non-empty."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            commands=[
+                CommandEntry(cmd="ll-loop run test --param x=1", comment="run with x"),
+                CommandEntry(cmd="ll-loop test test --param x=1", comment="single test"),
+            ],
+        )
+        d = fsm.to_dict()
+        assert "commands" in d
+        assert d["commands"] == [
+            {"cmd": "ll-loop run test --param x=1", "comment": "run with x"},
+            {"cmd": "ll-loop test test --param x=1", "comment": "single test"},
+        ]
+
+    def test_from_dict_parses_commands(self) -> None:
+        """from_dict deserializes commands block into CommandEntry instances."""
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "commands": [
+                {"cmd": "ll-loop run test --param issue_id=ENH-1367", "comment": "run"},
+                {"cmd": "ll-loop test test --param issue_id=ENH-1367", "comment": "single test"},
+            ],
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert len(fsm.commands) == 2
+        assert isinstance(fsm.commands[0], CommandEntry)
+        assert fsm.commands[0].cmd == "ll-loop run test --param issue_id=ENH-1367"
+        assert fsm.commands[0].comment == "run"
+        assert fsm.commands[1].comment == "single test"
+
+    def test_round_trip_commands(self) -> None:
+        """FSMLoop with commands block round-trips through to_dict/from_dict."""
+        original = FSMLoop(
+            name="my-loop",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            commands=[
+                CommandEntry(
+                    cmd="ll-loop run my-loop --param issue_id=P3-ENH-1367",
+                    comment="run (replace issue_id with your issue)",
+                ),
+            ],
+        )
+        restored = FSMLoop.from_dict(original.to_dict())
+        assert len(restored.commands) == 1
+        assert restored.commands[0].cmd == original.commands[0].cmd
+        assert restored.commands[0].comment == original.commands[0].comment
 
 
 class TestStateConfigWith:

@@ -78,7 +78,7 @@ Load the fully-materialized FSM:
 ll-loop show <loop_name> --resolved --json
 ```
 
-This returns `FSMLoop.to_dict()` JSON with always-present keys `name`, `initial`, `states`, and conditionally `description`, `context` (threshold keys live here), `max_iterations`, `parameters`.
+This returns `FSMLoop.to_dict()` JSON with always-present keys `name`, `initial`, `states`, and conditionally `description`, `context` (threshold keys live here), `max_iterations`, `parameters`, `commands`.
 
 Load the event history:
 

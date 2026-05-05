@@ -3796,6 +3796,7 @@ class FSMLoop:
     timeout: int | None = None         # Max runtime in seconds
     maintain: bool = False             # If True, restart after completion
     llm: LLMConfig = LLMConfig()       # LLM evaluation settings
+    commands: list[CommandEntry] = []  # Optional Commands section override for ll-loop show
 ```
 
 **Methods:**

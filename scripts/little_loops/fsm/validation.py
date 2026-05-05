@@ -95,6 +95,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "config",
         "category",
         "labels",
+        "commands",
         "import",
         "fragments",
         "from",

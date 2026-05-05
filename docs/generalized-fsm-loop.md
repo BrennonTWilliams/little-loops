@@ -345,6 +345,9 @@ maintain: boolean               # Restart after completion
 category: string                # Grouping category for loop discovery and ll-loop list filtering
                                 # (e.g. 'apo', 'code-quality', 'issue-management')
 labels: array[string]           # Arbitrary tags for loop filtering with ll-loop list --label
+commands:                       # Override Commands section in ll-loop show output (optional)
+  - cmd: string                 #   Full command string (e.g. "ll-loop run my-loop --param x=1")
+    comment: string             #   Short description shown as comment
 import: array[string]           # Fragment library files to load, resolved relative to the loop
                                 # file's directory (e.g. ["lib/common.yaml"]). Loaded before
                                 # states are parsed.

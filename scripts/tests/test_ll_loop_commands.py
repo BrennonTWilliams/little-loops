@@ -1930,6 +1930,81 @@ class TestCmdShow:
         assert "ll-loop status my-loop" in out
         assert "ll-loop history my-loop" in out
 
+    def test_show_commands_override_when_yaml_has_commands(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """When loop YAML has a 'commands:' block, Commands section shows those entries."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "description: A parameterized loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+            "commands:\n"
+            "  - cmd: 'll-loop run my-loop --param issue_id=P3-ENH-1367'\n"
+            "    comment: 'run (replace issue_id with your issue)'\n"
+            "  - cmd: 'll-loop test my-loop --param issue_id=P3-ENH-1367'\n"
+            "    comment: 'single test iteration'\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Commands:" in out
+        assert "ll-loop run my-loop --param issue_id=P3-ENH-1367" in out
+        assert "run (replace issue_id with your issue)" in out
+        assert "ll-loop test my-loop --param issue_id=P3-ENH-1367" in out
+        # Generic fallback commands must NOT appear
+        assert "ll-loop stop my-loop" not in out
+        assert "ll-loop status my-loop" not in out
+        assert "ll-loop history my-loop" not in out
+
+    def test_show_commands_fallback_without_yaml_commands(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """When loop YAML has no 'commands:' block, generic default commands are shown."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Commands:" in out
+        assert "ll-loop run my-loop" in out
+        assert "ll-loop stop my-loop" in out
+        assert "ll-loop status my-loop" in out
+        assert "ll-loop history my-loop" in out
+
 
 class TestCmdTest:
     """Tests for cmd_test --state flag (FEAT-609)."""
@@ -2529,6 +2604,47 @@ class TestCmdShowJson:
         out = capsys.readouterr().out
         assert "my-loop" in out
         assert "Diagram:" in out
+
+    def test_show_json_includes_commands_when_present(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json output includes 'commands' array when loop YAML has a commands: block."""
+        import argparse
+        import json
+
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = loops_dir / "my-loop.yaml"
+        loop_yaml.write_text(
+            "name: my-loop\n"
+            "description: A parameterized loop\n"
+            "initial: start\n"
+            "states:\n"
+            "  start:\n"
+            "    action: echo hello\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+            "commands:\n"
+            "  - cmd: 'll-loop run my-loop --param issue_id=ENH-1367'\n"
+            "    comment: 'run (replace issue_id)'\n"
+        )
+
+        logger = Logger(verbose=False)
+        args = argparse.Namespace(json=True, verbose=False, resolved=False)
+        result = cmd_show("my-loop", args, loops_dir, logger)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "commands" in data
+        assert len(data["commands"]) == 1
+        assert data["commands"][0]["cmd"] == "ll-loop run my-loop --param issue_id=ENH-1367"
+        assert data["commands"][0]["comment"] == "run (replace issue_id)"
 
 
 class TestCmdShowResolved:
