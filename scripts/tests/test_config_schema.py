@@ -174,3 +174,16 @@ class TestConfigSchema:
         assert otel_props["endpoint"]["default"] == "http://localhost:4317"
         assert otel_props["service_name"]["type"] == "string"
         assert otel_props["service_name"]["default"] == "little-loops"
+
+        assert "webhook" in events_props, (
+            "events.webhook is not declared; configs using events.webhook will be "
+            "rejected by additionalProperties: false on the events block"
+        )
+        webhook_block = events_props["webhook"]
+        assert webhook_block["type"] == "object"
+        assert webhook_block.get("additionalProperties") is False
+        webhook_props = webhook_block["properties"]
+        assert webhook_props["url"]["default"] is None
+        assert webhook_props["batch_ms"]["type"] == "integer"
+        assert webhook_props["batch_ms"]["default"] == 1000
+        assert webhook_props["headers"]["type"] == "object"

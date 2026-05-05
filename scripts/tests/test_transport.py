@@ -15,15 +15,28 @@ from unittest import mock
 
 import pytest
 
-from little_loops.config.features import EventsConfig, OTelEventsConfig, SocketEventsConfig
+from little_loops.config.features import (
+    EventsConfig,
+    OTelEventsConfig,
+    SocketEventsConfig,
+    WebhookEventsConfig,
+)
 from little_loops.events import EventBus
 from little_loops.transport import (
     JsonlTransport,
     OTelTransport,
     Transport,
     UnixSocketTransport,
+    WebhookTransport,
     wire_transports,
 )
+
+try:
+    import httpx as _httpx  # noqa: F401
+
+    _HAS_HTTPX = True
+except ImportError:
+    _HAS_HTTPX = False
 
 try:
     import opentelemetry.sdk.trace as _otel_sdk_trace  # noqa: F401
@@ -689,3 +702,158 @@ class TestOTelTransport:
                 endpoint="http://localhost:4317",
                 service_name="test",
             )
+
+
+@pytest.mark.skipif(not _HAS_HTTPX, reason="httpx not installed")
+class TestWebhookTransport:
+    """Tests for WebhookTransport implementation."""
+
+    def test_satisfies_protocol(self) -> None:
+        """WebhookTransport satisfies the Transport Protocol."""
+        t = WebhookTransport(url="http://example.com/hook", batch_ms=10000)
+        try:
+            assert isinstance(t, Transport)
+        finally:
+            t.close()
+
+    def test_missing_httpx_raises_runtime_error(self) -> None:
+        """WebhookTransport raises RuntimeError when httpx is not installed."""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "httpx":
+                raise ImportError(f"No module named '{name}'")
+            return original_import(name, *args, **kwargs)
+
+        with mock.patch("builtins.__import__", side_effect=mock_import):
+            with pytest.raises(RuntimeError, match="little-loops\\[webhooks\\]"):
+                WebhookTransport(url="http://example.com/hook")
+
+    def test_send_batches_events_in_single_post(self, tmp_path: Path) -> None:
+        """Events enqueued between flushes are delivered as a single POST body."""
+        posts: list[Any] = []
+
+        def fake_post(url: str, *, content: bytes, headers: dict, timeout: float) -> Any:
+            posts.append(json.loads(content))
+
+            class _Resp:
+                status_code = 200
+
+            return _Resp()
+
+        with mock.patch("httpx.post", side_effect=fake_post):
+            t = WebhookTransport(url="http://example.com/hook", batch_ms=50)
+            t.send({"event": "a"})
+            t.send({"event": "b"})
+            time.sleep(0.2)
+            t.close()
+
+        assert len(posts) >= 1
+        all_events = [e for batch in posts for e in batch]
+        event_names = [e["event"] for e in all_events]
+        assert "a" in event_names
+        assert "b" in event_names
+
+    def test_retry_on_5xx_then_success(self) -> None:
+        """Transport retries on 5xx and succeeds on subsequent attempt."""
+        call_count = 0
+
+        def fake_post(url: str, *, content: bytes, headers: dict, timeout: float) -> Any:
+            nonlocal call_count
+            call_count += 1
+
+            class _Resp:
+                status_code = 500 if call_count == 1 else 200
+
+            return _Resp()
+
+        with mock.patch("httpx.post", side_effect=fake_post):
+            with mock.patch("time.sleep"):
+                t = WebhookTransport(url="http://example.com/hook", batch_ms=10000, max_retries=3)
+                t.send({"event": "x"})
+                t.close()
+
+        assert call_count == 2
+
+    def test_retry_exhausted_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """After max_retries exhausted, a warning is logged and no exception raised."""
+        import logging
+
+        def fake_post(url: str, *, content: bytes, headers: dict, timeout: float) -> Any:
+            class _Resp:
+                status_code = 503
+
+            return _Resp()
+
+        with mock.patch("httpx.post", side_effect=fake_post):
+            with mock.patch("time.sleep"):
+                with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
+                    t = WebhookTransport(
+                        url="http://example.com/hook", batch_ms=10000, max_retries=2
+                    )
+                    t.send({"event": "fail"})
+                    t.close()
+
+        assert any("giving up" in r.message.lower() for r in caplog.records)
+
+    def test_close_drains_queue(self) -> None:
+        """close() performs a final flush before joining the thread."""
+        posts: list[Any] = []
+
+        def fake_post(url: str, *, content: bytes, headers: dict, timeout: float) -> Any:
+            posts.append(json.loads(content))
+
+            class _Resp:
+                status_code = 200
+
+            return _Resp()
+
+        with mock.patch("httpx.post", side_effect=fake_post):
+            t = WebhookTransport(url="http://example.com/hook", batch_ms=60000)
+            t.send({"event": "drain-me"})
+            t.close()
+
+        all_events = [e for batch in posts for e in batch]
+        assert any(e["event"] == "drain-me" for e in all_events)
+
+    def test_wire_transports_webhook(self, tmp_path: Path) -> None:
+        """wire_transports() wires WebhookTransport when 'webhook' is in transports list."""
+        bus = EventBus()
+        config = EventsConfig(
+            transports=["webhook"],
+            webhook=WebhookEventsConfig(
+                url="https://hooks.example.com/ll-events",
+                batch_ms=500,
+                headers={"Authorization": "Bearer tok"},
+            ),
+        )
+
+        with mock.patch("little_loops.transport.WebhookTransport") as MockWebhook:
+            wire_transports(bus, config, log_dir=tmp_path)
+            MockWebhook.assert_called_once_with(
+                url="https://hooks.example.com/ll-events",
+                batch_ms=500,
+                headers={"Authorization": "Bearer tok"},
+                max_retries=3,
+            )
+
+    def test_wire_transports_webhook_skips_when_url_none(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """wire_transports() skips WebhookTransport and logs warning when url is None."""
+        import logging
+
+        bus = EventBus()
+        config = EventsConfig(
+            transports=["webhook"],
+            webhook=WebhookEventsConfig(url=None),
+        )
+
+        with mock.patch("little_loops.transport.WebhookTransport") as MockWebhook:
+            with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
+                wire_transports(bus, config, log_dir=tmp_path)
+            MockWebhook.assert_not_called()
+
+        assert any("url is None" in r.message for r in caplog.records)

@@ -41,6 +41,7 @@ from little_loops.config import (
     SocketEventsConfig,
     SprintsConfig,
     SyncConfig,
+    WebhookEventsConfig,
 )
 
 
@@ -1246,6 +1247,10 @@ class TestEventsConfig:
         assert isinstance(config.otel, OTelEventsConfig)
         assert config.otel.endpoint == "http://localhost:4317"
         assert config.otel.service_name == "little-loops"
+        assert isinstance(config.webhook, WebhookEventsConfig)
+        assert config.webhook.url is None
+        assert config.webhook.batch_ms == 1000
+        assert config.webhook.headers == {}
 
     def test_from_dict_with_transports(self) -> None:
         """Test creating EventsConfig with explicit transports list."""
@@ -1281,6 +1286,24 @@ class TestEventsConfig:
         assert config.transports == ["otel"]
         assert config.otel.endpoint == "http://collector:4317"
         assert config.otel.service_name == "my-service"
+
+    def test_from_dict_with_webhook_overrides(self) -> None:
+        """events.webhook sub-object overrides defaults."""
+        config = EventsConfig.from_dict(
+            {
+                "transports": ["webhook"],
+                "webhook": {
+                    "url": "https://hooks.example.com/ll",
+                    "batch_ms": 500,
+                    "headers": {"Authorization": "Bearer tok"},
+                },
+            }
+        )
+
+        assert config.transports == ["webhook"]
+        assert config.webhook.url == "https://hooks.example.com/ll"
+        assert config.webhook.batch_ms == 500
+        assert config.webhook.headers == {"Authorization": "Bearer tok"}
 
 
 class TestSocketEventsConfig:
@@ -1319,6 +1342,38 @@ class TestOTelEventsConfig:
 
         assert config.endpoint == "http://collector:4317"
         assert config.service_name == "my-svc"
+
+
+class TestWebhookEventsConfig:
+    """Tests for WebhookEventsConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        """WebhookEventsConfig defaults match the documented values."""
+        config = WebhookEventsConfig.from_dict({})
+
+        assert config.url is None
+        assert config.batch_ms == 1000
+        assert config.headers == {}
+
+    def test_from_dict_with_overrides(self) -> None:
+        """Explicit values override defaults."""
+        config = WebhookEventsConfig.from_dict(
+            {
+                "url": "https://hooks.example.com/ll",
+                "batch_ms": 250,
+                "headers": {"X-Api-Key": "secret"},
+            }
+        )
+
+        assert config.url == "https://hooks.example.com/ll"
+        assert config.batch_ms == 250
+        assert config.headers == {"X-Api-Key": "secret"}
+
+    def test_from_dict_url_null(self) -> None:
+        """Explicit null url is preserved."""
+        config = WebhookEventsConfig.from_dict({"url": None})
+
+        assert config.url is None
 
 
 class TestBRConfigEventsIntegration:
@@ -1392,6 +1447,29 @@ class TestBRConfigEventsIntegration:
         assert result["events"]["transports"] == ["otel"]
         assert result["events"]["otel"]["endpoint"] == "http://collector:4317"
         assert result["events"]["otel"]["service_name"] == "my-svc"
+
+    def test_events_webhook_round_trips_through_to_dict(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """events.webhook sub-config round-trips through BRConfig.to_dict()."""
+        sample_config["events"] = {
+            "transports": ["webhook"],
+            "webhook": {
+                "url": "https://hooks.example.com/ll",
+                "batch_ms": 500,
+                "headers": {"Authorization": "Bearer tok"},
+            },
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["events"]["transports"] == ["webhook"]
+        assert result["events"]["webhook"]["url"] == "https://hooks.example.com/ll"
+        assert result["events"]["webhook"]["batch_ms"] == 500
+        assert result["events"]["webhook"]["headers"] == {"Authorization": "Bearer tok"}
 
 
 class TestScoringWeightsConfig:

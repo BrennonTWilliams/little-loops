@@ -48,6 +48,7 @@ from little_loops.config.features import (
     SocketEventsConfig,
     SprintsConfig,
     SyncConfig,
+    WebhookEventsConfig,
 )
 
 __all__ = [
@@ -72,6 +73,7 @@ __all__ = [
     "EventsConfig",
     "OTelEventsConfig",
     "SocketEventsConfig",
+    "WebhookEventsConfig",
     "ScoringWeightsConfig",
     "DependencyMappingConfig",
     "DuplicateDetectionConfig",

@@ -8,6 +8,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 decision_needed: false
+completed_at: 2026-05-05T18:12:08Z
 ---
 
 # FEAT-1314: WebhookTransport with Batching and Retries
@@ -233,6 +234,7 @@ _Added by `/ll:confidence-check` on 2026-05-04_
 - **httpx optional-dep test**: Mocking `builtins.__import__` is fragile if test order matters; isolate the import-mock test in its own method (as the referenced pattern does at `test_issue_history_formatting.py:137`).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-05T18:01:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a724b9ed-c1a7-4c7b-b6f1-b41661567ae0.jsonl`
 - `/ll:confidence-check` - 2026-05-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61328427-9db0-4165-a515-89b899d0858b.jsonl`
 - `/ll:refine-issue` - 2026-05-05T17:46:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76919b1c-78ef-4e2f-b9d8-636083810f70.jsonl`
 - `/ll:wire-issue` - 2026-05-05T04:28:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d01428b3-36bf-4273-8acb-4dec51c409f8.jsonl`
@@ -242,8 +244,34 @@ _Added by `/ll:confidence-check` on 2026-05-04_
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 
 - Split from FEAT-918 - 2026-05-01
+- `/ll:manage-issue` - 2026-05-05T18:12:08Z - implemented
 
 ---
+
+## Resolution
+
+**Status**: Completed 2026-05-05T18:12:08Z
+
+### Changes Made
+
+- `scripts/little_loops/transport.py` — Added `WebhookTransport` class with daemon batch thread, exponential backoff retry, and `close()` drain; added `_WEBHOOK_*` module constants; registered `"webhook"` in `_TRANSPORT_REGISTRY`; added `elif name == "webhook":` branch in `wire_transports()` (skips with warning if `url` is `None`)
+- `scripts/little_loops/config/features.py` — Added `WebhookEventsConfig` dataclass (`url`, `batch_ms`, `headers`); extended `EventsConfig` with `webhook` field and `from_dict()` parsing
+- `scripts/little_loops/config/__init__.py` — Exported `WebhookEventsConfig`
+- `scripts/little_loops/config/core.py` — Added `"webhook"` sub-dict to `BRConfig.to_dict()` events block
+- `scripts/little_loops/__init__.py` — Exported `WebhookTransport`
+- `config-schema.json` — Added `events.webhook` sub-object (`url`, `batch_ms`, `headers`) with `additionalProperties: false`
+- `scripts/pyproject.toml` — Added `webhooks = ["httpx>=0.24.0"]` optional dependency
+- `scripts/tests/test_transport.py` — Added `TestWebhookTransport` (protocol, missing-httpx, batching, retry, close, wire_transports with/without url)
+- `scripts/tests/test_config.py` — Added `TestWebhookEventsConfig`; extended `TestEventsConfig` and `TestBRConfigEventsIntegration` with webhook assertions
+- `scripts/tests/test_config_schema.py` — Extended `test_events_in_schema` to assert `webhook` block presence and structure
+- `docs/reference/CONFIGURATION.md` — Documented `events.webhook` block
+- `docs/reference/API.md` — Documented `WebhookTransport` constructor and updated `wire_transports` shipped-transports list
+- `docs/ARCHITECTURE.md` — Added `WebhookTransport` to multi-transport list and webhook batching description
+
+### Verification
+
+- 221 tests pass (0 failures)
+- `ruff check` clean
 
 ## Scope Boundary
 

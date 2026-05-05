@@ -1088,6 +1088,29 @@
             }
           },
           "additionalProperties": false
+        },
+        "webhook": {
+          "type": "object",
+          "description": "WebhookTransport configuration. POSTs batched events to an HTTP endpoint for remote dashboards, Slack bots, and CI systems. Requires pip install 'little-loops[webhooks]'.",
+          "properties": {
+            "url": {
+              "type": ["string", "null"],
+              "default": null,
+              "description": "HTTP endpoint to POST batched events to. Set to null to disable the webhook transport even if 'webhook' is listed in transports."
+            },
+            "batch_ms": {
+              "type": "integer",
+              "default": 1000,
+              "description": "Flush interval in milliseconds. Events accumulate in memory and are POSTed as a JSON array on each tick."
+            },
+            "headers": {
+              "type": "object",
+              "default": {},
+              "description": "Additional HTTP headers sent with every POST (e.g. {\"Authorization\": \"Bearer token\"}).",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

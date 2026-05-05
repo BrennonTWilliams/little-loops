@@ -85,6 +85,9 @@ otel = [
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp-grpc>=1.20.0",
 ]
+webhooks = [
+    "httpx>=0.24.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["little_loops"]

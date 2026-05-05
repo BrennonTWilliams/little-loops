@@ -35,6 +35,7 @@ from little_loops.transport import (
     OTelTransport,
     Transport,
     UnixSocketTransport,
+    WebhookTransport,
     wire_transports,
 )
 from little_loops.work_verification import (
@@ -67,6 +68,7 @@ __all__ = [
     "OTelTransport",
     "Transport",
     "UnixSocketTransport",
+    "WebhookTransport",
     "wire_transports",
     # fsm
     "RouteContext",

@@ -11,12 +11,16 @@ Built-in implementations:
     OTelTransport: maps loop executions to OpenTelemetry traces/spans, exporting
         via OTLP to Grafana, Jaeger, Datadog, etc. Requires the optional
         ``opentelemetry-sdk`` and ``opentelemetry-exporter-otlp-grpc`` packages.
+    WebhookTransport: POSTs batched events to an HTTP endpoint for remote
+        dashboards, Slack bots, and CI systems. Requires the optional ``httpx``
+        package (``pip install little-loops[webhooks]``).
 
 Public exports:
     Transport: runtime-checkable Protocol that any sink must satisfy
     JsonlTransport: writes events to a JSONL file
     UnixSocketTransport: streams events over an AF_UNIX socket
     OTelTransport: exports loop traces via OTLP
+    WebhookTransport: POSTs batched events to an HTTP endpoint
     wire_transports: register transports listed in `EventsConfig` on an `EventBus`
 """
 
@@ -44,6 +48,11 @@ _CLIENT_THREAD_JOIN_TIMEOUT = 1.0
 _CLOSE_TOTAL_TIMEOUT = 10.0
 _ACCEPT_POLL_TIMEOUT = 1.0
 _CLIENT_QUEUE_POLL_TIMEOUT = 0.5
+
+_WEBHOOK_BATCH_MS_DEFAULT = 1000
+_WEBHOOK_CLOSE_TIMEOUT = 10.0
+_WEBHOOK_RETRY_BASE_S = 0.5
+_WEBHOOK_RETRY_MAX_S = 8.0
 
 
 @runtime_checkable
@@ -441,7 +450,90 @@ class OTelTransport:
             self._state_span = None
 
 
-_TRANSPORT_REGISTRY: dict[str, str] = {"jsonl": "jsonl", "otel": "otel", "socket": "socket"}
+class WebhookTransport:
+    """POSTs batched FSM events to an HTTP endpoint.
+
+    Events are enqueued non-blocking in ``send()`` and flushed by a daemon
+    thread on a configurable interval.  Failed POSTs are retried with
+    exponential backoff; after ``max_retries`` the batch is dropped with a
+    warning rather than raising to the caller.
+
+    Requires ``httpx``: ``pip install little-loops[webhooks]``.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        batch_ms: int = _WEBHOOK_BATCH_MS_DEFAULT,
+        headers: dict[str, str] | None = None,
+        max_retries: int = 3,
+    ) -> None:
+        try:
+            import httpx as _httpx
+        except ImportError as exc:
+            raise RuntimeError(
+                "WebhookTransport requires httpx: pip install little-loops[webhooks]"
+            ) from exc
+        self._httpx = _httpx
+        self._url = url
+        self._batch_ms = batch_ms
+        self._headers = dict(headers) if headers else {}
+        self._max_retries = max_retries
+        self._queue: Queue[dict[str, Any]] = Queue()
+        self._shutdown = threading.Event()
+        self._thread = threading.Thread(target=self._batch_loop, daemon=True, name="webhook-batch")
+        self._thread.start()
+
+    def send(self, event: dict[str, Any]) -> None:
+        """Enqueue an event for the next batch flush (non-blocking)."""
+        if not self._shutdown.is_set():
+            self._queue.put(event)
+
+    def close(self) -> None:
+        """Signal shutdown, drain the queue with one final flush, and join the thread."""
+        self._shutdown.set()
+        self._thread.join(timeout=_WEBHOOK_CLOSE_TIMEOUT)
+
+    def _batch_loop(self) -> None:
+        while not self._shutdown.is_set():
+            self._shutdown.wait(timeout=self._batch_ms / 1000.0)
+            self._flush()
+        # One final drain after shutdown signal
+        self._flush()
+
+    def _flush(self) -> None:
+        events: list[dict[str, Any]] = []
+        while True:
+            try:
+                events.append(self._queue.get_nowait())
+            except Empty:
+                break
+        if not events:
+            return
+        self._post_with_retry(events)
+
+    def _post_with_retry(self, events: list[dict[str, Any]]) -> None:
+        payload = json.dumps(events).encode()
+        headers = {"Content-Type": "application/json", **self._headers}
+        backoff = _WEBHOOK_RETRY_BASE_S
+        for attempt in range(self._max_retries + 1):
+            try:
+                resp = self._httpx.post(self._url, content=payload, headers=headers, timeout=10.0)
+                if resp.status_code < 500:
+                    return
+            except Exception:
+                pass
+            if attempt < self._max_retries:
+                time.sleep(backoff)
+                backoff = min(backoff * 2, _WEBHOOK_RETRY_MAX_S)
+        logger.warning(
+            "WebhookTransport: giving up after %d retries posting to %r",
+            self._max_retries,
+            self._url,
+        )
+
+
+_TRANSPORT_REGISTRY: dict[str, str] = {"jsonl": "jsonl", "otel": "otel", "socket": "socket", "webhook": "webhook"}
 
 
 def wire_transports(
@@ -487,6 +579,18 @@ def wire_transports(
                 )
             resolved = _resolve_socket_path(config.socket.path, base)
             bus.add_transport(UnixSocketTransport(resolved, config.socket.max_clients))
+        elif name == "webhook":
+            if config.webhook.url is None:
+                logger.warning("WebhookTransport: events.webhook.url is None; skipping")
+                continue
+            bus.add_transport(
+                WebhookTransport(
+                    url=config.webhook.url,
+                    batch_ms=config.webhook.batch_ms,
+                    headers=config.webhook.headers,
+                    max_retries=3,
+                )
+            )
 
 
 def _resolve_socket_path(configured: str, base: Path) -> Path:

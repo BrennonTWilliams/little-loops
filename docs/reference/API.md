@@ -5576,6 +5576,53 @@ OTelTransport(
 | `loop_complete` | Close state + action spans; set loop span status (OK or ERROR); close loop span. |
 | `evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, `action_output` | Add span event on innermost open span. |
 
+### WebhookTransport
+
+POSTs batched FSM events to an HTTP endpoint for remote dashboards, Slack bots, and CI systems. Requires `pip install 'little-loops[webhooks]'`.
+
+**Batching:** `send()` enqueues events non-blocking; a daemon thread flushes the queue every `batch_ms` milliseconds. All accumulated events are POSTed as a single JSON array.
+
+**Retry:** Failed POSTs (5xx or connection error) are retried up to `max_retries` times with exponential backoff (0.5s → … → 8s). After exhaustion the batch is dropped with a `WARNING` — exceptions never propagate to the caller.
+
+```python
+from little_loops.transport import WebhookTransport
+
+transport = WebhookTransport(
+    url="https://hooks.example.com/ll-events",
+    batch_ms=1000,
+    headers={"Authorization": "Bearer token"},
+    max_retries=3,
+)
+transport.send({"event": "loop_start", "loop_name": "my-loop"})
+transport.close()
+```
+
+#### Constructor
+
+```python
+WebhookTransport(
+    url: str,
+    batch_ms: int = 1000,
+    headers: dict[str, str] | None = None,
+    max_retries: int = 3,
+)
+```
+
+**Parameters:**
+- `url` - HTTP endpoint to POST batched events to.
+- `batch_ms` - Flush interval in milliseconds (default: 1000).
+- `headers` - Optional dict of extra HTTP headers (e.g. `{"Authorization": "Bearer tok"}`).
+- `max_retries` - Number of retries on 5xx/connection error before giving up (default: 3).
+
+**Raises `RuntimeError`** at construction time if `httpx` is not installed.
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `send(event: dict[str, Any]) -> None` | Enqueue the event for the next batch flush. Non-blocking. No-op after `close()` is called. |
+| `close() -> None` | Signal shutdown, drain the queue with one final flush, and join the daemon thread (10s timeout). |
+
 ### wire_transports
 
 Register the transports listed in an `EventsConfig` on an `EventBus`. Called by CLI entry points (ll-loop, ll-parallel, ll-sprint) at startup.
@@ -5604,7 +5651,7 @@ def wire_transports(
 - `log_dir` - Directory under which built-in transports place their log files. Defaults to `Path(".ll")` under the current working directory.
 
 **Behavior:**
-- Each name in `config.transports` is resolved against an internal registry of built-in transport names. Currently shipped: `"jsonl"` (registers a `JsonlTransport` writing to `<log_dir>/events.jsonl`), `"socket"` (registers a [`UnixSocketTransport`](#unixsockettransport) bound at `config.socket.path` with `config.socket.max_clients`), and `"otel"` (registers an [`OTelTransport`](#oteltransport) using `config.otel.endpoint` and `config.otel.service_name`).
+- Each name in `config.transports` is resolved against an internal registry of built-in transport names. Currently shipped: `"jsonl"` (registers a `JsonlTransport` writing to `<log_dir>/events.jsonl`), `"socket"` (registers a [`UnixSocketTransport`](#unixsockettransport) bound at `config.socket.path` with `config.socket.max_clients`), `"otel"` (registers an [`OTelTransport`](#oteltransport) using `config.otel.endpoint` and `config.otel.service_name`), and `"webhook"` (registers a [`WebhookTransport`](#webhooktransport) using `config.webhook.url`, `batch_ms`, and `headers`; skipped with a warning if `url` is `None`).
 - Unknown names log a `WARNING` and are skipped — a typo in user config never prevents the loop from starting.
 - The `"socket"` transport raises `RuntimeError` on platforms without `AF_UNIX` (e.g. Windows). This is the deliberate exception to the warn-and-skip rule: silently dropping `"socket"` on Windows would be a more confusing failure mode.
 

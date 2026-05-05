@@ -464,6 +464,11 @@ class BRConfig:
                     "endpoint": self._events.otel.endpoint,
                     "service_name": self._events.otel.service_name,
                 },
+                "webhook": {
+                    "url": self._events.webhook.url,
+                    "batch_ms": self._events.webhook.batch_ms,
+                    "headers": dict(self._events.webhook.headers),
+                },
             },
             "sync": {
                 "enabled": self._sync.enabled,

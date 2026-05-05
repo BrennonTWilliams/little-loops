@@ -758,6 +758,7 @@ List of transports to wire onto the EventBus at runtime. Transports are additive
 | `"jsonl"` | Registers a `JsonlTransport` writing to `<log_dir>/events.jsonl` (defaults to `.ll/events.jsonl`). |
 | `"socket"` | Registers a `UnixSocketTransport` streaming newline-delimited JSON events over an `AF_UNIX` socket. Configured under `events.socket` (see below). Not available on Windows — `wire_transports` raises `RuntimeError`. |
 | `"otel"` | Registers an `OTelTransport` that maps loop executions to OpenTelemetry traces/spans and exports via OTLP. Configured under `events.otel` (see below). Requires `pip install 'little-loops[otel]'`. |
+| `"webhook"` | Registers a `WebhookTransport` that batches events and POSTs them as JSON arrays to an HTTP endpoint. Configured under `events.webhook` (see below). Requires `pip install 'little-loops[webhooks]'`. |
 
 ```json
 {
@@ -806,6 +807,35 @@ Requires: `pip install 'little-loops[otel]'` (installs `opentelemetry-sdk` and `
     "otel": {
       "endpoint": "http://localhost:4317",
       "service_name": "little-loops"
+    }
+  }
+}
+```
+
+### `events.webhook`
+
+Requires: `pip install 'little-loops[webhooks]'` (installs `httpx`).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `events.webhook.url` | `string \| null` | `null` | HTTP endpoint to POST batched events to. When `null`, the transport is skipped even if `"webhook"` is listed in `transports`. |
+| `events.webhook.batch_ms` | `integer` | `1000` | Flush interval in milliseconds. Events accumulate and are POSTed as a JSON array on each tick. |
+| `events.webhook.headers` | `object` | `{}` | Additional HTTP headers sent with every POST (e.g. `{"Authorization": "Bearer token"}`). |
+
+**Batching:** Events are enqueued non-blocking in `send()` and flushed by a daemon thread. All events queued during a `batch_ms` window are included in one POST body as a JSON array.
+
+**Retry behaviour:** Failed POSTs (5xx responses or connection errors) are retried up to 3 times with exponential backoff (0.5s → 1s → 2s → 4s, capped at 8s). After retries are exhausted the batch is dropped with a warning — exceptions never propagate to the caller.
+
+**Shutdown:** `close()` signals the daemon thread to stop, performs one final flush of any queued events, then joins the thread with a 10s timeout.
+
+```json
+{
+  "events": {
+    "transports": ["jsonl", "webhook"],
+    "webhook": {
+      "url": "https://hooks.example.com/ll-events",
+      "batch_ms": 1000,
+      "headers": { "Authorization": "Bearer <token>" }
     }
   }
 }

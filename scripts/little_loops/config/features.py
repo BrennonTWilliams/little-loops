@@ -404,6 +404,24 @@ class OTelEventsConfig:
 
 
 @dataclass
+class WebhookEventsConfig:
+    """WebhookTransport configuration."""
+
+    url: str | None = None
+    batch_ms: int = 1000
+    headers: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WebhookEventsConfig:
+        """Create WebhookEventsConfig from dictionary."""
+        return cls(
+            url=data.get("url", None),
+            batch_ms=data.get("batch_ms", 1000),
+            headers=data.get("headers", {}),
+        )
+
+
+@dataclass
 class EventsConfig:
     """Event transport configuration.
 
@@ -415,6 +433,7 @@ class EventsConfig:
     transports: list[str] = field(default_factory=list)
     socket: SocketEventsConfig = field(default_factory=SocketEventsConfig)
     otel: OTelEventsConfig = field(default_factory=OTelEventsConfig)
+    webhook: WebhookEventsConfig = field(default_factory=WebhookEventsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EventsConfig:
@@ -423,4 +442,5 @@ class EventsConfig:
             transports=data.get("transports", []),
             socket=SocketEventsConfig.from_dict(data.get("socket", {})),
             otel=OTelEventsConfig.from_dict(data.get("otel", {})),
+            webhook=WebhookEventsConfig.from_dict(data.get("webhook", {})),
         )

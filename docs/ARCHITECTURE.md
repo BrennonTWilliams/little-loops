@@ -473,7 +473,7 @@ little-loops includes an extension architecture built on a structured event bus.
 | Component | File | Purpose |
 |-----------|------|---------|
 | `LLEvent` | `events.py` | Structured event dataclass (type, timestamp, payload) |
-| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (`JsonlTransport`, `UnixSocketTransport`, `OTelTransport`) |
+| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (`JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`) |
 | `LLExtension` | `extension.py` | Runtime-checkable protocol for event consumers |
 | `ExtensionLoader` | `extension.py` | Discovers extensions from config paths and entry points |
 | `InterceptorExtension` | `extension.py` | Protocol for plugins providing `before_route`/`after_route` hooks; stored in `FSMExecutor._interceptors` |
@@ -501,9 +501,11 @@ Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`
 | `ll-parallel` | `cli/parallel.py` | Yes — EventBus only (no FSMExecutor wiring) | Yes — `wire_transports()` after extensions; teardown runs in `ParallelOrchestrator._cleanup()` via `event_bus.close_transports()` |
 | `ll-sprint` | `cli/sprint/run.py` | Yes — EventBus only (no FSMExecutor wiring for parallel branch) | Yes — per-wave `wire_transports()` after extensions; teardown delegated to per-wave `ParallelOrchestrator._cleanup()` |
 
-The transport layer fans events out additively: every event emitted on the `EventBus` is delivered to every registered observer **and** every registered transport. Built-in transports: `JsonlTransport` (durable file log; selected via `events.transports: ["jsonl"]`), `UnixSocketTransport` (real-time `AF_UNIX` streaming for local TUIs and dashboards; selected via `events.transports: ["socket"]`, requires POSIX), and `OTelTransport` (OpenTelemetry OTLP exporter; selected via `events.transports: ["otel"]`, requires `pip install 'little-loops[otel]'`).
+The transport layer fans events out additively: every event emitted on the `EventBus` is delivered to every registered observer **and** every registered transport. Built-in transports: `JsonlTransport` (durable file log; selected via `events.transports: ["jsonl"]`), `UnixSocketTransport` (real-time `AF_UNIX` streaming for local TUIs and dashboards; selected via `events.transports: ["socket"]`, requires POSIX), `OTelTransport` (OpenTelemetry OTLP exporter; selected via `events.transports: ["otel"]`, requires `pip install 'little-loops[otel]'`), and `WebhookTransport` (batched HTTP POST to a remote endpoint; selected via `events.transports: ["webhook"]`, requires `pip install 'little-loops[webhooks]'`).
 
-**OTel mapping:** Each loop run becomes a trace. `loop_start` opens the root span; `state_enter` opens a child span (closing the prior state span); `action_start`/`action_complete` bracket a grandchild span; `loop_complete` closes all open spans and sets the trace status. Span events are recorded for `evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, and `action_output` on the innermost open span. `loop_resume` starts a new root span (new trace). Sub-loop events (`depth > 0`) are no-ops with a single per-session warning. New transports (webhook, etc.) plug in through the same `Transport` protocol without changes to `EventBus` or the CLI wiring.
+**OTel mapping:** Each loop run becomes a trace. `loop_start` opens the root span; `state_enter` opens a child span (closing the prior state span); `action_start`/`action_complete` bracket a grandchild span; `loop_complete` closes all open spans and sets the trace status. Span events are recorded for `evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, and `action_output` on the innermost open span. `loop_resume` starts a new root span (new trace). Sub-loop events (`depth > 0`) are no-ops with a single per-session warning.
+
+**Webhook batching:** `WebhookTransport.send()` enqueues non-blocking; a daemon thread POSTs accumulated events as a JSON array on each `batch_ms` tick. Failed POSTs retry with exponential backoff (up to 3 times, 0.5s–8s); after exhaustion the batch is dropped with a warning. `close()` does one final flush before joining the thread. New transports plug in through the same `Transport` protocol without changes to `EventBus` or the CLI wiring.
 
 ### Extension Loading
 
