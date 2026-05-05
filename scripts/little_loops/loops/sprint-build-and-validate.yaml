@@ -1,9 +1,10 @@
 name: sprint-build-and-validate
 category: meta
 description: |
-  Create a sprint from open/active issues, run dependency mapping, conflict
-  auditing, and issue verification in headless mode, commit, then execute
-  the sprint via ll-sprint in parallelized waves.
+  Create a sprint from open/active issues, recursively refine all issues to
+  confidence threshold (via recursive-refine), run dependency mapping and
+  conflict auditing, commit, then execute the sprint via ll-sprint in
+  parallelized waves.
 initial: create_sprint
 context:
   max_issues: 8
@@ -25,19 +26,35 @@ states:
   route_create:
     action: "ll-sprint list 2>/dev/null | grep -q ."
     fragment: shell_exit
-    on_yes: size_review
+    on_yes: extract_sprint_issues
     on_no: create_sprint
     on_error: create_sprint
 
-  size_review:
-    action_type: prompt
-    timeout: 300
+  extract_sprint_issues:
     action: |
-      Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
-      Run `/ll:issue-size-review --auto` once for all sprint issues as a single grouped call.
-      Any Very Large issues (score ≥ 8) will be automatically decomposed into focused child issues.
-    capture: size_review_result
-    next: map_dependencies
+      SPRINT_FILE=".sprints/${captured.sprint_name.output}.yaml"
+      if [ ! -f "$SPRINT_FILE" ]; then
+        echo "Sprint file not found: $SPRINT_FILE" >&2
+        exit 1
+      fi
+      ISSUES=$(grep '^ *-' "$SPRINT_FILE" | sed 's/^ *- *//' | tr '\n' ',' | sed 's/,$//')
+      if [ -z "$ISSUES" ]; then
+        exit 1
+      fi
+      echo "$ISSUES"
+    action_type: shell
+    timeout: 30
+    capture: input
+    on_yes: refine_issues
+    on_no: map_dependencies
+    on_error: map_dependencies
+
+  refine_issues:
+    loop: recursive-refine
+    context_passthrough: true
+    on_success: map_dependencies
+    on_failure: map_dependencies
+    on_error: map_dependencies
 
   map_dependencies:
     action_type: prompt
@@ -55,30 +72,7 @@ states:
       Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
       Run `/ll:audit-issue-conflicts --auto` once for all sprint issues as a single grouped call.
     capture: conflict_result
-    next: verify_issues
-
-  verify_issues:
-    action_type: prompt
-    timeout: 600
-    action: |
-      Read the sprint file .sprints/${captured.sprint_name.output}.yaml to get the issue list.
-      Run `/ll:verify-issues --auto` once for all sprint issues as a single grouped call.
-    capture: verify_result
-    next: route_validation
-
-  route_validation:
-    evaluate:
-      type: llm_structured
-      source: "${captured.verify_result.output}"
-      prompt: |
-        Review the issue verification results. Did all issues pass verification
-        without critical errors that would block the sprint?
-        Return "yes" if all issues are verified and ready to proceed.
-        Return "no" if any issues have critical problems that need to be fixed first.
-    on_yes: commit
-    on_no: fix_issues
-    on_error: commit
-    on_blocked: fix_issues
+    next: commit
 
   commit:
     action_type: prompt
@@ -119,16 +113,6 @@ states:
     on_yes: done
     on_no: done
     on_error: done
-
-  fix_issues:
-    action_type: prompt
-    timeout: 600
-    action: |
-      Review any unresolved or failed issues from the sprint.
-      Run `/ll:refine-issue --auto` for each issue that failed verification or was blocked during the sprint run.
-      Focus on the highest-priority unresolved issues.
-    capture: fix_result
-    next: done
 
   done:
     terminal: true
