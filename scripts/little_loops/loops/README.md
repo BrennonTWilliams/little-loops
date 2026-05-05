@@ -24,7 +24,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 | Loop | Description |
 |---|---|
-| `sprint-build-and-validate` | Create a sprint from the backlog, validate included issues, and execute |
+| `sprint-build-and-validate` | Create a sprint from the backlog (or reuse an existing one via optional arg), refine issues, and execute |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
 
 ## Code Quality

@@ -1,16 +1,41 @@
 name: sprint-build-and-validate
 category: meta
+input_key: sprint_name
 description: |
   Create a sprint from open/active issues, recursively refine all issues to
   confidence threshold (via recursive-refine), run dependency mapping and
   conflict auditing, commit, then execute the sprint via ll-sprint in
-  parallelized waves.
-initial: create_sprint
+  parallelized waves. Pass an existing sprint name to skip creation:
+    ll-loop run sprint-build-and-validate [sprint-name]
+initial: route_input
 context:
   max_issues: 8
+  sprint_name: ""
 import:
   - lib/common.yaml
 states:
+  route_input:
+    action: |
+      if [ -z "${context.sprint_name}" ]; then
+        exit 1
+      fi
+      SPRINT_FILE=".sprints/${context.sprint_name}.yaml"
+      if [ ! -f "$SPRINT_FILE" ]; then
+        echo "ERROR: Sprint '${context.sprint_name}' not found at $SPRINT_FILE" >&2
+        exit 2
+      fi
+      echo "${context.sprint_name}"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    capture: sprint_name
+    on_yes: extract_sprint_issues
+    on_no: create_sprint
+    on_error: failed
+
+  failed:
+    terminal: true
+
   create_sprint:
     action_type: prompt
     timeout: 300

@@ -808,7 +808,6 @@ class TestBuiltinLoopOnBlockedCoverage:
 
     # Each entry: (loop_file, state_name, expected_on_blocked_value)
     REQUIRED_ON_BLOCKED: list[tuple[str, str, str]] = [
-        ("sprint-build-and-validate.yaml", "route_validation", "fix_issues"),
         ("issue-staleness-review.yaml", "triage", "find_stale"),
     ]
 
@@ -1968,24 +1967,24 @@ class TestSprintBuildAndValidateLoop:
     def test_required_top_level_fields(self, data: dict) -> None:
         """Loop must have name, initial, and states fields."""
         assert data.get("name") == "sprint-build-and-validate"
-        assert data.get("initial") == "create_sprint"
+        assert data.get("initial") == "route_input"
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
         required = {
+            "route_input",
+            "failed",
             "create_sprint",
             "route_create",
-            "size_review",
+            "extract_sprint_issues",
+            "refine_issues",
             "map_dependencies",
             "audit_conflicts",
-            "verify_issues",
-            "route_validation",
             "commit",
             "run_sprint",
             "extract_unresolved",
             "refine_unresolved",
-            "fix_issues",
             "done",
         }
         actual = set(data["states"].keys())
@@ -1998,19 +1997,38 @@ class TestSprintBuildAndValidateLoop:
             "route_review is a dead state and must be removed"
         )
 
-    def test_route_create_on_yes_targets_size_review(self, data: dict) -> None:
-        """route_create.on_yes must target size_review (not map_dependencies)."""
+    def test_route_create_on_yes_targets_extract_sprint_issues(self, data: dict) -> None:
+        """route_create.on_yes must target extract_sprint_issues."""
         state = data["states"].get("route_create", {})
-        assert state.get("on_yes") == "size_review", (
-            f"route_create.on_yes should be 'size_review', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "extract_sprint_issues", (
+            f"route_create.on_yes should be 'extract_sprint_issues', got {state.get('on_yes')!r}"
         )
 
-    def test_size_review_next_targets_map_dependencies(self, data: dict) -> None:
-        """size_review.next must route to map_dependencies."""
-        state = data["states"].get("size_review", {})
-        assert state.get("next") == "map_dependencies", (
-            f"size_review.next should be 'map_dependencies', got {state.get('next')!r}"
+    def test_route_input_routes_to_extract_when_name_provided(self, data: dict) -> None:
+        """route_input.on_yes (exit 0, sprint found) must route to extract_sprint_issues."""
+        state = data["states"].get("route_input", {})
+        assert state.get("on_yes") == "extract_sprint_issues", (
+            f"route_input.on_yes should be 'extract_sprint_issues', got {state.get('on_yes')!r}"
         )
+
+    def test_route_input_routes_to_create_when_no_name(self, data: dict) -> None:
+        """route_input.on_no (exit 1, no sprint_name) must route to create_sprint."""
+        state = data["states"].get("route_input", {})
+        assert state.get("on_no") == "create_sprint", (
+            f"route_input.on_no should be 'create_sprint', got {state.get('on_no')!r}"
+        )
+
+    def test_route_input_routes_to_failed_on_error(self, data: dict) -> None:
+        """route_input.on_error (exit 2, sprint file missing) must route to failed terminal state."""
+        state = data["states"].get("route_input", {})
+        assert state.get("on_error") == "failed", (
+            f"route_input.on_error should be 'failed', got {state.get('on_error')!r}"
+        )
+
+    def test_failed_is_terminal(self, data: dict) -> None:
+        """failed state must be terminal."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True, "failed state must have terminal: true"
 
     def test_run_sprint_uses_shell_exit_fragment(self, data: dict) -> None:
         """run_sprint must use fragment: shell_exit for exit-code-based routing."""
