@@ -2,12 +2,12 @@
 captured_at: '2026-05-04T21:18:58Z'
 discovered_date: '2026-05-04'
 discovered_by: capture-issue
-decision_needed: true
-confidence_score: 95
-outcome_confidence: 61
-score_complexity: 18
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 0
+score_ambiguity: 18
 score_change_surface: 25
 missing_artifacts: true
 ---
@@ -49,15 +49,39 @@ Three viable approaches, ordered by implementation simplicity:
 
 **Option A — PostToolUse denial (simplest, reactive):** Add a PostToolUse Write hook that runs after the file is written. It checks if any other file in `.issues/` shares the same integer ID. If a duplicate is found, it deletes the just-written file and emits a clear error message. No cross-hook state needed; purely reactive.
 
+> **Selected:** Option A — PostToolUse reactive deletion — cleanest codebase fit (11/12); one new script + one `hooks.json` entry, direct reuse of established PostToolUse patterns.
+
 **Option B — Reservation sentinel (proactive, same hook):** Before returning "allow", the PreToolUse hook writes a zero-byte reservation file (e.g., `.issues/.reserve-1364`) under the same lock. The `find` scan is extended to also check for reservation sentinels. A cleanup step (PostToolUse or session cleanup) removes stale reservations after the write completes. More complex but prevents the duplicate from ever appearing on disk.
 
 **Option C — Atomic ID allocation in `next-id` (most robust):** `ll-issues next-id` (`cmd_next_id` in `scripts/little_loops/cli/issues/next_id.py`) writes a reservation file (or atomically increments a counter) as a side effect of printing the next ID. No two calls to `next-id` can produce the same number regardless of hook timing. The hook becomes a secondary safety net. Requires changes to the Python CLI layer.
 
 Option A is the lowest-risk change; Option C eliminates the root cause entirely.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-04.
+
+**Selected**: Option A — PostToolUse reactive deletion
+
+**Reasoning**: Option A maps directly onto two existing PostToolUse hook shapes — `context-monitor.sh` for the `exit 2`/stderr signaling convention and `issue-completion-log.sh` for the `matcher: "Bash"` → `matcher: "Write"` registration pattern — and reuses the already-written `tool_input.file_path` extraction from `check-duplicate-issue-id.sh` line 32. Option B inherits the fail-open lock-timeout bypass unchanged and introduces orphaned-reservation risk when a Write fails at the OS level (no `PostToolUseFailure` handler exists). Option C's `IssueParser._generate_id_from_filename()` fallback calls `get_next_issue_number()` during read-only parsing, which would spuriously create reservations on every `ll-issues list`, and the batch-increment pattern documented across five commands defeats atomicity regardless.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| Option B | 2/3 | 1/3 | 2/3 | 1/3 | 6/12 |
+| Option C | 1/3 | 0/3 | 2/3 | 0/3 | 3/12 |
+
+**Key evidence**:
+- **Option A**: PostToolUse `matcher: "Write"` shape exists in `hooks.json` (parallel to `matcher: "Bash"` at lines 68–75); `tool_input.file_path` extraction already written at `check-duplicate-issue-id.sh:32`; `exit 2` + stderr convention confirmed in `context-monitor.sh:360–370`; `TestIssueCompletionLog` fixture pattern applies directly.
+- **Option B**: All lock utilities reusable but `session-cleanup.sh` needs new `jq` call for `issues.base_dir`; fail-open bypass (lines 98–102) is inherited; `PostToolUseFailure` gap leaves orphaned reservations on failed Writes.
+- **Option C**: `IssueParser._generate_id_from_filename()` calls `get_next_issue_number()` in read-only parsing (spurious reservation risk); `create_issue_from_failure()` and `GitHubSyncManager._create_local_issue()` bypass hooks entirely; batch-increment pattern in 5 commands/2 skills defeats atomicity guarantee.
+
 ## Integration Map
 
 ### Files to Modify
+- `hooks/scripts/check-duplicate-issue-id-post.sh` — **NEW FILE (Option A)**: PostToolUse reactive deletion script; receives `tool_input.file_path` on stdin, finds same-integer duplicate already on disk in `.issues/`, deletes the just-written duplicate, emits `exit 2` + stderr feedback; source `hooks/scripts/lib/common.sh` for lock utilities [Wiring pass 2]
 - `hooks/scripts/check-duplicate-issue-id.sh` — extend duplicate check or add reservation write (Options A/B)
 - `scripts/little_loops/cli/issues/next_id.py` — atomic reservation logic (Option C only)
 - `scripts/little_loops/cli/issues/` — `get_next_issue_number` in `issue_parser.py` (Option C only)
@@ -71,6 +95,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/sync.py` — calls `get_next_issue_number()` in `GitHubSync` (~line 638) — same bypass concern as `issue_lifecycle.py`; sync writes files directly through Python [Agent 1 + 2 finding]
 - `scripts/little_loops/issue_parser.py` — `IssueParser._extract_issue_id()` calls `get_next_issue_number()` as a fallback during **read-only** parsing; if Option C adds a reservation side effect, `ll-issues list`, `ll-issues show`, and any command that constructs an `IssueParser` would spuriously create reservations [Agent 2 finding — critical for Option C]
 - `scripts/little_loops/cli/issues/__init__.py` — dispatches to `cmd_next_id()` subcommand [Agent 1 finding]
+- `skills/capture-issue/SKILL.md` — "Action: Create New Issue" section calls `ll-issues next-id` then Write; under Option A, Write returns success (from the skill's perspective) but the PostToolUse hook then deletes the file and emits `exit 2` feedback; the skill has **no retry logic** for this case and will hold a reference to a filename that no longer exists — review whether a fallback or note is needed [Wiring pass 2 — behavioral contract change]
 
 ### Similar Patterns
 - `hooks/scripts/lib/common.sh` `acquire_lock` — same locking pattern used elsewhere; fix should stay consistent
@@ -109,6 +134,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `commands/scan-product.md` — step 4: same batch-increment pattern; same conflict with Option C [Agent 2 finding — command coupling]
 - `skills/configure/areas.md` — hook configuration table shows `[Plugin] PreToolUse Write|Edit check-duplicate-issue-id.sh 5s`; add PostToolUse row for Option A's new hook [Agent 2 finding]
 - `skills/analyze-loop/SKILL.md` — section "6a. Allocate ID" note: *"Do not batch-allocate IDs upfront, as concurrent writes could produce collisions"* — only mention of collision risk in skills/commands; under Option C the causal mechanism changes from hook timing to reservation-file atomicity; update note [Agent 2 finding]
+- `CHANGELOG.md` — add BUG-1364 entry in the active release section for the new `check-duplicate-issue-id-post.sh` script; template at line 831 (`check-duplicate-issue-id.sh config resolution — ENH-871`) in the `[1.61.2]` section [Wiring pass 2]
 
 ### Configuration
 
@@ -153,6 +179,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 9. **Update commands to not batch-increment** (Option C) — `commands/scan-codebase.md` step 5 and `commands/scan-product.md` step 4: remove the "increment manually for subsequent issues" instruction; call `ll-issues next-id` once per issue instead
 10. **Update docs** — `docs/development/TROUBLESHOOTING.md`: add new hook script to chmod list and timeout table; `docs/reference/API.md`: update `get_next_issue_number` description if Option C adds side effects; `docs/ARCHITECTURE.md`: add new script to file listing; `skills/configure/areas.md`: add PostToolUse row to hook table (Option A)
 11. **Add and update tests** — `test_issue_parser.py:TestGetNextIssueNumber`: add concurrent `threading.Barrier(2)` variant; `test_hooks_integration.py:TestDuplicateIssueId.test_concurrent_duplicate_detection`: tighten `allowed_count >= 1` to `allowed_count == 1`; add `TestDuplicateIssueIdPost` class for Option A; add subprocess-level CLI integration test for `ll-issues next-id`
+12. **Update CHANGELOG** — add BUG-1364 entry in active release section for the new `check-duplicate-issue-id-post.sh` hook; follow the `[1.61.2]` entry template at line 831 [Wiring pass 2]
+13. **Review `skills/capture-issue/SKILL.md`** — the "Action: Create New Issue" section assumes Write denial = file never written; under Option A, Write returns success and the file is deleted reactively by the PostToolUse hook; consider adding a fallback note for the case where `ll-issues show <ID>` returns not-found after a successful Write [Wiring pass 2]
 
 ## Impact
 
@@ -171,17 +199,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-05-04_
+_Updated by `/ll:confidence-check` on 2026-05-04_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 61/100 → MODERATE
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
 
 ### Outcome Risk Factors
-- Unresolved decision between Options A/B/C (`decision_needed: true`). This must be resolved before implementation begins. `/ll:decide-issue BUG-1364` is the recommended next step.
-- Option A requires `hooks/scripts/check-duplicate-issue-id-post.sh`, which does not exist yet — it must be created as a new artifact.
-- PostToolUse hooks cannot deny writes — Option A's reactive deletion is the correct mechanism, but it means a duplicate file briefly exists on disk before removal. Callers that race the cleanup will still see two files momentarily.
+- **Documentation breadth**: 5 separate markdown touchpoints across different directories (`docs/ARCHITECTURE.md`, `docs/development/TROUBLESHOOTING.md`, `skills/configure/areas.md`, `CHANGELOG.md`, `skills/capture-issue/SKILL.md`); easy to miss one — use the wiring step list in Implementation Steps as a checklist
+- **Behavioral contract change in `capture-issue/SKILL.md`**: under Option A, Write returns success but the PostToolUse hook deletes the file reactively; the skill has no retry or verification step for this case — a judgment call is needed during implementation about whether to add a fallback note
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58200d4c-562e-45dd-8a37-1a29fb4ae944.jsonl`
+- `/ll:wire-issue` - 2026-05-05T01:25:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7507e7a-bb19-409b-8997-56185af003f7.jsonl`
+- `/ll:decide-issue` - 2026-05-04T22:31:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29bd4285-4b66-4516-9a50-d8c4c54bfccd.jsonl`
 - `/ll:confidence-check` - 2026-05-04T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4377bf38-5e53-41bd-bae1-edc23c1b8522.jsonl`
 - `/ll:wire-issue` - 2026-05-04T21:33:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2bc48b55-0540-478c-b109-29f7f7c933b0.jsonl`
 - `/ll:refine-issue` - 2026-05-04T21:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/289fb78c-42f6-4df9-804f-3ef779fdb9e6.jsonl`
