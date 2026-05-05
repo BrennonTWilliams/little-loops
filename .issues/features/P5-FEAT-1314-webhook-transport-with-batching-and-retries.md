@@ -1,11 +1,11 @@
 ---
 discovered_date: 2026-05-01
 discovered_by: split-from-FEAT-918
-confidence_score: 95
-outcome_confidence: 64
+confidence_score: 100
+outcome_confidence: 78
 score_complexity: 10
-score_test_coverage: 18
-score_ambiguity: 18
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 18
 decision_needed: false
 ---
@@ -99,6 +99,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Module-level constants pattern**: `transport.py` lines 36–42 define all tunable values as named module-level constants (e.g., `_CLIENT_QUEUE_MAXSIZE = 1024`, `_CLOSE_TOTAL_TIMEOUT = 10.0`). Follow this pattern — do not use magic literals inside the class. Suggested: `_WEBHOOK_BATCH_MS_DEFAULT = 1000`, `_WEBHOOK_CLOSE_TIMEOUT = 10.0`, `_WEBHOOK_RETRY_BASE_S = 0.5`, `_WEBHOOK_RETRY_MAX_S = 8.0`.
 
 **`config-schema.json` sync.github model**: The referenced pattern is at lines 907–967 (not 776–818 as originally noted).
+
+### State Update (2026-05-05) — FEAT-1312 landed
+
+_Added by `/ll:refine-issue` — FEAT-1312 (OTelTransport) has landed since the prior pass; the items below supersede stale references in the sections above:_
+
+**`_TRANSPORT_REGISTRY` (prior "critical" note is stale)**: Registry is now `{"jsonl": "jsonl", "otel": "otel", "socket": "socket"}` at `transport.py:444`. `wire_transports()` (line 447) already has a `elif name == "otel":` branch (lines 475–480); adding `"webhook"` means a third `elif` alongside both `"otel"` and `"socket"`.
+
+**Updated line numbers** (shifted by FEAT-1312 additions):
+- Module-level constants block: now lines 40–46 (was 36–42)
+- `_SocketClient`: now line 88 (was 84)
+- `_accept_loop`: now line 154 (was 150)
+- `_client_loop`: now line 185 (was 181)
+- `config-schema.json` events block: now lines 1048–1094; `events.socket` at 1058–1073, `events.otel` at 1075–1091 — use `events.otel` as the closer template for `events.webhook` (both have a nullable URL-style field plus simple key-value fields)
+- `TestSocketEventsConfig` in `test_config.py`: now line 1286 (was 1266)
+- `TestEventsConfig` in `test_config.py`: now line 1235 (was 1234)
+- `test_events_socket_round_trips_through_to_dict`: now line 1360 (was 1320); `test_events_otel_round_trips_through_to_dict` at line 1378 — model `test_events_webhook_round_trips_through_to_dict` after both
+
+**`config/features.py`**: `OTelEventsConfig` is now at line 391 alongside `SocketEventsConfig` (line 375). `EventsConfig.from_dict()` (line 420) already parses `otel`; add `webhook` at the same level.
+
+**`config/core.py` `BRConfig.to_dict()`**: Events block (lines 459–466) now serializes both `"socket"` and `"otel"` sub-dicts; add `"webhook"` as a third parallel entry.
+
+**`config/__init__.py`**: `OTelEventsConfig` is now exported alongside `SocketEventsConfig`; add `WebhookEventsConfig` after `OTelEventsConfig` in the import and `__all__`.
+
+**`__init__.py` exports**: `OTelTransport` is now exported; add `WebhookTransport` alongside it.
 
 ### Dependent Files (Callers/Importers)
 
@@ -209,6 +233,8 @@ _Added by `/ll:confidence-check` on 2026-05-04_
 - **httpx optional-dep test**: Mocking `builtins.__import__` is fragile if test order matters; isolate the import-mock test in its own method (as the referenced pattern does at `test_issue_history_formatting.py:137`).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61328427-9db0-4165-a515-89b899d0858b.jsonl`
+- `/ll:refine-issue` - 2026-05-05T17:46:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76919b1c-78ef-4e2f-b9d8-636083810f70.jsonl`
 - `/ll:wire-issue` - 2026-05-05T04:28:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d01428b3-36bf-4273-8acb-4dec51c409f8.jsonl`
 - `/ll:refine-issue` - 2026-05-05T04:23:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a202e3b-c7a9-41fd-a93d-16f49a478d61.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
