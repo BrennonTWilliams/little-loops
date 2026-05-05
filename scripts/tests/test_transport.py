@@ -15,14 +15,22 @@ from unittest import mock
 
 import pytest
 
-from little_loops.config.features import EventsConfig, SocketEventsConfig
+from little_loops.config.features import EventsConfig, OTelEventsConfig, SocketEventsConfig
 from little_loops.events import EventBus
 from little_loops.transport import (
     JsonlTransport,
+    OTelTransport,
     Transport,
     UnixSocketTransport,
     wire_transports,
 )
+
+try:
+    import opentelemetry.sdk.trace as _otel_sdk_trace  # noqa: F401
+
+    _HAS_OTEL_SDK = True
+except ImportError:
+    _HAS_OTEL_SDK = False
 
 
 @pytest.fixture
@@ -510,3 +518,176 @@ class TestUnixSocketTransport:
             assert client.thread is None or not client.thread.is_alive()
         c1.close()
         c2.close()
+
+
+@pytest.mark.skipif(not _HAS_OTEL_SDK, reason="opentelemetry-sdk not installed")
+class TestOTelTransport:
+    """Tests for OTelTransport implementation."""
+
+    @pytest.fixture
+    def exporter(self) -> Any:
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+        return InMemorySpanExporter()
+
+    @pytest.fixture
+    def test_provider(self, exporter: Any) -> Any:
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        yield provider
+        provider.shutdown()
+
+    def test_satisfies_protocol(self, test_provider: Any) -> None:
+        t = OTelTransport(_tracer_provider=test_provider)
+        assert isinstance(t, Transport)
+
+    def test_missing_dep_raises_runtime_error(self) -> None:
+        """OTelTransport raises RuntimeError when opentelemetry is not installed."""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if "opentelemetry" in name:
+                raise ImportError(f"No module named '{name}'")
+            return original_import(name, *args, **kwargs)
+
+        with mock.patch("builtins.__import__", side_effect=mock_import):
+            with pytest.raises(RuntimeError, match="little-loops\\[otel\\]"):
+                OTelTransport()
+
+    def test_end_to_end_span_hierarchy(self, test_provider: Any, exporter: Any) -> None:
+        """loop_start→state_enter→action_start→action_complete→loop_complete creates correct spans."""
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "test-loop"})
+        t.send({"event": "state_enter", "state": "run"})
+        t.send({"event": "action_start", "action": "ll:do-task"})
+        t.send({"event": "action_complete", "result": "ok"})
+        t.send({"event": "loop_complete", "outcome": "success"})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        span_by_name = {s.name: s for s in spans}
+        assert "test-loop" in span_by_name
+        assert "run" in span_by_name
+        assert "ll:do-task" in span_by_name
+
+        loop_span = span_by_name["test-loop"]
+        state_span = span_by_name["run"]
+        action_span = span_by_name["ll:do-task"]
+
+        assert state_span.parent is not None
+        assert state_span.parent.span_id == loop_span.context.span_id
+
+        assert action_span.parent is not None
+        assert action_span.parent.span_id == state_span.context.span_id
+
+    def test_loop_status_ok_on_success(self, test_provider: Any, exporter: Any) -> None:
+        from opentelemetry.trace import StatusCode
+
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "l"})
+        t.send({"event": "loop_complete", "outcome": "success"})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        loop = next(s for s in spans if s.name == "l")
+        assert loop.status.status_code == StatusCode.OK
+
+    def test_loop_status_error_on_failure(self, test_provider: Any, exporter: Any) -> None:
+        from opentelemetry.trace import StatusCode
+
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "l"})
+        t.send({"event": "loop_complete", "outcome": "error"})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        loop = next(s for s in spans if s.name == "l")
+        assert loop.status.status_code == StatusCode.ERROR
+
+    def test_loop_resume_opens_new_trace(self, test_provider: Any, exporter: Any) -> None:
+        """loop_resume starts a new root span (new trace), not a child of the old one."""
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "first-run"})
+        t.send({"event": "loop_resume", "loop_name": "resumed-run"})
+        t.send({"event": "loop_complete", "outcome": "success"})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        span_names = [s.name for s in spans]
+        assert "first-run" in span_names
+        assert "resumed-run" in span_names
+
+        first = next(s for s in spans if s.name == "first-run")
+        resumed = next(s for s in spans if s.name == "resumed-run")
+        assert resumed.parent is None, "resumed loop span should be a new root (no parent)"
+        assert resumed.context.trace_id != first.context.trace_id
+
+    def test_subloop_events_emit_single_warning(
+        self, test_provider: Any, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """depth > 0 events emit one warning and do not corrupt span state."""
+        import logging
+
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "outer"})
+        with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
+            t.send({"event": "loop_start", "loop_name": "inner", "depth": 1})
+            t.send({"event": "state_enter", "state": "inner-state", "depth": 1})
+            t.send({"event": "loop_start", "loop_name": "inner2", "depth": 2})
+        t.send({"event": "loop_complete", "outcome": "success"})
+        t.close()
+
+        warning_count = sum(1 for r in caplog.records if "sub-loop" in r.message)
+        assert warning_count == 1, "should warn exactly once per session, not per event"
+
+    def test_span_events_added_to_innermost_span(
+        self, test_provider: Any, exporter: Any
+    ) -> None:
+        """evaluate and route are recorded as span events on the innermost open span."""
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "l"})
+        t.send({"event": "state_enter", "state": "run"})
+        t.send({"event": "evaluate", "result": "continue"})
+        t.send({"event": "loop_complete", "outcome": "success"})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        state_span = next(s for s in spans if s.name == "run")
+        event_names = [e.name for e in state_span.events]
+        assert "evaluate" in event_names
+
+    def test_loop_complete_without_loop_start_does_not_raise(
+        self, test_provider: Any, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Out-of-order loop_complete is logged as a warning, not a crash."""
+        import logging
+
+        t = OTelTransport(_tracer_provider=test_provider)
+        with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
+            t.send({"event": "loop_complete", "outcome": "success"})
+        t.close()
+
+        assert any("loop_complete" in r.message for r in caplog.records)
+
+    def test_wire_transports_otel(self, test_provider: Any, tmp_path: Path) -> None:
+        """wire_transports() wires OTelTransport when 'otel' is in transports list."""
+        bus = EventBus()
+        config = EventsConfig(
+            transports=["otel"],
+            otel=OTelEventsConfig(
+                endpoint="http://localhost:4317",
+                service_name="test",
+            ),
+        )
+
+        with mock.patch("little_loops.transport.OTelTransport") as MockOTel:
+            wire_transports(bus, config, log_dir=tmp_path)
+            MockOTel.assert_called_once_with(
+                endpoint="http://localhost:4317",
+                service_name="test",
+            )

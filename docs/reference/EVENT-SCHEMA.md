@@ -703,3 +703,37 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `issue.completed` | Issue Lifecycle | `issue_lifecycle.py` |
 | `issue.deferred` | Issue Lifecycle | `issue_lifecycle.py` |
 | `parallel.worker_completed` | Parallel | `parallel/orchestrator.py` |
+
+---
+
+## OTel Transport Field Mapping
+
+When `OTelTransport` is active (`events.transports: ["otel"]`), the following event fields are used to construct OpenTelemetry spans and span events. All other fields are serialized as span event attributes (`str(value)`).
+
+### Span-opening events
+
+| Event | OTel action | Field used |
+|-------|-------------|------------|
+| `loop_start` | Opens root span (trace) | `loop_name` → span name |
+| `loop_resume` | Closes all open spans; opens new root span | `loop_name` → span name |
+| `state_enter` | Opens child span of loop span | `state` → span name |
+| `action_start` | Opens grandchild span of state span | `action` → span name |
+
+### Span-closing events
+
+| Event | OTel action | Field used |
+|-------|-------------|------------|
+| `action_complete` | Closes action span | — |
+| `loop_complete` | Closes state + action spans; sets loop span status; closes loop span | `outcome` → status code (`"error"` / `"failed"` / `"exhausted"` → `ERROR`, all others → `OK`) |
+
+### Span event records
+
+These events are added as OTel span events on the innermost open span (action > state > loop):
+
+`evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, `action_output`
+
+All fields except `"event"` are included as span event attributes (string-coerced).
+
+### Sub-loop events
+
+Events with `depth > 0` are no-ops. A single `WARNING` is logged per `OTelTransport` session. Full nested-trace support is out of scope.

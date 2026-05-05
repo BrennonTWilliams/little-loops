@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.96.0] - 2026-05-04
+
+### Added
+
+- **OTelTransport** — Maps ll loop executions to OpenTelemetry traces and spans (loop = trace root, state = child span, action = grandchild span), exporting via OTLP to Grafana, Jaeger, Datadog, and other OTel-compatible backends. Activate with `events.transports: ["otel"]` and configure via `events.otel.endpoint` / `events.otel.service_name`. Requires `pip install 'little-loops[otel]'`; the base package import is unaffected when the optional extras are absent. (FEAT-1312)
+
 ## [1.95.0] - 2026-05-04
 
 ### Added

@@ -8,11 +8,15 @@ Built-in implementations:
     JsonlTransport: appends each event as a JSON line to a file.
     UnixSocketTransport: streams newline-delimited JSON to AF_UNIX socket clients
         for sub-second-latency local consumers (TUIs, log tailers, dashboards).
+    OTelTransport: maps loop executions to OpenTelemetry traces/spans, exporting
+        via OTLP to Grafana, Jaeger, Datadog, etc. Requires the optional
+        ``opentelemetry-sdk`` and ``opentelemetry-exporter-otlp-grpc`` packages.
 
 Public exports:
     Transport: runtime-checkable Protocol that any sink must satisfy
     JsonlTransport: writes events to a JSONL file
     UnixSocketTransport: streams events over an AF_UNIX socket
+    OTelTransport: exports loop traces via OTLP
     wire_transports: register transports listed in `EventsConfig` on an `EventBus`
 """
 
@@ -267,7 +271,177 @@ class UnixSocketTransport:
         self._path.unlink(missing_ok=True)
 
 
-_TRANSPORT_REGISTRY: dict[str, str] = {"jsonl": "jsonl", "socket": "socket"}
+_OTEL_EVENT_TYPES = frozenset(
+    {
+        "evaluate",
+        "route",
+        "retry_exhausted",
+        "handoff_detected",
+        "handoff_spawned",
+        "action_output",
+    }
+)
+_OTEL_ERROR_OUTCOMES = frozenset({"error", "failed", "exhausted"})
+
+
+class OTelTransport:
+    """Map ll loop executions to OpenTelemetry traces and spans, exporting via OTLP.
+
+    Span hierarchy: loop = trace root, state = child span, action = grandchild.
+    Span events are added for evaluate, route, retry_exhausted, handoff_detected,
+    handoff_spawned, and action_output on the innermost open span.
+
+    Requires ``opentelemetry-sdk`` and ``opentelemetry-exporter-otlp-grpc``.
+    Install with: ``pip install 'little-loops[otel]'``
+
+    Sub-loop events (``depth > 0``) are no-ops with a single warning per session.
+    """
+
+    def __init__(
+        self,
+        endpoint: str = "http://localhost:4317",
+        service_name: str = "little-loops",
+        *,
+        _tracer_provider: Any | None = None,
+    ) -> None:
+        try:
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+            from opentelemetry.sdk.resources import Resource
+            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        except ImportError as exc:
+            raise RuntimeError(
+                "OTelTransport requires the 'opentelemetry-sdk' and "
+                "'opentelemetry-exporter-otlp-grpc' packages. "
+                "Install with: pip install 'little-loops[otel]'"
+            ) from exc
+
+        if _tracer_provider is not None:
+            self._provider = _tracer_provider
+        else:
+            resource = Resource.create({"service.name": service_name})
+            provider = TracerProvider(resource=resource)
+            exporter = OTLPSpanExporter(endpoint=endpoint)
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+            self._provider = provider
+
+        self._tracer = self._provider.get_tracer("little-loops")
+        self._loop_span: Any | None = None
+        self._state_span: Any | None = None
+        self._action_span: Any | None = None
+        self._subloop_warned = False
+
+    def send(self, event: dict[str, Any]) -> None:
+        depth = event.get("depth", 0)
+        if isinstance(depth, int) and depth > 0:
+            if not self._subloop_warned:
+                logger.warning(
+                    "OTelTransport: sub-loop events (depth > 0) are not supported; "
+                    "nested-trace support is deferred. Event type: %r",
+                    event.get("event"),
+                )
+                self._subloop_warned = True
+            return
+
+        event_type = event.get("event", "")
+        if event_type == "loop_start":
+            self._handle_loop_start(event)
+        elif event_type == "loop_resume":
+            self._handle_loop_resume(event)
+        elif event_type == "state_enter":
+            self._handle_state_enter(event)
+        elif event_type == "action_start":
+            self._handle_action_start(event)
+        elif event_type == "action_complete":
+            self._handle_action_complete()
+        elif event_type == "loop_complete":
+            self._handle_loop_complete(event)
+        elif event_type in _OTEL_EVENT_TYPES:
+            self._add_span_event(event_type, event)
+
+    def close(self) -> None:
+        self._provider.force_flush()
+        self._provider.shutdown()
+
+    # ------------------------------------------------------------------
+    # Internal span machine
+    # ------------------------------------------------------------------
+
+    def _handle_loop_start(self, event: dict[str, Any]) -> None:
+        loop_name = str(event.get("loop_name", "ll-loop"))
+        self._loop_span = self._tracer.start_span(loop_name)
+
+    def _handle_loop_resume(self, event: dict[str, Any]) -> None:
+        self._close_state_and_action()
+        if self._loop_span is not None:
+            self._loop_span.end()
+        loop_name = str(event.get("loop_name", "ll-loop"))
+        self._loop_span = self._tracer.start_span(loop_name)
+
+    def _handle_state_enter(self, event: dict[str, Any]) -> None:
+        self._close_state_and_action()
+        if self._loop_span is None:
+            logger.warning(
+                "OTelTransport: state_enter received without a prior loop_start; skipping span"
+            )
+            return
+        from opentelemetry import trace
+
+        state_name = str(event.get("state", "unknown-state"))
+        ctx = trace.set_span_in_context(self._loop_span)
+        self._state_span = self._tracer.start_span(state_name, context=ctx)
+
+    def _handle_action_start(self, event: dict[str, Any]) -> None:
+        if self._state_span is None:
+            logger.warning(
+                "OTelTransport: action_start received without a prior state_enter; skipping span"
+            )
+            return
+        from opentelemetry import trace
+
+        action_name = str(event.get("action", "unknown-action"))
+        ctx = trace.set_span_in_context(self._state_span)
+        self._action_span = self._tracer.start_span(action_name, context=ctx)
+
+    def _handle_action_complete(self) -> None:
+        if self._action_span is not None:
+            self._action_span.end()
+            self._action_span = None
+
+    def _handle_loop_complete(self, event: dict[str, Any]) -> None:
+        from opentelemetry.trace import StatusCode
+
+        self._close_state_and_action()
+        if self._loop_span is None:
+            logger.warning(
+                "OTelTransport: loop_complete received without a prior loop_start; skipping"
+            )
+            return
+        outcome = str(event.get("outcome", ""))
+        if outcome in _OTEL_ERROR_OUTCOMES:
+            self._loop_span.set_status(StatusCode.ERROR, outcome)
+        else:
+            self._loop_span.set_status(StatusCode.OK)
+        self._loop_span.end()
+        self._loop_span = None
+
+    def _add_span_event(self, event_type: str, event: dict[str, Any]) -> None:
+        span = self._action_span or self._state_span or self._loop_span
+        if span is None:
+            return
+        attrs = {k: str(v) for k, v in event.items() if k != "event"}
+        span.add_event(event_type, attributes=attrs)
+
+    def _close_state_and_action(self) -> None:
+        if self._action_span is not None:
+            self._action_span.end()
+            self._action_span = None
+        if self._state_span is not None:
+            self._state_span.end()
+            self._state_span = None
+
+
+_TRANSPORT_REGISTRY: dict[str, str] = {"jsonl": "jsonl", "otel": "otel", "socket": "socket"}
 
 
 def wire_transports(
@@ -297,6 +471,13 @@ def wire_transports(
             continue
         if name == "jsonl":
             bus.add_transport(JsonlTransport(base / "events.jsonl"))
+        elif name == "otel":
+            bus.add_transport(
+                OTelTransport(
+                    endpoint=config.otel.endpoint,
+                    service_name=config.otel.service_name,
+                )
+            )
         elif name == "socket":
             if not hasattr(socket, "AF_UNIX"):
                 raise RuntimeError(

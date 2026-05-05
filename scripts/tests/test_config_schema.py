@@ -161,3 +161,16 @@ class TestConfigSchema:
         assert socket_props["path"]["default"] == ".ll/events.sock"
         assert socket_props["max_clients"]["type"] == "integer"
         assert socket_props["max_clients"]["default"] == 8
+
+        assert "otel" in events_props, (
+            "events.otel is not declared; configs using events.otel will be "
+            "rejected by additionalProperties: false on the events block"
+        )
+        otel_block = events_props["otel"]
+        assert otel_block["type"] == "object"
+        assert otel_block.get("additionalProperties") is False
+        otel_props = otel_block["properties"]
+        assert otel_props["endpoint"]["type"] == "string"
+        assert otel_props["endpoint"]["default"] == "http://localhost:4317"
+        assert otel_props["service_name"]["type"] == "string"
+        assert otel_props["service_name"]["default"] == "little-loops"

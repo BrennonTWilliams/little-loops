@@ -32,6 +32,7 @@ from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 from little_loops.testing import LLTestBus
 from little_loops.transport import (
     JsonlTransport,
+    OTelTransport,
     Transport,
     UnixSocketTransport,
     wire_transports,
@@ -63,6 +64,7 @@ __all__ = [
     "LLTestBus",
     # transport
     "JsonlTransport",
+    "OTelTransport",
     "Transport",
     "UnixSocketTransport",
     "wire_transports",

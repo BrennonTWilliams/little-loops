@@ -757,6 +757,7 @@ List of transports to wire onto the EventBus at runtime. Transports are additive
 |------|--------|
 | `"jsonl"` | Registers a `JsonlTransport` writing to `<log_dir>/events.jsonl` (defaults to `.ll/events.jsonl`). |
 | `"socket"` | Registers a `UnixSocketTransport` streaming newline-delimited JSON events over an `AF_UNIX` socket. Configured under `events.socket` (see below). Not available on Windows — `wire_transports` raises `RuntimeError`. |
+| `"otel"` | Registers an `OTelTransport` that maps loop executions to OpenTelemetry traces/spans and exports via OTLP. Configured under `events.otel` (see below). Requires `pip install 'little-loops[otel]'`. |
 
 ```json
 {
@@ -784,6 +785,31 @@ The socket file is `chmod 0600` immediately after `bind()` — owner-only, since
 **`ll-auto` exclusion:** `cli/auto.py` does not construct an `EventBus`, so listing `"socket"` (or any transport) under `events.transports` has no effect under `ll-auto`. The socket transport is available under `ll-loop run`/`resume`, `ll-parallel`, and `ll-sprint` parallel-wave runs.
 
 **Subscribing locally:** Any AF_UNIX-aware tool can subscribe — for ad-hoc inspection, pipe `nc -U .ll/events.sock | jq`.
+
+### `events.otel`
+
+Requires: `pip install 'little-loops[otel]'` (installs `opentelemetry-sdk` and `opentelemetry-exporter-otlp-grpc`).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `events.otel.endpoint` | `string` | `"http://localhost:4317"` | OTLP gRPC endpoint for the collector (Grafana Agent, Jaeger, Datadog, etc.). |
+| `events.otel.service_name` | `string` | `"little-loops"` | OpenTelemetry `service.name` resource attribute applied to all emitted spans. |
+
+**Span hierarchy:** Each loop run becomes an OTel trace. Loop = root span, state = child span, action = grandchild span. Events such as `evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, and `action_output` are recorded as span events on the innermost open span.
+
+**Sub-loop behaviour:** Sub-loop events (`depth > 0`) are no-ops with a single warning per session. Full nested-trace support is deferred.
+
+```json
+{
+  "events": {
+    "transports": ["otel"],
+    "otel": {
+      "endpoint": "http://localhost:4317",
+      "service_name": "little-loops"
+    }
+  }
+}
+```
 
 See [API Reference → little_loops.transport](API.md#little_loopstransport) for the `Transport` Protocol and how to author custom transports.
 

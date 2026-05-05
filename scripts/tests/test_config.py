@@ -31,6 +31,7 @@ from little_loops.config import (
     LoopsConfig,
     LoopsGlyphsConfig,
     NextIssueConfig,
+    OTelEventsConfig,
     ParallelAutomationConfig,
     ProjectConfig,
     RateLimitsConfig,
@@ -1242,6 +1243,9 @@ class TestEventsConfig:
         assert isinstance(config.socket, SocketEventsConfig)
         assert config.socket.path == ".ll/events.sock"
         assert config.socket.max_clients == 8
+        assert isinstance(config.otel, OTelEventsConfig)
+        assert config.otel.endpoint == "http://localhost:4317"
+        assert config.otel.service_name == "little-loops"
 
     def test_from_dict_with_transports(self) -> None:
         """Test creating EventsConfig with explicit transports list."""
@@ -1262,6 +1266,22 @@ class TestEventsConfig:
         assert config.socket.path == "/tmp/x.sock"
         assert config.socket.max_clients == 32
 
+    def test_from_dict_with_otel_overrides(self) -> None:
+        """events.otel sub-object overrides defaults."""
+        config = EventsConfig.from_dict(
+            {
+                "transports": ["otel"],
+                "otel": {
+                    "endpoint": "http://collector:4317",
+                    "service_name": "my-service",
+                },
+            }
+        )
+
+        assert config.transports == ["otel"]
+        assert config.otel.endpoint == "http://collector:4317"
+        assert config.otel.service_name == "my-service"
+
 
 class TestSocketEventsConfig:
     """Tests for SocketEventsConfig dataclass."""
@@ -1279,6 +1299,26 @@ class TestSocketEventsConfig:
 
         assert config.path == "/var/run/ll.sock"
         assert config.max_clients == 16
+
+
+class TestOTelEventsConfig:
+    """Tests for OTelEventsConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        """OTelEventsConfig defaults match the documented values."""
+        config = OTelEventsConfig.from_dict({})
+
+        assert config.endpoint == "http://localhost:4317"
+        assert config.service_name == "little-loops"
+
+    def test_from_dict_with_overrides(self) -> None:
+        """Explicit values override defaults."""
+        config = OTelEventsConfig.from_dict(
+            {"endpoint": "http://collector:4317", "service_name": "my-svc"}
+        )
+
+        assert config.endpoint == "http://collector:4317"
+        assert config.service_name == "my-svc"
 
 
 class TestBRConfigEventsIntegration:
@@ -1320,12 +1360,7 @@ class TestBRConfigEventsIntegration:
     def test_events_socket_round_trips_through_to_dict(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
-        """events.socket sub-config round-trips through BRConfig.to_dict().
-
-        Without this, `{{config.events.socket.path}}` template substitution
-        returns empty even when the user has set it — the silent-data-loss path
-        flagged in the FEAT-1313 wiring pass.
-        """
+        """events.socket sub-config round-trips through BRConfig.to_dict()."""
         sample_config["events"] = {
             "transports": ["socket"],
             "socket": {"path": "/tmp/test.sock", "max_clients": 4},
@@ -1339,6 +1374,24 @@ class TestBRConfigEventsIntegration:
         assert result["events"]["transports"] == ["socket"]
         assert result["events"]["socket"]["path"] == "/tmp/test.sock"
         assert result["events"]["socket"]["max_clients"] == 4
+
+    def test_events_otel_round_trips_through_to_dict(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """events.otel sub-config round-trips through BRConfig.to_dict()."""
+        sample_config["events"] = {
+            "transports": ["otel"],
+            "otel": {"endpoint": "http://collector:4317", "service_name": "my-svc"},
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["events"]["transports"] == ["otel"]
+        assert result["events"]["otel"]["endpoint"] == "http://collector:4317"
+        assert result["events"]["otel"]["service_name"] == "my-svc"
 
 
 class TestScoringWeightsConfig:

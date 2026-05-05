@@ -1071,6 +1071,23 @@
             }
           },
           "additionalProperties": false
+        },
+        "otel": {
+          "type": "object",
+          "description": "OTelTransport configuration. Maps loop executions to OpenTelemetry traces/spans and exports via OTLP. Requires pip install 'little-loops[otel]'.",
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "default": "http://localhost:4317",
+              "description": "OTLP gRPC endpoint for the collector (Grafana Agent, Jaeger, Datadog, etc.)."
+            },
+            "service_name": {
+              "type": "string",
+              "default": "little-loops",
+              "description": "OpenTelemetry service.name resource attribute applied to all emitted spans."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

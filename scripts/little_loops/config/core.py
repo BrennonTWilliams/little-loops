@@ -460,6 +460,10 @@ class BRConfig:
                     "path": self._events.socket.path,
                     "max_clients": self._events.socket.max_clients,
                 },
+                "otel": {
+                    "endpoint": self._events.otel.endpoint,
+                    "service_name": self._events.otel.service_name,
+                },
             },
             "sync": {
                 "enabled": self._sync.enabled,

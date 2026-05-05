@@ -5524,6 +5524,58 @@ nc -U .ll/events.sock | jq
 
 **Platform support:** Requires `AF_UNIX` (POSIX). On Windows, [`wire_transports`](#wire_transports) raises `RuntimeError` rather than registering the transport.
 
+### OTelTransport
+
+Maps ll loop executions to OpenTelemetry traces and spans, exporting via OTLP to any OTel-compatible backend (Grafana, Jaeger, Datadog, etc.). Requires `pip install 'little-loops[otel]'`.
+
+**Span hierarchy:** loop run = trace root (`loop_start`/`loop_complete`), state = child span (`state_enter`), action = grandchild span (`action_start`/`action_complete`). Span events are emitted for `evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, and `action_output`.
+
+```python
+from little_loops.transport import OTelTransport
+
+transport = OTelTransport(
+    endpoint="http://localhost:4317",
+    service_name="little-loops",
+)
+transport.send({"event": "loop_start", "loop_name": "my-loop"})
+transport.send({"event": "loop_complete", "outcome": "success"})
+transport.close()
+```
+
+#### Constructor
+
+```python
+OTelTransport(
+    endpoint: str = "http://localhost:4317",
+    service_name: str = "little-loops",
+)
+```
+
+**Parameters:**
+- `endpoint` - OTLP gRPC endpoint for the collector. Passed directly to `OTLPSpanExporter`.
+- `service_name` - Value for the `service.name` OTel resource attribute applied to all spans.
+
+**Raises `RuntimeError`** at construction time if `opentelemetry-sdk` or `opentelemetry-exporter-otlp-grpc` are not installed.
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `send(event: dict[str, Any]) -> None` | Route the event through the span state machine. Sub-loop events (`depth > 0`) are no-ops with a single warning per session. |
+| `close() -> None` | Call `force_flush()` then `shutdown()` on the tracer provider, flushing all buffered spans before exit. |
+
+#### Event → span mapping
+
+| Event | Span action |
+|-------|-------------|
+| `loop_start` | Open root span (new trace). Name = `event["loop_name"]`. |
+| `loop_resume` | Close all open spans; open a new root span (new trace). |
+| `state_enter` | Close prior state span + action span; open child of loop span. Name = `event["state"]`. |
+| `action_start` | Open grandchild of state span. Name = `event["action"]`. |
+| `action_complete` | Close action span. |
+| `loop_complete` | Close state + action spans; set loop span status (OK or ERROR); close loop span. |
+| `evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, `action_output` | Add span event on innermost open span. |
+
 ### wire_transports
 
 Register the transports listed in an `EventsConfig` on an `EventBus`. Called by CLI entry points (ll-loop, ll-parallel, ll-sprint) at startup.
@@ -5552,7 +5604,7 @@ def wire_transports(
 - `log_dir` - Directory under which built-in transports place their log files. Defaults to `Path(".ll")` under the current working directory.
 
 **Behavior:**
-- Each name in `config.transports` is resolved against an internal registry of built-in transport names. Currently shipped: `"jsonl"` (registers a `JsonlTransport` writing to `<log_dir>/events.jsonl`) and `"socket"` (registers a [`UnixSocketTransport`](#unixsockettransport) bound at `config.socket.path` with `config.socket.max_clients`).
+- Each name in `config.transports` is resolved against an internal registry of built-in transport names. Currently shipped: `"jsonl"` (registers a `JsonlTransport` writing to `<log_dir>/events.jsonl`), `"socket"` (registers a [`UnixSocketTransport`](#unixsockettransport) bound at `config.socket.path` with `config.socket.max_clients`), and `"otel"` (registers an [`OTelTransport`](#oteltransport) using `config.otel.endpoint` and `config.otel.service_name`).
 - Unknown names log a `WARNING` and are skipped — a typo in user config never prevents the loop from starting.
 - The `"socket"` transport raises `RuntimeError` on platforms without `AF_UNIX` (e.g. Windows). This is the deliberate exception to the warn-and-skip rule: silently dropping `"socket"` on Windows would be a more confusing failure mode.
 

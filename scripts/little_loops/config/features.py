@@ -388,6 +388,22 @@ class SocketEventsConfig:
 
 
 @dataclass
+class OTelEventsConfig:
+    """OTelTransport configuration."""
+
+    endpoint: str = "http://localhost:4317"
+    service_name: str = "little-loops"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OTelEventsConfig:
+        """Create OTelEventsConfig from dictionary."""
+        return cls(
+            endpoint=data.get("endpoint", "http://localhost:4317"),
+            service_name=data.get("service_name", "little-loops"),
+        )
+
+
+@dataclass
 class EventsConfig:
     """Event transport configuration.
 
@@ -398,6 +414,7 @@ class EventsConfig:
 
     transports: list[str] = field(default_factory=list)
     socket: SocketEventsConfig = field(default_factory=SocketEventsConfig)
+    otel: OTelEventsConfig = field(default_factory=OTelEventsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EventsConfig:
@@ -405,4 +422,5 @@ class EventsConfig:
         return cls(
             transports=data.get("transports", []),
             socket=SocketEventsConfig.from_dict(data.get("socket", {})),
+            otel=OTelEventsConfig.from_dict(data.get("otel", {})),
         )
