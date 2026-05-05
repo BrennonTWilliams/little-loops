@@ -1,9 +1,10 @@
 name: issue-refinement
 category: issue-management
 description: |
-  Progressively refine all active issues through format → score → refine pipeline.
-  Delegates refinement to the refine-to-ready-issue sub-loop for each issue.
-  Commits every 5 actions and continues until all issues meet quality thresholds.
+  Progressively refine all active issues to ready-state by delegating each one to
+  the refine-to-ready-issue sub-loop (format → refine → wire → confidence-check).
+  Uses ll-issues next-action to pick the highest-value action each cycle. Commits
+  every 5 actions and continues until all issues pass quality thresholds or are exhausted.
 initial: init
 import:
   - lib/common.yaml

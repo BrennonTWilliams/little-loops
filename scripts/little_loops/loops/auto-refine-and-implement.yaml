@@ -46,6 +46,8 @@ states:
     on_failure: skip_and_continue
     on_error: skip_and_continue
 
+  # NOTE: get_passed_issues → implement_next → implement_issue → skip_and_continue are
+  # mirrored in sprint-refine-and-implement.yaml. Keep both files in sync when editing.
   get_passed_issues:
     action: |
       SKIP_FILE=".loops/tmp/auto-refine-and-implement-skipped.txt"

@@ -11,8 +11,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | Loop | Description |
 |---|---|
 | `issue-discovery-triage` | Scan codebase for new issues, triage and create issue files |
-| `issue-refinement` | Progressively refine active issues through format → score → refine pipeline |
-| `issue-size-split` | Review issues for sizing, identify oversized ones, and split into smaller tasks |
+| `issue-refinement` | Progressively refine all active issues to ready-state by delegating each one to the `refine-to-ready-issue` sub-loop; uses `ll-issues next-action` to pick the highest-value action each cycle |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `refine-to-ready-issue` | Pick the next issue and run format → refine → wire → confidence-check until ready |
 | `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling |

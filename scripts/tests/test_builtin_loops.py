@@ -71,7 +71,6 @@ class TestBuiltinLoopFiles:
             "fix-quality-and-tests",
             "issue-discovery-triage",
             "issue-refinement",
-            "issue-size-split",
             "issue-staleness-review",
             "backlog-flow-optimizer",
             "sprint-build-and-validate",
@@ -811,7 +810,6 @@ class TestBuiltinLoopOnBlockedCoverage:
     REQUIRED_ON_BLOCKED: list[tuple[str, str, str]] = [
         ("sprint-build-and-validate.yaml", "route_validation", "fix_issues"),
         ("issue-staleness-review.yaml", "triage", "find_stale"),
-        ("issue-size-split.yaml", "route_large", "done"),
     ]
 
     @pytest.mark.parametrize("loop_file,state_name,expected", REQUIRED_ON_BLOCKED)
