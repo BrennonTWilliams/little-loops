@@ -248,6 +248,7 @@ Update first — Resolve the persistence decision at `persistence.py:457-460` be
 ---
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-04-27T02:55:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`
@@ -263,3 +264,9 @@ Update first — Resolve the persistence decision at `persistence.py:457-460` be
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The new per-state tool-call counter MUST follow the existing `_retry_counts` dict pattern already in `FSMExecutor.__init__` (not a separate parallel dict). The counter must be reset in the same location where state-exit resets are performed (~line 285 of `scripts/little_loops/fsm/executor.py`). Reference `_retry_counts` and `_rate_limit_retries` as the implementation template to avoid a divergent counter with different reset semantics.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `type: learning` states (FEAT-1283) are exempt from the `hard_max` hard-stop. A learning state executes one `ll:explore-api` call per unproven target in sequence — with N targets, it legitimately makes N calls per state visit, which easily exceeds the default `hard_max` of 9. The throttle counter MUST check `state_config.type` before firing: if `type == "learning"`, skip the `hard_max` check entirely (the learning state has its own `max_retries` gate). The `warn_max` warning injection still applies at its threshold so users know the state is doing significant work. Document the learning-state exemption in the `ThrottleConfig` docstring and in the `with_throttle` fragment description in `scripts/little_loops/loops/lib/common.yaml`.

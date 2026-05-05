@@ -264,6 +264,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **Source-field decision still open** (`decision_needed: true`): choose one of the 3 documented options (inject-all / compact-only / all-except-clear) before writing test case 6; document the chosen behavior as a script header comment
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:decide-issue` - 2026-05-02T03:06:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6ed7bfa-f06a-46a2-b3b0-31a947ceaf0a.jsonl`
@@ -285,3 +286,9 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): Add `FEAT-1262` to this issue's `related` frontmatter. The quality of the injected `additionalContext` depends on the FEAT-1262 → FEAT-1264 pipeline: FEAT-1262 (`session-capture.sh`) produces `.ll/ll-session-events.jsonl`; FEAT-1264 uses it to build a richer `ll-continue-prompt.md`; this hook injects that richer prompt. When FEAT-1262 has not yet shipped, the injected context is accurate but lower-fidelity. Document this degradation in the implementation as a known behavior, not a bug.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `session-start-inject.sh` is an interim shell implementation. FEAT-1116 (Hook-Intent Abstraction Layer) will migrate SessionStart hooks from `hooks/scripts/` shell scripts to Python core handlers (`scripts/little_loops/hooks/session_start.py`) with thin per-host adapters. Implement `session-start-inject.sh` as specified here for the MVP, but scope it to be replaced by — or restructured as — the Python core handler + Claude Code adapter pattern once FEAT-1116's SessionStart migration scaffolding is in place. This matches the approach taken by FEAT-1156 (`precompact-handoff.sh`). When FEAT-1116 lands, open a follow-up to port the inject logic to `scripts/little_loops/hooks/pre_compact.py` (or the equivalent intent module for SessionStart) and replace `session-start-inject.sh` with a thin `hooks/adapters/claude-code/session-start-inject.sh` wrapper.

@@ -169,6 +169,7 @@ class LearningStateHandler:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:format-issue` - 2026-05-02T02:07:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04ed7039-9c6c-4ed5-8bb4-0babdee81a7b.jsonl`
@@ -191,3 +192,9 @@ class LearningStateHandler:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `LearningStateHandler` is a Python module (`scripts/little_loops/fsm/learning_state.py`) and MUST use direct Python import — `from little_loops.learning_tests import read_record` — not shell out to the `ll-learning-tests` CLI. The CLI (FEAT-1286) exists specifically for non-Python callers (skills, Bash evaluators, FSM shell-type evaluators). Using the CLI from within the Python handler adds unnecessary subprocess overhead and goes against the intended interface split.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `type: learning` states are exempt from ENH-1115's throttle `hard_max`. ENH-1115's per-state tool-call counter applies a hard-stop at `hard_max` (default 9) for all states. A learning state with N targets legitimately calls `ll:explore-api` N times in a single visit — this would incorrectly trip the throttle. ENH-1115's implementation MUST check `state_config.type == "learning"` before firing `hard_max`; `warn_max` warnings still apply. This issue does not need to implement the exemption (ENH-1115 owns it), but `LearningStateConfig` should document `max_retries` as its own internal gate to distinguish it from the throttle gate: throttle counts tool-call *volume*, learning counts target-resolution *attempts*.
