@@ -1829,11 +1829,11 @@ class TestRecursiveRefineLoop:
             f"check_depth evaluate.target should be 1, got {evaluate.get('target')!r}"
         )
 
-    def test_check_depth_on_yes_routes_to_run_size_review(self, data: dict) -> None:
-        """check_depth.on_yes (depth < max_depth) must route to run_size_review."""
+    def test_check_depth_on_yes_routes_to_check_decision_needed(self, data: dict) -> None:
+        """check_depth.on_yes (depth < max_depth) must route to check_decision_needed."""
         state = data["states"].get("check_depth", {})
-        assert state.get("on_yes") == "run_size_review", (
-            f"check_depth.on_yes should be 'run_size_review', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_needed", (
+            f"check_depth.on_yes should be 'check_decision_needed', got {state.get('on_yes')!r}"
         )
 
     def test_check_depth_on_no_routes_to_dequeue_next(self, data: dict) -> None:
@@ -1843,11 +1843,11 @@ class TestRecursiveRefineLoop:
             f"check_depth.on_no should be 'dequeue_next', got {state.get('on_no')!r}"
         )
 
-    def test_check_depth_on_error_routes_to_run_size_review(self, data: dict) -> None:
-        """check_depth.on_error must route to run_size_review (fail-safe: proceed normally)."""
+    def test_check_depth_on_error_routes_to_check_decision_needed(self, data: dict) -> None:
+        """check_depth.on_error must route to check_decision_needed (fail-safe: proceed normally)."""
         state = data["states"].get("check_depth", {})
-        assert state.get("on_error") == "run_size_review", (
-            f"check_depth.on_error should be 'run_size_review', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_decision_needed", (
+            f"check_depth.on_error should be 'check_decision_needed', got {state.get('on_error')!r}"
         )
 
     def test_detect_children_filters_by_parent_reference(self, data: dict) -> None:
