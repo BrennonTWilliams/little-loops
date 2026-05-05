@@ -315,7 +315,7 @@ ll-loop list --status interrupted  # Filter running loops by status (e.g., inter
 ll-loop stop <loop-name>         # Stop all running instances of a loop
 ll-loop status <loop-name>       # Show loop status (aggregates across all instances)
 ll-loop status <loop-name> --json  # Loop state as JSON (array when 2+ instances running)
-ll-loop resume <loop-name>       # Resume interrupted loop (errors if 2+ match; use --instance-id to select)
+ll-loop resume <loop-name>       # Resume interrupted loop (errors if 2+ match; use --instance-id to select — not shown in --help)
 ll-loop validate <loop-name>     # Validate loop definition
 ll-loop history <loop-name>      # Show loop execution history (lists archived runs)
 ll-loop history <loop-name> <run_id>  # Inspect a specific archived run
