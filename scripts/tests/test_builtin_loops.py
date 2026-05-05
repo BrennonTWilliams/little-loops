@@ -555,11 +555,11 @@ class TestRefineToReadyIssueSubLoop:
             f"verify_scores_persisted.on_yes should be 'check_readiness', got {state.get('on_yes')!r}"
         )
 
-    def test_verify_scores_persisted_on_no_routes_to_failed(self, data: dict) -> None:
-        """verify_scores_persisted.on_no must route to failed (missing scores → fail loudly)."""
+    def test_verify_scores_persisted_on_no_routes_to_retry_confidence_check(self, data: dict) -> None:
+        """verify_scores_persisted.on_no must route to retry_confidence_check (one re-run before failing)."""
         state = data["states"].get("verify_scores_persisted", {})
-        assert state.get("on_no") == "failed", (
-            f"verify_scores_persisted.on_no should be 'failed', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "retry_confidence_check", (
+            f"verify_scores_persisted.on_no should be 'retry_confidence_check', got {state.get('on_no')!r}"
         )
 
     def test_check_readiness_on_yes_routes_to_check_outcome(self, data: dict) -> None:
@@ -590,11 +590,11 @@ class TestRefineToReadyIssueSubLoop:
             f"check_outcome.on_yes should be 'done', got {state.get('on_yes')!r}"
         )
 
-    def test_check_outcome_on_no_routes_to_breakdown_issue(self, data: dict) -> None:
-        """check_outcome.on_no must route to breakdown_issue (outcome-only fail → scope reduction, not retry)."""
+    def test_check_outcome_on_no_routes_to_check_decision_needed(self, data: dict) -> None:
+        """check_outcome.on_no must route to check_decision_needed (outcome fail → decision check before breakdown)."""
         state = data["states"].get("check_outcome", {})
-        assert state.get("on_no") == "breakdown_issue", (
-            f"check_outcome.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_decision_needed", (
+            f"check_outcome.on_no should be 'check_decision_needed', got {state.get('on_no')!r}"
         )
 
     def test_check_scores_from_file_state_exists(self, data: dict) -> None:
