@@ -88,6 +88,7 @@ little-loops/
 │   │   └── optimize-prompt-hook.md          # Prompt optimization hook
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh
+│       ├── check-duplicate-issue-id-post.sh
 │       ├── context-monitor.sh
 │       ├── precompact-state.sh
 │       ├── scratch-pad-redirect.sh

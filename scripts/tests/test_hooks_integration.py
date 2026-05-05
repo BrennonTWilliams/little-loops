@@ -1189,6 +1189,160 @@ class TestDuplicateIssueId:
             os.chdir(original_dir)
 
 
+class TestDuplicateIssueIdPost:
+    """Test check-duplicate-issue-id-post.sh PostToolUse reactive deletion."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to check-duplicate-issue-id-post.sh."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/check-duplicate-issue-id-post.sh"
+
+    def _make_input(self, file_path: str) -> str:
+        """Build JSON stdin simulating a PostToolUse Write event."""
+        return json.dumps({"tool_name": "Write", "tool_input": {"file_path": file_path}})
+
+    def test_unique_issue_not_deleted(self, hook_script: Path, tmp_path: Path):
+        """A newly written file with a unique integer ID is left intact."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            issues_dir = tmp_path / ".issues" / "bugs"
+            issues_dir.mkdir(parents=True)
+
+            new_file = issues_dir / "P2-BUG-042-first-issue.md"
+            new_file.write_text("# First issue")
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(new_file)),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert result.returncode == 0, f"Expected exit 0, got {result.returncode}: {result.stderr}"
+            assert new_file.exists(), "Unique issue file should not be deleted"
+        finally:
+            os.chdir(original_dir)
+
+    def test_duplicate_file_deleted_and_exit2(self, hook_script: Path, tmp_path: Path):
+        """A newly written file whose integer ID already exists is deleted; hook exits 2."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            bugs_dir = tmp_path / ".issues" / "bugs"
+            bugs_dir.mkdir(parents=True)
+
+            # Pre-existing issue
+            existing = bugs_dir / "P2-BUG-007-original.md"
+            existing.write_text("# Original")
+
+            # Duplicate written by a concurrent Write tool call
+            duplicate = bugs_dir / "P2-BUG-007-duplicate.md"
+            duplicate.write_text("# Duplicate")
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(duplicate)),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert result.returncode == 2, f"Expected exit 2, got {result.returncode}"
+            assert not duplicate.exists(), "Duplicate file should be deleted"
+            assert existing.exists(), "Original file should remain"
+            assert "007" in result.stderr, f"Feedback should mention integer: {result.stderr}"
+        finally:
+            os.chdir(original_dir)
+
+    def test_cross_type_duplicate_deleted(self, hook_script: Path, tmp_path: Path):
+        """A newly written file whose integer collides with a different-type file is deleted."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            bugs_dir = tmp_path / ".issues" / "bugs"
+            bugs_dir.mkdir(parents=True)
+            features_dir = tmp_path / ".issues" / "features"
+            features_dir.mkdir(parents=True)
+
+            # Pre-existing BUG-007
+            existing = bugs_dir / "P2-BUG-007-original.md"
+            existing.write_text("# Original bug")
+
+            # FEAT-007 just written — cross-type collision
+            duplicate = features_dir / "P2-FEAT-007-new-feature.md"
+            duplicate.write_text("# New feature")
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(duplicate)),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert result.returncode == 2, f"Expected exit 2, got {result.returncode}"
+            assert not duplicate.exists(), "Cross-type duplicate should be deleted"
+            assert existing.exists(), "Original bug file should remain"
+        finally:
+            os.chdir(original_dir)
+
+    def test_non_issue_file_ignored(self, hook_script: Path, tmp_path: Path):
+        """Files outside the issues directory are ignored without error."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            # File not in .issues/
+            other_file = tmp_path / "README.md"
+            other_file.write_text("# Not an issue")
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(other_file)),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert result.returncode == 0, f"Expected exit 0 for non-issue file: {result.stderr}"
+            assert other_file.exists(), "Non-issue file should not be touched"
+        finally:
+            os.chdir(original_dir)
+
+    def test_non_write_tool_ignored(self, hook_script: Path, tmp_path: Path):
+        """Non-Write tool events (e.g., Bash) are ignored immediately."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "echo hi"}}),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert result.returncode == 0, f"Expected exit 0 for non-Write tool: {result.stderr}"
+        finally:
+            os.chdir(original_dir)
+
+
 class TestSharedConfigFunctions:
     """Test ll_resolve_config, ll_feature_enabled, ll_config_value from common.sh."""
 

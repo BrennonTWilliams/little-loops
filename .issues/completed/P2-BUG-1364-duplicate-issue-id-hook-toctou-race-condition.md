@@ -1,5 +1,6 @@
 ---
 captured_at: '2026-05-04T21:18:58Z'
+completed_at: '2026-05-05T02:04:07Z'
 discovered_date: '2026-05-04'
 discovered_by: capture-issue
 decision_needed: false
@@ -40,7 +41,7 @@ Silent ID collisions corrupt issue tracking: `ll-issues path`, `ll-issues show`,
 ## Root Cause
 
 - **File**: `hooks/scripts/check-duplicate-issue-id.sh`
-- **Anchor**: lock-acquire → find → lock-release → return-allow block (lines 95–126)
+- **Anchor**: lock-acquire → find → lock-release → return-allow block (lines 98–129)
 - **Cause**: The advisory lock (`acquire_lock` / `release_lock` in `lib/common.sh`) is held only during the `find` scan. Once the hook returns "allow", the lock is released and the file has not yet been written. A second concurrent hook can then acquire the lock, run `find` (finding nothing, because the first file isn't on disk yet), and also return "allow". The actual write happens after the hook process exits — outside the lock scope entirely.
 
 ## Proposed Solution
@@ -208,7 +209,21 @@ _Updated by `/ll:confidence-check` on 2026-05-04_
 - **Documentation breadth**: 5 separate markdown touchpoints across different directories (`docs/ARCHITECTURE.md`, `docs/development/TROUBLESHOOTING.md`, `skills/configure/areas.md`, `CHANGELOG.md`, `skills/capture-issue/SKILL.md`); easy to miss one — use the wiring step list in Implementation Steps as a checklist
 - **Behavioral contract change in `capture-issue/SKILL.md`**: under Option A, Write returns success but the PostToolUse hook deletes the file reactively; the skill has no retry or verification step for this case — a judgment call is needed during implementation about whether to add a fallback note
 
+## Resolution
+
+**Fixed**: Added `hooks/scripts/check-duplicate-issue-id-post.sh` — a PostToolUse Write hook that closes the TOCTOU window. After each Write to `.issues/`, it checks whether the written file shares an integer ID with any other existing issue file. If a duplicate is found, it deletes the just-written file and emits `exit 2` + stderr feedback so Claude retries with a fresh `ll-issues next-id` call.
+
+**Changes**:
+- `hooks/scripts/check-duplicate-issue-id-post.sh` — new PostToolUse reactive deletion script
+- `hooks/hooks.json` — registered new hook under PostToolUse with `matcher: "Write"`
+- `scripts/tests/test_hooks_integration.py` — added `TestDuplicateIssueIdPost` class (5 tests)
+- `docs/development/TROUBLESHOOTING.md` — added chmod entry, timeout note, manual test example
+- `skills/configure/areas.md` — added PostToolUse row to hook table
+- `docs/ARCHITECTURE.md` — added new script to file listing
+- `CHANGELOG.md` — added BUG-1364 entry
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-05T01:55:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3d013c1-645d-4dcb-b9b0-5effe57c6af1.jsonl`
 - `/ll:confidence-check` - 2026-05-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58200d4c-562e-45dd-8a37-1a29fb4ae944.jsonl`
 - `/ll:wire-issue` - 2026-05-05T01:25:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7507e7a-bb19-409b-8997-56185af003f7.jsonl`
 - `/ll:decide-issue` - 2026-05-04T22:31:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29bd4285-4b66-4516-9a50-d8c4c54bfccd.jsonl`

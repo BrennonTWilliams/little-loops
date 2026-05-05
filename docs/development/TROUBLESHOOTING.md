@@ -801,6 +801,7 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    ```bash
    chmod +x hooks/scripts/context-monitor.sh
    chmod +x hooks/scripts/check-duplicate-issue-id.sh
+   chmod +x hooks/scripts/check-duplicate-issue-id-post.sh
    chmod +x hooks/scripts/user-prompt-check.sh
    chmod +x hooks/scripts/precompact-state.sh
    chmod +x hooks/scripts/scratch-pad-redirect.sh
@@ -910,6 +911,7 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    # Expected: "deny" with message about cross-type integer collision
    ```
 4. Check if lock acquisition is timing out (reduce concurrent writes)
+5. For TOCTOU race (parallel writes both pass PreToolUse check): verify `check-duplicate-issue-id-post.sh` is registered as PostToolUse Write hook and deletes the later-written duplicate reactively.
 
 ### Context monitor not updating
 
@@ -977,11 +979,19 @@ echo '{
   "tool_response": {"content": "line1\nline2\nline3\n"}
 }' | bash hooks/scripts/context-monitor.sh
 
-# Test check-duplicate-issue-id.sh
+# Test check-duplicate-issue-id.sh (PreToolUse)
 echo '{
   "tool_name": "Write",
   "tool_input": {"file_path": ".issues/bugs/P2-BUG-999-test.md"}
 }' | bash hooks/scripts/check-duplicate-issue-id.sh
+
+# Test check-duplicate-issue-id-post.sh (PostToolUse — reactive deletion)
+# With an existing P2-BUG-999-original.md already present in .issues/bugs/:
+echo '{
+  "tool_name": "Write",
+  "tool_input": {"file_path": ".issues/bugs/P2-BUG-999-duplicate.md"}
+}' | bash hooks/scripts/check-duplicate-issue-id-post.sh
+# Expected: exit 2, stderr message, duplicate file deleted
 
 # Test user-prompt-check.sh
 echo '{
@@ -1020,7 +1030,8 @@ python -m pytest scripts/tests/test_hooks_integration.py -v -s
    ```
 2. Verify lock timeout settings (in hook scripts):
    - context-monitor.sh: 3s timeout
-   - check-duplicate-issue-id.sh: 3s timeout
+   - check-duplicate-issue-id.sh: 3s timeout (PreToolUse lock)
+   - check-duplicate-issue-id-post.sh: no lock (PostToolUse reactive deletion; overall hook timeout 5s)
    - precompact-state.sh: 3s timeout
 3. Monitor lock files during operation:
    ```bash
