@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.97.0] - 2026-05-05
+
+### Added
+
+- **WebhookTransport** — POSTs batched FSM events to a configurable HTTP endpoint, enabling remote dashboards, Slack bots, and CI systems to subscribe to ll loop activity without polling the filesystem. Events are queued non-blocking and flushed on a configurable interval (default 1000 ms); failed POSTs retry with exponential backoff (3 retries, 0.5 s–8 s). Activate with `events.transports: ["webhook"]` and configure via `events.webhook.url`, `events.webhook.batch_ms`, and `events.webhook.headers`. Requires `pip install 'little-loops[webhooks]'`; the base package import is unaffected when the optional extra is absent. (FEAT-1314)
+- **`commands:` Key for Loop YAML** — Loop authors can now add a top-level `commands:` list to their loop YAML to override the Commands section displayed by `ll-loop show`. Each entry is a `{cmd, comment}` pair providing copy-paste-ready examples with the correct `--param` or `--context` flags for that specific loop, replacing the generic five-command default. (ENH-1367)
+- **Optional `sprint_name` Input for `sprint-build-and-validate`** — Pass a sprint name as a positional argument (`ll-loop run sprint-build-and-validate my-sprint`) to reuse an existing sprint definition at `.sprints/<name>.yaml` and skip the sprint-creation phase. When omitted, the loop creates a new sprint from the backlog as before. (ENH-1372)
+
+### Changed
+
+- **`sprint-build-and-validate` Refinement Pipeline** — Replaced the inline size-review/verify pipeline with the `recursive-refine` sub-loop, giving sprint issues the same depth-first decomposition, cycle detection, and budget-cap guarantees used by `auto-refine-and-implement`. Issues that fail refinement or are decomposed into children are written to a skip file and excluded from subsequent sprint execution.
+
 ## [1.96.0] - 2026-05-04
 
 ### Added

@@ -425,6 +425,8 @@ Copy a built-in loop to `.loops/` for customization.
 
 Show loop details and FSM structure. The header line displays active [per-loop config overrides](../guides/LOOPS_GUIDE.md#per-loop-config-overrides) (e.g., `config: handoff_threshold=60`) when a `config:` block is present in the loop YAML.
 
+The **Commands** section at the bottom of the output can be overridden by adding a top-level `commands:` list to the loop YAML. Each entry is a `{cmd, comment}` pair; when present, this list replaces the five generic default commands so that loops requiring `--param` or `--context` flags can surface copy-paste-ready examples. See `docs/generalized-fsm-loop.md` for the full `commands:` schema.
+
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--json` | `-j` | Output FSM config as JSON |

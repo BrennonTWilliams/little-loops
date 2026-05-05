@@ -742,11 +742,13 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `iterate-plan` | Update implementation plans |
 | `confidence-check`^ | Pre-implementation confidence check for readiness |
 | `refine-issue` | Refine issues with codebase-driven research |
+| `decide-issue`^ | Resolve competing implementation options via codebase evidence scoring |
 | `wire-issue`^ | Complete integration map — trace callers, config, docs, tests |
 | `tradeoff-review-issues` | Evaluate issues for utility vs complexity |
 | `issue-workflow`^ | Quick reference for issue management workflow |
 | `issue-size-review`^ | Evaluate issue size/complexity and propose decomposition |
 | `map-dependencies`^ | Analyze cross-issue dependencies based on file overlap |
+| `audit-issue-conflicts`^ | Scan open issues for conflicting requirements and architectural decisions |
 | `go-no-go`^ | Adversarial go/no-go debate for issue implementation decisions |
 | `audit-architecture` | Analyze code structure |
 | `audit-docs`^ | Check documentation accuracy |
