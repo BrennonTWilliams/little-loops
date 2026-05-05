@@ -10,7 +10,7 @@ description: |
   runtimes, pass --timeout <seconds> to the outer loop invocation.
 initial: validate_input
 max_iterations: 15
-timeout: 7200
+timeout: 14400
 on_handoff: spawn
 context:
   loop_name: ""  # Required: target loop name (built-in or project-level)
@@ -29,7 +29,7 @@ states:
 
   load_definition:
     action_type: shell
-    timeout: 30
+    timeout: 60
     action: |
       ll-loop show "${context.loop_name}" 2>&1
     capture: loop_definition
@@ -38,7 +38,7 @@ states:
 
   analyze_definition:
     action_type: prompt
-    timeout: 300
+    timeout: 600
     action: |
       Analyze the YAML definition of loop: ${context.loop_name}
 
@@ -68,7 +68,7 @@ states:
 
   run_sub_loop:
     loop: "${context.loop_name}"
-    timeout: 1800
+    timeout: 3600
     with:
       input: "${context.input}"
     capture: sub_loop_output
@@ -78,7 +78,7 @@ states:
 
   analyze_execution:
     action_type: prompt
-    timeout: 300
+    timeout: 600
     action: |
       Analyze the sub-loop execution output below. If the sub-loop failed to start
       (e.g., loop not found or crashed), note that clearly and assess what the error
@@ -103,7 +103,7 @@ states:
 
   generate_report:
     action_type: prompt
-    timeout: 300
+    timeout: 600
     action: |
       Combine the definition analysis and execution analysis into a structured
       improvement report for loop: ${context.loop_name}
@@ -158,7 +158,7 @@ states:
 
   refine_analysis:
     action_type: prompt
-    timeout: 300
+    timeout: 600
     action: |
       The improvement report lacks concrete findings. Re-examine the data more carefully.
 
