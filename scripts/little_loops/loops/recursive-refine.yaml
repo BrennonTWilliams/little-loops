@@ -58,6 +58,7 @@ states:
       printf '' > .loops/tmp/recursive-refine-skipped-budget.txt
       printf '' > .loops/tmp/recursive-refine-skipped-decomposed.txt
       printf '' > .loops/tmp/recursive-refine-skipped-deadend.txt
+      printf '' > .loops/tmp/recursive-refine-skipped-decision.txt
       printf '' > .loops/tmp/recursive-refine-decomposition.tsv
       printf '0' > .loops/tmp/recursive-refine-dequeued-count.txt
       COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
@@ -434,6 +435,23 @@ states:
       type: output_numeric
       operator: lt
       target: 1
+    on_yes: check_decision_needed
+    on_no: dequeue_next
+    on_error: check_decision_needed
+
+  check_decision_needed:
+    # Gate: skip size-review if the issue has decision_needed: true — a competing
+    # option must be resolved via /ll:decide-issue before sizing makes sense.
+    action: |
+      ISSUE_FILE=$(find .issues -name "*-${captured.input.output}-*" \
+        ! -path "*/completed/*" 2>/dev/null | head -1)
+      if [ -n "$ISSUE_FILE" ] && grep -q "decision_needed: true" "$ISSUE_FILE"; then
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-decision.txt
+        echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+        exit 1
+      fi
+      exit 0
+    fragment: shell_exit
     on_yes: run_size_review
     on_no: dequeue_next
     on_error: run_size_review
@@ -606,6 +624,8 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       BUDGET_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-budget.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      DECISION_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-decision.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       DECOMPOSED_COUNT=$(echo "$DECOMPOSED_IDS" | grep -c '[^[:space:]]' || echo 0)
@@ -613,6 +633,7 @@ states:
       DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      DECISION_COUNT=$(echo "$DECISION_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECOMPOSED_LIST=$(echo "$DECOMPOSED_IDS" | tr '\n' ',' | sed 's/,$//')
@@ -620,6 +641,7 @@ states:
       DEPTH_LIST=$(echo "$DEPTH_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       BUDGET_LIST=$(echo "$BUDGET_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      DECISION_LIST=$(echo "$DECISION_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Recursive Refine Summary ===\n\n'
       printf 'Passed       (%d): %s\n' "$PASSED_COUNT"     "$${PASSED_LIST:-none}"
@@ -628,6 +650,7 @@ states:
       printf 'Depth-cap    (%d): %s\n' "$DEPTH_COUNT"      "$${DEPTH_LIST:-none}"
       printf 'Cycle        (%d): %s\n' "$CYCLE_COUNT"      "$${CYCLE_LIST:-none}"
       printf 'Budget       (%d): %s\n' "$BUDGET_COUNT"     "$${BUDGET_LIST:-none}"
+      printf 'Decision     (%d): %s\n' "$DECISION_COUNT"   "$${DECISION_LIST:-none}"
       if [ "${context.tree_summary}" != "false" ]; then
         python3 << 'PYEOF'
       import subprocess, sys, json, os, re
@@ -648,6 +671,7 @@ states:
       depth_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-depth.txt'))
       cycle_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-cycle.txt'))
       budget_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-budget.txt'))
+      decision_skipped = set(read_ids('.loops/tmp/recursive-refine-skipped-decision.txt'))
       all_ids = passed | skipped
 
       def build_parent_map():
@@ -686,6 +710,8 @@ states:
               return 'cycle'
           if iid in budget_skipped:
               return 'budget'
+          if iid in decision_skipped:
+              return 'decision-needed'
           return 'refinement'
 
       lines = []
