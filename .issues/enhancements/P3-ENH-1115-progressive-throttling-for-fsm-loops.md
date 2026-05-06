@@ -8,10 +8,10 @@ discovered_by: capture-issue
 related: []
 decision_needed: false
 confidence_score: 100
-outcome_confidence: 53
+outcome_confidence: 60
 score_complexity: 0
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 10
 size: Very Large
 ---
@@ -97,7 +97,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/__init__.py:90-92` — exports `RATE_LIMIT_*_EVENT` constants; must export new `THROTTLE_*_EVENT` constants alongside them
-- `scripts/little_loops/fsm/persistence.py:407-434` — `_handle_event` writes all executor events to `.loops/.running/<name>.events.jsonl`; throttle events are automatically captured if emitted (no changes needed unless counters need persistence across ticks)
+- `scripts/little_loops/fsm/persistence.py:420-447` — `_handle_event` writes all executor events to `.loops/.running/<name>.events.jsonl`; throttle events are automatically captured if emitted (no changes needed unless counters need persistence across ticks)
 - `scripts/little_loops/fsm/validation.py` — FSM config validation; must validate new throttle fields (`normal_max < warn_max < hard_max`)
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema for FSM loops; needs throttle block added (regenerate with `ll-generate-schemas` after schema.py changes)
 - `scripts/little_loops/loops/lib/common.yaml:49-62` — `with_rate_limit_handling` fragment; add parallel `with_throttle` fragment here (NOT in `templates/` — see research note below)
@@ -107,11 +107,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/info.py` — imports `StateConfig`/`EvaluateConfig`; surfaces state config details in `ll-loop info` output; will need to display `throttle:` config block alongside evaluate/route
 
 ### Similar Patterns
-- `scripts/little_loops/fsm/executor.py:197-201` — `_consecutive_rate_limit_exhaustions` counter declaration in `__init__`; same pattern for per-state tool-call counter (`_throttle_counts: dict[str, int]`)
-- `scripts/little_loops/fsm/executor.py:1136-1144` — storm detection increment + threshold check + `_emit()`; direct structural analog for warn/hard/stop thresholds
-- `scripts/little_loops/fsm/executor.py:276` — `_retry_counts.pop(_prev_state, None)` on state change; same reset point for `_throttle_counts`
-- `scripts/little_loops/fsm/executor.py:300-323` — `max_retries` exhaustion with forced state transition; model for `hard_max` transition logic
-- `scripts/little_loops/fsm/schema.py:245-251` — rate-limit flat scalar fields on `StateConfig`; throttle fields would follow this flat-field pattern OR use a nested `ThrottleConfig` dataclass (like `EvaluateConfig`) per the issue's nested YAML spec
+- `scripts/little_loops/fsm/executor.py:181-210` — counter declaration block in `__init__` (`_retry_counts` at 181, `_rate_limit_retries` at 200, `_api_error_retries` at 210); `_throttle_counts: dict[str, int]` slots at line 211 (immediately after `_api_error_retries`)
+- `scripts/little_loops/fsm/executor.py:1192-1200` — storm detection increment + threshold check + `_emit()`; direct structural analog for warn/hard/stop thresholds
+- `scripts/little_loops/fsm/executor.py:285` — `_retry_counts.pop(_prev_state, None)` on state change; same reset point for `_throttle_counts`
+- `scripts/little_loops/fsm/executor.py:307-332` — `max_retries` exhaustion with forced state transition; model for `hard_max` transition logic
+- `scripts/little_loops/fsm/schema.py:298-302` — rate-limit flat scalar fields on `StateConfig`; throttle fields would follow this flat-field pattern OR use a nested `ThrottleConfig` dataclass (like `EvaluateConfig`) per the issue's nested YAML spec
 
 ### Tests
 - `scripts/tests/test_fsm_executor.py:4584` — `TestRateLimitRetries` class; model new `TestThrottling` class after this (factory, event-capture, `patch.multiple` for module constants)
@@ -147,7 +147,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/schema.py:378-412` (`get_referenced_states`) — must include `on_throttle_hard` if it becomes a state-reference field on `StateConfig`; without this, the FSM reachability validator at `validation.py:415` emits false "unreachable state" warnings for states targeted only by `on_throttle_hard`
-- `scripts/little_loops/fsm/persistence.py:457-460` (`_save_state`) — decision point: currently saves `retry_counts` and `rate_limit_retries`; if `_throttle_counts` must survive resume/handoff across ticks, add to `LoopState` serialization here; if counters reset on resume, no change needed
+- `scripts/little_loops/fsm/persistence.py:449-474` (`_save_state`) — **PERSISTENCE DECISION RESOLVED**: `_throttle_counts` is NOT serialized to `LoopState`; throttle counters reset on loop resume. Rationale: throttle counts measure "calls within a single continuous state visit" — resuming starts a fresh visit. Unlike `_retry_counts`/`_rate_limit_retries` (which track cumulative across interruptions and are restored at `resume:539-545`), throttle counts are instantaneous visit-level state. No changes to `persistence.py` or `LoopState` are needed.
 - `scripts/little_loops/fsm/fsm-loop-schema.json:175-321` — stateConfig definition; `"additionalProperties": false` at line 320 means any YAML with a `throttle:` block fails schema validation until `throttle` is added as a nested object property — this file is hand-maintained, not regenerated by `ll-generate-schemas`
 
 ### Codebase Research Findings
@@ -157,14 +157,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Schema design choice**: Existing rate-limit config uses flat scalar fields on `StateConfig` (`schema.py:245-251`). The issue specifies a nested `throttle:` YAML block. This is a deliberate design departure toward a nested `ThrottleConfig` dataclass (like `EvaluateConfig`) rather than flat fields like `throttle_normal_max`. Either works; the nested approach matches the issue spec and is more readable in YAML.
 - **Templates/ clarification**: The issue says "defaults live in `templates/`" — this is incorrect. The `templates/` directory holds ll-config project-type templates (e.g. `generic.json`), not FSM loop defaults. FSM defaults use module constants in `executor.py` + reusable fragments in `loops/lib/common.yaml`.
 - **Event export**: New throttle event constants (e.g. `THROTTLE_WARN_EVENT`, `THROTTLE_HARD_EVENT`, `THROTTLE_STOP_EVENT`) must be exported from `fsm/__init__.py:90-92` alongside existing rate-limit event exports.
-- **Counter increment location**: `executor.py:481` and `executor.py:504` — the call sites of `_run_action_or_route` inside `_execute_state` — are the natural increment points (after each action call for the current state).
+- **Counter increment location**: `executor.py:533` and `executor.py:557` — the call sites of `_run_action_or_route` inside `_execute_state` — are the natural increment points (after each action call for the current state).
 - **Validation rule**: `validation.py` should enforce `normal_max < warn_max < hard_max` and that all three are positive integers when `throttle:` is present.
 
 ## Implementation Steps
 
 1. **Schema** (`scripts/little_loops/fsm/schema.py:245-251`): Add optional `ThrottleConfig` dataclass with `normal_max`, `warn_max`, `hard_max: int | None = None` fields; add `throttle: ThrottleConfig | None = None` to `StateConfig`; add `from_dict`/`to_dict` handling following the `EvaluateConfig` nested pattern; add validation rule `normal_max < warn_max < hard_max` in `scripts/little_loops/fsm/validation.py`
 2. **Executor defaults** (`scripts/little_loops/fsm/executor.py:51-60`): Add `_DEFAULT_THROTTLE_NORMAL_MAX = 3`, `_DEFAULT_THROTTLE_WARN_MAX = 8`, `_DEFAULT_THROTTLE_HARD_MAX = 12` alongside existing `_DEFAULT_RATE_LIMIT_*` constants
-3. **Executor counter** (`scripts/little_loops/fsm/executor.py:197-201`): Add `self._throttle_counts: dict[str, int] = {}` in `__init__`; reset at `executor.py:276` (same block as `_retry_counts.pop`) when state changes; increment at `executor.py:481` / `executor.py:504` after each `_run_action_or_route` call
+3. **Executor counter** (`scripts/little_loops/fsm/executor.py:211`): Add `self._throttle_counts: dict[str, int] = {}` in `__init__` (after `_api_error_retries` at line 210); reset at `executor.py:285` (same block as `_retry_counts.pop`) when state changes; increment at `executor.py:533` / `executor.py:557` after each `_run_action_or_route` call; **do NOT serialize to `LoopState`** — reset on resume (see persistence decision below)
 4. **Threshold logic**: Resolve thresholds from `state.throttle` (if set) else `_DEFAULT_THROTTLE_*`; after increment: if `count == warn_threshold` emit `THROTTLE_WARN_EVENT`; if `count == hard_threshold` emit `THROTTLE_HARD_EVENT` and transition to `state.on_throttle_hard` (or `on_error`); if `count > hard_threshold` call `_finish("error", ...)` and emit `THROTTLE_STOP_EVENT`, mark as stuck
 5. **Event exports** (`scripts/little_loops/fsm/__init__.py:90-92`): Export `THROTTLE_WARN_EVENT`, `THROTTLE_HARD_EVENT`, `THROTTLE_STOP_EVENT`; regenerate `fsm-loop-schema.json` via `ll-generate-schemas`
 6. **Fragment** (`scripts/little_loops/loops/lib/common.yaml:49-62`): Add `with_throttle` fragment with explicit `throttle:` defaults; add `throttle:` block to `autodev.yaml` or `recursive-refine.yaml` as the required built-in example
@@ -209,25 +209,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-23; re-verified 2026-05-03
+**Verdict**: VALID — Verified 2026-04-23; re-verified 2026-05-03; line numbers corrected 2026-05-06
 
 - No `throttle:` section in FSM state config schema (`scripts/little_loops/fsm/schema.py`) ✓
 - No per-state tool-call counter in FSM executor ✓
 - Feature not yet implemented ✓
-- **Line number drift** (2026-05-03): `executor.py:197-201` reference is stale — `_consecutive_rate_limit_exhaustions` counter declaration is now at line **205**; storm detection cited as `1136-1144` is now at **1180-1186**. Update Implementation Steps 2–3 accordingly before starting.
+- **Line numbers corrected** (2026-05-06): All executor.py references updated to current state. Key current lines: counter block 181-210 (slot at 211), storm detection 1192-1200, retry pop at 285, max_retries exhaustion 307-332, `_run_action_or_route` call sites at 533/557. Schema rate-limit fields now at 298-302. Persistence decision resolved (no `LoopState` changes needed).
+- **Persistence decision resolved** (2026-05-06): `_throttle_counts` resets on resume — not serialized to `LoopState`.
 
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-04-24_
+_Added by `/ll:confidence-check` on 2026-05-06 (updated from 2026-04-24)_
 
 **Readiness Score**: 100/100 → PROCEED
-**Outcome Confidence**: 53/100 → LOW
+**Outcome Confidence**: 60/100 → MODERATE
 
 ### Outcome Risk Factors
-- **File count breadth**: 20+ touchpoints (mostly additive), but `fsm-loop-schema.json` hand-maintenance (line 320 `"additionalProperties": false`) and doc-count assertions (`test_generate_schemas.py:17-19`, `docs/reference/CLI.md:1205`) are high-miss-risk items not auto-updated.
-- **Persistence decision unresolved**: Whether `_throttle_counts` survives loop resume (persistence.py:457-460) is flagged as an open decision — resolve before implementing step 3.
-- **Silent diagram regression**: `layout.py:204` must include `on_throttle_hard` in `_collect_edges()` — omitting it drops the transition from FSM diagrams without any error or failing test.
+- **File breadth (29+ touchpoints)**: `fsm-loop-schema.json:175-321` is hand-maintained with `"additionalProperties": false` at line 320 — any `throttle:` YAML silently fails schema validation until manually updated; doc-count assertions (`test_generate_schemas.py:17-19` count 23→26, `docs/reference/CLI.md:1205` event-type count) are easy to miss.
+- **Silent diagram regression**: `layout.py:204` `_collect_edges()` must include `on_throttle_hard` — omitting it drops the FSM diagram transition with no error or test failure to catch it.
+- **Learning-state exemption gap**: The `type == "learning"` hard-stop exemption (scope boundary added 2026-05-04) has no dedicated behavioral test yet — `test_enh1115_doc_wiring.py` is doc-focused; a test for learning-state throttle bypass needs to be added to `TestThrottling`.
 
 ## Tradeoff Review Note
 
@@ -248,6 +249,8 @@ Update first — Resolve the persistence decision at `persistence.py:457-460` be
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1898cad7-7a7c-462d-9a8e-633b83916b6e.jsonl`
+- `/ll:refine-issue` - 2026-05-06T19:13:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df8da1ea-1180-4953-9482-243f9d2b5acf.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
