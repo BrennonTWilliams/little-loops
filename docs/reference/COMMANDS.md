@@ -536,6 +536,8 @@ Analyze loop execution history to synthesize actionable issues from fault signal
 **Arguments:**
 - `loop_name` (optional): Loop name to analyze. If omitted, auto-selects the most recently updated interrupted/failed loop.
 - `tail` (optional): Limit history events analyzed to the N most recent (default 200)
+- `--skip-issue-creation` (flag): Skip issue creation entirely and exit cleanly after presenting signals
+- `--auto` (flag): Non-interactive mode; suppress all `AskUserQuestion` calls and default to no for issue creation (implies `--skip-issue-creation`). Also activates when `--dangerously-skip-permissions` is in effect.
 
 **Signal detection rules:**
 
@@ -596,6 +598,12 @@ _Effectiveness Signals (ENH-class — completed but did not do useful work):_
 
 # Limit events analyzed
 /ll:analyze-loop issue-fixer --tail 100
+
+# Headless: skip issue-creation prompt (for loop automation)
+/ll:analyze-loop issue-fixer --skip-issue-creation
+
+# Non-interactive: suppress all prompts (for slash_command invocation)
+/ll:analyze-loop issue-fixer --auto
 ```
 
 **Trigger keywords:** "analyze loop", "loop issues", "loop failures", "loop history issues"
@@ -609,6 +617,8 @@ Audit whether a loop's execution actually achieved its stated goal — checking 
 - `loop_name` (optional): Loop name to assess. If omitted, auto-selects the most recently updated loop.
 - `tail` (optional): Limit history events analyzed to the N most recent (default 200)
 - `--no-rubric-audit` (flag): Skip the LLM rubric-vs-description pass (cost gate)
+- `--skip-issue-creation` (flag): Skip issue creation entirely and exit cleanly after presenting proposals
+- `--auto` (flag): Non-interactive mode; suppress all `AskUserQuestion` calls and default to no for issue creation (implies `--skip-issue-creation`). Also activates when `--dangerously-skip-permissions` is in effect.
 
 **Sub-loop visibility:** Step 2 uses `--resolved --json`, making sub-loop states visible under `_subloop` keys in the FSM output. The Step 8 laundering check (`on_yes == on_no` on any sub-loop state) now operates on the fully-resolved state map.
 
@@ -644,6 +654,12 @@ Audit whether a loop's execution actually achieved its stated goal — checking 
 
 # Skip rubric audit (faster, lower cost)
 /ll:assess-loop issue-fixer --no-rubric-audit
+
+# Headless: skip issue-creation prompt (for loop automation)
+/ll:assess-loop issue-fixer --skip-issue-creation
+
+# Non-interactive: suppress all prompts (for slash_command invocation)
+/ll:assess-loop issue-fixer --auto
 ```
 
 **Trigger keywords:** "assess loop", "audit loop", "loop effectiveness", "loop goal", "phantom success", "loop artifacts", "did the loop work"

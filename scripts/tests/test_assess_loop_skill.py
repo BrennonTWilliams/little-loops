@@ -75,6 +75,27 @@ class TestAssessLoopSkill:
         assert "--no-rubric-audit" in content
         # → skill must support --no-rubric-audit to skip LLM judge calls
 
+    def test_skill_has_skip_issue_creation_flag(self) -> None:
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        assert "--skip-issue-creation" in skill_path.read_text()
+
+    def test_skill_has_auto_flag(self) -> None:
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        assert "--auto" in skill_path.read_text()
+
+    def test_step9_ask_user_question_guarded_by_skip_flag(self) -> None:
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        content = skill_path.read_text()
+        step9_start = content.index("## Step 9:")
+        final_report_start = content.index("## Final Report")
+        step9_section = content[step9_start:final_report_start]
+        # The prose guard must appear before AskUserQuestion in Step 9
+        guard_pos = step9_section.find("--skip-issue-creation")
+        ask_pos = step9_section.find("AskUserQuestion")
+        assert guard_pos != -1, "Step 9 must contain --skip-issue-creation guard"
+        assert ask_pos != -1, "Step 9 must still contain the AskUserQuestion call for interactive mode"
+        assert guard_pos < ask_pos, "Guard must appear before AskUserQuestion in Step 9"
+
     def test_skill_uses_resolved_flag(self) -> None:
         skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
         content = skill_path.read_text()

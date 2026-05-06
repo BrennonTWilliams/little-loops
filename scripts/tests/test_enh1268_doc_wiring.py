@@ -123,3 +123,41 @@ class TestAssessLoopCommandsWiring:
             "docs/reference/COMMANDS.md /ll:assess-loop entry must document "
             "that Step 2 uses --resolved --json for sub-loop visibility"
         )
+
+    def test_skip_issue_creation_flag_present(self) -> None:
+        section = self._assess_loop_section()
+        assert "--skip-issue-creation" in section, (
+            "docs/reference/COMMANDS.md /ll:assess-loop entry must document "
+            "the '--skip-issue-creation' flag (ENH-1373)"
+        )
+
+    def test_auto_flag_present(self) -> None:
+        section = self._assess_loop_section()
+        assert "--auto" in section, (
+            "docs/reference/COMMANDS.md /ll:assess-loop entry must document "
+            "the '--auto' flag (ENH-1373)"
+        )
+
+
+class TestAnalyzeLoopHeadlessFlagsWiring:
+    """docs/reference/COMMANDS.md must document --skip-issue-creation and --auto for /ll:analyze-loop."""
+
+    def _analyze_loop_section(self) -> str:
+        content = COMMANDS_REF.read_text()
+        start = content.index("### `/ll:analyze-loop`")
+        next_heading = content.find("\n### `", start + 1)
+        return content[start:next_heading]
+
+    def test_skip_issue_creation_flag_present(self) -> None:
+        section = self._analyze_loop_section()
+        assert "--skip-issue-creation" in section, (
+            "docs/reference/COMMANDS.md /ll:analyze-loop entry must document "
+            "the '--skip-issue-creation' flag (ENH-1373)"
+        )
+
+    def test_auto_flag_present(self) -> None:
+        section = self._analyze_loop_section()
+        assert "--auto" in section, (
+            "docs/reference/COMMANDS.md /ll:analyze-loop entry must document "
+            "the '--auto' flag (ENH-1373)"
+        )

@@ -1,7 +1,7 @@
 ---
 description: |
   Use when the user asks to analyze loop execution history, investigate loop failures, find loop issues, or synthesize actionable issues from loop runs.
-argument-hint: "[loop-name] [--tail N]"
+argument-hint: "[loop-name] [--tail N] [--skip-issue-creation] [--auto]"
 model: sonnet
 allowed-tools:
   - Bash(ll-loop:*, ll-issues:*, git:*)
@@ -16,6 +16,12 @@ arguments:
     required: false
   - name: tail
     description: Limit history events analyzed to the N most recent (default 200)
+    required: false
+  - name: skip_issue_creation
+    description: Skip issue creation entirely and exit cleanly after presenting signals
+    required: false
+  - name: auto
+    description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when --dangerously-skip-permissions is in effect.
     required: false
 ---
 
@@ -406,6 +412,8 @@ Events analyzed: <N> events
 ```
 
 The total signal count for downstream confirmation is `N + M` (combine both buckets when prompting). If `N + M == 0` (no signals passed deduplication): output the Execution Summary and stop — do not ask for confirmation.
+
+**Skip the issue-creation prompt if `--skip-issue-creation` or `--auto` flag is set (or if `--dangerously-skip-permissions` is active).** Print: `ℹ️ Issue creation skipped (--skip-issue-creation / --auto)` and stop.
 
 Otherwise, use `AskUserQuestion` to ask (where `<M>` is the combined `Fault + Effectiveness` count):
 

@@ -3,6 +3,7 @@ id: ENH-1373
 type: ENH
 priority: P3
 captured_at: '2026-05-06T17:56:49Z'
+completed_at: '2026-05-06T18:14:54Z'
 discovered_date: '2026-05-06'
 discovered_by: capture-issue
 decision_needed: false
@@ -162,12 +163,26 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `enhancement`, `skills`, `loops`, `headless`, `captured`
 
+## Resolution
+
+Added `--skip-issue-creation` and `--auto` flags to both `/ll:analyze-loop` (Step 5) and `/ll:assess-loop` (Step 9) via prose guards in the respective SKILL.md frontmatter and issue-creation steps. Documentation and tests updated.
+
+### Changes
+- `skills/analyze-loop/SKILL.md`: updated `argument-hint`, added two `arguments:` entries, inserted prose guard before `AskUserQuestion` in Step 5
+- `skills/assess-loop/SKILL.md`: updated `argument-hint`, added two `arguments:` entries, inserted prose guard before `AskUserQuestion` in Step 9
+- `scripts/tests/test_analyze_loop_synthesis.py`: added three flag/guard tests
+- `scripts/tests/test_assess_loop_skill.py`: added three flag/guard tests
+- `scripts/tests/test_enh1268_doc_wiring.py`: added four doc-wiring tests
+- `docs/reference/COMMANDS.md`: documented new flags in both command entries
+
 ## Status
 
-**Open** | Created: 2026-05-06 | Priority: P3
+**Completed** | Created: 2026-05-06 | Completed: 2026-05-06 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-06T18:11:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/617c17c5-3d4c-49c3-b7de-be5590f6346b.jsonl`
 - `/ll:refine-issue` - 2026-05-06T18:05:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbc40eb3-e3ca-4350-ba0a-67dedf44a51c.jsonl`
 - `/ll:format-issue` - 2026-05-06T17:59:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81732e05-6dae-4a88-848e-c7f2ab988b76.jsonl`
 - `/ll:capture-issue` - 2026-05-06T17:56:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/484c72e4-5eaa-4465-a207-cc2a1d3e75ea.jsonl`
 - `/ll:confidence-check` - 2026-05-06T18:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f027346-babc-453f-9fe6-f810e69e4a86.jsonl`
+- `/ll:manage-issue` - 2026-05-06T18:14:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/617c17c5-3d4c-49c3-b7de-be5590f6346b.jsonl`

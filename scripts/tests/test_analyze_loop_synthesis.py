@@ -521,6 +521,31 @@ class TestAnalyzeLoopSynthesis:
         assert max(samples) >= target
 
     # ------------------------------------------------------------------
+    # ENH-1373: headless flags
+    # ------------------------------------------------------------------
+
+    def test_skill_has_skip_issue_creation_flag(self) -> None:
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "analyze-loop" / "SKILL.md"
+        assert "--skip-issue-creation" in skill_path.read_text()
+
+    def test_skill_has_auto_flag(self) -> None:
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "analyze-loop" / "SKILL.md"
+        assert "--auto" in skill_path.read_text()
+
+    def test_step5_ask_user_question_guarded_by_skip_flag(self) -> None:
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "analyze-loop" / "SKILL.md"
+        content = skill_path.read_text()
+        step5_start = content.index("## Step 5:")
+        step6_start = content.index("## Step 6:")
+        step5_section = content[step5_start:step6_start]
+        # The prose guard must appear before AskUserQuestion in Step 5
+        guard_pos = step5_section.find("--skip-issue-creation")
+        ask_pos = step5_section.find("AskUserQuestion")
+        assert guard_pos != -1, "Step 5 must contain --skip-issue-creation guard"
+        assert ask_pos != -1, "Step 5 must still contain the AskUserQuestion call for interactive mode"
+        assert guard_pos < ask_pos, "Guard must appear before AskUserQuestion in Step 5"
+
+    # ------------------------------------------------------------------
     # Step 5 output grouping (Fault/Effectiveness)
     # ------------------------------------------------------------------
 

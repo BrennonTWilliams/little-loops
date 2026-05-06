@@ -1,7 +1,7 @@
 ---
 description: |
   Use when the user asks to assess loop effectiveness, audit loop goal achievement, check whether a loop actually mutated expected artifacts, detect phantom success, or evaluate loop quality before production use.
-argument-hint: "[loop-name] [--tail N] [--no-rubric-audit]"
+argument-hint: "[loop-name] [--tail N] [--no-rubric-audit] [--skip-issue-creation] [--auto]"
 model: sonnet
 allowed-tools:
   - Bash(ll-loop:*, ll-issues:*, git:*)
@@ -19,6 +19,12 @@ arguments:
     required: false
   - name: no_rubric_audit
     description: Skip the LLM rubric-vs-description pass (cost gate)
+    required: false
+  - name: skip_issue_creation
+    description: Skip issue creation entirely and exit cleanly after presenting proposals
+    required: false
+  - name: auto
+    description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when --dangerously-skip-permissions is in effect.
     required: false
 ---
 
@@ -242,6 +248,8 @@ grep -rl "<loop_name>" .issues/bugs/ .issues/enhancements/ .issues/features/ 2>/
 ```
 
 Mark matches as DUPLICATE. Present only NEW proposals.
+
+**Skip this step if `--skip-issue-creation` or `--auto` flag is set (or if `--dangerously-skip-permissions` is active).** Print: `ℹ️ Issue creation skipped (--skip-issue-creation / --auto)` and stop.
 
 Use `AskUserQuestion` to ask:
 
