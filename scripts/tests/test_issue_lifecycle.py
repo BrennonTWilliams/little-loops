@@ -783,6 +783,11 @@ class TestClassifyFailure:
             ("529 overloaded_error: model capacity exceeded", "TRANSIENT", "api server"),
             ("internal server error from upstream", "TRANSIENT", "api server"),
             ("Error: overloaded — please retry", "TRANSIENT", "api server"),
+            # Context window exhaustion patterns (BUG-1375)
+            ("Prompt is too long", "TRANSIENT", "context"),
+            ("Context length exceeded for model claude-3-opus", "TRANSIENT", "context"),
+            ("Error: context window limit reached", "TRANSIENT", "context"),
+            ("Maximum context exceeded", "TRANSIENT", "context"),
             # Real failure patterns
             ("SyntaxError: unexpected token at line 42", "REAL", "implementation"),
             (

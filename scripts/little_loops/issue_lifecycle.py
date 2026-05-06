@@ -141,6 +141,16 @@ def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, s
     if any(pattern in error_lower for pattern in server_error_patterns):
         return (FailureType.TRANSIENT, "API server error")
 
+    # Context window exhaustion patterns — Claude CLI exits non-zero with this on stderr
+    context_patterns = [
+        "prompt is too long",
+        "context length exceeded",
+        "context window",
+        "maximum context",
+    ]
+    if any(pattern in error_lower for pattern in context_patterns):
+        return (FailureType.TRANSIENT, "Context window exhausted")
+
     # Default: treat as real failure
     return (FailureType.REAL, "Implementation error")
 
