@@ -1080,6 +1080,7 @@ class TestAutodevLoop:
             "recheck_after_size_review",
             "decide_current",
             "run_decide",
+            "rerun_confidence_after_decide",
             "run_wire",
             "run_refine",
             "implement_current",
@@ -1576,10 +1577,10 @@ class TestAutodevLoop:
         state = data["states"].get("run_decide", {})
         assert state.get("fragment") == "with_rate_limit_handling"
 
-    def test_run_decide_next_routes_to_implement_current(self, data: dict) -> None:
-        """run_decide.next must route to recheck_after_decide (re-validates scores before implementing)."""
+    def test_run_decide_next_routes_to_rerun_confidence_after_decide(self, data: dict) -> None:
+        """run_decide.next must route to rerun_confidence_after_decide so scores are refreshed before gating."""
         state = data["states"].get("run_decide", {})
-        assert state.get("next") == "recheck_after_decide"
+        assert state.get("next") == "rerun_confidence_after_decide"
 
     def test_run_decide_on_error_routes_to_implement_current(self, data: dict) -> None:
         """run_decide.on_error must fall through to recheck_after_decide (degraded mode)."""
@@ -1590,6 +1591,55 @@ class TestAutodevLoop:
         """run_decide.on_rate_limit_exhausted must terminate the loop."""
         state = data["states"].get("run_decide", {})
         assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_rerun_confidence_after_decide_state_exists(self, data: dict) -> None:
+        """rerun_confidence_after_decide must be present in the state machine."""
+        assert "rerun_confidence_after_decide" in data["states"], (
+            "rerun_confidence_after_decide state missing — BUG-1378 fix not applied"
+        )
+
+    def test_rerun_confidence_after_decide_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
+        """rerun_confidence_after_decide must use with_rate_limit_handling fragment."""
+        state = data["states"].get("rerun_confidence_after_decide", {})
+        assert state.get("fragment") == "with_rate_limit_handling", (
+            f"rerun_confidence_after_decide.fragment should be 'with_rate_limit_handling', got {state.get('fragment')!r}"
+        )
+
+    def test_rerun_confidence_after_decide_action_type_is_slash_command(self, data: dict) -> None:
+        """rerun_confidence_after_decide must use slash_command action_type."""
+        state = data["states"].get("rerun_confidence_after_decide", {})
+        assert state.get("action_type") == "slash_command", (
+            f"rerun_confidence_after_decide.action_type should be 'slash_command', got {state.get('action_type')!r}"
+        )
+
+    def test_rerun_confidence_after_decide_action_contains_confidence_check(self, data: dict) -> None:
+        """rerun_confidence_after_decide action must invoke /ll:confidence-check."""
+        state = data["states"].get("rerun_confidence_after_decide", {})
+        action = state.get("action", "")
+        assert "/ll:confidence-check" in action, (
+            f"rerun_confidence_after_decide.action should contain '/ll:confidence-check', got {action!r}"
+        )
+
+    def test_rerun_confidence_after_decide_next_routes_to_recheck_after_decide(self, data: dict) -> None:
+        """rerun_confidence_after_decide.next must route to recheck_after_decide."""
+        state = data["states"].get("rerun_confidence_after_decide", {})
+        assert state.get("next") == "recheck_after_decide", (
+            f"rerun_confidence_after_decide.next should be 'recheck_after_decide', got {state.get('next')!r}"
+        )
+
+    def test_rerun_confidence_after_decide_on_error_routes_to_recheck_after_decide(self, data: dict) -> None:
+        """rerun_confidence_after_decide.on_error must fall back to recheck_after_decide."""
+        state = data["states"].get("rerun_confidence_after_decide", {})
+        assert state.get("on_error") == "recheck_after_decide", (
+            f"rerun_confidence_after_decide.on_error should be 'recheck_after_decide', got {state.get('on_error')!r}"
+        )
+
+    def test_rerun_confidence_after_decide_on_rate_limit_exhausted_routes_to_done(self, data: dict) -> None:
+        """rerun_confidence_after_decide.on_rate_limit_exhausted must terminate the loop."""
+        state = data["states"].get("rerun_confidence_after_decide", {})
+        assert state.get("on_rate_limit_exhausted") == "done", (
+            f"rerun_confidence_after_decide.on_rate_limit_exhausted should be 'done', got {state.get('on_rate_limit_exhausted')!r}"
+        )
 
 
 class TestRecursiveRefineLoop:

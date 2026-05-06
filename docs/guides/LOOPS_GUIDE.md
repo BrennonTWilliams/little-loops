@@ -455,10 +455,10 @@ init → dequeue_next → [queue empty?]
          └─ NO  → refine_current (sub-loop: refine-to-ready-issue)
                     → copy_broke_down → check_passed → [thresholds met?]
                          ├─ YES → decide_current → [decision_needed?]
-                         │                            ├─ YES → run_decide (/ll:decide-issue --auto) → implement_current (ll-auto --only) → dequeue_next
+                         │                            ├─ YES → run_decide (/ll:decide-issue --auto) → rerun_confidence_after_decide → recheck_after_decide → implement_current (ll-auto --only) → dequeue_next
                          │                            └─ NO  → implement_current (ll-auto --only) → dequeue_next
                          └─ NO  → triage_outcome_failure → [score_ambiguity ≤ 10?]
-                                    ├─ YES → run_decide → implement_current → dequeue_next
+                                    ├─ YES → run_decide → rerun_confidence_after_decide → recheck_after_decide → implement_current → dequeue_next
                                     ├─ ERR → detect_children → [children found?]
                                     └─ NO  → check_missing_artifacts → [missing_artifacts=true?]
                                                ├─ YES → run_wire → enqueue_or_skip → dequeue_next
@@ -468,15 +468,15 @@ init → dequeue_next → [queue empty?]
                                                               ├─ YES → enqueue_or_skip → dequeue_next
                                                               └─ NO  → recheck_scores → [passed now?]
                                                                          ├─ YES → decide_current → [decision_needed?]
-                                                                         │                            ├─ YES → run_decide → implement_current → dequeue_next
+                                                                         │                            ├─ YES → run_decide → rerun_confidence_after_decide → recheck_after_decide → implement_current → dequeue_next
                                                                          │                            └─ NO  → implement_current → dequeue_next
                                                                          └─ NO  → check_decision_before_size_review → [decision_needed?]
-                                                                                                                        ├─ YES → run_decide → implement_current → dequeue_next
+                                                                                                                        ├─ YES → run_decide → rerun_confidence_after_decide → recheck_after_decide → implement_current → dequeue_next
                                                                                                                         └─ NO  → run_size_review → enqueue_or_skip → [children found?]
                                                                                                                          ├─ YES → dequeue_next
                                                                                                                          └─ NO  → recheck_after_size_review → [passed now?]
                                                                                                                                      ├─ YES → decide_current → [decision_needed?]
-                                                                                                                                     │                            ├─ YES → run_decide → implement_current → dequeue_next
+                                                                                                                                     │                            ├─ YES → run_decide → rerun_confidence_after_decide → recheck_after_decide → implement_current → dequeue_next
                                                                                                                                      │                            └─ NO  → implement_current → dequeue_next
                                                                                                                                      └─ NO  → dequeue_next
 ```
@@ -485,7 +485,7 @@ init → dequeue_next → [queue empty?]
 
 **In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `.loops/tmp/autodev-inflight`; `enqueue_or_skip` clears it in the children-found branch; `recheck_after_size_review` clears it on the skip path (BUG-1230); `enqueue_children` clears it after decomposition; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
 
-**Outcome failure triage** (BUG-1277, ENH-1291): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes directly to `run_decide` (invoking `/ll:decide-issue --auto`) and then implements without decomposition. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) before re-queuing; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
+**Outcome failure triage** (BUG-1277, ENH-1291): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes to `run_decide` (invoking `/ll:decide-issue --auto`) → `rerun_confidence_after_decide` (invoking `/ll:confidence-check` to refresh stale pre-decision scores, BUG-1378) → `recheck_after_decide` (threshold gate) → `implement_current`, without decomposition. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) before re-queuing; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 
