@@ -7,11 +7,11 @@ captured_at: 2026-05-06 20:59:54+00:00
 discovered_date: 2026-05-06
 discovered_by: capture-issue
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 63
-score_complexity: 10
+confidence_score: 100
+outcome_confidence: 68
+score_complexity: 0
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -236,20 +236,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:confidence-check` on 2026-05-06_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 63/100 → MODERATE
-
-### Concerns
-- `decision_needed: true` is already set — the two open questions (field naming, transcript_baseline coordination) should be resolved via `/ll:decide-issue ENH-1376` before implementing the `context-monitor.sh` integration, since both affect what field that script reads and how it branches.
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 68/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Open design decisions need resolution before `context-monitor.sh` work**: The field name question (`result_token_count` vs. overwriting `estimated_tokens`) and transcript_baseline cooperation are unresolved decisions that directly gate step 6. Proceeding without a decision will require rework.
-- **11 files, not "~60 lines across 3 files"**: Core changes are 3 files / ~60 lines, but 4 test files and 4 doc files also require changes. Budget accordingly.
-- **`context-monitor.sh` bash integration is the riskiest touch**: Branching on a new JSON field inside bash alongside `estimate_tokens()` + `transcript_baseline_tokens` paths requires care to avoid double-counting. The `test_hooks_integration.py` coverage is the safety net.
+- **11 files, not "~60 lines across 3 files"**: Core is 3 source files (~60 lines), but 4 test files and 4 doc files also require changes. Budget 2-3× the original effort estimate.
+- **context-monitor.sh bash integration is the riskiest touch**: The `result_token_count > 0` priority branch must be inserted before `estimate_tokens()` and the `transcript_baseline_tokens` paths without double-counting; test_hooks_integration.py is the safety net.
+- **test_unknown_event_type_skipped must be retargeted first**: This test currently feeds `{"type": "result", ...}` as the "unknown" event — it will fail after step 3; switch it to `tool_use` before adding the new on_usage assertion.
 
 ## Session Log
 - `/ll:decide-issue` - 2026-05-06T22:32:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23e24604-d565-4cff-b89b-b443ba6c4696.jsonl`
 - `/ll:confidence-check` - 2026-05-06T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd74b3c8-c143-4831-b4b4-71e4cef6f2e4.jsonl`
+- `/ll:confidence-check` - 2026-05-06T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfc4f28e-b755-4d83-ace1-9eddcfa8d764.jsonl`
 - `/ll:wire-issue` - 2026-05-06T22:25:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91041a04-0374-439e-b9b5-45e3a0298f4f.jsonl`
 - `/ll:refine-issue` - 2026-05-06T22:19:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c625de0-671d-4449-bde2-9d2787c568ff.jsonl`
 - `/ll:format-issue` - 2026-05-06T21:09:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5f24f2c-c15a-45a5-bd06-fac0ecb8d960.jsonl`
