@@ -145,13 +145,18 @@ Decouple context detection (parent process) from handoff triggering (explicit me
 - Trade-off: more sessions even when not needed (small issues pay the resume cost)
 - Pairs well with Option E as a hard upper bound on session length
 
-### Option G: Stop-hook + parent resume ⭐ PREFERRED (combine with E)
+### Option G: Stop-hook + parent resume ⭐ PREFERRED (combine with E, H, and J)
 Use the `Stop` hook (fires when Claude finishes a turn — Claude is idle, no pending tool-use) instead of PostToolUse. Stop-hook checks the threshold and writes a sentinel file. `run_with_continuation` reads the sentinel between sessions and decides whether to resume with an explicit handoff instruction.
 
-- Avoids the "feedback turn doesn't fit in remaining context" failure entirely — the decision is made *between* sessions, not inside one
-- No mid-turn injection, no risk that the feedback message itself overflows
+- Avoids the "feedback turn doesn't fit in remaining context" failure for the *gradual creep* case — the decision is made *between* turns, not inside one
+- No mid-turn injection while Claude is working; Stop fires at idle
 - PostToolUse remains as a coarse early-warning (logging only), Stop as the trigger
 - Cleaner control flow than E alone: parent-side decision, parent-side resume
+
+**Important limits of E+G alone — these motivate pairing with H and J:**
+1. **`--resume` reuses the existing session context.** If the threshold fires at 95%, the resumed session is still at 95%. The injected handoff prompt + Claude's response + `/ll:handoff` execution all have to fit in the remaining ~5%. This is the same room-for-feedback-turn problem, shifted from PostToolUse to Stop. **Mitigated by Option H** (dynamic headroom ensures the threshold fires with enough room for the handoff turn).
+2. **Single tool-call cliff (sub-cause #5) is untouched.** A 40%→100% jump on one big `Read` errors with "Prompt is too long" mid-turn — Stop never fires because the turn never completes cleanly. **Mitigated by Option J** (parent-side guillotine assembles a fresh-session continuation prompt from the transcript when context exceeds 90% with no observed handoff).
+3. **Output-side growth (sub-cause #6) IS fixed by G** — Stop fires after any turn, tool call or not, so a long model response without tool calls is detected.
 
 ### Option H: Headroom reservation (dynamic threshold)
 Track the rolling max turn cost (input + output) over the last N turns. Set the effective threshold to `context_limit - (2 × max_recent_turn_size)` rather than a fixed percentage. Naturally accommodates large-output turns and tool-result cliffs that fixed percentages miss.
@@ -167,13 +172,17 @@ When `manage-issue` needs to scan a large file, log, or generated artifact, spaw
 - Addresses sub-cause #5 (single tool-call cliff) at the root
 - Independent of handoff — reduces the *need* for handoff rather than improving its reliability
 
-### Option J: Parent-side guillotine (explicit backstop)
-If ENH-1376 reports context > 90% and Claude has not called `/ll:handoff`, parent SIGINTs after the current turn and starts a fresh `--resume` session with an assembled "previous session ran out of context, here's where we were" prompt built from the transcript. This is Option C reframed: not the primary mechanism, but the *backstop* that guarantees no silent work loss when E/G fail.
+### Option J: Parent-side guillotine ⭐ CO-EQUAL with E+G (not optional)
+If ENH-1376 reports context > 90% and Claude has not called `/ll:handoff`, parent SIGINTs after the current turn (or on detected "Prompt is too long" mid-turn) and starts a **fresh session** (not `--resume`) with an assembled "previous session ran out of context, here's where we were" prompt built from the transcript.
 
+**Why co-equal, not optional:** the failure modes where E+G break — single tool-call cliffs (sub-cause #5) and full-context resume that can't fit the handoff turn — are exactly the cases ll-auto hits on large issues, which are the whole point of having handoff. Treating J as Phase 3 means shipping a mechanism that fails on its primary use case. J must land alongside E+G, not after.
+
+- Uses a fresh session (new context window), not `--resume` — avoids the "resumed session is still 95% full" problem
 - Guarantees the deadlock case (sub-cause #5, gap #5) is recoverable
-- Last-resort only — accepts that the in-flight turn may be partially lost
+- Accepts that the in-flight turn may be partially lost — but the assembled prompt preserves completed work via transcript summary
+- Composes with E+G: E+G is the happy path (clean handoff at idle), J is the safety net (forced recovery when the happy path can't fit)
 
-Option A should be done first to establish whether Option B or C is needed.
+Option A is complete. **Phase 1 must land ENH-1376 (hard prerequisite) and complete instrumentation + design spikes** before Phase 2 begins. Phase 1 also classifies the dominant failure mode — gradual creep (E+G+H fix), single-call cliff (needs J, possibly I), or output growth (G fixes alone) — which determines Phase 2 scope.
 
 ## Integration Map
 
@@ -244,38 +253,50 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-**Phase 1 — Instrumentation (do first, no behavior changes):**
-1. Add an append-only crossing log in `context-monitor.sh` (e.g., `.ll/ll-context-crossings.log`) so future runs preserve threshold-crossing evidence even when state is overwritten.
-2. Confirm whether Claude Code's auto-compact runs in `-p --dangerously-skip-permissions`. Document the answer; if it does, evaluate whether it already addresses some failure modes.
-3. Calibrate `context-monitor.sh`'s token estimate against ENH-1376 ground truth on a representative session. Record observed error margin.
-4. Parse the failing `ll-auto-debug.txt` to plot token trajectory per tool call. Determine: gradual creep, single-call cliff, or output-side growth. This drives which option(s) actually apply.
+**Phase 1 — Instrumentation + prerequisites (NON-NEGOTIABLE, do first, no behavior changes):**
 
-**Phase 2 — Primary mechanism (Stop-hook + external resume, Options G + E combined):**
-5. Add a Stop hook that checks token usage at turn boundaries and writes a sentinel file when threshold crossed. PostToolUse retains a coarse early-warning role (log only).
-6. Extend `run_with_continuation` in `issue_manager.py` to read the sentinel between sessions and, if set, send an explicit `claude -p --resume <session-id> "Context limit approaching, please run /ll:handoff now."` before continuing.
-7. Implement ENH-1376 stream-json `result` event parsing for accurate token counts (or use a conservative heuristic in the interim).
+Without trajectory data, picking thresholds and ranking options is guesswork. Phase 1 outputs gate Phase 2 design decisions.
 
-**Phase 3 — Backstop (Option J):**
-8. In `run_claude_command`, if ENH-1376 reports context > 90% and no handoff has been observed, SIGINT after current turn and resume with an assembled context-summary prompt built from the transcript. Guarantees no silent work loss in the deadlock case.
+**Hard prerequisite — ENH-1376 must land before Phase 2.** Options C/E/G/H/J all depend on accurate per-turn token counts. The "conservative heuristic in the interim" fallback is exactly what `context-monitor.sh` does now and is the suspected failure point — building Phase 2 on that same heuristic risks inheriting this bug. ENH-1376 (stream-json `result` event parsing) provides the ground-truth signal H's dynamic headroom and J's >90% trigger require. Do not start Phase 2 until ENH-1376 is merged and emitting accurate per-turn token counts.
 
-**Phase 4 — Source mitigations (optional, if Phase 1 trajectory shows cliff/output growth dominates):**
-9. **Option H** if cliffs/output growth dominate: replace fixed threshold with dynamic `limit − 2 × max_recent_turn_size`.
-10. **Option I** if single tool-call cliffs from heavy reads dominate: delegate large file/log scans to subprocess summarizers.
+1. **Land ENH-1376** (hard prereq for Phase 2). No further Phase 2 work begins until stream-json `result` events deliver accurate per-turn input/output token counts to `run_claude_command`.
+2. Add an append-only crossing log in `context-monitor.sh` (e.g., `.ll/ll-context-crossings.log`) so future runs preserve threshold-crossing evidence even when state is overwritten.
+3. Confirm whether Claude Code's auto-compact runs in `-p --dangerously-skip-permissions`. Document the answer; if it does, evaluate whether it already addresses some failure modes.
+4. Calibrate `context-monitor.sh`'s token estimate against ENH-1376 ground truth on a representative session. Record observed error margin.
+5. **Verify Stop-hook timing in `-p` mode.** Plan assumes Stop fires after every turn (idle boundary). If Stop only fires on session termination in `-p --dangerously-skip-permissions`, the sentinel-between-sessions design in Option G changes substantially. Confirm with a controlled probe (Stop hook that appends to a log file) before committing to the Stop-hook approach.
+6. **Confirm `ll-auto-debug.txt` has the data Phase 1 step 7 needs.** Inspect a sample log to verify it contains per-tool-call token usage (or sufficient signal to derive it). If it does not, this gating step is impossible without reproducing the failure — surface that risk and decide whether to reproduce or proceed without classification.
+7. Parse the failing `ll-auto-debug.txt` to plot token trajectory per tool call. Classify the dominant failure mode: **gradual creep** (E+G+H sufficient), **single-call cliff** (requires J, possibly I), or **output-side growth** (G alone sufficient). This classification drives Phase 2 scope.
+8. **Design spike for Option J's transcript-summary assembly.** J is co-equal to E+G, but the algorithm for "assembled context-summary prompt built from the transcript" is undefined. Decide between: (a) a separate `claude -p` summarizer call (adds latency, could itself fail near limits), (b) heuristic truncation (loses semantic content), or (c) tail-N tool results + completed-work scratch-pad inventory. Document the chosen approach, its failure modes, and what falls back if J's own summarization fails. Without this, J's safety-net quality is unknown.
 
-**Phase 5 — Verification:**
-11. Add end-to-end integration test: simulate threshold crossing → verify sentinel written → verify continuation session spawned with handoff instruction → verify `CONTEXT_HANDOFF` produced.
-12. Define success metric and re-run: *N consecutive ll-auto runs on issues > 50K tokens hand off cleanly with no "Prompt is too long" failure.*
+**Phase 2 — Primary mechanism + headroom + backstop (Options E + G + H + J, shipped together):**
+
+E+G alone is insufficient — see "Important limits" under Option G. H ensures the Stop threshold fires with enough remaining context for the handoff turn to actually fit; J handles the cases E+G structurally cannot (mid-turn cliffs, resumed-session-still-full).
+
+_Gated on Phase 1 hard prerequisite (ENH-1376 merged) and Phase 1 design spike for J's transcript-summary algorithm._
+
+9. Add a Stop hook that checks token usage at turn boundaries and writes a sentinel file when threshold crossed. PostToolUse retains a coarse early-warning role (log only). Confirms Phase 1 step 5 (Stop-hook timing) before committing.
+10. **Implement Option H (dynamic headroom)** alongside the Stop hook: effective threshold = `context_limit − (2 × max_recent_turn_size)` rather than a fixed percentage. Required so the Stop trigger fires with room for the handoff turn to fit on resume. Uses ENH-1376 token counts (Phase 1 prereq).
+11. Extend `run_with_continuation` in `issue_manager.py` to read the sentinel between sessions and, if set, send an explicit `claude -p --resume <session-id> "Context limit approaching, please run /ll:handoff now."` before continuing.
+12. **Implement Option J (parent-side guillotine) as co-equal backstop**, not deferred work: in `run_claude_command`, if ENH-1376 reports context > 90% and no handoff has been observed (or "Prompt is too long" is detected), SIGINT and start a **fresh session** (not `--resume`) using the transcript-summary assembly approach chosen in Phase 1 step 8. This is the only mechanism that handles single-call cliffs and full-context resume failure.
+
+**Phase 3 — Source mitigations (conditional on Phase 1 findings):**
+13. **Option I** if Phase 1 shows single tool-call cliffs from heavy reads dominate: delegate large file/log scans to subprocess summarizers.
+
+**Phase 4 — Verification:**
+14. Add end-to-end integration test: simulate threshold crossing → verify sentinel written → verify continuation session spawned with handoff instruction → verify `CONTEXT_HANDOFF` produced.
+15. Add J-path integration test: simulate context > 90% with no handoff → verify SIGINT → verify fresh session spawned with assembled transcript-summary prompt (per Phase 1 step 8 design) → verify work continues from prior state.
+16. Success metric: **5 consecutive `ll-auto` runs on issues > 50K tokens hand off cleanly with no "Prompt is too long" failure, including at least one run that exercises the J backstop.** If any run fails, fix and reset the counter to zero — 5 consecutive clean runs from the latest fix.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-13. Verify `scripts/little_loops/fsm/handoff_handler.py` and `fsm/signal_detector.py` — the FSM executor has a parallel CONTEXT_HANDOFF detection path; confirm the sentinel-file approach doesn't introduce divergent behavior between FSM loops and `-p` mode ll-auto sessions
-14. Update `scripts/tests/test_worker_pool.py:2183` `TestRunWithContinuation` — add sentinel-file test case alongside `issue_manager` counterpart updates (minimal coverage currently: only 1 test exists)
-15. Add `TestContextHandoffSentinel` class to `scripts/tests/test_hooks_integration.py` — sentinel written at threshold, absent below threshold, survives `session-cleanup.sh` — follow `TestPrecompactState` (line 1626) pattern exactly
-16. Update `scripts/tests/test_subprocess_utils.py:216` `test_constructs_correct_command_args` — fix expected CLI arg list if `run_claude_command` in `subprocess_utils.py` gains new flags
-17. Update `commands/handoff.md` and `skills/manage-issue/SKILL.md` handoff protocol sections to reference Stop hook + sentinel as the new primary trigger path
-18. Update `config-schema.json` `context_monitor` object if new config keys are introduced (Option D threshold relaxation or sentinel path override)
+17. Verify `scripts/little_loops/fsm/handoff_handler.py` and `fsm/signal_detector.py` — the FSM executor has a parallel CONTEXT_HANDOFF detection path; confirm the sentinel-file approach doesn't introduce divergent behavior between FSM loops and `-p` mode ll-auto sessions. **If divergence is detected, decide explicitly**: unify the two paths, or document why FSM uses a separate detection mechanism. Do not leave the two implementations to drift.
+18. Update `scripts/tests/test_worker_pool.py:2183` `TestRunWithContinuation` — add sentinel-file test case alongside `issue_manager` counterpart updates (minimal coverage currently: only 1 test exists)
+19. Add `TestContextHandoffSentinel` class to `scripts/tests/test_hooks_integration.py` — sentinel written at threshold, absent below threshold, survives `session-cleanup.sh` — follow `TestPrecompactState` (line 1626) pattern exactly
+20. Update `scripts/tests/test_subprocess_utils.py:216` `test_constructs_correct_command_args` — fix expected CLI arg list if `run_claude_command` in `subprocess_utils.py` gains new flags
+21. Update `commands/handoff.md` and `skills/manage-issue/SKILL.md` handoff protocol sections to reference Stop hook + sentinel as the new primary trigger path, with Option J (fresh-session guillotine) documented as the backstop path
+22. Update `config-schema.json` `context_monitor` object for new config keys: Option H headroom multiplier (e.g., `headroom_turn_multiplier`, default 2), Option J trigger threshold (e.g., `guillotine_threshold`, default 0.9), and sentinel path override
 
 ## Impact
 
@@ -298,7 +319,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - BUG-035 (completed): Original bug — closed without end-to-end verification
 - BUG-1375: `classify_failure` misses "Prompt is too long" (companion fix)
-- ENH-1376: Parse stream-json result events for accurate token counts (Option C enabler)
+- **ENH-1376: HARD PREREQUISITE for Phase 2.** Parse stream-json result events for accurate token counts. Options C/E/G/H/J all depend on it; conservative-heuristic interim is what's failing now.
 - BUG-1374: Spurious implementation failure issue created as a symptom of this bug
 
 ## Session Log
