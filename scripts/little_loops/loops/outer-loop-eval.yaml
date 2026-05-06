@@ -37,28 +37,9 @@ states:
     next: analyze_definition
 
   analyze_definition:
-    action_type: prompt
+    action_type: slash_command
     timeout: 600
-    action: |
-      Analyze the YAML definition of loop: ${context.loop_name}
-
-      Definition:
-      ${captured.loop_definition.output}
-
-      If the definition was not found or is empty, note that clearly and limit
-      your analysis to what can be inferred from the loop name.
-
-      Produce a structured analysis covering:
-      - State coverage: all states reachable and have terminal paths
-      - Missing routes: states with no on_error handler for shell or sub-loop actions
-      - Evaluator types: appropriate type per decision state; llm_structured evaluators
-        have min_confidence set
-      - Context variable hygiene: all referenced vars are defined in the context block
-        with sensible defaults; no vars required at startup that are absent
-      - Cycle risks: any state cycle where max_iterations is the only exit mechanism
-      - Timeout coverage: long-running shell states have explicit timeouts
-
-      Format your analysis with a labeled section for each dimension.
+    action: "/ll:analyze-loop ${context.loop_name} --auto"
     capture: definition_analysis
     on_blocked: $current
     on_error: run_sub_loop
@@ -77,23 +58,9 @@ states:
     on_error: analyze_execution
 
   analyze_execution:
-    action_type: prompt
+    action_type: slash_command
     timeout: 600
-    action: |
-      Analyze the sub-loop execution output below. If the sub-loop failed to start
-      (e.g., loop not found or crashed), note that clearly and assess what the error
-      reveals about the loop definition or runtime environment.
-
-      Sub-loop output:
-      ${captured.sub_loop_output.output}
-
-      Parse and report:
-      - State transition sequence observed
-      - Retry counts per state (if visible)
-      - Evaluator verdicts encountered
-      - Terminal state reached (or error/crash if not reached)
-      - Unexpected paths or anomalies
-      - Overall execution health assessment
+    action: "/ll:analyze-loop ${context.loop_name} --auto"
     capture: execution_analysis
     on_blocked: $current
     on_error: generate_report
@@ -102,41 +69,9 @@ states:
     next: generate_report
 
   generate_report:
-    action_type: prompt
+    action_type: slash_command
     timeout: 600
-    action: |
-      Combine the definition analysis and execution analysis into a structured
-      improvement report for loop: ${context.loop_name}
-
-      Definition analysis:
-      ${captured.definition_analysis.output}
-
-      Execution analysis:
-      ${captured.execution_analysis.output}
-
-      Structure the report with these exact sections:
-
-      ## Structural Issues
-      (Missing states, unreachable states, undefined routes, orphaned states)
-
-      ## Logic Issues
-      (Incorrect evaluator types, wrong routing logic, incorrect context var usage,
-      evaluators missing min_confidence)
-
-      ## Flow Issues
-      (Redundant hops, retry exhaustion paths that skip important cleanup,
-      timeout risks, missing on_error routes)
-
-      ## Component Improvements
-      (Specific state-level suggestions: better prompts, more precise evaluators,
-      improved capture keys, clearer action text)
-
-      ## Suggested YAML Changes
-      (Concrete diff-style or annotated suggestions for the highest-priority fixes,
-      ready to copy into the YAML file)
-
-      For each section: include at least one concrete finding if issues were found,
-      or "None identified." if the section is clean.
+    action: "/ll:assess-loop ${context.loop_name} --auto"
     capture: improvement_report
     on_blocked: $current
     on_error: done
@@ -157,28 +92,9 @@ states:
     on_error: done
 
   refine_analysis:
-    action_type: prompt
+    action_type: slash_command
     timeout: 600
-    action: |
-      The improvement report lacks concrete findings. Re-examine the data more carefully.
-
-      Definition analysis:
-      ${captured.definition_analysis.output}
-
-      Execution analysis:
-      ${captured.execution_analysis.output}
-
-      Look harder for:
-      - Any state missing an on_error route for shell or sub-loop actions
-      - Any evaluator that could be more specific or use a tighter min_confidence
-      - Any context variable used but not initialized in the context block
-      - Any retry logic where on_retry_exhausted routes to a suboptimal state
-      - Any state where the prompt could be more targeted or structured
-      - Any cycle risk where max_iterations is the only exit mechanism
-
-      There is always room for improvement in a complex FSM. Produce at least one
-      concrete, actionable recommendation and update the improvement_report capture
-      with a revised version of the full report.
+    action: "/ll:assess-loop ${context.loop_name} --auto"
     capture: improvement_report
     on_blocked: $current
     on_error: done
