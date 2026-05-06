@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 EVENT_SCHEMA = PROJECT_ROOT / "docs" / "reference" / "EVENT-SCHEMA.md"
 OUTPUT_STYLING = PROJECT_ROOT / "docs" / "reference" / "OUTPUT_STYLING.md"
-ANALYZE_LOOP = PROJECT_ROOT / "skills" / "analyze-loop" / "SKILL.md"
+ANALYZE_LOOP = PROJECT_ROOT / "skills" / "debug-loop-run" / "SKILL.md"
 API_REFERENCE = PROJECT_ROOT / "docs" / "reference" / "API.md"
 CLI_REFERENCE = PROJECT_ROOT / "docs" / "reference" / "CLI.md"
 COMMANDS = PROJECT_ROOT / "docs" / "reference" / "COMMANDS.md"
@@ -38,23 +38,23 @@ class TestOutputStylingWiring:
 class TestAnalyzeLoopSkillWiring:
     def test_rate_limit_waiting_present(self) -> None:
         assert "rate_limit_waiting" in ANALYZE_LOOP.read_text(), (
-            "skills/analyze-loop/SKILL.md event payload table must include rate_limit_waiting row"
+            "skills/debug-loop-run/SKILL.md event payload table must include rate_limit_waiting row"
         )
 
     def test_semantic_synthesis_heading_present(self) -> None:
         assert "Step 3b" in ANALYZE_LOOP.read_text(), (
-            "skills/analyze-loop/SKILL.md must contain the 'Step 3b' semantic synthesis heading"
+            "skills/debug-loop-run/SKILL.md must contain the 'Step 3b' semantic synthesis heading"
         )
 
     def test_fault_signals_heading_present(self) -> None:
         assert "### Fault Signals" in ANALYZE_LOOP.read_text(), (
-            "skills/analyze-loop/SKILL.md Step 5 must group output under "
+            "skills/debug-loop-run/SKILL.md Step 5 must group output under "
             "'### Fault Signals (N)' heading"
         )
 
     def test_effectiveness_signals_heading_present(self) -> None:
         assert "### Effectiveness Signals" in ANALYZE_LOOP.read_text(), (
-            "skills/analyze-loop/SKILL.md Step 5 must group output under "
+            "skills/debug-loop-run/SKILL.md Step 5 must group output under "
             "'### Effectiveness Signals (M)' heading"
         )
 
@@ -81,5 +81,5 @@ class TestCliReferenceWiring:
 class TestCommandsWiring:
     def test_rate_limit_waiting_present(self) -> None:
         assert "rate_limit_waiting" in COMMANDS.read_text(), (
-            "docs/reference/COMMANDS.md must document rate_limit_waiting in analyze-loop heuristics"
+            "docs/reference/COMMANDS.md must document rate_limit_waiting in debug-loop-run heuristics"
         )

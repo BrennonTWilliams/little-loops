@@ -64,5 +64,5 @@ class TestCliReferenceWiring:
 class TestCommandsWiring:
     def test_throttle_event_in_analyze_loop_heuristics(self) -> None:
         assert "throttle" in COMMANDS.read_text(), (
-            "docs/reference/COMMANDS.md must document throttle event classification in analyze-loop"
+            "docs/reference/COMMANDS.md must document throttle event classification in debug-loop-run"
         )

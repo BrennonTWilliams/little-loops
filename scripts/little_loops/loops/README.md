@@ -49,7 +49,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 |---|---|
 | `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `context-health-monitor` | Monitor context health via scratch file accumulation and session log size; compact scratch files and archive stale outputs when pressure is detected |
-| `outer-loop-eval` | Execute a target loop as a sub-loop, then delegate static and execution analysis to `/ll:analyze-loop` and scoring/proposals to `/ll:assess-loop` to produce an improvement report |
+| `outer-loop-eval` | Execute a target loop as a sub-loop, then delegate static and execution analysis to `/ll:debug-loop-run` and scoring/proposals to `/ll:audit-loop-run` to produce an improvement report |
 
 ## Reinforcement Learning (RL)
 

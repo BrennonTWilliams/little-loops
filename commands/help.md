@@ -165,7 +165,7 @@ AUTOMATION & LOOPS
 /ll:loop-suggester [file]
     Suggest FSM loops from user message history
 
-/ll:assess-loop <loop-name|run-id> [flags]
+/ll:audit-loop-run <loop-name|run-id> [flags]
     Audit loop effectiveness: detect phantom success, verify artifact mutations,
     score against rubric, and propose improvements
     Flags: --no-rubric-audit, --resolved
@@ -272,7 +272,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Scanning & Analysis**: `find-dead-code`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
-**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `assess-loop`
+**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `audit-loop-run`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
 **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`, `publish` *(maintainers only — project-local)*
 

@@ -140,7 +140,7 @@ Also check in-memory captures in `.loops/.history/<run_id>-<loop_name>/state.jso
 
 ## Step 5: Phase 1 — Fault Signals
 
-Re-use the history loaded in Step 2 to identify fault signals using the **fault-signal subset** of `/ll:analyze-loop` Step 3 (the BUG-class anomalies that broke the run). Note: `/ll:analyze-loop` Step 3 also classifies effectiveness signals (iter-1 convergence without apply, degenerate gate, stub action) — those are **out of scope for assess-loop Phase 1**, since this step only synthesizes fault evidence into the scorecard. Include the verbatim fault signal list in the scorecard output.
+Re-use the history loaded in Step 2 to identify fault signals using the **fault-signal subset** of `/ll:debug-loop-run` Step 3 (the BUG-class anomalies that broke the run). Note: `/ll:debug-loop-run` Step 3 also classifies effectiveness signals (iter-1 convergence without apply, degenerate gate, stub action) — those are **out of scope for audit-loop-run Phase 1**, since this step only synthesizes fault evidence into the scorecard. Include the verbatim fault signal list in the scorecard output.
 
 Key signals to flag (fault subset only):
 - Action failures (`exit_code != 0`, non-intentional)
@@ -282,14 +282,14 @@ Issues created: <N>
 
 ```bash
 # Assess most recent interrupted loop
-/ll:assess-loop
+/ll:audit-loop-run
 
 # Assess a specific loop
-/ll:assess-loop apo-textgrad
+/ll:audit-loop-run apo-textgrad
 
 # Limit history to 100 events
-/ll:assess-loop apo-textgrad --tail 100
+/ll:audit-loop-run apo-textgrad --tail 100
 
 # Skip LLM rubric audit (cost gate)
-/ll:assess-loop apo-textgrad --no-rubric-audit
+/ll:audit-loop-run apo-textgrad --no-rubric-audit
 ```

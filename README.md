@@ -163,8 +163,8 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:create-loop` | Interactive FSM loop creation |
 | `/ll:create-eval-from-issues <issue-id> [...]` | Generate eval harness YAML from issue IDs |
 | `/ll:review-loop` | Review and improve existing FSM loop configurations |
-| `/ll:analyze-loop` | Analyze loop execution history for actionable issues |
-| `/ll:assess-loop [loop-name] [--no-rubric-audit]` | Audit loop goal achievement: artifact mutations, contracts, phantom success |
+| `/ll:debug-loop-run` | Analyze loop execution history for actionable issues |
+| `/ll:audit-loop-run [loop-name] [--no-rubric-audit]` | Audit loop goal achievement: artifact mutations, contracts, phantom success |
 | `/ll:cleanup-loops [--dry-run] [--threshold N]` | Find and clean stuck or stale loop processes |
 | `/ll:rename-loop <old> <new> [--dry-run] [--yes]` | Rename a loop and update all references |
 | `/ll:loop-suggester [file|--from-commands]` | Suggest FSM loops from message history or command catalog |
@@ -224,8 +224,8 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `create-loop`^ | Automation & Loops | Create new FSM loop configuration interactively |
 | `create-eval-from-issues`^ | Automation & Loops | Generate eval harness YAML from issue IDs |
 | `review-loop`^ | Automation & Loops | Review and improve existing FSM loop configurations |
-| `analyze-loop`^ | Automation & Loops | Analyze loop execution history to synthesize actionable issues from fault and effectiveness signals |
-| `assess-loop`^ | Automation & Loops | Audit loop goal achievement: artifact mutations, threshold contracts, phantom convergence detection |
+| `debug-loop-run`^ | Automation & Loops | Analyze loop execution history to synthesize actionable issues from fault and effectiveness signals |
+| `audit-loop-run`^ | Automation & Loops | Audit loop goal achievement: artifact mutations, threshold contracts, phantom convergence detection |
 | `cleanup-loops`^ | Automation & Loops | Find stuck/stale loops, diagnose root causes, and clean them up |
 | `rename-loop`^ | Automation & Loops | Rename a loop and update all references to maintain full functionality |
 | `workflow-automation-proposer`^ | Automation & Loops | Synthesize workflow patterns into automation proposals |

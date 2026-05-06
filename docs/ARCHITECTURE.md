@@ -101,9 +101,9 @@ little-loops/
 ├── skills/                  # 28 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
-│   ├── analyze-loop/        # User-invoked
+│   ├── debug-loop-run/      # User-invoked
 │   │   └── SKILL.md
-│   ├── assess-loop/         # User-invoked
+│   ├── audit-loop-run/      # User-invoked
 │   │   └── SKILL.md
 │   ├── audit-claude-config/ # User-invoked
 │   │   ├── SKILL.md

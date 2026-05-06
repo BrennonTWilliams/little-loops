@@ -39,7 +39,7 @@ states:
   analyze_definition:
     action_type: slash_command
     timeout: 600
-    action: "/ll:analyze-loop ${context.loop_name} --auto"
+    action: "/ll:debug-loop-run ${context.loop_name} --auto"
     capture: definition_analysis
     on_blocked: $current
     on_error: run_sub_loop
@@ -60,7 +60,7 @@ states:
   analyze_execution:
     action_type: slash_command
     timeout: 600
-    action: "/ll:analyze-loop ${context.loop_name} --auto"
+    action: "/ll:debug-loop-run ${context.loop_name} --auto"
     capture: execution_analysis
     on_blocked: $current
     on_error: generate_report
@@ -71,7 +71,7 @@ states:
   generate_report:
     action_type: slash_command
     timeout: 600
-    action: "/ll:assess-loop ${context.loop_name} --auto"
+    action: "/ll:audit-loop-run ${context.loop_name} --auto"
     capture: improvement_report
     on_blocked: $current
     on_error: done
@@ -94,7 +94,7 @@ states:
   refine_analysis:
     action_type: slash_command
     timeout: 600
-    action: "/ll:assess-loop ${context.loop_name} --auto"
+    action: "/ll:audit-loop-run ${context.loop_name} --auto"
     capture: improvement_report
     on_blocked: $current
     on_error: done

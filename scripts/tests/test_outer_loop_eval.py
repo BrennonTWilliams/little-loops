@@ -93,7 +93,7 @@ class TestOuterLoopEvalStates:
     def test_analyze_definition_is_slash_command(self, loop_data: dict) -> None:
         state = loop_data["states"]["analyze_definition"]
         assert state.get("action_type") == "slash_command"
-        assert "analyze-loop" in state.get("action", "")
+        assert "debug-loop-run" in state.get("action", "")
         assert "loop_name" in state.get("action", "")
         assert state.get("capture") == "definition_analysis"
         assert state.get("next") == "run_sub_loop"
@@ -114,7 +114,7 @@ class TestOuterLoopEvalStates:
     def test_analyze_execution_is_slash_command(self, loop_data: dict) -> None:
         state = loop_data["states"]["analyze_execution"]
         assert state.get("action_type") == "slash_command"
-        assert "analyze-loop" in state.get("action", "")
+        assert "debug-loop-run" in state.get("action", "")
         assert "loop_name" in state.get("action", "")
         assert state.get("capture") == "execution_analysis"
         assert state.get("next") == "generate_report"
@@ -122,7 +122,7 @@ class TestOuterLoopEvalStates:
     def test_generate_report_has_llm_structured_evaluator(self, loop_data: dict) -> None:
         state = loop_data["states"]["generate_report"]
         assert state.get("action_type") == "slash_command"
-        assert "assess-loop" in state.get("action", "")
+        assert "audit-loop-run" in state.get("action", "")
         assert state.get("capture") == "improvement_report"
         evaluate = state.get("evaluate", {})
         assert evaluate.get("type") == "llm_structured"
@@ -132,7 +132,7 @@ class TestOuterLoopEvalStates:
     def test_refine_analysis_loops_to_generate_report(self, loop_data: dict) -> None:
         state = loop_data["states"]["refine_analysis"]
         assert state.get("action_type") == "slash_command"
-        assert "assess-loop" in state.get("action", "")
+        assert "audit-loop-run" in state.get("action", "")
         assert state.get("next") == "generate_report"
 
     def test_load_definition_captures_loop_definition(self, loop_data: dict) -> None:

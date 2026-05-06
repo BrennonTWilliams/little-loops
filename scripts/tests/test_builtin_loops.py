@@ -46,7 +46,7 @@ class TestBuiltinLoopFiles:
     def test_all_have_description_field(self, builtin_loops: list[Path]) -> None:
         """All built-in loops define a top-level description: field.
 
-        Regression guard for ENH-1331: analyze-loop and assess-loop skills
+        Regression guard for ENH-1331: debug-loop-run and audit-loop-run skills
         require a machine-readable description for goal-alignment assessment.
         """
         for loop_file in builtin_loops:

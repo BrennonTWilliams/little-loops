@@ -334,7 +334,7 @@ states:                         # State definitions
 # Optional Loop-Level Settings
 description: string             # Human-readable summary shown by ll-loop list and /ll:review-loop
                                 # (recommended; ll-loop validate emits a WARNING if absent — required for
-                                # analyze-loop / assess-loop goal-alignment assessment)
+                                # debug-loop-run / audit-loop-run goal-alignment assessment)
 context: object                 # Shared variables/config
 scope: array[string]            # Paths this loop operates on (for concurrency)
 max_iterations: integer         # Safety limit (default: 50)

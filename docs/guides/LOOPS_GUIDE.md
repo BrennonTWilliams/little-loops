@@ -634,7 +634,7 @@ assess_context → self_assess → route
 
 | Loop | Description |
 |------|-------------|
-| `outer-loop-eval` | Analyze a target loop by loading its YAML definition, executing it as a sub-loop, then delegating to `/ll:analyze-loop` and `/ll:assess-loop` to produce a structured improvement report |
+| `outer-loop-eval` | Analyze a target loop by loading its YAML definition, executing it as a sub-loop, then delegating to `/ll:debug-loop-run` and `/ll:audit-loop-run` to produce a structured improvement report |
 
 **Reinforcement Learning (RL)**
 
@@ -1717,7 +1717,7 @@ Loops in this category analyze other loops — auditing their YAML definitions, 
 
 ### `outer-loop-eval` — Loop Structure & Execution Auditor
 
-**Technique**: Load a target loop's YAML definition, execute it as a sub-loop against an optional input, then delegate to `/ll:analyze-loop` (static definition analysis + execution trace analysis) and `/ll:assess-loop` (scorecard and improvement proposals). Improvements to either skill are automatically available to `outer-loop-eval` without YAML edits.
+**Technique**: Load a target loop's YAML definition, execute it as a sub-loop against an optional input, then delegate to `/ll:debug-loop-run` (static definition analysis + execution trace analysis) and `/ll:audit-loop-run` (scorecard and improvement proposals). Improvements to either skill are automatically available to `outer-loop-eval` without YAML edits.
 
 **When to use**: After writing or significantly modifying a loop — or before sharing it. `outer-loop-eval` catches missing `on_error` routes, cycle risks, uninitialized context variables, evaluator type mismatches, and redundant state hops that manual review often misses.
 
@@ -1751,16 +1751,16 @@ ll-loop install outer-loop-eval
 validate_input ──(on_error)──→ done
      │
      ↓
-analyze_definition (/ll:analyze-loop --auto) → run_sub_loop → analyze_execution (/ll:analyze-loop --auto) → generate_report (/ll:assess-loop --auto)
+analyze_definition (/ll:debug-loop-run --auto) → run_sub_loop → analyze_execution (/ll:debug-loop-run --auto) → generate_report (/ll:audit-loop-run --auto)
                                                                                                                   ├─ YES (has findings) → done
-                                                                                                                  └─ NO (all "None identified.") → refine_analysis (/ll:assess-loop --auto) → generate_report
+                                                                                                                  └─ NO (all "None identified.") → refine_analysis (/ll:audit-loop-run --auto) → generate_report
 ```
 
-**Execution failure handling**: If `loop_name` is empty, `validate_input` exits immediately with a clear error message before any analysis begins — preventing hallucinated reports. If the target loop is found but fails to start (not found after validation, crashes on launch), `outer-loop-eval` delegates to `/ll:analyze-loop` and `/ll:assess-loop` as-is — the skills surface whatever can be inferred from available context.
+**Execution failure handling**: If `loop_name` is empty, `validate_input` exits immediately with a clear error message before any analysis begins — preventing hallucinated reports. If the target loop is found but fails to start (not found after validation, crashes on launch), `outer-loop-eval` delegates to `/ll:debug-loop-run` and `/ll:audit-loop-run` as-is — the skills surface whatever can be inferred from available context.
 
-**Skill delegation**: `analyze_definition` and `analyze_execution` both invoke `/ll:analyze-loop ${loop_name} --auto`; `generate_report` and `refine_analysis` invoke `/ll:assess-loop ${loop_name} --auto`. Improvements to either skill (new signals, richer scoring, updated heuristics) flow through to `outer-loop-eval` automatically.
+**Skill delegation**: `analyze_definition` and `analyze_execution` both invoke `/ll:debug-loop-run ${loop_name} --auto`; `generate_report` and `refine_analysis` invoke `/ll:audit-loop-run ${loop_name} --auto`. Improvements to either skill (new signals, richer scoring, updated heuristics) flow through to `outer-loop-eval` automatically.
 
-**Report content**: The improvement report is produced by `/ll:assess-loop` and includes its standard scorecard sections. Use `ll-loop install outer-loop-eval` to copy the YAML and customize which skills are invoked or how their output is evaluated.
+**Report content**: The improvement report is produced by `/ll:audit-loop-run` and includes its standard scorecard sections. Use `ll-loop install outer-loop-eval` to copy the YAML and customize which skills are invoked or how their output is evaluated.
 
 ---
 

@@ -1,6 +1,6 @@
-"""Tests for /ll:assess-loop skill — existence, fixture validation, and logic discriminators.
+"""Tests for /ll:audit-loop-run skill — existence, fixture validation, and logic discriminators.
 
-Modeled after TestAnalyzeLoopSynthesis (test_analyze_loop_synthesis.py) for fixture loading
+Modeled after TestDebugLoopRunSynthesis (test_debug_loop_run_synthesis.py) for fixture loading
 and TestReviewLoopQualityChecks (test_review_loop.py) for inline discriminator pattern.
 """
 
@@ -54,37 +54,37 @@ class TestAssessLoopSkill:
     # ------------------------------------------------------------------
 
     def test_skill_file_exists(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
-        assert skill_path.exists(), "skills/assess-loop/SKILL.md must exist"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        assert skill_path.exists(), "skills/audit-loop-run/SKILL.md must exist"
 
     def test_skill_has_loop_name_argument(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         assert "loop_name" in content or "loop-name" in content
         # → skill must accept a loop name argument
 
     def test_skill_has_tail_argument(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         assert "--tail" in content
         # → skill must support --tail N for limiting history events
 
     def test_skill_has_no_rubric_audit_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         assert "--no-rubric-audit" in content
         # → skill must support --no-rubric-audit to skip LLM judge calls
 
     def test_skill_has_skip_issue_creation_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         assert "--skip-issue-creation" in skill_path.read_text()
 
     def test_skill_has_auto_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         assert "--auto" in skill_path.read_text()
 
     def test_step9_ask_user_question_guarded_by_skip_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         step9_start = content.index("## Step 9:")
         final_report_start = content.index("## Final Report")
@@ -97,13 +97,13 @@ class TestAssessLoopSkill:
         assert guard_pos < ask_pos, "Guard must appear before AskUserQuestion in Step 9"
 
     def test_skill_uses_resolved_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         assert "--resolved" in content
         # → skill must use --resolved --json for sub-loop visibility in Step 2
 
     def test_skill_scorecard_has_four_verdicts(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "assess-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         for verdict in ("met", "phantom", "partial", "degraded"):
             assert f"`{verdict}`" in content or f'"{verdict}"' in content or verdict in content

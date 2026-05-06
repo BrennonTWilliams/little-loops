@@ -72,12 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`/ll:assess-loop` Skill for Loop Effectiveness Auditing** — New skill that judges whether a loop execution achieves its stated goals using a goal-vs-outcome scorecard and rubric audit, with sub-loop scope awareness. (FEAT-1325, FEAT-1329, FEAT-1330)
+- **`/ll:audit-loop-run` Skill for Loop Effectiveness Auditing** — New skill that judges whether a loop execution achieves its stated goals using a goal-vs-outcome scorecard and rubric audit, with sub-loop scope awareness. (FEAT-1325, FEAT-1329, FEAT-1330)
 
 ### Changed
 
-- **Five deterministic effectiveness signals in `/ll:analyze-loop`** — Adds signals 1–5: Stub Action, Iter-1 Convergence, Degenerate Gate, Capture Vacuum, and Numeric Trajectory Stall. Outputs are grouped into Fault and Effectiveness sections with fixtures and synthesis tests. (ENH-1326, ENH-1327, ENH-1335, ENH-1336, ENH-1342, ENH-1343)
-- **Sub-loop visibility in `/ll:analyze-loop` and `/ll:assess-loop`** — Both skills now call `ll-loop show --resolved --json` so child loop state maps appear under `_subloop` keys in the FSM output. `/ll:analyze-loop` Step 3 emits a new `BUG — Sub-loop verdict discarded` (P3) signal when a state with `loop:` routes child success and child failure to the same destination (`on_yes == on_no`). (ENH-1334)
+- **Five deterministic effectiveness signals in `/ll:debug-loop-run`** — Adds signals 1–5: Stub Action, Iter-1 Convergence, Degenerate Gate, Capture Vacuum, and Numeric Trajectory Stall. Outputs are grouped into Fault and Effectiveness sections with fixtures and synthesis tests. (ENH-1326, ENH-1327, ENH-1335, ENH-1336, ENH-1342, ENH-1343)
+- **Sub-loop visibility in `/ll:debug-loop-run` and `/ll:audit-loop-run`** — Both skills now call `ll-loop show --resolved --json` so child loop state maps appear under `_subloop` keys in the FSM output. `/ll:debug-loop-run` Step 3 emits a new `BUG — Sub-loop verdict discarded` (P3) signal when a state with `loop:` routes child success and child failure to the same destination (`on_yes == on_no`). (ENH-1334)
 - **`ll-loop show --resolved` CLI flag and sub-loop expansion** — New `--resolved` flag expands sub-loop references inline with full state resolution and JSON output support, including tests. (ENH-1333)
 - **FIFO ordering enforced for `--queue` waiters** — Queue waiters now execute in deterministic first-in, first-out order; default wait timeout set to 24 hours (86400s). (ENH-1332)
 - **Orphan scan extended to ll-loop worktrees** — `ll-parallel` orphan detection now covers worktrees created by `ll-loop`, preventing stale worktrees from accumulating. (ENH-1255)
@@ -222,7 +222,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`analyze-loop` Step 3b Semantic Synthesis** — Added semantic synthesis phase to `analyze-loop` Step 3b; documented Execution Summary output format; added synthesis test coverage. (ENH-1265, ENH-1266)
+- **`debug-loop-run` Step 3b Semantic Synthesis** — Added semantic synthesis phase to `debug-loop-run` Step 3b; documented Execution Summary output format; added synthesis test coverage. (ENH-1265, ENH-1266)
 - **`review-loop` SR-* Semantic Flow Checks** — Added SR-* (Semantic Review) check category to `review-loop` for semantic flow validation beyond structural checks.
 - **`ll-loop -q` Shorthand Reassigned to `--queue`** — The `-q` flag now maps to `--queue` (wait for conflicting scoped loops) instead of `--quiet`. Use `--quiet` explicitly to suppress progress output.
 - **`/ll:confidence-check` Two-Branch Escalation** — When readiness score stays below 70 after 2+ refinement passes, escalation now branches on `score_ambiguity`: ≤ 10 routes to `/ll:decide-issue` (competing options unresolved); > 10 routes to `/ll:issue-size-review` (issue too large). Previously always routed to size review regardless of cause. (ENH-1250)
@@ -1078,7 +1078,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **FSM diagram visual improvements** — State box titles are bold; transition line characters are color-coded by edge type; edge label colors are configurable via `ll-config.json` (1da47fb, 8fc6508, 49d574f)
-- **`analyze-loop` name-based analysis scoped to most recent execution** — Avoids false positives from older loop runs with the same name (7cf3373)
+- **`debug-loop-run` name-based analysis scoped to most recent execution** — Avoids false positives from older loop runs with the same name (7cf3373)
 - **Context monitor uses JSONL transcript baseline** — More accurate token estimation via JSONL transcript rather than conversation estimates (8749815)
 - **`on_handoff` set to `spawn` across all built-in loop configs** — Ensures consistent session handoff behavior (533cc27)
 
@@ -1120,7 +1120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`analyze-loop` distinguishes intentional cycling from stuck retries** — Retry flood detection no longer conflates on_no routing with true stuck retries (ENH-775)
+- **`debug-loop-run` distinguishes intentional cycling from stuck retries** — Retry flood detection no longer conflates on_no routing with true stuck retries (ENH-775)
 - **`create-loop` wizard uses structural patterns** — Templates and questions refactored to guide users toward pattern-based loop design (ENH-756)
 - **`parse_frontmatter` warns on unsupported YAML syntax** — Surfaces warnings when YAML lists or colon-containing values are silently dropped (ENH-693)
 - **`rl-coding-agent` reads `test_cmd`/`lint_cmd` from `ll-config.json`** — Agent uses project-configured commands instead of defaults (ENH-793)
@@ -1155,7 +1155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`analyze-loop` no longer treats exit_code=1 as failure when `on_no` is defined** — Prevents false failure signals when a no-branch is configured (d695b62)
+- **`debug-loop-run` no longer treats exit_code=1 as failure when `on_no` is defined** — Prevents false failure signals when a no-branch is configured (d695b62)
 - **Loop evaluate classifier splits `NEEDS_FORMAT` from `NEEDS_VERIFY`** — Cleaner evaluation state distinction avoids conflating format and verify signals (483ab8d)
 - **Session log skips fake `## Session Log` headings in code blocks** — Uses last-match strategy to avoid false positives from headings inside fenced code (d6386c8)
 - **`ll-issues list` display text normalization** — Fixed inconsistent output text in the list subcommand (9fdfdff)

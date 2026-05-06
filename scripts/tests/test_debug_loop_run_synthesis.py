@@ -1,4 +1,4 @@
-"""Tests for /ll:analyze-loop Step 3b Semantic Synthesis structural conditions.
+"""Tests for /ll:debug-loop-run Step 3b Semantic Synthesis structural conditions.
 
 Validates fixture structure for sub-steps 3b-2 through 3b-5 without executing
 any LLM calls. Modeled after TestReviewLoopSemanticChecks in test_review_loop.py:748.
@@ -203,7 +203,7 @@ class TestAnalyzeLoopSynthesis:
         states = spec.get("states", {})
         sub_loop_states = [n for n, d in states.items() if "loop" in d]
         assert sub_loop_states
-        # → analyze-loop should check on_yes == on_no for all sub-loop states
+        # → debug-loop-run should check on_yes == on_no for all sub-loop states
 
     def test_subloop_laundering_on_yes_equals_on_no(self) -> None:
         """Sub-loop state routes success and failure to the same next state."""
@@ -214,7 +214,7 @@ class TestAnalyzeLoopSynthesis:
                 assert defn.get("on_yes") == defn.get("on_no"), (
                     f"Sub-loop state '{name}' must have on_yes == on_no for laundering fixture"
                 )
-                # → analyze-loop should emit BUG — Sub-loop verdict discarded (P3)
+                # → debug-loop-run should emit BUG — Sub-loop verdict discarded (P3)
 
     def test_subloop_laundering_shared_next_state_exists(self) -> None:
         """The shared destination state that both on_yes and on_no route to actually exists."""
@@ -248,7 +248,7 @@ class TestAnalyzeLoopSynthesis:
         assert not apply_states, (
             f"Signal 1 fixture must omit apply-prefixed states; found {apply_states}"
         )
-        # → analyze-loop should emit Signal 1 when iterations==1 and no apply state visited
+        # → debug-loop-run should emit Signal 1 when iterations==1 and no apply state visited
 
     def test_signal1_fixture_initial_state_routes_yes_to_terminal(self) -> None:
         """Signal 1 trigger requires the initial evaluate state to exit on_yes -> terminal."""
@@ -303,7 +303,7 @@ class TestAnalyzeLoopSynthesis:
 
     def test_signal2_inline_degenerate_threshold_meets(self) -> None:
         """10 evaluations all routing to one branch -> 100% > 95% threshold."""
-        # {from_state: {to_state: count}} — analyze-loop walker's accumulator shape
+        # {from_state: {to_state: count}} — debug-loop-run walker's accumulator shape
         route_distribution = {"check_outcome": {"check_outcome": 10}}
         from_state = "check_outcome"
         branches = route_distribution[from_state]
@@ -525,15 +525,15 @@ class TestAnalyzeLoopSynthesis:
     # ------------------------------------------------------------------
 
     def test_skill_has_skip_issue_creation_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "analyze-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "debug-loop-run" / "SKILL.md"
         assert "--skip-issue-creation" in skill_path.read_text()
 
     def test_skill_has_auto_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "analyze-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "debug-loop-run" / "SKILL.md"
         assert "--auto" in skill_path.read_text()
 
     def test_step5_ask_user_question_guarded_by_skip_flag(self) -> None:
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "analyze-loop" / "SKILL.md"
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "debug-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         step5_start = content.index("## Step 5:")
         step6_start = content.index("## Step 6:")

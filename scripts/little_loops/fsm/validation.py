@@ -597,8 +597,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
     defined_states = fsm.get_all_state_names()
 
     # Warn when no top-level description: field is set. The field is optional
-    # for FSM execution but required for goal-alignment skills (analyze-loop,
-    # assess-loop) and for ll-loop show --json to surface intent text.
+    # for FSM execution but required for goal-alignment skills (debug-loop-run,
+    # audit-loop-run) and for ll-loop show --json to surface intent text.
     if not fsm.description:
         errors.append(
             ValidationError(

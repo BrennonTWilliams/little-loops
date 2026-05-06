@@ -184,7 +184,7 @@ Scan the event list and classify signals using the rules below. Group events by 
 
   `APPLY_STATE_PREFIXES = ("apply_", "refine_", "update_", "write_", "commit_")`
 
-  (Documented in prose form parallel to the existing `DECISION_PREFIXES` and `GATE_STATE_PREFIXES` tuples in `scripts/tests/test_analyze_loop_synthesis.py` and `scripts/tests/test_review_loop.py`. Matching is performed by the LLM in-context against `state_enter.state` names; no Python code is added.)
+  (Documented in prose form parallel to the existing `DECISION_PREFIXES` and `GATE_STATE_PREFIXES` tuples in `scripts/tests/test_debug_loop_run_synthesis.py` and `scripts/tests/test_review_loop.py`. Matching is performed by the LLM in-context against `state_enter.state` names; no Python code is added.)
 
   Track an `apply_state_visit` flag while iterating `state_enter` events: set it true if any visited state name starts with one of the `APPLY_STATE_PREFIXES`. After the walk, evaluate the trigger.
 - **Priority**: P3
@@ -466,7 +466,7 @@ Example: `P2-BUG-728-verify-action-failed-3x-exit-code-1-in-issue-fixer-loop.md`
 ```markdown
 ---
 discovered_date: <YYYY-MM-DD>
-discovered_by: analyze-loop
+discovered_by: debug-loop-run
 source_loop: <loop_name>
 source_state: <state_name>
 ---
@@ -549,11 +549,11 @@ Skipped <M> duplicate(s):
 
 ```bash
 # Auto-select most recently interrupted loop
-/ll:analyze-loop
+/ll:debug-loop-run
 
 # Analyze a specific loop
-/ll:analyze-loop issue-fixer
+/ll:debug-loop-run issue-fixer
 
 # Limit events analyzed to 100 most recent
-/ll:analyze-loop issue-fixer --tail 100
+/ll:debug-loop-run issue-fixer --tail 100
 ```

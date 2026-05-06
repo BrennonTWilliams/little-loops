@@ -328,7 +328,7 @@ Map each catalog entry to one of five workflow themes based on keyword matching 
 | `issue-management` | issue, scan, capture, refine, prioritize, align, format, verify, sprint, manage, ready, size, confidence, dependency | scan-codebase, manage-issue, create-sprint, prioritize-issues |
 | `code-quality` | check, lint, test, format, type, audit, dead, build, quality | check-code, run-tests, find-dead-code, audit-docs |
 | `git-release` | commit, pr, push, release, sync, worktree, branch, tag | commit, open-pr, manage-release, sync-issues |
-| `loops-automation` | loop, workflow, automate, suggest, create-loop, analyze-loop, ll-loop, ll-workflows, ll-sprint | create-loop, review-loop, loop-suggester, ll-loop |
+| `loops-automation` | loop, workflow, automate, suggest, create-loop, debug-loop-run, ll-loop, ll-workflows, ll-sprint | create-loop, review-loop, loop-suggester, ll-loop |
 | `analysis-meta` | analyze, history, product, audit-claude, message, parallel, deps, issues, ll-auto, ll-parallel | analyze-history, product-analyzer, ll-messages |
 
 Each entry belongs to exactly one theme; if ambiguous, assign to the first matching theme in the table order above.

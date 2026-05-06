@@ -530,7 +530,7 @@ SR-* findings are listed alongside FA-* findings in the Issues section of the ou
 
 **See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`
 
-### `/ll:analyze-loop`
+### `/ll:debug-loop-run`
 Analyze loop execution history to synthesize actionable issues from fault signals (BUG-class anomalies that broke the run) and effectiveness signals (ENH-class observations that the run completed but did not do useful work). Auto-selects the most recently interrupted/failed loop, or analyzes a named loop when specified.
 
 **Arguments:**
@@ -591,26 +591,26 @@ _Effectiveness Signals (ENH-class — completed but did not do useful work):_
 **Usage:**
 ```bash
 # Auto-select most recent interrupted loop
-/ll:analyze-loop
+/ll:debug-loop-run
 
 # Analyze a specific loop
-/ll:analyze-loop issue-fixer
+/ll:debug-loop-run issue-fixer
 
 # Limit events analyzed
-/ll:analyze-loop issue-fixer --tail 100
+/ll:debug-loop-run issue-fixer --tail 100
 
 # Headless: skip issue-creation prompt (for loop automation)
-/ll:analyze-loop issue-fixer --skip-issue-creation
+/ll:debug-loop-run issue-fixer --skip-issue-creation
 
 # Non-interactive: suppress all prompts (for slash_command invocation)
-/ll:analyze-loop issue-fixer --auto
+/ll:debug-loop-run issue-fixer --auto
 ```
 
 **Trigger keywords:** "analyze loop", "loop issues", "loop failures", "loop history issues"
 
-**See also:** `/ll:review-loop`, `/ll:create-loop`, `/ll:assess-loop`, `ll-loop history`
+**See also:** `/ll:review-loop`, `/ll:create-loop`, `/ll:audit-loop-run`, `ll-loop history`
 
-### `/ll:assess-loop`
+### `/ll:audit-loop-run`
 Audit whether a loop's execution actually achieved its stated goal — checking artifact mutations, threshold contracts, structural defects (phantom convergence, degenerate gates, rubric drift, sub-loop verdict laundering), and producing ranked improvement proposals. Auto-selects the most recent loop if no name is given.
 
 **Arguments:**
@@ -647,24 +647,24 @@ Audit whether a loop's execution actually achieved its stated goal — checking 
 **Usage:**
 ```bash
 # Assess most recent loop
-/ll:assess-loop
+/ll:audit-loop-run
 
 # Assess a specific loop
-/ll:assess-loop issue-fixer
+/ll:audit-loop-run issue-fixer
 
 # Skip rubric audit (faster, lower cost)
-/ll:assess-loop issue-fixer --no-rubric-audit
+/ll:audit-loop-run issue-fixer --no-rubric-audit
 
 # Headless: skip issue-creation prompt (for loop automation)
-/ll:assess-loop issue-fixer --skip-issue-creation
+/ll:audit-loop-run issue-fixer --skip-issue-creation
 
 # Non-interactive: suppress all prompts (for slash_command invocation)
-/ll:assess-loop issue-fixer --auto
+/ll:audit-loop-run issue-fixer --auto
 ```
 
 **Trigger keywords:** "assess loop", "audit loop", "loop effectiveness", "loop goal", "phantom success", "loop artifacts", "did the loop work"
 
-**See also:** `/ll:analyze-loop`, `/ll:review-loop`, `/ll:create-loop`
+**See also:** `/ll:debug-loop-run`, `/ll:review-loop`, `/ll:create-loop`
 
 ### `/ll:cleanup-loops`
 Find stuck or stale `ll-loop` processes, diagnose root causes from state and events files, and clean them up after user confirmation.
@@ -695,7 +695,7 @@ Find stuck or stale `ll-loop` processes, diagnose root causes from state and eve
 
 **Trigger keywords:** "cleanup loops", "stuck loops", "clean loops", "stale loops", "kill stuck loops"
 
-**See also:** `/ll:analyze-loop`, `/ll:review-loop`, `ll-loop stop`
+**See also:** `/ll:debug-loop-run`, `/ll:review-loop`, `ll-loop stop`
 
 ### `/ll:rename-loop`
 Rename a loop (built-in or project-level) and update every reference to it so the loop system remains fully functional.
@@ -786,8 +786,8 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `create-eval-from-issues`^ | Generate eval harness YAML from issue IDs |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
-| `analyze-loop`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from fault and effectiveness signals |
-| `assess-loop`^ | Audit loop goal achievement: checks artifact mutations, threshold contracts, phantom convergence, and produces ranked improvement proposals |
+| `debug-loop-run`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from fault and effectiveness signals |
+| `audit-loop-run`^ | Audit loop goal achievement: checks artifact mutations, threshold contracts, phantom convergence, and produces ranked improvement proposals |
 | `cleanup-loops`^ | Find and clean stuck or stale loop processes |
 | `rename-loop`^ | Rename a loop and update all references |
 | `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |

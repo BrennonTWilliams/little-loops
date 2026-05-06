@@ -124,8 +124,8 @@ little-loops/
 ├── loops/                # Built-in FSM loop definitions (43 YAML files)
 ├── skills/               # 28 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
-│   ├── analyze-loop/                 # Analyze loop execution history
-│   ├── assess-loop/                  # Audit loop goal achievement
+│   ├── debug-loop-run/               # Analyze loop execution history
+│   ├── audit-loop-run/               # Audit loop goal achievement
 │   ├── audit-claude-config/          # Audit plugin configuration
 │   ├── audit-docs/                   # Audit documentation accuracy
 │   ├── audit-issue-conflicts/        # Detect conflicts across open issues
