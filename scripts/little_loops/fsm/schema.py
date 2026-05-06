@@ -225,6 +225,49 @@ class ParameterSpec:
 
 
 @dataclass
+class ThrottleConfig:
+    """Per-state tool-call progressive throttling configuration.
+
+    Counts successful tool calls within a single state visit and escalates
+    restrictions to self-throttle runaway states before provider limits are reached.
+
+    Thresholds fall back to executor module defaults when not set:
+      - normal_max: _DEFAULT_THROTTLE_NORMAL_MAX (3) — calls 1..normal_max pass through
+      - warn_max: _DEFAULT_THROTTLE_WARN_MAX (8) — calls at warn_max inject a warning event
+      - hard_max: _DEFAULT_THROTTLE_HARD_MAX (12) — calls at hard_max route to on_throttle_hard
+      - calls > hard_max: hard stop, loop marked stuck
+
+    States with type="learning" (FEAT-1283) are exempt from the hard_max hard-stop because
+    they legitimately make N tool calls per visit (one per unproven target). The warn_max
+    warning still applies so users can see the state is doing significant work.
+    """
+
+    normal_max: int | None = None
+    warn_max: int | None = None
+    hard_max: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization."""
+        result: dict[str, Any] = {}
+        if self.normal_max is not None:
+            result["normal_max"] = self.normal_max
+        if self.warn_max is not None:
+            result["warn_max"] = self.warn_max
+        if self.hard_max is not None:
+            result["hard_max"] = self.hard_max
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ThrottleConfig:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            normal_max=data.get("normal_max"),
+            warn_max=data.get("warn_max"),
+            hard_max=data.get("hard_max"),
+        )
+
+
+@dataclass
 class StateConfig:
     """Configuration for a single FSM state.
 
@@ -306,6 +349,9 @@ class StateConfig:
     agent: str | None = None
     tools: list[str] | None = None
     extra_routes: dict[str, str] = field(default_factory=dict)
+    type: str | None = None
+    throttle: ThrottleConfig | None = None
+    on_throttle_hard: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -367,6 +413,12 @@ class StateConfig:
             result["tools"] = self.tools
         for verdict, target in self.extra_routes.items():
             result[f"on_{verdict}"] = target
+        if self.type is not None:
+            result["type"] = self.type
+        if self.throttle is not None:
+            result["throttle"] = self.throttle.to_dict()
+        if self.on_throttle_hard is not None:
+            result["on_throttle_hard"] = self.on_throttle_hard
 
         return result
 
@@ -381,6 +433,10 @@ class StateConfig:
         if "route" in data:
             route = RouteConfig.from_dict(data["route"])
 
+        throttle = None
+        if "throttle" in data:
+            throttle = ThrottleConfig.from_dict(data["throttle"])
+
         _known_on_keys = {
             "on_yes",
             "on_success",
@@ -392,6 +448,7 @@ class StateConfig:
             "on_maintain",
             "on_retry_exhausted",
             "on_rate_limit_exhausted",
+            "on_throttle_hard",
         }
         extra_routes = {
             key[3:]: val
@@ -428,6 +485,9 @@ class StateConfig:
             agent=data.get("agent"),
             tools=data.get("tools"),
             extra_routes=extra_routes,
+            type=data.get("type"),
+            throttle=throttle,
+            on_throttle_hard=data.get("on_throttle_hard"),
         )
 
     def get_referenced_states(self) -> set[str]:
@@ -456,6 +516,8 @@ class StateConfig:
             refs.add(self.on_retry_exhausted)
         if self.on_rate_limit_exhausted is not None:
             refs.add(self.on_rate_limit_exhausted)
+        if self.on_throttle_hard is not None:
+            refs.add(self.on_throttle_hard)
         if self.route is not None:
             refs.update(self.route.routes.values())
             if self.route.default is not None:

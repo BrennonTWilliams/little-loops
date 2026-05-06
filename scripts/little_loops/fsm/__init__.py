@@ -91,6 +91,9 @@ from little_loops.fsm.executor import (
     RATE_LIMIT_EXHAUSTED_EVENT,
     RATE_LIMIT_STORM_EVENT,
     RATE_LIMIT_WAITING_EVENT,
+    THROTTLE_HARD_EVENT,
+    THROTTLE_STOP_EVENT,
+    THROTTLE_WARN_EVENT,
     ActionResult,
     ActionRunner,
     EventCallback,
@@ -127,6 +130,7 @@ from little_loops.fsm.schema import (
     ParameterSpec,
     RouteConfig,
     StateConfig,
+    ThrottleConfig,
 )
 from little_loops.fsm.signal_detector import (
     ERROR_SIGNAL,

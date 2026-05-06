@@ -5945,3 +5945,243 @@ class TestSubLoopWithBindings:
         assert result.final_state == "success"
         assert "run_child" in executor.captured
         assert "result" in executor.captured["run_child"]
+
+
+class TestThrottling:
+    """Tests for ENH-1115: per-state tool-call progressive throttling.
+
+    The throttle counter increments once per _run_action_or_route call, which
+    happens once per _execute_state invocation. To accumulate count > 1, states
+    must loop back to themselves across iterations without a different state in
+    between. Tests use self-routing states and patch _DEFAULT_THROTTLE_* to small
+    values so scenarios complete quickly.
+    """
+
+    def _looping_fsm(
+        self,
+        *,
+        on_throttle_hard: str | None = None,
+        throttle: dict[str, Any] | None = None,
+        state_type: str | None = None,
+        exit_after: int = 0,
+    ) -> tuple["FSMLoop", "MockActionRunner"]:
+        """Build an FSM where 'execute' loops back on itself, then exits via on_no.
+
+        Returns the FSM and a pre-configured runner that returns yes for `exit_after`
+        calls then returns no (which routes to 'done' via on_no).
+        """
+        from little_loops.fsm.schema import ThrottleConfig
+
+        throttle_cfg = ThrottleConfig.from_dict(throttle) if throttle else None
+        fsm = FSMLoop(
+            name="throttle-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="execute",  # loop back to accumulate call count
+                    on_no="done",     # exit when action returns non-zero
+                    on_throttle_hard=on_throttle_hard,
+                    throttle=throttle_cfg,
+                    type=state_type,
+                ),
+                "done": StateConfig(terminal=True),
+                "throttled": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        yes = ("work.sh", {"output": "yes", "exit_code": 0})
+        no = ("work.sh", {"output": "no", "exit_code": 1})
+        runner.results = [yes] * exit_after + [no] * 20
+        runner.use_indexed_order = True
+        return fsm, runner
+
+    def test_warn_event_emitted_at_warn_max(self) -> None:
+        """throttle_warn is emitted exactly once when call count reaches warn_max."""
+        # State loops back 3 times (hitting warn_max=3), then exits on 4th call
+        fsm, runner = self._looping_fsm(exit_after=4)
+        events: list[dict] = []
+
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_THROTTLE_WARN_MAX=3,
+            _DEFAULT_THROTTLE_HARD_MAX=100,
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            executor.run()
+
+        warn_events = [e for e in events if e.get("event") == "throttle_warn"]
+        assert len(warn_events) == 1
+        assert warn_events[0]["state"] == "execute"
+        assert warn_events[0]["count"] == 3
+        assert warn_events[0]["warn_max"] == 3
+
+    def test_hard_event_emitted_and_routes_to_on_throttle_hard(self) -> None:
+        """At hard_max, throttle_hard is emitted and executor routes to on_throttle_hard."""
+        fsm, runner = self._looping_fsm(on_throttle_hard="throttled", exit_after=20)
+        events: list[dict] = []
+
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_THROTTLE_WARN_MAX=2,
+            _DEFAULT_THROTTLE_HARD_MAX=4,
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            result = executor.run()
+
+        assert result.final_state == "throttled"
+        hard_events = [e for e in events if e.get("event") == "throttle_hard"]
+        assert len(hard_events) == 1
+        assert hard_events[0]["state"] == "execute"
+        assert hard_events[0]["count"] == 4
+        assert hard_events[0]["next"] == "throttled"
+
+    def test_hard_falls_back_to_on_error_when_no_on_throttle_hard(self) -> None:
+        """When on_throttle_hard is not set, hard transition falls back to on_error."""
+        from little_loops.fsm.schema import ThrottleConfig
+
+        fsm = FSMLoop(
+            name="throttle-fallback-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="execute",
+                    on_no="done",
+                    on_error="done",  # hard_max falls back here
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", {"output": "yes", "exit_code": 0})] * 20
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_THROTTLE_WARN_MAX=2,
+            _DEFAULT_THROTTLE_HARD_MAX=3,
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            result = executor.run()
+
+        assert result.final_state == "done"
+        hard_events = [e for e in events if e.get("event") == "throttle_hard"]
+        assert len(hard_events) == 1
+        assert hard_events[0]["next"] == "done"
+
+    def test_stop_event_emitted_beyond_hard_max(self) -> None:
+        """Calls beyond hard_max emit throttle_stop and hard-stop the loop.
+
+        No on_throttle_hard or on_error → hard_max check returns None and
+        execution continues. The next re-entry sees count > hard_max and stops.
+        """
+        fsm = FSMLoop(
+            name="stop-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="execute",  # loop back to accumulate calls
+                    on_no="done",
+                    # no on_error, no on_throttle_hard → hard_max returns None
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", {"output": "yes", "exit_code": 0})] * 20
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_THROTTLE_WARN_MAX=2,
+            _DEFAULT_THROTTLE_HARD_MAX=3,
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            result = executor.run()
+
+        stop_events = [e for e in events if e.get("event") == "throttle_stop"]
+        assert len(stop_events) == 1
+        assert result.terminated_by == "error"
+
+    def test_counter_resets_on_state_change(self) -> None:
+        """Throttle counter resets when transitioning to a different state."""
+        fsm = FSMLoop(
+            name="reset-test",
+            initial="step_a",
+            states={
+                "step_a": StateConfig(action="a.sh", on_yes="step_b", on_no="step_b"),
+                "step_b": StateConfig(action="b.sh", on_yes="done", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("a.sh", {"output": "yes", "exit_code": 0}),
+            ("b.sh", {"output": "yes", "exit_code": 0}),
+        ]
+        runner.use_indexed_order = True
+
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_THROTTLE_WARN_MAX=2,
+            _DEFAULT_THROTTLE_HARD_MAX=3,
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "done"
+        # step_a should have been cleaned up when we transitioned to step_b
+        assert "step_a" not in executor._throttle_counts
+
+    def test_per_state_throttle_config_overrides_defaults(self) -> None:
+        """State-level throttle config overrides module defaults."""
+        from little_loops.fsm.schema import ThrottleConfig
+
+        fsm, runner = self._looping_fsm(
+            on_throttle_hard="throttled",
+            throttle={"normal_max": 1, "warn_max": 2, "hard_max": 3},
+            exit_after=20,
+        )
+        events: list[dict] = []
+
+        # Module defaults are high — the per-state config should take precedence
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_THROTTLE_WARN_MAX=100,
+            _DEFAULT_THROTTLE_HARD_MAX=200,
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            result = executor.run()
+
+        assert result.final_state == "throttled"
+        hard_events = [e for e in events if e.get("event") == "throttle_hard"]
+        assert hard_events[0]["hard_max"] == 3
+
+    def test_learning_state_exempt_from_hard_max(self) -> None:
+        """States with type='learning' skip the hard_max hard-stop; warn still fires."""
+        # Learning state: loops back 6 times (past hard_max=4), then exits on 7th call
+        fsm, runner = self._looping_fsm(
+            on_throttle_hard="throttled",
+            state_type="learning",
+            exit_after=6,
+        )
+        events: list[dict] = []
+
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_THROTTLE_WARN_MAX=2,
+            _DEFAULT_THROTTLE_HARD_MAX=4,
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            result = executor.run()
+
+        # Should exit via on_no → done (not via on_throttle_hard)
+        assert result.final_state == "done"
+        warn_events = [e for e in events if e.get("event") == "throttle_warn"]
+        hard_events = [e for e in events if e.get("event") == "throttle_hard"]
+        assert len(warn_events) >= 1  # warn still fires
+        assert len(hard_events) == 0  # hard is suppressed for learning states

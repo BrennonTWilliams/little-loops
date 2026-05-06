@@ -61,6 +61,22 @@ fragments:
     rate_limit_max_wait_seconds: 21600
     rate_limit_long_wait_ladder: [300, 900, 1800, 3600]
 
+  with_throttle:
+    description: |
+      Applies per-state progressive tool-call throttling with defaults from the executor
+      module: calls 1-3 pass through (normal_max), call 8 injects a throttle_warn event,
+      call 12 triggers a transition to on_throttle_hard (or on_error if not set), and
+      calls beyond 12 hard-stop the loop.
+      State must supply: on_throttle_hard (target state when hard_max is reached).
+      State may override any of: throttle.normal_max, throttle.warn_max, throttle.hard_max.
+      Note: States with type="learning" (FEAT-1283) are exempt from the hard_max check
+      because they legitimately make N tool calls per visit (one per unproven target);
+      the warn_max warning still fires so users can observe the work being done.
+    throttle:
+      normal_max: 3
+      warn_max: 8
+      hard_max: 12
+
   numeric_gate:
     description: |
       Shell command evaluated by numeric output comparison.

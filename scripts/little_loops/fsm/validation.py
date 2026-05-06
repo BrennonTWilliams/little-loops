@@ -535,6 +535,44 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
                         )
                     )
 
+    # Validate throttle config when present
+    if state.throttle is not None:
+        t = state.throttle
+        fields = {
+            "normal_max": t.normal_max,
+            "warn_max": t.warn_max,
+            "hard_max": t.hard_max,
+        }
+        for field_name, val in fields.items():
+            if val is not None and (not isinstance(val, int) or val < 1):
+                errors.append(
+                    ValidationError(
+                        message=f"'throttle.{field_name}' must be a positive integer, got {val!r}",
+                        path=path,
+                    )
+                )
+        # Enforce ordering when all three are set
+        if t.normal_max is not None and t.warn_max is not None and t.normal_max >= t.warn_max:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"'throttle.normal_max' ({t.normal_max}) must be less than "
+                        f"'throttle.warn_max' ({t.warn_max})"
+                    ),
+                    path=path,
+                )
+            )
+        if t.warn_max is not None and t.hard_max is not None and t.warn_max >= t.hard_max:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"'throttle.warn_max' ({t.warn_max}) must be less than "
+                        f"'throttle.hard_max' ({t.hard_max})"
+                    ),
+                    path=path,
+                )
+            )
+
     return errors
 
 

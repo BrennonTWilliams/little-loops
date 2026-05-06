@@ -75,7 +75,7 @@ def _schema(
 
 
 # ---------------------------------------------------------------------------
-# Schema definitions — all 23 LLEvent types
+# Schema definitions — all 26 LLEvent types
 # Source of truth: docs/reference/EVENT-SCHEMA.md
 # ---------------------------------------------------------------------------
 
@@ -214,6 +214,42 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "tier": _str("Wait tier identifier (currently only 'long_wait')"),
         },
         ["state", "elapsed_seconds", "next_attempt_at"],
+    ),
+    "throttle_warn": _schema(
+        "throttle_warn",
+        "Throttle Warn",
+        "Emitted when a state's tool-call count reaches warn_max within a single state visit.",
+        {
+            "state": _str("State name where throttle warning was triggered"),
+            "count": _int("Current tool-call count at time of emission"),
+            "normal_max": _int("Configured normal_max threshold for this state"),
+            "warn_max": _int("Configured warn_max threshold for this state"),
+            "hard_max": _int("Configured hard_max threshold for this state"),
+        },
+        ["state", "count", "warn_max", "hard_max"],
+    ),
+    "throttle_hard": _schema(
+        "throttle_hard",
+        "Throttle Hard",
+        "Emitted when a state's tool-call count reaches hard_max, triggering transition to on_throttle_hard.",
+        {
+            "state": _str("State name where hard throttle was triggered"),
+            "count": _int("Current tool-call count at time of emission"),
+            "hard_max": _int("Configured hard_max threshold for this state"),
+            "next": _str("Target state (on_throttle_hard or on_error, or null)"),
+        },
+        ["state", "count", "hard_max"],
+    ),
+    "throttle_stop": _schema(
+        "throttle_stop",
+        "Throttle Stop",
+        "Emitted when a state's tool-call count exceeds hard_max with no on_throttle_hard target, causing a hard stop.",
+        {
+            "state": _str("State name where stop throttle was triggered"),
+            "count": _int("Current tool-call count at time of emission"),
+            "hard_max": _int("Configured hard_max threshold for this state"),
+        },
+        ["state", "count", "hard_max"],
     ),
     "handoff_detected": _schema(
         "handoff_detected",

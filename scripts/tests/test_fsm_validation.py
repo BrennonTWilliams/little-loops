@@ -6,7 +6,7 @@ support for custom on_<verdict> routing via extra_routes.
 
 from __future__ import annotations
 
-from little_loops.fsm.schema import EvaluateConfig, FSMLoop, ParameterSpec, StateConfig
+from little_loops.fsm.schema import EvaluateConfig, FSMLoop, ParameterSpec, StateConfig, ThrottleConfig
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_evaluator,
@@ -474,3 +474,54 @@ class TestWithBindingValidation:
         )
         errors = validate_fsm(fsm)
         assert not any("no transition" in e.message.lower() for e in errors)
+
+
+class TestThrottleValidation:
+    """Tests for throttle field validation (ENH-1115)."""
+
+    def _make_fsm(self, throttle: ThrottleConfig) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="run.sh",
+                    on_yes="done",
+                    throttle=throttle,
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_valid_throttle_no_errors(self) -> None:
+        fsm = self._make_fsm(ThrottleConfig(normal_max=3, warn_max=8, hard_max=12))
+        errors = validate_fsm(fsm)
+        throttle_errors = [e for e in errors if "throttle" in e.message.lower()]
+        assert throttle_errors == []
+
+    def test_warn_max_must_be_greater_than_normal_max(self) -> None:
+        fsm = self._make_fsm(ThrottleConfig(normal_max=8, warn_max=5, hard_max=12))
+        errors = validate_fsm(fsm)
+        assert any("normal_max" in e.message and "warn_max" in e.message for e in errors)
+
+    def test_hard_max_must_be_greater_than_warn_max(self) -> None:
+        fsm = self._make_fsm(ThrottleConfig(warn_max=10, hard_max=5))
+        errors = validate_fsm(fsm)
+        assert any("warn_max" in e.message and "hard_max" in e.message for e in errors)
+
+    def test_non_positive_normal_max_rejected(self) -> None:
+        fsm = self._make_fsm(ThrottleConfig(normal_max=0))
+        errors = validate_fsm(fsm)
+        assert any("normal_max" in e.message for e in errors)
+
+    def test_non_positive_warn_max_rejected(self) -> None:
+        fsm = self._make_fsm(ThrottleConfig(warn_max=0))
+        errors = validate_fsm(fsm)
+        assert any("warn_max" in e.message for e in errors)
+
+    def test_partial_throttle_valid(self) -> None:
+        """A throttle with only warn_max set is valid (others use defaults)."""
+        fsm = self._make_fsm(ThrottleConfig(warn_max=6))
+        errors = validate_fsm(fsm)
+        throttle_errors = [e for e in errors if "throttle" in e.message.lower()]
+        assert throttle_errors == []

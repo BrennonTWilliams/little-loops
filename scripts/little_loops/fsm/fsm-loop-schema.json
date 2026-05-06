@@ -341,6 +341,36 @@
             "type": "string"
           },
           "description": "List of tool names to pass as --tools CSV to the Claude CLI subprocess. Only used for prompt-mode states. Ignored for shell-mode states."
+        },
+        "type": {
+          "type": "string",
+          "description": "Optional state type marker. Set to 'learning' (FEAT-1283) to exempt this state from throttle hard_max enforcement; learning states legitimately make N tool calls per visit."
+        },
+        "throttle": {
+          "type": "object",
+          "description": "Per-state progressive tool-call throttling configuration. Counts successive action executions within a single state visit and escalates restrictions. All fields optional; defaults from executor module constants (normal_max=3, warn_max=8, hard_max=12).",
+          "properties": {
+            "normal_max": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Calls 1..normal_max pass through without restriction. Default: 3."
+            },
+            "warn_max": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "At this call count, a throttle_warn event is emitted. Default: 8."
+            },
+            "hard_max": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "At this call count, transition to on_throttle_hard (or on_error). Calls beyond hard_max hard-stop the loop. Default: 12."
+            }
+          },
+          "additionalProperties": false
+        },
+        "on_throttle_hard": {
+          "type": "string",
+          "description": "State to transition to when throttle.hard_max consecutive tool calls are made in a single state visit. If not set, falls back to on_error."
         }
       },
       "patternProperties": {

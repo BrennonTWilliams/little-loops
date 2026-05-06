@@ -23,6 +23,7 @@ from little_loops.fsm.schema import (
     ParameterSpec,
     RouteConfig,
     StateConfig,
+    ThrottleConfig,
 )
 from little_loops.fsm.validation import (
     ValidationError,
@@ -2445,3 +2446,96 @@ class TestStateConfigWith:
         assert restored.loop == "analyze-pr-review"
         assert restored.with_["pr_number"] == "${context.target_pr}"
         assert restored.with_["branch"] == "main"
+
+
+class TestThrottleConfig:
+    """Tests for ThrottleConfig dataclass (ENH-1115)."""
+
+    def test_from_dict_all_fields(self) -> None:
+        data = {"normal_max": 2, "warn_max": 5, "hard_max": 10}
+        cfg = ThrottleConfig.from_dict(data)
+        assert cfg.normal_max == 2
+        assert cfg.warn_max == 5
+        assert cfg.hard_max == 10
+
+    def test_from_dict_partial_fields(self) -> None:
+        cfg = ThrottleConfig.from_dict({"warn_max": 6})
+        assert cfg.normal_max is None
+        assert cfg.warn_max == 6
+        assert cfg.hard_max is None
+
+    def test_from_dict_empty(self) -> None:
+        cfg = ThrottleConfig.from_dict({})
+        assert cfg.normal_max is None
+        assert cfg.warn_max is None
+        assert cfg.hard_max is None
+
+    def test_to_dict_omits_none(self) -> None:
+        cfg = ThrottleConfig(warn_max=7)
+        d = cfg.to_dict()
+        assert d == {"warn_max": 7}
+        assert "normal_max" not in d
+        assert "hard_max" not in d
+
+    def test_round_trip(self) -> None:
+        original = ThrottleConfig(normal_max=3, warn_max=8, hard_max=12)
+        restored = ThrottleConfig.from_dict(original.to_dict())
+        assert restored.normal_max == 3
+        assert restored.warn_max == 8
+        assert restored.hard_max == 12
+
+    def test_state_config_throttle_field(self) -> None:
+        state = StateConfig.from_dict(
+            {
+                "action": "work.sh",
+                "throttle": {"normal_max": 3, "warn_max": 8, "hard_max": 12},
+                "on_throttle_hard": "slow-state",
+                "on_yes": "done",
+            }
+        )
+        assert state.throttle is not None
+        assert state.throttle.normal_max == 3
+        assert state.throttle.warn_max == 8
+        assert state.throttle.hard_max == 12
+        assert state.on_throttle_hard == "slow-state"
+
+    def test_state_config_no_throttle_defaults_none(self) -> None:
+        state = StateConfig.from_dict({"action": "work.sh", "on_yes": "done"})
+        assert state.throttle is None
+        assert state.on_throttle_hard is None
+
+    def test_on_throttle_hard_in_known_on_keys(self) -> None:
+        """on_throttle_hard must NOT appear in extra_routes."""
+        state = StateConfig.from_dict(
+            {"action": "work.sh", "on_throttle_hard": "fallback", "on_yes": "done"}
+        )
+        assert state.on_throttle_hard == "fallback"
+        assert "throttle_hard" not in state.extra_routes
+
+    def test_state_config_throttle_round_trip(self) -> None:
+        original = StateConfig(
+            action="work.sh",
+            throttle=ThrottleConfig(normal_max=2, warn_max=5, hard_max=8),
+            on_throttle_hard="slow",
+            on_yes="done",
+        )
+        d = original.to_dict()
+        restored = StateConfig.from_dict(d)
+        assert restored.throttle is not None
+        assert restored.throttle.normal_max == 2
+        assert restored.throttle.warn_max == 5
+        assert restored.throttle.hard_max == 8
+        assert restored.on_throttle_hard == "slow"
+
+    def test_on_throttle_hard_in_get_referenced_states(self) -> None:
+        state = StateConfig(
+            action="work.sh",
+            on_throttle_hard="batch-state",
+            on_yes="done",
+        )
+        refs = state.get_referenced_states()
+        assert "batch-state" in refs
+
+    def test_state_type_field(self) -> None:
+        state = StateConfig.from_dict({"action": "work.sh", "type": "learning", "on_yes": "done"})
+        assert state.type == "learning"

@@ -663,6 +663,77 @@ class TestCommonYamlNewFragments:
 
 
 # ---------------------------------------------------------------------------
+# ENH-1115: with_throttle fragment tests
+# ---------------------------------------------------------------------------
+
+
+class TestThrottleFragment:
+    """Tests for the with_throttle fragment in lib/common.yaml (ENH-1115)."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        from pathlib import Path
+
+        import yaml
+
+        common = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        return yaml.safe_load(common.read_text())
+
+    def test_with_throttle_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "with_throttle" in data["fragments"], (
+            "with_throttle fragment missing from lib/common.yaml"
+        )
+
+    def test_with_throttle_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["with_throttle"]
+        assert frag.get("description", "").strip(), (
+            "with_throttle fragment must have a non-empty description"
+        )
+
+    def test_with_throttle_default_fields(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["with_throttle"]
+        throttle = frag.get("throttle", {})
+        assert throttle.get("normal_max") == 3
+        assert throttle.get("warn_max") == 8
+        assert throttle.get("hard_max") == 12
+
+    def test_with_throttle_resolves_from_real_common_yaml(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        from pathlib import Path
+
+        from little_loops.fsm.fragments import resolve_fragments
+
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "work",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "work": {
+                    "fragment": "with_throttle",
+                    "action": "run-job",
+                    "on_yes": "done",
+                    "on_no": "done",
+                    "on_throttle_hard": "throttled",
+                },
+                "done": {"terminal": True},
+                "throttled": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["work"]
+        throttle = state.get("throttle", {})
+        assert throttle.get("normal_max") == 3
+        assert throttle.get("warn_max") == 8
+        assert throttle.get("hard_max") == 12
+        assert state["on_throttle_hard"] == "throttled"
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
 # Integration: load_and_validate with import: no spurious warnings
 # ---------------------------------------------------------------------------
 

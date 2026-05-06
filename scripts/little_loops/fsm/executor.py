@@ -68,6 +68,15 @@ RATE_LIMIT_WAITING_EVENT: str = "rate_limit_waiting"
 _RATE_LIMIT_HEARTBEAT_INTERVAL: float = 60.0
 # Number of consecutive rate_limit_exhausted events that constitute a storm.
 _RATE_LIMIT_STORM_THRESHOLD: int = 3
+# Progressive throttle defaults: calls 1..normal_max pass through, at warn_max emit warning,
+# at hard_max route to on_throttle_hard, beyond hard_max hard-stop.
+_DEFAULT_THROTTLE_NORMAL_MAX: int = 3
+_DEFAULT_THROTTLE_WARN_MAX: int = 8
+_DEFAULT_THROTTLE_HARD_MAX: int = 12
+# Event names for progressive tool-call throttling within a single state visit.
+THROTTLE_WARN_EVENT: str = "throttle_warn"
+THROTTLE_HARD_EVENT: str = "throttle_hard"
+THROTTLE_STOP_EVENT: str = "throttle_stop"
 # Action types that consume LLM quota and are gated by the shared circuit breaker.
 # `_action_mode()` collapses both to "prompt"; the frozenset documents intent.
 LLM_ACTION_TYPES: frozenset[str] = frozenset({"slash_command", "prompt"})
@@ -209,6 +218,11 @@ class FSMExecutor:
         # Reset when the state completes without a server error, or after exhaustion.
         self._api_error_retries: dict[str, dict[str, Any]] = {}
 
+        # Per-state tool-call throttle counter. Counts successive action executions within
+        # a single continuous state visit. Reset on state exit; NOT serialized to LoopState
+        # (throttle counts measure instantaneous visit-level activity, not cumulative retries).
+        self._throttle_counts: dict[str, int] = {}
+
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
         self._depth: int = 0
@@ -283,6 +297,7 @@ class FSMExecutor:
                         )
                     else:
                         self._retry_counts.pop(self._prev_state, None)
+                        self._throttle_counts.pop(self._prev_state, None)
 
                 # Check terminal
                 if state_config.terminal:
@@ -505,6 +520,63 @@ class FSMExecutor:
             # max_iterations, timeout, signal — all are failure
             return interpolate(state.on_no, ctx) if state.on_no else None
 
+    def _check_throttle(self, state: StateConfig, state_name: str) -> str | None:
+        """Increment the per-state tool-call counter and enforce throttle thresholds.
+
+        Called after every action execution within a state visit. Returns the forced
+        next-state name when the hard threshold is reached, or None when execution
+        should continue normally (warn events are emitted but do not redirect).
+
+        Sets self._pending_error and returns "__STOP__" when the call count exceeds
+        hard_max with no on_throttle_hard target — the caller must propagate this as
+        a None return from _execute_state so the main loop detects _pending_error.
+        """
+        count = self._throttle_counts.get(state_name, 0) + 1
+        self._throttle_counts[state_name] = count
+
+        throttle = state.throttle
+        normal_max = throttle.normal_max if (throttle and throttle.normal_max is not None) else _DEFAULT_THROTTLE_NORMAL_MAX
+        warn_max = throttle.warn_max if (throttle and throttle.warn_max is not None) else _DEFAULT_THROTTLE_WARN_MAX
+        hard_max = throttle.hard_max if (throttle and throttle.hard_max is not None) else _DEFAULT_THROTTLE_HARD_MAX
+
+        if count == warn_max:
+            self._emit(
+                THROTTLE_WARN_EVENT,
+                {
+                    "state": state_name,
+                    "count": count,
+                    "normal_max": normal_max,
+                    "warn_max": warn_max,
+                    "hard_max": hard_max,
+                },
+            )
+
+        # States with type="learning" (FEAT-1283) are exempt from hard_max — they
+        # legitimately make N calls per visit (one per unproven target).
+        if state.type == "learning":
+            return None
+
+        if count == hard_max:
+            next_target = state.on_throttle_hard or state.on_error
+            self._emit(
+                THROTTLE_HARD_EVENT,
+                {"state": state_name, "count": count, "hard_max": hard_max, "next": next_target},
+            )
+            return next_target
+
+        if count > hard_max:
+            self._emit(
+                THROTTLE_STOP_EVENT,
+                {"state": state_name, "count": count, "hard_max": hard_max},
+            )
+            self._pending_error = (
+                f"Throttle stop: state '{state_name}' exceeded hard_max={hard_max} "
+                "tool calls with no on_throttle_hard target"
+            )
+            return "__STOP__"
+
+        return None
+
     def _execute_state(self, state: StateConfig) -> str | None:
         """Execute a single state and return next state name.
 
@@ -533,6 +605,11 @@ class FSMExecutor:
                 result, routed = self._run_action_or_route(state, ctx)
                 if routed is not None:
                     return routed
+                throttle_next = self._check_throttle(state, self.current_state)
+                if throttle_next == "__STOP__":
+                    return None
+                if throttle_next is not None:
+                    return throttle_next
                 assert result is not None
                 self.prev_result = {
                     "output": result.output,
@@ -557,6 +634,11 @@ class FSMExecutor:
             action_result, routed = self._run_action_or_route(state, ctx)
             if routed is not None:
                 return routed
+            throttle_next = self._check_throttle(state, self.current_state)
+            if throttle_next == "__STOP__":
+                return None
+            if throttle_next is not None:
+                return throttle_next
 
         # Evaluate
         eval_result = self._evaluate(state, action_result, ctx)
