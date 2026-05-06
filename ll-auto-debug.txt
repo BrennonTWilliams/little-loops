@@ -1,0 +1,471 @@
+Running loop: autodev
+Max iterations: 500
+
+[1/500] init (0s) -> if [ -z "ENH-1376" ]; then
+  echo "ERROR: input is required. Usage: ll-loop run autodev \"ID1,ID2\""
+  exit 1
+fi
+mkdir -p .loops/tmp
+printf '' > .loops/tmp/autodev-passed.txt
+printf '' > .loops/tmp/autodev-skipped.txt
+rm -f .loops/tmp/autodev-broke-down
+rm -f .loops/tmp/autodev-inflight
+echo "ENH-1376" | tr ',' '\n' \
+  | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+  | grep -v '^[[:space:]]*$' \
+  > .loops/tmp/autodev-queue.txt
+COUNT=$(wc -l < .loops/tmp/autodev-queue.txt | tr -d ' ')
+echo "Queued $COUNT issue(s) for autodev"
+
+       Queued 1 issue(s) for autodev
+       (0.0s)
+       ✓ yes
+       -> dequeue_next
+[2/500] dequeue_next (0s) -> if [ ! -s .loops/tmp/autodev-queue.txt ]; then
+  exit 1
+fi
+CURRENT=$(head -1 .loops/tmp/autodev-queue.txt)
+tail -n +2 .loops/tmp/autodev-queue.txt > .loops/tmp/autodev-queue.tmp
+mv .loops/tmp/autodev-queue.tmp .loops/tmp/autodev-queue.txt
+
+# BUG-1226: record the in-flight issue so `done` can surface it if the
+# loop terminates before this issue reaches a clean resolution
+# (enqueue_or_skip / enqueue_children / next dequeue_next overwrite).
+printf '%s' "$CURRENT" > .loops/tmp/autodev-inflight
+
+rm -f .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
+(ll-issues list --json | python3 -c "
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+    for i in sorted(i['id'] for i in issues):
+        print(i)
+except Exception:
+    pass
+" > .loops/tmp/autodev-pre-ids.txt) || true
+
+echo "$CURRENT"
+
+       ENH-1376
+       (0.1s)
+       ✓ yes
+       -> refine_current
+[3/500] refine_current (0s)  [1/500] resolve_issue (0s)   -> mkdir -p .loops/tmp && printf '0' > .loops/tmp/refine-to-ready-refine-count && printf '0' > .loops/tmp/refine-to-ready-wire-done && printf '0' > .loops/tmp/recursive-refine-broke-down && { [ -n "ENH-1376" ] && printf '%s' "ENH-1376" || ll-issues next-issue; } | tr -d '\n\r '
+         ENH-1376
+         (0.0s)
+         -> check_lifetime_limit
+  [2/500] check_lifetime_limit (0s)   -> MAX_TOTAL=$(python3 << 'PYEOF'
+import json
+from pathlib import Path
+p = Path('.ll/ll-config.json')
+cfg = {}
+if p.exists():
+    try:
+        cfg = json.loads(p.read_text())
+    except Exception:
+        pass
+print(cfg.get('commands', {}).get('max_refine_count', 5))
+PYEOF
+)
+[ -z "$MAX_TOTAL" ] && MAX_TOTAL=5
+
+TOTAL_REFINES=$(ll-issues refine-status "ENH-1376" --json 2>/dev/null \
+  | python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(int(d.get('refine_count', 0)))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)
+
+if [ "$TOTAL_REFINES" -ge "$MAX_TOTAL" ]; then
+  echo 1
+else
+  echo 0
+fi
+
+         0
+         (0.1s)
+         ✓ yes
+         -> refine_issue
+  [3/500] refine_issue (0s)   -> ✦ (1 lines)
+         /ll:refine-issue ENH-1376 --auto
+         Issue ENH-1376 is mostly well-formed. The "Similar Patterns" section is TBD and I should verify the file references and find callback patterns. Let me research in parallel.
+         Research complete. I have comprehensive findings on callers, callback patterns, state file fields, and test patterns. Now I'll enrich the issue, preserving existing content.
+         Key findings to incorporate:
+         - 4 direct callers of `run_claude_command` (not 2 as currently listed): adds `fsm/runners.py:DefaultActionRunner.run()` and `cli/action.py:cmd_invoke()`
+         - The `issue_manager.run_claude_command` wrapper is a separate layer that does NOT currently forward all callbacks — adding `on_usage` requires plumbing through both layers
+         - Established pattern: `ModelCallback` TypeAlias + `on_model_detected` is the direct analogue
+         - Existing test `test_unknown_event_type_skipped` (test_subprocess_utils.py) will need updating — it asserts result events are skipped
+         - State file field is `estimated_tokens` (not `result_token_count` as the issue suggests); also `transcript_baseline_tokens` already exists for accurate counts
+         - `WorkerPool` has a separate `_run_with_continuation` reimplementation (parallel-specific)
+         Now enrich the Proposed Solution with concrete codebase research findings (appending, not replacing):
+         Now expand the Integration Map sections with the comprehensive caller list and accurate Files to Modify:
+         Now refine the Implementation Steps with concrete anchors, and append the session log:
+         Verify the session log was appended:
+         Session log appended.
+         ```
+         ================================================================================
+         ISSUE REFINED: ENH-1376
+         ================================================================================
+         ## ISSUE
+         - File: .issues/enhancements/P3-ENH-1376-parse-stream-json-result-events-for-accurate-context-token-counts.md
+         - Type: ENH
+         - Title: Parse Stream-JSON `result` Events for Accurate Context Token Counts
+         - Mode: Auto
+         ## RESEARCH SUMMARY
+         - Files discovered: 30+ across implementation, hooks, tests, docs, config
+         - Integration points identified: 4 direct callers of `run_claude_command` (was 2 in issue)
+         - Similar patterns found: 6 callback-pattern examples (TypeAlias, inline Callable, closure variants)
+         - Key finding: An exact analogue (`on_model_detected: ModelCallback | None`) already exists in `subprocess_utils.run_claude_command()` and is plumbed through the same two-layer wrapper this change must traverse — implementation can mirror it line-for-line.
+         ## KNOWLEDGE GAPS IDENTIFIED
+         | Gap | Status | Source |
+         |-----|--------|--------|
+         | Similar Patterns (was "TBD") | FILLED — `on_model_detected`/`ModelCallback` analogue, `AutoManager._process_issue` closure, `WorkerPool.submit` inline-Callable variant | pattern-finder |
+         | Comprehensive caller list | FILLED — 4 direct callers + 4 wrapper callers + 1 continuation caller, with anchors | analyzer |
+         | Two-layer wrapper requirement | FILLED — `issue_manager.run_claude_command` is a separate wrapper that must also forward `on_usage` | analyzer |
+         | State file field naming | FILLED — actual field is `estimated_tokens`; `result_token_count` does not exist; `transcript_baseline_tokens` already provides accurate counts | analyzer |
+         | Existing test that breaks | FILLED — `test_unknown_event_type_skipped` asserts result events are skipped; needs revision | pattern-finder |
+         | Test patterns to model | FILLED — `TestRunClaudeCommandModelDetection` + `_make_single_line_selector` helper | pattern-finder |
+         | Cooperation with `transcript_baseline_tokens` | UNKNOWN — flagged as Open Question for `/ll:decide-issue` | — |
+         ## SECTIONS ENRICHED
+         - **Proposed Solution**: Added "Codebase Research Findings" subsection with 6 concrete findings (preserved Approach A/B content)
+         - **Integration Map → Files to Modify**: Expanded with anchors, added the wrapper layer in `issue_manager.py` as a distinct edit point
+         - **Integration Map → Dependent Files**: Expanded from 2 to 5 callers with function/class anchors
+         - **Integration Map → Similar Patterns**: Replaced "TBD" with 3 concrete pattern references
+         - **Integration Map → Tests**: Replaced single line with 5 specific test files/classes including the existing test that needs revision
+         - **Implementation Steps**: Made concrete with anchors, expanded from 6 to 9 steps
+         - **Open Questions**: New section flagging the field-name decision and `transcript_baseline_tokens` cooperation
+         ## SECTIONS PRESERVED
+         - **Summary**, **Current Behavior**, **Expected Behavior**: Existing content untouched
+         - **Proposed Solution Approaches A and B**: Preserved verbatim, findings appended below
+         - **Motivation, Scope Boundaries, Success Metrics, API/Interface, Impact, Labels, Status, Related Issues**: All preserved
+         ## FILE STATUS
+         - Modified
+         - decision_needed: true (2 approaches present in Proposed Solution: A and B)
+         ## NEXT STEPS
+         - `decision_needed: true` was set — run `/ll:decide-issue ENH-1376` to formally select Approach A vs B and resolve the Open Questions about state-file field naming and `transcript_baseline_tokens` cooperation
+         - Then `/ll:wire-issue ENH-1376` to add integration wiring across the additional callers
+         - Then `/ll:ready-issue ENH-1376` to validate
+         ================================================================================
+         ```
+         (4m 54s)
+         -> check_wire_done
+  [4/500] check_wire_done (4m 53s)   -> cat .loops/tmp/refine-to-ready-wire-done 2>/dev/null || echo 0
+
+         0
+         (0.0s)
+         ✓ yes
+         -> wire_issue
+  [5/500] wire_issue (4m 53s)   -> ✦ (1 lines)
+         /ll:wire-issue ENH-1376 --auto
+         Starting the wire-issue pass for ENH-1376 in auto mode. First, locating the issue file.
+         Good — I have the full issue. Now extracting existing wiring context and spawning 3 parallel research agents.
+         **EXISTING_WIRING summary:**
+         - files_to_modify: `subprocess_utils.py`, `issue_manager.py`, `context-monitor.sh`
+         - known_callers: `run_with_continuation`, `process_issue_inplace`, `worker_pool.py`, `fsm/runners.py`, `cli/action.py`
+         - known_tests: `test_subprocess_utils.py`, `test_issue_manager.py`, `test_hooks_integration.py`
+         - known_docs: N/A
+         - key_symbols: `run_claude_command`, `UsageCallback`, `on_usage`, `on_model_detected`, `result_token_count`, `estimated_tokens`, `transcript_baseline_tokens`, `estimate_tokens`, `get_transcript_baseline`
+         All 3 agents complete. Now computing the diff against existing wiring.
+         **MISSING_WIRING:**
+         - `docs/reference/API.md` — `run_claude_command` signature needs `on_usage` parameter documented (Agent 2)
+         - `docs/guides/SESSION_HANDOFF.md` — State File Format JSON example missing new `result_token_count` field (Agent 2)
+         - `docs/ARCHITECTURE.md` — Context Estimation table doesn't mention real-count fast path (Agent 2)
+         - `docs/development/TROUBLESHOOTING.md` — diagnostic watch command only references `estimated_tokens` (Agent 2)
+         - `scripts/tests/test_subprocess_mocks.py` — `TestRunClaudeCommand` missing `on_usage` threading test parallel to existing `test_wrapper_passes_on_model_detected` (Agent 2+3)
+         - `TestAutoManagerModelDetection.test_auto_manager_logs_detected_model` mock signature must accept `on_usage: Any = None` (Agent 2+3)
+         - Implementation Steps: no doc-update step anywhere in the 9-step plan (Agent 2)
+         Now updating the issue file.
+         Now appending the session log and staging the file.
+         ```
+         ================================================================================
+         WIRE ISSUE: ENH-1376
+         ================================================================================
+         ## ISSUE
+         - File: .issues/enhancements/P3-ENH-1376-parse-stream-json-result-events-for-accurate-context-token-counts.md
+         - Type: ENH
+         - Title: Parse Stream-JSON `result` Events for Accurate Context Token Counts
+         - Mode: Auto
+         ## WIRING RESEARCH SUMMARY
+         - Agents run: Caller Tracer, Side-Effect Tracer, Test Gap Finder
+         - Key symbols traced: 15 (run_claude_command, UsageCallback, on_usage, on_model_detected, ModelCallback, estimated_tokens, result_token_count, transcript_baseline_tokens, estimate_tokens, get_transcript_baseline, ll-context-state.json, ...)
+         ## MISSING WIRING FOUND
+         | Category | Count | Files |
+         |----------|-------|-------|
+         | Callers/Importers | 0 | (all already in Integration Map) |
+         | Registrations/Manifests | 0 | (`__init__.py` confirmed not exporting run_claude_command) |
+         | Documentation | 4 | API.md, SESSION_HANDOFF.md, ARCHITECTURE.md, TROUBLESHOOTING.md |
+         | Tests (update) | 2 | test_subprocess_mocks.py (missing), TestAutoManagerModelDetection stub signature |
+         | Tests (new) | 0 | (all new test methods are within already-listed files) |
+         | Config/Schema | 0 | (config-schema.json governs ll-config.json, not state file) |
+         | Impl Step gaps | 6 | doc update steps 10-15 added |
+         ## INTEGRATION MAP CHANGES
+         ### Added to Tests
+         - `scripts/tests/test_subprocess_mocks.py` in `TestRunClaudeCommand` — add `test_on_usage_forwarded_through_wrapper` parallel to `test_wrapper_passes_on_model_detected`
+         - `test_issue_manager.py::TestAutoManagerModelDetection.test_auto_manager_logs_detected_model` — stub must accept `on_usage: Any = None` to survive signature change
+         ### Added to Documentation (replacing N/A)
+         - `docs/reference/API.md` — add `on_usage` to `run_claude_command` signature block
+         - `docs/guides/SESSION_HANDOFF.md` — add `result_token_count` to State File Format JSON example
+         - `docs/ARCHITECTURE.md` — note real-count fast path in Context Estimation table
+         - `docs/development/TROUBLESHOOTING.md` — update watch command and token accuracy section
+         ## IMPLEMENTATION STEPS CHANGES
+         - 6 new steps added (10–15) in Wiring Phase covering test stub fix and 4 doc files
+         ## FILE STATUS
+         - Modified
+         ## NEXT STEPS
+         - Note: `decision_needed: true` is still set — run `/ll:decide-issue ENH-1376` to pick Approach A vs B before implementing
+         - Run `/ll:confidence-check ENH-1376` to re-evaluate readiness with full wiring
+         - Run `/ll:ready-issue ENH-1376` to validate the enriched issue
+         ================================================================================
+         ```
+         The issue now has a proper Documentation section (replacing "N/A") with 4 doc files, an additional test file (`test_subprocess_mocks.py`), a note about the breaking mock stub in `TestAutoManagerModelDetection`, and 6 new Wiring Phase steps (10–15) covering doc updates. The `decision_needed: true` flag is still set — you'll want to run `/ll:decide-issue ENH-1376` to pick Approach A vs B before implementing.
+         (5m 54s)
+         -> mark_wire_done
+  [6/500] mark_wire_done (10m 48s)   -> printf '1' > .loops/tmp/refine-to-ready-wire-done
+         (0.0s)
+         -> confidence_check
+  [7/500] confidence_check (10m 48s)   -> ✦ (1 lines)
+         /ll:confidence-check ENH-1376
+         I'll locate and read the ENH-1376 issue file to begin the assessment.
+         Good, I have the issue. Now let me gather context on the key files mentioned.
+         Good. Let me check the existing tests and the issue_manager for current context.
+         I have enough context. Let me now run the full assessment.
+         ---
+         ```
+         ================================================================================
+         CONFIDENCE CHECK: ENH-1376
+         ================================================================================
+         ```
+         ## READINESS SCORES
+         | Criterion | Score | Details |
+         |---|---|---|
+         | No duplicate implementations | 20/20 | No `UsageCallback`, `on_usage`, or `result_token_count` exists anywhere — line 214 confirms `result` events are silently skipped |
+         | Architecture compliance | 20/20 | `on_model_detected`/`ModelCallback` is the exact analogue; same TypeAlias pattern, same optional kwarg, same inline guard — new code mirrors it 1:1 |
+         | Rationale well-understood | 20/20 | Root behavior identified at exact line (subprocess_utils.py:214), heuristic undercounting quantified (49K vs. ~150K actual), downstream failure mode documented |
+         | Issue well-specified | 15/20 | 15 detailed implementation steps, scope boundaries, API/interface example — but two open design questions remain unresolved (field name, transcript_baseline coordination) |
+         | Dependencies satisfied | 20/20 | No blocking deps; all referenced files exist (subprocess_utils, issue_manager, context-monitor.sh, all four test files) |
+         ## OUTCOME CONFIDENCE SCORES
+         | Criterion | Score | Details |
+         |---|---|---|
+         | Complexity | 10/25 | 11 files: 3 core + 4 test files + 4 doc files, spanning Python, bash, and docs subsystems |
+         | Test coverage | 25/25 | All modified modules have test coverage; `TestRunClaudeCommandModelDetection` is a direct template; both failing tests are pre-identified |
+         | Ambiguity | 10/25 | Two unresolved design decisions: (1) field name (`result_token_count` vs. overwriting `estimated_tokens`); (2) how `on_usage` cooperates with existing `transcript_baseline_tokens` accurate path |
+         | Change surface | 18/25 | 5-6 callers/dependents; parameter is optional (no breaking changes), but 3 callers (`worker_pool`, `runners.py`, `action.py`) are out-of-scope and will drift |
+         ## SUMMARY
+         ```
+         READINESS SCORE:    95/100 → PROCEED
+         OUTCOME CONFIDENCE: 63/100 → MODERATE
+         ```
+         ## RECOMMENDATION: PROCEED
+         ### Concerns
+         - `decision_needed: true` is already set — the two open questions (field naming, transcript_baseline coordination) are design decisions that should be resolved via `/ll:decide-issue ENH-1376` before writing the `context-monitor.sh` integration, since both questions affect what field that script reads and how it branches.
+         ### Outcome Risk Factors
+         - **Open design decisions need resolution before `context-monitor.sh` work**: The field name question (`result_token_count` vs. overwriting `estimated_tokens`) and the transcript_baseline cooperation question are both unresolved decisions that directly gate step 6. Proceeding without a decision will require rework.
+         - **11 files, not "~60 lines across 3 files"**: The issue summary understates scope. Core changes are 3 files / ~60 lines, but 4 test files and 4 doc files also require changes. Budget accordingly.
+         - **`context-monitor.sh` bash integration is the riskiest touch**: Branching on a new JSON field inside a bash script that already has `estimate_tokens()` + `transcript_baseline_tokens` paths requires care to avoid double-counting or silent fallback to heuristics. The `test_hooks_integration.py` coverage is the safety net here.
+         ```
+         ================================================================================
+         ```
+         Now I'll persist the scores and write back findings.
+         Scores persisted. Now appending the findings write-back (outcome confidence 63 < 75 threshold → HAS_FINDINGS = true).
+         Now append the session log entry:
+         **Phase 4.6 — decision_needed flag**: `decision_needed` is already `true` in the frontmatter — idempotent, no write needed.
+         **Phase 4.7 — missing_artifacts flag**: No signal phrases ("not yet created", "does not exist", etc.) in the risk factors — all referenced files exist. No flag needed.
+         ---
+         **Result**: ENH-1376 scores **95/100 PROCEED** on readiness, **63/100 MODERATE** on outcome confidence. The issue is ready to implement, but run `/ll:decide-issue ENH-1376` first to resolve the two open design questions (field name + transcript_baseline coordination) before writing the `context-monitor.sh` integration — that's the step where the decisions matter most.
+         (2m 30s)
+         -> verify_scores_persisted
+  [8/500] verify_scores_persisted (13m 17s)   -> python3 << 'PYEOF'
+import json, sys, subprocess
+
+r = subprocess.run(
+    ['ll-issues', 'show', 'ENH-1376', '--json'],
+    capture_output=True, text=True
+)
+try:
+    d = json.loads(r.stdout)
+except Exception as e:
+    print(f"ERROR: verify_scores_persisted: failed to parse ll-issues show output: {e}", file=sys.stderr)
+    sys.exit(1)
+confidence = d.get('confidence')
+outcome = d.get('outcome')
+if confidence is None or outcome is None:
+    print(
+        f"ERROR: verify_scores_persisted: scores not found in frontmatter after confidence_check "
+        f"(confidence={confidence}, outcome={outcome}). "
+        "The confidence-check skill did not write scores via ll-issues set-scores. "
+        "Retrying confidence-check once before routing to failed.",
+        file=sys.stderr
+    )
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+
+         (0.1s)
+         ✓ yes
+         -> check_readiness
+  [9/500] check_readiness (13m 17s)   -> python3 << 'PYEOF'
+import json, sys, subprocess
+from pathlib import Path
+
+p = Path('.ll/ll-config.json')
+cg = {}
+if p.exists():
+    try:
+        cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+    except Exception:
+        pass
+readiness = cg.get('readiness_threshold', 90)
+
+r = subprocess.run(
+    ['ll-issues', 'show', 'ENH-1376', '--json'],
+    capture_output=True, text=True
+)
+d = json.loads(r.stdout)
+sys.exit(0 if int(d.get('confidence') or 0) >= readiness else 1)
+PYEOF
+
+         (0.1s)
+         ✓ yes
+         -> check_outcome
+  [10/500] check_outcome (13m 17s)   -> python3 << 'PYEOF'
+import json, sys, subprocess
+from pathlib import Path
+
+p = Path('.ll/ll-config.json')
+cg = {}
+if p.exists():
+    try:
+        cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
+    except Exception:
+        pass
+outcome = cg.get('outcome_threshold', 75)
+
+r = subprocess.run(
+    ['ll-issues', 'show', 'ENH-1376', '--json'],
+    capture_output=True, text=True
+)
+d = json.loads(r.stdout)
+sys.exit(0 if int(d.get('outcome') or 0) >= outcome else 1)
+PYEOF
+
+         (0.1s)  exit: 1
+         ✗ no
+         -> check_decision_needed
+  [11/500] check_decision_needed (13m 17s)   -> ll-issues check-flag ENH-1376 decision_needed
+         (0.1s)
+         ✓ yes
+         -> done
+       -> copy_broke_down
+[4/500] copy_broke_down (13m 18s) -> if [ -f .loops/tmp/recursive-refine-broke-down ]; then
+  cp .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
+else
+  printf '0' > .loops/tmp/autodev-broke-down
+fi
+
+       (0.0s)
+       -> check_decision_after_refine
+[5/500] check_decision_after_refine (13m 18s) -> ll-issues check-flag ENH-1376 decision_needed
+       (0.1s)
+       ✓ yes
+       -> run_decide
+[6/500] run_decide (13m 18s) -> ✦ (1 lines)
+       /ll:decide-issue ENH-1376 --auto
+       I'll run `/ll:decide-issue` for ENH-1376 in auto mode. Starting with Phase 2: locating the issue file.
+       The issue has two options — `Approach A` (callback) and `Approach B` (state file). Now spawning parallel codebase-pattern-finder agents for Phase 4.
+       Both agents have returned comprehensive evidence. Now scoring — Phase 5.
+       ## Scoring
+       ### Approach A — on_usage callback (Score: 10/12)
+       | Dimension | Score | Evidence |
+       |---|---|---|
+       | **Consistency** | 3/3 | `on_model_detected` is the exact template at every layer: TypeAlias, base param, `issue_manager` wrapper pass-through, `process_issue_inplace` threading, `AutoManager` closure accumulator |
+       | **Simplicity** | 2/3 | Mostly straightforward; threading through `run_with_continuation` adds a 4th layer; `context-monitor.sh` needs one new branch |
+       | **Testability** | 3/3 | `io.StringIO`/`_make_single_line_selector` harness reusable directly; `test_unknown_event_type_skipped` just needs retargeting; wrapper test template in `test_subprocess_mocks.py` |
+       | **Risk** | 2/3 | Additive, no existing behavior removed; only coordination risk is `transcript_baseline_tokens` branch |
+       ### Approach B — state file from result events (Score: 2/12)
+       | Dimension | Score | Evidence |
+       |---|---|---|
+       | **Consistency** | 0/3 | Contradicts the callback-only IPC pattern; `subprocess_utils.py` never writes files; file-based IPC exists only within bash hook layer |
+       | **Simplicity** | 0/3 | Needs new config-path resolver in Python, atomic write for `.ll/ll-context-state.json` from Python, no structure for multi-round accumulation |
+       | **Testability** | 1/3 | No test templates in `test_subprocess_utils.py` for asserting file side effects; entirely new test infrastructure needed |
+       | **Risk** | 1/3 | Cross-language shared mutable state, first file write in `subprocess_utils.py`, config-path discovery needed, still has one-turn-lag on context-monitor pickup |
+       **Winner: Approach A (10/12 vs 2/12)**
+       Now applying Phase 6–7 annotations and resolving the open questions (field name → `result_token_count`; transcript coordination → prefer `result_token_count` when > 0, skipping both heuristics and JSONL baseline).
+       Now append the Decision Rationale subsection and resolve the open questions inline:
+       Now update the frontmatter — set `decision_needed: false`:
+       Now append the session log and stage the file:
+       ```
+       ================================================================================
+       DECIDE ISSUE: ENH-1376
+       ================================================================================
+       ## ISSUE
+       - File: .issues/enhancements/P3-ENH-1376-parse-stream-json-result-events-for-accurate-context-token-counts.md
+       - Type: ENH
+       - Title: Parse Stream-JSON `result` Events for Accurate Context Token Counts
+       - Mode: Auto
+       - decision_needed was: true
+       ## OPTIONS FOUND (2 total)
+       - Approach A: on_usage callback in subprocess_utils.py (Recommended)
+       - Approach B: State file update from result events
+       ## SCORING
+       | Option     | Consistency | Simplicity | Testability | Risk | Total  |
+       |------------|-------------|------------|-------------|------|--------|
+       | Approach A | 3/3         | 2/3        | 3/3         | 2/3  | 10/12  |
+       | Approach B | 0/3         | 0/3        | 1/3         | 1/3  | 2/12   |
+       ## DECISION
+       ✓ Selected: Approach A — on_usage callback (score: 10/12)
+       Reasoning: The `on_model_detected` pattern is a complete template at every layer — TypeAlias, base param, `issue_manager` wrapper, `process_issue_inplace` threading, `AutoManager` closure accumulator. Approach B would require `subprocess_utils.py` to write files for the first time with no config-path resolver and no test templates, breaking the module's established callback-only IPC pattern.
+       Open questions also resolved:
+       - **Field name → `result_token_count`** (new field; keep `estimated_tokens` as heuristic fallback)
+       - **Transcript coordination → `result_token_count` takes priority** when > 0, skipping both heuristic and JSONL baseline paths
+       ## CHANGES APPLIED
+       - Annotated issue with `> **Selected:** ...` callout after Approach A header
+       - Appended `### Decision Rationale` section with scoring table and evidence
+       - `decision_needed`: set to false
+       ## NEXT STEPS
+       - Run `/ll:ready-issue ENH-1376` to validate the issue is ready to implement
+       - Run `/ll:manage-issue feature implement ENH-1376` to implement
+       ================================================================================
+       ```
+       (4m 31s)
+       -> recheck_after_decide
+[7/500] recheck_after_decide (17m 48s) -> ll-issues check-readiness ENH-1376 \
+  --readiness 90 \
+  --outcome 75 \
+  && echo "ENH-1376" >> .loops/tmp/autodev-passed.txt
+
+       (0.1s)  exit: 1
+       ✗ no
+       -> dequeue_next
+[8/500] dequeue_next (17m 48s) -> if [ ! -s .loops/tmp/autodev-queue.txt ]; then
+  exit 1
+fi
+CURRENT=$(head -1 .loops/tmp/autodev-queue.txt)
+tail -n +2 .loops/tmp/autodev-queue.txt > .loops/tmp/autodev-queue.tmp
+mv .loops/tmp/autodev-queue.tmp .loops/tmp/autodev-queue.txt
+
+# BUG-1226: record the in-flight issue so `done` can surface it if the
+# loop terminates before this issue reaches a clean resolution
+# (enqueue_or_skip / enqueue_children / next dequeue_next overwrite).
+printf '%s' "$CURRENT" > .loops/tmp/autodev-inflight
+
+rm -f .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
+(ll-issues list --json | python3 -c "
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+    for i in sorted(i['id'] for i in issues):
+        print(i)
+except Exception:
+    pass
+" > .loops/tmp/autodev-pre-ids.txt) || true
+
+echo "$CURRENT"
+
+       (0.0s)  exit: 1
+       ✗ no
+       -> done
+
+Loop completed: done (8 iterations, 17m 49s)
