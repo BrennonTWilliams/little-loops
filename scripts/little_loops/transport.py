@@ -533,7 +533,12 @@ class WebhookTransport:
         )
 
 
-_TRANSPORT_REGISTRY: dict[str, str] = {"jsonl": "jsonl", "otel": "otel", "socket": "socket", "webhook": "webhook"}
+_TRANSPORT_REGISTRY: dict[str, str] = {
+    "jsonl": "jsonl",
+    "otel": "otel",
+    "socket": "socket",
+    "webhook": "webhook",
+}
 
 
 def wire_transports(
