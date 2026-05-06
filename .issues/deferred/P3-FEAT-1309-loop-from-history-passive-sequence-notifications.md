@@ -85,7 +85,7 @@ feature, loop-suggester, automation, hooks, notifications, captured
 
 ## Status
 
-- **State**: Open
+- **State**: Deferred
 - **Priority**: P3
 - **Type**: FEAT
 
