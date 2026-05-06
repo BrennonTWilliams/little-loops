@@ -155,19 +155,35 @@ states:
 
   run_decide:
     # Run /ll:decide-issue to select a winning implementation option and clear
-    # the decision_needed flag. Routes to recheck_after_decide so that
-    # implementation is only attempted if scores actually meet thresholds —
-    # run_decide is reachable from both score-passing and score-failing paths.
+    # the decision_needed flag. Routes to rerun_confidence_after_decide so the
+    # outcome score is recomputed against the resolved decision before
+    # thresholds are checked. run_decide is reachable from both score-passing
+    # and score-failing paths.
     fragment: with_rate_limit_handling
     action: "/ll:decide-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    next: rerun_confidence_after_decide
+    on_error: recheck_after_decide
+    on_rate_limit_exhausted: done
+
+  rerun_confidence_after_decide:
+    # After /ll:decide-issue resolves open design questions, the Ambiguity
+    # dimension of outcome confidence (and sometimes Simplicity) changes
+    # materially — but the scores in frontmatter still hold the stale
+    # pre-decision values. Re-run confidence-check so recheck_after_decide
+    # evaluates fresh scores. Without this, an issue whose only blocker was
+    # an unresolved decision can never recover from outcome <75 even though
+    # decide-issue resolved the very ambiguity that caused the failure.
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
     next: recheck_after_decide
     on_error: recheck_after_decide
     on_rate_limit_exhausted: done
 
   recheck_after_decide:
-    # Re-validate readiness/outcome scores after run_decide so that
-    # implementation only proceeds when thresholds are met. Mirrors
+    # Re-validate readiness/outcome scores after rerun_confidence_after_decide
+    # so that implementation only proceeds when thresholds are met. Mirrors
     # check_passed logic; routes to dequeue_next on failure to avoid
     # re-triggering decide on the same issue in the same iteration.
     action: |
