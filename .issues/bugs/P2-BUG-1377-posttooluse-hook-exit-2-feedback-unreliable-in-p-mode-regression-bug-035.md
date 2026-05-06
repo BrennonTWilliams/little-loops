@@ -192,6 +192,12 @@ Option A should be done first to establish whether Option B or C is needed.
 - `hooks/hooks.json:88-98` — existing Stop hook entry (`session-cleanup.sh`, timeout 15s); a second Stop hook entry pointing to new `context-handoff-sentinel.sh` is needed
 - `hooks/scripts/session-cleanup.sh:14` — deletes `.ll/ll-context-state.json` on Stop; sentinel file `.ll/ll-context-handoff-needed` must NOT appear in this `rm -f` list — it must persist across sessions until consumed by `run_with_continuation()`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/action.py:61,84` — imports and calls `run_claude_command` directly; if the function signature gains new parameters (Option J backstop), this caller must be updated [Agent 1]
+- `scripts/little_loops/fsm/runners.py:20` — `DefaultActionRunner` imports `run_claude_command`; same signature-change risk as `action.py` [Agent 1]
+- `scripts/little_loops/fsm/handoff_handler.py` — `HandoffHandler` class handles `CONTEXT_HANDOFF` signals in FSM-loop sessions; verify sentinel-file approach doesn't conflict with this parallel detection system [Agent 2]
+- `scripts/little_loops/fsm/signal_detector.py:74` — defines `HANDOFF_SIGNAL` constant; check for sentinel-file detection parity in the FSM executor path [Agent 2]
+
 ### Similar Patterns
 - `run_with_continuation()` in `issue_manager.py:149` — existing resume logic; extend for sentinel-file detection
 - `hooks/scripts/precompact-state.sh` — closest codebase analog to Option G: a hook that writes a sentinel file (`.ll/ll-precompact-state.json`) using `atomic_write_json` + `acquire_lock` from `lib/common.sh`, which the Python/bash layer reads later; follow this exact write pattern for `context-handoff-sentinel.sh`
@@ -203,13 +209,28 @@ Option A should be done first to establish whether Option B or C is needed.
 - `scripts/tests/test_hooks_integration.py` — existing hook execution integration tests
 - New: end-to-end test — Stop hook writes `.ll/ll-context-handoff-needed` → `run_with_continuation()` reads and consumes it → continuation session spawned with explicit `"Context limit approaching, please run /ll:handoff"` instruction
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_worker_pool.py:2183` — `TestRunWithContinuation` has only 1 test (no happy-path continuation or sentinel case); **add sentinel-file test** mirroring the `issue_manager` counterpart; patches must target `little_loops.parallel.worker_pool.*` [Agent 3]
+- `scripts/tests/test_issue_manager.py:940` — actual class name is `TestRunWithContinuation` (not `TestContextHandoff`): **add sentinel-triggered continuation test**; ensure `test_returns_immediately_when_no_handoff` has sentinel-absent setup so the new check doesn't inadvertently trigger [Agent 3]
+- `scripts/tests/test_hooks_integration.py` — **new `TestContextHandoffSentinel` class**: Stop hook writes sentinel at threshold; sentinel absent below threshold; sentinel survives `session-cleanup.sh` run — follow `TestPrecompactState` pattern (line 1626) exactly (chdir + subprocess.run + file assertion) [Agent 3]
+- `scripts/tests/test_subprocess_utils.py:216` — `test_constructs_correct_command_args` asserts exact CLI arg list; **will break** if `run_claude_command` in `subprocess_utils.py` gains new flags — update alongside any signature changes [Agent 3]
+
 ### Documentation
 - `docs/guides/SESSION_HANDOFF.md` — describes the continuation flow; update once Stop-hook sentinel path is confirmed
 - `docs/ARCHITECTURE.md` — covers context monitor and hook system; update to reflect new Stop hook entry
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/TROUBLESHOOTING.md` — context monitor troubleshooting section; add sentinel file inspection step (`.ll/ll-context-handoff-needed`) [Agent 2]
+- `docs/reference/API.md` — `run_claude_command` signature block; update if the `issue_manager.py` wrapper gains new parameters [Agent 2]
+- `commands/handoff.md` — "Integration" section: currently describes PostToolUse as primary trigger; update to note Stop hook + sentinel as new primary mechanism [Agent 2]
+- `skills/manage-issue/SKILL.md` — "Handoff Protocol" section (lines 311–330): update to reference parent-side explicit handoff instruction (Option E/G) alongside the self-initiated path [Agent 2]
+
 ### Configuration
 - `.ll/ll-context-state.json` — no schema change needed; sentinel approach uses a separate file
 - `.ll/ll-context-handoff-needed` — new sentinel file (written by Stop hook, consumed by `run_with_continuation()`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `config-schema.json` — `context_monitor` object has `additionalProperties: false`; must be updated if new config keys are introduced (e.g., `auto_handoff_threshold` minimum relaxed for Option D's 20–25% target, or a `sentinel_file` path override) [Agent 2]
 
 ### Codebase Research Findings
 
@@ -245,6 +266,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 11. Add end-to-end integration test: simulate threshold crossing → verify sentinel written → verify continuation session spawned with handoff instruction → verify `CONTEXT_HANDOFF` produced.
 12. Define success metric and re-run: *N consecutive ll-auto runs on issues > 50K tokens hand off cleanly with no "Prompt is too long" failure.*
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+13. Verify `scripts/little_loops/fsm/handoff_handler.py` and `fsm/signal_detector.py` — the FSM executor has a parallel CONTEXT_HANDOFF detection path; confirm the sentinel-file approach doesn't introduce divergent behavior between FSM loops and `-p` mode ll-auto sessions
+14. Update `scripts/tests/test_worker_pool.py:2183` `TestRunWithContinuation` — add sentinel-file test case alongside `issue_manager` counterpart updates (minimal coverage currently: only 1 test exists)
+15. Add `TestContextHandoffSentinel` class to `scripts/tests/test_hooks_integration.py` — sentinel written at threshold, absent below threshold, survives `session-cleanup.sh` — follow `TestPrecompactState` (line 1626) pattern exactly
+16. Update `scripts/tests/test_subprocess_utils.py:216` `test_constructs_correct_command_args` — fix expected CLI arg list if `run_claude_command` in `subprocess_utils.py` gains new flags
+17. Update `commands/handoff.md` and `skills/manage-issue/SKILL.md` handoff protocol sections to reference Stop hook + sentinel as the new primary trigger path
+18. Update `config-schema.json` `context_monitor` object if new config keys are introduced (Option D threshold relaxation or sentinel path override)
+
 ## Impact
 
 - **Severity**: High — automatic context handoff (core automation feature) is non-functional for large sessions
@@ -270,6 +302,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - BUG-1374: Spurious implementation failure issue created as a symptom of this bug
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-06T21:52:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f52c049f-8ef4-44fc-95ad-687a8ae1df72.jsonl`
 - `/ll:refine-issue` - 2026-05-06T21:39:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63fad009-7663-49aa-ac6a-4ad5eb77b1de.jsonl`
 - `/ll:format-issue` - 2026-05-06T21:10:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/291cabfe-e58a-41a8-a54c-5ae0200e8ef1.jsonl`
 - `/ll:capture-issue` - 2026-05-06T20:59:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/381e1f9c-a749-4e5e-9040-a1d4e3d3e647.jsonl`
