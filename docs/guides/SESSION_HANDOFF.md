@@ -387,6 +387,7 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
   "session_start": "2024-01-15T10:30:00Z",
   "estimated_tokens": 125000,
   "transcript_baseline_tokens": 122000,
+  "result_token_count": 124500,
   "tool_calls": 63,
   "threshold_crossed_at": "2024-01-15T11:45:00Z",
   "handoff_complete": false,
@@ -401,6 +402,7 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 ```
 
 - `transcript_baseline_tokens`: The raw API token sum from the last assistant entry in the JSONL transcript (0 when unavailable or `use_transcript_baseline: false`). Useful for diagnosing estimation accuracy.
+- `result_token_count`: The authoritative `input_tokens + cache_read_input_tokens + output_tokens` total from the most recent stream-json `result` event, written by the `on_usage` callback in `process_issue_inplace`. When non-zero, the context monitor uses this value directly instead of heuristics or the transcript baseline (zero lag, maximum accuracy).
 
 ## Troubleshooting
 

@@ -1970,6 +1970,9 @@ def run_claude_command(
     logger: Logger,
     timeout: int = 3600,
     stream_output: bool = True,
+    idle_timeout: int = 0,
+    on_model_detected: Callable[[str], None] | None = None,
+    on_usage: UsageCallback | None = None,
     agent: str | None = None,
     tools: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]
@@ -1982,6 +1985,9 @@ Invoke Claude CLI command with output streaming.
 - `logger` - Logger for output
 - `timeout` - Timeout in seconds
 - `stream_output` - Whether to stream output to console
+- `idle_timeout` - Kill process if no output for this many seconds (0 to disable)
+- `on_model_detected` - Optional callback invoked with the model name from the stream-json system/init event
+- `on_usage` - Optional callback invoked with `(input_tokens, output_tokens)` from the stream-json result event. `input_tokens` includes `cache_read_input_tokens`.
 - `agent` - Claude agent model override; appended as `--agent <value>` to CLI invocation
 - `tools` - Restrict available tools; appended as `--tools <value>` to CLI invocation
 

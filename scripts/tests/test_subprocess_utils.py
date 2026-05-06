@@ -1466,10 +1466,10 @@ class TestRunClaudeCommandModelDetection:
         assert result.stdout == "Para one line A\nPara one line B\n\nPara two only"
 
     def test_unknown_event_type_skipped(self) -> None:
-        """Non-init, non-assistant JSON events are skipped: no stdout, no callback."""
-        result_event = '{"type": "result", "subtype": "success", "cost_usd": 0.01}\n'
+        """Non-init, non-assistant, non-result JSON events are skipped: no stdout, no callback."""
+        tool_use_event = '{"type": "tool_use", "id": "tu_123", "name": "Bash"}\n'
         mock_process = Mock()
-        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stdout = io.StringIO(tool_use_event)
         mock_process.stderr = io.StringIO("")
         mock_process.returncode = 0
         mock_process.wait.return_value = None
@@ -1488,6 +1488,52 @@ class TestRunClaudeCommandModelDetection:
 
         assert result.stdout == ""
         assert callback_calls == []
+
+    def test_on_usage_callback_called_with_result_event(self) -> None:
+        """on_usage callback receives (input_tokens + cache_read, output_tokens) from result event."""
+        result_event = (
+            '{"type": "result", "usage": {"input_tokens": 1000, "output_tokens": 200, '
+            '"cache_read_input_tokens": 500, "cache_creation_input_tokens": 0}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        usage_calls: list[tuple[int, int]] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command(
+                    "test",
+                    on_usage=lambda inp, out: usage_calls.append((inp, out)),
+                )
+
+        assert usage_calls == [(1500, 200)]
+        assert result.stdout == ""
+
+    def test_on_usage_not_called_when_result_has_no_usage(self) -> None:
+        """on_usage callback is not fired when result event has no usage block."""
+        result_event = '{"type": "result", "subtype": "success", "cost_usd": 0.01}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        usage_calls: list[tuple[int, int]] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command(
+                    "test",
+                    on_usage=lambda inp, out: usage_calls.append((inp, out)),
+                )
+
+        assert usage_calls == []
 
     def test_non_json_line_passes_through(self) -> None:
         """Non-JSON stdout lines pass through as raw text (backward compat)."""

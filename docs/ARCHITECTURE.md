@@ -939,7 +939,17 @@ flowchart TB
     SPAWN --> |Resume work| ESTIMATE
 ```
 
-**Context Estimation**: The hook estimates tokens based on tool usage:
+**Context Estimation**: The hook uses a three-tier priority for token counts:
+
+| Priority | Source | When Active |
+|----------|--------|-------------|
+| 1 (highest) | `result_token_count` in state file | Non-zero; written by `on_usage` callback from stream-json `result` events — zero lag, authoritative |
+| 2 | `transcript_baseline_tokens` | `use_transcript_baseline: true` and transcript available — one-turn lag, API-exact |
+| 3 (fallback) | Heuristic estimates | When both above are absent |
+
+When `result_token_count > 0` in `.ll/ll-context-state.json`, the context monitor uses it directly and skips heuristics entirely.
+
+**Heuristic estimates (fallback only)**:
 
 | Tool | Estimation |
 |------|------------|

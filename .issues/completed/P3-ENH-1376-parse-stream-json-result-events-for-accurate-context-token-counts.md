@@ -162,6 +162,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 13. Update `docs/guides/SESSION_HANDOFF.md` — extend the `### State File Format` JSON example with the new `result_token_count` field and a prose sentence explaining it
 14. Update `docs/ARCHITECTURE.md` — add a note to the `**Context Estimation**` table that `result_token_count > 0` in the state file enables the real-count fast path, bypassing heuristics
 15. Update `docs/development/TROUBLESHOOTING.md` — extend the `estimated_tokens` watch command and "Token Estimation accuracy" section to reference the new `result_token_count` field
+16. Update `docs/reference/CONFIGURATION.md` — in the `### context_monitor` section, extend the `use_transcript_baseline` row description to reflect the new three-tier priority (`result_token_count > 0` → transcript baseline → pure heuristics); this file is not in the already-known docs list and was found by re-run wiring analysis [re-run finding]
 
 ## Open Questions
 
@@ -182,6 +183,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/parallel/worker_pool.py:WorkerPool._run_claude_command()` — calls `_run_claude_base` directly (bypasses `issue_manager.run_claude_command`); has its own continuation loop in `WorkerPool._run_with_continuation()`; in scope only for optional pass-through per Scope Boundaries
 - `scripts/little_loops/fsm/runners.py:DefaultActionRunner.run()` — calls `run_claude_command` directly; not currently in scope but flagged for future parity
 - `scripts/little_loops/cli/action.py:cmd_invoke()` — calls `run_claude_command` directly (twice, for two output modes); not in scope
+- `scripts/little_loops/cli/sprint/run.py:_cmd_sprint_run()` — calls `process_issue_inplace` at two sites (sequential wave execution ~line 335, sequential retry for failed issues ~line 436); keyword `on_usage` will default to `None`; backward-compatible, no code change required [Agent 1/2 re-run finding]
 
 ### Similar Patterns
 - `scripts/little_loops/subprocess_utils.py:run_claude_command()` — `on_model_detected: ModelCallback | None = None` is the closest existing pattern. Module-level `ModelCallback = Callable[[str], None]` TypeAlias, optional kwarg, invoked inline in the stream-json `system/init` branch with `if on_model_detected and "model" in event: on_model_detected(event["model"])`. New `on_usage` should follow the same shape.
@@ -197,6 +199,43 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/tests/test_subprocess_mocks.py` in `TestRunClaudeCommand` — add `test_on_usage_forwarded_through_wrapper` parallel to existing `test_wrapper_passes_on_model_detected`; verify `on_usage` kwarg is threaded from `issue_manager.run_claude_command` through to `_run_claude_base` [Agent 2/3 finding]
 - `scripts/tests/test_issue_manager.py::TestAutoManagerModelDetection.test_auto_manager_logs_detected_model` — mock `process_issue_inplace` stub signature must accept `on_usage: Any = None` kwarg; the stub fires `on_model_detected` but will break on an unexpected keyword argument once `process_issue_inplace` gains the `on_usage` parameter [Agent 2/3 finding]
 
+### Precision Notes (re-run 2026-05-06)
+
+_Verified by codebase re-analysis — no partial implementation found (`on_usage`, `UsageCallback`, `result_token_count` absent from all files):_
+
+**Exact line anchors:**
+- `OutputCallback`/`ProcessCallback`/`ModelCallback` TypeAliases: `subprocess_utils.py:21–28`
+- `run_claude_command` signature (base): `subprocess_utils.py:62–73`
+- `on_model_detected` invocation + `else: continue` skip: `subprocess_utils.py:194–214`
+- `run_claude_command` wrapper signature: `issue_manager.py:93–101`; call to `_run_claude_base`: `issue_manager.py:140`
+- `run_with_continuation` signature (lines 149–240): **does not have `on_model_detected` either** — adding `on_usage` here is the first new callback parameter in this function
+- `process_issue_inplace` signature: `issue_manager.py:315–752`; Phase 2 `run_with_continuation` call: ~line 605
+- `AutoManager._process_issue` `on_model` closure: `issue_manager.py:1036–1048`
+- `TestRunClaudeCommandModelDetection` class: `test_subprocess_utils.py:1333`
+- `_make_single_line_selector` helper: `test_subprocess_utils.py:1336–1351`
+- `test_unknown_event_type_skipped` (feeds `{"type": "result", ...}`): `test_subprocess_utils.py:1468`
+- `test_wrapper_passes_on_model_detected`: `test_subprocess_mocks.py:164–202`
+
+**Token calculation insertion point** (`context-monitor.sh:main()`, current lines 283–289):
+```bash
+# Current (to be extended):
+if [ "${TRANSCRIPT_BASELINE}" -gt 0 ]; then
+    NEW_TOKENS=$((TRANSCRIPT_BASELINE + TOKENS))
+else
+    NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
+fi
+
+# After ENH-1376 (priority branch inserted first):
+if [ "${RESULT_TOKEN_COUNT}" -gt 0 ]; then
+    NEW_TOKENS=$RESULT_TOKEN_COUNT   # authoritative, no heuristic added
+elif [ "${TRANSCRIPT_BASELINE}" -gt 0 ]; then
+    NEW_TOKENS=$((TRANSCRIPT_BASELINE + TOKENS))
+else
+    NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
+fi
+```
+Note: the authoritative path must NOT add `TOKENS` on top — `result_token_count` already reflects the full turn usage.
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -204,6 +243,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/SESSION_HANDOFF.md` — `### State File Format` JSON example shows only `estimated_tokens` and `transcript_baseline_tokens`; add the new `result_token_count` field to the example block and prose [Agent 2 finding]
 - `docs/ARCHITECTURE.md` — `### Context Monitor and Session Continuation` section has a `**Context Estimation**` table describing the heuristic-only path; add a note that when `result_token_count > 0` in the state file the real count is used instead of heuristics [Agent 2 finding]
 - `docs/development/TROUBLESHOOTING.md` — `watch -n 1 'cat .ll/ll-context-state.json | jq .estimated_tokens'` diagnostic command and "Token Estimation accuracy" table reference heuristic path only; update to include `result_token_count` field alongside `estimated_tokens` [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md` — `### context_monitor` section documents the two-tier token system (`estimate_weights` heuristics → `transcript_baseline`); does not reflect the new three-tier hierarchy with `result_token_count > 0` at top priority; update `use_transcript_baseline` row description and add a note about the authoritative fast path [Agent 2 re-run finding]
 
 ### Configuration
 - N/A
@@ -245,9 +285,12 @@ _Added by `/ll:confidence-check` on 2026-05-06_
 - **test_unknown_event_type_skipped must be retargeted first**: This test currently feeds `{"type": "result", ...}` as the "unknown" event — it will fail after step 3; switch it to `tool_use` before adding the new on_usage assertion.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-06T23:08:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b152adf3-75b2-4d05-a817-c6c634d04240.jsonl`
+- `/ll:refine-issue` - 2026-05-06T23:03:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/382a2462-7c10-4181-a09d-86f96f1095a0.jsonl`
 - `/ll:decide-issue` - 2026-05-06T22:32:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23e24604-d565-4cff-b89b-b443ba6c4696.jsonl`
 - `/ll:confidence-check` - 2026-05-06T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd74b3c8-c143-4831-b4b4-71e4cef6f2e4.jsonl`
 - `/ll:confidence-check` - 2026-05-06T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfc4f28e-b755-4d83-ace1-9eddcfa8d764.jsonl`
+- `/ll:confidence-check` - 2026-05-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d6242ac-c5ae-4ff3-ac0b-457b1639efbb.jsonl`
 - `/ll:wire-issue` - 2026-05-06T22:25:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91041a04-0374-439e-b9b5-45e3a0298f4f.jsonl`
 - `/ll:refine-issue` - 2026-05-06T22:19:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c625de0-671d-4449-bde2-9d2787c568ff.jsonl`
 - `/ll:format-issue` - 2026-05-06T21:09:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5f24f2c-c15a-45a5-bd06-fac0ecb8d960.jsonl`

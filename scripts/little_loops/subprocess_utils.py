@@ -27,6 +27,9 @@ ProcessCallback = Callable[[subprocess.Popen[str]], None]
 # Model detection callback: (model: str) -> None
 ModelCallback = Callable[[str], None]
 
+# Usage callback: (input_tokens: int, output_tokens: int) -> None
+UsageCallback = Callable[[int, int], None]
+
 # Context handoff detection pattern
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
 CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")
@@ -68,6 +71,7 @@ def run_claude_command(
     on_process_end: ProcessCallback | None = None,
     idle_timeout: int = 0,
     on_model_detected: ModelCallback | None = None,
+    on_usage: UsageCallback | None = None,
     agent: str | None = None,
     tools: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
@@ -86,6 +90,8 @@ def run_claude_command(
         idle_timeout: Kill process if no output for this many seconds (0 to disable).
         on_model_detected: Optional callback invoked with the model name from the
             stream-json system/init event. Called at most once per invocation.
+        on_usage: Optional callback invoked with (input_tokens, output_tokens) from
+            the stream-json result event. input_tokens includes cache_read_input_tokens.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -210,8 +216,17 @@ def run_claude_command(
                                     if stream_callback:
                                         stream_callback(sub_line, is_stderr)
                                 continue
+                            elif etype == "result":
+                                usage = event.get("usage", {})
+                                if on_usage and usage:
+                                    on_usage(
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0),
+                                        usage.get("output_tokens", 0),
+                                    )
+                                continue  # skip other event types (tool_use, etc.)
                             else:
-                                continue  # skip other event types (result, tool_use, etc.)
+                                continue  # skip other event types (tool_use, etc.)
                         except (json.JSONDecodeError, KeyError, TypeError):
                             pass  # non-JSON line: pass through as raw text
 

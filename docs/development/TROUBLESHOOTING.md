@@ -928,10 +928,12 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
      }
    }
    ```
-2. Check state file is updating:
+2. Check state file is updating (watch both heuristic and authoritative counts):
    ```bash
-   watch -n 1 'cat .ll/ll-context-state.json | jq .estimated_tokens'
+   watch -n 1 'cat .ll/ll-context-state.json | jq "{estimated_tokens, result_token_count, transcript_baseline_tokens}"'
    ```
+   When `result_token_count > 0`, the context monitor uses it directly (zero lag, most accurate).
+   When `result_token_count == 0`, it falls back to `transcript_baseline_tokens` or pure heuristics.
 3. Verify PostToolUse hook is running:
    ```bash
    # Add this to context-monitor.sh temporarily for debugging

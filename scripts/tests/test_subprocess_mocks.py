@@ -201,6 +201,49 @@ class TestRunClaudeCommand:
 
         assert detected == ["test-model"]
 
+    def test_on_usage_forwarded_through_wrapper(self, mock_logger: MagicMock) -> None:
+        """issue_manager.run_claude_command passes on_usage to subprocess layer."""
+        result_event = (
+            '{"type": "result", "usage": {"input_tokens": 2000, "output_tokens": 300, '
+            '"cache_read_input_tokens": 100, "cache_creation_input_tokens": 0}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        usage_calls: list[tuple[int, int]] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector_cls:
+                mock_selector = MagicMock()
+                mock_selector_cls.return_value = mock_selector
+                mock_selector.__enter__ = Mock(return_value=mock_selector)
+                mock_selector.__exit__ = Mock(return_value=False)
+                call_count = [0]
+
+                def get_map_side_effect() -> dict[Any, Any]:
+                    call_count[0] += 1
+                    return {"stdout": True} if call_count[0] == 1 else {}
+
+                mock_selector.get_map.side_effect = get_map_side_effect
+                key = Mock()
+                key.fileobj = mock_process.stdout
+                mock_selector.select.return_value = [(key, None)]
+                mock_selector.register = Mock()
+                mock_selector.unregister = Mock()
+
+                from little_loops.issue_manager import run_claude_command
+
+                run_claude_command(
+                    "/ll:test",
+                    mock_logger,
+                    on_usage=lambda inp, out: usage_calls.append((inp, out)),
+                )
+
+        assert usage_calls == [(2100, 300)]
+
     def test_prompt_display_abbreviated_for_long_command(self, mock_logger: MagicMock) -> None:
         """Long prompts show (N lines) header, first 5 lines, and '... (N more lines)' trailer."""
         long_command = "\n".join(f"line {i}" for i in range(20))

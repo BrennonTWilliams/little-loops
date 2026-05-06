@@ -6,6 +6,7 @@ Claude CLI integration and state persistence for resume capability.
 
 from __future__ import annotations
 
+import json
 import signal
 import subprocess
 import sys
@@ -97,6 +98,7 @@ def run_claude_command(
     stream_output: bool = True,
     idle_timeout: int = 0,
     on_model_detected: Callable[[str], None] | None = None,
+    on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
@@ -143,6 +145,7 @@ def run_claude_command(
         stream_callback=stream_callback if stream_output else None,
         idle_timeout=idle_timeout,
         on_model_detected=on_model_detected,
+        on_usage=on_usage,
     )
 
 
@@ -155,6 +158,7 @@ def run_with_continuation(
     repo_path: Path | None = None,
     idle_timeout: int = 0,
     resume_command: str | None = None,
+    on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
@@ -193,6 +197,7 @@ def run_with_continuation(
             timeout=timeout,
             stream_output=stream_output,
             idle_timeout=idle_timeout,
+            on_usage=on_usage,
             preview_full=preview_full,
         )
 
@@ -318,6 +323,7 @@ def process_issue_inplace(
     logger: Logger,
     dry_run: bool = False,
     on_model_detected: Callable[[str], None] | None = None,
+    on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
@@ -332,6 +338,8 @@ def process_issue_inplace(
         dry_run: If True, only preview what would be done
         on_model_detected: Optional callback invoked with the model name from the
             first stream-json system/init event during this issue's processing.
+        on_usage: Optional callback invoked with (input_tokens, output_tokens) from
+            each stream-json result event. Passed through to all run_claude_command calls.
 
     Returns:
         IssueProcessingResult with outcome details
@@ -345,6 +353,21 @@ def process_issue_inplace(
 
     # Track whether we used fallback path resolution for ready-issue.
     validated_via_fallback = False
+
+    # Build on_usage closure that writes result_token_count to the context state file.
+    # Mirrors the on_model_detected closure pattern in AutoManager._process_issue.
+    _state_file = (config.repo_path or Path.cwd()) / ".ll" / "ll-context-state.json"
+    _external_on_usage = on_usage
+
+    def _on_usage_writer(input_tokens: int, output_tokens: int) -> None:
+        try:
+            state = json.loads(_state_file.read_text()) if _state_file.exists() else {}
+            state["result_token_count"] = input_tokens + output_tokens
+            _state_file.write_text(json.dumps(state))
+        except Exception:
+            pass  # never block execution on state write failures
+        if _external_on_usage is not None:
+            _external_on_usage(input_tokens, output_tokens)
 
     # Phase 1: Ready/verify the issue
     logger.info(f"Phase 1: Verifying issue {info.issue_id}...")
@@ -611,6 +634,7 @@ def process_issue_inplace(
                 repo_path=config.repo_path,
                 idle_timeout=config.automation.idle_timeout_seconds,
                 resume_command=_slash_cmd,
+                on_usage=_on_usage_writer,
                 preview_full=preview_full,
             )
         else:

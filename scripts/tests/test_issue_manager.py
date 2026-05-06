@@ -2577,6 +2577,7 @@ class TestAutoManagerModelDetection:
             logger: Any,
             dry_run: bool = False,
             on_model_detected: Any = None,
+            on_usage: Any = None,
             preview_full: bool = False,
         ) -> IssueProcessingResult:
             if on_model_detected:

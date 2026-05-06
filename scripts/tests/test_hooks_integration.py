@@ -797,6 +797,109 @@ class TestContextMonitor:
             os.chdir(original_dir)
 
 
+    def test_result_token_count_used_when_present(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """When result_token_count > 0 in state, context-monitor uses it instead of heuristics."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            # Pre-write state with result_token_count (simulating on_usage closure write)
+            state_file = tmp_path / "ll-context-state.json"
+            state_file.write_text(
+                json.dumps(
+                    {
+                        "estimated_tokens": 1000,
+                        "tool_calls": 5,
+                        "result_token_count": 80000,
+                        "breakdown": {},
+                    }
+                )
+            )
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x" * 100},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode == 0, f"Hook failed: {result.stderr}"
+
+            state = json.loads(state_file.read_text())
+            # With result_token_count=80000, estimated_tokens should reflect that value
+            # (plus per-turn overhead), not the heuristic path from 1000.
+            assert state["estimated_tokens"] >= 80000, (
+                f"estimated_tokens {state['estimated_tokens']} should be >= 80000 "
+                f"(result_token_count path). Full state: {state}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_result_token_count_zero_falls_back_to_heuristics(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """When result_token_count is 0 in state, context-monitor falls back to heuristics."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".ll" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            state_file = tmp_path / "ll-context-state.json"
+            state_file.write_text(
+                json.dumps(
+                    {
+                        "estimated_tokens": 5000,
+                        "tool_calls": 3,
+                        "result_token_count": 0,
+                        "breakdown": {},
+                    }
+                )
+            )
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "small output"},
+            }
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+
+            assert result.returncode == 0, f"Hook failed: {result.stderr}"
+
+            state = json.loads(state_file.read_text())
+            # Falls back to heuristics: estimated_tokens stays near 5000 (heuristic delta is small)
+            assert state["estimated_tokens"] < 80000, (
+                f"estimated_tokens {state['estimated_tokens']} should stay near heuristic baseline. "
+                f"Full state: {state}"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""
 

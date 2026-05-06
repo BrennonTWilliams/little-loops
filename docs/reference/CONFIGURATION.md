@@ -408,7 +408,7 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 | `enabled` | `true` | Enable context window monitoring (enabled by default; all project templates include this setting) |
 | `auto_handoff_threshold` | `80` | Context usage percentage to trigger handoff warning |
 | `context_limit_estimate` | `1000000` | Fallback/override for the context window token limit. Auto-detection reads the model from the JSONL transcript and selects the correct limit for known models (claude-*-4* → 200 000). Set this only to override auto-detection or when using an unknown/custom model. Also overridable via `LL_CONTEXT_LIMIT` env var. |
-| `use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Improves accuracy from ±30–50% to ±5–15%. Falls back to pure heuristics when unavailable. |
+| `use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Part of the three-tier token priority system: `result_token_count > 0` (zero-lag authoritative, written by the `on_usage` callback from stream-json `result` events) → transcript baseline (one-turn lag, ±5–15%) → pure heuristics (±30–50%). This setting enables the second tier; the first tier (`result_token_count`) is always active when available. |
 
 ### `sprints`
 

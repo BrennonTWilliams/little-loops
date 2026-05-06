@@ -238,6 +238,7 @@ main() {
         read -r CACHED_BASELINE
         read -r OVERHEAD_CURRENT
         read -r TOOL_CURRENT
+        read -r RESULT_TOKEN_COUNT
     } <<< "$(echo "$STATE" | jq -r --arg key "$TOOL_KEY" '
         (.estimated_tokens // 0 | tostring),
         (.tool_calls // 0 | tostring),
@@ -247,7 +248,8 @@ main() {
         (.detected_model // ""),
         (.transcript_baseline_tokens // 0 | tostring),
         (.breakdown["claude_overhead"] // 0 | tostring),
-        (.breakdown[$key] // 0 | tostring)
+        (.breakdown[$key] // 0 | tostring),
+        (.result_token_count // 0 | tostring)
     ')"
 
     # Detect model — use cached value from state; only read transcript on first detection
@@ -280,9 +282,11 @@ main() {
     fi
 
     # Calculate new totals
-    # When transcript baseline is available, use it as the accurate foundation
-    # and add only the current-turn heuristic delta on top.
-    if [ "${TRANSCRIPT_BASELINE}" -gt 0 ] 2>/dev/null; then
+    # Priority: authoritative result event count > transcript baseline > pure heuristics.
+    # result_token_count already reflects full turn usage — do NOT add TOKENS on top.
+    if [ "${RESULT_TOKEN_COUNT}" -gt 0 ] 2>/dev/null; then
+        NEW_TOKENS=$RESULT_TOKEN_COUNT
+    elif [ "${TRANSCRIPT_BASELINE}" -gt 0 ] 2>/dev/null; then
         NEW_TOKENS=$((TRANSCRIPT_BASELINE + TOKENS))
     else
         NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
