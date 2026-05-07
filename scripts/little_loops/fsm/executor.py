@@ -535,9 +535,21 @@ class FSMExecutor:
         self._throttle_counts[state_name] = count
 
         throttle = state.throttle
-        normal_max = throttle.normal_max if (throttle and throttle.normal_max is not None) else _DEFAULT_THROTTLE_NORMAL_MAX
-        warn_max = throttle.warn_max if (throttle and throttle.warn_max is not None) else _DEFAULT_THROTTLE_WARN_MAX
-        hard_max = throttle.hard_max if (throttle and throttle.hard_max is not None) else _DEFAULT_THROTTLE_HARD_MAX
+        normal_max = (
+            throttle.normal_max
+            if (throttle and throttle.normal_max is not None)
+            else _DEFAULT_THROTTLE_NORMAL_MAX
+        )
+        warn_max = (
+            throttle.warn_max
+            if (throttle and throttle.warn_max is not None)
+            else _DEFAULT_THROTTLE_WARN_MAX
+        )
+        hard_max = (
+            throttle.hard_max
+            if (throttle and throttle.hard_max is not None)
+            else _DEFAULT_THROTTLE_HARD_MAX
+        )
 
         if count == warn_max:
             self._emit(

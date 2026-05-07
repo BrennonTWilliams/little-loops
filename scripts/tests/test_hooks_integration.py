@@ -796,7 +796,6 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
-
     def test_result_token_count_used_when_present(
         self, hook_script: Path, test_config: Path, tmp_path: Path
     ):
@@ -2158,9 +2157,7 @@ class TestContextHandoffSentinel:
 
     def test_sentinel_survives_session_cleanup(self, tmp_path: Path) -> None:
         """Sentinel file is NOT deleted by session-cleanup.sh (intentionally excluded)."""
-        cleanup_script = (
-            Path(__file__).parent.parent.parent / "hooks/scripts/session-cleanup.sh"
-        )
+        cleanup_script = Path(__file__).parent.parent.parent / "hooks/scripts/session-cleanup.sh"
         import os
 
         original_dir = os.getcwd()

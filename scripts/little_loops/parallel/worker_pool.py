@@ -774,9 +774,15 @@ class WorkerPool:
             prompt_too_long = "prompt is too long" in (result.stderr or "").lower()
 
             # Option J: guillotine — fresh session with transcript-summary prompt
-            if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_count < max_continuations:
-                trigger_reason = "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
-                self.logger.warning(f"{tag} Option J triggered ({trigger_reason}): spawning fresh session")
+            if (
+                prompt_too_long or usage_ratio >= guillotine_threshold
+            ) and continuation_count < max_continuations:
+                trigger_reason = (
+                    "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
+                )
+                self.logger.warning(
+                    f"{tag} Option J triggered ({trigger_reason}): spawning fresh session"
+                )
                 try:
                     guillotine_cmd = assemble_guillotine_prompt(
                         original_command=command,
@@ -789,7 +795,9 @@ class WorkerPool:
                         },
                     )
                 except Exception as exc:
-                    self.logger.warning(f"{tag} Failed to assemble guillotine prompt ({exc}), using bare restart")
+                    self.logger.warning(
+                        f"{tag} Failed to assemble guillotine prompt ({exc}), using bare restart"
+                    )
                     guillotine_cmd = command
                 continuation_count += 1
                 current_command = guillotine_cmd
@@ -811,7 +819,7 @@ class WorkerPool:
                     f"Context limit is approaching ({usage_pct}% of the context window is used). "
                     "Please run /ll:handoff RIGHT NOW to save your progress to "
                     ".ll/ll-continue-prompt.md, then output "
-                    "\"CONTEXT_HANDOFF: Ready for fresh session\" to signal continuation."
+                    '"CONTEXT_HANDOFF: Ready for fresh session" to signal continuation.'
                 )
                 _last_input[0] = 0
                 _last_output[0] = 0
@@ -826,11 +834,15 @@ class WorkerPool:
                 all_stderr.append(result.stderr)
 
                 if detect_context_handoff(result.stdout):
-                    self.logger.info(f"{tag} CONTEXT_HANDOFF detected after explicit handoff instruction")
+                    self.logger.info(
+                        f"{tag} CONTEXT_HANDOFF detected after explicit handoff instruction"
+                    )
                     prompt_content = read_continuation_prompt(working_dir)
                     if prompt_content and continuation_count < max_continuations:
                         continuation_count += 1
-                        self.logger.info(f"{tag} Starting continuation session #{continuation_count}")
+                        self.logger.info(
+                            f"{tag} Starting continuation session #{continuation_count}"
+                        )
                         current_command = f"{command} --resume"
                         _last_input[0] = 0
                         _last_output[0] = 0

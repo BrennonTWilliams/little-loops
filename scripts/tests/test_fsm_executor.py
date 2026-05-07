@@ -5964,7 +5964,7 @@ class TestThrottling:
         throttle: dict[str, Any] | None = None,
         state_type: str | None = None,
         exit_after: int = 0,
-    ) -> tuple["FSMLoop", "MockActionRunner"]:
+    ) -> tuple[FSMLoop, MockActionRunner]:
         """Build an FSM where 'execute' loops back on itself, then exits via on_no.
 
         Returns the FSM and a pre-configured runner that returns yes for `exit_after`
@@ -5980,7 +5980,7 @@ class TestThrottling:
                 "execute": StateConfig(
                     action="work.sh",
                     on_yes="execute",  # loop back to accumulate call count
-                    on_no="done",     # exit when action returns non-zero
+                    on_no="done",  # exit when action returns non-zero
                     on_throttle_hard=on_throttle_hard,
                     throttle=throttle_cfg,
                     type=state_type,
@@ -6038,7 +6038,6 @@ class TestThrottling:
 
     def test_hard_falls_back_to_on_error_when_no_on_throttle_hard(self) -> None:
         """When on_throttle_hard is not set, hard transition falls back to on_error."""
-        from little_loops.fsm.schema import ThrottleConfig
 
         fsm = FSMLoop(
             name="throttle-fallback-test",
@@ -6139,7 +6138,6 @@ class TestThrottling:
 
     def test_per_state_throttle_config_overrides_defaults(self) -> None:
         """State-level throttle config overrides module defaults."""
-        from little_loops.fsm.schema import ThrottleConfig
 
         fsm, runner = self._looping_fsm(
             on_throttle_hard="throttled",

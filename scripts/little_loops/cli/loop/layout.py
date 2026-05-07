@@ -65,7 +65,14 @@ def _edge_line_color(label: str) -> str:
     parts = label.split("/")
     code = ""
     for part in parts:
-        if part in ("no", "error", "blocked", "retry_exhausted", "rate_limit_exhausted", "throttle_hard"):
+        if part in (
+            "no",
+            "error",
+            "blocked",
+            "retry_exhausted",
+            "rate_limit_exhausted",
+            "throttle_hard",
+        ):
             return _EDGE_LABEL_COLORS.get(part, "31")
         if part == "partial" and not code:
             code = _EDGE_LABEL_COLORS["partial"]

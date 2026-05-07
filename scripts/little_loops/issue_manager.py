@@ -272,7 +272,9 @@ def run_with_continuation(
 
         # Option J: guillotine — context overflow with no handoff signal.
         # Assemble transcript-summary prompt and start a FRESH session (not --resume).
-        if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_count < max_continuations:
+        if (
+            prompt_too_long or usage_ratio >= guillotine_threshold
+        ) and continuation_count < max_continuations:
             trigger_reason = "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
             logger.warning(f"Option J triggered ({trigger_reason}): spawning fresh session")
             try:
@@ -313,7 +315,7 @@ def run_with_continuation(
                 f"Context limit is approaching ({usage_pct}% of the context window is used). "
                 "Please run /ll:handoff RIGHT NOW to save your progress to "
                 ".ll/ll-continue-prompt.md, then output "
-                "\"CONTEXT_HANDOFF: Ready for fresh session\" to signal continuation."
+                '"CONTEXT_HANDOFF: Ready for fresh session" to signal continuation.'
             )
             current_command = explicit_handoff_instruction
             # Reset tracking for the handoff turn
@@ -350,9 +352,7 @@ def run_with_continuation(
         # Option G (Python layer): write sentinel if usage is high for the NEXT session.
         # Placed after E-path check so we don't immediately consume our own write.
         if total_tokens > 0 and usage_ratio >= sentinel_threshold:
-            logger.info(
-                f"Writing context-handoff sentinel ({usage_ratio:.0%} context used)"
-            )
+            logger.info(f"Writing context-handoff sentinel ({usage_ratio:.0%} context used)")
             write_sentinel(repo_path, token_count=total_tokens, context_limit=context_limit)
 
         # No handoff signal, no prior-session sentinel, no overflow — done

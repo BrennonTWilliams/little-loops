@@ -6,7 +6,13 @@ support for custom on_<verdict> routing via extra_routes.
 
 from __future__ import annotations
 
-from little_loops.fsm.schema import EvaluateConfig, FSMLoop, ParameterSpec, StateConfig, ThrottleConfig
+from little_loops.fsm.schema import (
+    EvaluateConfig,
+    FSMLoop,
+    ParameterSpec,
+    StateConfig,
+    ThrottleConfig,
+)
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_evaluator,

@@ -1369,6 +1369,7 @@ class TestRunWithContinuation:
         sentinel_file = temp_project_dir / SENTINEL_PATH
         assert sentinel_file.exists()
         import json as _json
+
         data = _json.loads(sentinel_file.read_text())
         assert data["usage_percent"] == 65
 

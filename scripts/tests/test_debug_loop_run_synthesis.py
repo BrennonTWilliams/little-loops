@@ -542,7 +542,9 @@ class TestAnalyzeLoopSynthesis:
         guard_pos = step5_section.find("--skip-issue-creation")
         ask_pos = step5_section.find("AskUserQuestion")
         assert guard_pos != -1, "Step 5 must contain --skip-issue-creation guard"
-        assert ask_pos != -1, "Step 5 must still contain the AskUserQuestion call for interactive mode"
+        assert ask_pos != -1, (
+            "Step 5 must still contain the AskUserQuestion call for interactive mode"
+        )
         assert guard_pos < ask_pos, "Guard must appear before AskUserQuestion in Step 5"
 
     # ------------------------------------------------------------------
