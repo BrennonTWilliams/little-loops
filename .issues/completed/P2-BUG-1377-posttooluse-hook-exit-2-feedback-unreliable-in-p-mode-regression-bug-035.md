@@ -2,8 +2,9 @@
 id: BUG-1377
 type: BUG
 priority: P2
-status: open
+status: completed
 captured_at: 2026-05-06 20:59:54+00:00
+completed_at: 2026-05-07T01:07:58Z
 discovered_date: 2026-05-06
 discovered_by: capture-issue
 confidence_score: 88
@@ -202,9 +203,9 @@ Option A is complete. **Phase 1 must land ENH-1376 (hard prerequisite) and compl
 - `scripts/little_loops/issue_manager.py` — `run_with_continuation()` reads sentinel and prepends explicit handoff instruction to next resume (Option E + G)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/subprocess_utils.py:35` — `detect_context_handoff()` — checks only `result.stdout` (Claude's text output); hook stderr is captured into `result.stderr` only and never reaches this check
-- `scripts/little_loops/subprocess_utils.py:47` — `read_continuation_prompt()` — reads `.ll/ll-continue-prompt.md`; the new sentinel read in `run_with_continuation()` should mirror this pattern
-- `scripts/little_loops/issue_manager.py:597,605` — `run_with_continuation()` called inside `manage_issue()` for the Phase 2 implement step
+- `scripts/little_loops/subprocess_utils.py:38` — `detect_context_handoff()` — checks only `result.stdout` (Claude's text output); hook stderr is captured into `result.stderr` only and never reaches this check
+- `scripts/little_loops/subprocess_utils.py:50` — `read_continuation_prompt()` — reads `.ll/ll-continue-prompt.md`; the new sentinel read in `run_with_continuation()` should mirror this pattern
+- `scripts/little_loops/issue_manager.py:620,628` — `run_with_continuation()` called inside `manage_issue()` for the Phase 2 implement step
 - `scripts/little_loops/parallel/worker_pool.py:391,683` — `WorkerPool._run_with_continuation()` — parallel-mode counterpart at `:683`; must be updated alongside `issue_manager.py` (the two are structural copies)
 - `hooks/hooks.json:88-98` — existing Stop hook entry (`session-cleanup.sh`, timeout 15s); a second Stop hook entry pointing to new `context-handoff-sentinel.sh` is needed
 - `hooks/scripts/session-cleanup.sh:14` — deletes `.ll/ll-context-state.json` on Stop; sentinel file `.ll/ll-context-handoff-needed` must NOT appear in this `rm -f` list — it must persist across sessions until consumed by `run_with_continuation()`
@@ -216,12 +217,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/signal_detector.py:74` — defines `HANDOFF_SIGNAL` constant; check for sentinel-file detection parity in the FSM executor path [Agent 2]
 
 ### Similar Patterns
-- `run_with_continuation()` in `issue_manager.py:149` — existing resume logic; extend for sentinel-file detection
+- `run_with_continuation()` in `issue_manager.py:152` — existing resume logic; extend for sentinel-file detection
 - `hooks/scripts/precompact-state.sh` — closest codebase analog to Option G: a hook that writes a sentinel file (`.ll/ll-precompact-state.json`) using `atomic_write_json` + `acquire_lock` from `lib/common.sh`, which the Python/bash layer reads later; follow this exact write pattern for `context-handoff-sentinel.sh`
-- `subprocess_utils.py:47` — `read_continuation_prompt()` — plain `Path.exists()` + `path.read_text()` (no locking, no JSON); the sentinel-read in `run_with_continuation()` can be equally simple (just `Path(".ll/ll-context-handoff-needed").exists()`)
+- `subprocess_utils.py:50` — `read_continuation_prompt()` — plain `Path.exists()` + `path.read_text()` (no locking, no JSON); the sentinel-read in `run_with_continuation()` can be equally simple (just `Path(".ll/ll-context-handoff-needed").exists()`)
 
 ### Tests
-- `scripts/tests/test_issue_manager.py:941` — `TestContextHandoff` class — existing tests for `run_with_continuation()` handoff detection; extend with test for sentinel-file path (hook writes file → `run_with_continuation()` detects it → continuation spawned with explicit instruction)
+- `scripts/tests/test_issue_manager.py:940` — `TestRunWithContinuation` class — existing tests for `run_with_continuation()` handoff detection; extend with test for sentinel-file path (hook writes file → `run_with_continuation()` detects it → continuation spawned with explicit instruction)
 - `scripts/tests/test_subprocess_utils.py` — `TestDetectContextHandoff` and `TestReadContinuationPrompt` classes — unit tests for detection helpers; no sentinel-file test exists yet
 - `scripts/tests/test_hooks_integration.py` — existing hook execution integration tests
 - New: end-to-end test — Stop hook writes `.ll/ll-context-handoff-needed` → `run_with_continuation()` reads and consumes it → continuation session spawned with explicit `"Context limit approaching, please run /ll:handoff"` instruction
@@ -229,7 +230,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_worker_pool.py:2183` — `TestRunWithContinuation` has only 1 test (no happy-path continuation or sentinel case); **add sentinel-file test** mirroring the `issue_manager` counterpart; patches must target `little_loops.parallel.worker_pool.*` [Agent 3]
 - `scripts/tests/test_issue_manager.py:940` — actual class name is `TestRunWithContinuation` (not `TestContextHandoff`): **add sentinel-triggered continuation test**; ensure `test_returns_immediately_when_no_handoff` has sentinel-absent setup so the new check doesn't inadvertently trigger [Agent 3]
-- `scripts/tests/test_hooks_integration.py` — **new `TestContextHandoffSentinel` class**: Stop hook writes sentinel at threshold; sentinel absent below threshold; sentinel survives `session-cleanup.sh` run — follow `TestPrecompactState` pattern (line 1626) exactly (chdir + subprocess.run + file assertion) [Agent 3]
+- `scripts/tests/test_hooks_integration.py` — **new `TestContextHandoffSentinel` class**: Stop hook writes sentinel at threshold; sentinel absent below threshold; sentinel survives `session-cleanup.sh` run — follow `TestPrecompactState` pattern (line 1729) exactly (chdir + subprocess.run + file assertion) [Agent 3]
 - `scripts/tests/test_subprocess_utils.py:216` — `test_constructs_correct_command_args` asserts exact CLI arg list; **will break** if `run_claude_command` in `subprocess_utils.py` gains new flags — update alongside any signature changes [Agent 3]
 
 ### Documentation
@@ -254,7 +255,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Active threshold is 50%** (`.ll/ll-config.json:27`), not the script default of 80%. At 50% of 200K = 100K tokens estimated — but because `get_transcript_baseline()` has a one-turn lag (reads the previous assistant event), the hook fires after the current tool call when the real count may already be higher.
-- **`detect_context_handoff()` checks only `result.stdout`** (`subprocess_utils.py:35`): the stream-json parser (`run_claude_command`) extracts only `type == "assistant"` text events into stdout. Hook stderr lands in `result.stderr` only. `CONTEXT_HANDOFF` must appear in Claude's TEXT response, not in stderr — the whole chain requires Claude to voluntarily emit the signal after receiving the hook feedback.
+- **`detect_context_handoff()` checks only `result.stdout`** (`subprocess_utils.py:38`): the stream-json parser (`run_claude_command`) extracts only `type == "assistant"` text events into stdout. Hook stderr lands in `result.stderr` only. `CONTEXT_HANDOFF` must appear in Claude's TEXT response, not in stderr — the whole chain requires Claude to voluntarily emit the signal after receiving the hook feedback.
 - **No Stop hook currently fires for context monitoring**: `hooks/hooks.json:88` only runs `session-cleanup.sh` on Stop. A second Stop-hook entry (new script `context-handoff-sentinel.sh`) is the primary addition for Option G.
 - **`session-cleanup.sh:14` deletes `ll-context-state.json`** on every session Stop — so any threshold-crossing evidence in that file is lost. The sentinel file (`.ll/ll-context-handoff-needed`) must be a distinct path not in the cleanup `rm -f` list.
 - **`WorkerPool._run_with_continuation()` at `parallel/worker_pool.py:683`** is structurally identical to `issue_manager.run_with_continuation()` — both must be updated in tandem.
@@ -475,7 +476,23 @@ If `assemble_guillotine_prompt` raises an exception (disk I/O error, encoding is
 - This is the same as if J didn't exist — no worse than the current state (session lost).
 - Document in J-path integration test.
 
+## Resolution
+
+**Status**: Completed 2026-05-07
+
+**What was done**: Implemented Options E+G+J across all layers to make context handoff reliable regardless of the PostToolUse `exit 2` feedback path:
+
+- **Option G** (`hooks/scripts/context-handoff-sentinel.sh` — new Stop hook): Fires at turn idle boundaries (not mid-turn); checks `estimated_tokens`/`result_token_count` from the state file; writes `.ll/ll-context-handoff-needed` JSON sentinel when usage ≥ 60% and no handoff yet complete. Registered in `hooks/hooks.json` before `session-cleanup.sh` so sentinel persists across sessions.
+- **Context crossing log** (`hooks/scripts/context-monitor.sh`): Added append-only `.ll/ll-context-crossings.log` so threshold crossings are preserved even when state file is overwritten by subsequent sessions.
+- **Option E** (`scripts/little_loops/subprocess_utils.py`, `issue_manager.py`, `worker_pool.py`): `run_with_continuation` reads the sentinel between sessions; if present, consumes it and resumes the existing session with an explicit handoff instruction (`claude --resume -p "Context limit approaching, please run /ll:handoff now"`).
+- **Option J** (guillotine path in the same files): If cumulative `on_usage` tokens cross 90% of `context_limit` and no handoff was observed, `run_with_continuation` spawns a **fresh session** (not `--resume`) with an assembled transcript-summary prompt built from task intent + stdout tail + scratch pad inventory. This handles single-call cliffs and resumed-sessions-still-full cases that E+G cannot.
+- **24 new tests** across `test_subprocess_utils.py`, `test_issue_manager.py`, `test_hooks_integration.py`, `test_worker_pool.py` covering all three paths.
+
+**Verification**: 5940 tests pass; 12 pre-existing failures unchanged (confirmed by testing clean state).
+
 ## Session Log
+- `/ll:manage-issue --resume` - 2026-05-07T01:07:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21062892-560c-4809-9cfd-e1b61b833732.jsonl`
+- `/ll:ready-issue` - 2026-05-07T00:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21062892-560c-4809-9cfd-e1b61b833732.jsonl`
 - `design-spike: Option J` - 2026-05-06T00:00:00 - cleared `decision_needed`; chosen algorithm: structured stdout-tail + inventory; see `## Option J Design Spike` section
 - `/ll:confidence-check` - 2026-05-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bdc0e06-85ea-43b5-8eeb-b06ffc964981.jsonl`
 - `/ll:wire-issue` - 2026-05-06T21:52:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f52c049f-8ef4-44fc-95ad-687a8ae1df72.jsonl`

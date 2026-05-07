@@ -36,8 +36,11 @@ from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.skill_expander import expand_skill
 from little_loops.state import ProcessingState, StateManager, _iso_now
 from little_loops.subprocess_utils import (
+    assemble_guillotine_prompt,
     detect_context_handoff,
     read_continuation_prompt,
+    read_sentinel,
+    write_sentinel,
 )
 from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
@@ -100,6 +103,7 @@ def run_claude_command(
     on_model_detected: Callable[[str], None] | None = None,
     on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
+    resume_session: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -112,6 +116,8 @@ def run_claude_command(
         on_model_detected: Optional callback invoked with the model name from the
             stream-json system/init event.
         preview_full: If True, display the full command without truncation (for --verbose).
+        resume_session: If True, passes --resume to the Claude CLI to continue the
+            most recent conversation (used for Option E explicit-handoff path).
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -122,7 +128,10 @@ def run_claude_command(
     line_count = len(lines)
     tw = terminal_width()
     max_line = tw - 4
-    logger.info(f"Running: claude --dangerously-skip-permissions -p ({line_count} lines)")
+    resume_flag = " --resume" if resume_session else ""
+    logger.info(
+        f"Running: claude --dangerously-skip-permissions{resume_flag} -p ({line_count} lines)"
+    )
     show_count = line_count if preview_full else min(5, line_count)
     for line in lines[:show_count]:
         display = (
@@ -146,6 +155,7 @@ def run_claude_command(
         idle_timeout=idle_timeout,
         on_model_detected=on_model_detected,
         on_usage=on_usage,
+        resume_session=resume_session,
     )
 
 
@@ -160,11 +170,25 @@ def run_with_continuation(
     resume_command: str | None = None,
     on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
+    context_limit: int = 200_000,
+    sentinel_threshold: float = 0.60,
+    guillotine_threshold: float = 0.90,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
-    If the command signals CONTEXT_HANDOFF, reads the continuation prompt
-    and spawns a fresh Claude session to continue the work.
+    Implements Options E, G, and J from BUG-1377:
+
+    Option G (sentinel write): after each session, if accurate token count from
+    on_usage exceeds sentinel_threshold without a CONTEXT_HANDOFF signal, writes
+    a sentinel file so the next iteration knows to send an explicit handoff instruction.
+
+    Option E (sentinel read): before starting the next session, reads the sentinel
+    and if present sends a ``--resume`` turn with an explicit "run /ll:handoff now"
+    instruction, triggering the standard CONTEXT_HANDOFF continuation flow.
+
+    Option J (guillotine): if usage exceeds guillotine_threshold OR stderr contains
+    "Prompt is too long", assembles a transcript-summary prompt and spawns a fresh
+    session (not --resume) starting at 0 tokens.
 
     Args:
         initial_command: Initial command to run
@@ -175,9 +199,11 @@ def run_with_continuation(
         repo_path: Repository root path
         idle_timeout: Kill process if no output for this many seconds (0 to disable)
         resume_command: Command to use for continuation rounds instead of appending
-            ``--resume`` to ``initial_command``.  Useful when ``initial_command``
-            is expanded skill content (hundreds of lines) — the short slash
-            command is passed here so continuation rounds stay compact.
+            ``--resume`` to ``initial_command``.
+        on_usage: Optional external usage callback; wrapped internally for tracking.
+        context_limit: Context window size in tokens (default 200K).
+        sentinel_threshold: Write sentinel when usage/context_limit >= this (default 0.60).
+        guillotine_threshold: Trigger J-path when usage/context_limit >= this (default 0.90).
 
     Returns:
         Final CompletedProcess result
@@ -190,6 +216,17 @@ def run_with_continuation(
         args=[], returncode=1, stdout="", stderr=""
     )
 
+    # Track token usage from on_usage callback (fires on stream-json result event).
+    _last_input: list[int] = [0]
+    _last_output: list[int] = [0]
+    _external_on_usage = on_usage
+
+    def _tracking_usage(input_tokens: int, output_tokens: int) -> None:
+        _last_input[0] = input_tokens
+        _last_output[0] = output_tokens
+        if _external_on_usage is not None:
+            _external_on_usage(input_tokens, output_tokens)
+
     while continuation_count <= max_continuations:
         result = run_claude_command(
             current_command,
@@ -197,14 +234,14 @@ def run_with_continuation(
             timeout=timeout,
             stream_output=stream_output,
             idle_timeout=idle_timeout,
-            on_usage=on_usage,
+            on_usage=_tracking_usage,
             preview_full=preview_full,
         )
 
         all_stdout.append(result.stdout)
         all_stderr.append(result.stderr)
 
-        # Check for context handoff signal
+        # Check for context handoff signal (standard path: Claude emitted the signal)
         if detect_context_handoff(result.stdout):
             logger.info("Detected CONTEXT_HANDOFF signal")
 
@@ -225,16 +262,100 @@ def run_with_continuation(
             continuation_count += 1
             logger.info(f"Starting continuation session #{continuation_count}")
 
-            # Re-invoke with --resume so the skill lifecycle (including
-            # completion/file-move) runs in the new session.  When a short
-            # resume_command was provided (e.g. the original slash command),
-            # use that instead of appending --resume to the (potentially
-            # multi-hundred-line) expanded initial_command.
             _base = resume_command if resume_command is not None else initial_command
             current_command = f"{_base} --resume"
             continue
 
-        # No handoff signal, we're done
+        total_tokens = _last_input[0] + _last_output[0]
+        usage_ratio = total_tokens / context_limit if context_limit > 0 else 0.0
+        prompt_too_long = "prompt is too long" in (result.stderr or "").lower()
+
+        # Option J: guillotine — context overflow with no handoff signal.
+        # Assemble transcript-summary prompt and start a FRESH session (not --resume).
+        if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_count < max_continuations:
+            trigger_reason = "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
+            logger.warning(f"Option J triggered ({trigger_reason}): spawning fresh session")
+            try:
+                guillotine_cmd = assemble_guillotine_prompt(
+                    original_command=initial_command,
+                    captured_stdout="\n---CONTINUATION---\n".join(all_stdout),
+                    token_stats={
+                        "input_tokens": _last_input[0],
+                        "output_tokens": _last_output[0],
+                        "context_limit": context_limit,
+                        "trigger_reason": trigger_reason,
+                    },
+                )
+            except Exception as exc:
+                logger.warning(f"Failed to assemble guillotine prompt ({exc}), using bare restart")
+                guillotine_cmd = initial_command
+            continuation_count += 1
+            current_command = guillotine_cmd
+            # Reset per-round usage tracking for the fresh session
+            _last_input[0] = 0
+            _last_output[0] = 0
+            continue
+
+        # Option E: read sentinel from a PREVIOUS session (written by the Stop hook or by
+        # G-path in the preceding iteration).  Must run BEFORE G writes the current-session
+        # sentinel so we don't immediately consume what we just wrote.
+        sentinel_data = read_sentinel(repo_path)
+        if sentinel_data is not None and continuation_count < max_continuations:
+            usage_pct = sentinel_data.get("usage_percent", int(usage_ratio * 100))
+            logger.info(
+                f"Sentinel detected ({usage_pct}% context used): "
+                "sending explicit handoff instruction via --resume"
+            )
+            continuation_count += 1
+            # Resume the existing session with an explicit handoff instruction.
+            # Claude receives this as a new user turn in the active session context.
+            explicit_handoff_instruction = (
+                f"Context limit is approaching ({usage_pct}% of the context window is used). "
+                "Please run /ll:handoff RIGHT NOW to save your progress to "
+                ".ll/ll-continue-prompt.md, then output "
+                "\"CONTEXT_HANDOFF: Ready for fresh session\" to signal continuation."
+            )
+            current_command = explicit_handoff_instruction
+            # Reset tracking for the handoff turn
+            _last_input[0] = 0
+            _last_output[0] = 0
+            # Use --resume CLI flag so this turn continues the existing session
+            result = run_claude_command(
+                current_command,
+                logger,
+                timeout=timeout,
+                stream_output=stream_output,
+                idle_timeout=idle_timeout,
+                on_usage=_tracking_usage,
+                preview_full=preview_full,
+                resume_session=True,
+            )
+            all_stdout.append(result.stdout)
+            all_stderr.append(result.stderr)
+
+            # After explicit instruction, check for handoff signal
+            if detect_context_handoff(result.stdout):
+                logger.info("CONTEXT_HANDOFF detected after explicit handoff instruction")
+                prompt_content = read_continuation_prompt(repo_path)
+                if prompt_content and continuation_count < max_continuations:
+                    continuation_count += 1
+                    logger.info(f"Starting continuation session #{continuation_count}")
+                    _base = resume_command if resume_command is not None else initial_command
+                    current_command = f"{_base} --resume"
+                    _last_input[0] = 0
+                    _last_output[0] = 0
+                    continue
+            break
+
+        # Option G (Python layer): write sentinel if usage is high for the NEXT session.
+        # Placed after E-path check so we don't immediately consume our own write.
+        if total_tokens > 0 and usage_ratio >= sentinel_threshold:
+            logger.info(
+                f"Writing context-handoff sentinel ({usage_ratio:.0%} context used)"
+            )
+            write_sentinel(repo_path, token_count=total_tokens, context_limit=context_limit)
+
+        # No handoff signal, no prior-session sentinel, no overflow — done
         break
 
     return subprocess.CompletedProcess(

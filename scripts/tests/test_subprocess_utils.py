@@ -1680,3 +1680,156 @@ class TestRunClaudeCommandAgentToolsFlags:
         assert len(captured_args) == 1
         idx = captured_args[0].index("--tools")
         assert captured_args[0][idx + 1] == "ToolSearch"
+
+
+class TestRunClaudeCommandResumeSession:
+    """Tests for resume_session flag in run_claude_command() (BUG-1377 Option E)."""
+
+    def _make_mock_process(self) -> Mock:
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+        return mock_process
+
+    def test_resume_session_adds_resume_flag(self) -> None:
+        """resume_session=True inserts --resume before -p in cmd_args."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("test command", resume_session=True)
+
+        assert len(captured_args) == 1
+        args = captured_args[0]
+        assert "--resume" in args
+        resume_idx = args.index("--resume")
+        p_idx = args.index("-p")
+        assert resume_idx < p_idx, "--resume must appear before -p"
+
+    def test_no_resume_flag_by_default(self) -> None:
+        """resume_session=False (default) does not add --resume to cmd_args."""
+        mock_process = self._make_mock_process()
+        captured_args: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("subprocess.Popen", side_effect=capture_popen):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command("test command")
+
+        assert len(captured_args) == 1
+        assert "--resume" not in captured_args[0]
+
+
+class TestAssembleGuillatinePrompt:
+    """Tests for assemble_guillotine_prompt() (BUG-1377 Option J)."""
+
+    def test_includes_original_task(self, tmp_path: Path) -> None:
+        """Assembled prompt includes truncated original command for task intent."""
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        prompt = assemble_guillotine_prompt(
+            original_command="/ll:manage-issue bug fix BUG-1377",
+            captured_stdout="Partial work...",
+            token_stats={"input_tokens": 180_000, "output_tokens": 5_000, "context_limit": 200_000},
+        )
+
+        assert "CONTEXT LIMIT REACHED" in prompt
+        assert "/ll:manage-issue bug fix BUG-1377" in prompt
+        assert "Original Task" in prompt
+
+    def test_includes_stdout_tail(self, tmp_path: Path) -> None:
+        """Assembled prompt includes a tail of captured_stdout."""
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        long_output = "line\n" * 10_000
+        prompt = assemble_guillotine_prompt(
+            original_command="task",
+            captured_stdout=long_output,
+            token_stats={"input_tokens": 180_000, "output_tokens": 5_000, "context_limit": 200_000},
+        )
+
+        assert "Last Session Output" in prompt
+        # Tail must be present but total prompt must not contain all 10K lines
+        assert len(prompt) < len(long_output)
+
+    def test_handles_empty_stdout(self, tmp_path: Path) -> None:
+        """Empty captured_stdout produces a valid prompt with fallback message."""
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        prompt = assemble_guillotine_prompt(
+            original_command="task",
+            captured_stdout="",
+            token_stats={"input_tokens": 0, "output_tokens": 0, "context_limit": 200_000},
+        )
+
+        assert "CONTEXT LIMIT REACHED" in prompt
+        assert "interrupted at session start" in prompt or "no output captured" in prompt.lower()
+
+    def test_includes_token_stats(self, tmp_path: Path) -> None:
+        """Token statistics are included in the assembled prompt."""
+        from little_loops.subprocess_utils import assemble_guillotine_prompt
+
+        prompt = assemble_guillotine_prompt(
+            original_command="task",
+            captured_stdout="output",
+            token_stats={
+                "input_tokens": 185_000,
+                "output_tokens": 5_000,
+                "context_limit": 200_000,
+                "trigger_reason": "usage 95%",
+            },
+        )
+
+        assert "190,000" in prompt or "190000" in prompt  # total tokens
+        assert "200,000" in prompt or "200000" in prompt  # context limit
+        assert "usage 95%" in prompt
+
+
+class TestSentinelHelpers:
+    """Tests for write_sentinel() and read_sentinel() (BUG-1377 Option G)."""
+
+    def test_write_and_read_sentinel(self, tmp_path: Path) -> None:
+        """write_sentinel creates valid JSON; read_sentinel reads and deletes it."""
+        from little_loops.subprocess_utils import SENTINEL_PATH, read_sentinel, write_sentinel
+
+        write_sentinel(tmp_path, token_count=130_000, context_limit=200_000)
+        sentinel_file = tmp_path / SENTINEL_PATH
+        assert sentinel_file.exists()
+
+        data = read_sentinel(tmp_path)
+        assert data is not None
+        assert data["token_count"] == 130_000
+        assert data["context_limit"] == 200_000
+        assert data["usage_percent"] == 65
+        assert "written_at" in data
+
+        # Consumed: file deleted after read
+        assert not sentinel_file.exists()
+
+    def test_read_sentinel_returns_none_when_absent(self, tmp_path: Path) -> None:
+        """read_sentinel returns None when no sentinel file exists."""
+        from little_loops.subprocess_utils import read_sentinel
+
+        assert read_sentinel(tmp_path) is None
+
+    def test_read_sentinel_idempotent(self, tmp_path: Path) -> None:
+        """Second read_sentinel call returns None (sentinel consumed on first read)."""
+        from little_loops.subprocess_utils import read_sentinel, write_sentinel
+
+        write_sentinel(tmp_path, token_count=100_000, context_limit=200_000)
+        read_sentinel(tmp_path)
+        assert read_sentinel(tmp_path) is None

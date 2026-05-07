@@ -23,8 +23,11 @@ from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.subprocess_utils import (
+    assemble_guillotine_prompt,
     detect_context_handoff,
     read_continuation_prompt,
+    read_sentinel,
+    write_sentinel,
 )
 from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
@@ -640,6 +643,8 @@ class WorkerPool:
         command: str,
         working_dir: Path,
         issue_id: str | None = None,
+        on_usage: Callable[[int, int], None] | None = None,
+        resume_session: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         """Run a Claude CLI command with real-time output streaming.
 
@@ -647,6 +652,8 @@ class WorkerPool:
             command: The command to run (e.g., "/ll:ready-issue BUG-123")
             working_dir: Directory to run the command in
             issue_id: Optional issue ID for subprocess tracking
+            on_usage: Optional usage callback for token tracking
+            resume_session: If True, passes --resume to the Claude CLI
 
         Returns:
             CompletedProcess with stdout and stderr
@@ -678,6 +685,8 @@ class WorkerPool:
             on_process_start=on_start if issue_id else None,
             on_process_end=on_end if issue_id else None,
             idle_timeout=self.parallel_config.idle_timeout_per_issue,
+            on_usage=on_usage,
+            resume_session=resume_session,
         )
 
     def _run_with_continuation(
@@ -686,17 +695,22 @@ class WorkerPool:
         working_dir: Path,
         issue_id: str | None = None,
         max_continuations: int = 3,
+        context_limit: int = 200_000,
+        sentinel_threshold: float = 0.60,
+        guillotine_threshold: float = 0.90,
     ) -> subprocess.CompletedProcess[str]:
         """Run a Claude command with automatic continuation on context handoff.
 
-        If the command signals CONTEXT_HANDOFF, reads the continuation prompt
-        from the worktree and spawns a fresh Claude session to continue.
+        Mirrors the E+G+J logic in issue_manager.run_with_continuation.
 
         Args:
             command: The command to run
             working_dir: Directory (worktree) to run the command in
             issue_id: Optional issue ID for subprocess tracking
             max_continuations: Maximum number of continuation attempts
+            context_limit: Context window size in tokens
+            sentinel_threshold: Write sentinel when usage >= this fraction
+            guillotine_threshold: Trigger J-path when usage >= this fraction
 
         Returns:
             Combined CompletedProcess with all session outputs
@@ -708,26 +722,35 @@ class WorkerPool:
         result: subprocess.CompletedProcess[str] = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr=""
         )
+        tag = f"[{issue_id}]" if issue_id else "[worker]"
+
+        # Track token usage per-round for sentinel/guillotine thresholds
+        _last_input: list[int] = [0]
+        _last_output: list[int] = [0]
+
+        def _usage_tracker(input_tokens: int, output_tokens: int) -> None:
+            _last_input[0] = input_tokens
+            _last_output[0] = output_tokens
 
         while continuation_count <= max_continuations:
             result = self._run_claude_command(
                 current_command,
                 working_dir,
                 issue_id=issue_id,
+                on_usage=_usage_tracker,
             )
 
             all_stdout.append(result.stdout)
             all_stderr.append(result.stderr)
 
-            # Check for context handoff signal
+            # Standard path: Claude emitted CONTEXT_HANDOFF
             if detect_context_handoff(result.stdout):
-                self.logger.info(f"[{issue_id}] Detected CONTEXT_HANDOFF signal")
+                self.logger.info(f"{tag} Detected CONTEXT_HANDOFF signal")
 
-                # Read continuation prompt from worktree
                 prompt_content = read_continuation_prompt(working_dir)
                 if not prompt_content:
                     self.logger.warning(
-                        f"[{issue_id}] Context handoff signaled but no continuation prompt found"
+                        f"{tag} Context handoff signaled but no continuation prompt found"
                     )
                     all_stderr.append("Handoff detected but no continuation prompt found")
                     result = subprocess.CompletedProcess(
@@ -737,21 +760,92 @@ class WorkerPool:
 
                 if continuation_count >= max_continuations:
                     self.logger.warning(
-                        f"[{issue_id}] Reached max continuations ({max_continuations}), stopping"
+                        f"{tag} Reached max continuations ({max_continuations}), stopping"
                     )
                     break
 
                 continuation_count += 1
-                self.logger.info(
-                    f"[{issue_id}] Starting continuation session #{continuation_count}"
-                )
-
-                # Re-invoke the original command with --resume flag so the skill
-                # lifecycle (including completion/file-move) runs in the new session.
+                self.logger.info(f"{tag} Starting continuation session #{continuation_count}")
                 current_command = f"{command} --resume"
                 continue
 
-            # No handoff signal, we're done
+            total_tokens = _last_input[0] + _last_output[0]
+            usage_ratio = total_tokens / context_limit if context_limit > 0 else 0.0
+            prompt_too_long = "prompt is too long" in (result.stderr or "").lower()
+
+            # Option J: guillotine — fresh session with transcript-summary prompt
+            if (prompt_too_long or usage_ratio >= guillotine_threshold) and continuation_count < max_continuations:
+                trigger_reason = "Prompt is too long" if prompt_too_long else f"usage {usage_ratio:.0%}"
+                self.logger.warning(f"{tag} Option J triggered ({trigger_reason}): spawning fresh session")
+                try:
+                    guillotine_cmd = assemble_guillotine_prompt(
+                        original_command=command,
+                        captured_stdout="\n---CONTINUATION---\n".join(all_stdout),
+                        token_stats={
+                            "input_tokens": _last_input[0],
+                            "output_tokens": _last_output[0],
+                            "context_limit": context_limit,
+                            "trigger_reason": trigger_reason,
+                        },
+                    )
+                except Exception as exc:
+                    self.logger.warning(f"{tag} Failed to assemble guillotine prompt ({exc}), using bare restart")
+                    guillotine_cmd = command
+                continuation_count += 1
+                current_command = guillotine_cmd
+                _last_input[0] = 0
+                _last_output[0] = 0
+                continue
+
+            # Option E: read sentinel from a PREVIOUS session (must run before G writes
+            # the current-session sentinel to avoid immediately consuming our own write).
+            sentinel_data = read_sentinel(working_dir)
+            if sentinel_data is not None and continuation_count < max_continuations:
+                usage_pct = sentinel_data.get("usage_percent", int(usage_ratio * 100))
+                self.logger.info(
+                    f"{tag} Sentinel detected ({usage_pct}% context used): "
+                    "sending explicit handoff instruction"
+                )
+                continuation_count += 1
+                explicit_handoff_instruction = (
+                    f"Context limit is approaching ({usage_pct}% of the context window is used). "
+                    "Please run /ll:handoff RIGHT NOW to save your progress to "
+                    ".ll/ll-continue-prompt.md, then output "
+                    "\"CONTEXT_HANDOFF: Ready for fresh session\" to signal continuation."
+                )
+                _last_input[0] = 0
+                _last_output[0] = 0
+                result = self._run_claude_command(
+                    explicit_handoff_instruction,
+                    working_dir,
+                    issue_id=issue_id,
+                    on_usage=_usage_tracker,
+                    resume_session=True,
+                )
+                all_stdout.append(result.stdout)
+                all_stderr.append(result.stderr)
+
+                if detect_context_handoff(result.stdout):
+                    self.logger.info(f"{tag} CONTEXT_HANDOFF detected after explicit handoff instruction")
+                    prompt_content = read_continuation_prompt(working_dir)
+                    if prompt_content and continuation_count < max_continuations:
+                        continuation_count += 1
+                        self.logger.info(f"{tag} Starting continuation session #{continuation_count}")
+                        current_command = f"{command} --resume"
+                        _last_input[0] = 0
+                        _last_output[0] = 0
+                        continue
+                break
+
+            # Option G (Python layer): write sentinel for the NEXT session.
+            # Placed after E-path so we don't immediately consume our own write.
+            if total_tokens > 0 and usage_ratio >= sentinel_threshold:
+                self.logger.info(
+                    f"{tag} Writing context-handoff sentinel ({usage_ratio:.0%} context used)"
+                )
+                write_sentinel(working_dir, token_count=total_tokens, context_limit=context_limit)
+
+            # No handoff signal, no prior-session sentinel, no overflow — done
             break
 
         return subprocess.CompletedProcess(

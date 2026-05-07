@@ -2033,3 +2033,200 @@ class TestContextMonitorLockTimeout:
             "context-monitor.sh must use a 3s lock timeout (not 4s) to leave ~2s margin "
             "within the 5s PostToolUse hook timeout"
         )
+
+
+class TestContextHandoffSentinel:
+    """Test context-handoff-sentinel.sh Stop hook file operations (BUG-1377 Option G)."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to context-handoff-sentinel.sh."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/context-handoff-sentinel.sh"
+
+    def test_sentinel_written_above_threshold(self, hook_script: Path, tmp_path: Path) -> None:
+        """Sentinel file is written when estimated_tokens >= sentinel_threshold."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+
+            # Write state with high usage (75% of 200000 = 150000 tokens)
+            state = {
+                "estimated_tokens": 150000,
+                "result_token_count": 0,
+                "handoff_complete": False,
+                "context_limit": 200000,
+            }
+            (tmp_path / ".ll" / "ll-context-state.json").write_text(json.dumps(state))
+
+            # Minimal ll-config.json for ll_resolve_config / ll_feature_enabled
+            (tmp_path / ".ll").mkdir(exist_ok=True)
+            (tmp_path / ".ll" / "ll-config.json").write_text(
+                json.dumps({"context_monitor": {"enabled": True, "sentinel_threshold": 50}})
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input="{}",
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            assert result.returncode == 0
+            sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
+            assert sentinel_file.exists(), "Sentinel not written despite high usage"
+            data = json.loads(sentinel_file.read_text())
+            assert data["usage_percent"] >= 50
+            assert data["token_count"] == 150000
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_sentinel_not_written_below_threshold(self, hook_script: Path, tmp_path: Path) -> None:
+        """Sentinel file is NOT written when token usage is below threshold."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+
+            # Write state with low usage (20% of 200000 = 40000 tokens)
+            state = {
+                "estimated_tokens": 40000,
+                "result_token_count": 0,
+                "handoff_complete": False,
+                "context_limit": 200000,
+            }
+            (tmp_path / ".ll" / "ll-context-state.json").write_text(json.dumps(state))
+            (tmp_path / ".ll" / "ll-config.json").write_text(
+                json.dumps({"context_monitor": {"enabled": True, "sentinel_threshold": 50}})
+            )
+
+            subprocess.run(
+                [str(hook_script)],
+                input="{}",
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
+            assert not sentinel_file.exists(), "Sentinel written despite low usage"
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_sentinel_not_written_when_handoff_complete(
+        self, hook_script: Path, tmp_path: Path
+    ) -> None:
+        """Sentinel is skipped when handoff_complete=true (session already handed off)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+
+            state = {
+                "estimated_tokens": 180000,
+                "result_token_count": 0,
+                "handoff_complete": True,  # already handed off
+                "context_limit": 200000,
+            }
+            (tmp_path / ".ll" / "ll-context-state.json").write_text(json.dumps(state))
+            (tmp_path / ".ll" / "ll-config.json").write_text(
+                json.dumps({"context_monitor": {"enabled": True, "sentinel_threshold": 50}})
+            )
+
+            subprocess.run(
+                [str(hook_script)],
+                input="{}",
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
+            assert not sentinel_file.exists(), "Sentinel must not be written after handoff_complete"
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_sentinel_survives_session_cleanup(self, tmp_path: Path) -> None:
+        """Sentinel file is NOT deleted by session-cleanup.sh (intentionally excluded)."""
+        cleanup_script = (
+            Path(__file__).parent.parent.parent / "hooks/scripts/session-cleanup.sh"
+        )
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+
+            # Write sentinel and state files
+            sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
+            sentinel_file.write_text('{"usage_percent": 70}')
+            (tmp_path / ".ll" / "ll-context-state.json").write_text('{"estimated_tokens": 0}')
+
+            subprocess.run(
+                [str(cleanup_script)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            # sentinel must survive; state file must be deleted by cleanup
+            assert sentinel_file.exists(), "Sentinel was incorrectly deleted by session-cleanup.sh"
+            assert not (tmp_path / ".ll" / "ll-context-state.json").exists(), (
+                "session-cleanup.sh should delete ll-context-state.json"
+            )
+
+        finally:
+            os.chdir(original_dir)
+
+    def test_result_token_count_preferred_over_estimated(
+        self, hook_script: Path, tmp_path: Path
+    ) -> None:
+        """result_token_count (accurate) is preferred over estimated_tokens (heuristic)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+
+            # estimated_tokens is low (heuristic underestimate) but result_token_count is high
+            state = {
+                "estimated_tokens": 30000,  # below threshold — would not trigger
+                "result_token_count": 160000,  # accurate — should trigger at 80%
+                "handoff_complete": False,
+                "context_limit": 200000,
+            }
+            (tmp_path / ".ll" / "ll-context-state.json").write_text(json.dumps(state))
+            (tmp_path / ".ll" / "ll-config.json").write_text(
+                json.dumps({"context_monitor": {"enabled": True, "sentinel_threshold": 50}})
+            )
+
+            subprocess.run(
+                [str(hook_script)],
+                input="{}",
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
+            assert sentinel_file.exists(), (
+                "Sentinel must be written when result_token_count is above threshold "
+                "even if estimated_tokens is below"
+            )
+            data = json.loads(sentinel_file.read_text())
+            assert data["token_count"] == 160000
+
+        finally:
+            os.chdir(original_dir)

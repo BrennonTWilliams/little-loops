@@ -34,6 +34,15 @@ UsageCallback = Callable[[int, int], None]
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
 CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")
 
+# Sentinel file written when a session ends with high context usage (Option G).
+# Consumed by run_with_continuation; NOT deleted by session-cleanup.sh.
+SENTINEL_PATH = Path(".ll/ll-context-handoff-needed")
+
+# Chars of captured_stdout to include in Option J guillotine prompt (≈3K tokens).
+_GUILLOTINE_TAIL_CHARS = 12_000
+# Lines of original_command to include for task intent.
+_GUILLOTINE_MAX_TASK_LINES = 20
+
 
 def detect_context_handoff(output: str) -> bool:
     """Check if output contains a context handoff signal.
@@ -62,6 +71,151 @@ def read_continuation_prompt(repo_path: Path | None = None) -> str | None:
     return None
 
 
+def read_sentinel(repo_path: Path | None = None) -> dict | None:
+    """Read and consume the context-handoff sentinel file if it exists.
+
+    The sentinel is written by context-handoff-sentinel.sh (Stop hook) or
+    the Python layer in run_with_continuation when a session ends with high
+    context usage but no CONTEXT_HANDOFF signal.
+
+    Args:
+        repo_path: Optional repository root path
+
+    Returns:
+        Parsed sentinel dict, or None if not present
+    """
+    sentinel_path = (repo_path or Path.cwd()) / SENTINEL_PATH
+    if not sentinel_path.exists():
+        return None
+    try:
+        data = json.loads(sentinel_path.read_text())
+        sentinel_path.unlink(missing_ok=True)
+        return data
+    except Exception:
+        sentinel_path.unlink(missing_ok=True)
+        return {}
+
+
+def write_sentinel(
+    repo_path: Path | None = None,
+    token_count: int = 0,
+    context_limit: int = 200_000,
+) -> None:
+    """Write the context-handoff sentinel file.
+
+    Args:
+        repo_path: Optional repository root path
+        token_count: Total tokens used in the session
+        context_limit: Context window size
+    """
+    import datetime
+
+    sentinel_path = (repo_path or Path.cwd()) / SENTINEL_PATH
+    usage_percent = int(token_count * 100 / context_limit) if context_limit > 0 else 0
+    try:
+        sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+        sentinel_path.write_text(
+            json.dumps(
+                {
+                    "written_at": datetime.datetime.now(datetime.UTC).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                    "token_count": token_count,
+                    "context_limit": context_limit,
+                    "usage_percent": usage_percent,
+                }
+            )
+        )
+    except Exception:
+        pass
+
+
+def assemble_guillotine_prompt(
+    original_command: str,
+    captured_stdout: str,
+    token_stats: dict,
+) -> str:
+    """Assemble a fresh-session continuation prompt for Option J (parent-side guillotine).
+
+    Called when context > 90% or "Prompt is too long" is detected with no handoff.
+    The resulting prompt is passed to a BRAND-NEW claude -p session (not --resume),
+    so it starts with 0 tokens.
+
+    Args:
+        original_command: The original task command / skill invocation
+        captured_stdout: All Claude text output captured so far
+        token_stats: Dict with keys: input_tokens, output_tokens, context_limit,
+                     trigger_reason (optional)
+
+    Returns:
+        Assembled continuation prompt string
+    """
+    task_lines = original_command.strip().splitlines()[:_GUILLOTINE_MAX_TASK_LINES]
+    task_excerpt = "\n".join(task_lines)
+    if len(original_command.strip().splitlines()) > _GUILLOTINE_MAX_TASK_LINES:
+        task_excerpt += f"\n... (truncated to {_GUILLOTINE_MAX_TASK_LINES} lines)"
+
+    stdout_tail = (captured_stdout or "")[-_GUILLOTINE_TAIL_CHARS:]
+    if not stdout_tail:
+        stdout_tail = "(no output captured before interruption)"
+
+    input_tokens = token_stats.get("input_tokens", 0)
+    output_tokens = token_stats.get("output_tokens", 0)
+    context_limit = token_stats.get("context_limit", 200_000)
+    trigger_reason = token_stats.get("trigger_reason", "context > 90%")
+
+    scratch_listing = _list_scratch_files()
+
+    return f"""\
+⚠ CONTEXT LIMIT REACHED — FRESH SESSION CONTINUATION
+
+The previous automation session exhausted its context window before completing.
+This fresh session (new context window, starts at 0 tokens) is continuing from
+that interrupted session.
+
+## Original Task
+{task_excerpt}
+
+## Session Progress at Interruption
+- Approximate tokens used: {input_tokens + output_tokens:,} / {context_limit:,}
+- Trigger reason: {trigger_reason}
+
+## Last Session Output (what was happening at interruption)
+{stdout_tail}
+
+## Scratch Pad Files Available
+{scratch_listing}
+
+## Instructions for This Session
+1. Do NOT restart from scratch — the previous session made progress (see above)
+2. Read the "Last Session Output" section to understand exactly where we were
+3. Check the scratch pad files before re-running expensive operations
+4. Continue implementation from the interruption point
+5. Complete normally: test, commit, close the issue as usual
+"""
+
+
+def _list_scratch_files() -> str:
+    """List files in .loops/tmp/scratch/ with sizes for the guillotine prompt."""
+    scratch_dir = Path(".loops/tmp/scratch")
+    if not scratch_dir.exists():
+        return "None"
+    try:
+        files = sorted(scratch_dir.iterdir())
+        if not files:
+            return "None"
+        lines = []
+        for f in files:
+            try:
+                size_kb = f.stat().st_size // 1024
+                lines.append(f"  {f.name} ({size_kb}KB)")
+            except Exception:
+                lines.append(f"  {f.name}")
+        return "\n".join(lines)
+    except Exception:
+        return "None"
+
+
 def run_claude_command(
     command: str,
     timeout: int = 3600,
@@ -74,6 +228,7 @@ def run_claude_command(
     on_usage: UsageCallback | None = None,
     agent: str | None = None,
     tools: list[str] | None = None,
+    resume_session: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -92,6 +247,8 @@ def run_claude_command(
             stream-json system/init event. Called at most once per invocation.
         on_usage: Optional callback invoked with (input_tokens, output_tokens) from
             the stream-json result event. input_tokens includes cache_read_input_tokens.
+        resume_session: If True, passes --resume to the Claude CLI to continue the
+            most recent conversation. Used for the Option E explicit-handoff path.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -106,9 +263,10 @@ def run_claude_command(
         "--verbose",
         "--output-format",
         "stream-json",
-        "-p",
-        command,
     ]
+    if resume_session:
+        cmd_args.append("--resume")
+    cmd_args += ["-p", command]
     if agent:
         cmd_args += ["--agent", agent]
     if tools:

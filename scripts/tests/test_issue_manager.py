@@ -1169,6 +1169,209 @@ class TestRunWithContinuation:
         assert result.stderr == ""
         assert result.args == []
 
+    def test_sentinel_triggers_explicit_handoff_instruction(self, temp_project_dir: Path) -> None:
+        """Option E: sentinel file triggers --resume turn with explicit handoff instruction."""
+        from little_loops.issue_manager import run_with_continuation
+        from little_loops.subprocess_utils import write_sentinel
+
+        mock_logger = MagicMock()
+        write_sentinel(temp_project_dir, token_count=130_000, context_limit=200_000)
+
+        normal_result = MagicMock()
+        normal_result.returncode = 0
+        normal_result.stdout = "Work in progress..."
+        normal_result.stderr = ""
+        normal_result.args = ["claude"]
+
+        handoff_result = MagicMock()
+        handoff_result.returncode = 0
+        handoff_result.stdout = "CONTEXT_HANDOFF: Ready for fresh session"
+        handoff_result.stderr = ""
+        handoff_result.args = ["claude"]
+
+        continuation_result = MagicMock()
+        continuation_result.returncode = 0
+        continuation_result.stdout = "Done!"
+        continuation_result.stderr = ""
+        continuation_result.args = ["claude"]
+
+        call_count = [0]
+        resume_session_flags: list[bool] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            resume_session_flags.append(kwargs.get("resume_session", False))
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return normal_result
+            elif call_count[0] == 2:
+                return handoff_result
+            return continuation_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch(
+                "little_loops.issue_manager.detect_context_handoff",
+                side_effect=lambda s: "CONTEXT_HANDOFF" in s,
+            ):
+                with patch(
+                    "little_loops.issue_manager.read_continuation_prompt",
+                    return_value="# Continuation prompt",
+                ):
+                    result = run_with_continuation(
+                        "/ll:manage-issue bug fix BUG-1377",
+                        mock_logger,
+                        repo_path=temp_project_dir,
+                        max_continuations=3,
+                        resume_command="/ll:manage-issue bug fix BUG-1377",
+                    )
+
+        # call 1: main session (no CONTEXT_HANDOFF) → sentinel detected
+        # call 2: explicit handoff instruction via --resume → CONTEXT_HANDOFF
+        # call 3: standard continuation with --resume skill flag
+        assert call_count[0] == 3
+        assert resume_session_flags[1] is True  # second call uses CLI --resume
+        assert resume_session_flags[0] is False
+        assert result.returncode == 0
+
+    def test_sentinel_consumed_by_read(self, temp_project_dir: Path) -> None:
+        """Sentinel file is deleted after being read (consumed once)."""
+        from little_loops.subprocess_utils import SENTINEL_PATH, read_sentinel, write_sentinel
+
+        write_sentinel(temp_project_dir, token_count=130_000, context_limit=200_000)
+        sentinel_file = temp_project_dir / SENTINEL_PATH
+        assert sentinel_file.exists()
+
+        data = read_sentinel(temp_project_dir)
+        assert data is not None
+        assert data["usage_percent"] == 65
+        assert not sentinel_file.exists()  # consumed
+
+        # Second read returns None (already consumed)
+        assert read_sentinel(temp_project_dir) is None
+
+    def test_guillotine_path_on_context_overflow(self, temp_project_dir: Path) -> None:
+        """Option J: usage >= guillotine_threshold triggers fresh session (no --resume)."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work..."
+        overflow_result.stderr = ""
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Continued from guillotine"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            # Simulate high token usage on first call
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)  # 195K total > 90% of 200K
+            if call_count[0] == 1:
+                return overflow_result
+            return fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-1377",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                )
+
+        assert call_count[0] == 2
+        # Fresh session command contains the guillotine prompt header
+        assert "CONTEXT LIMIT REACHED" in commands_received[1]
+        assert "Original Task" in commands_received[1]
+        # No --resume in guillotine prompt (fresh session)
+        assert "--resume" not in commands_received[1]
+
+    def test_guillotine_path_on_prompt_too_long(self, temp_project_dir: Path) -> None:
+        """Option J: 'Prompt is too long' in stderr triggers fresh session."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Working..."
+        overflow_result.stderr = "API error: Prompt is too long"
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Done from fresh session"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+
+        def mock_run(*args, **kwargs):
+            call_count[0] += 1
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-1377",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=3,
+                )
+
+        assert call_count[0] == 2
+        # Verify the J-path warning was logged
+        warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+        assert any("Option J" in w and "Prompt is too long" in w for w in warning_calls)
+
+    def test_sentinel_written_on_high_usage(self, temp_project_dir: Path) -> None:
+        """Option G: sentinel file written when on_usage reports >= sentinel_threshold."""
+        from little_loops.issue_manager import run_with_continuation
+        from little_loops.subprocess_utils import SENTINEL_PATH
+
+        mock_logger = MagicMock()
+
+        normal_result = MagicMock()
+        normal_result.returncode = 0
+        normal_result.stdout = "Work done"
+        normal_result.stderr = ""
+        normal_result.args = ["claude"]
+
+        def mock_run(command: str, *args, **kwargs):
+            on_usage = kwargs.get("on_usage")
+            if on_usage:
+                on_usage(120_000, 10_000)  # 130K = 65% of 200K
+            return normal_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-1377",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=0,  # only one pass
+                    context_limit=200_000,
+                    sentinel_threshold=0.60,
+                )
+
+        sentinel_file = temp_project_dir / SENTINEL_PATH
+        assert sentinel_file.exists()
+        import json as _json
+        data = _json.loads(sentinel_file.read_text())
+        assert data["usage_percent"] == 65
+
 
 class TestReadyIssueErrorHandling:
     """Tests for error handling during ready-issue phase (ENH-207)."""

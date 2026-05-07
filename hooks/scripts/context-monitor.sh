@@ -325,6 +325,10 @@ main() {
         if [ -z "$THRESHOLD_CROSSED_AT" ] || [ "$THRESHOLD_CROSSED_AT" = "null" ]; then
             THRESHOLD_CROSSED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
             NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$THRESHOLD_CROSSED_AT" '.threshold_crossed_at = $t')
+            # Append-only crossing log for diagnostics (preserves evidence across state-file overwrites)
+            printf '%s | %s/%s (%s%%) | tool=%s\n' \
+                "$THRESHOLD_CROSSED_AT" "$NEW_TOKENS" "$CONTEXT_LIMIT" "$USAGE_PERCENT" "$TOOL_NAME" \
+                >> ".ll/ll-context-crossings.log" 2>/dev/null || true
         fi
 
         # Skip if handoff already complete

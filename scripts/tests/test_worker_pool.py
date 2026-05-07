@@ -2119,6 +2119,8 @@ class TestWorkerPoolRunClaudeCommand:
             on_process_start: Any,
             on_process_end: Any,
             idle_timeout: int = 0,
+            on_usage: Any = None,
+            resume_session: bool = False,
         ) -> subprocess.CompletedProcess[str]:
             mock_proc = Mock(spec=subprocess.Popen)
             if on_process_start:
@@ -2210,6 +2212,116 @@ class TestRunWithContinuation:
         # Should signal failure when handoff has no prompt file
         assert result.returncode == 1
         assert "Handoff detected but no continuation prompt found" in result.stderr
+
+    def test_sentinel_triggers_explicit_handoff_instruction(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Option E: sentinel file triggers explicit handoff instruction via --resume."""
+        from little_loops.subprocess_utils import write_sentinel
+
+        write_sentinel(temp_repo_with_config, token_count=130_000, context_limit=200_000)
+
+        normal_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=0,
+            stdout="Work in progress...",
+            stderr="",
+        )
+        handoff_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "handoff"],
+            returncode=0,
+            stdout="CONTEXT_HANDOFF: Ready for fresh session",
+            stderr="",
+        )
+        continuation_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "continuation"],
+            returncode=0,
+            stdout="Done!",
+            stderr="",
+        )
+
+        call_count = [0]
+        resume_session_flags: list[bool] = []
+
+        def mock_run_claude(command, working_dir, **kwargs):
+            resume_session_flags.append(kwargs.get("resume_session", False))
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return normal_result
+            elif call_count[0] == 2:
+                return handoff_result
+            return continuation_result
+
+        with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff",
+                side_effect=lambda s: "CONTEXT_HANDOFF" in s,
+            ):
+                with patch(
+                    "little_loops.parallel.worker_pool.read_continuation_prompt",
+                    return_value="# Continuation prompt",
+                ):
+                    result = worker_pool._run_with_continuation(
+                        "test",
+                        temp_repo_with_config,
+                        issue_id="BUG-1377",
+                        max_continuations=3,
+                    )
+
+        # Session 1: normal run, sentinel detected → call 2 with resume_session=True
+        # Session 2: explicit handoff instruction → CONTEXT_HANDOFF
+        # Session 3: continuation
+        assert call_count[0] == 3
+        assert resume_session_flags[1] is True
+        assert result.returncode == 0
+
+    def test_guillotine_path_on_overflow(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Option J: high token usage triggers fresh session with guillotine prompt."""
+        overflow_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "test"],
+            returncode=1,
+            stdout="Partial work...",
+            stderr="",
+        )
+        fresh_result = subprocess.CompletedProcess(
+            args=["claude", "-p", "fresh"],
+            returncode=0,
+            stdout="Done from fresh session",
+            stderr="",
+        )
+
+        call_count = [0]
+        commands_received: list[str] = []
+
+        def mock_run_claude(command, working_dir, **kwargs):
+            call_count[0] += 1
+            commands_received.append(command)
+            on_usage = kwargs.get("on_usage")
+            if on_usage and call_count[0] == 1:
+                on_usage(185_000, 10_000)  # 195K total > 90% of 200K
+            return overflow_result if call_count[0] == 1 else fresh_result
+
+        with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_claude):
+            with patch(
+                "little_loops.parallel.worker_pool.detect_context_handoff", return_value=False
+            ):
+                worker_pool._run_with_continuation(
+                    "test",
+                    temp_repo_with_config,
+                    issue_id="BUG-1377",
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                )
+
+        assert call_count[0] == 2
+        assert "CONTEXT LIMIT REACHED" in commands_received[1]
 
 
 class TestWorkerPoolDecisionNeededGate:
