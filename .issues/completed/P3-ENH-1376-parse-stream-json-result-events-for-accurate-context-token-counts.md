@@ -4,6 +4,7 @@ type: ENH
 priority: P3
 status: open
 captured_at: 2026-05-06 20:59:54+00:00
+completed_at: 2026-05-06T23:25:04Z
 discovered_date: 2026-05-06
 discovered_by: capture-issue
 decision_needed: false
@@ -284,7 +285,37 @@ _Added by `/ll:confidence-check` on 2026-05-06_
 - **context-monitor.sh bash integration is the riskiest touch**: The `result_token_count > 0` priority branch must be inserted before `estimate_tokens()` and the `transcript_baseline_tokens` paths without double-counting; test_hooks_integration.py is the safety net.
 - **test_unknown_event_type_skipped must be retargeted first**: This test currently feeds `{"type": "result", ...}` as the "unknown" event — it will fail after step 3; switch it to `tool_use` before adding the new on_usage assertion.
 
+## Resolution
+
+**Status**: Completed — 2026-05-06T23:25:04Z
+
+### Changes Made
+
+1. **`scripts/little_loops/subprocess_utils.py`**: Added `UsageCallback = Callable[[int, int], None]` TypeAlias; added `on_usage: UsageCallback | None = None` parameter to `run_claude_command`; added `result` event handling that calls `on_usage(input_tokens + cache_read_input_tokens, output_tokens)` in the stream-json event loop.
+
+2. **`scripts/little_loops/issue_manager.py`**: Added `json` import; added `on_usage` parameter to `run_claude_command` wrapper (forwarded to `_run_claude_base`); added `on_usage` parameter to `run_with_continuation` (forwarded to inner `run_claude_command`); added `on_usage` parameter to `process_issue_inplace`; built `_on_usage_writer` closure inside `process_issue_inplace` that writes `result_token_count` to `.ll/ll-context-state.json` and chains external `on_usage` if provided.
+
+3. **`hooks/scripts/context-monitor.sh`**: Added `RESULT_TOKEN_COUNT` extraction from state (via jq); inserted three-tier priority branch: `result_token_count > 0` → use directly (no heuristic added); else transcript baseline → else pure heuristics.
+
+4. **`scripts/tests/test_subprocess_utils.py`**: Retargeted `test_unknown_event_type_skipped` from `result` to `tool_use` event; added `test_on_usage_callback_called_with_result_event` and `test_on_usage_not_called_when_result_has_no_usage`.
+
+5. **`scripts/tests/test_subprocess_mocks.py`**: Added `test_on_usage_forwarded_through_wrapper` to `TestRunClaudeCommand`.
+
+6. **`scripts/tests/test_issue_manager.py`**: Added `on_usage: Any = None` to `mock_process_inplace` stub in `TestAutoManagerModelDetection`.
+
+7. **`scripts/tests/test_hooks_integration.py`**: Added `test_result_token_count_used_when_present` and `test_result_token_count_zero_falls_back_to_heuristics`.
+
+8. **Docs updated**: `docs/reference/API.md`, `docs/guides/SESSION_HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/development/TROUBLESHOOTING.md`, `docs/reference/CONFIGURATION.md`.
+
+### Verification
+
+- 238 targeted tests pass (test_subprocess_utils, test_subprocess_mocks, test_issue_manager, test_hooks_integration)
+- Lint clean (`ruff check`)
+- 13 pre-existing failures in unrelated test files unchanged
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-06T23:25:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-06T23:13:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1df9f73a-9000-4c7a-9115-d1b1a8f89d7f.jsonl`
 - `/ll:wire-issue` - 2026-05-06T23:08:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b152adf3-75b2-4d05-a817-c6c634d04240.jsonl`
 - `/ll:refine-issue` - 2026-05-06T23:03:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/382a2462-7c10-4181-a09d-86f96f1095a0.jsonl`
 - `/ll:decide-issue` - 2026-05-06T22:32:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23e24604-d565-4cff-b89b-b443ba6c4696.jsonl`
