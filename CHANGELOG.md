@@ -7,10 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.98.0] - 2026-05-07
+
 ### Added
 
 - **Progressive Tool-Call Throttling** — Loop states can now declare a `throttle:` block to detect and halt runaway action loops within a single state visit. Three configurable thresholds: `normal_max` (default 3) is the expected call count, `warn_max` (default 8) emits a `throttle_warn` event, and `hard_max` (default 12) transitions to `on_throttle_hard` (or falls back to `on_error`). Mark a state `state_type: learning` to exempt it from `hard_max` enforcement for states that legitimately make many tool calls per visit (e.g. batch operations). (ENH-1115)
 - **`decision_needed` Gate in `recursive-refine`** — A new `check_decision_needed` state between `check_depth` and `run_size_review` skips size-review for issues with `decision_needed: true`, preventing premature decomposition before competing implementation options are resolved. Skipped issues are written to `recursive-refine-skipped-decision.txt` and the shared `recursive-refine-skipped.txt`; the done summary includes a `Decision (%d)` row and the decomposition tree labels them as `(skipped: decision-needed)`. (ENH-1371)
+- **`--skip-issue-creation` and `--auto` Flags for Loop Analysis Skills** — `/ll:debug-loop-run` and `/ll:audit-loop-run` now accept `--skip-issue-creation` (suppress issue filing) and `--auto` (non-interactive headless mode), enabling invocation from loop states without blocking on interactive prompts. (ENH-1373)
+
+### Changed
+
+- **Renamed `analyze-loop` → `debug-loop-run` and `assess-loop` → `audit-loop-run`** — Clearer names: `debug-loop-run` emphasizes per-run debugging, `audit-loop-run` emphasizes effectiveness auditing. All references across skills, tests, docs, and FSM loops updated atomically. (ENH-1378)
+- **`outer-loop-eval` Delegates to `/ll:debug-loop-run` and `/ll:audit-loop-run`** — Refactored inline analysis states to invoke the corresponding skills, eliminating code duplication and ensuring future skill improvements automatically benefit the outer loop. (ENH-1328)
 
 ### Fixed
 
@@ -18,11 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Accurate Context Token Counts from `result` Stream Events** — `run_claude_command` now parses `input_tokens`/`output_tokens` from stream-json `result` events and writes `result_token_count` to `.ll/ll-context-state.json`. The context monitor uses this authoritative count (tier 1 in the three-tier priority) instead of heuristic weight estimates, which significantly undercounted large sessions and prevented the handoff threshold from firing. (ENH-1376)
 - **"Prompt is too long" Classified as TRANSIENT Failure** — `classify_failure` in `issue_lifecycle.py` now matches the `"prompt is too long"` API error string and returns `FailureType.TRANSIENT`. This prevents `ll-auto` from filing a spurious P1 BUG issue and halting when a subprocess exhausts the context window; instead it attempts a continuation round. (BUG-1375)
 - **Autodev Re-runs `confidence-check` After `decide-issue`** — Added `rerun_confidence_after_decide` state that invokes `/ll:confidence-check` to refresh frontmatter scores after `/ll:decide-issue` resolves an ambiguity. Previously `recheck_after_decide` read stale pre-decision scores, so issues whose low outcome confidence was caused by an unresolved design question could never pass the gate even after the decision was made. (BUG-1378)
-
-### Planned
-
-- Windows compatibility testing
-- Performance benchmarks for large repositories
 
 ## [1.97.0] - 2026-05-05
 
@@ -76,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
+[1.98.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.97.0...v1.98.0
 [1.97.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.96.0...v1.97.0
 [1.96.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.95.0...v1.96.0
 [1.95.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.94.0...v1.95.0
