@@ -3,9 +3,17 @@ id: BUG-1377
 type: BUG
 priority: P2
 status: open
-captured_at: 2026-05-06T20:59:54Z
+captured_at: 2026-05-06 20:59:54+00:00
 discovered_date: 2026-05-06
 discovered_by: capture-issue
+confidence_score: 88
+outcome_confidence: 45
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
+decision_needed: false
+missing_artifacts: true
 ---
 
 # BUG-1377: PostToolUse Hook `exit 2` Feedback Unreliable in `-p` Mode — Regression of BUG-035
@@ -266,7 +274,7 @@ Without trajectory data, picking thresholds and ranking options is guesswork. Ph
 5. **Verify Stop-hook timing in `-p` mode.** Plan assumes Stop fires after every turn (idle boundary). If Stop only fires on session termination in `-p --dangerously-skip-permissions`, the sentinel-between-sessions design in Option G changes substantially. Confirm with a controlled probe (Stop hook that appends to a log file) before committing to the Stop-hook approach.
 6. **Confirm `ll-auto-debug.txt` has the data Phase 1 step 7 needs.** Inspect a sample log to verify it contains per-tool-call token usage (or sufficient signal to derive it). If it does not, this gating step is impossible without reproducing the failure — surface that risk and decide whether to reproduce or proceed without classification.
 7. Parse the failing `ll-auto-debug.txt` to plot token trajectory per tool call. Classify the dominant failure mode: **gradual creep** (E+G+H sufficient), **single-call cliff** (requires J, possibly I), or **output-side growth** (G alone sufficient). This classification drives Phase 2 scope.
-8. **Design spike for Option J's transcript-summary assembly.** J is co-equal to E+G, but the algorithm for "assembled context-summary prompt built from the transcript" is undefined. Decide between: (a) a separate `claude -p` summarizer call (adds latency, could itself fail near limits), (b) heuristic truncation (loses semantic content), or (c) tail-N tool results + completed-work scratch-pad inventory. Document the chosen approach, its failure modes, and what falls back if J's own summarization fails. Without this, J's safety-net quality is unknown.
+8. **Design spike for Option J's transcript-summary assembly.** → **RESOLVED** (see `## Option J Design Spike` section). Chosen approach: structured stdout-tail + inventory (option c) with heuristic length cap as guard. Algorithm: (1) first 20 lines of `original_command` for task intent, (2) last 12K chars of `captured_stdout` for last-output context, (3) `.loops/tmp/scratch/` file inventory, (4) cumulative `on_usage` token count. Assembled prompt ≤ 15K tokens; fresh session starts at 0 tokens — structurally deadlock-free. `assemble_guillotine_prompt()` goes in `subprocess_utils.py`; bare-restart fallback if assembly itself fails.
 
 **Phase 2 — Primary mechanism + headroom + backstop (Options E + G + H + J, shipped together):**
 
@@ -322,7 +330,154 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **ENH-1376: HARD PREREQUISITE for Phase 2.** Parse stream-json result events for accurate token counts. Options C/E/G/H/J all depend on it; conservative-heuristic interim is what's failing now.
 - BUG-1374: Spurious implementation failure issue created as a symptom of this bug
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-06_
+
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 45/100 → LOW
+
+### Concerns
+- Root cause dominant failure mode (gradual creep vs single-call cliff) is unclassified — Phase 1 step 7 (trajectory analysis of ll-auto-debug.txt) must precede Phase 2 threshold tuning and Option H headroom algorithm calibration; skipping risks tuning for the wrong failure mode
+- Option J transcript-summary assembly algorithm is TBD (Phase 1 design spike) — implementing J without it risks shipping a safety net that deadlocks under its primary use cases (single-call cliffs, full-context resume failure)
+
+### Outcome Risk Factors
+- Option J transcript-summary assembly algorithm is undefined — resolve before implementing Option J to avoid shipping a safety net with unknown failure modes
+- Dominant failure mode (gradual creep vs single-call cliff) not yet classified — Phase 1 step 7 trajectory analysis is required before Phase 2 scope can be finalized; this determines whether Option I (subprocess delegation) is in scope
+- 13+ files span hooks, subprocess management, parallel workers, FSM layer, CLI, config, and docs — run_claude_command signature changes will propagate to action.py and fsm/runners.py callers; high coordination cost
+- `hooks/scripts/context-handoff-sentinel.sh` does not exist yet (new artifact) — must be created alongside the hooks.json Stop hook entry; session-cleanup.sh rm list must explicitly exclude this path
+
+## Option J Design Spike
+
+_Added by design spike on 2026-05-06. Resolves Phase 1 step 8 and clears `decision_needed`._
+
+**Decision: Structured stdout-tail + inventory (option c), with heuristic length cap (option b) as guard.**
+
+### Why not option (a) — separate `claude -p` summarizer call
+
+The `result.stdout` captured by `run_claude_command` already contains Claude's own text responses
+(extracted from stream-json `assistant` events). Running another LLM to "summarize" Claude's own
+words adds latency, an additional API call, and a new failure surface — without adding semantic
+quality. The one case where (a) would help is when stdout exceeds ~100K chars and a shorter prompt
+is needed; that edge case is handled instead by the length cap in step 2 below.
+
+An additional concern: J is a safety net for cases where the primary handoff mechanism (E+G) failed.
+A safety net that itself depends on a successful external API call is not a reliable backstop.
+
+### Why not option (b) — heuristic truncation only
+
+Raw character truncation of stdout cuts mid-sentence and loses structure (which files were written,
+which phase was active, what the last complete Claude response was). Approach (c) uses (b) as a
+component — tail-N chars — but wraps it in structure so the fresh session understands context.
+
+### Chosen Algorithm
+
+```python
+GUILLOTINE_TAIL_CHARS = 12_000   # ≈ 3K tokens — last N chars of Claude's stdout
+GUILLOTINE_MAX_TASK_LINES = 20   # first N lines of original command for task intent
+```
+
+**Input data available to the parent process at J-trigger time:**
+
+| Source | How accessed | Contains |
+|---|---|---|
+| `result.stdout` | Already in memory | All Claude text responses (assistant events) |
+| `original_command` | Passed to `run_with_continuation` | Original task / skill invocation |
+| `.ll/ll-context-state.json` | `Path(".ll/ll-context-state.json").read_text()` | Tool call count, estimated tokens |
+| `.loops/tmp/scratch/` | `glob` | Large outputs offloaded by Claude |
+| Cumulative token count | `on_usage` callback accumulation | Exact token count at trigger |
+
+**Assembly steps:**
+
+1. **Task intent**: Extract first `GUILLOTINE_MAX_TASK_LINES` lines of `original_command`.
+   This is the skill invocation (e.g., `/ll:manage-issue BUG-1234`) that defines the session goal.
+
+2. **Stdout tail**: Take `captured_stdout[-GUILLOTINE_TAIL_CHARS:]`.
+   If stdout is shorter, use all of it. This is Claude's most recent output — the most semantically
+   relevant content describing what was in progress at interruption.
+
+3. **Scratch pad inventory**: List files in `.loops/tmp/scratch/` with sizes.
+   These are large tool outputs Claude offloaded; the fresh session should check them before re-running
+   expensive operations (e.g., test runs, large file reads).
+
+4. **Token stats**: From the cumulative `on_usage` accumulation (not the context-state file, which
+   uses a heuristic estimate). Report the actual token count at trigger time.
+
+5. **Assemble prompt** using the following template:
+
+```
+⚠ CONTEXT LIMIT REACHED — FRESH SESSION CONTINUATION
+
+The previous automation session exhausted its context window before completing.
+This fresh session (new context window, starts at 0 tokens) is continuing from
+that interrupted session.
+
+## Original Task
+[first GUILLOTINE_MAX_TASK_LINES lines of original_command]
+
+## Session Progress at Interruption
+- Approximate tokens used: {input_tokens:,} / {context_limit:,}
+- Tool calls executed: {tool_calls}
+- Trigger reason: {trigger_reason}  # "context > 90%" or "Prompt is too long"
+
+## Last Session Output (what was happening at interruption)
+[last GUILLOTINE_TAIL_CHARS chars of captured_stdout]
+
+## Scratch Pad Files Available
+[list of .loops/tmp/scratch/ files with sizes, or "None" if empty]
+
+## Instructions for This Session
+1. Do NOT restart from scratch — the previous session made progress (see above)
+2. Read the "Last Session Output" section to understand exactly where we were
+3. Check the scratch pad files before re-running expensive operations
+4. Continue implementation from the interruption point
+5. Complete normally: test, commit, close the issue as usual
+```
+
+### Failure Modes
+
+| Failure Mode | Impact | Mitigation |
+|---|---|---|
+| `captured_stdout` empty (SIGINT before first output) | No last-output context | Template says "interrupted at session start" — fresh session starts from scratch with original command; acceptable for early-interrupt case |
+| stdout very large (> 200K chars) | Tail still bounded at 12K chars | Length cap ensures assembled prompt stays ≤ 15K tokens regardless of session length |
+| Scratch pad dir missing | Missing file inventory | Skip that section; not a failure |
+| Context state file missing/corrupt | No tool-call count | Use "unknown" — cosmetic only |
+| Fresh session ALSO immediately exhausts context | J deadlocks | **Structurally impossible**: fresh session starts at 0 tokens; assembled prompt ≈ 12K tokens leaves >185K available in a 200K window |
+| Assembled prompt > context limit | Pathological: would require task + stdout-tail alone to exceed 200K tokens | Reduce `GUILLOTINE_TAIL_CHARS` to 2K — document as config key `guillotine_tail_chars` |
+
+### Trigger Conditions (two paths into J)
+
+1. **Gradual creep past 90%**: `on_usage` cumulative total crosses `guillotine_threshold` (default 0.9),
+   no handoff observed. After current turn's `result` event (not mid-turn), send SIGINT, then assemble
+   and spawn fresh session. This path is clean — the turn completed.
+
+2. **"Prompt is too long" mid-turn**: Detected in `result.stderr` or as a non-zero returncode with
+   that error string. SIGINT is immediate (process may already be dead). `captured_stdout` has
+   everything up to the point of failure. Assemble prompt from partial stdout — the tail is still
+   the most useful part.
+
+### Integration Points
+
+- `assemble_guillotine_prompt(original_command, captured_stdout, token_stats)` → new function in
+  `subprocess_utils.py` (mirrors `read_continuation_prompt` pattern)
+- Trigger detection inside `run_claude_command` (or a thin wrapper in `run_with_continuation`):
+  accumulate `on_usage` totals; when threshold crossed after a `result` event, set a flag for
+  `run_with_continuation` to inspect
+- `run_with_continuation` checks the J flag after each `run_claude_command` call:
+  if set, calls `assemble_guillotine_prompt` and spawns fresh session (not `--resume`)
+- `WorkerPool._run_with_continuation` must receive the same treatment in parallel mode
+
+### What Falls Back If J's Own Assembly Fails
+
+If `assemble_guillotine_prompt` raises an exception (disk I/O error, encoding issue):
+- Log the error and fall through to a **bare restart**: fresh session with `original_command` only,
+  no context from prior session.
+- This is the same as if J didn't exist — no worse than the current state (session lost).
+- Document in J-path integration test.
+
 ## Session Log
+- `design-spike: Option J` - 2026-05-06T00:00:00 - cleared `decision_needed`; chosen algorithm: structured stdout-tail + inventory; see `## Option J Design Spike` section
+- `/ll:confidence-check` - 2026-05-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bdc0e06-85ea-43b5-8eeb-b06ffc964981.jsonl`
 - `/ll:wire-issue` - 2026-05-06T21:52:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f52c049f-8ef4-44fc-95ad-687a8ae1df72.jsonl`
 - `/ll:refine-issue` - 2026-05-06T21:39:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63fad009-7663-49aa-ac6a-4ad5eb77b1de.jsonl`
 - `/ll:format-issue` - 2026-05-06T21:10:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/291cabfe-e58a-41a8-a54c-5ae0200e8ef1.jsonl`
