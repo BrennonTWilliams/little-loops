@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Progressive Tool-Call Throttling** — Loop states can now declare a `throttle:` block to detect and halt runaway action loops within a single state visit. Three configurable thresholds: `normal_max` (default 3) is the expected call count, `warn_max` (default 8) emits a `throttle_warn` event, and `hard_max` (default 12) transitions to `on_throttle_hard` (or falls back to `on_error`). Mark a state `state_type: learning` to exempt it from `hard_max` enforcement for states that legitimately make many tool calls per visit (e.g. batch operations). (ENH-1115)
+- **`decision_needed` Gate in `recursive-refine`** — A new `check_decision_needed` state between `check_depth` and `run_size_review` skips size-review for issues with `decision_needed: true`, preventing premature decomposition before competing implementation options are resolved. Skipped issues are written to `recursive-refine-skipped-decision.txt` and the shared `recursive-refine-skipped.txt`; the done summary includes a `Decision (%d)` row and the decomposition tree labels them as `(skipped: decision-needed)`. (ENH-1371)
+
+### Fixed
+
+- **`ll-auto` Context Handoff Reliability** — PostToolUse `exit 2` feedback was silently dropped in `-p` mode, so `context-monitor.sh` warnings never reached Claude and sessions ran until "Prompt is too long". Fixed via Options E+G+J: writing the continuation prompt before the tool call completes (E), reading accumulated stream output immediately before spawning the continuation session (G), and broadening handoff signal detection patterns (J). (BUG-1377)
+- **Accurate Context Token Counts from `result` Stream Events** — `run_claude_command` now parses `input_tokens`/`output_tokens` from stream-json `result` events and writes `result_token_count` to `.ll/ll-context-state.json`. The context monitor uses this authoritative count (tier 1 in the three-tier priority) instead of heuristic weight estimates, which significantly undercounted large sessions and prevented the handoff threshold from firing. (ENH-1376)
+- **"Prompt is too long" Classified as TRANSIENT Failure** — `classify_failure` in `issue_lifecycle.py` now matches the `"prompt is too long"` API error string and returns `FailureType.TRANSIENT`. This prevents `ll-auto` from filing a spurious P1 BUG issue and halting when a subprocess exhausts the context window; instead it attempts a continuation round. (BUG-1375)
+- **Autodev Re-runs `confidence-check` After `decide-issue`** — Added `rerun_confidence_after_decide` state that invokes `/ll:confidence-check` to refresh frontmatter scores after `/ll:decide-issue` resolves an ambiguity. Previously `recheck_after_decide` read stale pre-decision scores, so issues whose low outcome confidence was caused by an unresolved design question could never pass the gate even after the decision was made. (BUG-1378)
+
 ### Planned
 
 - Windows compatibility testing

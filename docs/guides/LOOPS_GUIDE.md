@@ -542,7 +542,9 @@ parse_input → dequeue_next → [queue empty?]
                                                                                                                             ├─ YES → dequeue_next
                                                                                                                             └─ NO  → check_depth → [depth >= max_depth?]
                                                                                                                                         ├─ YES (depth-cap) → dequeue_next
-                                                                                                                                        └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
+                                                                                                                                        └─ NO  → check_decision_needed → [decision_needed?]
+                                                                                                                                                      ├─ YES → dequeue_next (skipped: decision-needed)
+                                                                                                                                                      └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
 **Summary output**: When the queue is exhausted, `aggregate_decomposition` emits the parent→children rollup (if any decompositions occurred), then `done` emits a structured summary followed (by default) by an indented decomposition tree:
@@ -558,6 +560,7 @@ Dead-ends    (1): BUG-17
 Depth-cap    (0): none
 Cycle        (1): ENH-100
 Budget       (1): ENH-101
+Decision     (0): none
 
 === Decomposition Tree ===
 
@@ -576,7 +579,7 @@ Set `tree_summary: false` in context to suppress the tree block.
 ```
 The counters reflect cumulative totals at the moment of dequeue: position `N/total-enqueued`, the issue ID and depth, and running passed/queued/skipped tallies. After every `enqueue_children` or `enqueue_or_skip` enqueue, a queue-peek line shows the next 3–5 IDs waiting in the queue so you can see what the loop will process next without waiting for individual dequeue lines.
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. All non-passing issue IDs are aggregated in `.loops/tmp/recursive-refine-skipped.txt` (read by outer-loop callers); decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `.loops/tmp/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `.loops/tmp/recursive-refine-skipped-budget.txt`; parents that were decomposed into children (by either `enqueue_children` or the `enqueue_or_skip` children branch) are recorded in `.loops/tmp/recursive-refine-skipped-decomposed.txt`; issues with no further decomposition possible are recorded in `.loops/tmp/recursive-refine-skipped-deadend.txt`; every decomposition event (from either the `enqueue_children` or `enqueue_or_skip` path) is appended to `.loops/tmp/recursive-refine-decomposition.tsv` (columns: `parent_id`, `child_ids` (comma-joined), `decomposer` (`sub-loop` | `size-review`), `timestamp`) so the `aggregate_decomposition` state can produce a parent→children rollup at the end of each run.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. All non-passing issue IDs are aggregated in `.loops/tmp/recursive-refine-skipped.txt` (read by outer-loop callers); decomposed parents are also moved to `.issues/completed/` so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `.loops/tmp/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `.loops/tmp/recursive-refine-skipped-budget.txt`; parents that were decomposed into children (by either `enqueue_children` or the `enqueue_or_skip` children branch) are recorded in `.loops/tmp/recursive-refine-skipped-decomposed.txt`; issues with no further decomposition possible are recorded in `.loops/tmp/recursive-refine-skipped-deadend.txt`; issues skipped because `decision_needed: true` was set are recorded in `.loops/tmp/recursive-refine-skipped-decision.txt` (also merged into the shared `recursive-refine-skipped.txt`) and labeled `(skipped: decision-needed)` in the decomposition tree — run `/ll:decide-issue` on each to resolve the ambiguity, then re-run `recursive-refine`; every decomposition event (from either the `enqueue_children` or `enqueue_or_skip` path) is appended to `.loops/tmp/recursive-refine-decomposition.tsv` (columns: `parent_id`, `child_ids` (comma-joined), `decomposer` (`sub-loop` | `size-review`), `timestamp`) so the `aggregate_decomposition` state can produce a parent→children rollup at the end of each run.
 
 **Code Quality**
 
@@ -1888,6 +1891,39 @@ Layered on top of the two-tier retry ladder is a shared **circuit breaker** that
 - **Configuration.** Controlled by two keys under `commands.rate_limits`:
   - `circuit_breaker_enabled` (default `true`) — set to `false` to disable pre-action gating and sidecar writes entirely.
   - `circuit_breaker_path` (default `.loops/tmp/rate-limit-circuit.json`) — override to relocate the shared file (e.g. onto a tmpfs or a path shared across multiple checkouts).
+
+#### Progressive tool-call throttling
+
+A per-state safeguard that detects and halts runaway action loops — for example, a `prompt` state that keeps calling a tool in a tight LLM-driven loop without making forward progress.
+
+Add a `throttle:` block to any state that could loop internally:
+
+```yaml
+fix_issue:
+  action: "/ll:manage-issue"
+  action_type: slash_command
+  throttle:
+    normal_max: 3    # expected call count per visit (informational)
+    warn_max: 8      # emits throttle_warn event; loop continues
+    hard_max: 12     # transitions to on_throttle_hard (or on_error)
+  on_throttle_hard: escalate
+  on_yes: verify
+  on_error: escalate
+```
+
+All three fields are optional; the defaults (`normal_max=3`, `warn_max=8`, `hard_max=12`) are inherited from the executor module constants.
+
+**`state_type: learning`** — Some states legitimately make many tool calls per visit (e.g. bulk batch operations, corpus-calibration runs). Mark them `state_type: learning` to exempt them from `hard_max` enforcement while still recording call counts in the telemetry stream:
+
+```yaml
+calibrate_corpus:
+  state_type: learning
+  action: "python calibrate.py"
+  action_type: shell
+  on_yes: done
+```
+
+**Call-count telemetry** — On every action execution inside a state, the executor increments a `tool_call_count` field in the per-state record persisted to `LoopState`. `ll-loop show` surfaces this as part of the state history, making runaway states visible after the fact even when the loop was not terminated by `hard_max`.
 
 #### Server-error automatic retry
 
