@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to clean up stuck loops, find stale loops, kill dead loop processes, or troubleshoot loop state issues.
+description: Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state.
 argument-hint: "[--dry-run] [--threshold N]"
 model: sonnet
 allowed-tools:

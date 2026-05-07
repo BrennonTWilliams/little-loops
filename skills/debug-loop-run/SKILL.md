@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to analyze loop execution history, investigate loop failures, find loop issues, or synthesize actionable issues from loop runs.
+description: Use when asked to analyze loop execution history, investigate loop failures, or find loop issues.
 argument-hint: "[loop-name] [--tail N] [--skip-issue-creation] [--auto]"
 model: sonnet
 allowed-tools:

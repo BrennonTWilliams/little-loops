@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to initialize little-loops, set up ll for a project, bootstrap config, or asks "how do I get started with ll?"
+description: Use when asked to initialize little-loops, set up ll for a project, or bootstrap config.
 argument-hint: "[flags]"
 allowed-tools:
   - Read

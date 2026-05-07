@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to configure little-loops, change settings, update ll-config.json, set up options, or asks "how do I set X?"
+description: Use when asked to configure little-loops, change settings, or update ll-config.json.
 argument-hint: "[area]"
 allowed-tools:
   - Read

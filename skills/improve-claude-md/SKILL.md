@@ -1,9 +1,5 @@
 ---
-description: |
-  Use when the user asks to improve or rewrite CLAUDE.md, restructure instructions using
-  <important if> blocks, or increase LLM instruction adherence. Apply the 9-step rewrite
-  algorithm to wrap each section in a condition block scoped to when it is relevant.
-  "instruction adherence", "restructure claude md", "scope instructions"
+description: Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence.
 argument-hint: "[--dry-run] [--file path]"
 allowed-tools:
   - Read

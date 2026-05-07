@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to format an issue, fix issue template structure, align an issue to template v2.0, or says "format this issue." Supports interactive Q&A and auto mode.
+description: Use when asked to format an issue or fix its template structure.
 argument-hint: "[issue-id]"
 allowed-tools:
   - Read

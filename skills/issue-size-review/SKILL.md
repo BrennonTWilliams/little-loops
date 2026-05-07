@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user wants to evaluate issue size/complexity, decompose large issues, check if issues are too big for a single session, or audit backlog sizes for sprint planning.
+description: Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity.
 model: sonnet
 allowed-tools:
   - Read

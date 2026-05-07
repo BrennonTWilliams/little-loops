@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to capture, create, log, or record an issue from conversation or natural language description.
+description: Use when asked to capture or create an issue from conversation or natural language.
 argument-hint: "[description]"
 allowed-tools:
   - Read

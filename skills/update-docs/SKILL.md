@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to update docs, find stale documentation, check doc coverage after a sprint, or asks "what docs need updating?"
+description: Use when asked to update docs, find stale documentation, or check doc coverage after a sprint.
 argument-hint: "[--since <date|git-ref>] [--fix]"
 allowed-tools:
   - Read

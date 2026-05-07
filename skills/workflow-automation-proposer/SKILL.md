@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when running step 3 of the workflow analysis pipeline, or when the user asks to propose automations, generate workflow proposals, or suggest automation opportunities from patterns.
+description: Use when asked to propose automations or suggest automation opportunities from workflow patterns.
 model: sonnet
 allowed-tools:
   - Read

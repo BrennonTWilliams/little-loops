@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to update little-loops, update the plugin, or update the pip package.
+description: Use when asked to update little-loops, the plugin, or the pip package.
 argument-hint: "[flags]"
 allowed-tools:
   - Bash(python3:*)

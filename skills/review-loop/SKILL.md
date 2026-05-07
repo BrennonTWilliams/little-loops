@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to review a loop, check loop config quality, validate loop YAML, audit a loop definition, or asks "is this loop correct?" Analyzes states and transitions, reports findings by severity, and proposes fixes.
+description: Use when asked to review loop config quality, validate loop YAML, or audit a loop definition.
 allowed-tools:
   - Bash(ll-loop:*)
   - Read

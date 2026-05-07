@@ -1,8 +1,5 @@
 ---
-description: |
-  Rename a loop (built-in or project-level) and update all references to maintain full
-  functionality. Updates the YAML file, its internal name: field, all loop: sub-loop
-  references in other YAMLs, tests (for built-in loops), and docs.
+description: Rename a loop and update all references in YAMLs, tests, and docs.
 
 argument-hint: "<old-name> <new-name> [--dry-run] [--yes]"
 model: sonnet

@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks for a pre-implementation confidence check, wants to evaluate readiness before coding, check implementation risk, or asks "is this issue ready to implement?" Produces dual scores: Readiness (go/no-go) and Outcome Confidence (implementation risk).
+description: Use when asked for a pre-implementation confidence check or whether an issue is ready to implement.
 model: sonnet
 allowed-tools:
   - Read

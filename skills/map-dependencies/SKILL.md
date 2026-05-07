@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user wants to find dependencies between issues, check for broken dependency refs, discover cross-issue file overlaps, or prepare dependency-aware sprint plans.
+description: Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan.
 model: sonnet
 allowed-tools:
   - Read

@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to implement an issue, work on a bug/feature/enhancement, manage an issue end-to-end, or says "start implementing FEAT-NNN." Autonomously plans, implements, verifies, and completes issues.
+description: Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.
 argument-hint: "[type] [action] [issue-id]"
 allowed-tools:
   - Bash(git:*)

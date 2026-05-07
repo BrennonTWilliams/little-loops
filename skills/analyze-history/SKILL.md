@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks about project health, velocity, bug trends, technical debt, issue history, or "are we making progress?" Analyzes issue history to surface trends and progress metrics.
+description: Use when asked about project health, velocity, bug trends, or whether we're making progress.
 model: haiku
 allowed-tools:
   - Bash(ll-history:*)

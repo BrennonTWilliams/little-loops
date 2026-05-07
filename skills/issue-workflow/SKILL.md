@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks about the issue management workflow, issue lifecycle, command order for issues, or "how do I manage issues?" Quick reference for little-loops issue workflow.
+description: Use when asked about the issue lifecycle, command order for issues, or how to manage issues.
 model: haiku
 ---
 

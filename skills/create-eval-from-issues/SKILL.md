@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user wants to generate an FSM eval harness YAML from one or more issue IDs. Reads issue context (Expected Behavior, Use Case, Acceptance Criteria) and synthesizes a ready-to-run harness that exercises the feature as a real user would, then validates it with ll-loop validate.
+description: Use when asked to generate an FSM eval harness YAML from one or more issue IDs.
 argument-hint: "<issue-id> [issue-id...]"
 allowed-tools:
   - Bash(ll-issues:*, ll-loop:*, mkdir:*)

@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to analyze product goals, check for feature gaps, scan for goal alignment, evaluate business value, or asks "what features are we missing?" Requires ll-goals.md.
+description: Use when asked to analyze product goals, check feature gaps, or evaluate business value.
 model: sonnet
 allowed-tools:
   - Read

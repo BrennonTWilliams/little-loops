@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to audit their Claude Code config, check plugin settings, validate configuration, diagnose plugin issues, or asks "is my config valid?" Runs a comprehensive audit with parallel sub-agents.
+description: Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues.
 argument-hint: "[scope]"
 allowed-tools:
   - Read

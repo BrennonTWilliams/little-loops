@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to create a new loop, make an automation loop, set up an FSM loop, or says "I want to automate X with a loop." Guides through loop type selection, parameter gathering, YAML generation, and validation.
+description: Use when asked to create an automation loop or automate a recurring task with an FSM.
 allowed-tools:
   - Bash(mkdir:*, test:*, ll-loop:*)
 ---

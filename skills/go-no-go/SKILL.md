@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks "should I implement this?", wants an adversarial review of an issue, needs a go/no-go decision, or wants to debate whether an issue is worth implementing. Uses adversarial debate with concurrent pro/con agents and a judge.
+description: Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.
 model: sonnet
 allowed-tools:
   - Read

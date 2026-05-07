@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to audit issues for conflicts, detect conflicting requirements or objectives across open issues, find incompatible architecture decisions, or says "check my backlog for conflicts." Supports auto-apply and dry-run modes.
+description: Use when asked to detect conflicting requirements or incompatible decisions across open issues.
 argument-hint: "[--auto] [--dry-run]"
 model: sonnet
 allowed-tools:

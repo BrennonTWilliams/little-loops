@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when the user asks to assess loop effectiveness, audit loop goal achievement, check whether a loop actually mutated expected artifacts, detect phantom success, or evaluate loop quality before production use.
+description: Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success.
 argument-hint: "[loop-name] [--tail N] [--no-rubric-audit] [--skip-issue-creation] [--auto]"
 model: sonnet
 allowed-tools:

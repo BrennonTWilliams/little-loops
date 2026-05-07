@@ -1,6 +1,5 @@
 ---
-description: |
-  Use when an issue has `decision_needed: true` (2+ competing implementation options) and needs the best option selected via codebase evidence and scoring. Extracts all options from the Proposed Solution section, spawns codebase-pattern-finder agents per option to gather evidence, scores each option across 4 dimensions, marks the winner inline, and clears `decision_needed`.
+description: Use when asked to select the winning implementation option for an issue with decision_needed.
 model: sonnet
 allowed-tools:
   - Read
