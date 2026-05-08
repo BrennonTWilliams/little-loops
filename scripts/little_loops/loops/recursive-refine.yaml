@@ -85,7 +85,7 @@ states:
         .loops/tmp/recursive-refine-queue.txt
       echo "$CURRENT" >> .loops/tmp/recursive-refine-visited.txt
       DEPTH=$(grep "^$CURRENT " .loops/tmp/recursive-refine-depth-map.txt 2>/dev/null | awk '{print $2}')
-      printf '%s' "${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
+      printf '%s' "$${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
       DEQUEUED=$(cat .loops/tmp/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
       DEQUEUED=$((DEQUEUED + 1))
       printf '%s' "$DEQUEUED" > .loops/tmp/recursive-refine-dequeued-count.txt
@@ -93,7 +93,7 @@ states:
       PASSED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-passed.txt 2>/dev/null || echo 0)
       QUEUED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-queue.txt 2>/dev/null || echo 0)
       SKIPPED=$(grep -c '[^[:space:]]' .loops/tmp/recursive-refine-skipped.txt 2>/dev/null || echo 0)
-      DEPTH_STR=${DEPTH:+" (depth: $DEPTH)"}
+      DEPTH_STR=$${DEPTH:+" (depth: $DEPTH)"}
       printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
         "$DEQUEUED" "$TOTAL" "$CURRENT" "$DEPTH_STR" "$PASSED" "$QUEUED" "$SKIPPED" >&2
       echo "$CURRENT"
