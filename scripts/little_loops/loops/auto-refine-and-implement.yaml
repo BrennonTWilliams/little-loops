@@ -46,7 +46,7 @@ states:
     on_failure: skip_and_continue
     on_error: skip_and_continue
 
-  # NOTE: get_passed_issues → implement_next → implement_issue → skip_and_continue are
+  # NOTE: get_passed_issues → implement_next → go_no_go → implement_issue → skip_and_continue are
   # mirrored in sprint-refine-and-implement.yaml. Keep both files in sync when editing.
   get_passed_issues:
     action: |
@@ -87,9 +87,16 @@ states:
       echo "$CURRENT"
     fragment: shell_exit
     capture: impl_id
-    on_yes: implement_issue
+    on_yes: go_no_go
     on_no: get_next_issue
     on_error: get_next_issue
+
+  go_no_go:
+    fragment: shell_exit
+    action: "ll-action go-no-go \"${captured.impl_id.output} --check --auto\""
+    on_yes: implement_issue
+    on_no: implement_next
+    on_error: implement_issue
 
   implement_issue:
     fragment: with_rate_limit_handling
