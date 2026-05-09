@@ -205,7 +205,9 @@ def cmd_simulate(
     else:
         # Limit iterations for simulation safety (cap at 20 unless overridden)
         if fsm.max_iterations > 20:
-            logger.info(f"Limiting simulation to 20 iterations (max_iterations: {fsm.max_iterations})")
+            logger.info(
+                f"Limiting simulation to 20 iterations (max_iterations: {fsm.max_iterations})"
+            )
             fsm.max_iterations = 20
 
     # Create simulation runner

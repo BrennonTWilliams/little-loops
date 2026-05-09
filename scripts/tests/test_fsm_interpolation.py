@@ -387,8 +387,8 @@ class TestInterpolateEdgeCases:
         """
         ctx = InterpolationContext()
         template = (
-            "printf 'Passed  (%d): %s\\n' \"$PASSED_COUNT\" \"$${PASSED_LIST:-none}\"\n"
-            "printf 'Skipped (%d): %s\\n' \"$SKIPPED_COUNT\" \"$${SKIPPED_LIST:-none}\""
+            'printf \'Passed  (%d): %s\\n\' "$PASSED_COUNT" "$${PASSED_LIST:-none}"\n'
+            'printf \'Skipped (%d): %s\\n\' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"'
         )
         result = interpolate(template, ctx)
         assert "${PASSED_LIST:-none}" in result

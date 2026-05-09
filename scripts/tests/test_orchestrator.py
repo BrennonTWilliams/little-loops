@@ -2922,7 +2922,10 @@ class TestDispatchRouting:
 
         orchestrator._on_worker_complete(result)
 
-        assert orchestrator._worker_errors["BUG-010"] == "Claude CLI exited with code 1: stderr output here"
+        assert (
+            orchestrator._worker_errors["BUG-010"]
+            == "Claude CLI exited with code 1: stderr output here"
+        )
 
     def test_on_worker_complete_stores_fallback_when_error_is_none(
         self,

@@ -311,7 +311,9 @@ def run_with_continuation(
         if sentinel_data is not None and this_is_fresh:
             # The sentinel was written by the guillotine fresh session that just finished.
             # The work is already done; do not attempt --continue.
-            logger.info("Fresh session wrote sentinel; consumed without --continue (work already done)")
+            logger.info(
+                "Fresh session wrote sentinel; consumed without --continue (work already done)"
+            )
         elif sentinel_data is not None and continuation_count < max_continuations:
             usage_pct = sentinel_data.get("usage_percent", int(usage_ratio * 100))
             logger.info(

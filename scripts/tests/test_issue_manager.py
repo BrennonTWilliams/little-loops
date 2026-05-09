@@ -1433,7 +1433,9 @@ class TestRunWithContinuation:
         # Fresh session completed successfully — result should be success
         assert result.returncode == 0, "Should return fresh session's returncode"
         # Option E must NOT have called --continue (resume_session=True)
-        assert not resume_called[0], "Option E must not call --continue after Option J fresh session"
+        assert not resume_called[0], (
+            "Option E must not call --continue after Option J fresh session"
+        )
         # run_claude_command called exactly twice: initial session + guillotine fresh session
         assert call_count[0] == 2, f"Expected 2 calls, got {call_count[0]}"
         # Sentinel was consumed (file should be gone after read_sentinel)
@@ -1921,7 +1923,6 @@ class TestFailureClassification:
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
                         assert not result.success
 
-
     def test_early_completion_guard_when_issue_already_in_completed(
         self, mock_config: BRConfig, sample_issue: IssueInfo, temp_project_dir: Path
     ) -> None:
@@ -1956,9 +1957,7 @@ class TestFailureClassification:
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
-                with patch(
-                    "little_loops.issue_manager.verify_issue_completed", return_value=True
-                ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=True):
                     with patch(
                         "little_loops.issue_manager.create_issue_from_failure"
                     ) as mock_create:

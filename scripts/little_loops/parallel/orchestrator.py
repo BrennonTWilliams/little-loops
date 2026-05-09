@@ -926,7 +926,9 @@ class ParallelOrchestrator:
                 ):
                     self.queue.mark_completed(result.issue_id)
                 else:
-                    self._worker_errors[result.issue_id] = f"Close failed: {result.close_reason or 'close error'}"
+                    self._worker_errors[result.issue_id] = (
+                        f"Close failed: {result.close_reason or 'close error'}"
+                    )
                     self.queue.mark_failed(result.issue_id)
             else:
                 self.logger.warning(f"No issue info found for {result.issue_id}")
@@ -962,7 +964,9 @@ class ParallelOrchestrator:
                     self.queue.mark_completed(result.issue_id)
                     self._complete_issue_lifecycle_if_needed(result.issue_id)
                 else:
-                    self._worker_errors[result.issue_id] = f"Merge failed: {result.error or 'merge error'}"
+                    self._worker_errors[result.issue_id] = (
+                        f"Merge failed: {result.error or 'merge error'}"
+                    )
                     self.queue.mark_failed(result.issue_id)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
@@ -1034,7 +1038,9 @@ class ParallelOrchestrator:
             ):
                 self.queue.mark_completed(result.issue_id)
             else:
-                self._worker_errors[result.issue_id] = f"Close failed: {result.close_reason or 'close error'}"
+                self._worker_errors[result.issue_id] = (
+                    f"Close failed: {result.close_reason or 'close error'}"
+                )
                 self.queue.mark_failed(result.issue_id)
             return
 
