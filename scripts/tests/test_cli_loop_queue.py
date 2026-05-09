@@ -65,6 +65,7 @@ class TestQueueRetryOnRace:
         with (
             patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
             patch("little_loops.fsm.persistence.PersistentExecutor"),
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
             patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
             patch("little_loops.cli.loop.run.run_foreground", return_value=0),
             patch("little_loops.extension.wire_extensions"),
@@ -104,7 +105,10 @@ class TestQueueRetryOnRace:
         logger = Logger(use_color=False)
         args = _make_args()
 
-        with patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls:
+        with (
+            patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+        ):
             mock_lm = MagicMock()
             mock_lm_cls.return_value = mock_lm
             mock_lm.acquire.return_value = False
@@ -124,7 +128,10 @@ class TestQueueRetryOnRace:
         logger = Logger(use_color=False)
         args = _make_args(queue=False)
 
-        with patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls:
+        with (
+            patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+        ):
             mock_lm = MagicMock()
             mock_lm_cls.return_value = mock_lm
             mock_lm.acquire.return_value = False

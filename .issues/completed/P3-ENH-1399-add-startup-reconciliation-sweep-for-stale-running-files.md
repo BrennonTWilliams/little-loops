@@ -4,6 +4,7 @@ type: ENH
 priority: P3
 status: open
 captured_at: '2026-05-09T20:55:45Z'
+completed_at: '2026-05-09T21:36:13Z'
 discovered_date: '2026-05-09'
 discovered_by: capture-issue
 decision_needed: false
@@ -231,7 +232,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `/ll:capture-issue` - 2026-05-09T20:55:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7db205e9-01e7-4bfd-9c7c-5fce9c641172.jsonl`
 - `/ll:confidence-check` - 2026-05-09T21:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49c941b9-f63f-4121-94e3-efd1fcee3927.jsonl`
 - `/ll:confidence-check` - 2026-05-09T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afb5da80-f902-4378-938f-5726e515f0b6.jsonl`
+- `/ll:manage-issue` - 2026-05-09T21:36:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
 
 ---
 
-**Open** | Created: 2026-05-09 | Priority: P3
+## Resolution
+
+Implemented startup reconciliation sweep in `persistence.py:_reconcile_stale_runs()`. At each `ll-loop run` invocation, stale `.state.json` files in `.running/` are archived before execution begins. Terminal-status files (completed/failed/interrupted/timed_out) are archived unconditionally; `status=running` files are archived only if their sibling `.pid` file confirms the PID is dead. `LoopState` gained an optional `pid` field persisted in each saved state for future robustness. Call site in `cmd_run()` (after `running_dir.mkdir()`, before `LockManager.acquire()`).
+
+**Closed** | Completed: 2026-05-09 | Priority: P3

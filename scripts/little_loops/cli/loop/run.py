@@ -93,7 +93,7 @@ def cmd_run(
 ) -> int:
     """Run a loop."""
     from little_loops.fsm.concurrency import LockManager
-    from little_loops.fsm.persistence import PersistentExecutor
+    from little_loops.fsm.persistence import PersistentExecutor, _reconcile_stale_runs
     from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
     from little_loops.fsm.validation import load_and_validate
 
@@ -203,6 +203,7 @@ def cmd_run(
     # parent in run_background(); plain foreground runs must write their own PID here.
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
+    _reconcile_stale_runs(loops_dir)
     if getattr(args, "foreground_internal", False):
         instance_id: str | None = getattr(args, "instance_id", None)
     else:
@@ -335,7 +336,7 @@ def cmd_run(
             else None
         )
         executor = PersistentExecutor(
-            fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id
+            fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id, pid=os.getpid()
         )
 
         # Register signal handlers for graceful shutdown

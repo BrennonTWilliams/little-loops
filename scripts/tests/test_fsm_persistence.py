@@ -13,6 +13,7 @@ from little_loops.fsm.persistence import (
     LoopState,
     PersistentExecutor,
     StatePersistence,
+    _reconcile_stale_runs,
     get_archived_events,
     get_loop_history,
     list_run_history,
@@ -2008,3 +2009,101 @@ class TestRateLimitRetriesPersistence:
 
         assert restored_counts[0] == {"execute": saved_record}
         assert restored_storm[0] == 2
+
+
+class TestReconcileStaleRuns:
+    """Tests for _reconcile_stale_runs() startup sweep (ENH-1399)."""
+
+    def _write_state(
+        self, running_dir: Path, instance_id: str, status: str, loop_name: str = "test-loop"
+    ) -> Path:
+        state = LoopState(
+            loop_name=loop_name,
+            current_state="run",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-01T00:00:00Z",
+            updated_at="",
+            status=status,
+        )
+        running_dir.mkdir(parents=True, exist_ok=True)
+        state_file = running_dir / f"{instance_id}.state.json"
+        state_file.write_text(json.dumps(state.to_dict()))
+        return state_file
+
+    def test_terminal_status_file_is_archived(self, tmp_path: Path) -> None:
+        """Files with terminal status are archived unconditionally."""
+        running_dir = tmp_path / ".running"
+        for status in ("completed", "failed", "interrupted", "timed_out"):
+            # Use status as loop_name so each run gets a unique history folder
+            instance_id = f"{status}-loop-20260101T120000"
+            self._write_state(running_dir, instance_id, status, loop_name=f"{status}-loop")
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 4
+        assert list(running_dir.glob("*.state.json")) == []
+        history_dirs = list((tmp_path / ".history").iterdir())
+        assert len(history_dirs) == 4
+
+    def test_dead_pid_file_is_archived(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Files with status=running and a dead PID are archived."""
+        monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: False)
+
+        running_dir = tmp_path / ".running"
+        instance_id = "myloop-20260101T120000"
+        state_file = self._write_state(running_dir, instance_id, "running")
+        pid_file = running_dir / f"{instance_id}.pid"
+        pid_file.write_text("99999")
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 1
+        assert not state_file.exists()
+        assert not pid_file.exists()
+
+    def test_live_pid_file_is_left_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Files with status=running and a live PID are not touched."""
+        monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+
+        running_dir = tmp_path / ".running"
+        instance_id = "myloop-20260101T120000"
+        state_file = self._write_state(running_dir, instance_id, "running")
+        pid_file = running_dir / f"{instance_id}.pid"
+        pid_file.write_text("12345")
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 0
+        assert state_file.exists()
+        assert pid_file.exists()
+
+    def test_missing_pid_file_running_left_alone(self, tmp_path: Path) -> None:
+        """Files with status=running and no .pid file are not touched."""
+        running_dir = tmp_path / ".running"
+        instance_id = "myloop-20260101T120000"
+        state_file = self._write_state(running_dir, instance_id, "running")
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 0
+        assert state_file.exists()
+
+    def test_empty_running_dir_is_noop(self, tmp_path: Path) -> None:
+        """An empty .running/ directory returns 0 with no errors."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True, exist_ok=True)
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 0
+
+    def test_missing_running_dir_is_noop(self, tmp_path: Path) -> None:
+        """A missing .running/ directory returns 0 with no errors."""
+        assert not (tmp_path / ".running").exists()
+        count = _reconcile_stale_runs(tmp_path)
+        assert count == 0

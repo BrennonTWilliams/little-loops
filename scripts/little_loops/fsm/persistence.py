@@ -111,6 +111,7 @@ class LoopState:
     # on any non-rate-limited state outcome. Persisted for resume durability.
     consecutive_rate_limit_exhaustions: int = 0
     active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
+    pid: int | None = None  # OS PID of the process that started this run (for reconciliation sweep)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -136,6 +137,8 @@ class LoopState:
             result["consecutive_rate_limit_exhaustions"] = self.consecutive_rate_limit_exhaustions
         if self.active_sub_loop is not None:
             result["active_sub_loop"] = self.active_sub_loop
+        if self.pid is not None:
+            result["pid"] = self.pid
         return result
 
     @classmethod
@@ -181,6 +184,7 @@ class LoopState:
             rate_limit_retries=migrated_rl,
             consecutive_rate_limit_exhaustions=data.get("consecutive_rate_limit_exhaustions", 0),
             active_sub_loop=data.get("active_sub_loop"),
+            pid=data.get("pid"),
         )
 
 
@@ -338,6 +342,68 @@ class StatePersistence:
         self.clear_events()
 
 
+def _reconcile_stale_runs(loops_dir: Path) -> int:
+    """Archive state files in .running/ that belong to dead or terminal processes.
+
+    Called at loop startup to clean up files left by crashed or interrupted runs.
+    Returns the count of archived files.
+
+    Strategy (mirrors LockManager.find_conflict() stale-lock cleanup):
+    - Terminal-status files (completed/failed/interrupted/timed_out) are archived
+      unconditionally — they are definitionally stale by invariant.
+    - status="running" files are checked via their sibling .pid file; archived
+      only if the PID is confirmed dead. No .pid file → leave alone (can't confirm).
+    """
+    running_dir = loops_dir / RUNNING_DIR
+    if not running_dir.exists():
+        return 0
+
+    terminal_statuses = {"completed", "failed", "interrupted", "timed_out"}
+    archived = 0
+
+    for state_file in running_dir.glob("*.state.json"):
+        try:
+            data = json.loads(state_file.read_text())
+            state = LoopState.from_dict(data)
+        except (json.JSONDecodeError, KeyError, OSError):
+            continue
+
+        is_stale = state.status in terminal_statuses
+
+        if not is_stale and state.status == "running":
+            stem = state_file.name.removesuffix(".state.json")
+            pid_file = running_dir / f"{stem}.pid"
+            if pid_file.exists():
+                try:
+                    pid = int(pid_file.read_text().strip())
+                    is_stale = not _process_alive(pid)
+                except (OSError, ValueError):
+                    pass
+
+        if not is_stale:
+            continue
+
+        stem = state_file.name.removesuffix(".state.json")
+        instance_id = stem if stem != state.loop_name else None
+        persistence = StatePersistence(
+            loop_name=state.loop_name,
+            loops_dir=loops_dir,
+            instance_id=instance_id,
+        )
+        try:
+            persistence.clear_all()
+            (running_dir / f"{stem}.pid").unlink(missing_ok=True)
+            archived += 1
+            logger.debug("Archived stale run: %s (status=%s)", stem, state.status)
+        except OSError as e:
+            logger.warning("Failed to archive stale run %s: %s", stem, e)
+
+    if archived:
+        logger.info("Reconciliation sweep archived %d stale run(s) from .running/", archived)
+
+    return archived
+
+
 class PersistentExecutor:
     """FSM Executor with state persistence and event streaming.
 
@@ -354,6 +420,7 @@ class PersistentExecutor:
         persistence: StatePersistence | None = None,
         loops_dir: Path | None = None,
         instance_id: str | None = None,
+        pid: int | None = None,
         **executor_kwargs: Any,
     ) -> None:
         """Initialize persistent executor.
@@ -363,6 +430,7 @@ class PersistentExecutor:
             persistence: Optional pre-configured persistence (for testing)
             loops_dir: Base directory for loops (default: .loops)
             instance_id: Optional unique instance identifier for file path scoping
+            pid: OS PID of the running process; stored in saved state for reconciliation
             **executor_kwargs: Additional kwargs for FSMExecutor
         """
         from little_loops.fsm.handoff_handler import HandoffBehavior, HandoffHandler
@@ -370,6 +438,7 @@ class PersistentExecutor:
 
         self.fsm = fsm
         self.loops_dir = loops_dir
+        self._run_pid = pid
         self.persistence = persistence or StatePersistence(
             fsm.name, loops_dir or Path(".loops"), instance_id=instance_id
         )
@@ -470,6 +539,7 @@ class PersistentExecutor:
             retry_counts=dict(self._executor._retry_counts),
             rate_limit_retries={k: dict(v) for k, v in self._executor._rate_limit_retries.items()},
             consecutive_rate_limit_exhaustions=(self._executor._consecutive_rate_limit_exhaustions),
+            pid=self._run_pid,
         )
         self.persistence.save_state(state)
 
