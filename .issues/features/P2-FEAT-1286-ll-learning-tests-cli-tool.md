@@ -265,6 +265,7 @@ _Added by `/ll:confidence-check` on 2026-05-07_
 - **Wiring test ordering matters**: Step 12/13 test updates (`"Authorize all 16"` → `"Authorize all 17"`) must be committed in the same pass as the `areas.md` change; a partial commit leaves CI broken.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:confidence-check` - 2026-05-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66fedda1-ffa8-4033-891f-bc6637778822.jsonl`
 - `/ll:wire-issue` - 2026-05-08T00:05:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ae4f34-19a1-41bc-a2ee-c2457df0be7a.jsonl`
 - `/ll:wire-issue` - 2026-05-07T23:55:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e50c3a4-d3cc-4388-b3d9-ee92668c57b0.jsonl`
@@ -279,3 +280,9 @@ _Added by `/ll:confidence-check` on 2026-05-07_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): **CLI doc ownership split with FEAT-1287.** FEAT-1286 owns CLI-surface documentation: `commands/help.md` and `docs/reference/CLI.md`. FEAT-1287 owns narrative/architecture documentation: README skill table row, CONTRIBUTING skills tree, `.claude/CLAUDE.md`, and `docs/ARCHITECTURE.md`. Do not duplicate doc touchpoints across both issues — implement CLI docs here and leave narrative docs to FEAT-1287.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-09): FEAT-1286 owns the README.md CLI tool count increment (line 90: `"17 CLI tools"` → `"18 CLI tools"`). FEAT-1287 owns the skill count increment (27→28) in the README skill table row. These must be implemented atomically: both count changes in the same PR, or FEAT-1286 lands first and FEAT-1287 applies after. Do NOT increment the CLI count in FEAT-1287 — it belongs here. The wiring tests (`TestFeat1045DocUpdates.test_readme_tool_count_is_17`, `TestFeat1229LlActionWiring.test_readme_tool_count_is_17`) must be updated in the same commit as the README change.

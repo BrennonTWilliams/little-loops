@@ -151,9 +151,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover relevant docs._
 `issue-model`, `sync-compatibility`, `schema`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:format-issue` - 2026-05-09T20:38:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf87852d-ec5b-4a4d-959f-57a040534f19.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
 
 ---
 
 **Open** | Created: 2026-05-09 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-09): The `epic:` relationship field defined in the canonical vocabulary table above maps to JIRA Epic Link / ADO parent Epic / Linear Project. However, the formal implementation of `epic:` field parsing, config-schema registration, and tooling wiring is owned by FEAT-1389 (Add EPIC as first-class issue type). ENH-1391 establishes the vocabulary entry and platform mapping; it must NOT implement `epic:` field parsing in `issue_manager.py` or register the field in `config-schema.json` — defer those to FEAT-1389. Add FEAT-1389 as a dependency when sequencing this issue.

@@ -87,4 +87,14 @@ Uses `ll-action` infrastructure or direct Anthropic SDK call.
 **Open** | Created: 2026-05-09 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Closed - Superseded
+- **Completed**: 2026-05-09
+- **Reason**: Superseded by ENH-1395 via conflict resolution audit
+- **Proposed change**: Auto-generation tooling scope merged into ENH-1395's "New Skill Checklist" policy framework to avoid parallel duplicate efforts addressing the same description-bloat problem. ENH-1395 now owns both the manual policy documentation and the `ll-generate-skill-descriptions` CLI tool.

@@ -6,7 +6,7 @@ captured_at: "2026-04-25T18:06:01Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
 depends_on: [FEAT-1282]
-blocked_by: [FEAT-1286]
+blocked_by: [FEAT-1286, ENH-1115]
 ---
 
 # FEAT-1283: `learning` FSM State for ll-loop
@@ -169,6 +169,7 @@ class LearningStateHandler:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -192,6 +193,12 @@ class LearningStateHandler:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `LearningStateHandler` is a Python module (`scripts/little_loops/fsm/learning_state.py`) and MUST use direct Python import — `from little_loops.learning_tests import read_record` — not shell out to the `ll-learning-tests` CLI. The CLI (FEAT-1286) exists specifically for non-Python callers (skills, Bash evaluators, FSM shell-type evaluators). Using the CLI from within the Python handler adds unnecessary subprocess overhead and goes against the intended interface split.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-09): `LearningStateHandler` is a Python-native FSM state handler — it is NOT a hook intent under FEAT-1116's hook-intent abstraction layer. FEAT-1116's intent system targets `PreToolUse`, `PostToolUse`, `PreCompact`, and `SessionStart` hooks. The learning state runs within the FSM loop engine (not as a hook), so it does not need a hook adapter and should not use FEAT-1116's `LLHookIntentExtension` protocol. The direct-Python-import constraint (note above) also applies here.
 
 ---
 

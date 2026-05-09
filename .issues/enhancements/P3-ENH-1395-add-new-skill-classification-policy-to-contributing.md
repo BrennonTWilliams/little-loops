@@ -85,4 +85,18 @@ Before adding a new skill, answer:
 **Open** | Created: 2026-05-09 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+
+---
+
+## Scope Addition
+
+**Source**: Merged from ENH-1397 during `/ll:audit-issue-conflicts` conflict resolution.
+
+ENH-1397 proposed a `ll-generate-skill-descriptions` CLI tool that auto-generates minimal (≤100 char) skill descriptions from SKILL.md content using Claude (claude-haiku-4-5). Both issues addressed the same description-bloat problem (ENH-1395 via policy, ENH-1397 via automation), so the tooling scope is absorbed here:
+
+- Add `ll-generate-skill-descriptions` CLI in `scripts/little_loops/cli/` as part of this issue's implementation
+- For each `skills/*/SKILL.md`: skip `disable-model-invocation: true` skills; extract trigger keywords and first 500 chars of body; call Claude API to generate a description of ≤100 chars; dry-run by default with `--apply` to write back to frontmatter
+- Register CLI entry point in `scripts/pyproject.toml`; mention as optional release utility in `CONTRIBUTING.md`
+- Uses `ll-action` infrastructure or direct Anthropic SDK call (claude-haiku-4-5 — cheap, fast, sufficient)
