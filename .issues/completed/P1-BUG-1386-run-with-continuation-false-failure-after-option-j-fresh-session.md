@@ -1,7 +1,15 @@
 ---
-captured_at: "2026-05-09T18:34:23Z"
-discovered_date: "2026-05-09"
+captured_at: '2026-05-09T18:34:23Z'
+completed_at: '2026-05-09T19:21:32Z'
+discovered_date: '2026-05-09'
 discovered_by: capture-issue
+decision_needed: false
+confidence_score: 98
+outcome_confidence: 88
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 18
 ---
 
 # BUG-1386: run_with_continuation false failure after Option J fresh session
@@ -49,6 +57,16 @@ Two interacting bugs:
 
 - **File**: `scripts/little_loops/issue_manager.py`
 - **Anchor**: `process_issue_inplace()` (~line 767)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verified line numbers and key behavioral notes:_
+
+- `run_with_continuation()` starts at **line 162**; Option J fires at line 275, Option E check at line 304; `run_claude_command()` main call at line 231
+- `process_issue_inplace()` starts at **line 441**; the `if result.returncode != 0:` failure branch is at line 767; `verify_issue_completed()` (Phase 3) is at line 815 — only reached when returncode == 0
+- Option E's inline `run_claude_command(..., resume_session=True)` call (line 325) is followed by an **unconditional `break`** (line 350), so the Option E result IS the return value of `run_with_continuation()` — no recovery path exists once Option E fires
+- `read_sentinel()` in `subprocess_utils.py:74` always **deletes the sentinel file on read** (even on JSON parse failure, returning `{}`). Change 1 must call it unconditionally so the sentinel is consumed whether or not `--continue` is skipped
+- **BUG-1385 interaction**: commit `a4581709` already changed `--resume` to `--continue` in `subprocess_utils.py`. The error in "Current Behavior" mentions `--resume`; verify whether `claude --continue -p` without a live session also emits a "valid session id" error before finalizing the exact TRANSIENT pattern string for Change 2
 
 ## Steps to Reproduce
 
@@ -125,6 +143,10 @@ if result.returncode != 0:
 - `scripts/little_loops/issue_manager.py`: `process_issue_inplace()` calls `run_with_continuation()` and `classify_failure()`
 - `scripts/ll_auto.py`, `scripts/ll_sprint.py`, `scripts/ll_parallel.py` — all call `process_issue_inplace()`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` — imports `FailureType` and `classify_failure` from `issue_lifecycle`; its `_route_from_verdict()` calls `classify_failure()` and then sub-checks the reason string for `"rate limit"`, `"quota"`, and `"api server error"`. The new TRANSIENT patterns added in Change 2 must not produce reason strings that match these sub-checks — **verify during Change 2 implementation** [Agent 2 finding]
+- `scripts/little_loops/cli/sprint/run.py` — calls `process_issue_inplace()` directly in two places in `_cmd_sprint_run()` (single-issue wave path and sequential retry path); consumes `result.success` and `result.was_blocked` from `IssueProcessingResult`. Change 3's early-completion guard must set these fields correctly before falling through to Phase 3 [Agent 1 + 2 finding]
+
 ### Similar Patterns
 
 - `classify_failure()` TRANSIENT patterns already handle other CLI errors — add alongside existing entries
@@ -136,6 +158,16 @@ if result.returncode != 0:
 - `scripts/tests/test_issue_lifecycle.py` — add test: "requires a valid session id" → TRANSIENT
 - `scripts/tests/test_issue_manager.py` — add test: Phase 2 returns non-zero but issue is in completed/ → success=True
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — additional files and verified test patterns:_
+
+- `scripts/little_loops/subprocess_utils.py` — contains `read_sentinel()` (line 74) and `SENTINEL_PATH` constant (line 39); not modified but must be understood to implement Change 1 correctly
+- `hooks/scripts/context-handoff-sentinel.sh` — the stop hook that writes the sentinel; context reference only, not modified
+- `scripts/little_loops/parallel/worker_pool.py` — also calls `run_claude_command(..., resume_session=True)` for its own sentinel handling (lines 658, 833); may have the same Bug 1 pattern but out of scope for this fix
+- **Test pattern for `classify_failure()`**: use `@pytest.mark.parametrize` with `(error_output, expected_type, expected_reason_contains)` tuples in `TestClassifyFailure` — existing tests in `test_issue_lifecycle.py` follow this pattern exactly; call `classify_failure(error_string, 1)` directly, no mocking needed
+- **Test pattern for `run_with_continuation()`**: use `patch("little_loops.issue_manager.run_claude_command", side_effect=mock_fn)` with `call_count = [0]` list-based counter; mock returns a `MagicMock` with `.returncode`, `.stdout`, `.stderr`
+
 ## Implementation Steps
 
 1. Add `_just_ran_fresh_session` flag to `run_with_continuation()` with read-reset at loop top and set before Option J `continue`
@@ -146,6 +178,13 @@ if result.returncode != 0:
 6. Run: `python -m pytest scripts/tests/test_issue_manager.py scripts/tests/test_issue_lifecycle.py -v`
 7. Run: `python -m mypy scripts/little_loops/issue_manager.py scripts/little_loops/issue_lifecycle.py && ruff check scripts/`
 8. Close BUG-1385 as a phantom (created by this bug)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be confirmed during implementation:_
+
+9. After Change 2 (adding TRANSIENT patterns to `classify_failure()`): read `scripts/little_loops/fsm/executor.py` `_route_from_verdict()` and confirm the new reason string returned for session-ID errors does **not** contain `"rate limit"`, `"quota"`, or `"api server error"` — these are the three sub-checks that trigger special FSM behavior. If the new TRANSIENT reason string inadvertently matches one, the FSM executor will misroute the failure.
+10. After Change 3 (early-completion guard in `process_issue_inplace()`): confirm the guard sets `result.success` and `result.was_blocked` correctly on `IssueProcessingResult` before falling through to Phase 3 — `scripts/little_loops/cli/sprint/run.py` consumes these fields in `_cmd_sprint_run()` for both the wave loop and the retry path.
 
 ## Impact
 
@@ -161,9 +200,39 @@ if result.returncode != 0:
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-09T19:16:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be0a1a58-b441-423c-ac63-6b95b8d202d8.jsonl`
+- `/ll:confidence-check` - 2026-05-09T19:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74934402-9185-4d2c-b4f5-6effe7ad4f01.jsonl`
+- `/ll:wire-issue` - 2026-05-09T19:11:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cb43288-7f7b-434b-84c3-cc9862e698c4.jsonl`
+- `/ll:refine-issue` - 2026-05-09T19:07:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6131c72-61a5-49c5-89ad-38eb1d540620.jsonl`
 - `/ll:capture-issue` - 2026-05-09T18:34:23Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c15bfca8-55be-4e09-8bb8-b49543257890.jsonl`
 
 ---
 
+## Resolution
+
+**Status: Completed** | Fixed: 2026-05-09
+
+### Changes Made
+
+**`scripts/little_loops/issue_manager.py`**
+- `run_with_continuation()`: Added `_just_ran_fresh_session` flag (set before Option J `continue`, consumed at the top of the next iteration as `this_is_fresh`). Option E now always calls `read_sentinel()` to consume the file, but skips the `--continue` call when `this_is_fresh=True`.
+- `process_issue_inplace()`: Added early-completion guard before `create_issue_from_failure()`—if the issue file is already in `.issues/completed/`, synthesizes a returncode=0 result and falls through to Phase 3 instead of returning a failure.
+
+**`scripts/little_loops/issue_lifecycle.py`**
+- `classify_failure()`: Added TRANSIENT patterns for `"requires a valid session id"` and `"requires a valid session title"` — returns `"CLI session continuation error"` reason, which does not match the FSM executor's rate-limit/quota/api-server sub-checks.
+
+**`scripts/tests/test_issue_manager.py`**
+- `TestRunWithContinuation.test_option_j_fresh_session_skips_option_e`: verifies Option J + sentinel → no `--continue` call, returncode 0 returned.
+- `TestFailureClassification.test_early_completion_guard_when_issue_already_in_completed`: verifies non-zero Phase 2 exit with issue in completed/ → `success=True`, no phantom issue created.
+
+**`scripts/tests/test_issue_lifecycle.py`**
+- Added two parametrized cases to `TestClassifyFailure.test_classify_failure_patterns` for `--resume`/`--continue` session-ID errors → TRANSIENT.
+
+### Verification
+
+- `python -m pytest scripts/tests/test_issue_manager.py scripts/tests/test_issue_lifecycle.py`: 180/180 passed
+- `ruff check`: all checks passed
+- `python -m mypy`: no issues found
+
 ## Status
-**Open** | Created: 2026-05-09 | Priority: P1
+**Completed** | Created: 2026-05-09 | Resolved: 2026-05-09 | Priority: P1

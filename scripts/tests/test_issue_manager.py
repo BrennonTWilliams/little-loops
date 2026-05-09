@@ -1373,6 +1373,72 @@ class TestRunWithContinuation:
         data = _json.loads(sentinel_file.read_text())
         assert data["usage_percent"] == 65
 
+    def test_option_j_fresh_session_skips_option_e(self, temp_project_dir: Path) -> None:
+        """BUG-1386: after Option J fires a fresh session, Option E must NOT call --continue.
+
+        Scenario: initial session hits 95% context → Option J spawns fresh session →
+        fresh session completes (returncode 0) and its stop hook writes a sentinel →
+        run_with_continuation must return the fresh session's returncode=0 without
+        making a second --continue call.
+        """
+        from little_loops.issue_manager import run_with_continuation
+        from little_loops.subprocess_utils import SENTINEL_PATH
+
+        mock_logger = MagicMock()
+
+        # Sentinel file that the fresh session's stop hook would have written
+        sentinel_file = temp_project_dir / SENTINEL_PATH
+        sentinel_file.parent.mkdir(parents=True, exist_ok=True)
+
+        overflow_result = MagicMock()
+        overflow_result.returncode = 1
+        overflow_result.stdout = "Partial work"
+        overflow_result.stderr = ""
+        overflow_result.args = ["claude"]
+
+        fresh_result = MagicMock()
+        fresh_result.returncode = 0
+        fresh_result.stdout = "Issue implemented and committed"
+        fresh_result.stderr = ""
+        fresh_result.args = ["claude"]
+
+        call_count = [0]
+        resume_called = [False]
+
+        def mock_run(command: str, *args, **kwargs):
+            call_count[0] += 1
+            on_usage = kwargs.get("on_usage")
+            if call_count[0] == 1:
+                # First call: overflow → triggers Option J
+                if on_usage:
+                    on_usage(190_000, 10_000)  # 200K = 100% of 200K
+                return overflow_result
+            # Second call: fresh guillotine session — write sentinel to simulate stop hook
+            sentinel_file.write_text('{"usage_percent": 63}')
+            if kwargs.get("resume_session"):
+                resume_called[0] = True
+            return fresh_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                result = run_with_continuation(
+                    "/ll:manage-issue bug fix BUG-1386",
+                    mock_logger,
+                    repo_path=temp_project_dir,
+                    max_continuations=3,
+                    context_limit=200_000,
+                    guillotine_threshold=0.90,
+                )
+
+        # Fresh session completed successfully — result should be success
+        assert result.returncode == 0, "Should return fresh session's returncode"
+        # Option E must NOT have called --continue (resume_session=True)
+        assert not resume_called[0], "Option E must not call --continue after Option J fresh session"
+        # run_claude_command called exactly twice: initial session + guillotine fresh session
+        assert call_count[0] == 2, f"Expected 2 calls, got {call_count[0]}"
+        # Sentinel was consumed (file should be gone after read_sentinel)
+        assert not sentinel_file.exists(), "Sentinel should have been consumed by read_sentinel"
+
 
 class TestReadyIssueErrorHandling:
     """Tests for error handling during ready-issue phase (ENH-207)."""
@@ -1854,6 +1920,54 @@ class TestFailureClassification:
                     ):
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
                         assert not result.success
+
+
+    def test_early_completion_guard_when_issue_already_in_completed(
+        self, mock_config: BRConfig, sample_issue: IssueInfo, temp_project_dir: Path
+    ) -> None:
+        """BUG-1386 Change 3: non-zero Phase 2 exit is treated as success when
+        the issue has already been moved to .issues/completed/."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        # Place the completed issue file where the guard will find it
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        completed_file = completed_dir / f"P1-{sample_issue.issue_id}-done.md"
+        completed_file.write_text("# completed")
+
+        ready_output = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+        ready_result = MagicMock(returncode=0, stdout=ready_output, stderr="")
+
+        # Implementation exited non-zero (e.g., spurious --continue failure)
+        impl_result = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Error: --continue requires a valid session title when used with --print.",
+            args=[],
+        )
+
+        call_count = [0]
+
+        def mock_run(*args, **kwargs):
+            call_count[0] += 1
+            return ready_result if call_count[0] == 1 else impl_result
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                with patch(
+                    "little_loops.issue_manager.verify_issue_completed", return_value=True
+                ):
+                    with patch(
+                        "little_loops.issue_manager.create_issue_from_failure"
+                    ) as mock_create:
+                        result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        # No phantom issue should be created
+        mock_create.assert_not_called()
+        # Result should be success (issue was already completed)
+        assert result.success
 
 
 class TestFallbackVerification:

@@ -151,6 +151,15 @@ def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, s
     if any(pattern in error_lower for pattern in context_patterns):
         return (FailureType.TRANSIENT, "Context window exhausted")
 
+    # CLI session continuation errors — --continue/--resume without a live session.
+    # Treated as transient so a failed Option E call does not produce phantom issues.
+    session_id_patterns = [
+        "requires a valid session id",
+        "requires a valid session title",
+    ]
+    if any(pattern in error_lower for pattern in session_id_patterns):
+        return (FailureType.TRANSIENT, "CLI session continuation error")
+
     # Default: treat as real failure
     return (FailureType.REAL, "Implementation error")
 

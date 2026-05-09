@@ -220,6 +220,9 @@ def run_with_continuation(
     _last_input: list[int] = [0]
     _last_output: list[int] = [0]
     _external_on_usage = on_usage
+    # Flag set when Option J fires; consumed in the NEXT iteration so Option E
+    # knows to consume the sentinel without attempting --continue.
+    _just_ran_fresh_session = False
 
     def _tracking_usage(input_tokens: int, output_tokens: int) -> None:
         _last_input[0] = input_tokens
@@ -228,6 +231,8 @@ def run_with_continuation(
             _external_on_usage(input_tokens, output_tokens)
 
     while continuation_count <= max_continuations:
+        this_is_fresh = _just_ran_fresh_session
+        _just_ran_fresh_session = False
         result = run_claude_command(
             current_command,
             logger,
@@ -296,13 +301,18 @@ def run_with_continuation(
             # Reset per-round usage tracking for the fresh session
             _last_input[0] = 0
             _last_output[0] = 0
+            _just_ran_fresh_session = True
             continue
 
         # Option E: read sentinel from a PREVIOUS session (written by the Stop hook or by
         # G-path in the preceding iteration).  Must run BEFORE G writes the current-session
         # sentinel so we don't immediately consume what we just wrote.
         sentinel_data = read_sentinel(repo_path)
-        if sentinel_data is not None and continuation_count < max_continuations:
+        if sentinel_data is not None and this_is_fresh:
+            # The sentinel was written by the guillotine fresh session that just finished.
+            # The work is already done; do not attempt --continue.
+            logger.info("Fresh session wrote sentinel; consumed without --continue (work already done)")
+        elif sentinel_data is not None and continuation_count < max_continuations:
             usage_pct = sentinel_data.get("usage_percent", int(usage_ratio * 100))
             logger.info(
                 f"Sentinel detected ({usage_pct}% context used): "
@@ -765,47 +775,60 @@ def process_issue_inplace(
 
     # Handle implementation failure
     if result.returncode != 0:
-        error_output = result.stderr or result.stdout or "Unknown error"
-        failure_type, failure_reason_text = classify_failure(error_output, result.returncode)
+        # Guard: if the issue was already moved to completed/ by the subprocess
+        # (e.g., a guillotine fresh session that finished and then triggered a
+        # spurious Option E --continue failure), treat as success so Phase 3 runs.
+        _completed_dir = (config.repo_path or Path.cwd()) / ".issues" / "completed"
+        if any(_completed_dir.glob(f"*{info.issue_id}*.md")):
+            logger.warning(
+                f"Phase 2 exited non-zero but {info.issue_id} is already in completed/; "
+                "treating as success (continuation artefact)"
+            )
+            result = subprocess.CompletedProcess(
+                args=result.args, returncode=0, stdout=result.stdout, stderr=result.stderr
+            )
+        else:
+            error_output = result.stderr or result.stdout or "Unknown error"
+            failure_type, failure_reason_text = classify_failure(error_output, result.returncode)
 
-        if failure_type == FailureType.TRANSIENT:
-            # Transient failure - log but don't create bug issue
-            logger.warning(f"Transient failure for {info.issue_id}: {failure_reason_text}")
-            logger.warning("Not creating bug issue - this is a temporary error")
-            logger.info("Error output (first 500 chars):")
-            logger.info(error_output[:500])
+            if failure_type == FailureType.TRANSIENT:
+                # Transient failure - log but don't create bug issue
+                logger.warning(f"Transient failure for {info.issue_id}: {failure_reason_text}")
+                logger.warning("Not creating bug issue - this is a temporary error")
+                logger.info("Error output (first 500 chars):")
+                logger.info(error_output[:500])
+
+                return IssueProcessingResult(
+                    success=False,
+                    duration=time.time() - issue_start_time,
+                    issue_id=info.issue_id,
+                    failure_reason=f"Transient: {failure_reason_text}",
+                    corrections=corrections,
+                )
+
+            # Real failure - create issue as before
+            logger.error(f"Implementation failed for {info.issue_id}")
+
+            failure_reason = ""
+            if not dry_run:
+                # Create new issue for the failure
+                new_issue = create_issue_from_failure(
+                    error_output,
+                    info,
+                    config,
+                    logger,
+                )
+                failure_reason = str(new_issue) if new_issue else error_output
+            else:
+                logger.info("Would create new bug issue for this failure")
 
             return IssueProcessingResult(
                 success=False,
                 duration=time.time() - issue_start_time,
                 issue_id=info.issue_id,
-                failure_reason=f"Transient: {failure_reason_text}",
+                failure_reason=failure_reason,
                 corrections=corrections,
             )
-
-        # Real failure - create issue as before
-        logger.error(f"Implementation failed for {info.issue_id}")
-
-        failure_reason = ""
-        if not dry_run:
-            # Create new issue for the failure
-            new_issue = create_issue_from_failure(
-                error_output,
-                info,
-                config,
-                logger,
-            )
-            failure_reason = str(new_issue) if new_issue else error_output
-        else:
-            logger.info("Would create new bug issue for this failure")
-
-        return IssueProcessingResult(
-            success=False,
-            duration=time.time() - issue_start_time,
-            issue_id=info.issue_id,
-            failure_reason=failure_reason,
-            corrections=corrections,
-        )
 
     # Phase 3: Verify completion
     logger.info(f"Phase 3: Verifying {info.issue_id} completion...")

@@ -788,6 +788,17 @@ class TestClassifyFailure:
             ("Context length exceeded for model claude-3-opus", "TRANSIENT", "context"),
             ("Error: context window limit reached", "TRANSIENT", "context"),
             ("Maximum context exceeded", "TRANSIENT", "context"),
+            # CLI session continuation errors (BUG-1386)
+            (
+                "Error: --resume requires a valid session ID or session title when used with --print.",
+                "TRANSIENT",
+                "session",
+            ),
+            (
+                "Error: --continue requires a valid session title when used with --print.",
+                "TRANSIENT",
+                "session",
+            ),
             # Real failure patterns
             ("SyntaxError: unexpected token at line 42", "REAL", "implementation"),
             (
