@@ -1,0 +1,184 @@
+{
+  "_meta": {
+    "name": "Epic Section Definitions",
+    "description": "Section requirements for EPIC issue type. Epics are parent containers that coordinate multiple child issues toward a shared goal.",
+    "version": "2.0",
+    "changelog": "2.0 - Initial EPIC type template",
+    "type": "EPIC"
+  },
+  "common_sections": {
+    "Summary": {
+      "required": true,
+      "description": "Clear description of the epic's overarching objective",
+      "ai_usage": "HIGH",
+      "creation_template": "[Description extracted from input]"
+    },
+    "Motivation": {
+      "required": false,
+      "description": "Why this epic matters - business value, user impact, or strategic initiative",
+      "ai_usage": "MEDIUM",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Explain why this matters to users or the project",
+        "Quantify impact where possible",
+        "Connect to strategic goals or product direction"
+      ],
+      "creation_template": "[Why this epic matters - business value, user impact, strategic goal]"
+    },
+    "Integration Map": {
+      "required": false,
+      "description": "Systems and modules affected across all child issues",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Identify shared infrastructure touched by multiple children",
+        "Note cross-cutting concerns (auth, logging, config)",
+        "List shared test infrastructure",
+        "Use N/A for categories with no changes, don't leave blank"
+      ],
+      "creation_template": "### Files to Modify\n- TBD - requires codebase analysis\n\n### Dependent Files (Callers/Importers)\n- TBD - use grep to find references\n\n### Tests\n- TBD - identify shared test infrastructure\n\n### Documentation\n- TBD - docs that need updates"
+    },
+    "Impact": {
+      "required": true,
+      "description": "Priority, effort, and risk assessment across the full epic scope",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Include justification for priority (why P0? why P2?)",
+        "Estimate total effort across all children",
+        "Explain risk level considering aggregate change surface"
+      ],
+      "creation_template": "- **Priority**: [P0-P5] - [Justification]\n- **Effort**: [Small/Medium/Large] - [Justification]\n- **Risk**: [Low/Medium/High] - [Justification]\n- **Breaking Change**: [Yes/No]"
+    },
+    "Related Key Documentation": {
+      "required": false,
+      "description": "Links to relevant project documentation",
+      "ai_usage": "LOW",
+      "human_value": "MEDIUM",
+      "creation_template": "_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._"
+    },
+    "Labels": {
+      "required": true,
+      "description": "Issue categorization labels",
+      "ai_usage": "MEDIUM",
+      "human_value": "LOW",
+      "creation_template": "`epic`, `captured`"
+    },
+    "Session Log": {
+      "required": false,
+      "description": "Links to Claude Code JSONL session files involved in this epic's lifecycle",
+      "ai_usage": "LOW",
+      "human_value": "MEDIUM",
+      "creation_template": ""
+    },
+    "Status": {
+      "required": true,
+      "description": "Current issue status footer",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "creation_template": "**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]"
+    }
+  },
+  "type_sections": {
+    "Goal": {
+      "level": "required",
+      "description": "The overarching objective this epic delivers",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "What is the overarching objective this epic delivers?",
+      "quality_guidance": [
+        "State the end-state clearly: what is true when this epic is done?",
+        "Connect to user or product benefit",
+        "Avoid listing child issues here — that belongs in Children"
+      ]
+    },
+    "Scope": {
+      "level": "required",
+      "description": "What is explicitly in scope and out of scope for this epic",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "What is in scope and what is explicitly out of scope?",
+      "quality_guidance": [
+        "List what IS included to set expectations",
+        "List what is NOT included to prevent scope creep",
+        "If a child issue handles a specific slice, note it here"
+      ]
+    },
+    "Children": {
+      "level": "required",
+      "description": "Member issue IDs that make up this epic",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "Which child issues are members of this epic?",
+      "quality_guidance": [
+        "List each child as a bullet: - FEAT-NNN: short title",
+        "Group by phase or dependency order if helpful",
+        "Update as new children are captured or completed"
+      ]
+    },
+    "Success Metrics": {
+      "level": "conditional",
+      "description": "Measurable outcomes that indicate the epic is complete and successful",
+      "ai_usage": "MEDIUM",
+      "human_value": "HIGH",
+      "question": "How will you know this epic is successful?",
+      "quality_guidance": [
+        "Prefer quantitative metrics (X% coverage, all N children done, 0 regressions)",
+        "Include acceptance tests or integration test scenarios",
+        "Consider both functional and non-functional criteria"
+      ]
+    }
+  },
+  "creation_variants": {
+    "full": {
+      "description": "Complete epic template with all applicable sections",
+      "include_common": [
+        "Summary",
+        "Motivation",
+        "Integration Map",
+        "Impact",
+        "Related Key Documentation",
+        "Labels",
+        "Status"
+      ],
+      "include_type_sections": true,
+      "exclude_deprecated": false
+    },
+    "minimal": {
+      "description": "Lightweight template with core sections only",
+      "include_common": [
+        "Summary",
+        "Impact",
+        "Status"
+      ],
+      "include_type_sections": false,
+      "exclude_deprecated": true
+    },
+    "legacy": {
+      "description": "Backward compatible template",
+      "include_common": [
+        "Summary",
+        "Motivation",
+        "Impact",
+        "Related Key Documentation",
+        "Labels",
+        "Status"
+      ],
+      "include_type_sections": true,
+      "exclude_deprecated": false
+    }
+  },
+  "quality_checks": {
+    "EPIC": [
+      "Goal should state the end-state clearly, not list child issues",
+      "Scope should have explicit in-scope and out-of-scope lists",
+      "Children should list all member issue IDs with short titles",
+      "Success Metrics should include quantitative criteria where possible"
+    ],
+    "common": [
+      "Impact must include justifications for priority, effort, and risk assessments",
+      "Integration Map should identify shared infrastructure across children",
+      "Integration Map should use 'N/A' for categories with no changes, not leave them as 'TBD'"
+    ]
+  }
+}

@@ -157,6 +157,11 @@ class TestOrangeDefaultColors:
 
         assert TYPE_COLOR["BUG"] == "38;5;208"
 
+    def test_type_epic_has_color(self) -> None:
+        from little_loops.cli.output import TYPE_COLOR
+
+        assert TYPE_COLOR["EPIC"] == "35"
+
 
 class TestConfigureOutput:
     """Tests for configure_output() function."""
@@ -169,7 +174,7 @@ class TestConfigureOutput:
         m.PRIORITY_COLOR.update(
             {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
         )
-        m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34"})
+        m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"})
 
     def teardown_method(self) -> None:
         """Restore defaults after each test."""
@@ -179,7 +184,7 @@ class TestConfigureOutput:
         m.PRIORITY_COLOR.update(
             {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
         )
-        m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34"})
+        m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"})
 
     def test_configure_none_uses_tty_and_no_color_check(self) -> None:
         """configure_output(None) sets _USE_COLOR based on TTY and NO_COLOR."""

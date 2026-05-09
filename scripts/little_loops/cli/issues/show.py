@@ -54,14 +54,14 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     priority: str | None = None
 
     # Try P-TYPE-NNN format (e.g., P3-FEAT-518)
-    m = re.match(r"^(P\d)-(BUG|FEAT|ENH)-(\d+)$", user_input, re.IGNORECASE)
+    m = re.match(r"^(P\d)-(BUG|FEAT|ENH|EPIC)-(\d+)$", user_input, re.IGNORECASE)
     if m:
         priority = m.group(1).upper()
         type_prefix = m.group(2).upper()
         numeric_id = m.group(3)
     else:
         # Try TYPE-NNN format (e.g., FEAT-518)
-        m = re.match(r"^(BUG|FEAT|ENH)-(\d+)$", user_input, re.IGNORECASE)
+        m = re.match(r"^(BUG|FEAT|ENH|EPIC)-(\d+)$", user_input, re.IGNORECASE)
         if m:
             type_prefix = m.group(1).upper()
             numeric_id = m.group(2)
@@ -119,7 +119,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     priority = priority_match.group(1) if priority_match else None
 
     # Extract type and ID from filename (e.g., FEAT-518)
-    type_id_match = re.search(r"(BUG|FEAT|ENH)-(\d+)", filename)
+    type_id_match = re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", filename)
     issue_id = f"{type_id_match.group(1)}-{type_id_match.group(2)}" if type_id_match else None
 
     # Extract title from content

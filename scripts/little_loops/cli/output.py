@@ -42,6 +42,7 @@ TYPE_COLOR: dict[str, str] = {
     "BUG": "38;5;208",
     "FEAT": "32",
     "ENH": "34",
+    "EPIC": "35",
 }
 
 
@@ -83,6 +84,7 @@ def configure_output(config: CliConfig | None = None) -> None:
             "BUG": config.colors.type.BUG,
             "FEAT": config.colors.type.FEAT,
             "ENH": config.colors.type.ENH,
+            "EPIC": config.colors.type.EPIC,
         }
     )
 

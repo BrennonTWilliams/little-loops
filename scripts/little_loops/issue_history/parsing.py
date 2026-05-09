@@ -48,7 +48,7 @@ def parse_completed_issue(
         priority = priority_match.group(1)
 
     # Match type and ID
-    type_match = re.search(r"(BUG|ENH|FEAT)-(\d+)", filename)
+    type_match = re.search(r"(BUG|ENH|FEAT|EPIC)-(\d+)", filename)
     if type_match:
         issue_type = type_match.group(1)
         issue_id = f"{type_match.group(1)}-{type_match.group(2)}"
@@ -482,7 +482,7 @@ def scan_active_issues(
 
             # Extract type
             issue_type = "UNKNOWN"
-            type_match = re.search(r"(BUG|ENH|FEAT)", filename)
+            type_match = re.search(r"(BUG|ENH|FEAT|EPIC)", filename)
             if type_match:
                 issue_type = type_match.group(1)
 

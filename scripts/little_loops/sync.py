@@ -293,7 +293,7 @@ class GitHubSyncManager:
             Issue ID (e.g., BUG-123)
         """
         # Pattern: P[0-5]-TYPE-NNN-description.md
-        match = re.search(r"(BUG|FEAT|ENH)-(\d+)", filename)
+        match = re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", filename)
         if match:
             return f"{match.group(1)}-{match.group(2)}"
         return ""
@@ -1078,7 +1078,7 @@ class GitHubSyncManager:
             completed_dir = self.config.get_completed_dir()
             if issue_path.parent == completed_dir:
                 type_prefix = issue_id.split("-")[0]
-                category_map = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
+                category_map = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements", "EPIC": "epics"}
                 category = category_map.get(type_prefix)
                 if category:
                     target_dir = self.config.get_issue_dir(category)

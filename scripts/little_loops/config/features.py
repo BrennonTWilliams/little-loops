@@ -14,6 +14,7 @@ REQUIRED_CATEGORIES: dict[str, dict[str, str]] = {
     "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
     "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
     "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+    "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
 }
 
 # Default categories (same as required by default, could include optional defaults)
@@ -329,7 +330,12 @@ class GitHubSyncConfig:
 
     repo: str | None = None
     label_mapping: dict[str, str] = field(
-        default_factory=lambda: {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement"}
+        default_factory=lambda: {
+            "BUG": "bug",
+            "FEAT": "enhancement",
+            "ENH": "enhancement",
+            "EPIC": "epic",
+        }
     )
     priority_labels: bool = True
     sync_completed: bool = False
@@ -343,7 +349,8 @@ class GitHubSyncConfig:
         return cls(
             repo=data.get("repo"),
             label_mapping=data.get(
-                "label_mapping", {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement"}
+                "label_mapping",
+                {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement", "EPIC": "epic"},
             ),
             priority_labels=data.get("priority_labels", True),
             sync_completed=data.get("sync_completed", False),

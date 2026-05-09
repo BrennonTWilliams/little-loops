@@ -72,7 +72,7 @@ class TestIssueInfoProperties:
 
     @given(
         path=st.text(min_size=1, max_size=100).map(Path),
-        issue_type=st.sampled_from(["bugs", "features", "enhancements"]),
+        issue_type=st.sampled_from(["bugs", "features", "enhancements", "epics"]),
         priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]),
         issue_id=st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True),
         title=st.text(min_size=1, max_size=200),
@@ -273,7 +273,7 @@ class TestIssueInfoWithProductImpactProperties:
 
     @given(
         path=st.text(min_size=1, max_size=100).map(Path),
-        issue_type=st.sampled_from(["bugs", "features", "enhancements"]),
+        issue_type=st.sampled_from(["bugs", "features", "enhancements", "epics"]),
         priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]),
         issue_id=st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True),
         title=st.text(min_size=1, max_size=200),
@@ -337,7 +337,7 @@ class TestIssueInfoWithProductImpactProperties:
 
     @given(
         path=st.text(min_size=1, max_size=100).map(Path),
-        issue_type=st.sampled_from(["bugs", "features", "enhancements"]),
+        issue_type=st.sampled_from(["bugs", "features", "enhancements", "epics"]),
         priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]),
         issue_id=st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True),
         title=st.text(min_size=1, max_size=200),

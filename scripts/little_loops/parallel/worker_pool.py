@@ -995,9 +995,9 @@ class WorkerPool:
             True if the file contains a different issue ID (belongs to another worker),
             False if the file contains the current issue ID or no recognizable issue ID
         """
-        # Pattern matches common issue ID formats: BUG-123, ENH-456, FEAT-789
+        # Pattern matches common issue ID formats: BUG-123, ENH-456, FEAT-789, EPIC-001
         # Use non-capturing group (?:...) so findall returns full match, not group
-        matches = re.findall(r"(?:bug|enh|feat)-\d+", file_lower)
+        matches = re.findall(r"(?:bug|enh|feat|epic)-\d+", file_lower)
 
         if not matches:
             # No issue ID found - file doesn't belong to any specific worker

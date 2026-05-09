@@ -49,7 +49,7 @@ ISSUES_BASE_DIR=$(jq -r '.issues.base_dir // ".issues"' "$LL_CONFIG_FILE" 2>/dev
 # Extract filename and bare issue integer (e.g., 1364 from P2-BUG-1364-title.md)
 FILENAME=$(basename "$FILE_PATH")
 
-ISSUE_NUM=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | grep -oE '[0-9]{3,}' | head -1 || true)
+ISSUE_NUM=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]{3,}' | grep -oE '[0-9]{3,}' | head -1 || true)
 [ -z "$ISSUE_NUM" ] && exit 0
 
 # Find issues directory (absolute or relative path handling)
@@ -68,7 +68,7 @@ DUPLICATE=$(find "$ISSUES_DIR" -name "*.md" -type f -print0 2>/dev/null | \
     while IFS= read -r -d '' f; do
         [ "$f" = "$FILE_PATH" ] && continue
         BASENAME=$(basename "$f")
-        if echo "$BASENAME" | grep -qE "(^|[-_])(BUG|FEAT|ENH)-${ISSUE_NUM}([-_.]|$)"; then
+        if echo "$BASENAME" | grep -qE "(^|[-_])(BUG|FEAT|ENH|EPIC)-${ISSUE_NUM}([-_.]|$)"; then
             printf '%s' "$f"
             break
         fi

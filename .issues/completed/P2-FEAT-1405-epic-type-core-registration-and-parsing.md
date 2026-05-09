@@ -5,6 +5,7 @@ priority: P2
 status: open
 parent_issue: FEAT-1389
 captured_at: '2026-05-09T00:00:00Z'
+completed_at: '2026-05-09T22:51:58Z'
 discovered_date: '2026-05-09'
 confidence_score: 100
 outcome_confidence: 60
@@ -274,6 +275,7 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 - **IssueInfo change surface (21+ importers)**: Adding `epic: str | None = None` is backward-compatible, but `to_dict()` (~line 263) and `from_dict()` (~line 300) are explicit field-by-field maps — verify both are updated before running any parser tests. Use the pre-written `test_epic_roundtrip` as your integration signal.
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-05-09T22:52:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
 - `/ll:ready-issue` - 2026-05-09T22:38:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556bec38-41e8-423e-be05-a8efa32eee62.jsonl`
 - `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a11adf41-8e63-4023-93fa-bc93379326a7.jsonl`
 - `/ll:confidence-check` - 2026-05-09T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43665bb5-b08a-4083-80d6-5bfcdabc4d8c.jsonl`
@@ -285,4 +287,18 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 
 ---
 
-**Open** | Created: 2026-05-09 | Priority: P2
+**Completed** | Created: 2026-05-09 | Priority: P2 | Completed: 2026-05-09
+
+## Resolution
+
+All steps from the Proposed Solution implemented:
+- Registered `EPIC` in `REQUIRED_CATEGORIES` with prefix/dir/action
+- Created `.issues/epics/.gitkeep` and `templates/epic-sections.json`
+- Extended `_NORMALIZED_RE` and `_ISSUE_TYPE_RE` in `issue_parser.py`
+- Extended regexes in `cli/issues/show.py` (3), `sync.py` (1), hooks (4)
+- Added `epic: str | None = None` to `IssueInfo` with `to_dict`/`from_dict`/`parse_file` wiring
+- Added `"EPIC"` to `VALID_ISSUE_TYPES` in `cli_args.py`
+- Added `EPIC: str = "35"` to `CliColorsTypeConfig` and `configure_output()`
+- Updated `GitHubSyncConfig.label_mapping` default with `"EPIC": "epic"`
+- Fixed `issue_history/parsing.py` and `parallel/worker_pool.py` regex wiring
+- All 529 tests pass

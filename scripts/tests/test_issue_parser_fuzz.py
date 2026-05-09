@@ -99,12 +99,12 @@ def issue_filename(draw: st.DrawFn) -> str:
 
     if structure == "standard":
         priority = draw(st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5", "PX", "P999"]))
-        issue_type = draw(st.sampled_from(["BUG", "FEAT", "ENH", "XXX"]))
+        issue_type = draw(st.sampled_from(["BUG", "FEAT", "ENH", "EPIC", "XXX"]))
         number = draw(st.integers(min_value=0, max_value=9999))
         title = draw(st.text(min_size=0, max_size=100))
         return f"{priority}-{issue_type}-{number}-{title}.md"
     elif structure == "no_priority":
-        issue_type = draw(st.sampled_from(["BUG", "FEAT", "ENH"]))
+        issue_type = draw(st.sampled_from(["BUG", "FEAT", "ENH", "EPIC"]))
         number = draw(st.integers(min_value=0, max_value=9999))
         title = draw(st.text(min_size=0, max_size=100))
         return f"{issue_type}-{number}-{title}.md"

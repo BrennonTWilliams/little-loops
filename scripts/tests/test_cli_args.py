@@ -154,8 +154,13 @@ class TestParseIssueTypes:
 
     def test_all_types(self) -> None:
         """All valid types are accepted."""
-        result = parse_issue_types("BUG,FEAT,ENH")
-        assert result == {"BUG", "FEAT", "ENH"}
+        result = parse_issue_types("BUG,FEAT,ENH,EPIC")
+        assert result == {"BUG", "FEAT", "ENH", "EPIC"}
+
+    def test_parse_epic_type(self) -> None:
+        """EPIC type is accepted and uppercased."""
+        result = parse_issue_types("epic")
+        assert result == {"EPIC"}
 
     def test_whitespace_handling(self) -> None:
         """Whitespace around types is stripped."""
@@ -179,8 +184,8 @@ class TestValidIssueTypes:
     """Tests for VALID_ISSUE_TYPES constant."""
 
     def test_contains_expected_types(self) -> None:
-        """Contains BUG, FEAT, and ENH."""
-        assert VALID_ISSUE_TYPES == {"BUG", "FEAT", "ENH"}
+        """Contains BUG, FEAT, ENH, and EPIC."""
+        assert VALID_ISSUE_TYPES == {"BUG", "FEAT", "ENH", "EPIC"}
 
 
 class TestAddTypeArg:

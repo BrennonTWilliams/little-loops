@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
 
 
-_NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$")
-_ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH)-")
+_NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$")
+_ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH|EPIC)-")
 
 
 def is_normalized(filename: str) -> bool:
@@ -37,7 +37,7 @@ def is_normalized(filename: str) -> bool:
         filename: The basename of the issue file (e.g. 'P2-BUG-010-my-issue.md').
 
     Returns:
-        True if the filename matches ``^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\\.md$``.
+        True if the filename matches ``^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\\.md$``.
     """
     return bool(_NORMALIZED_RE.match(filename))
 
@@ -234,6 +234,7 @@ class IssueInfo:
     blocked_by: list[str] = field(default_factory=list)
     blocks: list[str] = field(default_factory=list)
     discovered_by: str | None = None
+    epic: str | None = None
     product_impact: ProductImpact | None = None
     effort: int | None = None
     impact: int | None = None
@@ -271,6 +272,7 @@ class IssueInfo:
             "blocked_by": self.blocked_by,
             "blocks": self.blocks,
             "discovered_by": self.discovered_by,
+            "epic": self.epic,
             "product_impact": (self.product_impact.to_dict() if self.product_impact else None),
             "effort": self.effort,
             "impact": self.impact,
@@ -301,6 +303,7 @@ class IssueInfo:
             blocked_by=data.get("blocked_by", []),
             blocks=data.get("blocks", []),
             discovered_by=data.get("discovered_by"),
+            epic=data.get("epic"),
             product_impact=ProductImpact.from_dict(data.get("product_impact")),
             effort=data.get("effort"),
             impact=data.get("impact"),
@@ -361,9 +364,10 @@ class IssueParser:
         # Read content once for all content-based parsing
         content = self._read_content(issue_path)
 
-        # Parse frontmatter for discovered_by, product impact, effort, and impact
+        # Parse frontmatter for discovered_by, epic, product impact, effort, and impact
         frontmatter = parse_frontmatter(content)
         discovered_by = frontmatter.get("discovered_by")
+        epic = frontmatter.get("epic")
         size = frontmatter.get("size")
         product_impact = self._parse_product_impact(frontmatter)
         effort_raw = frontmatter.get("effort")
@@ -480,6 +484,7 @@ class IssueParser:
             blocked_by=blocked_by,
             blocks=blocks,
             discovered_by=discovered_by,
+            epic=epic,
             product_impact=product_impact,
             effort=effort,
             impact=impact,

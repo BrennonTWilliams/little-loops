@@ -400,6 +400,11 @@ class TestGitHubSyncManager:
         manager = GitHubSyncManager(mock_config, mock_logger)
         assert manager._extract_issue_id("P2-FEAT-42-new-feature.md") == "FEAT-42"
 
+    def test_extract_issue_id_epic(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """Issue ID is extracted from EPIC filename."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        assert manager._extract_issue_id("P2-EPIC-001-my-epic.md") == "EPIC-001"
+
     def test_extract_issue_id_invalid(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
         """Empty string for invalid filename."""
         manager = GitHubSyncManager(mock_config, mock_logger)
@@ -1469,6 +1474,30 @@ class TestReopenIssue:
         assert "reopen" in call_args
         assert "42" in call_args
         assert "--comment" in call_args
+
+    def test_reopen_epic_from_completed(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """reopen_issues moves an EPIC issue from completed/ to epics/ via category_map."""
+        issue_file = tmp_path / ".issues" / "completed" / "P2-EPIC-001-my-epic.md"
+        issue_file.write_text("---\ngithub_issue: 99\n---\n\n# EPIC-001: My Epic\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = __import__("subprocess").CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                )
+                with patch("subprocess.run") as mock_subprocess:
+                    mock_subprocess.return_value = __import__("subprocess").CompletedProcess(
+                        args=[], returncode=0, stdout="", stderr=""
+                    )
+                    result = manager.reopen_issues(issue_ids=["EPIC-001"])
+
+        assert result.success is True
+        assert len(result.updated) == 1
+        assert "reopened" in result.updated[0]
 
     def test_reopen_specific_issue_in_active(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path

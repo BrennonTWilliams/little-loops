@@ -31,7 +31,7 @@ def enh_sections() -> dict:
 class TestLoadIssueSections:
     """Tests for loading per-type sections files."""
 
-    @pytest.mark.parametrize("issue_type", ["BUG", "FEAT", "ENH"])
+    @pytest.mark.parametrize("issue_type", ["BUG", "FEAT", "ENH", "EPIC"])
     def test_load_default(self, issue_type: str) -> None:
         """Loads per-type file from bundled templates/ directory."""
         data = load_issue_sections(issue_type)

@@ -56,11 +56,12 @@ class CliColorsPriorityConfig:
 
 @dataclass
 class CliColorsTypeConfig:
-    """ANSI color overrides for issue type labels (BUG, FEAT, ENH)."""
+    """ANSI color overrides for issue type labels (BUG, FEAT, ENH, EPIC)."""
 
     BUG: str = "38;5;208"
     FEAT: str = "32"
     ENH: str = "34"
+    EPIC: str = "35"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CliColorsTypeConfig:
@@ -69,6 +70,7 @@ class CliColorsTypeConfig:
             BUG=data.get("BUG", "38;5;208"),
             FEAT=data.get("FEAT", "32"),
             ENH=data.get("ENH", "34"),
+            EPIC=data.get("EPIC", "35"),
         )
 
 

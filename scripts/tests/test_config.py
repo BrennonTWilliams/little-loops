@@ -136,11 +136,12 @@ class TestIssuesConfig:
         config = IssuesConfig.from_dict(data)
 
         assert config.base_dir == "issues/"
-        # User specified bugs, required categories (features, enhancements) are auto-added
-        assert len(config.categories) == 3
+        # User specified bugs, required categories (features, enhancements, epics) are auto-added
+        assert len(config.categories) == 4
         assert config.categories["bugs"].prefix == "BUG"
         assert "features" in config.categories
         assert "enhancements" in config.categories
+        assert "epics" in config.categories
         assert config.completed_dir == "done"
         assert config.deferred_dir == "deferred"  # default when not specified
         assert config.priorities == ["P0", "P1"]
@@ -166,10 +167,11 @@ class TestIssuesConfig:
         config = IssuesConfig.from_dict({})
 
         assert config.base_dir == ".issues"
-        assert len(config.categories) == 3  # bugs, features, enhancements
+        assert len(config.categories) == 4  # bugs, features, enhancements, epics
         assert "bugs" in config.categories
         assert "features" in config.categories
         assert "enhancements" in config.categories
+        assert "epics" in config.categories
         assert config.completed_dir == "completed"
         assert config.deferred_dir == "deferred"
         assert config.priorities == ["P0", "P1", "P2", "P3", "P4", "P5"]
@@ -604,7 +606,7 @@ class TestBRConfig:
         assert config.project.name == temp_project_dir.name
         assert config.project.src_dir == "src/"
         assert config.issues.base_dir == ".issues"
-        assert len(config.issues.categories) == 3
+        assert len(config.issues.categories) == 4
 
     def test_project_name_defaults_to_directory_name(self, temp_project_dir: Path) -> None:
         """Test that project name defaults to directory name."""
@@ -920,13 +922,16 @@ class TestCategoryConstants:
     """Tests for REQUIRED_CATEGORIES and DEFAULT_CATEGORIES constants."""
 
     def test_required_categories_contains_core_types(self) -> None:
-        """Test that REQUIRED_CATEGORIES has bugs, features, enhancements."""
+        """Test that REQUIRED_CATEGORIES has bugs, features, enhancements, and epics."""
         assert "bugs" in REQUIRED_CATEGORIES
         assert "features" in REQUIRED_CATEGORIES
         assert "enhancements" in REQUIRED_CATEGORIES
+        assert "epics" in REQUIRED_CATEGORIES
         assert REQUIRED_CATEGORIES["bugs"]["prefix"] == "BUG"
         assert REQUIRED_CATEGORIES["features"]["prefix"] == "FEAT"
         assert REQUIRED_CATEGORIES["enhancements"]["prefix"] == "ENH"
+        assert REQUIRED_CATEGORIES["epics"]["prefix"] == "EPIC"
+        assert REQUIRED_CATEGORIES["epics"]["action"] == "coordinate"
 
     def test_default_categories_includes_required(self) -> None:
         """Test that DEFAULT_CATEGORIES includes all required categories."""
@@ -944,6 +949,7 @@ class TestIssuesConfigValidation:
         assert "bugs" in config.categories
         assert "features" in config.categories
         assert "enhancements" in config.categories
+        assert "epics" in config.categories
 
     def test_required_categories_merged_with_custom(self) -> None:
         """Test that custom categories are merged with required."""
@@ -962,6 +968,8 @@ class TestIssuesConfigValidation:
         assert "bugs" in config.categories
         assert "features" in config.categories
         assert "enhancements" in config.categories
+        assert "epics" in config.categories
+        assert config.categories["epics"].prefix == "EPIC"
 
     def test_user_can_override_required_category_settings(self) -> None:
         """Test that user can customize required category settings."""
@@ -1066,7 +1074,12 @@ class TestGitHubSyncConfig:
         config = GitHubSyncConfig.from_dict({})
 
         assert config.repo is None
-        assert config.label_mapping == {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement"}
+        assert config.label_mapping == {
+            "BUG": "bug",
+            "FEAT": "enhancement",
+            "ENH": "enhancement",
+            "EPIC": "epic",
+        }
         assert config.priority_labels is True
         assert config.sync_completed is False
         assert config.state_file == ".ll/ll-sync-state.json"

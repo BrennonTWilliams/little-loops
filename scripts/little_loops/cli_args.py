@@ -263,7 +263,7 @@ def _id_matches(candidate: str, pattern: str) -> bool:
     return candidate == pattern
 
 
-VALID_ISSUE_TYPES = {"BUG", "FEAT", "ENH"}
+VALID_ISSUE_TYPES = {"BUG", "FEAT", "ENH", "EPIC"}
 
 VALID_PRIORITIES: frozenset[str] = frozenset({"P0", "P1", "P2", "P3", "P4", "P5"})
 

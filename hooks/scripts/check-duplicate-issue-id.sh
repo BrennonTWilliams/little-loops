@@ -58,10 +58,10 @@ fi
 # Extract filename from path
 FILENAME=$(basename "$FILE_PATH")
 
-# Extract issue ID (e.g., BUG-001, FEAT-002, ENH-003, BUG-1234) from filename
-# Pattern: P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-
+# Extract issue ID (e.g., BUG-001, FEAT-002, ENH-003, EPIC-001, BUG-1234) from filename
+# Pattern: P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-
 # Use || true to prevent exit on no match
-ISSUE_ID=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | head -1 || true)
+ISSUE_ID=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]{3,}' | head -1 || true)
 
 # If no issue ID found, allow (not a standard issue file)
 if [[ -z "$ISSUE_ID" ]]; then
@@ -107,7 +107,7 @@ EXISTING=$(find "$ISSUES_DIR" -name "*.md" -type f -print0 2>/dev/null | \
     while IFS= read -r -d '' f; do
         BASENAME=$(basename "$f")
         # Match any type prefix with same integer to catch cross-type collisions (e.g., BUG-007 vs FEAT-007)
-        if echo "$BASENAME" | grep -qE "(^|[-_])(BUG|FEAT|ENH)-${ISSUE_NUM}([-_.]|$)"; then
+        if echo "$BASENAME" | grep -qE "(^|[-_])(BUG|FEAT|ENH|EPIC)-${ISSUE_NUM}([-_.]|$)"; then
             printf '%s' "$f"
             break
         fi
@@ -120,7 +120,7 @@ if [[ -n "$EXISTING" ]]; then
     # Duplicate found - deny the operation
     EXISTING_BASENAME=$(basename "$EXISTING")
     cat <<EOF
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[little-loops] Duplicate issue ID detected: ${ISSUE_ID} conflicts with ${EXISTING_BASENAME} — integer ${ISSUE_NUM} must be unique across all types (BUG/FEAT/ENH). Use the next available ID."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[little-loops] Duplicate issue ID detected: ${ISSUE_ID} conflicts with ${EXISTING_BASENAME} — integer ${ISSUE_NUM} must be unique across all types (BUG/FEAT/ENH/EPIC). Use the next available ID."}}
 EOF
     exit 0
 fi
