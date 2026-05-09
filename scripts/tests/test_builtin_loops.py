@@ -999,6 +999,13 @@ class TestAutoRefineAndImplementLoop:
         state = data["states"].get("implement_issue", {})
         assert state.get("next") == "implement_next"
 
+    def test_implement_issue_has_completed_guard(self, data: dict) -> None:
+        """implement_issue must skip ll-auto when the issue is already in completed/."""
+        state = data["states"].get("implement_issue", {})
+        action = state.get("action", "")
+        assert "completed" in action, "implement_issue action must check .issues/completed/"
+        assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
+
     def test_skip_and_continue_uses_input_capture(self, data: dict) -> None:
         """skip_and_continue must reference captured.input.output (not impl_id)."""
         state = data["states"].get("skip_and_continue", {})
@@ -1040,6 +1047,46 @@ class TestAutoRefineAndImplementLoop:
         action = state.get("action", "")
         assert "recursive-refine-passed.txt" in action
         assert "recursive-refine-skipped.txt" in action
+
+
+class TestSprintRefineAndImplementLoop:
+    """Structural tests for the sprint-refine-and-implement FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "sprint-refine-and-implement.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "implement_next",
+            "implement_issue",
+            "done",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_implement_issue_uses_impl_id(self, data: dict) -> None:
+        """implement_issue action must reference captured.impl_id.output."""
+        state = data["states"].get("implement_issue", {})
+        action = state.get("action", "")
+        assert "${captured.impl_id.output}" in action
+
+    def test_implement_issue_routes_to_implement_next(self, data: dict) -> None:
+        """implement_issue must loop back to implement_next to drain the queue."""
+        state = data["states"].get("implement_issue", {})
+        assert state.get("next") == "implement_next"
+
+    def test_implement_issue_has_completed_guard(self, data: dict) -> None:
+        """implement_issue must skip ll-auto when the issue is already in completed/."""
+        state = data["states"].get("implement_issue", {})
+        action = state.get("action", "")
+        assert "completed" in action, "implement_issue action must check .issues/completed/"
+        assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
 
 
 class TestAutodevLoop:

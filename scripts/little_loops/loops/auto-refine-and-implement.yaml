@@ -100,7 +100,13 @@ states:
 
   implement_issue:
     fragment: with_rate_limit_handling
-    action: "ll-auto --only ${captured.impl_id.output}"
+    action: |
+      ISSUE="${captured.impl_id.output}"
+      if ls .issues/completed/*${ISSUE}* 2>/dev/null | grep -q .; then
+        echo "Issue ${ISSUE} already completed, skipping ll-auto"
+        exit 0
+      fi
+      ll-auto --only ${ISSUE}
     action_type: shell
     on_rate_limit_exhausted: done
     next: implement_next

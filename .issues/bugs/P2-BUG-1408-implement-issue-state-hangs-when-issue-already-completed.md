@@ -34,7 +34,7 @@ The full blocking chain:
 
 1. `DefaultActionRunner.run()` at `scripts/little_loops/fsm/runners.py:146` blocks in `for line in process.stdout` waiting for the `ll-auto` shell subprocess to close its stdout (i.e., exit). No `_shutdown_requested` check runs during this wait; the per-action timeout is `state.timeout or self.fsm.default_timeout or 3600` — `implement_issue` has no explicit `timeout:`, so the effective limit is 3600 seconds (1 hour).
 
-2. Inside `ll-auto`, `run_with_continuation()` at `issue_manager.py:279–305` spawns the guillotine Claude subprocess via `subprocess.Popen(["claude", "-p", guillotine_cmd])`. Control passes to `run_claude_command()` at `subprocess_utils.py:319–418`, which blocks on `selectors.DefaultSelector` reading that subprocess's stdout/stderr until both file descriptors close.
+2. Inside `ll-auto`, `run_with_continuation()` at `issue_manager.py:279–305` spawns the guillotine Claude subprocess via `subprocess.Popen(["claude", "-p", guillotine_cmd])`. Control passes to `run_claude_command()` at `subprocess_utils.py:219–427`, which blocks on `selectors.DefaultSelector` reading that subprocess's stdout/stderr until both file descriptors close.
 
 3. The guillotine Claude session receives the continuation prompt, finds ENH-652 already in `.issues/completed/`, has nothing to implement, produces no output, and never calls `sys.exit()`. The `selectors.DefaultSelector` loop in `run_claude_command()` therefore never terminates, keeping the entire chain blocked: `runners.py` → `ll-auto` → `run_with_continuation()` → `run_claude_command()`.
 
@@ -89,7 +89,7 @@ The `ls .issues/completed/*${ISSUE}*` pattern is consistent with how other YAML 
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_manager.py:162` — `run_with_continuation()` — Option J guillotine path that spawns the hung session; guillotine subprocess launched at lines 279–305
-- `scripts/little_loops/subprocess_utils.py:319` — `run_claude_command()` — blocking `selectors.DefaultSelector` loop that keeps `run_with_continuation()` blocked until the guillotine Claude process exits
+- `scripts/little_loops/subprocess_utils.py:219` — `run_claude_command()` — blocking `selectors.DefaultSelector` loop that keeps `run_with_continuation()` blocked until the guillotine Claude process exits
 - `scripts/little_loops/fsm/runners.py:146` — `DefaultActionRunner.run()` — `for line in process.stdout` blocks the FSM Python thread until `ll-auto` exits; no interruptible poll
 - `scripts/little_loops/loops/lib/common.yaml:49` — `with_rate_limit_handling` fragment used by `implement_issue`
 
@@ -116,7 +116,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Implementation Steps
 
 1. In `scripts/little_loops/loops/auto-refine-and-implement.yaml:103`, change the `implement_issue` `action` from a single-line string to a multiline `|` block with the completion guard prepended
-2. Mirror the same guard change in `scripts/little_loops/loops/sprint-refine-and-implement.yaml:111`
+2. Mirror the same guard change in `scripts/little_loops/loops/sprint-refine-and-implement.yaml:109`
 3. In `scripts/tests/test_builtin_loops.py:903`, add a test method to `TestAutoRefineAndImplementLoop` asserting that `implement_issue.action` contains the `completed/*${ISSUE}*` guard pattern and `exit 0`; add the same assertion to the sprint loop test class
 4. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` to verify both loop YAMLs parse and validate correctly with the new multiline action
 
@@ -143,6 +143,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-05-09 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-09T22:51:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de4c5b4a-06c0-43a4-9d1e-6b87f562eac4.jsonl`
 - `/ll:confidence-check` - 2026-05-09T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
 - `/ll:wire-issue` - 2026-05-09T22:47:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/012eddcb-ecda-4387-b9dd-73a65f9c3355.jsonl`
 - `/ll:refine-issue` - 2026-05-09T22:42:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
