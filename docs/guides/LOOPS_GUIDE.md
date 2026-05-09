@@ -948,7 +948,7 @@ Use `${namespace.path}` in action strings, evaluator configs, and routing target
 | `loop` | Loop-level metadata | `${loop.name}`, `${loop.elapsed}` |
 | `env` | Environment variables | `${env.HOME}` |
 
-Escape literal `${` with `$${`.
+Escape literal `${` with `$${`. Bash parameter expansion operators (`:-`, `:+`, `[@]`, etc.) inside `$${...}` blocks are supported and pass through unchanged — e.g., `$${DEPTH:-0}` reaches the shell as `${DEPTH:-0}`.
 
 ### Capture
 

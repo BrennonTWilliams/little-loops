@@ -4236,9 +4236,13 @@ result = interpolate("mypy ${context.target_dir}", ctx)
 result = interpolate("Errors: ${captured.check.output}", ctx)
 # Returns: "Errors: 5"
 
-# Escape with $$
+# Escape with $$ — passes through as literal ${...}
 result = interpolate("Use $${context.var} syntax", ctx)
 # Returns: "Use ${context.var} syntax"
+
+# Bash parameter expansion operators inside $${ } pass through unchanged
+result = interpolate("printf '$${DEPTH:-0}'", ctx)
+# Returns: "printf '${DEPTH:-0}'"  (bash evaluates ${DEPTH:-0} at runtime)
 ```
 
 #### interpolate_dict

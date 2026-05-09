@@ -1041,7 +1041,7 @@ ${env.PATH}
 | **Timing** | Resolved at runtime, just before use |
 | **Undefined variable** | Loop terminates with error |
 | **Empty value** | Interpolates as empty string |
-| **Escaping** | Use `$${` for literal `${` |
+| **Escaping** | Use `$${` for literal `${`; bash parameter expansion operators (`:-`, `:+`, `[@]`, etc.) inside `$${...}` pass through unchanged |
 | **Nesting** | Not supported |
 
 ---

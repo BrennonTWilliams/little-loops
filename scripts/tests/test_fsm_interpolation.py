@@ -358,6 +358,55 @@ class TestInterpolateEdgeCases:
         with pytest.raises(InterpolationError, match="Path 'confidence' not found in result"):
             interpolate("${result.confidence}", ctx)
 
+    def test_escape_bash_default_value(self) -> None:
+        """$${VAR:-default} passes through as literal ${VAR:-default} without error.
+
+        Regression test for BUG-1384: the escape mechanism must accept bash
+        parameter expansion operators (:-) inside $${...} blocks.
+        """
+        ctx = InterpolationContext()
+        result = interpolate("printf '$${DEPTH:-0}'", ctx)
+        assert result == "printf '${DEPTH:-0}'"
+
+    def test_escape_bash_conditional_assign(self) -> None:
+        """$${VAR:+suffix} passes through as literal ${VAR:+suffix}."""
+        ctx = InterpolationContext()
+        result = interpolate("X=$${VAR:+yes}", ctx)
+        assert result == "X=${VAR:+yes}"
+
+    def test_escape_bash_array_expansion(self) -> None:
+        """$${ARRAY[@]} passes through as literal ${ARRAY[@]}."""
+        ctx = InterpolationContext()
+        result = interpolate('for S in "$${SPEC_LIST[@]}"; do', ctx)
+        assert result == 'for S in "${SPEC_LIST[@]}"; do'
+
+    def test_escape_multi_bash_operators_in_one_string(self) -> None:
+        """Multiple bash-operator escapes in one string all pass through.
+
+        Mirrors the autodev.yaml pattern with PASSED_LIST and SKIPPED_LIST.
+        """
+        ctx = InterpolationContext()
+        template = (
+            "printf 'Passed  (%d): %s\\n' \"$PASSED_COUNT\" \"$${PASSED_LIST:-none}\"\n"
+            "printf 'Skipped (%d): %s\\n' \"$SKIPPED_COUNT\" \"$${SKIPPED_LIST:-none}\""
+        )
+        result = interpolate(template, ctx)
+        assert "${PASSED_LIST:-none}" in result
+        assert "${SKIPPED_LIST:-none}" in result
+        assert "$${" not in result
+
+    def test_escape_bash_operator_mixed_with_real_variable(self) -> None:
+        """$${VAR:-default} and a real ${namespace.path} coexist in one string."""
+        ctx = InterpolationContext(context={"x": "hello"})
+        result = interpolate("$${DEPTH_STR:-none} ${context.x}", ctx)
+        assert result == "${DEPTH_STR:-none} hello"
+
+    def test_escape_bash_string_conditional(self) -> None:
+        """$${VAR:+' (depth: $VAR)'} passes through preserving inner single-quoted string."""
+        ctx = InterpolationContext()
+        result = interpolate("DEPTH_STR=$${DEPTH:+' (depth: $DEPTH)'}", ctx)
+        assert result == "DEPTH_STR=${DEPTH:+' (depth: $DEPTH)'}"
+
 
 class TestFormatDuration:
     """Tests for the _format_duration helper."""
