@@ -296,13 +296,14 @@ class WorkerPool:
                 )
 
             if ready_result.returncode != 0:
+                err_detail = ready_result.stderr or (ready_result.stdout or "")[:500]
                 return WorkerResult(
                     issue_id=issue.issue_id,
                     success=False,
                     branch_name=branch_name,
                     worktree_path=worktree_path,
                     duration=time.time() - start_time,
-                    error=f"ready-issue failed: {ready_result.stderr}",
+                    error=f"ready-issue failed: {err_detail}",
                     stdout=ready_result.stdout,
                     stderr=ready_result.stderr,
                 )
@@ -454,6 +455,7 @@ class WorkerPool:
             )
 
             if manage_result.returncode != 0:
+                err_detail = manage_result.stderr or (manage_result.stdout or "")[:500]
                 return WorkerResult(
                     issue_id=issue.issue_id,
                     success=False,
@@ -462,7 +464,7 @@ class WorkerPool:
                     changed_files=changed_files,
                     leaked_files=leaked_files,
                     duration=time.time() - start_time,
-                    error=f"manage-issue failed: {manage_result.stderr}",
+                    error=f"manage-issue failed: {err_detail}",
                     stdout=manage_result.stdout,
                     stderr=manage_result.stderr,
                 )

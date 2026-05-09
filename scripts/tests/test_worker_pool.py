@@ -2096,6 +2096,81 @@ CORRECTED
         assert "enh-665" in captured[0]
         assert "add-feature-branch-config" in captured[0]
 
+    def test_process_issue_returns_failure_on_manage_issue_failure(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_process_issue() returns failure when manage-issue exits non-zero."""
+        ready_output = "## VERDICT: **READY**"
+        call_count = [0]
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return subprocess.CompletedProcess([], 0, ready_output, "")
+            return subprocess.CompletedProcess([], 1, "", "manage error detail")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    with patch.object(worker_pool, "_get_changed_files", return_value=[]):
+                        with patch.object(worker_pool, "_detect_main_repo_leaks", return_value=[]):
+                            result = worker_pool._process_issue(mock_issue)
+
+        assert result.success is False
+        assert "manage-issue failed" in (result.error or "")
+        assert "manage error detail" in (result.error or "")
+
+    def test_process_issue_manage_failure_uses_stdout_when_stderr_empty(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_process_issue() includes stdout snippet in error when stderr is empty."""
+        ready_output = "## VERDICT: **READY**"
+        call_count = [0]
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return subprocess.CompletedProcess([], 0, ready_output, "")
+            return subprocess.CompletedProcess([], 1, "Claude stdout content", "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    with patch.object(worker_pool, "_get_changed_files", return_value=[]):
+                        with patch.object(worker_pool, "_detect_main_repo_leaks", return_value=[]):
+                            result = worker_pool._process_issue(mock_issue)
+
+        assert result.success is False
+        assert "Claude stdout content" in (result.error or "")
+
+    def test_process_issue_ready_failure_uses_stdout_when_stderr_empty(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_process_issue() includes stdout snippet for ready-issue when stderr is empty."""
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command") as mock_run:
+                    mock_run.return_value = subprocess.CompletedProcess(
+                        [], 1, "Claude JSON output here", ""
+                    )
+                    result = worker_pool._process_issue(mock_issue)
+
+        assert result.success is False
+        assert "Claude JSON output here" in (result.error or "")
+
 
 class TestWorkerPoolRunClaudeCommand:
     """Tests for _run_claude_command()."""
