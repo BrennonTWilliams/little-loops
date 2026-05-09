@@ -478,6 +478,18 @@ FSM loop settings:
 | `glyphs.route` | `⑃` | Badge glyph for `route` action states |
 | `glyphs.parallel` | `∥` | Badge glyph for `parallel` action states |
 
+#### `throttle` (per-state progressive throttling)
+
+Controls the `ThrottleConfig` applied to a state to prevent runaway tool-call loops. Defined inline under a state in loop YAML.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `normal_max` | `3` | Tool calls 1..`normal_max` pass through unrestricted |
+| `warn_max` | `8` | At `warn_max` calls, a `throttle_warn` event is emitted |
+| `hard_max` | `12` | At `hard_max` calls, routes to `on_throttle_hard` (or hard stop if unset) |
+
+Use `on_throttle_hard: <state>` on the same state to route gracefully instead of stopping. See [EVENT-SCHEMA.md](EVENT-SCHEMA.md) for the `throttle_warn`, `throttle_hard`, and `throttle_stop` events.
+
 Override individual glyphs to customize how FSM box diagrams render state type badges:
 
 ```json

@@ -548,6 +548,7 @@ _Fault Signals (BUG-class — broke the run):_
 - `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
 - State has `loop:` set AND `on_yes == on_no` (config-based, detected from FSM structure) → `BUG — Sub-loop verdict discarded` P3; child loop result is silently dropped regardless of outcome
 - `rate_limit_exhausted` event present on a state (max rate-limit retries burned through) → BUG P3; surfaces upstream rate-limit pressure separate from generic retry loops. `rate_limit_waiting` heartbeat events in the same window indicate in-progress sleeps contributing to the budget.
+- `throttle_hard` or `throttle_stop` event present on a state → BUG P2; state exceeded tool-call `hard_max` threshold — add `on_throttle_hard` routing or reduce scope to prevent hard stops. `throttle_warn` events in the same window signal the state was already near the limit.
 
 _Effectiveness Signals (ENH-class — completed but did not do useful work):_
 - Stub action body in resolved state map (e.g. `echo "5"` in a `score`/`evaluate` state, `echo "TODO …"`, `echo "Replace …"`) → ENH P2; surfaces unimplemented action stubs as a static `static_issues` entry distinct from the history-driven signal list

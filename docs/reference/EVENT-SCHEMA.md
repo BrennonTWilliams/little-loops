@@ -300,6 +300,60 @@ Emitted periodically by the FSM executor while sleeping between 429 retry attemp
 
 ---
 
+### `throttle_warn`
+
+Emitted when a state's tool-call count reaches `warn_max` within a single state visit.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name where throttle warning was triggered |
+| `count` | `int` | Current tool-call count at time of emission |
+| `normal_max` | `int` | Configured `normal_max` threshold for this state |
+| `warn_max` | `int` | Configured `warn_max` threshold for this state |
+| `hard_max` | `int` | Configured `hard_max` threshold for this state |
+
+**Example:**
+```json
+{"event": "throttle_warn", "ts": "...", "state": "implement", "count": 8, "normal_max": 3, "warn_max": 8, "hard_max": 12}
+```
+
+---
+
+### `throttle_hard`
+
+Emitted when a state's tool-call count reaches `hard_max`, triggering transition to `on_throttle_hard`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name where hard throttle was triggered |
+| `count` | `int` | Current tool-call count at time of emission |
+| `hard_max` | `int` | Configured `hard_max` threshold for this state |
+| `next` | `str` | Target state (`on_throttle_hard` or `on_error`, or null) |
+
+**Example:**
+```json
+{"event": "throttle_hard", "ts": "...", "state": "implement", "count": 12, "hard_max": 12, "next": "throttle_recovery"}
+```
+
+---
+
+### `throttle_stop`
+
+Emitted when a state's tool-call count exceeds `hard_max` with no `on_throttle_hard` target, causing a hard stop.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name where stop throttle was triggered |
+| `count` | `int` | Current tool-call count at time of emission |
+| `hard_max` | `int` | Configured `hard_max` threshold for this state |
+
+**Example:**
+```json
+{"event": "throttle_stop", "ts": "...", "state": "implement", "count": 13, "hard_max": 12}
+```
+
+---
+
 ### `handoff_detected`
 
 Emitted when the executor detects a handoff signal in the action output, indicating the loop needs to be paused and resumed in a fresh session.

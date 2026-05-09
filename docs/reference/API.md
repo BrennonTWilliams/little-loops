@@ -3891,7 +3891,31 @@ class StateConfig:
     rate_limit_backoff_base_seconds: int | None = None  # Short-tier backoff base (default 30); delay = base * 2^n + jitter
     rate_limit_max_wait_seconds: int | None = None   # Total wall-clock budget across both tiers (default 21600 / 6h)
     rate_limit_long_wait_ladder: list[int] | None = None  # Long-wait ladder (default [300, 900, 1800, 3600]); index caps at last entry
+    throttle: ThrottleConfig | None = None           # Per-state progressive tool-call throttling
+    on_throttle_hard: str | None = None              # Target state when hard_max is reached (or hard-stop if unset)
 ```
+
+#### ThrottleConfig
+
+`from little_loops.fsm.schema import ThrottleConfig`
+
+Per-state progressive throttling configuration. Counts tool calls within a single state visit and escalates restrictions before provider limits are hit.
+
+```python
+@dataclass
+class ThrottleConfig:
+    normal_max: int | None = None   # Calls 1..normal_max pass through (default 3)
+    warn_max: int | None = None     # At warn_max, emits throttle_warn event (default 8)
+    hard_max: int | None = None     # At hard_max, routes to on_throttle_hard (default 12)
+```
+
+**Throttle event constants** (emitted to the EventBus):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `THROTTLE_WARN_EVENT` | `"throttle_warn"` | Emitted when tool-call count reaches `warn_max` |
+| `THROTTLE_HARD_EVENT` | `"throttle_hard"` | Emitted when tool-call count reaches `hard_max` |
+| `THROTTLE_STOP_EVENT` | `"throttle_stop"` | Emitted when count exceeds `hard_max` with no `on_throttle_hard` (hard stop) |
 
 > **Rate-limit handling (two-tier):** When a state's action returns an HTTP 429, the executor runs a two-tier retry ladder. **Short-burst tier** (up to `max_rate_limit_retries` attempts) uses `rate_limit_backoff_base_seconds * 2^n` + jitter. Once the short tier is spent, the executor enters the **long-wait tier** and walks `rate_limit_long_wait_ladder` (advancing index on each 429, capped at the last entry). The FSM routes to `on_rate_limit_exhausted` only once `total_wait_seconds >= rate_limit_max_wait_seconds`. The jitter is important under `ll-parallel` to avoid thundering-herd re-requests after a shared 429.
 
