@@ -116,7 +116,7 @@ def run_claude_command(
         on_model_detected: Optional callback invoked with the model name from the
             stream-json system/init event.
         preview_full: If True, display the full command without truncation (for --verbose).
-        resume_session: If True, passes --resume to the Claude CLI to continue the
+        resume_session: If True, passes --continue to the Claude CLI to continue the
             most recent conversation (used for Option E explicit-handoff path).
 
     Returns:
@@ -128,7 +128,7 @@ def run_claude_command(
     line_count = len(lines)
     tw = terminal_width()
     max_line = tw - 4
-    resume_flag = " --resume" if resume_session else ""
+    resume_flag = " --continue" if resume_session else ""
     logger.info(
         f"Running: claude --dangerously-skip-permissions{resume_flag} -p ({line_count} lines)"
     )
@@ -183,7 +183,7 @@ def run_with_continuation(
     a sentinel file so the next iteration knows to send an explicit handoff instruction.
 
     Option E (sentinel read): before starting the next session, reads the sentinel
-    and if present sends a ``--resume`` turn with an explicit "run /ll:handoff now"
+    and if present sends a ``--continue`` turn with an explicit "run /ll:handoff now"
     instruction, triggering the standard CONTEXT_HANDOFF continuation flow.
 
     Option J (guillotine): if usage exceeds guillotine_threshold OR stderr contains
@@ -306,7 +306,7 @@ def run_with_continuation(
             usage_pct = sentinel_data.get("usage_percent", int(usage_ratio * 100))
             logger.info(
                 f"Sentinel detected ({usage_pct}% context used): "
-                "sending explicit handoff instruction via --resume"
+                "sending explicit handoff instruction via --continue"
             )
             continuation_count += 1
             # Resume the existing session with an explicit handoff instruction.
@@ -321,7 +321,7 @@ def run_with_continuation(
             # Reset tracking for the handoff turn
             _last_input[0] = 0
             _last_output[0] = 0
-            # Use --resume CLI flag so this turn continues the existing session
+            # Use --continue CLI flag so this turn continues the existing session
             result = run_claude_command(
                 current_command,
                 logger,

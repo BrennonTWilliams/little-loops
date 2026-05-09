@@ -1728,8 +1728,8 @@ class TestRunClaudeCommandResumeSession:
         mock_process.wait.return_value = None
         return mock_process
 
-    def test_resume_session_adds_resume_flag(self) -> None:
-        """resume_session=True inserts --resume before -p in cmd_args."""
+    def test_resume_session_adds_continue_flag(self) -> None:
+        """resume_session=True inserts --continue before -p in cmd_args."""
         mock_process = self._make_mock_process()
         captured_args: list[Any] = []
 
@@ -1745,13 +1745,13 @@ class TestRunClaudeCommandResumeSession:
 
         assert len(captured_args) == 1
         args = captured_args[0]
-        assert "--resume" in args
-        resume_idx = args.index("--resume")
+        assert "--continue" in args
+        continue_idx = args.index("--continue")
         p_idx = args.index("-p")
-        assert resume_idx < p_idx, "--resume must appear before -p"
+        assert continue_idx < p_idx, "--continue must appear before -p"
 
-    def test_no_resume_flag_by_default(self) -> None:
-        """resume_session=False (default) does not add --resume to cmd_args."""
+    def test_no_continue_flag_by_default(self) -> None:
+        """resume_session=False (default) does not add --continue to cmd_args."""
         mock_process = self._make_mock_process()
         captured_args: list[Any] = []
 
@@ -1766,7 +1766,7 @@ class TestRunClaudeCommandResumeSession:
                 run_claude_command("test command")
 
         assert len(captured_args) == 1
-        assert "--resume" not in captured_args[0]
+        assert "--continue" not in captured_args[0]
 
 
 class TestAssembleGuillatinePrompt:

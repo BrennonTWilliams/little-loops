@@ -655,7 +655,7 @@ class WorkerPool:
             working_dir: Directory to run the command in
             issue_id: Optional issue ID for subprocess tracking
             on_usage: Optional usage callback for token tracking
-            resume_session: If True, passes --resume to the Claude CLI
+            resume_session: If True, passes --continue to the Claude CLI
 
         Returns:
             CompletedProcess with stdout and stderr

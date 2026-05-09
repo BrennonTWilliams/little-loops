@@ -247,7 +247,7 @@ def run_claude_command(
             stream-json system/init event. Called at most once per invocation.
         on_usage: Optional callback invoked with (input_tokens, output_tokens) from
             the stream-json result event. input_tokens includes cache_read_input_tokens.
-        resume_session: If True, passes --resume to the Claude CLI to continue the
+        resume_session: If True, passes --continue to the Claude CLI to continue the
             most recent conversation. Used for the Option E explicit-handoff path.
 
     Returns:
@@ -265,7 +265,7 @@ def run_claude_command(
         "stream-json",
     ]
     if resume_session:
-        cmd_args.append("--resume")
+        cmd_args.append("--continue")
     cmd_args += ["-p", command]
     if agent:
         cmd_args += ["--agent", agent]
