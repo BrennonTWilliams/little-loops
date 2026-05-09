@@ -1991,7 +1991,7 @@ Invoke Claude CLI command with output streaming.
 - `agent` - Claude agent model override; appended as `--agent <value>` to CLI invocation
 - `tools` - Restrict available tools; appended as `--tools <value>` to CLI invocation
 
-**Returns:** `CompletedProcess` with stdout/stderr captured
+**Returns:** `CompletedProcess` with stdout/stderr captured. When a `result` event with `is_error=True` is present in the stream-json output, `CompletedProcess.stderr` will include a `[result] <error>` line containing the error text from the result event's `error` field (falling back to the `result` field).
 
 #### verify_issue_completed
 

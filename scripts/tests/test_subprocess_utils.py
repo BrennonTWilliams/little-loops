@@ -1535,6 +1535,41 @@ class TestRunClaudeCommandModelDetection:
 
         assert usage_calls == []
 
+    def test_result_event_is_error_appends_to_stderr(self) -> None:
+        """result event with is_error=True appends [result] prefixed error to stderr."""
+        result_event = (
+            '{"type": "result", "is_error": true, "error": "Permission denied: tool failed"}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command("test")
+
+        assert "[result] Permission denied: tool failed" in result.stderr
+        assert result.stdout == ""
+
+    def test_result_event_no_is_error_does_not_append_to_stderr(self) -> None:
+        """result event without is_error does not add anything to stderr."""
+        result_event = '{"type": "result", "subtype": "success", "result": "done"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command("test")
+
+        assert result.stderr == ""
+
     def test_non_json_line_passes_through(self) -> None:
         """Non-JSON stdout lines pass through as raw text (backward compat)."""
         mock_process = Mock()

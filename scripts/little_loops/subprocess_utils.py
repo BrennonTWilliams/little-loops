@@ -382,6 +382,10 @@ def run_claude_command(
                                         + usage.get("cache_read_input_tokens", 0),
                                         usage.get("output_tokens", 0),
                                     )
+                                if event.get("is_error"):
+                                    error_text = event.get("error") or event.get("result", "")
+                                    if error_text:
+                                        stderr_lines.append(f"[result] {error_text}")
                                 continue  # skip other event types (tool_use, etc.)
                             else:
                                 continue  # skip other event types (tool_use, etc.)
