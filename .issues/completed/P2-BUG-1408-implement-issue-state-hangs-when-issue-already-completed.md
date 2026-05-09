@@ -1,5 +1,6 @@
 ---
 captured_at: '2026-05-09T22:24:13Z'
+completed_at: '2026-05-09T22:57:33Z'
 discovered_date: 2026-05-09
 discovered_by: capture-issue
 confidence_score: 100
@@ -138,11 +139,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `bug`, `fsm`, `automation`, `loops`, `captured`
 
+## Resolution
+
+**Fixed** — Added a completion guard to `implement_issue` in both `auto-refine-and-implement.yaml` and `sprint-refine-and-implement.yaml`. The guard checks `.issues/completed/*${ISSUE}*` before invoking `ll-auto`; if the issue is already completed it logs a message and exits 0, letting the FSM advance to `implement_next` without hanging. Tests added to `TestAutoRefineAndImplementLoop` and the new `TestSprintRefineAndImplementLoop` class.
+
 ## Status
 
-**Open** | Created: 2026-05-09 | Priority: P2
+**Completed** | Created: 2026-05-09 | Closed: 2026-05-09 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-09T22:57:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:ready-issue` - 2026-05-09T22:51:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de4c5b4a-06c0-43a4-9d1e-6b87f562eac4.jsonl`
 - `/ll:confidence-check` - 2026-05-09T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
 - `/ll:wire-issue` - 2026-05-09T22:47:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/012eddcb-ecda-4387-b9dd-73a65f9c3355.jsonl`
