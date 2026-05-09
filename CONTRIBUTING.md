@@ -30,9 +30,6 @@ cd little-loops
 
 ```bash
 pip install -e "./scripts[dev]"
-
-# For full development with LLM features (e.g., ll-sync):
-pip install -e "./scripts[dev,llm]"
 ```
 
 3. Verify installation:
