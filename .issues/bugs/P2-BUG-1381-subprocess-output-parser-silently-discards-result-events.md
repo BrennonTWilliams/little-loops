@@ -10,11 +10,15 @@ discovered_by: capture-issue
 
 # BUG-1381: subprocess output parser silently discards result events
 
-## Problem Statement
+## Summary
 
 When Claude CLI runs with `--output-format stream-json`, it emits multiple JSON event types including `result`, `assistant`, `tool_use`, and `system/init`. The output parser in `subprocess_utils.py` only keeps `assistant` and `system/init` events — all other event types, including `result`, are silently discarded with `continue`.
 
 The `result` event is where Claude CLI reports exit status and error details when a subprocess fails. By discarding it, all diagnostic information about why a subprocess failed is lost before it can be surfaced.
+
+## Current Behavior
+
+The `run_claude_command()` function in `subprocess_utils.py` parses `--output-format stream-json` output but only handles `assistant` and `system/init` event types. All other event types — including `result` events that contain exit status and error details — are silently skipped via `continue`. When a Claude CLI subprocess exits non-zero, all failure diagnostic information is lost before it can be surfaced to callers.
 
 ## Root Cause
 
@@ -38,6 +42,13 @@ The `run_claude_command()` function's streaming JSON parser has no handler for `
 
 When a Claude CLI subprocess exits non-zero, the error text from the `result` event should be captured and made available as part of the `stderr` output or a dedicated error field on the result object.
 
+## Steps to Reproduce
+
+1. Run `ll-sprint` or `ll-parallel` with an issue that causes `ready-issue` or `manage-issue` to exit non-zero
+2. After the sprint completes, inspect `.parallel-manage-state.json`
+3. Observe: `failed_issues` entries contain `"ready-issue failed: "` with nothing after the colon
+4. Observe: no diagnostic text from the Claude CLI subprocess is captured
+
 ## Implementation Steps
 
 1. In `run_claude_command()` in `subprocess_utils.py`, add a handler for `etype == "result"` before the `else: continue` branch
@@ -45,7 +56,27 @@ When a Claude CLI subprocess exits non-zero, the error text from the `result` ev
 3. If non-empty, append it to `stderr_lines` with a `[result]` prefix so downstream callers see it
 4. Ensure the handler does not break the existing `assistant`/`system` event flow
 
-## Suggested Fix
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/subprocess_utils.py` — add `result` event handler in `run_claude_command()` streaming JSON loop
+
+### Dependent Files (Callers/Importers)
+- TBD - use grep to find references: `grep -r "run_claude_command" scripts/`
+
+### Similar Patterns
+- TBD - search for consistent event handling: `grep -rn "etype ==" scripts/little_loops/`
+
+### Tests
+- TBD - identify test files for `subprocess_utils`
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Proposed Solution
 
 ```python
 elif etype == "result":
@@ -68,5 +99,12 @@ elif etype == "result":
 - BUG-1382: worker_pool.py error messages use only stderr (downstream effect)
 - BUG-1383: orchestrator state file overwrites failure details (downstream effect)
 
+## Labels
+`bug`, `subprocess`, `parser`, `captured`
+
+## Status
+**Open** | Created: 2026-05-09 | Priority: P2
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T16:54:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87a2dd4-2942-4324-b2d7-27ac23ef9a20.jsonl`
 - `/ll:capture-issue` - 2026-05-09T01:55:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

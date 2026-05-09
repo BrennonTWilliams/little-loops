@@ -10,7 +10,11 @@ discovered_by: capture-issue
 
 # BUG-1384: FSM interpolation engine rejects bash default-value syntax in escaped variables
 
-## Problem Statement
+## Summary
+
+The FSM interpolation engine incorrectly processes `$${...}` escape sequences — intended to pass through as literal `${...}` for bash — causing an `Invalid variable` error that makes any FSM loop using bash parameter expansion (e.g., `$${DEPTH:-0}`) fail immediately.
+
+## Current Behavior
 
 The FSM loop YAML files use `$${...}` as an escape sequence intended to produce a literal `${...}` for the shell (preventing the interpolation engine from treating it as a variable reference). However, the interpolation engine in `interpolation.py` is incorrectly treating `$${DEPTH:-0}` as a variable reference and failing with:
 
@@ -46,6 +50,13 @@ printf '%s' "$${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
 
 `$${DEPTH:-0}` should pass through the interpolation engine unchanged and reach the shell as `${DEPTH:-0}`, which bash then evaluates as "value of DEPTH, or 0 if unset".
 
+## Steps to Reproduce
+
+1. Run `ll-loop run recursive-refine <any-issue-id>`
+2. Observe the FSM fails on the first state transition
+3. Check the FSM event log for: `Invalid variable: ${DEPTH:-0} (expected namespace.path)`
+4. Alternatively, run `ll-sprint` in FSM mode — observe the infinite retry loop (191+ iterations)
+
 ## Implementation Steps
 
 1. Read `interpolation.py` and trace the three-step escape sequence
@@ -53,7 +64,7 @@ printf '%s' "$${DEPTH:-0}" > .loops/tmp/recursive-refine-current-depth.txt
 3. Fix the ordering or the regex so `$${}` sequences are fully protected before variable resolution
 4. Add a unit test: `interpolate("printf '$${DEPTH:-0}'", {})` should return `"printf '${DEPTH:-0}'"` without raising
 
-## Suggested Investigation
+## Proposed Solution
 
 ```python
 # In interpolation.py, look for the escape sequence handling
@@ -68,6 +79,27 @@ text = text.replace(PLACEHOLDER, '${')        # step 3
 
 Check also whether `replace_var()` itself applies the three-step logic or delegates to a top-level function that does.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/interpolation.py` — fix placeholder substitution ordering so `$${` is replaced before regex matching runs
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/recursive-refine.yaml` — uses `$${DEPTH:-0}` at line 88; will work correctly after fix without modification
+- Any FSM loop YAML using `$${...}` bash parameter expansion (search: `grep -r '\$\${'`)
+
+### Similar Patterns
+- Other FSM loop YAMLs may use `$${...}` — verify none are silently broken by running `grep -r '\$\${' scripts/little_loops/loops/`
+
+### Tests
+- `scripts/tests/fsm/test_interpolation.py` — add unit test: `interpolate("printf '$${DEPTH:-0}'", {})` → `"printf '${DEPTH:-0}'"` without raising
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Verification
 
 1. Run `ll-loop run recursive-refine BUG-635` after the fix
@@ -78,5 +110,14 @@ Check also whether `replace_var()` itself applies the three-step logic or delega
 
 - BUG-1381, BUG-1382, BUG-1383: parallel sprint error capture (separate failure mode, same sprint run)
 
+## Labels
+
+`bug`, `fsm`, `interpolation`, `loops`, `bash-syntax`
+
+## Status
+
+**Open** | Created: 2026-05-09 | Priority: P2
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T16:53:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19555582-4ac3-4961-9f72-7680d5a59791.jsonl`
 - `/ll:capture-issue` - 2026-05-09T01:55:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

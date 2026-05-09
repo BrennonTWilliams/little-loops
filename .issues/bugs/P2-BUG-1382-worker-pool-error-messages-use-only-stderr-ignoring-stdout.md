@@ -10,7 +10,7 @@ discovered_by: capture-issue
 
 # BUG-1382: worker pool error messages use only stderr ignoring stdout
 
-## Problem Statement
+## Summary
 
 When `ready-issue` or `manage-issue` subprocess calls fail in the parallel worker pool, the error message is constructed using only `stderr`:
 
@@ -19,6 +19,10 @@ error=f"ready-issue failed: {ready_result.stderr}"
 ```
 
 Claude CLI writes errors to stdout as JSON events, not to stderr. Since stderr is always empty for Claude CLI failures, this produces truncated messages like `"ready-issue failed: "` with nothing after the colon.
+
+## Current Behavior
+
+`worker_pool.py` constructs failure error messages using `ready_result.stderr`. For Claude CLI subprocesses, `stderr` is always empty because all output — including errors — is written to stdout as `--output-format stream-json` events. The resulting error messages are always truncated to `"ready-issue failed: "` with no diagnostic detail.
 
 ## Root Cause
 
@@ -38,6 +42,13 @@ This is a secondary bug downstream of BUG-1381 (result events are discarded befo
 
 When `stderr` is empty, the error message should include a snippet of `stdout` so some diagnostic information is preserved even in the worst case.
 
+## Steps to Reproduce
+
+1. Trigger a sprint failure via `ll-sprint` or `ll-parallel` where `ready-issue` exits non-zero
+2. Check `.parallel-manage-state.json` — observe `"ready-issue failed: "` with nothing after the colon
+3. Check worker logs — observe the same truncated error message
+4. Observe: `ready_result.stderr` is always empty because Claude CLI writes to stdout
+
 ## Implementation Steps
 
 1. Locate both error-construction sites in `worker_pool.py` (lines ~302 and ~462)
@@ -45,7 +56,27 @@ When `stderr` is empty, the error message should include a snippet of `stdout` s
 3. Truncate the stdout fallback to avoid flooding state files with multi-KB output
 4. Apply the same pattern to both `ready-issue` and `manage-issue` error paths
 
-## Suggested Fix
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/worker_pool.py` — update error message construction at `_run_ready_issue()` (~line 302) and `_run_manage_issue()` (~line 462)
+
+### Dependent Files (Callers/Importers)
+- TBD - use grep to find references: `grep -r "worker_pool" scripts/`
+
+### Similar Patterns
+- TBD - search for similar stderr-only usage: `grep -rn "\.stderr" scripts/little_loops/`
+
+### Tests
+- TBD - identify test files for `worker_pool`
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Proposed Solution
 
 ```python
 # Before (both locations):
@@ -69,5 +100,12 @@ Apply the same fix at the `manage-issue` equivalent location (~line 462).
 - BUG-1381: subprocess output parser silently discards result events (primary cause)
 - BUG-1383: orchestrator state file overwrites failure details (downstream)
 
+## Labels
+`bug`, `worker-pool`, `error-handling`, `captured`
+
+## Status
+**Open** | Created: 2026-05-09 | Priority: P2
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T16:54:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87a2dd4-2942-4324-b2d7-27ac23ef9a20.jsonl`
 - `/ll:capture-issue` - 2026-05-09T01:55:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
