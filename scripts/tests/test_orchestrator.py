@@ -1189,6 +1189,41 @@ class TestStateManagement:
 
         assert before <= orchestrator._last_save_time <= after
 
+    def test_save_state_uses_worker_errors_not_generic_failed(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_save_state writes actual error messages from _worker_errors, not the hardcoded 'Failed'."""
+        orchestrator.queue.completed_ids = []  # type: ignore[misc]
+        orchestrator.queue.failed_ids = ["BUG-002"]  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
+        orchestrator._worker_errors = {"BUG-002": "Claude CLI exited with stderr: tool not found"}
+
+        orchestrator._save_state()
+
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+        saved = json.loads(state_file.read_text())
+        assert saved["failed_issues"]["BUG-002"] == "Claude CLI exited with stderr: tool not found"
+        assert saved["failed_issues"]["BUG-002"] != "Failed"
+
+    def test_save_state_fallback_for_unknown_failed_id(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_save_state uses 'Failed' fallback when a failed ID has no _worker_errors entry."""
+        orchestrator.queue.completed_ids = []  # type: ignore[misc]
+        orchestrator.queue.failed_ids = ["BUG-003"]  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
+        orchestrator._worker_errors = {}  # no entry for BUG-003
+
+        orchestrator._save_state()
+
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+        saved = json.loads(state_file.read_text())
+        assert saved["failed_issues"]["BUG-003"] == "Failed"
+
     def test_cleanup_calls_close_transports_on_event_bus(
         self,
         default_parallel_config: ParallelConfig,
@@ -1507,6 +1542,7 @@ class TestOnWorkerComplete:
         orchestrator._on_worker_complete(result)
 
         orchestrator.queue.mark_failed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
+        assert orchestrator._worker_errors["BUG-001"] == "Processing failed"
 
     def test_on_worker_complete_close_verdict(
         self,
@@ -1802,7 +1838,7 @@ class TestWaitForCompletion:
 
         type(orchestrator.worker_pool).active_count = property(lambda self: get_active_count())  # type: ignore[method-assign,assignment]
         orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
-        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
+        orchestrator.merge_coordinator.failed_merges = {}  # type: ignore[misc,assignment]
 
         with patch("time.sleep"):
             orchestrator._wait_for_completion()
@@ -1816,7 +1852,7 @@ class TestWaitForCompletion:
 
         type(orchestrator.worker_pool).active_count = property(lambda self: 1)  # type: ignore[method-assign,assignment]
         orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
-        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
+        orchestrator.merge_coordinator.failed_merges = {}  # type: ignore[misc,assignment]
 
         with patch("time.time") as mock_time:
             mock_time.side_effect = [0, 0, 2, 2, 2]  # Exceed timeout
@@ -1832,7 +1868,7 @@ class TestWaitForCompletion:
         """_wait_for_completion marks merged issues as completed."""
         type(orchestrator.worker_pool).active_count = property(lambda self: 0)  # type: ignore[method-assign,assignment]
         orchestrator.merge_coordinator.merged_ids = ["BUG-001", "BUG-002"]  # type: ignore[misc]
-        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
+        orchestrator.merge_coordinator.failed_merges = {}  # type: ignore[misc,assignment]
 
         with patch.object(orchestrator, "_complete_issue_lifecycle_if_needed"):
             orchestrator._wait_for_completion()
@@ -2179,7 +2215,7 @@ class TestWorkerPoolEdgeCases:
 
         type(orchestrator.worker_pool).active_count = property(lambda self: 1)  # type: ignore[method-assign,assignment]
         orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
-        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
+        orchestrator.merge_coordinator.failed_merges = {}  # type: ignore[misc,assignment]
 
         with patch("time.time") as mock_time:
             mock_time.side_effect = [0, 0.5, 1.5, 2.5]
@@ -2201,7 +2237,7 @@ class TestWorkerPoolEdgeCases:
 
         orchestrator.merge_coordinator.wait_for_completion = mock_wait  # type: ignore[method-assign]
         orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
-        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
+        orchestrator.merge_coordinator.failed_merges = {}  # type: ignore[misc,assignment]
 
         with patch.object(orchestrator, "_complete_issue_lifecycle_if_needed"):
             orchestrator._wait_for_completion()
@@ -2850,6 +2886,7 @@ class TestDispatchRouting:
         orchestrator._on_worker_complete(result)
 
         orchestrator.queue.mark_failed.assert_called_once_with("BUG-004")  # type: ignore[attr-defined]
+        assert orchestrator._worker_errors["BUG-004"] == "Implementation failed"
 
     def test_on_worker_complete_interrupted_not_marked_failed(
         self,
@@ -2869,6 +2906,40 @@ class TestDispatchRouting:
 
         orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
         assert "BUG-005" in orchestrator._interrupted_issues
+
+    def test_on_worker_complete_stores_error_in_worker_errors(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_on_worker_complete stores the worker's error string in _worker_errors on failure."""
+        result = WorkerResult(
+            issue_id="BUG-010",
+            success=False,
+            branch_name="parallel/bug-010",
+            worktree_path=Path("/tmp/worktree"),
+            error="Claude CLI exited with code 1: stderr output here",
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        assert orchestrator._worker_errors["BUG-010"] == "Claude CLI exited with code 1: stderr output here"
+
+    def test_on_worker_complete_stores_fallback_when_error_is_none(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_on_worker_complete stores 'Failed' fallback in _worker_errors when result.error is None."""
+        result = WorkerResult(
+            issue_id="BUG-011",
+            success=False,
+            branch_name="parallel/bug-011",
+            worktree_path=Path("/tmp/worktree"),
+            error=None,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        assert orchestrator._worker_errors["BUG-011"] == "Failed"
 
 
 class TestDecisionNeededRouting:

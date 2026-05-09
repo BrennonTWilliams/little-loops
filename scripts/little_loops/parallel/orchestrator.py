@@ -113,6 +113,8 @@ class ParallelOrchestrator:
         self._issue_info_by_id: dict[str, IssueInfo] = {}
         # Track interrupted issues separately from failures (ENH-036)
         self._interrupted_issues: list[str] = []
+        # Accumulate per-issue failure reasons for state file (BUG-1383)
+        self._worker_errors: dict[str, str] = {}
         # Track PR-ready branches when use_feature_branches=True (ENH-665)
         self._pr_ready_branches: dict[str, str] = {}  # issue_id -> branch_name
 
@@ -596,7 +598,10 @@ class ParallelOrchestrator:
         with self._state_lock:
             self.state.last_checkpoint = datetime.now().isoformat()
             self.state.completed_issues = self.queue.completed_ids
-            self.state.failed_issues = dict.fromkeys(self.queue.failed_ids, "Failed")
+            self.state.failed_issues = {
+                issue_id: self._worker_errors.get(issue_id, "Failed")
+                for issue_id in self.queue.failed_ids
+            }
             self.state.in_progress_issues = self.queue.in_progress_ids
 
             state_file = self.repo_path / self.parallel_config.state_file
@@ -921,9 +926,11 @@ class ParallelOrchestrator:
                 ):
                     self.queue.mark_completed(result.issue_id)
                 else:
+                    self._worker_errors[result.issue_id] = f"Close failed: {result.close_reason or 'close error'}"
                     self.queue.mark_failed(result.issue_id)
             else:
                 self.logger.warning(f"No issue info found for {result.issue_id}")
+                self._worker_errors[result.issue_id] = "Close failed: no issue info"
                 self.queue.mark_failed(result.issue_id)
         elif result.success:
             self.logger.success(
@@ -955,9 +962,11 @@ class ParallelOrchestrator:
                     self.queue.mark_completed(result.issue_id)
                     self._complete_issue_lifecycle_if_needed(result.issue_id)
                 else:
+                    self._worker_errors[result.issue_id] = f"Merge failed: {result.error or 'merge error'}"
                     self.queue.mark_failed(result.issue_id)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
+            self._worker_errors[result.issue_id] = result.error or "Failed"
             self.queue.mark_failed(result.issue_id)
 
         # Update timing
@@ -1025,6 +1034,7 @@ class ParallelOrchestrator:
             ):
                 self.queue.mark_completed(result.issue_id)
             else:
+                self._worker_errors[result.issue_id] = f"Close failed: {result.close_reason or 'close error'}"
                 self.queue.mark_failed(result.issue_id)
             return
 
@@ -1036,6 +1046,7 @@ class ParallelOrchestrator:
             self.queue.mark_completed(result.issue_id)
             self._complete_issue_lifecycle_if_needed(result.issue_id)
         else:
+            self._worker_errors[result.issue_id] = f"Merge failed: {result.error or 'merge error'}"
             self.queue.mark_failed(result.issue_id)
 
     def _wait_for_completion(self) -> None:
@@ -1065,7 +1076,8 @@ class ParallelOrchestrator:
             self.queue.mark_completed(issue_id)
             self._complete_issue_lifecycle_if_needed(issue_id)
 
-        for issue_id in self.merge_coordinator.failed_merges:
+        for issue_id, reason in self.merge_coordinator.failed_merges.items():
+            self._worker_errors[issue_id] = reason or "Merge failed"
             self.queue.mark_failed(issue_id)
 
     def _report_results(self, start_time: float) -> None:
