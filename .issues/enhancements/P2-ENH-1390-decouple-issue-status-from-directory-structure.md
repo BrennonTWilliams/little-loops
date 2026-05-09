@@ -50,6 +50,34 @@ Moving an issue to `deferred/` or `completed/` requires a file rename/move, whic
 4. Keep `completed/` and `deferred/` as empty archived directories (or remove entirely) after migration
 5. Update all documentation, skills, and commands that reference `deferred/` or `completed/` paths
 
+## API/Interface
+
+Extension to issue frontmatter `status:` field vocabulary:
+
+```yaml
+# Extended status enum (new values: in_progress, blocked, done, cancelled)
+status: open | in_progress | blocked | deferred | done | cancelled
+```
+
+`ll-issues list` CLI argument:
+
+```
+ll-issues list [--status <open|in_progress|blocked|deferred|done|cancelled|all>]
+# Default (no flag): shows open + in_progress
+```
+
+## Scope Boundaries
+
+- **In scope**: Extending `status:` frontmatter enum; updating issue discovery in `issue_manager.py`, `ll-auto`, `ll-sprint`, `ll-parallel` to filter by `status:` field; migrating existing files from `deferred/` and `completed/`; updating `ll-issues list` with `--status` filter; updating docs, skills, and commands referencing state directories
+- **Out of scope**: Changing type directories (`features/`, `bugs/`, `enhancements/`) or their role; redesigning `ll-sync` protocol beyond status field mapping; building a status visualization UI; changing issue filename format or ID scheme
+
+## Success Metrics
+
+- **Migration**: 0 files lost from `deferred/` or `completed/` during migration; all migrated files have correct `status:` set (`deferred` or `done`)
+- **Discovery**: `ll-auto`, `ll-sprint`, and `ll-parallel` process `status: open` issues and skip `status: deferred` / `status: done` issues
+- **Sync**: `ll-sync` maps `status: done` → remote closed and `status: open` → remote open without directory checks
+- **Regression**: All existing tests pass; no issue discovery regressions across tools
+
 ## Integration Map
 
 ### Files to Modify
@@ -63,6 +91,29 @@ Moving an issue to `deferred/` or `completed/` requires a file rename/move, whic
 
 ### Migration Script Needed
 - One-time script to move files from `deferred/` and `completed/` into type directories with correct `status:` frontmatter
+
+### Dependent Files (Callers/Importers)
+- TBD - use grep to find references: `grep -r "completed\|deferred" scripts/little_loops/ --include="*.py"`
+- `scripts/little_loops/cli/auto.py` — issue selection loop (filters by directory today)
+- `scripts/little_loops/cli/sprint.py` — issue set execution (directory-based exclusion)
+
+### Similar Patterns
+- `ll-issues path` and `ll-issues show` — may use directory-based lookups; check for consistency
+- Any skill referencing `config.issues.completed_dir` or `config.issues.deferred_dir` config keys
+
+### Tests
+- TBD - `scripts/tests/` — update tests that assert on `deferred/` or `completed/` directory paths
+- Add integration tests for `status:` filtering in `issue_manager.py` and `ll-issues list`
+- Add migration script test with fixture files in `deferred/` and `completed/`
+
+### Documentation
+- `docs/ARCHITECTURE.md` — remove state directories from directory structure diagram
+- `docs/reference/API.md` — update `status` field documentation and valid values
+- `skills/format-issue/SKILL.md`, `skills/ready-issue/SKILL.md` — remove references to `completed_dir`/`deferred_dir`
+
+### Configuration
+- `config-schema.json` — extend `status` enum; deprecate or remove `completed_dir` and `deferred_dir` keys
+- `.ll/ll-config.json` — `issues.completed_dir` and `issues.deferred_dir` settings become obsolete post-migration
 
 ## Implementation Steps
 
@@ -90,6 +141,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover relevant docs._
 `issue-model`, `sync-compatibility`, `migration`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T20:39:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf87852d-ec5b-4a4d-959f-57a040534f19.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
 
 ---

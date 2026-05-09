@@ -44,15 +44,70 @@ There is no label or tag system. Cross-cutting classification is only possible b
 5. Update `ll-sync` to map `labels:` to platform-native label/tag fields
 6. Migrate the freeform `## Labels` Markdown section in existing issues to `labels:` frontmatter (automated)
 
+## API/Interface
+
+New frontmatter field:
+
+```yaml
+labels: [fsm, cli, quick-win]
+```
+
+CLI additions:
+
+```bash
+ll-issues list --label <value>        # filter issues by label
+ll-auto --label <value>               # scope processing to matching issues
+ll-sprint --label <value>             # scope sprint to matching issues
+```
+
+Platform sync mapping:
+- GitHub → `labels` array on issue
+- JIRA → `labels` field
+- ADO → `tags` field (semicolon-delimited)
+- Linear → `labelIds` array
+
+## Scope Boundaries
+
+- **In scope**: adding `labels:` as an optional list field; `--label` filter for `ll-issues list`, `ll-auto`, `ll-sprint`; `ll-sync` platform mapping; migration of freeform `## Labels` Markdown sections to frontmatter
+- **Out of scope**: enforced label vocabulary (starter labels are documented, not validated); label hierarchies or namespacing beyond simple prefix convention (`component:`, `area:`, `effort:`); automatic label inference or ML-based tagging; label-based routing or access control; any UI for label management
+
+## Success Metrics
+
+- `ll-issues list --label <value>` returns only issues whose `labels:` list contains that value
+- Labels survive a `ll-sync` round-trip (push to GitHub and pull back preserves all labels)
+- Migration script converts freeform `## Labels` content to `labels:` frontmatter for at least 90% of existing issues (remainder flagged for manual review)
+- No regressions in `ll-issues list`, `ll-auto`, or `ll-sprint` when `--label` is omitted
+
 ## Integration Map
 
 ### Files to Modify
-- `config-schema.json` — add `labels:` list field
-- `scripts/little_loops/issue_manager.py` — parse `labels:` field
-- `scripts/little_loops/cli/issues.py` — `--label` filter for `list` command
-- `scripts/little_loops/cli/auto.py` and `sprint.py` — `--label` scope filter
-- `scripts/little_loops/sync/` — map `labels:` to each platform
-- `docs/reference/API.md` — document `labels:` field
+- `config-schema.json` — add `labels:` list field (optional, items: string)
+- `scripts/little_loops/issue_manager.py` — parse `labels:` from frontmatter into `Issue` dataclass
+- `scripts/little_loops/cli/issues.py` — add `--label` filter to `list` command (`filter_by_label` predicate)
+- `scripts/little_loops/cli/auto.py` — add `--label` scope filter (reuse same predicate as `list`)
+- `scripts/little_loops/cli/sprint.py` — add `--label` scope filter
+- `scripts/little_loops/sync/` — update platform mappers (`github.py`, `jira.py`, `ado.py`, `linear.py`) to include `labels:` field
+
+### Dependent Files (Callers/Importers)
+- Any code that constructs `Issue` objects from frontmatter will receive the new `labels` attribute — grep `Issue(` and `issue_manager` imports for call sites
+- `ll-sprint` YAML definition files reference issue IDs; no format change needed but `--label` filter applies at load time
+
+### Similar Patterns
+- `priority` field in frontmatter: same pattern (schema field → parser → CLI filter) — follow the same validation-free, additive approach used for `priority`
+- `relates_to` list field: existing list-typed frontmatter field; `labels:` should follow the same YAML list serialization convention
+
+### Tests
+- `scripts/tests/test_issue_manager.py` — add tests for `labels:` parsing (present, absent, empty list)
+- `scripts/tests/test_cli_issues.py` — add tests for `--label` filter (match, no-match, multiple labels)
+- `scripts/tests/test_sync_*.py` — add sync mapping tests for each platform mapper
+- Migration script needs its own test with sample issues containing `## Labels` sections
+
+### Documentation
+- `docs/reference/API.md` — document `labels:` field and its type/usage
+- `CONTRIBUTING.md` — document starter label vocabulary (`component:`, `area:`, `effort:` prefixes)
+
+### Configuration
+- `config-schema.json` — schema change is additive; no breaking change to existing configs
 
 ## Implementation Steps
 
@@ -80,6 +135,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover relevant docs._
 `issue-model`, `sync-compatibility`, `schema`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T20:38:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe6a87fd-be36-4a41-80cb-e4a8262d6fa1.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
 
 ---

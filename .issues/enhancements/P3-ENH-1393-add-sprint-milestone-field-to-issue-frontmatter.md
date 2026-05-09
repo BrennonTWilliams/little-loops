@@ -56,6 +56,49 @@ Sprint definitions (`.ll/sprints/`) list issue IDs, but individual issue files h
 - `scripts/little_loops/sync/` — map `milestone:` to platform sprint/milestone/cycle
 - `scripts/little_loops/cli/verify_docs.py` — consistency check for `milestone:` vs sprint files
 
+### Dependent Files (Callers/Importers)
+- TBD — use grep: `grep -r "issue_manager\|IssueManager" scripts/`
+- `scripts/little_loops/cli/sprint.py` — imports `issue_manager.py` for issue file writes
+
+### Similar Patterns
+- `scripts/little_loops/issue_manager.py` — see how `status:`, `priority:`, `relates_to:` are parsed; follow the same pattern for `milestone:`
+- `scripts/little_loops/sync/` — see how existing frontmatter fields map to platform concepts
+
+### Tests
+- `scripts/tests/test_sprint.py` — add tests for `milestone:` backwrite on sprint assignment/removal
+- `scripts/tests/test_sprint_integration.py` — integration test for sprint→issue milestone field
+- `scripts/tests/test_issue_manager.py` — add tests for `milestone:` field parsing
+- `scripts/tests/test_sync.py` — add tests for milestone→platform field mapping
+
+### Documentation
+- `docs/reference/API.md` — document `milestone:` field in issue schema reference
+
+### Configuration
+- `config-schema.json` — new optional `milestone:` string field
+
+## API/Interface
+
+### Frontmatter Field
+
+```yaml
+milestone: sprint-2026-q2  # optional string; matches a sprint definition name or milestone ID
+```
+
+### CLI Flag
+
+```bash
+ll-issues list --milestone <sprint-name>
+```
+
+### Sync Mapping
+
+| Platform | Field |
+|----------|-------|
+| GitHub | `milestone` (title match) |
+| JIRA | sprint (`customfield_10020` via Agile API) |
+| ADO | iteration path |
+| Linear | cycle |
+
 ## Implementation Steps
 
 1. Add `milestone:` to `config-schema.json` as an optional string field
@@ -65,6 +108,11 @@ Sprint definitions (`.ll/sprints/`) list issue IDs, but individual issue files h
 5. Update `ll-sync` mappers for GitHub, JIRA/ADO, Linear
 6. Add consistency check in `ll-issues verify`: issues in sprint file but missing `milestone:` field (and vice versa)
 7. Add tests for sprint→issue backwrite and sync mapping
+
+## Scope Boundaries
+
+- **In scope**: `milestone:` frontmatter field; `ll-issues list --milestone` filter; `ll-sprint` backwrite on assign/remove; `ll-sync` mapping to GitHub milestone, JIRA sprint, ADO iteration, Linear cycle; consistency check in `ll-issues verify`
+- **Out of scope**: Retroactive population of `milestone:` on existing issues not assigned to any sprint; multi-milestone support (one milestone per issue); sprint board or Gantt visualization; remote milestone/cycle *creation* via sync (assign to existing only); UI for sprint assignment
 
 ## Impact
 
@@ -81,6 +129,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover relevant docs._
 `issue-model`, `sync-compatibility`, `sprint`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T20:39:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe6a87fd-be36-4a41-80cb-e4a8262d6fa1.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
 
 ---

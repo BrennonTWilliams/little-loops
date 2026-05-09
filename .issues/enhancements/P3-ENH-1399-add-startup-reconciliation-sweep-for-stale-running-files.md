@@ -88,6 +88,27 @@ def _reconcile_stale_runs(loops_dir: Path) -> None:
 ### Configuration
 - N/A — no config changes needed
 
+## API/Interface
+
+`LoopState` gains a new optional field (backward-compatible — existing `.state.json` files without `pid` are unaffected):
+
+```python
+@dataclass
+class LoopState:
+    # ... existing fields ...
+    pid: int | None = None  # populated on startup; used by reconciliation sweep
+```
+
+Internal helpers added to `persistence.py` (not public API, but listed for clarity):
+
+```python
+def _reconcile_stale_runs(loops_dir: Path) -> None: ...
+def _is_pid_alive(pid: int) -> bool: ...
+def _archive_orphan(state_file: Path, loops_dir: Path) -> None: ...
+```
+
+Consumers reading `.state.json` files (e.g., loop-viz) should treat `pid` as an optional field and not require its presence.
+
 ## Implementation Steps
 
 1. Add optional `pid: int | None` to `LoopState` dataclass and persist it on startup
@@ -129,6 +150,7 @@ def _reconcile_stale_runs(loops_dir: Path) -> None:
 ---
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T20:59:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be5fe9b0-f172-4370-b9f7-304173c44475.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:55:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7db205e9-01e7-4bfd-9c7c-5fce9c641172.jsonl`
 
 ---

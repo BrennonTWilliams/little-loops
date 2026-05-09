@@ -60,6 +60,36 @@ A user has 27 deferred issues for parallel FSM states. They create `EPIC-1400-pa
 - `epic: EPIC-NNN` is a valid frontmatter field on BUG/FEAT/ENH issues
 - Existing `parent:` field is NOT replaced — `epic:` and `parent:` serve distinct roles
 
+## API/Interface
+
+### New Frontmatter Fields
+
+```yaml
+# On EPIC issues (epic-sections.json defines these)
+id: EPIC-NNN
+type: EPIC
+children: [FEAT-100, BUG-200, ENH-300]  # member issue IDs
+
+# On BUG/FEAT/ENH issues (new optional field, distinct from parent:)
+epic: EPIC-NNN
+```
+
+### New CLI Arguments
+
+```bash
+ll-issues list --type epic        # filter to epics; shows child count per row
+ll-issues next-id                 # already allocates from global counter; EPIC-NNN follows same rules
+ll-issues show EPIC-NNN           # display epic with children summary
+```
+
+### Config Schema Addition
+
+```json
+{
+  "issue_types": ["BUG", "FEAT", "ENH", "EPIC"]
+}
+```
+
 ## Integration Map
 
 ### Files to Modify
@@ -73,6 +103,29 @@ A user has 27 deferred issues for parallel FSM states. They create `EPIC-1400-pa
 ### Files to Create
 - `templates/epic-sections.json` — epic template
 - `.issues/epics/` — directory (create with a placeholder or first real epic)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/auto.py` — uses issue type routing; EPIC type should not be auto-processed like regular issues
+- `scripts/little_loops/cli/sprint.py` — sprint planner references issue types; epic-awareness needed
+- grep: `grep -r "IssueType\|issue_type\|type_dir\|ISSUE_TYPES" scripts/`
+
+### Similar Patterns
+- `scripts/little_loops/issue_manager.py` — existing BUG/FEAT/ENH directory routing; EPIC follows same pattern
+- `templates/feat-sections.json` — structural model for new `templates/epic-sections.json`
+- grep: `grep -r '\.issues/bugs\|\.issues/features\|\.issues/enhancements' scripts/`
+
+### Tests
+- `scripts/tests/test_issue_manager.py` — EPIC type routing, directory creation, ID allocation
+- `scripts/tests/test_issues_cli.py` — `ll-issues list --type epic`, child count display, `next-id` EPIC allocation
+- `scripts/tests/test_sync.py` — `epic:` frontmatter field mapping to platform parent/milestone
+
+### Documentation
+- `docs/reference/API.md` — EPIC type, `epic:` field, `children:` field definitions
+- `docs/ARCHITECTURE.md` — epic tier in issue hierarchy diagram
+- `CONTRIBUTING.md` — epic creation workflow
+
+### Configuration
+- `config-schema.json` — `epic` in recognized issue types; `epic:` as valid frontmatter field on BUG/FEAT/ENH
 
 ## Implementation Steps
 
@@ -100,6 +153,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover relevant docs._
 `issue-model`, `epic-system`, `sync-compatibility`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-09T20:39:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf87852d-ec5b-4a4d-959f-57a040534f19.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
 
 ---

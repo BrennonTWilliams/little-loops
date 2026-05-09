@@ -44,11 +44,24 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 - `audit-claude-config` — explicit config audit
 - `issue-size-review` — explicit planning review
 - `tradeoff-review-issues` — explicit planning review
+- `workflow-automation-proposer` — pipeline step 3, invoked programmatically by `analyze-workflows`; requires step1/step2 output files to exist so blind LLM routing would fail
 
 **Skills that MUST remain LLM-discoverable (natural language routing):**
-- `capture-issue`, `manage-issue`, `configure`, `init`, `go-no-go`, `confidence-check`
-- `wire-issue`, `format-issue`, `create-loop`, `workflow-automation-proposer`
-- `create-eval-from-issues`, `product-analyzer`, `decide-issue`, `audit-architecture`
+
+- `capture-issue` — Primary discovery path. Users say "log this bug", "capture what we just found", "track this issue" without knowing the command name. LLM routing is the intended entry point.
+- `manage-issue` — Core implementation entry point. Users say "implement FEAT-123", "fix BUG-042", "let's work on this issue" — the LLM must route natural implementation requests here.
+- `configure` — Settings are requested naturally: "change my test command", "update my scan settings", "set the source directory". Users have no reason to know `/ll:configure` by name.
+- `init` — One-time onboarding case: new users say "set up little-loops for this project", "initialize ll", "bootstrap the config". They won't know the explicit command; discoverable routing is essential here.
+- `go-no-go` — Adversarial review is triggered conversationally: "should we implement this?", "is this worth doing?", "review this issue before we start". The "go/no-go" terminology is jargon users learn after, not before, routing.
+- `confidence-check` — Pre-implementation assessment expressed naturally: "is this ready to implement?", "am I ready to start?", "how confident are we?". Conversational trigger, not a typed command.
+- `wire-issue` — Wiring gaps are described, not named: "this issue is missing its integration map", "what files does this touch?", "fill in the wiring". Users articulate the gap; LLM routes to the remedy.
+- `format-issue` — Template correction is natural language: "fix the format of this issue", "this issue doesn't match the template", "reformat ENH-1394". Users won't know a dedicated format command exists.
+- `create-loop` — Automation requests arrive as goals: "automate X", "create a loop to keep Y under Z", "set up a recurring task". LLM routing connects the intent to the FSM-based skill.
+- `create-eval-from-issues` — Eval generation is requested concisely: "generate an eval for FEAT-123", "create an eval harness for these issues". While technical, the trigger is natural enough that blind invocation would fail; LLM routing provides the bridge.
+- `product-analyzer` — Product analysis is framed as questions: "analyze our product gaps", "check feature coverage against our goals", "evaluate the business value of the backlog". Requires routing from goal language to skill.
+- `decide-issue` — Decision resolution is conversational: "decide which option to use for ENH-123", "pick the best implementation", "resolve the open decision". Triggered naturally when an issue has competing options (`decision_needed: true`), which the user may not inspect directly.
+
+**Note — `audit-architecture` is a command, not a skill:** It lives at `commands/audit-architecture.md` and has no `SKILL.md`. The `disable-model-invocation` frontmatter flag is a skill-level field; it is inapplicable to commands. Remove `audit-architecture` from this tracking list entirely.
 
 ## Implementation Steps
 
@@ -77,6 +90,7 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 - `skills/audit-claude-config/SKILL.md` — add frontmatter flag
 - `skills/issue-size-review/SKILL.md` — add frontmatter flag
 - `skills/tradeoff-review-issues/SKILL.md` — add frontmatter flag
+- `skills/workflow-automation-proposer/SKILL.md` — add frontmatter flag (pipeline step, not user-facing)
 
 ### Dependent Files (Callers/Importers)
 - N/A — frontmatter flag is read by Claude Code harness, not by project code
