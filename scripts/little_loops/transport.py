@@ -31,6 +31,7 @@ import logging
 import socket
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from queue import Empty, Full, Queue
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -127,7 +128,12 @@ class UnixSocketTransport:
     raise an `OSError` from `socket.socket` directly.
     """
 
-    def __init__(self, path: Path, max_clients: int = 8) -> None:
+    def __init__(
+        self,
+        path: Path,
+        max_clients: int = 8,
+        on_connect: Callable[[_SocketClient], None] | None = None,
+    ) -> None:
         if not hasattr(socket, "AF_UNIX"):
             raise RuntimeError(
                 "UnixSocketTransport requires AF_UNIX, which is not available on this platform"
@@ -135,6 +141,7 @@ class UnixSocketTransport:
 
         self._path = path
         self._max_clients = max_clients
+        self._on_connect = on_connect
         self._shutdown = threading.Event()
         self._clients: list[_SocketClient] = []
         self._clients_lock = threading.Lock()
@@ -189,6 +196,8 @@ class UnixSocketTransport:
                     daemon=True,
                 )
                 self._clients.append(client)
+                if self._on_connect is not None:
+                    self._on_connect(client)
                 client.thread.start()
 
     def _client_loop(self, client: _SocketClient) -> None:
@@ -533,6 +542,22 @@ class WebhookTransport:
         )
 
 
+def _make_seed_callback() -> Callable[[_SocketClient], None]:
+    """Return an on_connect callback that seeds a new client with current running loop state."""
+    from little_loops.fsm.persistence import list_running_loops
+
+    def _seed(client: _SocketClient) -> None:
+        for state in list_running_loops(Path(".loops")):
+            event = {"event": "state_change", **state.to_dict()}
+            payload = (json.dumps(event) + "\n").encode("utf-8")
+            try:
+                client.queue.put_nowait(payload)
+            except Full:
+                pass
+
+    return _seed
+
+
 _TRANSPORT_REGISTRY: dict[str, str] = {
     "jsonl": "jsonl",
     "otel": "otel",
@@ -583,7 +608,13 @@ def wire_transports(
                     'use a different transport such as "jsonl".'
                 )
             resolved = _resolve_socket_path(config.socket.path, base)
-            bus.add_transport(UnixSocketTransport(resolved, config.socket.max_clients))
+            bus.add_transport(
+                UnixSocketTransport(
+                    resolved,
+                    config.socket.max_clients,
+                    on_connect=_make_seed_callback(),
+                )
+            )
         elif name == "webhook":
             if config.webhook.url is None:
                 logger.warning("WebhookTransport: events.webhook.url is None; skipping")

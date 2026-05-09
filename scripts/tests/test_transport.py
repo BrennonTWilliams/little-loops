@@ -271,7 +271,8 @@ class TestWireTransports:
             socket=SocketEventsConfig(path=str(short_tmp_path / "events.sock"), max_clients=4),
         )
         try:
-            wire_transports(bus, config, log_dir=short_tmp_path)
+            with mock.patch("little_loops.fsm.persistence.list_running_loops", return_value=[]):
+                wire_transports(bus, config, log_dir=short_tmp_path)
             assert (short_tmp_path / "events.sock").exists()
         finally:
             bus.close_transports()
@@ -286,7 +287,8 @@ class TestWireTransports:
             socket=SocketEventsConfig(path=str(custom), max_clients=2),
         )
         try:
-            wire_transports(bus, config, log_dir=short_tmp_path)
+            with mock.patch("little_loops.fsm.persistence.list_running_loops", return_value=[]):
+                wire_transports(bus, config, log_dir=short_tmp_path)
             assert custom.exists()
         finally:
             bus.close_transports()
@@ -300,7 +302,8 @@ class TestWireTransports:
             socket=SocketEventsConfig(path=str(short_tmp_path / "events.sock"), max_clients=2),
         )
         try:
-            wire_transports(bus, config, log_dir=short_tmp_path)
+            with mock.patch("little_loops.fsm.persistence.list_running_loops", return_value=[]):
+                wire_transports(bus, config, log_dir=short_tmp_path)
             bus.emit({"event": "x", "ts": "t"})
             assert (short_tmp_path / "events.jsonl").exists()
             assert (short_tmp_path / "events.sock").exists()
@@ -507,6 +510,27 @@ class TestUnixSocketTransport:
             assert client.dropped_total >= 20
             assert any("slow client" in record.message.lower() for record in caplog.records)
             c1.close()
+        finally:
+            t.close()
+
+    def test_on_connect_callback_seeds_new_client(self, short_tmp_path: Path) -> None:
+        """on_connect callback fires immediately after client registers, seeding state events."""
+        path = short_tmp_path / "events.sock"
+        seed_event = {"event": "state_change", "loop_name": "my-loop", "current_state": "run"}
+
+        def _seed(client: Any) -> None:
+            payload = (json.dumps(seed_event) + "\n").encode("utf-8")
+            client.queue.put_nowait(payload)
+
+        t = UnixSocketTransport(path, max_clients=2, on_connect=_seed)
+        try:
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.connect(str(path))
+            # No send() call — seed arrives from on_connect alone
+            lines = _read_lines(client, expected=1)
+            assert len(lines) == 1
+            assert json.loads(lines[0]) == seed_event
+            client.close()
         finally:
             t.close()
 

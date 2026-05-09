@@ -5513,12 +5513,13 @@ transport.close()
 #### Constructor
 
 ```python
-UnixSocketTransport(path: Path, max_clients: int = 8)
+UnixSocketTransport(path: Path, max_clients: int = 8, on_connect: Callable[[_SocketClient], None] | None = None)
 ```
 
 **Parameters:**
 - `path` - Path to the AF_UNIX socket. Any stale file at this path is unlinked before bind. The file is `chmod 0600` immediately after `bind()`.
 - `max_clients` - Maximum simultaneous client connections. Used as both the `listen()` backlog and the live-clients cap; further connections are accepted-and-closed.
+- `on_connect` - Optional callback invoked by `_accept_loop` immediately after a new client is registered. Receives the new `_SocketClient`; used internally by `wire_transports` to seed current loop state. Defaults to `None` (no-op).
 
 **Wire format:** Each `send(event)` serializes the event with `json.dumps(event)` and appends a `\n`, so consumers can parse one line at a time:
 

@@ -1,5 +1,6 @@
 ---
 captured_at: '2026-05-09T19:39:32Z'
+completed_at: '2026-05-09T20:02:50Z'
 discovered_date: 2026-05-09
 discovered_by: capture-issue
 confidence_score: 98
@@ -120,13 +121,27 @@ Any consumer of the Unix socket (loop-viz dashboard, TUI tools, `nc -U` one-line
 
 `transport`, `unix-socket`, `fsm`, `loop-viz`, `captured`
 
+## Resolution
+
+Fixed in `scripts/little_loops/transport.py`:
+- Added `on_connect: Callable[[_SocketClient], None] | None = None` parameter to `UnixSocketTransport.__init__`
+- `_accept_loop` calls `self._on_connect(client)` immediately after appending the client and before starting its drain thread
+- Added `_make_seed_callback()` helper that calls `list_running_loops(Path(".loops"))` and enqueues a `state_change` event per running loop into the new client's queue
+- `wire_transports` now passes `on_connect=_make_seed_callback()` when creating `UnixSocketTransport`
+
+Tests: added `test_on_connect_callback_seeds_new_client` to `TestUnixSocketTransport`; patched `list_running_loops` in the three `TestWireTransports` socket tests.
+
+Docs: updated `UnixSocketTransport` constructor signature in `docs/reference/API.md`.
+
 ## Status
 
-**Open** | Created: 2026-05-09 | Priority: P2
+**Closed** | Created: 2026-05-09 | Resolved: 2026-05-09 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-09T19:58:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b3fdcde-8123-4db1-9ba6-8a16a355498e.jsonl`
 - `/ll:confidence-check` - 2026-05-09T20:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2a2a4de-26eb-47e2-9317-a2bfc01e3b85.jsonl`
 - `/ll:wire-issue` - 2026-05-09T19:52:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2df5355d-3dd9-4237-a537-69cfafacc825.jsonl`
 - `/ll:refine-issue` - 2026-05-09T19:49:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c14fd24d-a091-4319-ab55-68b4549e8413.jsonl`
 - `/ll:format-issue` - 2026-05-09T19:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/249e3bdb-aeab-44e0-a65e-23aaef5f0a28.jsonl`
+- `/ll:manage-issue` - 2026-05-09T20:02:50Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:capture-issue` - 2026-05-09T19:39:32Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b297ddb7-801f-4ba1-aabc-68f533f30384.jsonl`
