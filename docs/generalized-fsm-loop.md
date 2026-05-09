@@ -1041,7 +1041,8 @@ ${env.PATH}
 | **Timing** | Resolved at runtime, just before use |
 | **Undefined variable** | Loop terminates with error |
 | **Empty value** | Interpolates as empty string |
-| **Escaping** | Use `$${` for literal `${`; bash parameter expansion operators (`:-`, `:+`, `[@]`, etc.) inside `$${...}` pass through unchanged |
+| **Escaping** | Use `$${` for literal `${`; bash parameter expansion operators (`:-`, `:+`, `[@]`, etc.) inside `$${...}` pass through unchanged to the shell |
+| **Bash default values** | `${var:-default}` syntax is resolved by the interpolation engine at runtime — if `var` is defined and non-empty its value is used; if absent or empty, `default` is substituted. Use this for optional context variables. |
 | **Nesting** | Not supported |
 
 ---

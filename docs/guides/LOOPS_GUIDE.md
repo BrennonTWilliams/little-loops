@@ -288,14 +288,14 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
 | `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
-| `auto-refine-and-implement` | For each backlog issue in priority order: recursively refine via `recursive-refine` (which handles decomposition into child issues), then implement all passed issues; skips issues that fail refinement or are decomposed, tracking them to avoid retrying; loops until backlog is exhausted |
+| `auto-refine-and-implement` | For each backlog issue in priority order: recursively refine via `recursive-refine` (which handles decomposition into child issues), run an adversarial go/no-go gate, then implement all passed issues; issues that fail the gate are skipped; loops until backlog is exhausted |
 | `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
 | `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling; accepts a single ID or comma-separated list |
 | `autodev` | Targeted refine-and-implement for a specific set of issues; accepts a single ID or comma-separated list and interleaves refinement and implementation — as soon as a leaf passes refinement it is implemented via `ll-auto --only` before the next leaf is refined; decomposed children are prepended depth-first; terminates when the input queue drains |
 | `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder in your prompt to inject each issue's ID |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog (or reuse an existing one via optional arg), refine, and execute |
-| `sprint-refine-and-implement` | Like `auto-refine-and-implement` but scoped to a named sprint; processes issues in sprint YAML order, refining each recursively before implementing |
+| `sprint-refine-and-implement` | Like `auto-refine-and-implement` but scoped to a named sprint; processes issues in sprint YAML order, refining each recursively, running a go/no-go gate, then implementing |
 
 ### `sprint-build-and-validate` — Automated Sprint Creation and Validation
 
@@ -357,7 +357,7 @@ route_input → [sprint_name provided?]
 
 ### `sprint-refine-and-implement` — Sprint-Scoped Refine-and-Implement Loop
 
-**Technique**: Like `auto-refine-and-implement` but bounded to a named sprint. Reads `.sprints/<sprint_name>.yaml` and processes each issue in sprint YAML order: delegates `format → refine → wire → confidence-check` to the `recursive-refine` sub-loop (with automatic decomposition of oversized issues), then implements each issue that passed via `ll-auto --only`. Issues that fail refinement or are decomposed are recorded in a skip file and excluded from re-processing on resume.
+**Technique**: Like `auto-refine-and-implement` but bounded to a named sprint. Reads `.sprints/<sprint_name>.yaml` and processes each issue in sprint YAML order: delegates `format → refine → wire → confidence-check` to the `recursive-refine` sub-loop (with automatic decomposition of oversized issues), runs `/ll:go-no-go` as an adversarial gate before implementation, then implements each issue that passed both refinement and the gate via `ll-auto --only`. Issues that fail refinement or are decomposed are recorded in a skip file; issues that receive a NO-GO verdict are skipped back to the queue without being implemented. Both categories are excluded from re-processing on resume.
 
 **When to use**: When you have a defined sprint and want to run the full refine-and-implement pipeline over exactly those issues, in sprint order, rather than the confidence-ranking order that `auto-refine-and-implement` uses. Prefer `auto-refine-and-implement` for open-ended backlog processing.
 
@@ -387,7 +387,9 @@ Sprint file must exist at `.sprints/<sprint-name>.yaml` (standard sprint locatio
 get_next_issue → [issue found?]
   ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
   │           ├─ YES → get_passed_issues → [passed issues?]
-  │           │           ├─ YES → implement_next → implement_issue → implement_next (loop)
+  │           │           ├─ YES → implement_next → go_no_go (/ll:go-no-go --check --auto) → [GO?]
+  │           │           │           ├─ YES → implement_issue (ll-auto --only) → implement_next (loop)
+  │           │           │           └─ NO  → implement_next (skip, loop)
   │           │           └─ NO  → get_next_issue
   │           └─ NO  → skip_and_continue → get_next_issue
   └─ NO  → done
@@ -399,7 +401,7 @@ get_next_issue → [issue found?]
 
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 
-**Technique**: For each backlog issue in priority order, run `recursive-refine` as a sub-loop to bring it to ready status (with automatic decomposition of oversized issues into child issues). After refinement, all issues that passed are queued for implementation via `ll-auto --only`; decomposed parents are moved to `.issues/completed/` and recorded in a skip list; failed issues are recorded in a skip list — both are excluded from subsequent `ll-issues next-issue` calls so the loop never retries a persistently failing issue.
+**Technique**: For each backlog issue in priority order, run `recursive-refine` as a sub-loop to bring it to ready status (with automatic decomposition of oversized issues into child issues). After refinement, all issues that passed are queued for sequential implementation; before each implementation, `/ll:go-no-go` runs as an adversarial gate — issues that receive a NO-GO verdict are skipped without being implemented. Decomposed parents are moved to `.issues/completed/` and recorded in a skip list; failed or NO-GO issues are recorded in a skip list — all are excluded from subsequent `ll-issues next-issue` calls so the loop never retries a persistently failing issue.
 
 **When to use**: When you want fully-automated end-to-end issue processing — from raw backlog to committed implementation — without manual intervention between refinement and implementation. Prefer `issue-refinement` if you only want to refine issues without implementing them, or `ll-auto` for direct implementation without the refinement pass.
 
@@ -423,7 +425,9 @@ ll-loop run auto-refine-and-implement --context max_issues=10
 init → get_next_issue → [issue found?]
          ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
          │         ├─ YES → get_passed_issues → [any passed?]
-         │         │         ├─ YES → implement_next → implement_issue (ll-auto --only) → implement_next (loop)
+         │         │         ├─ YES → implement_next → go_no_go (/ll:go-no-go --check --auto) → [GO?]
+         │         │         │         ├─ YES → implement_issue (ll-auto --only) → implement_next (loop)
+         │         │         │         └─ NO  → implement_next (skip, loop)
          │         │         └─ NO  → get_next_issue (loop)
          │         └─ NO  → skip_and_continue → get_next_issue (loop)
          └─ NO → done
