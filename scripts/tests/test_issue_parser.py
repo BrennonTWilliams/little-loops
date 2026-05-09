@@ -314,6 +314,65 @@ class TestIssueInfo:
         assert restored.product_impact.business_value == "high"
         assert restored.product_impact.user_benefit == "Better protection"
 
+    def test_epic_default_none(self) -> None:
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-001",
+            title="Test",
+        )
+        assert info.epic is None
+
+    def test_epic_in_to_dict(self) -> None:
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test",
+            epic="EPIC-001",
+        )
+        assert info.to_dict()["epic"] == "EPIC-001"
+
+    def test_epic_from_dict(self) -> None:
+        info = IssueInfo.from_dict(
+            {
+                "path": "/path/to/test.md",
+                "issue_type": "bugs",
+                "priority": "P1",
+                "issue_id": "BUG-001",
+                "title": "Test",
+                "epic": "EPIC-001",
+            }
+        )
+        assert info.epic == "EPIC-001"
+
+    def test_epic_from_dict_missing(self) -> None:
+        info = IssueInfo.from_dict(
+            {
+                "path": "/path/to/test.md",
+                "issue_type": "bugs",
+                "priority": "P1",
+                "issue_id": "BUG-001",
+                "title": "Test",
+            }
+        )
+        assert info.epic is None
+
+    def test_epic_roundtrip(self) -> None:
+        """Verify epic survives to_dict → from_dict; catches missing to_dict/from_dict wiring."""
+        original = IssueInfo(
+            path=Path("/test/path.md"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-100",
+            title="Test",
+            epic="EPIC-042",
+        )
+        restored = IssueInfo.from_dict(original.to_dict())
+        assert restored.epic == "EPIC-042"
+
 
 class TestIssueParser:
     """Tests for IssueParser class."""
@@ -756,6 +815,46 @@ class TestIssueParser:
 
         assert content == ""
         assert any("P1-BUG-999-unreadable.md" in record.message for record in caplog.records)
+
+    def test_parse_epic_from_frontmatter(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+    ) -> None:
+        """Test parse_file reads epic: from YAML frontmatter."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("---\nepic: EPIC-042\n---\n\n# BUG-001: Test\n")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.epic == "EPIC-042"
+
+    def test_parse_no_epic(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+    ) -> None:
+        """Test parse_file returns None for epic when frontmatter field is absent."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.epic is None
 
 
 class TestGetNextIssueNumber:
