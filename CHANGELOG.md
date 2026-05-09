@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.99.0] - 2026-05-09
+
+### Added
+
+- **go/no-go Gate for refine-and-implement Loops** — Added a `go_no_go` state between `implement_next` and `implement_issue` in both `auto-refine-and-implement` and `sprint-refine-and-implement` loops to filter low-value issues before costly implementation. (ENH-1387)
+- **Issue Model Alignment Capture** — Captures issue model alignment issues for platform compatibility when scanning issues. (50c290b)
+
+### Fixed
+
+- **Skill descriptions exceed Claude Code context budget, causing 38 silent drops** — Trimmed all 28 `skills/*/SKILL.md` description fields to single-line inline values (≤100 chars), reducing token footprint by 57% to fit within the default 1% context budget. (BUG-1379)
+- **`recursive-refine` `dequeue_next` bash expansion crashes interpolator, causing infinite sprint loops** — Fixed by using `$${}` escape syntax to pass bash parameter expansions through interpolation unchanged. (BUG-1380)
+- **subprocess output parser silently discards result events** — Extended the `result` event branch in `run_claude_command()` to extract and report errors via stderr. (BUG-1381)
+- **Worker pool error messages use only stderr, ignoring stdout** — Added stdout fallback in error message construction for both failure sites in `_process_issue()`. (BUG-1382)
+- **Orchestrator state file overwrites failure details with generic "Failed" string** — Accumulated per-issue worker error strings replace the generic overwrite with actual error messages. (BUG-1383)
+- **FSM interpolation engine rejects bash default-value syntax in escaped variables** — Added regression tests and documentation for bash-operator support inside `$${...}` escapes. (BUG-1384)
+- **`--resume` fails in print mode during Option E context-handoff continuation** — Changed to `--continue` in `subprocess_utils.run_claude_command()` for correct print-mode session continuations without requiring an explicit session ID. (BUG-1385)
+- **Phantom failure after Option J guillotine fresh session** — Added `_just_ran_fresh_session` guard to skip Option E after fresh session completes, and classified "requires a valid session id" as TRANSIENT failure. (BUG-1386)
+- **UnixSocketTransport skips initial state seed on client connect** — New `on_connect` callback seeds new clients with current running loop state from `.loops/.running/*.state.json`. (BUG-1388)
+
 ## [1.98.0] - 2026-05-07
 
 ### Added
@@ -84,6 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.99.0...HEAD
+[1.99.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.98.0...v1.99.0
 [1.98.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.97.0...v1.98.0
 [1.97.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.96.0...v1.97.0
 [1.96.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.95.0...v1.96.0
