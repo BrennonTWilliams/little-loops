@@ -291,6 +291,7 @@ _Updated by `/ll:confidence-check` on 2026-05-10 (post decide-issue pass)_
 - **Migration sequencing**: 1,346 files in `completed/`+`deferred/` must be migrated before or atomically with discovery-tool updates; a dry-run mode is strongly advised to prevent mid-migration inconsistency.
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 - `/ll:confidence-check` - 2026-05-10T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13dea43d-146d-4382-8d31-ebf45e40bef4.jsonl`
 - `/ll:decide-issue` - 2026-05-10T15:04:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f5236e3-1417-491a-92a7-2794bf5493ce.jsonl`
 - `/ll:confidence-check` - 2026-05-10T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87b169e7-5eaf-4702-a6c2-f5adc1a32387.jsonl`
@@ -299,6 +300,21 @@ _Updated by `/ll:confidence-check` on 2026-05-10 (post decide-issue pass)_
 - `/ll:refine-issue` - 2026-05-10T14:40:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a256e37f-c7eb-492b-a32d-7b20fd8a9be6.jsonl`
 - `/ll:format-issue` - 2026-05-09T20:39:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf87852d-ec5b-4a4d-959f-57a040534f19.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-10
+- **Reason**: Issue too large for single session (score 11/11 — Very Large)
+
+### Decomposed Into
+- ENH-1417: Core Data Model — status field, IssueInfo, and config deprecation
+- ENH-1418: Discovery, Lifecycle, and History Redesign
+- ENH-1419: CLI, Sync, Sprint Runner, and Parallel Discovery
+- ENH-1420: Migration Script
+- ENH-1421: Commands, Skills, and Documentation
 
 ---
 

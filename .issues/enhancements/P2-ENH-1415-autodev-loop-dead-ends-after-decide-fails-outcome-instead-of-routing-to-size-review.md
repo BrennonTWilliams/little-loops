@@ -34,6 +34,11 @@ After decide runs and outcome still fails, `recheck_after_decide → on_no` shou
 
 An issue that passes the decide gate but still fails outcome has unresolvable complexity/change-surface scores that only decomposition can address. Abandoning without decomposition silently drops valid work. The loop has all the machinery (`run_size_review`, `snap_and_size_review`) — it just needs the routing wire.
 
+## Scope Boundaries
+
+- **In scope**: Fix `recheck_after_decide → on_no` routing to `snap_and_size_review`; add `mark_decide_ran` state to flag that decide has already run; add `snap_and_size_review` state that refreshes pre-ids before handing off to `run_size_review`; update `decide_current` to skip re-entering decide when the flag is set
+- **Out of scope**: Fixing `decide-issue --auto` interactive question behavior (tracked in ENH-1416); modifying confidence scoring thresholds; redesigning the broader autodev FSM
+
 ## Implementation Steps
 
 **File**: `scripts/little_loops/loops/autodev.yaml`
@@ -94,11 +99,43 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
 - No children AND outcome fails → `recheck_after_size_review → on_no: dequeue_next` (terminates).
 - No children AND outcome passes → `recheck_after_size_review → decide_current` → flag set → `exit 1 → implement_current` (terminates).
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/autodev.yaml` — routing changes, 3 new state definitions
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loop_runner.py` — executes autodev FSM states
+- `scripts/little_loops/cli/ll_loop.py` — `ll-loop` CLI entry point
+
+### Similar Patterns
+- `recheck_after_size_review → on_no: dequeue_next` in autodev.yaml — similar terminal routing pattern to keep consistent
+
+### Tests
+- TBD — integration test for autodev loop routing after decide fails outcome
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Related
 
 - `scripts/little_loops/loops/autodev.yaml` — `recheck_after_decide`, `decide_current`, `run_decide`, `dequeue_next`
 - `enh-1390-autodev-debug.txt` — full failure trace that produced this issue
 - ENH-1416 — companion fix: `decide-issue --auto` should not ask interactive questions
+
+## Impact
+
+- **Priority**: P2 — Autodev loop silently drops valid issues when decide runs but outcome still fails; routing fix unblocks decomposition of these issues
+- **Effort**: Small — Single YAML file edit: 3 new states (`mark_decide_ran`, `snap_and_size_review`, `decide_current` guard), 2 routing changes
+- **Risk**: Low — YAML-only change to autodev FSM; loop termination is guaranteed by loop-safety reasoning in Implementation Steps
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `autodev-loop`, `routing`
 
 ---
 
@@ -107,4 +144,5 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
 Open
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-10T15:10:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
 - `/ll:capture-issue` - 2026-05-10T15:06:51Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`

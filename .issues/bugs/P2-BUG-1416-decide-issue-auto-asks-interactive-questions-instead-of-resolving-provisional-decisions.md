@@ -11,9 +11,16 @@ decision_needed: false
 
 # BUG-1416: decide-issue --auto asks interactive questions instead of resolving provisional decisions
 
-## Problem
+## Summary
 
 `/ll:decide-issue ENH-1390 --auto` left `decision_needed: true` unchanged and asked an interactive question ("Want me to edit Step 11?") instead of acting. The issue had a provisional `(e.g., completed_at:)` marker in Step 11 — a single named approach in parenthetical form — which `--auto` mode should lock in and clear without user interaction.
+
+## Current Behavior
+
+When `/ll:decide-issue ISSUE_ID --auto` is run on an issue with inline provisional decision language (`(e.g., ...)` style) and no formal `Option A / Option B` blocks are present, the skill:
+- Leaves `decision_needed: true` unchanged
+- Asks an interactive question (e.g., "Want me to edit Step N?")
+- Does not resolve or lock in the provisional approach
 
 ## Root Cause
 
@@ -34,6 +41,11 @@ In `--auto` mode, when no formal option blocks are found, the skill should scan 
 ## Impact
 
 `--auto` mode is broken for issues with inline provisional decisions. In `ll-loop run autodev`, this causes `rerun_confidence_after_decide` to see an unchanged score, which (before ENH-1415) dead-ends the loop. Even with ENH-1415 applied, it wastes a decide invocation and routes unnecessarily to size review.
+
+- **Priority**: P2 — breaks `--auto` mode for a common provisional-decision pattern; impacts autodev loop reliability
+- **Effort**: Small — targeted addition of one sub-phase to an existing skill file, no new infrastructure
+- **Risk**: Low — new Phase 3b only activates in `--auto` mode when `OPTIONS = 0`; interactive behavior untouched
+- **Breaking Change**: No
 
 ## Implementation Steps
 
@@ -56,12 +68,36 @@ Extend **Phase 3** of `skills/decide-issue/SKILL.md` with a new sub-phase that a
 
 The ENH-1390 case is the canonical example: Step 11 had `(e.g., completed_at: frontmatter field)` — one named approach in a provisional wrapper. Phase 3b should lock in `completed_at:` as the definitive field name.
 
+## Integration Map
+
+### Files to Modify
+- `skills/decide-issue/SKILL.md` — Phase 3 (add Phase 3b sub-phase for inline provisional scan)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/autodev.yaml` — `run_decide` and `rerun_confidence_after_decide` states depend on correct `--auto` behavior
+
+### Similar Patterns
+- TBD — search for similar `OPTIONS = 0` guard logic in other decide-related skills: `grep -r "OPTIONS" skills/`
+
+### Tests
+- TBD — identify test files for decide-issue skill: `find scripts/tests -name "*decide*"`
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Related
 
 - `skills/decide-issue/SKILL.md` — Phase 3 (OPTIONS check)
 - `scripts/little_loops/loops/autodev.yaml` — `run_decide`, `rerun_confidence_after_decide`
 - `.issues/enhancements/ENH-1390` — original issue where this manifested
 - ENH-1415 — companion fix: autodev loop routing after decide fails outcome
+
+## Labels
+
+`bug`, `decide-issue`, `auto-mode`, `captured`
 
 ---
 
@@ -70,4 +106,5 @@ The ENH-1390 case is the canonical example: Step 11 had `(e.g., completed_at: fr
 Open
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-10T15:11:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7801123-27a3-4b5b-aa78-0beb3e563702.jsonl`
 - `/ll:capture-issue` - 2026-05-10T15:06:51Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
