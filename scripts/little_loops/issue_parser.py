@@ -224,6 +224,7 @@ class IssueInfo:
         session_commands: Distinct /ll:* commands found in the ## Session Log section
         session_command_counts: Per-command occurrence counts from the ## Session Log section
         labels: Labels extracted from the ## Labels section of the issue file
+        status: Issue lifecycle status read from frontmatter; defaults to "open"
     """
 
     path: Path
@@ -251,6 +252,7 @@ class IssueInfo:
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
     labels: list[str] = field(default_factory=list)
+    status: str = "open"
 
     @property
     def priority_int(self) -> int:
@@ -289,6 +291,7 @@ class IssueInfo:
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
             "labels": self.labels,
+            "status": self.status,
         }
 
     @classmethod
@@ -320,6 +323,7 @@ class IssueInfo:
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
             labels=data.get("labels", []),
+            status=data.get("status", "open"),
         )
 
 
@@ -438,6 +442,8 @@ class IssueParser:
         else:
             missing_artifacts_value = missing_artifacts_raw
 
+        status = frontmatter.get("status", "open")
+
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
         blocked_by = self._parse_blocked_by(content)
@@ -500,6 +506,7 @@ class IssueParser:
             missing_artifacts=missing_artifacts_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
+            status=status,
         )
 
     def _parse_priority(self, filename: str) -> str:

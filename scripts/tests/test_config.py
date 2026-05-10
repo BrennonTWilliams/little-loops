@@ -644,23 +644,29 @@ class TestBRConfig:
         assert unknown_dir.resolve() == (temp_project_dir / ".issues" / "unknown").resolve()
 
     def test_get_completed_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
-        """Test get_completed_dir returns correct path."""
+        """Test get_completed_dir returns correct path and emits DeprecationWarning."""
+        import pytest
+
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
 
-        completed = config.get_completed_dir()
+        with pytest.warns(DeprecationWarning, match="get_completed_dir"):
+            completed = config.get_completed_dir()
         assert completed.resolve() == (temp_project_dir / ".issues" / "completed").resolve()
 
     def test_get_deferred_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
-        """Test get_deferred_dir returns correct path."""
+        """Test get_deferred_dir returns correct path and emits DeprecationWarning."""
+        import pytest
+
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         config = BRConfig(temp_project_dir)
 
-        deferred = config.get_deferred_dir()
+        with pytest.warns(DeprecationWarning, match="get_deferred_dir"):
+            deferred = config.get_deferred_dir()
         assert deferred.resolve() == (temp_project_dir / ".issues" / "deferred").resolve()
 
     def test_get_issue_prefix(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
@@ -870,6 +876,20 @@ class TestBRConfig:
         assert parallel_config.max_workers == 8
         assert parallel_config.dry_run is True
         assert parallel_config.max_issues == 10
+
+    def test_to_dict_excludes_deprecated_dirs(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """BRConfig.to_dict() issues section must not contain completed_dir or deferred_dir."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        config_dict = config.to_dict()
+
+        issues_section = config_dict.get("issues", {})
+        assert "completed_dir" not in issues_section
+        assert "deferred_dir" not in issues_section
 
     def test_load_config_invalid_json_raises(self, temp_project_dir: Path) -> None:
         """BRConfig raises json.JSONDecodeError when config file contains invalid JSON."""

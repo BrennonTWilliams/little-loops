@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -1187,11 +1188,15 @@ class TestFindIssues:
         # The two skip-check globs are: completed_dir.glob("*.md") and deferred_dir.glob("*.md").
         # One additional glob per category (issue_dir.glob("*.md")) is expected — that's fine.
         # What we assert is that the skip-check globs are called exactly twice total (not once per file).
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            completed = config.get_completed_dir()
+            deferred = config.get_deferred_dir()
         skip_check_calls = [
             c
             for c in mock_glob.call_args_list
             if c.args[1] == "*.md"
-            and c.args[0] in (config.get_completed_dir(), config.get_deferred_dir())
+            and c.args[0] in (completed, deferred)
         ]
         assert len(skip_check_calls) == 2, (
             f"Expected 2 skip-check glob calls, got {len(skip_check_calls)}"
@@ -2298,3 +2303,126 @@ class TestIssueInfoScoreDimensions:
         assert info.score_test_coverage is None
         assert info.score_ambiguity is None
         assert info.score_change_surface is None
+
+
+class TestIssueInfoStatus:
+    """Tests for IssueInfo.status field."""
+
+    def test_status_default_open(self) -> None:
+        """IssueInfo without status kwarg defaults to 'open'."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P2",
+            issue_id="ENH-1417",
+            title="Test",
+        )
+        assert info.status == "open"
+
+    def test_status_value(self) -> None:
+        """IssueInfo accepts an explicit status value."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P2",
+            issue_id="ENH-1417",
+            title="Test",
+            status="blocked",
+        )
+        assert info.status == "blocked"
+
+    def test_status_in_to_dict(self) -> None:
+        """to_dict() includes 'status' key."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P2",
+            issue_id="ENH-1417",
+            title="Test",
+            status="in_progress",
+        )
+        assert info.to_dict()["status"] == "in_progress"
+
+    def test_status_from_dict(self) -> None:
+        """from_dict() restores an explicit status value."""
+        info = IssueInfo.from_dict(
+            {
+                "path": "/path/to/test.md",
+                "issue_type": "enhancements",
+                "priority": "P2",
+                "issue_id": "ENH-1417",
+                "title": "Test",
+                "status": "blocked",
+            }
+        )
+        assert info.status == "blocked"
+
+    def test_status_from_dict_missing(self) -> None:
+        """from_dict() defaults to 'open' when status key is absent."""
+        info = IssueInfo.from_dict(
+            {
+                "path": "/path/to/test.md",
+                "issue_type": "enhancements",
+                "priority": "P2",
+                "issue_id": "ENH-1417",
+                "title": "Test",
+            }
+        )
+        assert info.status == "open"
+
+    def test_status_roundtrip(self) -> None:
+        """from_dict(to_dict()) preserves status value."""
+        original = IssueInfo(
+            path=Path("/test/path.md"),
+            issue_type="enhancements",
+            priority="P2",
+            issue_id="ENH-1417",
+            title="Test",
+            status="done",
+        )
+        restored = IssueInfo.from_dict(original.to_dict())
+        assert restored.status == "done"
+
+    def test_parse_file_status_from_frontmatter(self, tmp_path: Path) -> None:
+        """Integration: parse_file() reads status: key from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P2-ENH-1417-status-test.md"
+        issue_file.write_text("---\nstatus: blocked\n---\n# ENH-1417: Status Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.status == "blocked"
+
+    def test_parse_file_status_default_open(self, tmp_path: Path) -> None:
+        """Integration: parse_file() defaults to 'open' when status key is absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P2-ENH-1417-no-status.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1417: No Status\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.status == "open"

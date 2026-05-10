@@ -545,8 +545,8 @@ classDiagram
         +automation: AutomationConfig
         +parallel: ParallelAutomationConfig
         +get_issue_dir(category) Path
-        +get_completed_dir() Path
-        +get_deferred_dir() Path
+        +get_completed_dir() Path [DEPRECATED]
+        +get_deferred_dir() Path [DEPRECATED]
         +create_parallel_config() ParallelConfig
         +to_dict() dict
     }
@@ -562,6 +562,7 @@ classDiagram
         +priority: str
         +issue_id: str
         +title: str
+        +status: str
         +priority_int: int
     }
 

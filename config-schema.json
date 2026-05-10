@@ -97,14 +97,20 @@
             "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"}
           }
         },
+        "status": {
+          "type": "string",
+          "description": "Valid status values for issue frontmatter: open | in_progress | blocked | deferred | done | cancelled",
+          "enum": ["open", "in_progress", "blocked", "deferred", "done", "cancelled"],
+          "default": "open"
+        },
         "completed_dir": {
           "type": "string",
-          "description": "Directory for completed issues",
+          "description": "[DEPRECATED: use IssueInfo.status instead] Directory for completed issues",
           "default": "completed"
         },
         "deferred_dir": {
           "type": "string",
-          "description": "Directory for deferred issues (parked, not active or completed)",
+          "description": "[DEPRECATED: use IssueInfo.status instead] Directory for deferred issues (parked, not active or completed)",
           "default": "deferred"
         },
         "priorities": {

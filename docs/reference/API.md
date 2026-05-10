@@ -183,6 +183,8 @@ bugs_dir = config.get_issue_dir("bugs")
 def get_completed_dir(self) -> Path
 ```
 
+> **Deprecated:** Use `IssueInfo.status` instead. This method emits `DeprecationWarning` and will be removed in a future release.
+
 Get the path to the completed issues directory.
 
 ##### get_deferred_dir
@@ -190,6 +192,8 @@ Get the path to the completed issues directory.
 ```python
 def get_deferred_dir(self) -> Path
 ```
+
+> **Deprecated:** Use `IssueInfo.status` instead. This method emits `DeprecationWarning` and will be removed in a future release.
 
 Get the path to the deferred issues directory.
 
@@ -331,8 +335,8 @@ Issue management configuration dataclass.
 class IssuesConfig:
     base_dir: str = ".issues"
     categories: dict[str, CategoryConfig]
-    completed_dir: str = "completed"
-    deferred_dir: str = "deferred"
+    completed_dir: str = "completed"  # DEPRECATED: use IssueInfo.status instead
+    deferred_dir: str = "deferred"  # DEPRECATED: use IssueInfo.status instead
     priorities: list[str]  # ["P0", "P1", ...]
     templates_dir: str | None = None
     capture_template: str = "full"
@@ -577,6 +581,7 @@ class IssueInfo:
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts
     labels: list[str] = []                 # Labels from ## Labels section
+    status: str = "open"                   # Lifecycle status from frontmatter: open | in_progress | blocked | deferred | done | cancelled
 ```
 
 #### Properties

@@ -79,6 +79,7 @@ class TestIssueInfoProperties:
         blocked_by=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         discovered_by=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
+        status=st.sampled_from(["open", "in_progress", "blocked", "deferred", "done", "cancelled"]),
     )
     @settings(max_examples=200)
     def test_roundtrip_serialization(
@@ -91,6 +92,7 @@ class TestIssueInfoProperties:
         blocked_by: list[str],
         blocks: list[str],
         discovered_by: str | None,
+        status: str,
     ) -> None:
         """IssueInfo survives roundtrip through to_dict/from_dict."""
         original = IssueInfo(
@@ -102,6 +104,7 @@ class TestIssueInfoProperties:
             blocked_by=blocked_by,
             blocks=blocks,
             discovered_by=discovered_by,
+            status=status,
         )
         restored = IssueInfo.from_dict(original.to_dict())
 
@@ -113,6 +116,7 @@ class TestIssueInfoProperties:
         assert restored.blocked_by == original.blocked_by
         assert restored.blocks == original.blocks
         assert restored.discovered_by == original.discovered_by
+        assert restored.status == original.status
 
     @given(priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]))
     def test_priority_int_valid_priorities(self, priority: str) -> None:
@@ -284,6 +288,7 @@ class TestIssueInfoWithProductImpactProperties:
         persona_impact=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
         business_value=st.one_of(st.none(), st.sampled_from(["high", "medium", "low"])),
         user_benefit=st.one_of(st.none(), st.text(min_size=1, max_size=200)),
+        status=st.sampled_from(["open", "in_progress", "blocked", "deferred", "done", "cancelled"]),
     )
     @settings(max_examples=200)
     def test_roundtrip_with_product_impact(
@@ -300,6 +305,7 @@ class TestIssueInfoWithProductImpactProperties:
         persona_impact: str | None,
         business_value: str | None,
         user_benefit: str | None,
+        status: str,
     ) -> None:
         """IssueInfo with product_impact survives roundtrip through to_dict/from_dict."""
         product_impact = ProductImpact(
@@ -318,6 +324,7 @@ class TestIssueInfoWithProductImpactProperties:
             blocks=blocks,
             discovered_by=discovered_by,
             product_impact=product_impact,
+            status=status,
         )
         restored = IssueInfo.from_dict(original.to_dict())
 
@@ -334,6 +341,7 @@ class TestIssueInfoWithProductImpactProperties:
         assert restored.product_impact.persona_impact == persona_impact
         assert restored.product_impact.business_value == business_value
         assert restored.product_impact.user_benefit == user_benefit
+        assert restored.status == original.status
 
     @given(
         path=st.text(min_size=1, max_size=100).map(Path),
@@ -344,6 +352,7 @@ class TestIssueInfoWithProductImpactProperties:
         blocked_by=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         discovered_by=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
+        status=st.sampled_from(["open", "in_progress", "blocked", "deferred", "done", "cancelled"]),
     )
     @settings(max_examples=200)
     def test_roundtrip_without_product_impact(
@@ -356,6 +365,7 @@ class TestIssueInfoWithProductImpactProperties:
         blocked_by: list[str],
         blocks: list[str],
         discovered_by: str | None,
+        status: str,
     ) -> None:
         """IssueInfo without product_impact survives roundtrip (backward compatibility)."""
         original = IssueInfo(
@@ -367,6 +377,7 @@ class TestIssueInfoWithProductImpactProperties:
             blocked_by=blocked_by,
             blocks=blocks,
             discovered_by=discovered_by,
+            status=status,
         )
         restored = IssueInfo.from_dict(original.to_dict())
 
@@ -379,3 +390,4 @@ class TestIssueInfoWithProductImpactProperties:
         assert restored.blocks == original.blocks
         assert restored.discovered_by == original.discovered_by
         assert restored.product_impact is None
+        assert restored.status == original.status

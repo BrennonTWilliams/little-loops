@@ -128,8 +128,8 @@ class IssuesConfig:
 
     base_dir: str = ".issues"
     categories: dict[str, CategoryConfig] = field(default_factory=dict)
-    completed_dir: str = "completed"
-    deferred_dir: str = "deferred"
+    completed_dir: str = "completed"  # DEPRECATED: use IssueInfo.status instead
+    deferred_dir: str = "deferred"  # DEPRECATED: use IssueInfo.status instead
     priorities: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
     templates_dir: str | None = None
     capture_template: str = "full"
@@ -157,8 +157,8 @@ class IssuesConfig:
         return cls(
             base_dir=data.get("base_dir", ".issues"),
             categories=categories,
-            completed_dir=data.get("completed_dir", "completed"),
-            deferred_dir=data.get("deferred_dir", "deferred"),
+            completed_dir=data.get("completed_dir", "completed"),  # deprecated: kept for backward compat
+            deferred_dir=data.get("deferred_dir", "deferred"),  # deprecated: kept for backward compat
             priorities=data.get("priorities", ["P0", "P1", "P2", "P3", "P4", "P5"]),
             templates_dir=data.get("templates_dir"),
             capture_template=data.get("capture_template", "full"),

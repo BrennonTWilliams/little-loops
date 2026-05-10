@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,14 @@ def sample_issue_info(tmp_path: Path) -> IssueInfo:
         issue_id="BUG-001",
         title="Test Bug",
     )
+
+
+@pytest.fixture(autouse=True)
+def suppress_deprecation_warnings():  # noqa: ANN201
+    """Suppress DeprecationWarning from get_completed_dir()/get_deferred_dir() call sites."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        yield
 
 
 @pytest.fixture

@@ -251,8 +251,8 @@ Issue management settings:
 |-----|---------|-------------|
 | `base_dir` | `.issues` | Base directory for issues |
 | `categories` | See above | Issue category definitions |
-| `completed_dir` | `completed` | Where completed issues go |
-| `deferred_dir` | `deferred` | Where deferred/parked issues go |
+| `completed_dir` | `completed` | **Deprecated** — use `IssueInfo.status` instead; kept for backward compatibility |
+| `deferred_dir` | `deferred` | **Deprecated** — use `IssueInfo.status` instead; kept for backward compatibility |
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
 | `templates_dir` | `null` | Directory for issue templates |
 | `capture_template` | `"full"` | Default template style for captured issues (`"full"` or `"minimal"`) |

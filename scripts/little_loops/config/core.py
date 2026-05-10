@@ -7,6 +7,7 @@ point that loads ll-config.json and exposes all domain configs via properties.
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -219,10 +220,20 @@ class BRConfig:
 
     def get_completed_dir(self) -> Path:
         """Get the path to the completed issues directory."""
+        warnings.warn(
+            "BRConfig.get_completed_dir() is deprecated; use IssueInfo.status instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.project_root / self._issues.base_dir / self._issues.completed_dir
 
     def get_deferred_dir(self) -> Path:
         """Get the path to the deferred issues directory."""
+        warnings.warn(
+            "BRConfig.get_deferred_dir() is deprecated; use IssueInfo.status instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.project_root / self._issues.base_dir / self._issues.deferred_dir
 
     def get_issue_prefix(self, category: str) -> str:
@@ -384,8 +395,6 @@ class BRConfig:
                     k: {"prefix": v.prefix, "dir": v.dir, "action": v.action}
                     for k, v in self._issues.categories.items()
                 },
-                "completed_dir": self._issues.completed_dir,
-                "deferred_dir": self._issues.deferred_dir,
                 "priorities": self._issues.priorities,
                 "templates_dir": self._issues.templates_dir,
                 "capture_template": self._issues.capture_template,

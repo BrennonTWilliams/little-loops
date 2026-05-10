@@ -2,9 +2,16 @@
 id: ENH-1417
 type: ENH
 priority: P2
-status: open
+status: done
 parent_issue: ENH-1390
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
+completed_at: 2026-05-10T15:44:53Z
 ---
 
 # ENH-1417: Decouple Issue Status — Core Data Model, IssueInfo, and Config Deprecation
@@ -63,7 +70,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `issue_parser.py:202` — `IssueInfo` dataclass (add `status: str = "open"` field here)
 - `issue_parser.py:347` — `IssueParser.parse_file()` (add `status = frontmatter.get("status", "open")` before the `IssueInfo(...)` constructor)
 - `issue_parser.py:478–503` — `IssueInfo(...)` constructor call (add `status=status` keyword arg)
-- `issue_parser.py:318` — `IssueInfo.from_dict()` also needs `status=data.get("status", "open")` — **not mentioned in Proposed Solution above**
+- `issue_parser.py:295` — `IssueInfo.from_dict()` also needs `status=data.get("status", "open")` — **not mentioned in Proposed Solution above**
 - `config/core.py:220` — `get_completed_dir()`, `config/core.py:224` — `get_deferred_dir()`
 - `config/core.py:387–388` — `create_parallel_config()` serializes `completed_dir`/`deferred_dir` here
 - `config/features.py:126` — `IssuesConfig` dataclass (`completed_dir: str = "completed"`, `deferred_dir: str = "deferred"` at lines 131–132)
@@ -88,12 +95,25 @@ The only `warnings.warn()` call in the codebase is in `issues/anchor_sweep.py:77
 3. **`issue_parser.py:347`** (`parse_file()`): Add `status = frontmatter.get("status", "open")` (plain string, no coercion needed)
 4. **`issue_parser.py:478–503`** (constructor): Add `status=status` to `IssueInfo(...)` keyword args
 4a. **`issue_parser.py`** (`to_dict()`): Add `"status": self.status` to the returned dict — **this step was missing from the original plan; without it, serialization round-trips lose the status value and `QueuedIssue.to_dict()` in `parallel/types.py` will produce incomplete state JSON**
-5. **`issue_parser.py:318`** (`from_dict()`): Add `status=data.get("status", "open")` to `IssueInfo.from_dict()`
+5. **`issue_parser.py:295`** (`from_dict()`): Add `status=data.get("status", "open")` to `IssueInfo.from_dict()`
 6. **`config/core.py:220,224`**: Add `import warnings`; wrap `get_completed_dir()` and `get_deferred_dir()` bodies with `warnings.warn(..., DeprecationWarning, stacklevel=2)` before returning
 7. **`config/core.py:387–388`** (`create_parallel_config()`): Remove `completed_dir`/`deferred_dir` from serialized output
 8. **`config/features.py:126,131–132`**: Update docstrings/comments on `completed_dir`/`deferred_dir` to mark as deprecated; keep fields functional
 9. **`config/features.py:139`** (`from_dict()`): Keep parsing these fields (callers still provide them); add inline deprecation note in comment
 10. **Tests**: Add `status: "open"` default assertion in `test_issue_parser.py`; update `test_config.py` to assert `DeprecationWarning` is emitted by `test_get_completed_dir` and `test_get_deferred_dir`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+11. Add 8 new `status`-field test cases to `scripts/tests/test_issue_parser.py` following the `test_epic_*` pattern
+12. Update `scripts/tests/test_config.py` — convert `test_get_completed_dir` and `test_get_deferred_dir` to use `pytest.warns(DeprecationWarning)`; add `test_create_parallel_config_excludes_deprecated_dirs`
+13. Update `scripts/tests/test_issue_lifecycle.py` — suppress or expect `DeprecationWarning` from the ~18 `get_completed_dir()`/`get_deferred_dir()` calls
+14. Update `scripts/tests/test_issue_parser.py::TestFindIssues::test_find_issues_skip_check_uses_two_globs_not_stat_per_file` — suppress or expect deprecation warning for its `config.get_completed_dir()` / `config.get_deferred_dir()` calls
+15. Add `status` to the Hypothesis strategy and assertion list in `scripts/tests/test_issue_parser_properties.py` roundtrip tests
+16. Update `docs/reference/API.md` — add `status: str` to `IssueInfo` field list; add deprecation notices to `get_completed_dir()`, `get_deferred_dir()`, and `IssuesConfig.completed_dir`/`deferred_dir`
+17. Update `docs/ARCHITECTURE.md` — add `status` to `IssueInfo` class diagram block; note deprecations on `BRConfig` block
+18. Update `docs/reference/CONFIGURATION.md` — add deprecation notes to `completed_dir`/`deferred_dir` table rows
 
 ## Integration Map
 
@@ -206,11 +226,27 @@ Out of scope for this child issue:
 
 `enhancement`, `data-model`, `status-decoupling`, `enh-1390-child`, `captured`
 
+## Resolution
+
+Implemented all foundational data model changes per the issue specification:
+
+- `IssueInfo.status: str = "open"` field added to the dataclass, `to_dict()`, and `from_dict()`
+- `IssueParser.parse_file()` reads `status` from frontmatter (plain string, no coercion)
+- `config-schema.json` enumerates full status vocabulary: `open | in_progress | blocked | deferred | done | cancelled`; `completed_dir`/`deferred_dir` descriptions marked deprecated
+- `BRConfig.get_completed_dir()` and `get_deferred_dir()` emit `DeprecationWarning` with `stacklevel=2`
+- `BRConfig.to_dict()` no longer serializes `completed_dir`/`deferred_dir` in the `issues` section
+- `IssuesConfig` fields marked deprecated via inline comments; `from_dict()` kept functional for backward compat
+- 8 new `TestIssueInfoStatus` tests; deprecation assertions in `TestBRConfig`; Hypothesis roundtrip tests updated; lifecycle and parser tests suppress deprecation warnings
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-10T15:34:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c248d48-1fe8-4886-a6e5-367cab86121e.jsonl`
+- `/ll:wire-issue` - 2026-05-10T15:28:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffbdb77c-d0c6-43e0-a45d-2fb26e8e53b6.jsonl`
 - `/ll:refine-issue` - 2026-05-10T15:21:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ef2c075-8981-478d-a20e-ac74e296f30e.jsonl`
 - `/ll:format-issue` - 2026-05-10T15:17:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a80bb47e-7a06-453e-a016-be6695656fd0.jsonl`
 - `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
+- `/ll:confidence-check` - 2026-05-10T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdd93a3b-a3e2-4f8e-8544-faa16506a581.jsonl`
+- `/ll:manage-issue` - 2026-05-10T15:44:53Z - current session
 
 ---
 
-**Open** | Created: 2026-05-10 | Priority: P2
+**Done** | Created: 2026-05-10 | Completed: 2026-05-10 | Priority: P2
