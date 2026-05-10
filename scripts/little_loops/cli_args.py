@@ -320,7 +320,7 @@ def add_type_arg(parser: argparse.ArgumentParser) -> None:
         "-T",
         type=str,
         default=None,
-        help="Comma-separated issue types to process (e.g., BUG, FEAT, ENH)",
+        help="Comma-separated issue types to process (e.g., BUG, FEAT, ENH, EPIC)",
     )
 
 

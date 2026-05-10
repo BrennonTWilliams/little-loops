@@ -68,6 +68,17 @@ def issues_dir_with_enh(issues_dir: Path) -> Path:
     return issues_dir
 
 
+@pytest.fixture
+def issues_dir_with_epic(issues_dir: Path) -> Path:
+    """Extend issues_dir fixture with a sample EPIC issue."""
+    epics_dir = issues_dir / "epics"
+    epics_dir.mkdir(parents=True, exist_ok=True)
+    (epics_dir / "P2-EPIC-001-parent-initiative.md").write_text(
+        "# EPIC-001: Parent initiative\n\n## Summary\nTop-level grouping."
+    )
+    return issues_dir
+
+
 class TestIssuesCLIList:
     """Tests for ll-issues list sub-command."""
 
@@ -113,6 +124,7 @@ class TestIssuesCLIList:
         assert "Bugs (3)" in captured.out
         assert "Features (2)" in captured.out
         assert "Enhancements (1)" in captured.out
+        assert "Epics (0)" in captured.out
         assert "Total: 6 active issues" in captured.out
 
     def test_list_grouped_output_line_format(
@@ -187,6 +199,30 @@ class TestIssuesCLIList:
         assert "BUG-002" in captured.out
         assert "FEAT-001" not in captured.out
 
+    def test_list_filter_by_type_epic(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --type EPIC shows only epic issues."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--type", "EPIC", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "EPIC-001" in captured.out
+        assert "BUG-001" not in captured.out
+        assert "FEAT-001" not in captured.out
+
     def test_list_filter_by_priority(
         self,
         temp_project_dir: Path,
@@ -256,8 +292,9 @@ class TestIssuesCLIList:
 
         assert result == 0
         captured = capsys.readouterr()
-        # issues_dir has no ENH issues — group should still appear with count 0
+        # issues_dir has no ENH or EPIC issues — groups should still appear with count 0
         assert "Enhancements (0)" in captured.out
+        assert "Epics (0)" in captured.out
 
     def test_list_empty_project(
         self,
@@ -686,6 +723,30 @@ class TestIssuesCLISequence:
         captured = capsys.readouterr()
         assert "No active issues" in captured.out
 
+    def test_sequence_type_filter_epic(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """sequence --type EPIC shows 'No active issues' when no epics exist."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "sequence", "--type", "EPIC", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No active issues" in captured.out
+
     def test_sequence_json_type_filter_included(
         self,
         temp_project_dir: Path,
@@ -901,6 +962,28 @@ class TestIssuesCLIImpactEffort:
         assert "BUG-001" in captured.out or "BUG-002" in captured.out or "BUG-003" in captured.out
         assert "FEAT-001" not in captured.out
         assert "FEAT-002" not in captured.out
+
+    def test_impact_effort_type_epic(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """impact-effort --type EPIC is accepted by argparse and exits 0."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "impact-effort", "--type", "EPIC", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
 
     def test_impact_effort_json_output(
         self,
@@ -1977,6 +2060,30 @@ class TestIssuesCLICount:
         captured = capsys.readouterr()
         assert captured.out.strip() == "3"
 
+    def test_count_filter_by_type_epic(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --type EPIC shows 0 when no epics exist."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "count", "--type", "EPIC", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "0"
+
     def test_count_filter_by_priority(
         self,
         temp_project_dir: Path,
@@ -2050,6 +2157,7 @@ class TestIssuesCLICount:
         assert data["by_type"]["BUG"] == 3
         assert data["by_type"]["FEAT"] == 2
         assert data["by_type"]["ENH"] == 0
+        assert data["by_type"]["EPIC"] == 0
         assert data["by_priority"]["P0"] == 1
         assert data["by_priority"]["P1"] == 2
         assert data["by_priority"]["P2"] == 2

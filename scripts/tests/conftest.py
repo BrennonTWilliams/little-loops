@@ -81,6 +81,7 @@ def sample_config() -> dict[str, Any]:
             "categories": {
                 "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
                 "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                "epics": {"prefix": "EPIC", "dir": "epics", "action": "implement"},
             },
             "completed_dir": "completed",
             "deferred_dir": "deferred",
@@ -127,11 +128,13 @@ def issues_dir(temp_project_dir: Path) -> Path:
     issues_base = temp_project_dir / ".issues"
     bugs_dir = issues_base / "bugs"
     features_dir = issues_base / "features"
+    epics_dir = issues_base / "epics"
     completed_dir = issues_base / "completed"
     deferred_dir = issues_base / "deferred"
 
     bugs_dir.mkdir(parents=True)
     features_dir.mkdir(parents=True)
+    epics_dir.mkdir(parents=True)
     completed_dir.mkdir(parents=True)
     deferred_dir.mkdir(parents=True)
 

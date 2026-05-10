@@ -41,7 +41,7 @@ def cmd_count(config: BRConfig, args: argparse.Namespace) -> int:
         issues = [i for i in issues if i.priority in priority_filter]
 
     if getattr(args, "json", False):
-        by_type: dict[str, int] = {"BUG": 0, "FEAT": 0, "ENH": 0}
+        by_type: dict[str, int] = {"BUG": 0, "FEAT": 0, "ENH": 0, "EPIC": 0}
         by_priority: dict[str, int] = {
             "P0": 0,
             "P1": 0,

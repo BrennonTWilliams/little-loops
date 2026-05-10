@@ -663,6 +663,30 @@ class TestExportTypeScoring:
         assert result == 0
         assert mock_synth.call_args.kwargs["issue_type"] == "FEAT"
 
+    def test_export_type_epic(self, tmp_path: Path) -> None:
+        """--type EPIC is forwarded to synthesize_docs as issue_type='EPIC'."""
+        from unittest.mock import patch
+
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-history", "export", "cli", "--type", "EPIC", "-d", str(tmp_path / ".issues")],
+            ),
+            patch("little_loops.issue_history.analysis._load_issue_contents", return_value={}),
+            patch("little_loops.issue_history.synthesize_docs", return_value="# Doc") as mock_synth,
+            patch("builtins.print"),
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert mock_synth.call_args.kwargs["issue_type"] == "EPIC"
+
     def test_export_type_default_none(self, tmp_path: Path) -> None:
         """export without --type passes issue_type=None to synthesize_docs."""
         from unittest.mock import patch

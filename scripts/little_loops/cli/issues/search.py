@@ -429,13 +429,13 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
         return 0
 
     # Default: table (grouped by type, similar to ll-issues list)
-    buckets: dict[str, list[tuple[IssueInfo, str]]] = {"BUG": [], "FEAT": [], "ENH": []}
+    buckets: dict[str, list[tuple[IssueInfo, str]]] = {"BUG": [], "FEAT": [], "ENH": [], "EPIC": []}
     for issue, stat in zip(issues_out, statuses_out, strict=True):
         prefix = issue.issue_id.split("-", 1)[0]
         if prefix in buckets:
             buckets[prefix].append((issue, stat))
 
-    type_labels = {"BUG": "Bugs", "FEAT": "Features", "ENH": "Enhancements"}
+    type_labels = {"BUG": "Bugs", "FEAT": "Features", "ENH": "Enhancements", "EPIC": "Epics"}
     lines: list[str] = []
     for prefix, label in type_labels.items():
         group = buckets[prefix]

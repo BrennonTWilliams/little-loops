@@ -25,9 +25,10 @@ def search_issues_dir(temp_project_dir: Path, sample_config: dict[str, Any]) -> 
     issues_base = temp_project_dir / ".issues"
     bugs_dir = issues_base / "bugs"
     features_dir = issues_base / "features"
+    epics_dir = issues_base / "epics"
     completed_dir = issues_base / "completed"
     deferred_dir = issues_base / "deferred"
-    for d in (bugs_dir, features_dir, completed_dir, deferred_dir):
+    for d in (bugs_dir, features_dir, epics_dir, completed_dir, deferred_dir):
         d.mkdir(parents=True, exist_ok=True)
 
     # Active bugs
@@ -52,6 +53,13 @@ def search_issues_dir(temp_project_dir: Path, sample_config: dict[str, Any]) -> 
         "---\ndiscovered_date: 2026-03-01T00:00:00Z\n---\n"
         "# FEAT-011: Export to CSV\n\n## Summary\nAdd CSV export functionality.\n\n"
         "## Labels\n`feature`, `api`\n"
+    )
+
+    # Active epic
+    (epics_dir / "P2-EPIC-020-platform-unification.md").write_text(
+        "---\ndiscovered_date: 2026-02-01T00:00:00Z\n---\n"
+        "# EPIC-020: Platform unification\n\n## Summary\nUnify all platform components.\n\n"
+        "## Labels\n`epic`, `platform`\n"
     )
 
     # Completed issue
@@ -127,7 +135,7 @@ class TestSearchNoArgs:
 
         captured = capsys.readouterr()
         assert result == 0
-        assert "4 issue(s) found" in captured.out
+        assert "5 issue(s) found" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +263,27 @@ class TestSearchTypeFilter:
         assert "FEAT-010" in captured.out
         assert "FEAT-011" in captured.out
         assert "BUG-001" not in captured.out
+
+    def test_filter_epic(
+        self,
+        temp_project_dir: Path,
+        search_issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "search", "--type", "EPIC", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli.issues import main_issues
+
+            result = main_issues()
+
+        captured = capsys.readouterr()
+        assert result == 0
+        assert "EPIC-020" in captured.out
+        assert "BUG-001" not in captured.out
+        assert "FEAT-010" not in captured.out
 
     def test_repeatable_type(
         self,

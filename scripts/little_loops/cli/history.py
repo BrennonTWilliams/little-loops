@@ -169,7 +169,7 @@ Examples:
     gendocs_parser.add_argument(
         "--type",
         type=str,
-        choices=["BUG", "FEAT", "ENH"],
+        choices=["BUG", "FEAT", "ENH", "EPIC"],
         default=None,
         dest="issue_type",
         help="Filter by issue type",

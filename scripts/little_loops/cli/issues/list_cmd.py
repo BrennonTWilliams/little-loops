@@ -124,13 +124,13 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         return 0
 
     # Group by type prefix
-    buckets: dict[str, list] = {"BUG": [], "FEAT": [], "ENH": []}
+    buckets: dict[str, list] = {"BUG": [], "FEAT": [], "ENH": [], "EPIC": []}
     for issue, stat in issues_with_status:
         prefix = issue.issue_id.split("-", 1)[0]
         if prefix in buckets:
             buckets[prefix].append((issue, stat))
 
-    type_labels = {"BUG": "Bugs", "FEAT": "Features", "ENH": "Enhancements"}
+    type_labels = {"BUG": "Bugs", "FEAT": "Features", "ENH": "Enhancements", "EPIC": "Epics"}
     lines: list[str] = []
     for prefix, label in type_labels.items():
         group = buckets[prefix]
