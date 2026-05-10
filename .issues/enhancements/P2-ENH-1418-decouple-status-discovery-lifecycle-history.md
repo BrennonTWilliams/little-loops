@@ -6,11 +6,11 @@ status: open
 parent_issue: ENH-1390
 decision_needed: false
 confidence_score: 100
-outcome_confidence: 62
+outcome_confidence: 70
 score_complexity: 9
 score_test_coverage: 18
 score_ambiguity: 25
-score_change_surface: 10
+score_change_surface: 18
 ---
 
 # ENH-1418: Decouple Issue Status — Discovery, Lifecycle, and History Redesign
@@ -166,6 +166,38 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **`_batch_completion_dates()` replacement strategy**: This function uses `git log --diff-filter=A` to detect when files were first *added* to the `completed/` directory (i.e., the move commit). Once files no longer move, this approach yields no results. Replacement: use `completed_at:` frontmatter as primary (already priority-1 in `_parse_completion_date()` lines 185–190), with git log on the file itself (without `--diff-filter=A`) as fallback. ENH-1420 handles backfilling old files without `completed_at`.
 
+### Codebase Research Findings — Pass 2 (2026-05-10)
+
+_Added by `/ll:refine-issue` — based on analysis of ENH-1423 and ENH-1424 sibling implementations (both confirmed landed):_
+
+- **Factual correction to Wiring Step 9**: The prior analysis stated `_get_category_from_issue_path()` "uses `get_completed_dir()` / `get_deferred_dir()` path membership (lines 61, 68)". Lines 61 and 68 belong to `_get_all_issue_files()`, not `_get_category_from_issue_path()`. The current `_get_category_from_issue_path()` (`scripts/little_loops/issue_discovery/search.py:312`) uses **filename-prefix matching only** — it is already directory-agnostic. Wiring step 9 scope is therefore limited to `_get_all_issue_files()` only; `_get_category_from_issue_path()` requires no changes.
+
+- **Consequence for `undefer_issue()`**: The call to `_get_category_from_issue_path()` at `issue_lifecycle.py:952` was used to determine where to `git mv` the file. With the frontmatter-only model, there is no file move — `undefer_issue()` becomes `update_frontmatter(path.read_text(), {"status": "open"})` + `path.write_text(...)`. Remove the `_get_category_from_issue_path()` call and the `git mv` at line 976; no replacement needed since the file already lives in its type dir.
+
+- **Canonical implementation patterns from ENH-1423/1424**:
+  - Inline filter (use for `find_issues()` and `_get_all_issue_files()`):
+    ```python
+    fm = parse_frontmatter(issue_file.read_text(encoding="utf-8"))
+    if fm.get("status", "open") in ("done", "cancelled", "deferred"):
+        continue
+    ```
+    See `scripts/little_loops/sync.py:_get_local_issues()` and `scripts/little_loops/cli/sprint/run.py:_cmd_sprint_run()` (lines 173–190).
+  - Status write (use for `close_issue()`, `defer_issue()`, `undefer_issue()`):
+    ```python
+    new_content = update_frontmatter(content, {"status": "done"})
+    path.write_text(new_content, encoding="utf-8")
+    ```
+    See `scripts/little_loops/sync.py:reopen_issues()` (~line 1075) for the confirmed module-level import form.
+  - Test fixture (use for all test file updates):
+    ```python
+    (type_dir / "P1-BUG-001-done.md").write_text("---\nstatus: done\n---\n\n# BUG-001: Done")
+    ```
+    No `completed/` directory creation. See `scripts/tests/test_sync.py:TestGetLocalIssues` and `scripts/tests/test_sprint_integration.py`.
+
+- **`test_cli.py` partial cleanup by ENH-1423**: ENH-1423 already removed 5 `"completed_dir": "completed"` config dict entries from `test_cli.py`. Only 3 `completed/` references remain (in `TestMainHistoryCoverage` history fixture, lines ~2594–2598) — these are in ENH-1418's history subsystem scope.
+
+- **`conftest.py` shared `issues_dir` fixture confirmed unchanged**: `issues_dir` at line 126 still calls `completed_dir.mkdir()` (line 138) and `deferred_dir.mkdir()` (line 139). ENH-1423 and ENH-1424 did not touch this file. The ENH-1418 scope note in the Tests section remains accurate.
+
 ## Scope Boundaries
 
 - **In scope**: `find_issues()` status filter; `close_issue()` / `defer_issue()` / `undefer_issue()` rewrites; parallel orchestrator completion/deferred tracking; `scan_completed_issues()` and `_batch_completion_dates()` redesign; hardcoded `completed/` path fixes in `issue_manager.py` and `cli/history.py`; `capture-issue` skill reopen flow
@@ -175,7 +207,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 1. Verify ENH-1417 has landed: `IssueInfo.status` field and `DeprecationWarning` on `get_completed_dir()`/`get_deferred_dir()` in `config/core.py` confirm the prerequisite is satisfied.
 2. In `issue_parser.py`: replace frozenset-based exclusion in `find_issues()`; also fix `get_next_issue_number()` (~line 133) which calls deprecated `get_completed_dir()`. Import `update_frontmatter` from `scripts/little_loops/frontmatter.py`.
-3. Rewrite `issue_lifecycle.py` — `close_issue()`, `complete_issue_lifecycle()`, `defer_issue()`, `undefer_issue()` — to call `update_frontmatter(path.read_text(), {"status": ...}); path.write_text(...)` (follow pattern in `learning_tests.py:mark_learning_test_stale()`). Delete `_move_issue_to_completed()` helper once all callers are removed.
+3. **[Atomic commit — do not split]** Rewrite `issue_lifecycle.py` — `close_issue()`, `complete_issue_lifecycle()`, `defer_issue()`, `undefer_issue()` — to call `update_frontmatter(path.read_text(), {"status": ...}); path.write_text(...)` (follow pattern in `learning_tests.py:mark_learning_test_stale()`). Delete `_move_issue_to_completed()` helper once all callers are removed. **In the same commit**: rewrite `verify_issue_completed()` to check `IssueInfo.status == "done"` via frontmatter read (see wiring step 8); if these two land separately, `issue_manager.py:_process_single_issue()` will always trigger the fallback double-completion path. Add a test asserting `verify_issue_completed()` returns `True` for an issue with `status: done` frontmatter in its type dir (not in `completed/`) — this test enforces the coupling and will fail if the two are ever separated.
 4. Update parallel orchestrator **completion path only** (lines 1210–1289) to write `status: done` to frontmatter instead of moving file. The `_deferred_issues` field (lines 127–128) is in-memory overlap tracking — it does not interact with the filesystem `deferred/` directory and requires no changes here.
 5. Redesign `issue_history/parsing.py`: `scan_completed_issues()` → scan type dirs and filter `status: done`; `_batch_completion_dates()` → replace `git log --diff-filter=A` approach with `completed_at:` frontmatter as primary, git log on file (without `--diff-filter=A`) as fallback.
 6. Fix hardcoded `completed/` paths in `issue_manager.py:783` and `cli/history.py:199`; update `capture-issue` skill reopen flow to write `status: open` via `update_frontmatter` instead of `git mv`.
@@ -204,7 +236,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-8. In `issue_lifecycle.py:verify_issue_completed()`: rewrite to check `IssueInfo.status == "done"` via frontmatter read instead of `get_completed_dir() / file.name` directory existence check — must land in the same Step 3 as `close_issue()` to prevent double-completion cascades in `issue_manager.py:_process_single_issue()`
+8. In `issue_lifecycle.py:verify_issue_completed()`: rewrite to check `IssueInfo.status == "done"` via frontmatter read instead of `get_completed_dir() / file.name` directory existence check — **must be committed atomically with Step 3** (`close_issue()` rewrite); splitting these two causes every successful run to trigger the double-completion fallback in `issue_manager.py:_process_single_issue()` (see Step 3 for the required test that enforces this coupling)
 9. In `issue_discovery/search.py:_get_category_from_issue_path()` and `_get_all_issue_files()`: update directory-based status detection (lines 61, 68) — `_get_category_from_issue_path()` is called by `undefer_issue()` and assumes file is physically in `deferred/`; replace with `IssueInfo.status` read; `_get_all_issue_files()` gathers from `completed/`/`deferred/` dirs directly — update to scan type dirs
 10. In `parallel/merge_coordinator.py`: remove dead-code paths `_is_lifecycle_file_move()` (line 364), the `_stash_local_changes()` exclusion guard (line 168), and `_commit_pending_lifecycle_moves()` (line 402) — none will ever trigger once the orchestrator completion path uses frontmatter instead of `git mv`
 11. Update `hooks/scripts/issue-completion-log.sh`: change PostToolUse trigger from `git mv .+ completed/` pattern to a frontmatter-write detection approach (e.g., write detection on issue files with `status: done`), or trigger via a dedicated hook event — required to preserve session log auto-linking
@@ -214,17 +246,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-05-10 (hook decision resolved — outcome confidence raised from 55 → 62)_
+_Updated by `/ll:confidence-check` on 2026-05-10 — Pass 3 (ENH-1423 landed; Criterion D upgraded 10→18 as 4 out-of-scope callers eliminated; outcome 62→70)_
 
 **Readiness Score**: 100/100 → PROCEED
-**Outcome Confidence**: 62/100 → MODERATE
+**Outcome Confidence**: 70/100 → MODERATE
 
 ### Outcome Risk Factors
-- Wide breadth: 26 distinct change sites across source, test, hook, and skill files — breadth alone scores 0/12 on the Breadth sub-criterion; even though most test updates are mechanical fixture replacements, coordination overhead across 15 test files is real.
-- Broad blast radius: 6-10 callers outside ENH-1418 scope (sync.py, cli/sprint/run.py, cli/issues/show.py, cli/issues/search.py, cli/sprint/edit.py, cli/deps.py) still call `get_completed_dir()` directly and will break silently if files stop moving without ENH-1419/1421 landing in coordination.
-- `verify_issue_completed()` serialization constraint: must be rewritten in the same step as `close_issue()` (wiring note 8); if decoupled, `issue_manager.py:_process_single_issue()` will always trigger the fallback double-completion path.
+- Wide breadth: 22+ distinct change sites across source, test, hook, and skill files — Breadth sub-criterion 0/12; coordinating 9+ test file updates is the primary execution risk.
+- `verify_issue_completed()` serialization constraint: must be rewritten atomically with `close_issue()` (wiring step 8); if decoupled, `issue_manager.py:_process_single_issue()` will always trigger the fallback double-completion path.
+- 2 out-of-scope callers remain (`dependency_mapper/operations.py`, `cli/deps.py`) — ENH-1421 scope; will scan `completed/` silently for nothing after ENH-1418 lands. Coordinate landing order with ENH-1421.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-10T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f40524ce-2922-413f-a399-279fedc232ed.jsonl`
+- `/ll:confidence-check` - 2026-05-10T19:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
+- `/ll:refine-issue` - 2026-05-10T19:16:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74aeeec5-fc5d-4f88-a949-3a7e09578427.jsonl`
 - `/ll:confidence-check` - 2026-05-10T16:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b93d10a-1270-495b-8f3d-ce1762741200.jsonl`
 - `/ll:decide-issue` - 2026-05-10T16:07:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0789119-e04f-48b3-b529-bba840aad2c2.jsonl`
 - `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b13a1909-3e87-4e90-8703-a8986abba494.jsonl`

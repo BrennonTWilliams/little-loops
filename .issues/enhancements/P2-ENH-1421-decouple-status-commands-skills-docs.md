@@ -4,6 +4,13 @@ type: ENH
 priority: P2
 status: open
 parent_issue: ENH-1390
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 13
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-1421: Decouple Issue Status — Commands, Skills, and Documentation
@@ -73,6 +80,38 @@ Once ENH-1417 lands the frontmatter-based status data model, any remaining direc
 
 - `scripts/tests/test_feat1172_doc_wiring.py` — `test_completed_at_row_describes_completed_dir` asserts docs mention `completed` directory; update assertion to match new status field documentation
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Confirmed API surface for replacement patterns:**
+
+- `update_frontmatter(content: str, updates: dict[str, str | int]) -> str` — `scripts/little_loops/frontmatter.py:110`. Merges into existing YAML block; used for all frontmatter writes. The `manage-issue/SKILL.md` replacement: instruct Claude to read the file, apply `status: done` + `completed_at: <ISO-Z-timestamp>` via the Edit tool (same pattern as Phase 1.6 which already writes `completed_at` at lines 436–446).
+- `ll-issues list --status done` — confirmed (`cli/issues/__init__.py:124`). Scans only type directories (`bugs/`, `features/`, etc.) for issues with matching frontmatter `status`; `--status` choices: `open | in_progress | blocked | done | cancelled | deferred | all`.
+- `ll-issues list --json` (default `--status open`) — the canonical active-issue filter replacement for `find -not -path "*/completed/*" -not -path "*/deferred/*"`.
+
+**Per-pattern replacement guidance:**
+
+| Pattern | Location | Replacement |
+|---------|----------|-------------|
+| Active-issue `find` filter | align-issues, sync-issues, prioritize-issues, verify-issues, create-sprint | `ll-issues list --json` (default status: open) or `ll-issues list --format path` |
+| Blocker membership check | `ready-issue.md:156,210`, `create-sprint.md` | Check `status: done` or `status: cancelled` frontmatter directly — `commands/create-sprint.md:416` already updated by ENH-1424; follow that pattern |
+| Release detection | `manage-release.md:193` — `git log --diff-filter=A -- .issues/completed/` | Scan type dirs for issues where `status: done` AND `completed_at >= git log -1 --format="%aI" <PREV_TAG>`; use full ISO timestamp comparison per BUG-942 |
+| `git mv` to completed/ | `manage-issue/SKILL.md:453-458` | Remove `git mv`; update frontmatter `status: done` (Phase 1.6 already writes `completed_at`; Phase 5 Step 2 need only add `status: done` and drop the mv) |
+| Config generation | `init/SKILL.md:148`, `init/interactive.md:248,342` | Remove `completed_dir`/`deferred_dir` from generated config block — marked deprecated in `config-schema.json:106-115` |
+| `{{config.issues.completed_dir}}` template var | refine-issue.md:29, tradeoff-review-issues.md (×6), others | Replace with `status: done`/`status: deferred` filter text |
+
+**Reference implementations (ENH-1423/ENH-1424 precedents):**
+- `commands/create-sprint.md:416` — already uses `status: done` or `status: cancelled` frontmatter check for blocker; follow for `ready-issue.md`
+- `scripts/little_loops/sync.py:1075` — `update_frontmatter(content, {"status": "open"})` — same call shape for `status: done`
+- `scripts/little_loops/cli/issues/search.py:106` — `_load_issues_with_status()` — canonical type-dir scan with frontmatter status filter
+
+**normalize-issues.md complexity note:** Sections 0a/0b/0c check the physical shape of the `completed/` directory (nested subdirs, flat layout). After ENH-1421 these should be *inverted*: warn if `completed/` or `deferred/` still exist as non-empty directories (migration artifact), rather than enforcing their internal structure. The ~30 references are concentrated in: scan exclusion (Steps 1/1b/1c), structural validation (0a/0b/0c), and documentation sections.
+
+**Test assertion change (`test_feat1172_doc_wiring.py:30`):**
+- Current: `assert "completed" in row.lower()` — asserts `completed_at` table row references the completed *directory* path
+- After ENH-1421: update to `assert "status" in row.lower() or "frontmatter" in row.lower()` — the docs should describe `completed_at` as recording a timestamp in the frontmatter status lifecycle, not a directory-move marker
+
 ## Acceptance Criteria
 
 - `manage-release.md` uses `completed_at` date range for release detection (full ISO timestamps)
@@ -117,15 +156,41 @@ Once ENH-1417 lands the frontmatter-based status data model, any remaining direc
 ### Dependent Files (Callers/Importers)
 - N/A — command/skill `.md` files are leaf consumers, not imported by other code
 
+### Hook Coupling (CRITICAL)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `hooks/scripts/issue-completion-log.sh` — line 26 fires on `grep -qE 'git mv .+completed/'`; when `manage-issue/SKILL.md` switches from `git mv` to `update_frontmatter`, this hook's trigger regex will silently stop detecting issue completions triggered via the skill path. Must be updated alongside the SKILL.md change to detect `status: done` frontmatter writes (e.g., trigger on `PostToolUse` for Edit/Write calls that set `status: done`) or the completion log will go dark.
+
 ### Similar Patterns
 - All files using `{{config.issues.completed_dir}}` or `{{config.issues.deferred_dir}}` template vars
 - Search: `grep -r "completed_dir\|deferred_dir\|completed/\|deferred/" commands/ skills/ docs/ .claude/`
 
 ### Tests
+
 - `scripts/tests/test_feat1172_doc_wiring.py` — update `test_completed_at_row_describes_completed_dir` assertion to match new status-field documentation
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh1421_doc_wiring.py` — **new test file needed** (follow `test_enh1362_doc_wiring.py` pattern); write `TestENH1421DocWiring` with assertions:
+  - `manage-release.md` contains `status: done` and `completed_at` (not `git log --diff-filter=A`)
+  - `manage-issue/SKILL.md` does NOT contain `git mv` + `completed` together (verify removal); DOES contain `update_frontmatter` and `status: done`
+  - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` lifecycle section contains `status:` but not "Directory location determines"
+  - `docs/ARCHITECTURE.md` does NOT contain `completed/` in directory structure diagram
+  - `skills/init/SKILL.md` does NOT contain `completed_dir` or `deferred_dir`
+  - `skills/init/interactive.md` does NOT contain `completed_dir` or `deferred_dir`
+- `scripts/tests/test_skill_expander.py:test_manage_issue_expansion_has_no_raw_tokens` (line 241) — existing test; will catch leftover `{{config.issues.completed_dir}}` tokens in SKILL.md after changes; run to verify passes
+- `scripts/tests/test_hooks_integration.py:TestIssueCompletionLog.test_single_quote_in_transcript_path_appends_log` (line 1056) — test simulates `git mv … completed/`; if hook is updated to detect frontmatter writes, this test must be updated to match new trigger mechanism; if hook is updated to handle both triggers, existing test still passes
+
 ### Documentation
+
 - All four `docs/` files listed above are themselves part of this ENH's scope
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/GETTING_STARTED.md` — "File Layout" section shows `completed/` and `deferred/` in directory tree with labels "← ALL completed issues" and "← parked issues"; narrative sentences describe "moves issue to `.issues/completed/`"; update directory tree and narrative to describe type-dir-based status [Agent 2 finding]
+- `docs/development/MERGE-COORDINATOR.md` — `_is_lifecycle_file_move()` function table row (line 161) describes detecting renames to `completed/` or `deferred/`; troubleshooting item (line 493) says "Look for `.issues/completed/` files in `git status`"; BUG-968 note (line 559) describes `startswith` anchoring for `completed/` paths — update to reflect that the Python code itself still uses directory detection (scope note) but narrative should acknowledge the decoupling direction [Agent 2 finding]
+- `docs/reference/COMMANDS.md` — line 293: `CLOSE` verdict description mentions "Close or move to `completed/`"; update to "Close (set `status: done` in frontmatter)" [Agent 2 finding]
+- `docs/reference/ISSUE_TEMPLATE.md` — line 883: `completed_at` field description says "Set when issue is moved to `completed/`"; update to "Set when issue status is updated to `done`" [Agent 2 finding]
+- `docs/reference/CLI.md` — line 659: `ll-issues path` description states "exits with error for `completed/` or `deferred/`" inputs; update to reflect that `ll-issues path` works against type dirs by frontmatter status [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` — two references (~lines 400, 586) describe `recursive-refine` moving decomposed parents to `.issues/completed/`; update to describe frontmatter `status: done` update [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -137,8 +202,16 @@ Once ENH-1417 lands the frontmatter-based status data model, any remaining direc
 3. Update remaining 11 command files and `.claude/CLAUDE.md` with standard directory→status-filter replacements
 4. Update `skills/manage-issue/SKILL.md` (`git mv` → `update_frontmatter(path, {"status": "done"})`)
 5. Update `skills/init/SKILL.md` and `skills/init/interactive.md`
-6. Rewrite `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` lifecycle section; update remaining 3 doc files
+6. Rewrite `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` lifecycle section; update remaining 3 primary doc files
 7. Update `test_feat1172_doc_wiring.py` assertion and verify suite passes
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `hooks/scripts/issue-completion-log.sh` — the hook's trigger at line 26 (`grep -qE 'git mv .+completed/'`) must be updated when Step 4 changes `manage-issue/SKILL.md` away from `git mv`; update hook to trigger on Edit/Write calls that write `status: done` to an issue file, or update both trigger patterns to handle both the old `git mv` path (for Python CLI) and the new frontmatter path (for skill); update `test_hooks_integration.py:TestIssueCompletionLog.test_single_quote_in_transcript_path_appends_log` accordingly
+9. Update 6 additional doc files (all `completed/` references per scope): `docs/guides/GETTING_STARTED.md` (file layout section), `docs/development/MERGE-COORDINATOR.md` (function table + troubleshooting), `docs/reference/COMMANDS.md` (CLOSE verdict row), `docs/reference/ISSUE_TEMPLATE.md` (`completed_at` field description), `docs/reference/CLI.md` (`ll-issues path` note), `docs/guides/LOOPS_GUIDE.md` (`recursive-refine` narrative)
+10. Write `scripts/tests/test_enh1421_doc_wiring.py` — new doc-wiring test file covering acceptance criteria assertions (see Tests section above); run full suite and verify `test_skill_expander.py:test_manage_issue_expansion_has_no_raw_tokens` passes
 
 ## Impact
 
@@ -151,7 +224,22 @@ Once ENH-1417 lands the frontmatter-based status data model, any remaining direc
 
 `enhancement`, `refactor`, `issue-management`, `documentation`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-10_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Outcome Risk Factors
+- **Wide file surface (29 sites) despite low per-site complexity**: Breadth penalty reflects volume, not difficulty — this is a wide-shallow sweep. Main risk is missing a site. Use the verification grep (`grep -r "completed_dir\|deferred_dir\|completed/\|deferred/" commands/ skills/ docs/ .claude/`) after each step.
+- **test_enh1421_doc_wiring.py does not exist yet**: Write alongside changes (Step 10), not after, to validate each acceptance criterion as you go.
+- **Hook update requires dual-trigger**: issue-completion-log.sh must support both `git mv → completed/` (Python CLI path, until ENH-1419 lands) and `status: done` frontmatter write (skill path). Implement dual-trigger; update test_hooks_integration.py accordingly.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-10T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-05-10T19:25:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
+- `/ll:refine-issue` - 2026-05-10T19:18:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d50dc5b-3010-4dbf-b8c8-0d07870901cd.jsonl`
 - `/ll:format-issue` - 2026-05-10T15:21:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/293739bc-9ebc-4dac-a29c-99529166ae17.jsonl`
 - `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 
