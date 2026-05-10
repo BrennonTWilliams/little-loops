@@ -145,7 +145,6 @@ Configuration Summary:
 
   [ISSUES]
   issues.base_dir:    [base_dir]
-  issues.completed_dir: [completed_dir]          # Only show if non-default (not "completed")
 
   [SCAN]
   scan.focus_dirs:    [focus_dirs]

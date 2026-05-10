@@ -410,7 +410,7 @@ ISSUE MANAGED: {ISSUE_ID} - {action}
 
 ## RESULT
 - Status: COMPLETED
-- Moved To: {{config.issues.base_dir}}/{{config.issues.completed_dir}}/{filename}.md
+- Frontmatter: status set to done
 
 ================================================================================
 ```

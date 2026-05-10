@@ -301,13 +301,9 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
    - [TYPE]-[NNN]: [Child title 3]
    ```
 
-   Move to completed:
-   ```bash
-   git mv "{{config.issues.base_dir}}/[category]/[parent-file].md" \
-          "{{config.issues.base_dir}}/completed/"
-   ```
+   Update parent issue status to done (frontmatter `status: done`) using the Edit tool.
 
-   Before moving the parent, append a session log entry to the parent issue file:
+   Before updating, append a session log entry to the parent issue file:
 
 ```markdown
 ## Session Log
@@ -423,7 +419,7 @@ Uses project configuration from `.ll/ll-config.json`:
 
 - `issues.base_dir` - Base directory for issues (default: `.issues`)
 - `issues.categories` - Bug/feature/enhancement directory config
-- `issues.completed_dir` - Where to move decomposed parents (default: `completed`)
+- Issue lifecycle state tracked via frontmatter `status` field
 
 ## Best Practices
 

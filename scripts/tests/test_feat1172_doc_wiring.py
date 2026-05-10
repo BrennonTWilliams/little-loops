@@ -29,14 +29,15 @@ class TestIssueTemplateWiring:
 
     def test_completed_at_row_describes_completed_dir(self) -> None:
         content = ISSUE_TEMPLATE.read_text()
-        # The row should mention that the field is set when moving to completed/
-        # (populated by manage-issue, ll-auto, or ll-parallel).
+        # The row should describe completed_at in terms of frontmatter status lifecycle,
+        # not directory movement (populated by manage-issue, ll-auto, or ll-parallel).
         lines = [line for line in content.splitlines() if "`completed_at`" in line]
         assert lines, "expected at least one line referencing `completed_at`"
         row = next((line for line in lines if line.lstrip().startswith("|")), "")
         assert row, "expected a table row for `completed_at`"
-        assert "completed" in row.lower(), (
-            "`completed_at` table row must mention the completed directory / completion path"
+        assert "status" in row.lower() or "frontmatter" in row.lower(), (
+            "`completed_at` table row must reference 'status' or 'frontmatter' lifecycle "
+            "(not the completed/ directory path)"
         )
 
 

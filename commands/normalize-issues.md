@@ -38,9 +38,8 @@ Issue files must follow the naming pattern `P[0-5]-[PREFIX]-[NNN]-[slug].md` whe
 **Cross-type duplicate IDs** (like BUG-007, FEAT-007, ENH-007 all existing) violate the global uniqueness constraint. Issue IDs must be unique across ALL types—if BUG-005 exists, no FEAT-005 or ENH-005 should exist.
 
 **Invalid directory structure** can occur when:
-- Issues are manually moved to `bugs/completed/` instead of `.issues/completed/`
-- Sub-folders are created in `completed/` (e.g., `completed/bugs/`)
-- This breaks automation tools that expect a flat completed/ sibling directory
+- Legacy `completed/` or `deferred/` sibling directories still exist after migration to frontmatter-based status
+- These are migration artifacts — post-ENH-1418, issue status is tracked in frontmatter, not by directory location
 
 ## Process
 
@@ -74,73 +73,51 @@ After scanning, if any violations found: print `N normalization issues found`, t
 
 Before normalizing filenames, verify the `.issues/` directory follows the correct structure.
 
-#### 0a. Check Type Folders for Invalid completed/ Sub-directories
+#### 0a. Check for Legacy completed/ or deferred/ Directories (Migration Artifact)
 
-Type-specific folders should NEVER have their own `completed/` sub-directory. All completed issues go to the sibling `.issues/completed/` folder.
+Post-ENH-1418, issue status is tracked in frontmatter. The `completed/` and `deferred/` sibling directories should no longer exist. Warn if they do.
 
 ```bash
-# Check for invalid nested completed/ directories
-for category_dir in bugs features enhancements; do
-    nested_completed="{{config.issues.base_dir}}/$category_dir/completed"
-    if [ -d "$nested_completed" ]; then
-        echo "VIOLATION: $nested_completed exists (should not)"
-        # List files that need to be moved
-        ls -la "$nested_completed"/*.md 2>/dev/null
+# Warn if legacy status directories still exist as non-empty
+for status_dir in "{{config.issues.base_dir}}/completed" "{{config.issues.base_dir}}/deferred"; do
+    if [ -d "$status_dir" ] && [ -n "$(ls -A "$status_dir" 2>/dev/null)" ]; then
+        echo "WARNING: Legacy directory $status_dir still contains files."
+        echo "  These are migration artifacts from pre-ENH-1418."
+        echo "  Run migration: set status in frontmatter for each file, then remove the directory."
+        ls "$status_dir"/*.md 2>/dev/null
     fi
 done
 ```
 
-**Auto-fix**: Move any files found to `.issues/completed/` and remove the invalid directory.
+#### 0b. Check Type Folders for Invalid Nested Status Subdirectories
 
-#### 0b. Check completed/ is Flat (No Sub-folders)
-
-The completed directory should contain only `.md` files, no sub-directories.
+Type-specific folders should not have nested `completed/` or `deferred/` sub-directories.
 
 ```bash
-# Check for sub-directories in completed/
-completed_dir="{{config.issues.base_dir}}/{{config.issues.completed_dir}}"
-if [ -d "$completed_dir" ]; then
-    subdirs=$(find "$completed_dir" -mindepth 1 -maxdepth 1 -type d)
-    if [ -n "$subdirs" ]; then
-        echo "VIOLATION: Sub-directories found in completed/:"
-        echo "$subdirs"
-    fi
-fi
-```
-
-**Auto-fix**: Move any `.md` files from sub-directories to completed/ root and remove empty sub-directories.
-
-#### 0c. Auto-Fix Directory Structure Violations
-
-For each violation found:
-
-**Nested completed/ in type folder:**
-```bash
-# Move files from .issues/bugs/completed/ to .issues/completed/
-for file in {{config.issues.base_dir}}/bugs/completed/*.md; do
-    git mv "$file" "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
-done
-# Remove empty invalid directory
-rmdir {{config.issues.base_dir}}/bugs/completed
-```
-
-**Sub-folders in completed/:**
-```bash
-# Move files from sub-folders to completed/ root
-for subdir in {{config.issues.base_dir}}/{{config.issues.completed_dir}}/*/; do
-    for file in "$subdir"*.md; do
-        git mv "$file" "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
+# Check for nested status directories inside type dirs
+for category_dir in bugs features enhancements epics; do
+    for subdir in completed deferred; do
+        nested="{{config.issues.base_dir}}/$category_dir/$subdir"
+        if [ -d "$nested" ]; then
+            echo "VIOLATION: $nested exists (nested status directory is invalid)"
+            ls "$nested"/*.md 2>/dev/null
+        fi
     done
-    rmdir "$subdir"
 done
 ```
+
+**Auto-fix**: Update frontmatter `status` for each file, then remove the nested directory.
+
+#### 0c. (Skipped post-ENH-1418)
+
+The `completed/` flatness check is no longer needed — completed issues stay in their type dirs with `status: done` in frontmatter.
 
 ### 1. Scan for Invalid Filenames
 
 ```bash
-# Find all issue files
-for dir in {{config.issues.base_dir}}/*/; do
-    if [ -d "$dir" ] && [[ "$dir" != *"/completed/"* ]] && [[ "$dir" != *"/deferred/"* ]]; then
+# Find all issue files (type dirs only)
+for dir in {{config.issues.base_dir}}/bugs/ {{config.issues.base_dir}}/features/ {{config.issues.base_dir}}/enhancements/ {{config.issues.base_dir}}/epics/; do
+    if [ -d "$dir" ]; then
         echo "Checking $dir..."
         ls "$dir"*.md 2>/dev/null | while read file; do
             basename=$(basename "$file")
@@ -155,12 +132,12 @@ done
 
 ### 1b. Detect Cross-Type Duplicate IDs
 
-Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH, EPIC) and all directories (including `completed/`). Scan for ID numbers used by multiple files:
+Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH, EPIC). Scan for ID numbers used by multiple files:
 
 ```bash
-# Build a map of ID numbers to files (include completed/ to catch reused IDs)
+# Build a map of ID numbers to files (all type dirs, all statuses)
 mkdir -p .loops/tmp
-find {{config.issues.base_dir}} -name "*.md" -type f | while read file; do
+find {{config.issues.base_dir}}/bugs {{config.issues.base_dir}}/features {{config.issues.base_dir}}/enhancements {{config.issues.base_dir}}/epics -name "*.md" -type f 2>/dev/null | while read file; do
     basename=$(basename "$file")
     # Extract the numeric ID (e.g., 007 from BUG-007 or FEAT-007)
     id_num=$(echo "$basename" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]{3,}' | grep -oE '[0-9]{3,}')
@@ -176,11 +153,11 @@ cut -d: -f1 .loops/tmp/issue_id_map.txt | uniq -d | while read dup_id; do
 done
 ```
 
-**Duplicate IDs** — whether cross-type (BUG-007 vs FEAT-007) or active-vs-completed (active ENH-310 vs completed ENH-310) — violate global uniqueness and must be renumbered. The completed/older file keeps its ID; active duplicates get reassigned.
+**Duplicate IDs** — whether cross-type (BUG-007 vs FEAT-007) or same-type with different files — violate global uniqueness and must be renumbered. The older file keeps its ID; newer duplicates get reassigned.
 
 ### 1c. Detect Type Misclassifications
 
-For each active issue file (skip `completed/` and `deferred/`), read its content and check whether the type prefix in the filename matches the actual nature of the issue.
+For each issue file in active type dirs, read its content and check whether the type prefix in the filename matches the actual nature of the issue.
 
 **Pattern**: Follows the content-reading approach from Step 7b — use the `Read` tool on each issue file, then apply heuristics inline.
 
@@ -411,11 +388,11 @@ For each issue file:
 
 | Check | Status | Action |
 |-------|--------|--------|
-| No completed/ in bugs/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
-| No completed/ in features/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
-| No completed/ in enhancements/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
-| No completed/ in epics/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
-| completed/ is flat | ✅ Pass / ❌ Found N sub-dirs | Flattened |
+| No nested completed/ in bugs/ | ✅ Pass / ❌ Found N files | Update frontmatter status, remove dir |
+| No nested completed/ in features/ | ✅ Pass / ❌ Found N files | Update frontmatter status, remove dir |
+| No nested completed/ in enhancements/ | ✅ Pass / ❌ Found N files | Update frontmatter status, remove dir |
+| No nested completed/ in epics/ | ✅ Pass / ❌ Found N files | Update frontmatter status, remove dir |
+| No legacy completed/ sibling dir | ✅ Pass / ❌ Found N files | Migrate frontmatter, remove dir |
 
 ## Missing ID Fixes
 
@@ -469,17 +446,17 @@ A filename **needs normalization** if:
 The `.issues/` directory must follow this structure:
 ```
 .issues/
-├── bugs/           # Active bugs ONLY (no completed/ or deferred/ sub-dir)
-├── features/       # Active features ONLY (no completed/ or deferred/ sub-dir)
-├── enhancements/   # Active enhancements ONLY (no completed/ or deferred/ sub-dir)
-├── epics/          # Active epics ONLY (no completed/ or deferred/ sub-dir)
-├── completed/      # ALL completed issues (flat, no sub-folders)
-└── deferred/       # ALL deferred/parked issues (flat, no sub-folders)
+├── bugs/           # BUG issues (any status — open, done, deferred, etc.)
+├── features/       # FEAT issues (any status)
+├── enhancements/   # ENH issues (any status)
+└── epics/          # EPIC coordination containers (any status)
 ```
 
-**Violations detected and auto-fixed:**
-- `bugs/completed/`, `features/completed/`, `enhancements/completed/`, `epics/completed/` directories existing
-- Sub-directories within `completed/` (e.g., `completed/bugs/`, `completed/old/`)
+Issue lifecycle state is tracked in frontmatter `status` field, not by directory location.
+
+**Violations detected:**
+- Nested `bugs/completed/`, `features/completed/`, etc. directories (legacy migration artifacts)
+- Legacy sibling `completed/` or `deferred/` directories still containing files
 
 ---
 
@@ -519,9 +496,9 @@ Works well with:
 
 ## Edge Cases
 
-### Files in completed/ directory
-- Skip files in `completed/` - they're historical records
-- If needed, can be run with `--include-completed` flag (future enhancement)
+### Issues with status: done or status: deferred
+- All issues live in their type dirs regardless of status
+- normalize-issues scans all files in type dirs (including done/deferred)
 
 ### Custom category prefixes
 - Respect `{{config.issues.categories}}` for prefix mappings

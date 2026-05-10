@@ -153,10 +153,11 @@ If line numbers are outdated but an Anchor field exists:
 #### Dependency Status
 - [ ] If `## Blocked By` section exists:
   - Check each referenced issue ID
-  - If any blocker is still in an active category (bugs/, features/, enhancements/) and NOT in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
+  - Check each blocker's frontmatter `status` field using `ll-issues list --id [BLOCKER-ID] --json`
+  - If any blocker has `status: open`, `status: in_progress`, or `status: blocked`:
     - Flag as BLOCKED: "Blocked by [ID] which is still open"
     - **Set verdict to BLOCKED** — this overrides READY and CORRECTED
-  - If all blockers are in completed/ or don't exist: PASS
+  - If all blockers have `status: done`, `status: cancelled`, or don't exist: PASS
 - [ ] If `## Blocked By` section is empty or absent: PASS (no blockers)
 
 **Note**: Open blockers force the verdict to `BLOCKED`. This overrides any corrections made.
@@ -207,7 +208,7 @@ Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict mus
 
 When an issue appears to match a completed issue, perform regression analysis:
 
-1. **Check for completed issue match**: Search `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` for similar issues
+1. **Check for completed issue match**: Search for similar issues with `ll-issues list --status done --json`
 2. **Extract fix metadata** from matched completed issue's Resolution section:
    - `Fix Commit`: SHA of the commit that fixed the issue
    - `Files Changed`: List of files modified by the fix
@@ -409,7 +410,7 @@ The automation scripts (`ll-auto`, `ll-parallel`) run this automatically before 
 | CORRECTED | Proceed to implementation (corrections saved) |
 | BLOCKED | Skip issue; do not implement until blockers are resolved |
 | NOT_READY | Mark as failed, skip issue |
-| CLOSE | Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` with closure status |
+| CLOSE | Set `status: done` in frontmatter with closure note |
 | REGRESSION_LIKELY | Reopen completed issue with classification and evidence |
 | POSSIBLE_REGRESSION | Flag for manual review, may reopen if confirmed |
 

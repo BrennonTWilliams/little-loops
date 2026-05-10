@@ -15,7 +15,6 @@ You are tasked with analyzing log files from `ll-parallel` or `ll-auto` runs to 
 This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
-- **Completed directory**: `{{config.issues.completed_dir}}`
 
 ## Process
 
@@ -171,8 +170,8 @@ For each finding, check if a matching issue already exists:
 #### Search Active Issues
 
 ```bash
-# Search in .issues/ subdirectories (excluding completed/)
-find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | xargs grep -l "<keywords>"
+# Search active issues (type dirs only)
+ll-issues list --format path | xargs grep -l "<keywords>"
 ```
 
 Keywords to search for each category:
@@ -181,11 +180,16 @@ Keywords to search for each category:
 - `index_lock`: "index.lock", "concurrent", "lock"
 - etc.
 
-#### Search Completed Issues (for reopening)
+#### Search Done Issues (for reopening)
 
 ```bash
-# Search completed/ for similar issues
-find {{config.issues.base_dir}}/completed -name "*.md" | xargs grep -l "<keywords>"
+# Search done issues by frontmatter status
+ll-issues list --status done --json | python3 -c "
+import sys, json
+for i in json.load(sys.stdin):
+    path = i.get('path', '')
+    if path: print(path)
+" | xargs grep -l "<keywords>" 2>/dev/null
 ```
 
 #### Determine Action
@@ -253,7 +257,7 @@ Show findings:
 2. P2-ENH-XXX: Issue quality: high auto-correction rate indicates scan accuracy issues
 
 **Reopen Issues (1)**:
-1. P2-BUG-038-index-lock-collision.md (from completed/)
+1. P2-BUG-038-index-lock-collision.md (status: done → reopen)
 
 **Skip (Already Tracked) (1)**:
 1. Stash Pop Failed → matches BUG-042
@@ -338,7 +342,7 @@ Save to appropriate directory:
 - BUG → `{{config.issues.base_dir}}/bugs/P[X]-BUG-[NUM]-[slug].md`
 - ENH → `{{config.issues.base_dir}}/enhancements/P[X]-ENH-[NUM]-[slug].md`
 
-Use globally unique sequential numbers (scan ALL .issues/ directories including completed/).
+Use globally unique sequential numbers (check all type dirs and all statuses via `ll-issues list --status all --json`).
 
 #### Reopen Completed Issues
 
@@ -366,11 +370,7 @@ For each REOPEN finding:
 ```
 ```
 
-3. Move file from `completed/` back to active category directory:
-
-```bash
-git mv "{{config.issues.base_dir}}/completed/[filename]" "{{config.issues.base_dir}}/[category]/[filename]"
-```
+3. Update frontmatter `status` back to `open` using the Edit tool (reverting from `done`).
 
 ### 7. Output Report
 

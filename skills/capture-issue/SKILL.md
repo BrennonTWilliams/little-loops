@@ -24,7 +24,6 @@ You are tasked with capturing issues from either a natural language description 
 
 This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
-- **Completed dir**: `{{config.issues.completed_dir}}`
 - **Template style**: `{{config.issues.capture_template}}` (full or minimal)
 - **Exact duplicate threshold**: `{{config.issues.duplicate_detection.exact_threshold}}` (default: 0.8)
 - **Similar issue threshold**: `{{config.issues.duplicate_detection.similar_threshold}}` (default: 0.5)
@@ -147,10 +146,7 @@ absent, which defaults to open).
 
 ```bash
 # List all .md files under category dirs and filter to status: open
-for dir in {{config.issues.base_dir}}/*/; do
-    base=$(basename "$dir")
-    [ "$base" = "{{config.issues.completed_dir}}" ] && continue
-    [ "$base" = "{{config.issues.deferred_dir}}" ] && continue
+for dir in {{config.issues.base_dir}}/bugs/ {{config.issues.base_dir}}/features/ {{config.issues.base_dir}}/enhancements/ {{config.issues.base_dir}}/epics/; do
     for f in "$dir"*.md; do
         [ -f "$f" ] || continue
         # Treat missing status: as "open"
@@ -181,24 +177,8 @@ Completed issues live alongside active issues in their type directories,
 distinguished by `status: done` (or `cancelled`) in frontmatter:
 
 ```bash
-# Find completed issues by scanning type dirs and filtering status:
-for dir in {{config.issues.base_dir}}/*/; do
-    base=$(basename "$dir")
-    [ "$base" = "{{config.issues.completed_dir}}" ] && continue
-    [ "$base" = "{{config.issues.deferred_dir}}" ] && continue
-    for f in "$dir"*.md; do
-        [ -f "$f" ] || continue
-        status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
-        case "$status" in done|cancelled) echo "$f" ;; esac
-    done
-done
-```
-
-For backward compatibility, also scan the legacy `{{config.issues.completed_dir}}/`
-directory if it exists (older issues may not yet have `status: done` frontmatter):
-
-```bash
-ls -la {{config.issues.base_dir}}/{{config.issues.completed_dir}}/*.md 2>/dev/null || true
+# Find completed issues by scanning type dirs and filtering status: done
+ll-issues list --status done --format path
 ```
 
 Apply same scoring. If a completed issue has score >= {{config.issues.duplicate_detection.similar_threshold}}, it's a candidate for reopening.
@@ -329,13 +309,11 @@ git add "[path-to-existing-issue]"
 #### Action: Reopen Completed Issue
 
 Issue status lives in frontmatter — reopening means flipping `status: done`
-back to `status: open`. The file stays where it is (in its type directory,
-or in the legacy `completed/` directory if it predates ENH-1418).
+back to `status: open`. The file stays where it is in its type directory.
 
 1. **Update the file's frontmatter and append a Reopened section:**
 
-   - Find the closed issue file (in its type dir with `status: done`, or in
-     the legacy `completed/` directory).
+   - Find the closed issue file (in its type dir with `status: done`).
    - Use `Edit` to change the frontmatter line `status: done` → `status: open`.
      If the issue currently has no `status:` field (legacy file), insert
      `status: open` into the YAML frontmatter block.
@@ -355,15 +333,7 @@ or in the legacy `completed/` directory if it predates ENH-1418).
    [Context from the new description or conversation that prompted reopening]
    ```
 
-2. **(Legacy only) If the file lives in `{{config.issues.completed_dir}}/`,
-   move it to its type directory** to keep the layout tidy. This is optional
-   and only applies to legacy files that pre-date ENH-1418:
-
-```bash
-git mv "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[filename]" "{{config.issues.base_dir}}/[category]/"
-```
-
-3. **Stage the changes:**
+2. **Stage the changes:**
 ```bash
 git add "[path-to-issue]"
 ```

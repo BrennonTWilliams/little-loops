@@ -93,7 +93,7 @@ questions:
 
 Found completed issue that matches:
 - **Issue**: [ID] - [Title]
-- **Path**: `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[filename].md`
+- **Path**: `[issue file path]`
 - **Similarity**: [score as percentage]
 ```
 

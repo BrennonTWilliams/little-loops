@@ -445,25 +445,26 @@ discovered_date: 2026-03-17T00:00:00Z
 
 This parallels the Python-driven completion paths (`ll-auto`, `ll-parallel`) that inject `completed_at` via `update_frontmatter`; the interactive path must match so all completion paths produce consistent frontmatter.
 
-### 2. Move to Completed
+### 2. Update Issue Status
 
-**CRITICAL**: Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` - this is a SIBLING directory to bugs/features/enhancements, NOT a subdirectory within them.
+Set `status: done` in the issue file's YAML frontmatter (the `completed_at` field was already injected in Phase 1.6). Use the Edit tool to update the `status` field in the frontmatter block:
 
-```bash
-# ✅ CORRECT: Move to sibling completed/ directory
-git mv "{{config.issues.base_dir}}/[type]/[file].md" \
-       "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
-
-# ❌ WRONG - NEVER do this (creates nested directory):
-# git mv "{{config.issues.base_dir}}/bugs/P1-BUG-001.md" "{{config.issues.base_dir}}/bugs/completed/"
+```yaml
+---
+id: BUG-042
+status: done   # ← update from "open"/"in_progress" to "done"
+completed_at: 2026-03-17T15:02:41Z  # already added in Phase 1.6
+---
 ```
+
+Do NOT use `git mv` to move the file to a `completed/` directory — status is tracked via frontmatter.
 
 ### 3. Commit All Changes
 
-Commit source changes and moved issue file together in a single commit:
+Commit source changes and updated issue file together in a single commit:
 
 ```bash
-git add [modified files] "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[file].md"
+git add [modified files] "[issue_file_path]"
 git commit -m "[action]([component]): [description]
 
 [issue_type] [ISSUE-ID]: [title]

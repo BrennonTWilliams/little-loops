@@ -61,7 +61,7 @@ fi
    - `{{config.issues.base_dir}}/bugs/`
    - `{{config.issues.base_dir}}/features/`
    - `{{config.issues.base_dir}}/enhancements/`
-3. Exclude the `{{config.issues.completed_dir}}/` and `{{config.issues.deferred_dir}}/` directories
+3. Only scan active type directories (bugs/, features/, enhancements/) — no completed/deferred dirs to exclude
 4. Read each issue file to extract content
 5. Parse issue metadata from filename and content:
    - ID (e.g., `BUG-042`, `FEAT-257`)
@@ -221,7 +221,7 @@ questions:
     multiSelect: false
     options:
       - label: "Yes, close"
-        description: "Move to completed/ with tradeoff review resolution note"
+        description: "Set status: done with tradeoff review resolution note"
       - label: "No, keep active"
         description: "Leave this issue as-is in the backlog"
       - label: "Update instead"
@@ -275,11 +275,8 @@ Execute all approved changes:
 [Subagent rationale for closure recommendation]
 ```
 
-2. Move to completed:
-```bash
-git mv "{{config.issues.base_dir}}/[category]/[file].md" \
-       "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
-```
+2. Update issue status in frontmatter:
+   Use the Edit tool to set `status: done` in the issue's YAML frontmatter block.
 
 3. Append a session log entry to the issue file before moving it, using the Bash tool:
 
@@ -351,7 +348,7 @@ ISSUE TRADEOFF REVIEW COMPLETE
 - Skipped (could not evaluate): W
 
 ## CLOSED ISSUES
-- [ID]: [Title] → moved to {{config.issues.base_dir}}/{{config.issues.completed_dir}}/
+- [ID]: [Title] → status set to done (frontmatter updated)
 
 ## UPDATED ISSUES
 - [ID]: [Title] → review notes appended
@@ -375,7 +372,7 @@ Uses project configuration from `.ll/ll-config.json`:
 
 - `issues.base_dir` - Base directory for issues (default: `.issues`)
 - `issues.categories` - Bug/feature/enhancement directory config
-- `issues.completed_dir` - Where to move closed issues (default: `completed`)
+- Issue lifecycle state tracked via frontmatter `status` field (not directory location)
 
 ## Overlap with Issue Size Review
 
@@ -405,7 +402,7 @@ Both can be run as part of backlog grooming. Run tradeoff review first to prune,
 ## Integration
 
 After running tradeoff review:
-- Review closed issues in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`
+- Review closed issues with `ll-issues list --status done --json`
 - Review updated issues with review notes appended
 - Commit changes with `/ll:commit`
 - Process remaining issues with `/ll:manage-issue` or `/ll:create-sprint`

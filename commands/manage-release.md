@@ -33,7 +33,6 @@ You are tasked with managing releases for this project. This includes creating g
 Read settings from `.ll/ll-config.json`:
 
 - **Issues base**: `{{config.issues.base_dir}}` (default: `.issues`)
-- **Completed dir**: `{{config.issues.completed_dir}}` (default: `completed`)
 
 Version is tracked in these files:
 - `{{config.project.src_dir}}pyproject.toml` — `version = "X.Y.Z"`
@@ -179,7 +178,7 @@ Return: last tag, commit breakdown by type, suggested next version, full commit 
 Use Task tool with subagent_type="Explore"
 
 Prompt:
-Scan completed issues for release notes.
+Scan completed issues for release notes using frontmatter status fields.
 
 1. Determine the baseline tag using smart detection (handles running before or after tagging):
    if git describe --exact-match HEAD >/dev/null 2>&1; then
@@ -189,21 +188,28 @@ Scan completed issues for release notes.
      PREV_TAG=$(git describe --tags --abbrev=0)
    fi
 
-2. List issue files added to .issues/completed/ since that baseline tag:
-   git log --diff-filter=A --name-only --format="" "${PREV_TAG}..HEAD" -- .issues/completed/
+2. Get the full ISO timestamp of the baseline tag commit:
+   PREV_TIMESTAMP=$(git log -1 --format="%aI" "${PREV_TAG}")
 
-3. For each file returned by git log:
-   - Parse the filename for priority, type (BUG/FEAT/ENH/EPIC), and issue ID
-   - Read the file and extract:
-     - Title from the H1 heading
-     - github_issue from frontmatter (if present)
+3. List issues with status: done whose completed_at falls after the baseline timestamp:
+   ll-issues list --status done --json | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+prev_ts = '$(echo ${PREV_TIMESTAMP})'
+results = [i for i in data if i.get('completed_at', '') >= prev_ts]
+print(json.dumps(results))
+"
 
-4. Categorize issues:
+4. For each issue in the result:
+   - Extract id, title, type (BUG/FEAT/ENH/EPIC) from the JSON data
+   - Extract github_issue from frontmatter (if present)
+
+5. Categorize issues:
    - Features: FEAT-* issues
    - Bug Fixes: BUG-* issues
    - Enhancements: ENH-* issues
 
-5. Format each entry as:
+6. Format each entry as:
    - With github_issue: "ISSUE-ID: Title (#github_number)"
    - Without github_issue: "ISSUE-ID: Title"
 

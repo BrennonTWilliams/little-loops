@@ -24,7 +24,6 @@ You are tasked with scanning all open issues for semantic conflicts, synthesizin
 
 This skill uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
-- **Completed dir**: `{{config.issues.completed_dir}}`
 
 ---
 
@@ -292,17 +291,12 @@ For each approved recommendation:
 - **Proposed change**: [proposed_change from conflict record]
 ```
 
-4. Move the closed issue:
+4. Update the closed issue's frontmatter `status: done` using the Edit tool.
+
+5. Append session log to closed issue:
 
 ```bash
-git mv "{{config.issues.base_dir}}/[category]/[file].md" \
-       "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
-```
-
-5. Append session log to closed issue (after moving):
-
-```bash
-ll-issues append-log "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[file].md" /ll:audit-issue-conflicts
+ll-issues append-log "[issue-file-path]" /ll:audit-issue-conflicts
 ```
 
 6. Append session log to kept issue:

@@ -179,8 +179,8 @@ if [ -n "$ISSUES_ARG" ]; then
         exit 1
     fi
 else
-    # List all open issues (not in completed/ or deferred/)
-    mapfile -t ISSUE_FILES < <(find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" -not -path "*/deferred/*" | sort)
+    # List all open issues (by frontmatter status)
+    mapfile -t ISSUE_FILES < <(ll-issues list --format path | sort)
 fi
 ```
 

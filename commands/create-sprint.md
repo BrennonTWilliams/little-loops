@@ -337,8 +337,8 @@ Use AskUserQuestion to present selection options:
 
 If selecting from active issues:
 1. Use the Glob tool to find active issues:
-   - Pattern: `{issues.base_dir}/**/*.md` (using the configured issues directory)
-   - Then filter results to exclude paths containing `/completed/` or `/deferred/`
+   - Use `ll-issues list --json` to get all active issues (frontmatter status: open/in_progress/blocked)
+   - Or use Glob on type dirs: `{issues.base_dir}/bugs/**/*.md`, `{issues.base_dir}/features/**/*.md`, etc.
 2. Parse and group by category/priority
 3. Present organized list for selection
 

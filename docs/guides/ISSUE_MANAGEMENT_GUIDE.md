@@ -19,12 +19,10 @@ Issue files live in `.issues/` and follow a strict naming convention:
 
 ```
 .issues/
-  bugs/          ← active bugs
-  features/      ← active features
-  enhancements/  ← active enhancements
-  epics/         ← active epics (coordination containers, not directly implementable)
-  completed/     ← archived issues (sibling directory, not a subdirectory of bugs/)
-  deferred/      ← parked issues (not active, not completed)
+  bugs/          ← bugs (any status)
+  features/      ← features (any status)
+  enhancements/  ← enhancements (any status)
+  epics/         ← epics (coordination containers, not directly implementable)
 ```
 
 **Filename format**: `P[0-5]-[TYPE]-[NNN]-description-with-dashes.md`
@@ -37,7 +35,7 @@ P2-BUG-042-sprint-runner-ignores-failed-issues.md
 └────────── priority: P0 (critical) to P5 (low)
 ```
 
-> **Common pitfall**: `completed/` and `deferred/` are siblings of `bugs/`, `features/`, `enhancements/`, and `epics/` — not nested inside them. A completed bug moves to `.issues/completed/`, not `.issues/bugs/completed/`. Similarly, a deferred issue moves to `.issues/deferred/`.
+> **Note**: Issue lifecycle state is tracked in frontmatter `status` field. All issues live in their type directory (`bugs/`, `features/`, `enhancements/`, `epics/`) regardless of whether they are open, deferred, or done.
 
 Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../reference/ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
 
@@ -91,11 +89,11 @@ Issues move through seven states:
         │
         ▼
   ┌───────────┐
-  │ Completed │  ← moved to .issues/completed/, committed
+  │ Completed │  ← status: done set in frontmatter, committed
   └───────────┘
 
   ┌───────────┐
-  │ Deferred  │  ← moved to .issues/deferred/, parked for later
+  │ Deferred  │  ← status: deferred set in frontmatter, parked for later
   └───────────┘
 ```
 
@@ -115,15 +113,14 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 | `wont_do` | Decided not to implement |
 | `superseded` | Replaced by another issue |
 
-**Directory location determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by directory (`bugs/`, `features/`, `enhancements/`, `epics/`, `completed/`, `deferred/`) — not by the `status` field. The `status` field is a semantic label for human and tool context.
+**Frontmatter `status` determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by the `status` frontmatter field — not by directory location. All active issues live in type directories (`bugs/`, `features/`, `enhancements/`, `epics/`); their lifecycle state is recorded in frontmatter.
 
 ### Reopen a Completed Issue
 
 When a fix regresses or an issue was closed prematurely:
 
 ```
-1. Move file from .issues/completed/ back to the appropriate type directory
-   e.g.: .issues/completed/P2-BUG-042-...md → .issues/bugs/P2-BUG-042-...md
+1. Update frontmatter: set status from `done` back to `open` using the Edit tool
 2. Update Status footer: **Reopened** | Reopened: 2026-02-24 | Reason: regression in commit abc123
 3. Add a "Reopen Note" section explaining what changed
 4. Run /ll:verify-issues <file> to refresh codebase claims
@@ -322,7 +319,7 @@ Use this to sense-check your backlog before sprint planning. A backlog with 200 
 - For BUGs: Root Cause identifies file + function anchor + explanation
 - For FEATs: Acceptance Criteria are individually testable
 
-Issues that pass validation have their Status updated to `Ready`. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are moved to `completed/` with a "Closed: invalid" status.
+Issues that pass validation have their Status updated to `Ready`. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are closed via `status: done` with a "Closed: invalid" resolution note.
 
 ### Confidence Scoring
 
@@ -430,12 +427,12 @@ Resolve all open questions during Phase 2 (refine) or at the start of Phase 4 (p
 
 When implementation finishes and tests pass:
 
-1. Move the issue file to `.issues/completed/`
+1. Set `status: done` in the issue file's frontmatter
 2. Update its Status footer: `**Completed** | Completed: 2026-02-24 | [commit hash]`
 3. Commit with a conventional commit message referencing the issue
 
 ```bash
-git add .issues/completed/P2-BUG-042-...md [changed files]
+git add .issues/[type]/P2-BUG-042-...md [changed files]
 git commit -m "fix(sprint): retry failed issues after orchestrator run (BUG-042)"
 ```
 

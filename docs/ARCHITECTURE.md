@@ -40,8 +40,6 @@ flowchart TB
 
     subgraph "Issue Storage"
         ISSUES[.issues/<br/>bugs/, features/, enhancements/, epics/]
-        COMPLETED[.issues/completed/]
-        DEFERRED[.issues/deferred/]
     end
 
     CFG --> CMD
@@ -54,8 +52,6 @@ flowchart TB
     CLI --> PARALLEL
     AUTO --> ISSUES
     PARALLEL --> ISSUES
-    AUTO --> COMPLETED
-    PARALLEL --> COMPLETED
 ```
 
 ## Directory Structure
@@ -331,12 +327,12 @@ sequenceDiagram
             Claude-->>Manager: Success
 
             Note over Manager,Git: Phase 3: Verification
-            Manager->>Git: Move issue to completed/
+            Manager->>Git: Update issue status: done
             Manager->>Manager: Verify completion
         else NOT_READY
             Manager->>Manager: Mark failed, skip
         else CLOSE
-            Manager->>Git: Move to completed/ (closed)
+            Manager->>Git: Update issue status: done (closed)
         end
 
         Manager->>Manager: Save state

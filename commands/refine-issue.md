@@ -26,7 +26,6 @@ The core workflow: read the issue, research the codebase, identify what an imple
 
 This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
-- **Completed dir**: `{{config.issues.completed_dir}}`
 - **Source dir**: `{{config.project.src_dir}}`
 
 ## Arguments

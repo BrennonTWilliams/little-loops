@@ -245,7 +245,6 @@ If Round 5c is presented, increment STEP by 1 and output: **Step [STEP] of [TOTA
 
 The following questions have been removed and their defaults applied silently:
 - `issues_path` — not applicable (Round 2 no longer offers "custom directory"; existing dir or `.issues` used automatically)
-- `completed_dir` → always "completed" (# Default: issues.completed_dir = "completed")
 - `parallel_timeout` → always 3600 (# Default: parallel.timeout_per_issue = 3600)
 - `threshold` → always 80% (# Default: context_monitor.auto_handoff_threshold = 80)
 - `priority_labels` → always Yes (# Default: sync.github.priority_labels = true)
@@ -339,7 +338,7 @@ Sprint management is always enabled — always include:
 - `sprints.default_max_workers` is hardcoded to 2, which differs from schema default (4); always include this key
 
 **Notes:**
-- Omit `issues.completed_dir` — "completed" is the schema default
+- Omit deprecated `issues` status-dir fields — status is tracked via frontmatter `status` field
 - Omit `auto_handoff_threshold` — 80 is the schema default
 - Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting

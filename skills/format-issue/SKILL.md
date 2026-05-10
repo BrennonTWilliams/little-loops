@@ -23,7 +23,6 @@ Align issue files with template v2.0 structure through section renaming, structu
 
 This skill uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
-- **Completed dir**: `{{config.issues.completed_dir}}`
 - **Templates dir**: `{{config.issues.templates_dir}}` (custom section JSON directory, or plugin default if null)
 - **Template style**: `{{config.issues.capture_template}}` (full, minimal, or legacy — controls which creation variant to use when assembling sections)
 
@@ -38,7 +37,7 @@ $ARGUMENTS
 
 - **flags** (optional): Command behavior flags
   - `--auto` - Enable non-interactive auto-format mode (applies inferred changes without prompts)
-  - `--all` - Process all active issues (bugs/, features/, enhancements/, epics/), skip completed/
+  - `--all` - Process all active issues (bugs/, features/, enhancements/, epics/)
   - `--dry-run` - Preview changes without applying them (no file modifications)
   - `--check` — Check-only mode for FSM loop evaluators. Dry-run of auto mode: run analysis, print `[ID] format: N gaps found` per non-compliant issue, exit 1 if any gaps, exit 0 if all compliant. Implies `--auto --dry-run`.
 
@@ -86,8 +85,7 @@ fi
 if [[ -z "$ISSUE_ID" ]]; then
     # No issue_id provided — select highest-priority active issue
     for P in P0 P1 P2 P3 P4 P5; do
-        for dir in {{config.issues.base_dir}}/*/; do
-            if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ] || [ "$(basename "$dir")" = "{{config.issues.deferred_dir}}" ]; then continue; fi
+        for dir in {{config.issues.base_dir}}/bugs/ {{config.issues.base_dir}}/features/ {{config.issues.base_dir}}/enhancements/ {{config.issues.base_dir}}/epics/; do
             FOUND=$(ls "$dir"/$P-*.md 2>/dev/null | sort | head -1)
             if [ -n "$FOUND" ]; then FILE="$FOUND"; break 2; fi
         done
@@ -110,7 +108,7 @@ fi
 **When `ALL_MODE` is true (batch processing):**
 
 ```bash
-# Find all active issues (not in completed/)
+# Find all active issues (type dirs only)
 declare -a ISSUE_FILES
 for dir in {{config.issues.base_dir}}/{bugs,features,enhancements,epics}/; do
     if [ -d "$dir" ]; then

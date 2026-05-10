@@ -52,10 +52,9 @@ if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ### 1. Find Unprioritized Issues
 
 ```bash
-# Find all issue files without priority prefix (exclude completed/)
-for dir in {{config.issues.base_dir}}/*/; do
-    dirname=$(basename "$dir")
-    if [ -d "$dir" ] && [ "$dirname" != "completed" ] && [ "$dirname" != "deferred" ]; then
+# Find all issue files without priority prefix (type dirs only, status-filtered)
+for dir in {{config.issues.base_dir}}/bugs/ {{config.issues.base_dir}}/features/ {{config.issues.base_dir}}/enhancements/ {{config.issues.base_dir}}/epics/; do
+    if [ -d "$dir" ]; then
         echo "Checking $dir..."
         ls "$dir"*.md 2>/dev/null | while read file; do
             basename=$(basename "$file")
@@ -85,7 +84,7 @@ d. Do NOT fall through to Step 2 after this. The re-prioritize path ends at Step
 
 ### 2-RE. Re-evaluate All Active Issues
 
-For each active issue file (in `bugs/`, `features/`, `enhancements/` — **not** `completed/` or `deferred/`):
+For each active issue file (in `bugs/`, `features/`, `enhancements/`, `epics/`):
 
 1. **Read the file content** to understand:
    - Summary/description
@@ -231,4 +230,4 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 - Always use `git mv` to rename files (preserves history)
 - Commit the renames: `git commit -m "chore(issues): prioritize issues"`
 - When all issues are already prioritized, the command offers to re-evaluate priorities
-- Exclude `completed/` and `deferred/` directories from both prioritization and re-prioritization scans
+- Scan only type directories (`bugs/`, `features/`, `enhancements/`, `epics/`) — no `completed/` or `deferred/` dirs exist post-ENH-1418

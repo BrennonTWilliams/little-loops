@@ -48,8 +48,8 @@ if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ### 1. Find Issues to Verify
 
 ```bash
-# List all open issues (not in completed/ or deferred/)
-find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" -not -path "*/deferred/*" | sort
+# List all open issues (by frontmatter status)
+ll-issues list --format path | sort
 ```
 
 ### 2. For Each Issue
@@ -121,14 +121,14 @@ When an issue matches a completed issue, perform regression analysis:
 
 ### 3. Request User Approval
 
-**Skip this section if `AUTO_MODE` is true.** In auto mode, proceed directly to Phase 4, applying all non-destructive changes (verification notes, line number updates). Skip moving resolved issues to completed/ in auto mode (destructive action requires explicit approval).
+**Skip this section if `AUTO_MODE` is true.** In auto mode, proceed directly to Phase 4, applying all non-destructive changes (verification notes, line number updates). Skip updating resolved issue status in auto mode (destructive action requires explicit approval).
 
 Before making any changes, present the verification results to the user:
 
 1. Show the summary table with all verdicts
 2. List specific changes that will be made:
    - Issues to update with verification notes
-   - Issues to move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`
+   - Issues to close (set `status: done` in frontmatter)
 3. Ask: "Proceed with these changes? (y/n)"
 4. Wait for user confirmation before modifying any files
 
@@ -141,7 +141,7 @@ For issues needing updates:
 
 For resolved issues:
 - Add resolution note
-- Consider moving to `{{config.issues.base_dir}}/completed/`
+- Consider setting `status: done` in frontmatter
 
 ### 4.5 Append Session Log Entries
 
@@ -212,7 +212,7 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 | [IDs] | CYCLE | Circular dependency detected |
 
 ## Recommended Actions
-1. Move resolved issues to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` (sibling to category dirs)
+1. Close resolved issues by setting `status: done` in frontmatter
 2. Update outdated issues with current info
 3. Remove or archive invalid issues
 4. Re-prioritize if needed
@@ -231,7 +231,7 @@ $ARGUMENTS
   - If omitted, verifies all open issues
 
 - **flags** (optional): Command behavior flags
-  - `--auto` - Non-interactive mode: apply all non-destructive changes (verification notes, line number updates) without prompting. Skips moving resolved issues to completed/ (requires explicit approval).
+  - `--auto` - Non-interactive mode: apply all non-destructive changes (verification notes, line number updates) without prompting. Skips setting resolved issue status (requires explicit approval).
   - `--check` — Check-only mode for FSM loop evaluators. Run verification without applying changes, print `[ID] verify: [verdict]` per non-VALID issue, exit 1 if any non-VALID, exit 0 if all valid. Implies `--auto`.
 
 ---

@@ -290,7 +290,7 @@ Evaluate whether one or more issues should be implemented using an adversarial d
 
 | Reason | Meaning | Recommended action |
 |--------|---------|-------------------|
-| `CLOSE` | Issue is invalid, already covered, or misdirected | Close or move to `completed/` |
+| `CLOSE` | Issue is invalid, already covered, or misdirected | Close (set `status: done` in frontmatter) |
 | `REFINE` | Issue is valid but under-specified or needs more research | Run `/ll:refine-issue` or `/ll:ready-issue` |
 | `SKIP` | Good idea but poorly timed or lower priority than active work | Keep open, deprioritize, or remove from sprint |
 

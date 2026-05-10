@@ -198,10 +198,15 @@ Before creating issues, search for existing issues:
    grep -r "services.py" .issues/bugs/ .issues/enhancements/ .issues/features/
    ```
 
-2. **Search completed issues** for potential reopen:
+2. **Search done issues** for potential reopen:
    ```bash
    # Check if this architectural issue was previously addressed
-   grep -r "circular dependency\|god class\|large file" .issues/completed/
+   ll-issues list --status done --json | python3 -c "
+import sys, json
+for i in json.load(sys.stdin):
+    if any(k in (i.get('title','') + i.get('summary','')) for k in ['circular dependency','god class','large file']):
+        print(i['id'], i.get('title',''))
+"
    ```
 
 3. **Match scoring**:
@@ -299,8 +304,9 @@ If a completed architectural issue matches a new finding:
    - Check git history for when issue reappeared
 
 3. **Reopen process**:
+   Update the frontmatter `status` from `done` to `open` and move the file back to active use if desired:
    ```bash
-   git mv .issues/completed/P2-ENH-XXX-refactor-services.md .issues/enhancements/
+   # Use Edit tool to set status: open in frontmatter, then git add the file
    ```
 
 4. **Append Reopened section**:

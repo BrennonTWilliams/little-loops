@@ -32,9 +32,9 @@ Quick reference for managing issues with the little-loops plugin.
               READY ◀──────┘   │   └──────▶ CLOSE          │
                 │         NOT_READY           │             │
                 │              │              ▼             │
-                │              └───────▶ completed/         │
+                │              └───────▶ status: done       │
                 │                                           │
-                │  DEFER ──────────────▶ deferred/          │
+                │  DEFER ──────────────▶ status: deferred   │
                 ▼                                           │
          ┌─────────────┐                                    │
          │  InProgress  │ /ll:manage-issue                  │
@@ -49,7 +49,7 @@ Quick reference for managing issues with the little-loops plugin.
             │
             ▼
       ┌───────────┐
-      │ Completed  │ ──▶ .issues/completed/
+      │ Completed  │ ──▶ status: done (frontmatter)
       └───────────┘
 ```
 
@@ -149,8 +149,7 @@ Install: `pip install little-loops`
 ├── bugs/           # BUG-NNN issues
 ├── features/       # FEAT-NNN issues
 ├── enhancements/   # ENH-NNN issues
-├── epics/          # EPIC-NNN coordination containers
-└── completed/      # Resolved issues
+└── epics/          # EPIC-NNN coordination containers
 ```
 
 ## Related Skills
@@ -169,5 +168,5 @@ Install: `pip install little-loops`
 - Always run `/ll:ready-issue` before `/ll:manage-issue`
 - Use `/ll:create-sprint` to group related issues for focused execution
 - Use `/ll:tradeoff-review-issues` to prune low-value issues before sprints
-- Issues move to `completed/` automatically when done
+- Issues are marked `status: done` in frontmatter automatically when completed
 - Use CLI tools (`ll-auto`, `ll-parallel`, `ll-sprint`) for batch processing

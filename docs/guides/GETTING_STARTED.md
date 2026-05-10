@@ -71,8 +71,6 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
   features/
   enhancements/
   epics/
-  completed/
-  deferred/
 .ll/ll-config.json
 ```
 
@@ -134,14 +132,14 @@ For a trivial bug, skip this step and go straight to implementation. For anythin
 
 ### Step 3: Implement
 
-`/ll:manage-issue` handles the full implementation cycle: plan, implement, run tests, and move the issue to completed.
+`/ll:manage-issue` handles the full implementation cycle: plan, implement, run tests, and mark the issue complete.
 
 ```bash
 /ll:manage-issue bug fix BUG-001
-#    → Plans → implements → runs tests → moves issue to .issues/completed/
+#    → Plans → implements → runs tests → sets status: done in frontmatter
 ```
 
-When it finishes, the issue file is gone from `.issues/bugs/` and has moved to `.issues/completed/`.
+When it finishes, the issue file remains in `.issues/bugs/` with `status: done` in its frontmatter.
 
 ### Step 4: Commit
 
@@ -180,19 +178,17 @@ The `status` field inside the issue file tracks where the issue is in the workfl
 
 ### Directory Structure
 
-`.issues/completed/` is a **sibling** of `bugs/`, `features/`, `enhancements/`, and `epics/` — not nested inside any of them.
+All issues live in type directories regardless of their lifecycle state. Status is tracked via the `status` frontmatter field.
 
 ```
 .issues/
-  bugs/             ← active bugs
-  features/         ← active features
-  enhancements/     ← active enhancements
-  epics/            ← active epics (coordination containers)
-  completed/        ← ALL completed issues (bugs, features, enhancements, and epics)
-  deferred/         ← parked issues (not active, not completed)
+  bugs/             ← BUG issues (open, in_progress, done, deferred, etc.)
+  features/         ← FEAT issues (any status)
+  enhancements/     ← ENH issues (any status)
+  epics/            ← EPIC coordination containers (any status)
 ```
 
-A completed bug moves to `.issues/completed/P2-BUG-042-...md`, not `.issues/bugs/completed/`.
+A completed bug stays in `.issues/bugs/` with `status: done` in its frontmatter — it is not moved.
 
 ### Use Anchors, Not Line Numbers
 

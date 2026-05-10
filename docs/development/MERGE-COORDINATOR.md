@@ -158,7 +158,7 @@ The coordinator implements 7 specialized error detectors:
 | `_is_unmerged_files_error()` | Detects pre-existing unmerged files |
 | `_is_rebase_in_progress()` | Checks for incomplete rebase |
 | `_detect_conflict_commit()` | Extracts commit hash from rebase conflict output |
-| `_is_lifecycle_file_move()` | Identifies issue file renames to completed/ or deferred/ |
+| `_is_lifecycle_file_move()` | Identifies issue file renames to completed/ or deferred/ (legacy path; post-ENH-1418 completion is frontmatter-based) |
 
 ### Index Recovery System
 
@@ -490,7 +490,7 @@ git stash drop
 **Cause**: Lifecycle file moves or state file modifications not excluded from stash
 
 **Check**:
-1. Look for `.issues/completed/` files in `git status`
+1. Look for `.issues/` modified issue files in `git status` (status: done updates)
 2. Check if state file has modifications
 3. Verify stash exclusion logic is working
 

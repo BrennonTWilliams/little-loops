@@ -39,7 +39,7 @@ skills/         # Skill definitions (28 skills)
 hooks/          # Lifecycle hooks and prompts
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
-.issues/        # Issue tracking (bugs/, features/, enhancements/, epics/, completed/)
+.issues/        # Issue tracking (bugs/, features/, enhancements/, epics/)
 thoughts/       # Plans and research documents
 docs/           # Architecture, API, troubleshooting
 ```

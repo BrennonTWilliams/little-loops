@@ -656,7 +656,7 @@ Deprioritize an active issue by bumping its priority prefix and appending a `## 
 - Renames the issue file with the new priority prefix (e.g., `P3-FEAT-955` → `P5-FEAT-955`) using `git mv` for tracked files to preserve history, falling back to an atomic rename for untracked files
 - Appends a `## Skip Log` section with ISO timestamp and the provided reason (or `"No reason provided"` if omitted)
 - If the issue is already at the target priority, the file is not renamed but the Skip Log entry is still appended
-- Only works on issues in active directories (`bugs/`, `features/`, `enhancements/`); exits with error for `completed/` or `deferred/`
+- Only works on issues in active directories (`bugs/`, `features/`, `enhancements/`, `epics/`)
 - Prints the new file path to stdout on success
 
 **Examples:**

@@ -71,8 +71,8 @@ The command follows a 6-phase workflow:
    - File contention warnings
    - Dependency analysis warnings (missing deps, broken refs, stale completed refs)
 
-4. **Check for completed issues** by scanning the completed directory:
-   - Use Glob: `{{config.issues.base_dir}}/completed/*.md`
+4. **Check for completed issues** by querying frontmatter status:
+   - Use `ll-issues list --status done --json` to find issues with `status: done`
    - Match against sprint issue IDs
    - Any matches are candidates for removal
 
@@ -127,7 +127,7 @@ Analyze the sprint against its goal and the current backlog state:
 Generate categorized recommendations:
 
 #### Category 1: Issues to Remove
-- Completed issues (found in `completed/` directory)
+- Completed issues (frontmatter `status: done`)
 - Invalid references (file not found)
 - Issues misaligned with sprint goal (with explanation)
 - Low-priority issues when higher-priority alternatives exist
@@ -292,7 +292,7 @@ Uses project configuration from `.ll/ll-config.json`:
 
 - `issues.base_dir` - Base directory for issues (default: `.issues`)
 - `issues.categories` - Bug/feature/enhancement directory config
-- `issues.completed_dir` - Completed issues directory (default: `completed`; sprint edit/prune detection uses `status` frontmatter, not this directory)
+- Issue status is detected via frontmatter `status` field (not directory location)
 - `sprints.sprints_dir` - Sprint definitions directory (default: `.sprints`)
 
 ## Integration
