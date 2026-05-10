@@ -141,17 +141,24 @@ For each issue to capture, search for existing duplicates:
 
 #### Search Active Issues
 
-Search in all active category directories (excluding completed and deferred):
+Issue status lives in YAML frontmatter (`status: open|done|deferred|cancelled`),
+not in directory location. Active issues are those with `status: open` (or
+absent, which defaults to open).
 
 ```bash
-# List all active issues for analysis
+# List all .md files under category dirs and filter to status: open
 for dir in {{config.issues.base_dir}}/*/; do
-    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ] || [ "$(basename "$dir")" = "{{config.issues.deferred_dir}}" ]; then
-        continue
-    fi
-    if [ -d "$dir" ]; then
-        ls -la "$dir"*.md 2>/dev/null || true
-    fi
+    base=$(basename "$dir")
+    [ "$base" = "{{config.issues.completed_dir}}" ] && continue
+    [ "$base" = "{{config.issues.deferred_dir}}" ] && continue
+    for f in "$dir"*.md; do
+        [ -f "$f" ] || continue
+        # Treat missing status: as "open"
+        status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
+        case "${status:-open}" in
+            open|in_progress|blocked) echo "$f" ;;
+        esac
+    done
 done
 ```
 
@@ -170,7 +177,25 @@ For each existing issue file:
 
 #### Search Completed Issues
 
-Search in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
+Completed issues live alongside active issues in their type directories,
+distinguished by `status: done` (or `cancelled`) in frontmatter:
+
+```bash
+# Find completed issues by scanning type dirs and filtering status:
+for dir in {{config.issues.base_dir}}/*/; do
+    base=$(basename "$dir")
+    [ "$base" = "{{config.issues.completed_dir}}" ] && continue
+    [ "$base" = "{{config.issues.deferred_dir}}" ] && continue
+    for f in "$dir"*.md; do
+        [ -f "$f" ] || continue
+        status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
+        case "$status" in done|cancelled) echo "$f" ;; esac
+    done
+done
+```
+
+For backward compatibility, also scan the legacy `{{config.issues.completed_dir}}/`
+directory if it exists (older issues may not yet have `status: done` frontmatter):
 
 ```bash
 ls -la {{config.issues.base_dir}}/{{config.issues.completed_dir}}/*.md 2>/dev/null || true
@@ -303,37 +328,44 @@ git add "[path-to-existing-issue]"
 
 #### Action: Reopen Completed Issue
 
-1. **Move from {{config.issues.completed_dir}}/ to active category directory:**
+Issue status lives in frontmatter — reopening means flipping `status: done`
+back to `status: open`. The file stays where it is (in its type directory,
+or in the legacy `completed/` directory if it predates ENH-1418).
+
+1. **Update the file's frontmatter and append a Reopened section:**
+
+   - Find the closed issue file (in its type dir with `status: done`, or in
+     the legacy `completed/` directory).
+   - Use `Edit` to change the frontmatter line `status: done` → `status: open`.
+     If the issue currently has no `status:` field (legacy file), insert
+     `status: open` into the YAML frontmatter block.
+   - Append a Reopened section to the body:
+
+   ```markdown
+   ---
+
+   ## Reopened
+
+   - **Date**: [YYYY-MM-DD]
+   - **By**: capture-issue
+   - **Reason**: Issue recurred or was not fully resolved
+
+   ### New Findings
+
+   [Context from the new description or conversation that prompted reopening]
+   ```
+
+2. **(Legacy only) If the file lives in `{{config.issues.completed_dir}}/`,
+   move it to its type directory** to keep the layout tidy. This is optional
+   and only applies to legacy files that pre-date ENH-1418:
 
 ```bash
-# Determine target directory from issue type in filename
-# Note: Uses default category mapping (BUG->bugs, FEAT->features, ENH->enhancements, EPIC->epics)
 git mv "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[filename]" "{{config.issues.base_dir}}/[category]/"
-```
-
-2. **Append Reopened section:**
-
-```bash
-cat >> "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
-
----
-
-## Reopened
-
-- **Date**: [YYYY-MM-DD]
-- **By**: capture-issue
-- **Reason**: Issue recurred or was not fully resolved
-
-### New Findings
-
-[Context from the new description or conversation that prompted reopening]
-
-EOF
 ```
 
 3. **Stage the changes:**
 ```bash
-git add "{{config.issues.base_dir}}/[category]/[filename]"
+git add "[path-to-issue]"
 ```
 
 ### Phase 5: Output Report
